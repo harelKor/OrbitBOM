@@ -10,7 +10,10 @@ graduation. Steps marked **(Harel)** need the Onshape Enterprise admin.
    `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
 3. **Connect → ORMs**: copy the transaction pooler string (port 6543) into `DATABASE_URL` and the
    session pooler string (port 5432) into `DIRECT_URL`.
-4. Run `npm run db:migrate` with those values in `.env.local`.
+4. Create the tables: in GitHub → the repo → **Settings → Secrets and variables → Actions**, add
+   the secret `PRODUCTION_DIRECT_URL` with the session pooler string (port 5432, password filled
+   in). Then **Actions → Migrate database → Run workflow**. It also runs on its own whenever a new
+   migration reaches `main`. (Or run `npm run db:migrate` locally with the values in `.env.local`.)
 
 ## 2. Google sign-in
 

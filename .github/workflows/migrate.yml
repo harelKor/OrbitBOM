@@ -1,0 +1,36 @@
+name: Migrate database
+
+# Applies new migrations in drizzle/ to the production database whenever they reach main,
+# so nobody has to run them by hand. Needs the repo secret PRODUCTION_DIRECT_URL (the
+# Supabase session pooler string, port 5432); without it the job does nothing.
+on:
+  push:
+    branches: [main]
+    paths: ["drizzle/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency: migrate
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.PRODUCTION_DIRECT_URL }}
+    steps:
+      - name: Skip when the secret isn't set
+        if: env.DATABASE_URL == ''
+        run: echo "PRODUCTION_DIRECT_URL is not set; nothing to do."
+      - uses: actions/checkout@v4
+        if: env.DATABASE_URL != ''
+      - uses: actions/setup-node@v4
+        if: env.DATABASE_URL != ''
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        if: env.DATABASE_URL != ''
+      - run: npm run db:migrate
+        if: env.DATABASE_URL != ''
