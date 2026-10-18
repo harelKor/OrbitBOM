@@ -3,7 +3,7 @@
 import { useTransition } from "react";
 import { getMachine } from "@/config/machines";
 import { isDone } from "@/lib/status";
-import { deleteManualPart } from "@/app/(app)/parts-actions";
+import { deleteManualPart, unmergeParts } from "@/app/(app)/parts-actions";
 import {
   DeadlineField,
   MachineField,
@@ -22,7 +22,7 @@ import {
 import { FilesField } from "./FilesField";
 import { textOn } from "./options";
 import { Popover, InputEditor } from "./Popover";
-import { partTitle, type CardPart } from "./types";
+import { ownerPartId, partTitle, type CardPart } from "./types";
 
 export function PartCard({
   part,
@@ -82,10 +82,18 @@ export function PartCard({
           <NameField part={part} save={save} />
           <TypeField part={part} save={save} />
         </div>
-        {part.onshapeName && part.displayName && part.displayName !== part.onshapeName && (
+        {!part.memberIds && part.onshapeName && part.displayName && part.displayName !== part.onshapeName && (
           <div className="text-xs text-slate-500">Onshape: {part.onshapeName}</div>
         )}
         {showSystem && <div className="text-xs text-slate-500">{part.systemName}</div>}
+        {part.memberIds && (
+          <div className="flex items-center gap-2 text-xs text-slate-400">
+            ⧉ Merged from {part.memberIds.length} parts
+            <button className="text-indigo-300 hover:text-indigo-200" onClick={() => startTransition(() => void unmergeParts(part.id))}>
+              Unmerge
+            </button>
+          </div>
+        )}
         {part.groups.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {part.groups.map((g) => (
@@ -269,7 +277,7 @@ function CadLink({ part, format }: { part: CardPart; format?: string }) {
   }
   if (part.isManual || !format || !["STEP", "STL", "PARASOLID"].includes(format)) return null;
   return (
-    <a href={`/api/parts/${part.id}/export?format=${format}`} className={cls} title="Export from Onshape">
+    <a href={`/api/parts/${ownerPartId(part)}/export?format=${format}`} className={cls} title="Export from Onshape">
       ⤓ {format === "PARASOLID" ? "x_t" : format}
     </a>
   );
