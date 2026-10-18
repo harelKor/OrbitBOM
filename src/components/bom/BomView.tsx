@@ -9,7 +9,7 @@ import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { computeStatus } from "@/lib/status";
 import { updatePart, updateParts } from "@/app/(app)/parts-actions";
 import { BulkEditBar } from "./BulkEditBar";
-import { InventoryProvider, type InventoryName } from "./InventoryContext";
+import { BomProvider, type InventoryName } from "./BomContext";
 import { KanbanView } from "./KanbanView";
 import { PartCard } from "./PartCard";
 import { TableView } from "./TableView";
@@ -24,6 +24,7 @@ export function BomView({
   parts,
   memberNames,
   inventory = [],
+  isAdmin = false,
   showSystem = false,
   allowBulkEdit = true,
   toolbar,
@@ -31,6 +32,7 @@ export function BomView({
   parts: CardPart[];
   memberNames: string[];
   inventory?: InventoryName[];
+  isAdmin?: boolean;
   showSystem?: boolean;
   allowBulkEdit?: boolean;
   toolbar?: React.ReactNode;
@@ -134,7 +136,7 @@ export function BomView({
   ];
 
   return (
-    <InventoryProvider value={inventory}>
+    <BomProvider value={{ inventory, isAdmin }}>
     <div className={`space-y-4 ${selecting ? "pb-20" : ""}`}>
       <div className="panel space-y-3 p-4">
         <div className="relative">
@@ -236,6 +238,6 @@ export function BomView({
         />
       )}
     </div>
-    </InventoryProvider>
+    </BomProvider>
   );
 }

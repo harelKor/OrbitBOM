@@ -9,7 +9,7 @@ import { getRobot } from "@/lib/data/robots";
 
 // "Main": every part of every system on one page (ref §1). No merge, bulk edit or Advanced panel.
 export default async function MainPage({ params }: { params: Promise<{ robotId: string }> }) {
-  await requireMember();
+  const member = await requireMember();
   const { robotId } = await params;
   const data = await getRobot(robotId);
   if (!data) notFound();
@@ -42,7 +42,7 @@ export default async function MainPage({ params }: { params: Promise<{ robotId: 
           </li>
         ))}
       </ul>
-      <BomView parts={parts} memberNames={memberNames} inventory={inventory} showSystem allowBulkEdit={false} />
+      <BomView parts={parts} memberNames={memberNames} inventory={inventory} isAdmin={member.isAdmin} showSystem allowBulkEdit={false} />
     </div>
   );
 }

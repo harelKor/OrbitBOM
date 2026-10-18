@@ -4,7 +4,6 @@ import { useState } from "react";
 import { isDone } from "@/lib/status";
 import {
   DeadlineField,
-  DrawingLink,
   MachineField,
   MaterialField,
   NameField,
@@ -15,6 +14,7 @@ import {
   TypeField,
   type SaveFn,
 } from "./fields";
+import { FilesField } from "./FilesField";
 import { partTitle, type CardPart } from "./types";
 
 // FRCBOM's table (ref §3): the same popover editors in the cells. Order-mode columns are off.
@@ -87,7 +87,7 @@ export function TableView({
                 ))}
                 <td className="px-2 py-1.5"><StatusField part={p} save={save} /></td>
                 <td className="px-2 py-1.5"><DeadlineField part={p} save={save} done={done} /></td>
-                <td className="px-2 py-1.5"><DrawingLink part={p} /></td>
+                <td className="px-2 py-1.5"><FilesField part={p} /></td>
                 <td className="px-2 py-1.5"><NoteField part={p} save={save} /></td>
                 <td className="px-2 py-1.5 whitespace-nowrap text-slate-400">{p.lastModifiedAt.toISOString().slice(0, 10)}</td>
                 <td className="px-2 py-1.5 whitespace-nowrap text-slate-400">{p.lastModifiedByName ?? "—"}</td>

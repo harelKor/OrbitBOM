@@ -19,6 +19,7 @@ import {
   machineSlotsShown,
   type SaveFn,
 } from "./fields";
+import { FilesField } from "./FilesField";
 import { Popover, InputEditor } from "./Popover";
 import { partTitle, type CardPart } from "./types";
 
@@ -118,6 +119,9 @@ export function PartCard({
               />
             )}
           </Popover>
+        </Row>
+        <Row label="Files">
+          <FilesField part={part} />
         </Row>
         <Row label="Designer">
           <PersonField value={part.designerName} names={memberNames} onSave={(v) => save({ designerName: v })} />

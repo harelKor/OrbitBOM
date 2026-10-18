@@ -10,6 +10,7 @@ import { OnshapeError } from "@/lib/onshape/client";
 import { applyPartChanges } from "@/lib/parts/apply";
 import { partChangesSchema } from "@/lib/parts/changes";
 import { updateBomFromOnshape } from "@/lib/sync/updateBom";
+import { deleteObjects, fileKeysFor } from "@/lib/storage/cleanup";
 import { isUuid } from "@/lib/uuid";
 
 export type ActionResult = { error?: string };
@@ -68,9 +69,12 @@ export async function addManualPart(
 export async function deleteManualPart(partId: string): Promise<ActionResult> {
   await requireMember();
   if (!isUuid(partId)) return { error: "Unknown part." };
-  await db
+  const keys = await fileKeysFor({ partId });
+  const deleted = await db
     .delete(schema.parts)
-    .where(and(eq(schema.parts.id, partId), eq(schema.parts.isManual, true)));
+    .where(and(eq(schema.parts.id, partId), eq(schema.parts.isManual, true)))
+    .returning({ id: schema.parts.id });
+  if (deleted.length) await deleteObjects(keys);
   revalidatePath("/robots", "layout");
   return {};
 }

@@ -15,7 +15,7 @@ export default async function SystemPage({
 }: {
   params: Promise<{ robotId: string; systemId: string }>;
 }) {
-  await requireMember();
+  const member = await requireMember();
   const { robotId, systemId } = await params;
   const data = await getSystem(robotId, systemId);
   if (!data) notFound();
@@ -56,7 +56,7 @@ export default async function SystemPage({
         <StatusBar breakdown={breakdown} />
       </section>
 
-      <BomView parts={parts} memberNames={memberNames} inventory={inventory} toolbar={<ManualPartButton key="manual-part" systemId={system.id} />} />
+      <BomView parts={parts} memberNames={memberNames} inventory={inventory} isAdmin={member.isAdmin} toolbar={<ManualPartButton key="manual-part" systemId={system.id} />} />
       {parts.length === 0 && (
         <p className="rounded-xl border border-dashed border-slate-700 p-8 text-center text-sm text-slate-400">
           {system.assemblyUrl

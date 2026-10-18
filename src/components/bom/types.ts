@@ -9,6 +9,7 @@ export type CardPart = PartRow & {
   onshapeName: string | null;
   lastModifiedAt: Date;
   lastModifiedByName: string | null;
+  files: { id: string; type: string; filename: string }[];
 };
 
 export function partTitle(p: Pick<CardPart, "partNumber" | "displayName" | "onshapeName">): string {

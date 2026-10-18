@@ -18,7 +18,7 @@ import {
   machineOptions,
   textOn,
 } from "./options";
-import { useInventoryNames } from "./InventoryContext";
+import { useBom } from "./BomContext";
 import { InputEditor, OptionList, Popover } from "./Popover";
 import { partTitle, type CardPart } from "./types";
 
@@ -106,7 +106,7 @@ export function TextField({
 
 // Materials, then the team's inventory items: picking an item ties the part to it (ref §5).
 export function MaterialField({ part, save }: Props) {
-  const inventory = useInventoryNames();
+  const { inventory } = useBom();
   const linked = part.inventoryItemId ? inventory.find((i) => i.id === part.inventoryItemId) : undefined;
   const options = [
     ...MATERIAL_OPTIONS,
@@ -295,14 +295,6 @@ export function NoteField({ part, save }: Props) {
       )}
     </Popover>
   );
-}
-
-export function DrawingLink({ part }: { part: CardPart }) {
-  return part.drawingUrl ? (
-    <a href={part.drawingUrl} target="_blank" rel="noreferrer" className="text-sky-300 hover:underline">
-      Drawing
-    </a>
-  ) : null;
 }
 
 // Pre Process only lists PreProcess-stage machines; hide the slot when there are none and it's empty.

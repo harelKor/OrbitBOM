@@ -3,12 +3,15 @@ import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { computeStatus } from "@/lib/status";
 
-const { parts, systems, members } = schema;
+const { parts, systems, members, partFiles } = schema;
+
+export type PartFileRef = { id: string; type: string; filename: string };
 
 export type BomPart = typeof parts.$inferSelect & {
   status: string;
   systemName: string;
   lastModifiedByName: string | null;
+  files: PartFileRef[];
 };
 
 async function load(where: ReturnType<typeof and>): Promise<BomPart[]> {
@@ -19,11 +22,23 @@ async function load(where: ReturnType<typeof and>): Promise<BomPart[]> {
     .leftJoin(members, eq(members.id, parts.lastModifiedBy))
     .where(where)
     .orderBy(asc(parts.partNumber), asc(parts.displayName), asc(parts.onshapeName));
+  const files = rows.length
+    ? await db
+        .select({ id: partFiles.id, partId: partFiles.partId, type: partFiles.type, filename: partFiles.filename })
+        .from(partFiles)
+        .where(
+          inArray(
+            partFiles.partId,
+            rows.map((r) => r.part.id),
+          ),
+        )
+    : [];
   return rows.map((r) => ({
     ...r.part,
     status: computeStatus(r.part),
     systemName: r.systemName,
     lastModifiedByName: r.lastModifiedByName,
+    files: files.filter((f) => f.partId === r.part.id).map(({ id, type, filename }) => ({ id, type, filename })),
   }));
 }
 

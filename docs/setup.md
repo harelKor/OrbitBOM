@@ -55,6 +55,25 @@ property IDs it prints for Material, Pre Process, Process 1 and Process 2 into
    and add `ONSHAPE_TOKEN_KEY` (generate it with `openssl rand -base64 32`).
 3. As Enterprise admin, allow the application for the Enterprise so students can connect it.
 
-## 6. Cloudflare R2 (files milestone)
+## 6. Cloudflare R2 (part files, thumbnails, CAD exports)
 
-Not needed yet. When files land: create an R2 bucket and an API token scoped to it.
+Free tier: 10 GB stored, no download fees.
+
+1. Cloudflare dashboard → **R2** → enable it (asks for a card, but the free tier isn't charged) → **Create bucket** named `orbitbom`, location Automatic.
+2. Bucket → **Settings → CORS policy** → add this, with your real site address, so browsers can upload straight to the bucket:
+
+   ```json
+   [
+     {
+       "AllowedOrigins": ["https://YOUR-APP.vercel.app", "http://localhost:3000"],
+       "AllowedMethods": ["GET", "PUT"],
+       "AllowedHeaders": ["*"],
+       "MaxAgeSeconds": 3600
+     }
+   ]
+   ```
+
+3. R2 overview → **Manage R2 API Tokens** → **Create API token**: permission *Object Read & Write*, applied to the `orbitbom` bucket only. Copy the **Access Key ID** and **Secret Access Key** (shown once).
+4. In Vercel → Settings → Environment Variables set `R2_ACCOUNT_ID` (the account id on the R2 overview page), `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` and `R2_BUCKET=orbitbom`, then redeploy.
+
+The bucket stays private: every download goes through `/api/files/…`, which checks the member is signed in and hands out a 5-minute link. Without these variables the app works, and file uploads say storage isn't set up.

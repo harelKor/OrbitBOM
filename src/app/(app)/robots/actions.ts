@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { requireAdmin, requireMember } from "@/lib/auth";
+import { deleteObjects, fileKeysFor } from "@/lib/storage/cleanup";
 import { onshapeUrl, parseOnshapeUrl } from "@/lib/onshape/url";
 
 export type FormState = { error?: string } | undefined;
@@ -63,7 +64,9 @@ export async function setRobotArchived(robotId: string, archived: boolean) {
 
 export async function deleteRobot(robotId: string) {
   await requireAdmin();
+  const keys = await fileKeysFor({ robotId });
   await db.delete(schema.robots).where(eq(schema.robots.id, robotId));
+  await deleteObjects(keys);
   revalidatePath("/");
   redirect("/");
 }
@@ -104,6 +107,8 @@ export async function renameSystem(robotId: string, systemId: string, formData: 
 
 export async function deleteSystem(robotId: string, systemId: string) {
   await requireAdmin();
+  const keys = await fileKeysFor({ systemId });
   await db.delete(schema.systems).where(eq(schema.systems.id, systemId));
+  await deleteObjects(keys);
   revalidatePath(`/robots/${robotId}`);
 }
