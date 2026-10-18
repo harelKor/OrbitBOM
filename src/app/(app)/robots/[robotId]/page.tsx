@@ -3,9 +3,11 @@ import { notFound } from "next/navigation";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { ProgressBar, StatusBar } from "@/components/StatusBar";
 import { requireMember } from "@/lib/auth";
+import { robotInventory } from "@/lib/data/inventory";
 import { getRobot } from "@/lib/data/robots";
 import { deleteRobot, deleteSystem, updateRobot } from "../actions";
 import { NewSystemButton } from "./NewSystemButton";
+import { RobotInventory } from "./RobotInventory";
 
 export default async function RobotPage({ params }: { params: Promise<{ robotId: string }> }) {
   const member = await requireMember();
@@ -13,6 +15,7 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
   const data = await getRobot(robotId);
   if (!data) notFound();
   const { robot, breakdown, systems } = data;
+  const inventory = await robotInventory(robot.id);
   const update = updateRobot.bind(null, robot.id);
 
   return (
@@ -101,6 +104,8 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
         </ul>
         {systems.length === 0 && <p className="py-3 text-sm text-slate-500">No systems yet.</p>}
       </section>
+
+      <RobotInventory items={inventory} />
 
       {member.isAdmin && (
         <div className="flex justify-end">

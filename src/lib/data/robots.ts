@@ -73,3 +73,20 @@ export async function getSystem(robotId: string, systemId: string) {
   if (!row) return null;
   return { ...row, breakdown: statusBreakdown(await statusRows([systemId])) };
 }
+
+// Robot → systems for pickers such as Inventory's "To BOM". Archived robots are left out.
+export async function listBomTargets() {
+  const rows = await db
+    .select({ robotId: robots.id, robotName: robots.name, systemId: systems.id, systemName: systems.name })
+    .from(robots)
+    .innerJoin(systems, eq(systems.robotId, robots.id))
+    .where(eq(robots.archived, false))
+    .orderBy(desc(robots.year), asc(robots.name), asc(systems.name));
+  const out: { id: string; name: string; systems: { id: string; name: string }[] }[] = [];
+  for (const r of rows) {
+    let robot = out.find((x) => x.id === r.robotId);
+    if (!robot) out.push((robot = { id: r.robotId, name: r.robotName, systems: [] }));
+    robot.systems.push({ id: r.systemId, name: r.systemName });
+  }
+  return out;
+}

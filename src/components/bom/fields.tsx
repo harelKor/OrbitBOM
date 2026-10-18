@@ -18,6 +18,7 @@ import {
   machineOptions,
   textOn,
 } from "./options";
+import { useInventoryNames } from "./InventoryContext";
 import { InputEditor, OptionList, Popover } from "./Popover";
 import { partTitle, type CardPart } from "./types";
 
@@ -103,15 +104,33 @@ export function TextField({
   );
 }
 
+// Materials, then the team's inventory items: picking an item ties the part to it (ref §5).
 export function MaterialField({ part, save }: Props) {
+  const inventory = useInventoryNames();
+  const linked = part.inventoryItemId ? inventory.find((i) => i.id === part.inventoryItemId) : undefined;
+  const options = [
+    ...MATERIAL_OPTIONS,
+    ...inventory.map((i) => ({ value: `inv:${i.id}`, label: i.name, group: "Inventory" })),
+  ];
   return (
-    <Popover trigger={part.material ?? <Empty />}>
+    <Popover
+      trigger={
+        linked ? (
+          <span className="text-emerald-300" title="Drawn from the team inventory">
+            ▣ {linked.name}
+          </span>
+        ) : (
+          (part.material ?? <Empty />)
+        )
+      }
+    >
       {(close) => (
         <OptionList
-          options={MATERIAL_OPTIONS}
-          value={part.material}
+          options={options}
+          value={linked ? `inv:${linked.id}` : part.material}
           onPick={(v) => {
-            save({ material: v });
+            if (v?.startsWith("inv:")) save({ inventoryItemId: v.slice(4) });
+            else save({ material: v, ...(part.inventoryItemId ? { inventoryItemId: null } : {}) });
             close();
           }}
         />

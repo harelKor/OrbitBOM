@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { BomView } from "@/components/bom/BomView";
 import { ProgressBar, StatusBar } from "@/components/StatusBar";
 import { requireMember } from "@/lib/auth";
+import { listInventoryNames } from "@/lib/data/inventory";
 import { listMemberNames, listRobotParts } from "@/lib/data/parts";
 import { getRobot } from "@/lib/data/robots";
 
@@ -13,7 +14,7 @@ export default async function MainPage({ params }: { params: Promise<{ robotId: 
   const data = await getRobot(robotId);
   if (!data) notFound();
   const { robot, breakdown, systems } = data;
-  const [parts, memberNames] = await Promise.all([listRobotParts(robot.id), listMemberNames()]);
+  const [parts, memberNames, inventory] = await Promise.all([listRobotParts(robot.id), listMemberNames(), listInventoryNames()]);
 
   return (
     <div className="space-y-6">
@@ -41,7 +42,7 @@ export default async function MainPage({ params }: { params: Promise<{ robotId: 
           </li>
         ))}
       </ul>
-      <BomView parts={parts} memberNames={memberNames} showSystem allowBulkEdit={false} />
+      <BomView parts={parts} memberNames={memberNames} inventory={inventory} showSystem allowBulkEdit={false} />
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { computeStatus } from "@/lib/status";
 import { updatePart, updateParts } from "@/app/(app)/parts-actions";
 import { BulkEditBar } from "./BulkEditBar";
+import { InventoryProvider, type InventoryName } from "./InventoryContext";
 import { KanbanView } from "./KanbanView";
 import { PartCard } from "./PartCard";
 import { TableView } from "./TableView";
@@ -22,12 +23,14 @@ type Chip = "all" | "cots" | "inhouse" | string; // or a machine id
 export function BomView({
   parts,
   memberNames,
+  inventory = [],
   showSystem = false,
   allowBulkEdit = true,
   toolbar,
 }: {
   parts: CardPart[];
   memberNames: string[];
+  inventory?: InventoryName[];
   showSystem?: boolean;
   allowBulkEdit?: boolean;
   toolbar?: React.ReactNode;
@@ -131,6 +134,7 @@ export function BomView({
   ];
 
   return (
+    <InventoryProvider value={inventory}>
     <div className={`space-y-4 ${selecting ? "pb-20" : ""}`}>
       <div className="panel space-y-3 p-4">
         <div className="relative">
@@ -232,5 +236,6 @@ export function BomView({
         />
       )}
     </div>
+    </InventoryProvider>
   );
 }
