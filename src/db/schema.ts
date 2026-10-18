@@ -1,0 +1,372 @@
+// Database schema (plan §3). Fields marked "from Onshape" are refreshed on sync unless their
+// name is in parts.overridden_fields.
+
+import { sql } from "drizzle-orm";
+import {
+  boolean,
+  date,
+  index,
+  integer,
+  jsonb,
+  pgEnum,
+  pgTable,
+  primaryKey,
+  real,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
+
+const id = () => uuid("id").primaryKey().defaultRandom();
+const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
+
+// ---------- Team ----------
+
+export const members = pgTable("members", {
+  id: id(),
+  userId: uuid("user_id").notNull().unique(), // auth.users.id
+  email: text("email").notNull().unique(),
+  name: text("name").notNull(),
+  avatarUrl: text("avatar_url"),
+  isAdmin: boolean("is_admin").notNull().default(false),
+  onshapeConnected: boolean("onshape_connected").notNull().default(false),
+  createdAt: createdAt(),
+});
+
+export const invites = pgTable("invites", {
+  token: text("token").primaryKey(),
+  createdBy: uuid("created_by")
+    .notNull()
+    .references(() => members.id, { onDelete: "cascade" }),
+  usedBy: uuid("used_by").references(() => members.id, { onDelete: "set null" }),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: createdAt(),
+});
+
+export const joinRequestStatus = pgEnum("join_request_status", ["pending", "approved", "denied"]);
+
+export const joinRequests = pgTable("join_requests", {
+  userId: uuid("user_id").primaryKey(), // auth.users.id
+  email: text("email").notNull(),
+  name: text("name").notNull(),
+  avatarUrl: text("avatar_url"),
+  status: joinRequestStatus("status").notNull().default("pending"),
+  createdAt: createdAt(),
+});
+
+// ---------- Robots and systems ----------
+
+export const robots = pgTable("robots", {
+  id: id(),
+  name: text("name").notNull(),
+  year: integer("year").notNull(),
+  code: text("code"),
+  deadline: date("deadline"),
+  mainAssemblyUrl: text("main_assembly_url"),
+  schematicPath: text("schematic_path"),
+  thumbnailPath: text("thumbnail_path"),
+  archived: boolean("archived").notNull().default(false),
+  createdAt: createdAt(),
+});
+
+export const systems = pgTable(
+  "systems",
+  {
+    id: id(),
+    robotId: uuid("robot_id")
+      .notNull()
+      .references(() => robots.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    assemblyUrl: text("assembly_url"),
+    subassemblyUrls: text("subassembly_urls").array().notNull().default(sql`'{}'::text[]`),
+    partstudioUrls: text("partstudio_urls").array().notNull().default(sql`'{}'::text[]`),
+    pushNamesToOnshape: boolean("push_names_to_onshape").notNull().default(false),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+    // { [documentId]: microversionId } seen at the last sync; the change check compares to this.
+    docMicroversions: jsonb("doc_microversions").$type<Record<string, string>>().notNull().default({}),
+    thumbnailPath: text("thumbnail_path"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("systems_robot_idx").on(t.robotId)],
+);
+
+// ---------- Parts (one BOM row) ----------
+
+export const classification = pgEnum("classification", ["inhouse", "cots", "external"]);
+export const priority = pgEnum("priority", ["critical", "high", "normal", "low"]);
+export const classSource = pgEnum("class_source", ["rule", "ai", "manual"]);
+
+export type PartGeometry = {
+  bbox?: [number, number, number]; // sorted extents, mm
+  minDim?: number;
+  bodyType?: string;
+  volume?: number;
+  mass?: number;
+  onshapeMaterial?: string; // Onshape's own material, e.g. "Aluminum - 6061"
+};
+
+export const parts = pgTable(
+  "parts",
+  {
+    id: id(),
+    systemId: uuid("system_id")
+      .notNull()
+      .references(() => systems.id, { onDelete: "cascade" }),
+
+    // Identity (ref §6): Part Studio + partId + Onshape name.
+    sourceDid: text("source_did"),
+    sourceWid: text("source_wid"),
+    sourceEid: text("source_eid"),
+    sourceWvm: text("source_wvm"),
+    onshapePartId: text("onshape_part_id"),
+    onshapeName: text("onshape_name"), // from Onshape
+
+    isManual: boolean("is_manual").notNull().default(false),
+    displayName: text("display_name"),
+    partNumber: text("part_number"),
+    classification: classification("classification").notNull().default("inhouse"),
+
+    description: text("description"), // from Onshape
+    material: text("material"), // from Onshape
+    inventoryItemId: uuid("inventory_item_id").references(() => inventoryItems.id, {
+      onDelete: "set null",
+    }),
+    quantity: integer("quantity").notNull().default(1), // from Onshape
+
+    // Machine ids from config/machines.ts. From Onshape custom properties.
+    preProcess: text("pre_process"),
+    process1: text("process1"),
+    process2: text("process2"),
+    extraProcesses: jsonb("extra_processes").$type<string[]>().notNull().default([]),
+
+    donePreprocess: integer("done_preprocess").notNull().default(0),
+    doneProcess1: integer("done_process1").notNull().default(0),
+    doneProcess2: integer("done_process2").notNull().default(0),
+    designState: text("design_state"),
+
+    priority: priority("priority").notNull().default("normal"),
+    deadline: date("deadline"),
+    designerName: text("designer_name"),
+    fabricators: jsonb("fabricators").$type<Record<string, string>>().notNull().default({}),
+    note: text("note"),
+    estMinutes: integer("est_minutes"),
+    actualMinutes: integer("actual_minutes"),
+
+    drawingUrl: text("drawing_url"),
+    dxfFace: text("dxf_face"),
+    boxQty: integer("box_qty"),
+
+    overriddenFields: text("overridden_fields").array().notNull().default(sql`'{}'::text[]`),
+
+    geometry: jsonb("geometry").$type<PartGeometry>(), // from Onshape
+    classGuess: text("class_guess"),
+    classSource: classSource("class_source"),
+
+    thumbnailRev: text("thumbnail_rev"),
+    removedFromCadAt: timestamp("removed_from_cad_at", { withTimezone: true }),
+
+    lastModifiedAt: timestamp("last_modified_at", { withTimezone: true }).notNull().defaultNow(),
+    lastModifiedBy: uuid("last_modified_by").references(() => members.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("parts_system_idx").on(t.systemId),
+    index("parts_identity_idx").on(t.sourceDid, t.sourceEid, t.onshapePartId),
+  ],
+);
+
+export const partFileType = pgEnum("part_file_type", ["drawing", "gcode", "image", "flattened"]);
+
+export const partFiles = pgTable(
+  "part_files",
+  {
+    id: id(),
+    partId: uuid("part_id")
+      .notNull()
+      .references(() => parts.id, { onDelete: "cascade" }),
+    type: partFileType("type").notNull(),
+    r2Key: text("r2_key").notNull(),
+    filename: text("filename").notNull(),
+    contentType: text("content_type"),
+    uploadedBy: uuid("uploaded_by").references(() => members.id, { onDelete: "set null" }),
+    uploadedAt: timestamp("uploaded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("part_files_part_idx").on(t.partId)],
+);
+
+export const merges = pgTable("merges", {
+  id: id(),
+  systemId: uuid("system_id")
+    .notNull()
+    .references(() => systems.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  overrides: jsonb("overrides").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: createdAt(),
+});
+
+export const mergeMembers = pgTable(
+  "merge_members",
+  {
+    mergeId: uuid("merge_id")
+      .notNull()
+      .references(() => merges.id, { onDelete: "cascade" }),
+    partId: uuid("part_id")
+      .notNull()
+      .references(() => parts.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.mergeId, t.partId] }), uniqueIndex("merge_members_part_uq").on(t.partId)],
+);
+
+export const partGroups = pgTable("part_groups", {
+  id: id(),
+  robotId: uuid("robot_id")
+    .notNull()
+    .references(() => robots.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  color: text("color"),
+  description: text("description"),
+  priority: priority("priority").notNull().default("normal"),
+  createdAt: createdAt(),
+});
+
+export const groupMembers = pgTable(
+  "group_members",
+  {
+    groupId: uuid("group_id")
+      .notNull()
+      .references(() => partGroups.id, { onDelete: "cascade" }),
+    partId: uuid("part_id")
+      .notNull()
+      .references(() => parts.id, { onDelete: "cascade" }),
+    // Identity at the time of grouping, so Why?/Recover can explain and re-link a missing member.
+    keySnapshot: jsonb("key_snapshot").$type<Record<string, string | null>>().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.groupId, t.partId] })],
+);
+
+export const groupFiles = pgTable("group_files", {
+  id: id(),
+  groupId: uuid("group_id")
+    .notNull()
+    .references(() => partGroups.id, { onDelete: "cascade" }),
+  r2Key: text("r2_key").notNull(),
+  filename: text("filename").notNull(),
+  type: text("type").notNull(),
+  uploadedAt: timestamp("uploaded_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const changeVia = pgEnum("change_via", ["ui", "sync", "mcp"]);
+
+// Audit trail and undo: every field change, grouped by batch_id.
+export const partHistory = pgTable(
+  "part_history",
+  {
+    id: id(),
+    partId: uuid("part_id")
+      .notNull()
+      .references(() => parts.id, { onDelete: "cascade" }),
+    field: text("field").notNull(),
+    oldValue: jsonb("old_value"),
+    newValue: jsonb("new_value"),
+    memberId: uuid("member_id").references(() => members.id, { onDelete: "set null" }),
+    via: changeVia("via").notNull(),
+    batchId: uuid("batch_id").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("part_history_part_idx").on(t.partId), index("part_history_batch_idx").on(t.batchId)],
+);
+
+// ---------- Inventory ----------
+
+export const inventoryLocations = pgTable("inventory_locations", {
+  id: id(),
+  name: text("name").notNull().unique(),
+});
+
+export const inventoryConditions = pgTable("inventory_conditions", {
+  id: id(),
+  label: text("label").notNull().unique(),
+  color: text("color").notNull(),
+});
+
+export const inventoryGroups = pgTable("inventory_groups", {
+  id: id(),
+  name: text("name").notNull(),
+  parentId: uuid("parent_id"),
+  templateId: text("template_id"), // config/partTypes.ts id
+  locationId: uuid("location_id").references(() => inventoryLocations.id, { onDelete: "set null" }),
+});
+
+export const inventoryItems = pgTable("inventory_items", {
+  id: id(),
+  name: text("name").notNull(),
+  groupId: uuid("group_id").references(() => inventoryGroups.id, { onDelete: "set null" }),
+  templateId: text("template_id"),
+  templateValues: jsonb("template_values").$type<Record<string, string>>().notNull().default({}),
+  conditionId: uuid("condition_id").references(() => inventoryConditions.id, { onDelete: "set null" }),
+  locationId: uuid("location_id").references(() => inventoryLocations.id, { onDelete: "set null" }),
+  inStock: integer("in_stock").notNull().default(0),
+  material: text("material"),
+  imagePath: text("image_path"),
+  vendorUrl: text("vendor_url"),
+  vendorName: text("vendor_name"),
+  price: real("price"),
+  createdAt: createdAt(),
+});
+
+// ---------- Onshape ----------
+
+export const onshapeTokens = pgTable("onshape_tokens", {
+  memberId: uuid("member_id")
+    .primaryKey()
+    .references(() => members.id, { onDelete: "cascade" }),
+  accessTokenEnc: text("access_token_enc").notNull(),
+  refreshTokenEnc: text("refresh_token_enc").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  callsToday: integer("calls_today").notNull().default(0),
+  callsDay: date("calls_day"),
+});
+
+export const onshapeCache = pgTable("onshape_cache", {
+  key: text("key").primaryKey(),
+  microversion: text("microversion"),
+  payload: jsonb("payload").notNull(),
+  fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const syncJobState = pgEnum("sync_job_state", ["queued", "running", "done", "failed"]);
+
+export const syncJobs = pgTable(
+  "sync_jobs",
+  {
+    id: id(),
+    systemId: uuid("system_id")
+      .notNull()
+      .references(() => systems.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    state: syncJobState("state").notNull().default("queued"),
+    step: text("step"),
+    diff: jsonb("diff"),
+    error: text("error"),
+    byMember: uuid("by_member").references(() => members.id, { onDelete: "set null" }),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [index("sync_jobs_system_idx").on(t.systemId)],
+);
+
+// ---------- MCP ----------
+
+// Personal tokens members paste into their own Claude to use the MCP server (plan §6).
+export const mcpTokens = pgTable("mcp_tokens", {
+  id: id(),
+  memberId: uuid("member_id")
+    .notNull()
+    .references(() => members.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull().unique(),
+  label: text("label"),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  createdAt: createdAt(),
+});

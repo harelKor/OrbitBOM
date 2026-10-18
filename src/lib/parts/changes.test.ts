@@ -1,0 +1,84 @@
+import { describe, expect, it } from "vitest";
+import { partChangesSchema, planPartUpdate, type PartRow } from "./changes";
+
+const part: PartRow = {
+  displayName: null,
+  partNumber: null,
+  classification: "inhouse",
+  description: null,
+  material: "3mm 6061-T6",
+  quantity: 2,
+  preProcess: null,
+  process1: "cnc",
+  process2: null,
+  designState: "Gcoded",
+  donePreprocess: 0,
+  doneProcess1: 0,
+  doneProcess2: 0,
+  priority: "normal",
+  deadline: null,
+  designerName: null,
+  fabricators: {},
+  note: null,
+  estMinutes: null,
+  actualMinutes: null,
+  drawingUrl: null,
+  inventoryItemId: null,
+  overriddenFields: [],
+};
+
+describe("planPartUpdate", () => {
+  it("skips unchanged fields", () => {
+    expect(planPartUpdate(part, { material: "3mm 6061-T6", priority: "normal" }, "ui")).toEqual({
+      set: {},
+      history: [],
+    });
+  });
+
+  it("marks Onshape fields as overridden when edited in the app", () => {
+    const plan = planPartUpdate(part, { material: "2mm 6061-T6", note: "deburr" }, "ui");
+    expect(plan.set).toEqual({
+      material: "2mm 6061-T6",
+      note: "deburr",
+      overriddenFields: ["material"],
+    });
+    expect(plan.history).toEqual([
+      { field: "material", oldValue: "3mm 6061-T6", newValue: "2mm 6061-T6" },
+      { field: "note", oldValue: null, newValue: "deburr" },
+    ]);
+  });
+
+  it("doesn't mark overrides for sync writes", () => {
+    expect(planPartUpdate(part, { material: "2mm 6061-T6" }, "sync").set).toEqual({
+      material: "2mm 6061-T6",
+    });
+  });
+
+  it("resets counters when a status is chosen", () => {
+    const plan = planPartUpdate({ ...part, doneProcess1: 1, designState: null }, { status: "In Stock" }, "ui");
+    expect(plan.set).toEqual({ designState: "In Stock", doneProcess1: 0 });
+  });
+
+  it("clears the stored status when a counter moves", () => {
+    expect(planPartUpdate(part, { doneProcess1: 1 }, "ui").set).toEqual({
+      doneProcess1: 1,
+      designState: null,
+    });
+  });
+
+  it("merges fabricators by slot", () => {
+    const plan = planPartUpdate({ ...part, fabricators: { process1: "Noa" } }, { fabricators: { process2: "Ido" } }, "ui");
+    expect(plan.set.fabricators).toEqual({ process1: "Noa", process2: "Ido" });
+  });
+});
+
+describe("partChangesSchema", () => {
+  it("rejects unknown machines and statuses", () => {
+    expect(partChangesSchema.safeParse({ process1: "plasma" }).success).toBe(false);
+    expect(partChangesSchema.safeParse({ status: "Done" }).success).toBe(false);
+  });
+
+  it("turns empty text into null", () => {
+    expect(partChangesSchema.parse({ note: "  " })).toEqual({ note: null });
+  });
+});

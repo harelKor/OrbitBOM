@@ -1,0 +1,49 @@
+import "server-only";
+import { OnshapeError, type OnshapeClient } from "@/lib/onshape/client";
+
+// CAD export in a machine's format (plan §4): STL is one synchronous call; STEP and Parasolid
+// go through an Onshape translation (start, poll, download).
+
+export const EXPORT_FORMATS = {
+  STL: { ext: "stl", type: "model/stl" },
+  STEP: { ext: "step", type: "model/step" },
+  PARASOLID: { ext: "x_t", type: "application/octet-stream" },
+} as const;
+export type ExportFormat = keyof typeof EXPORT_FORMATS;
+export const isExportFormat = (f: string): f is ExportFormat => f in EXPORT_FORMATS;
+
+type Translation = {
+  id: string;
+  requestState: "ACTIVE" | "DONE" | "FAILED";
+  documentId: string;
+  resultExternalDataIds?: string[];
+  failureReason?: string;
+};
+
+export async function exportPart(
+  client: OnshapeClient,
+  studio: string, // d/<did>/<wvm>/<wid>/e/<eid>
+  partId: string,
+  format: ExportFormat,
+  deadline: number,
+): Promise<ArrayBuffer> {
+  if (format === "STL") {
+    const res = await client.raw(`parts/${studio}/partid/${encodeURIComponent(partId)}/stl?mode=binary&units=millimeter`);
+    return res.arrayBuffer();
+  }
+  let t = await client.json<Translation>(`partstudios/${studio}/translations`, {
+    method: "POST",
+    body: JSON.stringify({ formatName: format, partIds: partId, storeInDocument: false }),
+  });
+  while (t.requestState === "ACTIVE") {
+    if (Date.now() > deadline) throw new OnshapeError("Onshape is still preparing this file. Try again in a minute.");
+    await new Promise((r) => setTimeout(r, 2000));
+    t = await client.json<Translation>(`translations/${t.id}`);
+  }
+  const dataId = t.resultExternalDataIds?.[0];
+  if (t.requestState !== "DONE" || !dataId) {
+    throw new OnshapeError(`Onshape couldn't export this part${t.failureReason ? `: ${t.failureReason}` : "."}`);
+  }
+  const res = await client.raw(`documents/d/${t.documentId}/externaldata/${dataId}`);
+  return res.arrayBuffer();
+}

@@ -1,0 +1,62 @@
+# Nightly database backup (plan §1): Supabase Free has no automatic backups.
+# Dumps the database as plain SQL and commits it to a separate private repository, so git history
+# keeps every night's copy. Restore steps are in docs/runbook.md.
+#
+# Repository secrets:
+#   BACKUP_DATABASE_URL  Supabase session-pooler or direct connection string (port 5432)
+#   BACKUP_REPO          owner/name of the private backup repository
+#   BACKUP_REPO_TOKEN    fine-grained token with Contents read/write on BACKUP_REPO only
+name: Nightly backup
+
+on:
+  schedule:
+    - cron: "30 1 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check secrets
+        id: check
+        env:
+          DB: ${{ secrets.BACKUP_DATABASE_URL }}
+          REPO: ${{ secrets.BACKUP_REPO }}
+        run: |
+          if [ -z "$DB" ] || [ -z "$REPO" ]; then
+            echo "Backup secrets are not set yet; skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out backup repository
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.BACKUP_REPO }}
+          token: ${{ secrets.BACKUP_REPO_TOKEN }}
+          path: backup
+
+      - name: Dump database
+        if: steps.check.outputs.skip != 'true'
+        env:
+          DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+        run: |
+          # pg_dump must be at least the server's major version; Supabase runs Postgres 17.
+          docker run --rm -e DATABASE_URL -v "$PWD/backup:/out" postgres:17 \
+            sh -c 'pg_dump "$DATABASE_URL" --no-owner --no-privileges --schema=public --schema=auth --file=/out/orbitbom.sql'
+          test -s backup/orbitbom.sql
+
+      - name: Commit backup
+        if: steps.check.outputs.skip != 'true'
+        working-directory: backup
+        run: |
+          git config user.name "orbitbom-backup"
+          git config user.email "orbitbom-backup@users.noreply.github.com"
+          git add orbitbom.sql
+          git diff --cached --quiet && { echo "No changes since last backup."; exit 0; }
+          git commit -m "Backup $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push
