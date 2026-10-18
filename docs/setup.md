@@ -35,6 +35,14 @@ graduation. Steps marked **(Harel)** need the Onshape Enterprise admin.
 4. `vercel.json` pins the app's server functions to `bom1` (Mumbai), next to the Supabase
    database (ap-south-1). Every page makes several database queries, so a server on another
    continent adds a visible delay to each click. If the database moves, change `regions` to match.
+5. **Background refresh** (optional but recommended): Vercel's free plan only runs crons once a day,
+   so a free outside scheduler checks Onshape every 10 minutes. At cron-job.org (free account) →
+   **Create cronjob**: URL `https://<vercel-url>/api/cron/refresh`, every 10 minutes, and under
+   **Advanced → Headers** add `Authorization` = `Bearer <your CRON_SECRET>`. Each system is checked
+   every 10 minutes during meeting hours (14:00–23:00 Israel time) and hourly otherwise, on the
+   Onshape account of whoever last clicked Update BOM on it; a check costs one Onshape call and
+   pulls the BOM only when the document changed. Hours live in `src/config/refresh.ts`.
+   Without the scheduler, an open system page still checks for changes every few minutes.
 
 ## 4. Nightly backup
 

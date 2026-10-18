@@ -84,6 +84,10 @@ export const systems = pgTable(
     partstudioUrls: text("partstudio_urls").array().notNull().default(sql`'{}'::text[]`),
     pushNamesToOnshape: boolean("push_names_to_onshape").notNull().default(false),
     lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+    // Last background change check, whether or not anything changed.
+    lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+    // Whose Onshape account the background refresh uses: the last member who ran Update BOM here.
+    refreshMemberId: uuid("refresh_member_id").references(() => members.id, { onDelete: "set null" }),
     // { [documentId]: microversionId } seen at the last sync; the change check compares to this.
     docMicroversions: jsonb("doc_microversions").$type<Record<string, string>>().notNull().default({}),
     thumbnailPath: text("thumbnail_path"),

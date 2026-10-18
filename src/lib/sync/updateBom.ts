@@ -21,8 +21,21 @@ export type SyncSummary = {
   calls: number;
 };
 
+const unchanged = (calls: number): SyncSummary => ({
+  skipped: "unchanged",
+  added: [],
+  updated: 0,
+  removed: [],
+  relinked: [],
+  restored: [],
+  unknownMachines: [],
+  calls,
+});
+
 // Update BOM from Onshape (ref §3, plan §4). With `force` false (the background refresh) it
-// first checks the document's microversion and stops if nothing changed.
+// first checks the document's microversion and stops if nothing changed; that check costs one
+// call and writes no sync job. A manual run (`force`) also makes the member the system's
+// background-refresh account.
 export async function updateBomFromOnshape(
   systemId: string,
   memberId: string,
@@ -32,28 +45,27 @@ export async function updateBomFromOnshape(
   if (!system) throw new OnshapeError("System not found.");
   const ref = system.assemblyUrl ? parseOnshapeUrl(system.assemblyUrl) : null;
   if (!ref?.eid) throw new OnshapeError("This system has no Onshape assembly URL.");
+  const client = onshapeClient(memberId, ref.baseUrl);
+
+  // 1. Change check. A version or microversion link never changes, so only a workspace is checked.
+  let microversion: string | null = null;
+  if (ref.wvm === "w") {
+    const mv = await client.json<{ microversion: string }>(
+      `documents/d/${ref.did}/w/${ref.wvmid}/currentmicroversion`,
+    );
+    microversion = mv.microversion;
+  }
+  if (!force && (ref.wvm !== "w" || system.docMicroversions[ref.did] === microversion)) {
+    await db.update(systems).set({ lastCheckedAt: new Date() }).where(eq(systems.id, systemId));
+    return unchanged(client.calls);
+  }
 
   const [job] = await db
     .insert(syncJobs)
-    .values({ systemId, kind: "update_bom", state: "running", byMember: memberId, startedAt: new Date() })
+    .values({ systemId, kind: force ? "update_bom" : "refresh", state: "running", byMember: memberId, startedAt: new Date() })
     .returning({ id: syncJobs.id });
-  const client = onshapeClient(memberId, ref.baseUrl);
 
   try {
-    // 1. Change check: one call per refresh.
-    let microversion: string | null = null;
-    if (ref.wvm === "w") {
-      const mv = await client.json<{ microversion: string }>(
-        `documents/d/${ref.did}/w/${ref.wvmid}/currentmicroversion`,
-      );
-      microversion = mv.microversion;
-      if (!force && system.docMicroversions[ref.did] === microversion) {
-        const summary: SyncSummary = { skipped: "unchanged", added: [], updated: 0, removed: [], relinked: [], restored: [], unknownMachines: [], calls: client.calls };
-        await finishJob(job.id, "done", summary);
-        return summary;
-      }
-    }
-
     // 2. The assembly BOM with every column, custom properties included.
     await db.update(syncJobs).set({ step: "bom" }).where(eq(syncJobs.id, job.id));
     const bom = await client.json<OnshapeBom>(
@@ -137,6 +149,8 @@ export async function updateBomFromOnshape(
         .update(systems)
         .set({
           lastSyncedAt: now,
+          lastCheckedAt: now,
+          ...(force ? { refreshMemberId: memberId } : {}),
           docMicroversions: microversion
             ? { ...system.docMicroversions, [ref.did]: microversion }
             : system.docMicroversions,
