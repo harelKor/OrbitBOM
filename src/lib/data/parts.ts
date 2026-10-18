@@ -1,12 +1,12 @@
 import "server-only";
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { groupsOfParts } from "@/lib/data/groups";
 import { thumbKey } from "@/lib/onshape/thumbnails";
 import { computeStatus } from "@/lib/status";
 import { imageUrl } from "@/lib/storage/r2";
 
-const { parts, systems, members, partFiles, merges, mergeMembers } = schema;
+const { parts, systems, robots, members, partFiles, merges, mergeMembers } = schema;
 
 export type PartFileRef = { id: string; type: string; filename: string };
 
@@ -73,6 +73,32 @@ export async function listRobotParts(robotId: string) {
       isNull(parts.removedFromCadAt),
     ),
   );
+}
+
+// My Parts: live parts on active robots where the member is the designer or a fabricator.
+// People are stored by name on the card, as in FRCBOM. The system column shows "Robot › System".
+export async function listMyParts(memberName: string) {
+  const systemRows = await db
+    .select({ id: systems.id, name: systems.name, robotName: robots.name })
+    .from(systems)
+    .innerJoin(robots, eq(robots.id, systems.robotId))
+    .where(eq(robots.archived, false));
+  if (!systemRows.length) return [];
+  const label = new Map(systemRows.map((s) => [s.id, `${s.robotName} › ${s.name}`]));
+  const rows = await load(
+    and(
+      inArray(
+        parts.systemId,
+        systemRows.map((s) => s.id),
+      ),
+      isNull(parts.removedFromCadAt),
+      or(
+        eq(parts.designerName, memberName),
+        sql`exists (select 1 from jsonb_each_text(${parts.fabricators}) f where f.value = ${memberName})`,
+      ),
+    ),
+  );
+  return rows.map((p) => ({ ...p, systemName: label.get(p.systemId) ?? p.systemName }));
 }
 
 export async function listMemberNames(): Promise<string[]> {
