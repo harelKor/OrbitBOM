@@ -1,8 +1,10 @@
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
+import { headers } from "next/headers";
 import { db, schema } from "@/db";
 import { requireMember } from "@/lib/auth";
 import { DAILY_CALL_BUDGET } from "@/lib/onshape/client";
 import { disconnectOnshape } from "./actions";
+import { McpTokens } from "./McpTokens";
 
 const MESSAGES: Record<string, string> = {
   connected: "Onshape is connected.",
@@ -23,6 +25,18 @@ export default async function ProfilePage({
     .where(eq(schema.onshapeTokens.memberId, member.id))
     .limit(1);
   const today = new Date().toISOString().slice(0, 10);
+  const mcpTokens = await db
+    .select({
+      id: schema.mcpTokens.id,
+      label: schema.mcpTokens.label,
+      createdAt: schema.mcpTokens.createdAt,
+      lastUsedAt: schema.mcpTokens.lastUsedAt,
+    })
+    .from(schema.mcpTokens)
+    .where(eq(schema.mcpTokens.memberId, member.id))
+    .orderBy(desc(schema.mcpTokens.createdAt));
+  const h = await headers();
+  const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host")}`;
   const calls = token?.callsDay === today ? token.callsToday : 0;
 
   return (
@@ -63,6 +77,16 @@ export default async function ProfilePage({
             </a>
           </>
         )}
+      </section>
+
+      <section className="panel space-y-3 p-5">
+        <h2 className="font-semibold">Use OrbitBOM from Claude</h2>
+        <p className="text-sm text-slate-300">
+          Add OrbitBOM to your own Claude as a connector, then change the BOM with prompts like &ldquo;Set CNC as
+          Process 1 for every 5mm aluminum plate in Drivetrain&rdquo;. Claude shows you every change before it applies
+          it, and each change can be undone.
+        </p>
+        <McpTokens tokens={mcpTokens} origin={origin} />
       </section>
     </div>
   );

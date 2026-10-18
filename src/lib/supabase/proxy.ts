@@ -2,7 +2,8 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 // Paths reachable without signing in.
-const PUBLIC_PATHS = ["/login", "/auth/", "/invite/", "/api/cron/"];
+// /api/mcp checks its own personal token.
+const PUBLIC_PATHS = ["/login", "/auth/", "/invite/", "/api/cron/", "/api/mcp"];
 
 // Refreshes the Supabase session cookie on every request and sends signed-out visitors to /login.
 // Membership (member, pending, admin) is checked by the pages themselves, against the database.
