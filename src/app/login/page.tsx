@@ -12,12 +12,12 @@ export default async function LoginPage({
   if (await getUser()) redirect(safeNext(next));
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-100 p-4">
-      <div className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-sm">
-        <h1 className="text-2xl font-semibold text-slate-900">OrbitBOM</h1>
-        <p className="mt-1 text-sm text-slate-500">Team 1690 bill of materials and inventory</p>
+    <main className="flex min-h-screen items-center justify-center bg-slate-950 p-4">
+      <div className="panel w-full max-w-sm p-8">
+        <h1 className="text-2xl font-semibold text-slate-100">OrbitBOM</h1>
+        <p className="mt-1 text-sm text-slate-400">Team 1690 bill of materials and inventory</p>
         {error && (
-          <p className="mt-4 rounded-md bg-rose-50 p-3 text-sm text-rose-700">
+          <p className="mt-4 rounded-md bg-rose-950 p-3 text-sm text-rose-200">
             Sign-in failed. Please try again.
           </p>
         )}

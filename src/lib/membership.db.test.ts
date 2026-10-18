@@ -5,7 +5,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 const url = process.env.TEST_DATABASE_URL;
 
-describe.skipIf(!url)("membership (database)", async () => {
+if (!url) describe.skip("membership (database): set TEST_DATABASE_URL", () => {});
+else describe("membership (database)", async () => {
   process.env.DATABASE_URL = url;
   process.env.ADMIN_EMAILS = "boss@team1690.org";
   const { db, schema } = await import("@/db");

@@ -1,0 +1,75 @@
+import "server-only";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
+import { db, schema } from "@/db";
+import { statusBreakdown, type Breakdown } from "@/lib/stats";
+import { isUuid } from "@/lib/uuid";
+
+const { robots, systems, parts } = schema;
+
+// The columns computeStatus needs.
+const statusColumns = {
+  systemId: parts.systemId,
+  classification: parts.classification,
+  quantity: parts.quantity,
+  designState: parts.designState,
+  preProcess: parts.preProcess,
+  process1: parts.process1,
+  process2: parts.process2,
+  donePreprocess: parts.donePreprocess,
+  doneProcess1: parts.doneProcess1,
+  doneProcess2: parts.doneProcess2,
+};
+
+// Live BOM rows only: parts removed from CAD are kept but don't count.
+async function statusRows(systemIds: string[]) {
+  if (!systemIds.length) return [];
+  return db
+    .select(statusColumns)
+    .from(parts)
+    .where(and(inArray(parts.systemId, systemIds), isNull(parts.removedFromCadAt)));
+}
+
+export type RobotSummary = typeof robots.$inferSelect & { breakdown: Breakdown };
+
+export async function listRobots(): Promise<RobotSummary[]> {
+  const all = await db.select().from(robots).orderBy(desc(robots.year), asc(robots.name));
+  const allSystems = await db.select({ id: systems.id, robotId: systems.robotId }).from(systems);
+  const rows = await statusRows(allSystems.map((s) => s.id));
+  const robotOf = new Map(allSystems.map((s) => [s.id, s.robotId]));
+  return all.map((robot) => ({
+    ...robot,
+    breakdown: statusBreakdown(rows.filter((r) => robotOf.get(r.systemId) === robot.id)),
+  }));
+}
+
+export async function getRobot(robotId: string) {
+  if (!isUuid(robotId)) return null;
+  const [robot] = await db.select().from(robots).where(eq(robots.id, robotId)).limit(1);
+  if (!robot) return null;
+  const robotSystems = await db
+    .select()
+    .from(systems)
+    .where(eq(systems.robotId, robotId))
+    .orderBy(asc(systems.name));
+  const rows = await statusRows(robotSystems.map((s) => s.id));
+  return {
+    robot,
+    breakdown: statusBreakdown(rows),
+    systems: robotSystems.map((system) => ({
+      ...system,
+      breakdown: statusBreakdown(rows.filter((r) => r.systemId === system.id)),
+    })),
+  };
+}
+
+export async function getSystem(robotId: string, systemId: string) {
+  if (!isUuid(robotId) || !isUuid(systemId)) return null;
+  const [row] = await db
+    .select({ system: systems, robot: robots })
+    .from(systems)
+    .innerJoin(robots, eq(robots.id, systems.robotId))
+    .where(and(eq(systems.id, systemId), eq(systems.robotId, robotId)))
+    .limit(1);
+  if (!row) return null;
+  return { ...row, breakdown: statusBreakdown(await statusRows([systemId])) };
+}

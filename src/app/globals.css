@@ -5,7 +5,33 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* Dark UI, like FRCBOM. */
+:root {
+  color-scheme: dark;
+}
+
 body {
-  background: var(--color-slate-50);
-  color: var(--color-slate-900);
+  background: var(--color-slate-950);
+  color: var(--color-slate-100);
+}
+
+@layer components {
+  .panel {
+    @apply rounded-xl border border-slate-800 bg-slate-900;
+  }
+  .btn {
+    @apply inline-flex items-center gap-1.5 rounded-md border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm text-slate-100 hover:bg-slate-700 disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50;
+  }
+  .btn-danger {
+    @apply inline-flex items-center gap-1.5 rounded-md border border-rose-900 bg-rose-950 px-3 py-1.5 text-sm text-rose-200 hover:bg-rose-900 disabled:opacity-50;
+  }
+  .input {
+    @apply w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none;
+  }
+  .label {
+    @apply mb-1 block text-xs font-medium text-slate-400;
+  }
 }
