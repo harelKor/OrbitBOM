@@ -41,7 +41,7 @@ export default async function MainPage({ params }: { params: Promise<{ robotId: 
           </li>
         ))}
       </ul>
-      <BomView parts={parts} memberNames={memberNames} showSystem />
+      <BomView parts={parts} memberNames={memberNames} showSystem allowBulkEdit={false} />
     </div>
   );
 }

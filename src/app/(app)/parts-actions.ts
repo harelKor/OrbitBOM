@@ -100,3 +100,14 @@ export async function syncSystem(systemId: string): Promise<SyncResult> {
     throw err;
   }
 }
+
+// Bulk edit and Kanban moves: the same changes on many parts, one history batch.
+export async function updateParts(partIds: string[], changes: unknown): Promise<ActionResult> {
+  const member = await requireMember();
+  if (!partIds.length || partIds.some((id) => !isUuid(id))) return { error: "Unknown part." };
+  const parsed = partChangesSchema.safeParse(changes);
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  await applyPartChanges(partIds, parsed.data, { memberId: member.id, via: "ui" });
+  revalidatePath("/robots", "layout");
+  return {};
+}

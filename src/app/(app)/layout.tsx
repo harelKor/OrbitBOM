@@ -47,7 +47,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <SignOutButton className="mt-2" />
         </div>
       </aside>
-      <main className="flex-1 p-4 md:p-8">{children}</main>
+      <main className="min-w-0 flex-1 p-4 md:p-8">{children}</main>
     </div>
   );
 }
