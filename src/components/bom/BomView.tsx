@@ -10,6 +10,8 @@ import { computeStatus } from "@/lib/status";
 import { updatePart, updateParts } from "@/app/(app)/parts-actions";
 import { BulkEditBar } from "./BulkEditBar";
 import { GroupBar, type GroupTarget } from "./GroupBar";
+import { MergeBar, type MergeInfo } from "./MergeBar";
+import { MERGE_PREFIX, fanOutChanges, isMergeId, mergedRow } from "@/lib/merges/merge";
 import { BomProvider, type InventoryName } from "./BomContext";
 import { KanbanView } from "./KanbanView";
 import { PartCard } from "./PartCard";
@@ -29,6 +31,8 @@ export function BomView({
   showSystem = false,
   allowBulkEdit = true,
   groupTarget,
+  merges = [],
+  mergeSystemId,
   toolbar,
 }: {
   parts: CardPart[];
@@ -38,6 +42,8 @@ export function BomView({
   showSystem?: boolean;
   allowBulkEdit?: boolean;
   groupTarget?: GroupTarget; // set on a system page: enables Group parts
+  merges?: MergeInfo[];
+  mergeSystemId?: string; // set on a system page: enables Merge parts
   toolbar?: React.ReactNode;
 }) {
   const router = useRouter();
@@ -51,11 +57,44 @@ export function BomView({
     router.replace(`${pathname}${params.size ? `?${params}` : ""}`, { scroll: false });
   };
 
-  const [optimistic, addOptimistic] = useOptimistic(
+  const [optimisticParts, addOptimistic] = useOptimistic(
     parts,
-    (state, { ids, changes }: { ids: string[]; changes: PartChanges }) =>
-      state.map((p) => (ids.includes(p.id) ? { ...p, ...planPartUpdate(p, changes, "ui").set } : p)),
+    (state, { ids, changes }: { ids: string[]; changes: PartChanges }) => {
+      // A merged row's edit lands on its members, the way the server applies it.
+      const perPart = new Map<string, PartChanges>();
+      for (const id of ids) {
+        const merge = isMergeId(id) ? merges.find((m) => `${MERGE_PREFIX}${m.id}` === id) : undefined;
+        if (!merge) perPart.set(id, changes);
+        else {
+          const members = merge.partIds.map((pid) => state.find((p) => p.id === pid)).filter((p) => !!p);
+          for (const pm of fanOutChanges(members, changes).perMember) perPart.set(pm.id, pm.changes);
+        }
+      }
+      return state.map((p) => (perPart.has(p.id) ? { ...p, ...planPartUpdate(p, perPart.get(p.id)!, "ui").set } : p));
+    },
   );
+  // Merged listings replace their members with one row, where the first member was.
+  const optimistic = useMemo(() => {
+    if (!merges.length) return optimisticParts;
+    const mergeOf = new Map(merges.flatMap((m) => m.partIds.map((id) => [id, m] as const)));
+    const out: CardPart[] = [];
+    for (const p of optimisticParts) {
+      const merge = mergeOf.get(p.id);
+      if (!merge) out.push(p);
+      else if (merge.partIds[0] === p.id) {
+        const members = merge.partIds.map((id) => optimisticParts.find((x) => x.id === id)).filter((x) => !!x);
+        if (members.length) out.push({ ...mergedRow(merge, members), groups: [...new Map(members.flatMap((m) => m.groups).map((g) => [g.id, g])).values()] });
+      }
+    }
+    // A merge whose first member is filtered out of `parts` still shows via another member.
+    for (const merge of merges) {
+      if (!optimisticParts.some((p) => p.id === merge.partIds[0])) {
+        const members = merge.partIds.map((id) => optimisticParts.find((x) => x.id === id)).filter((x) => !!x);
+        if (members.length) out.push(mergedRow(merge, members));
+      }
+    }
+    return out;
+  }, [optimisticParts, merges]);
   const [, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -73,7 +112,7 @@ export function BomView({
   const [chip, setChip] = useState<Chip>("all");
   const [material, setMaterial] = useState("");
   const [status, setStatus] = useState("");
-  const [mode, setMode] = useState<"bulk" | "group" | null>(null);
+  const [mode, setMode] = useState<"bulk" | "group" | "merge" | null>(null);
   const selecting = mode !== null;
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const search = useRef<HTMLInputElement>(null);
@@ -199,6 +238,11 @@ export function BomView({
               Bulk edit
             </button>
           )}
+          {mergeSystemId && view !== "kanban" && (
+            <button className={mode === "merge" ? "btn-primary" : "btn"} onClick={() => setMode((m) => (m === "merge" ? null : "merge"))}>
+              Merge parts
+            </button>
+          )}
           {groupTarget && view !== "kanban" && (
             <button className={mode === "group" ? "btn-primary" : "btn"} onClick={() => setMode((m) => (m === "group" ? null : "group"))}>
               Group parts
@@ -246,10 +290,20 @@ export function BomView({
           }}
         />
       )}
+      {mode === "merge" && mergeSystemId && (
+        <MergeBar
+          systemId={mergeSystemId}
+          selected={optimistic.filter((p) => selected.has(p.id))}
+          onDone={() => {
+            setMode(null);
+            setSelected(new Set());
+          }}
+        />
+      )}
       {mode === "group" && groupTarget && (
         <GroupBar
           target={groupTarget}
-          selected={[...selected]}
+          selected={[...selected].flatMap((id) => (isMergeId(id) ? (merges.find((m) => `${MERGE_PREFIX}${m.id}` === id)?.partIds ?? []) : [id]))}
           total={shown.length}
           onSelectAll={() => setSelected(new Set(shown.map((p) => p.id)))}
           onDone={() => {

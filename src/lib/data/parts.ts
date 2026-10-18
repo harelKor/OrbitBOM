@@ -6,7 +6,7 @@ import { thumbKey } from "@/lib/onshape/thumbnails";
 import { computeStatus } from "@/lib/status";
 import { imageUrl } from "@/lib/storage/r2";
 
-const { parts, systems, members, partFiles } = schema;
+const { parts, systems, members, partFiles, merges, mergeMembers } = schema;
 
 export type PartFileRef = { id: string; type: string; filename: string };
 
@@ -78,4 +78,22 @@ export async function listRobotParts(robotId: string) {
 export async function listMemberNames(): Promise<string[]> {
   const rows = await db.select({ name: members.name }).from(members).orderBy(asc(members.name));
   return rows.map((r) => r.name);
+}
+
+// A system's merged listings, with their members in a stable order.
+export async function listSystemMerges(systemId: string) {
+  const rows = await db
+    .select({ id: merges.id, name: merges.name, partId: mergeMembers.partId })
+    .from(merges)
+    .innerJoin(mergeMembers, eq(mergeMembers.mergeId, merges.id))
+    .innerJoin(parts, eq(parts.id, mergeMembers.partId))
+    .where(eq(merges.systemId, systemId))
+    .orderBy(asc(parts.onshapeName), asc(parts.id));
+  const out = new Map<string, { id: string; name: string; partIds: string[] }>();
+  for (const r of rows) {
+    const m = out.get(r.id) ?? { id: r.id, name: r.name, partIds: [] };
+    m.partIds.push(r.partId);
+    out.set(r.id, m);
+  }
+  return [...out.values()];
 }

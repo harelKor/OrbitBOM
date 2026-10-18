@@ -5,7 +5,7 @@ import { PART_FILE_TYPES } from "@/config/fileTypes";
 import { deleteFile, finishUpload, startUpload, type FileOwner } from "@/app/(app)/files-actions";
 import { useBom } from "./BomContext";
 import { Popover } from "./Popover";
-import type { CardPart } from "./types";
+import { ownerPartId, type CardPart } from "./types";
 
 const COLORS: Record<string, string> = {
   drawing: "text-sky-300 border-sky-700",
@@ -48,7 +48,7 @@ export function FilesField({ part }: { part: CardPart }) {
         )
       }
     >
-      {() => <FileList owner={{ kind: "part", id: part.id }} files={part.files} isAdmin={isAdmin} drawingUrl={part.drawingUrl} />}
+      {() => <FileList owner={{ kind: "part", id: ownerPartId(part) }} files={part.files} isAdmin={isAdmin} drawingUrl={part.drawingUrl} />}
     </Popover>
   );
 }
