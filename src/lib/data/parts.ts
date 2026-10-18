@@ -1,7 +1,9 @@
 import "server-only";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { thumbKey } from "@/lib/onshape/thumbnails";
 import { computeStatus } from "@/lib/status";
+import { imageUrl } from "@/lib/storage/r2";
 
 const { parts, systems, members, partFiles } = schema;
 
@@ -12,6 +14,7 @@ export type BomPart = typeof parts.$inferSelect & {
   systemName: string;
   lastModifiedByName: string | null;
   files: PartFileRef[];
+  thumbUrl: string | null;
 };
 
 async function load(where: ReturnType<typeof and>): Promise<BomPart[]> {
@@ -33,8 +36,16 @@ async function load(where: ReturnType<typeof and>): Promise<BomPart[]> {
           ),
         )
     : [];
+  const thumbs = new Map(
+    await Promise.all(
+      rows
+        .filter((r) => r.part.thumbnailRev)
+        .map(async (r) => [r.part.id, await imageUrl(thumbKey(r.part.id, r.part.thumbnailRev!))] as const),
+    ),
+  );
   return rows.map((r) => ({
     ...r.part,
+    thumbUrl: thumbs.get(r.part.id) ?? null,
     status: computeStatus(r.part),
     systemName: r.systemName,
     lastModifiedByName: r.lastModifiedByName,

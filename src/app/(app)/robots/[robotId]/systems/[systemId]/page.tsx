@@ -10,6 +10,9 @@ import { listMemberNames, listSystemParts } from "@/lib/data/parts";
 import { getSystem } from "@/lib/data/robots";
 import { renameSystem } from "../../../actions";
 
+// Update BOM fetches the BOM and new thumbnails in one request.
+export const maxDuration = 60;
+
 export default async function SystemPage({
   params,
 }: {

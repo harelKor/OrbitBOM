@@ -9,6 +9,7 @@ import { requireMember } from "@/lib/auth";
 import { OnshapeError } from "@/lib/onshape/client";
 import { applyPartChanges } from "@/lib/parts/apply";
 import { partChangesSchema } from "@/lib/parts/changes";
+import { refreshThumbnails } from "@/lib/onshape/thumbnails";
 import { updateBomFromOnshape } from "@/lib/sync/updateBom";
 import { deleteObjects, fileKeysFor } from "@/lib/storage/cleanup";
 import { isUuid } from "@/lib/uuid";
@@ -86,7 +87,10 @@ export async function syncSystem(systemId: string): Promise<SyncResult> {
   if (!isUuid(systemId)) return { error: "Unknown system." };
   if (!member.onshapeConnected) return { error: "Connect your Onshape account first (Profile → Connect Onshape)." };
   try {
+    const started = Date.now();
     const s = await updateBomFromOnshape(systemId, member.id, { force: true });
+    // Thumbnails for new or changed parts, inside the request's time limit (maxDuration 60 s).
+    const t = await refreshThumbnails(systemId, member.id, started + 45_000);
     revalidatePath("/robots", "layout");
     const parts = [
       `${s.added.length} added`,
@@ -94,11 +98,13 @@ export async function syncSystem(systemId: string): Promise<SyncResult> {
       `${s.removed.length} removed from CAD`,
       s.relinked.length ? `${s.relinked.length} re-linked` : null,
       s.restored.length ? `${s.restored.length} back in CAD` : null,
+      t.fetched ? `${t.fetched} new thumbnails` : null,
+      t.pending ? `${t.pending} thumbnails left for next time` : null,
     ].filter(Boolean);
     const warning = s.unknownMachines.length
       ? ` Unknown machines in Onshape: ${s.unknownMachines.join(", ")}.`
       : "";
-    return { message: `BOM updated: ${parts.join(", ")} (${s.calls} Onshape calls).${warning}` };
+    return { message: `BOM updated: ${parts.join(", ")} (${s.calls + t.calls} Onshape calls).${warning}` };
   } catch (err) {
     if (err instanceof OnshapeError) return { error: err.message };
     throw err;

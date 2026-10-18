@@ -67,7 +67,14 @@ export function PartCard({
         </button>
       )}
       <div className="flex h-28 items-center justify-center bg-slate-800/50 text-xs text-slate-600">
-        {part.isManual ? "Manual part" : "No thumbnail yet"}
+        {part.thumbUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
+          <img src={part.thumbUrl} alt="" loading="lazy" className="h-full w-full object-contain" />
+        ) : part.isManual ? (
+          "Manual part"
+        ) : (
+          "No thumbnail yet"
+        )}
       </div>
       <div className="space-y-1.5 p-3">
         <div className="flex items-start justify-between gap-2">
@@ -141,6 +148,7 @@ export function PartCard({
               <div className="flex gap-1">
                 <span className="text-slate-400">{slot.label}:</span>
                 <MachineField part={part} save={save} slot={slot} placeholder={`Add ${slot.label}`} />
+                {machineId && <CadLink part={part} format={getMachine(machineId)?.cadFormat} />}
               </div>
               {machineId && (
                 <>
@@ -231,5 +239,23 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
       <span className="font-medium text-slate-300">{label}:</span>
       {children}
     </div>
+  );
+}
+
+// The file the slot's machine needs (ref §4 CAD format): a CAD export, or the drawing link.
+function CadLink({ part, format }: { part: CardPart; format?: string }) {
+  const cls = "ml-auto text-sky-300 hover:underline";
+  if (format === "PDF") {
+    return part.drawingUrl ? (
+      <a href={part.drawingUrl} target="_blank" rel="noreferrer" className={cls}>
+        PDF ↗
+      </a>
+    ) : null;
+  }
+  if (part.isManual || !format || !["STEP", "STL", "PARASOLID"].includes(format)) return null;
+  return (
+    <a href={`/api/parts/${part.id}/export?format=${format}`} className={cls} title="Export from Onshape">
+      ⤓ {format === "PARASOLID" ? "x_t" : format}
+    </a>
   );
 }

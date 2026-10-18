@@ -6,6 +6,7 @@ import { getMachine } from "@/config/machines";
 import { STATUSES } from "@/config/statuses";
 import { computeStatus } from "@/lib/status";
 import { StatusPill, TypeField, type SaveFn } from "./fields";
+import { Thumb } from "./Thumb";
 import { partTitle, type CardPart } from "./types";
 
 // FRCBOM's Kanban (ref §3): one column per status; dragging a card to a column sets its status.
@@ -76,7 +77,8 @@ function KanbanCard({ part, save, showSystem }: { part: CardPart; save: SaveFn; 
       className={`cursor-grab rounded-lg border border-slate-700 bg-slate-900 p-2 text-xs ${isDragging ? "z-50 opacity-80 shadow-xl" : ""}`}
     >
       <div className="flex items-start justify-between gap-1">
-        <span className="font-semibold text-indigo-300">{partTitle(part)}</span>
+        {part.thumbUrl && <Thumb part={part} size={28} />}
+        <span className="flex-1 font-semibold text-indigo-300">{partTitle(part)}</span>
         <span className="text-slate-400">×{part.quantity}</span>
       </div>
       {showSystem && <div className="text-slate-500">{part.systemName}</div>}

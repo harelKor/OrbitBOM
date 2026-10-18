@@ -48,6 +48,21 @@ async function presign(method: "GET" | "PUT", key: string, expiresSeconds: numbe
 
 export const presignUpload = (key: string) => presign("PUT", key, 600);
 
+// Image links that stay the same for six hours, so the browser can cache thumbnails between
+// page loads. Signing is local (no network), so a page of 200 cards costs nothing.
+const WINDOW_MS = 6 * 3600 * 1000;
+export async function imageUrl(key: string) {
+  const c = config();
+  if (!c) return null;
+  const start = new Date(Math.floor(Date.now() / WINDOW_MS) * WINDOW_MS);
+  const url = objectUrl(c.base, key);
+  url.searchParams.set("X-Amz-Expires", String((2 * WINDOW_MS) / 1000));
+  const signed = await c.client.sign(new Request(url), {
+    aws: { signQuery: true, datetime: start.toISOString().replace(/[:-]|\.\d{3}/g, "") },
+  });
+  return signed.url;
+}
+
 export function presignDownload(key: string, filename: string, inline = true) {
   const safe = filename.replace(/["\\\r\n]/g, "_");
   return presign("GET", key, 300, {

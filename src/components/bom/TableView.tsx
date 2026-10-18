@@ -15,6 +15,7 @@ import {
   type SaveFn,
 } from "./fields";
 import { FilesField } from "./FilesField";
+import { Thumb } from "./Thumb";
 import { partTitle, type CardPart } from "./types";
 
 // FRCBOM's table (ref §3): the same popover editors in the cells. Order-mode columns are off.
@@ -39,6 +40,7 @@ export function TableView({
         <thead className="border-b border-slate-800">
           <tr>
             {selection && <th className={th} />}
+            <th className={th} />
             <th className={th}>
               <button onClick={() => setDesc((d) => !d)} className="uppercase hover:text-slate-100">
                 Part name {desc ? "▼" : "▲"}
@@ -77,6 +79,7 @@ export function TableView({
                     />
                   </td>
                 )}
+                <td className="py-1 pl-2"><Thumb part={p} /></td>
                 <td className="px-2 py-1.5"><NameField part={p} save={save} /></td>
                 {showSystem && <td className="px-2 py-1.5 text-slate-400">{p.systemName}</td>}
                 <td className="px-2 py-1.5"><TypeField part={p} save={save} /></td>

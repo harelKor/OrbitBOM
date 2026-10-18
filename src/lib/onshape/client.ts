@@ -102,36 +102,47 @@ async function countCall(memberId: string) {
 
 export type OnshapeClient = {
   json<T = unknown>(path: string, init?: RequestInit): Promise<T>;
+  // Binary responses (thumbnails, exports). Takes an API path or an absolute Onshape URL.
+  raw(pathOrUrl: string, init?: RequestInit): Promise<Response>;
   calls: number;
 };
 
 // A client bound to one member and one Onshape host (cad.onshape.com or the Enterprise domain).
 export function onshapeClient(memberId: string, baseUrl: string): OnshapeClient {
+  async function call(pathOrUrl: string, init: RequestInit, accept: string) {
+    const url = /^https:\/\//.test(pathOrUrl) ? pathOrUrl : `${baseUrl}/api/v10/${pathOrUrl}`;
+    // Never send the member's token anywhere but their Onshape host.
+    if (new URL(url).origin !== new URL(baseUrl).origin) throw new OnshapeError("Unexpected Onshape link.");
+    await countCall(memberId);
+    client.calls++;
+    const res = await fetch(url, {
+      ...init,
+      headers: {
+        Accept: accept,
+        ...(init.body ? { "Content-Type": "application/json" } : {}),
+        Authorization: `Bearer ${await accessToken(memberId)}`,
+        ...init.headers,
+      },
+    });
+    const name = url.replace(/^https:\/\/[^/]+/, "").split("?")[0];
+    if (res.status === 401) {
+      await disconnect(memberId);
+      throw new NotConnectedError();
+    }
+    if (res.status === 403 || res.status === 404) {
+      throw new OnshapeError("Onshape refused access to this document. Check that your account can open it.", res.status);
+    }
+    if (res.status === 429) throw new BudgetError();
+    if (!res.ok) throw new OnshapeError(`Onshape returned ${res.status} for ${name}`, res.status);
+    return res;
+  }
+
   const client: OnshapeClient = {
     calls: 0,
     async json<T>(path: string, init: RequestInit = {}): Promise<T> {
-      await countCall(memberId);
-      client.calls++;
-      const res = await fetch(`${baseUrl}/api/v10/${path}`, {
-        ...init,
-        headers: {
-          Accept: "application/json",
-          ...(init.body ? { "Content-Type": "application/json" } : {}),
-          Authorization: `Bearer ${await accessToken(memberId)}`,
-          ...init.headers,
-        },
-      });
-      if (res.status === 401) {
-        await disconnect(memberId);
-        throw new NotConnectedError();
-      }
-      if (res.status === 403 || res.status === 404) {
-        throw new OnshapeError("Onshape refused access to this document. Check that your account can open it.", res.status);
-      }
-      if (res.status === 429) throw new BudgetError();
-      if (!res.ok) throw new OnshapeError(`Onshape returned ${res.status} for ${path.split("?")[0]}`, res.status);
-      return res.json() as Promise<T>;
+      return (await call(path, init, "application/json")).json() as Promise<T>;
     },
+    raw: (pathOrUrl, init = {}) => call(pathOrUrl, init, "*/*"),
   };
   return client;
 }
