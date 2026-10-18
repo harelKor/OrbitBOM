@@ -11,6 +11,7 @@ export type CardPart = PartRow & {
   lastModifiedByName: string | null;
   files: { id: string; type: string; filename: string }[];
   thumbUrl: string | null;
+  groups: { id: string; name: string; color: string | null }[];
 };
 
 export function partTitle(p: Pick<CardPart, "partNumber" | "displayName" | "onshapeName">): string {

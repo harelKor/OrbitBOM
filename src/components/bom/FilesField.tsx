@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { PART_FILE_TYPES } from "@/config/fileTypes";
-import { deletePartFile, finishPartUpload, startPartUpload } from "@/app/(app)/files-actions";
+import { deleteFile, finishUpload, startUpload, type FileOwner } from "@/app/(app)/files-actions";
 import { useBom } from "./BomContext";
 import { Popover } from "./Popover";
 import type { CardPart } from "./types";
@@ -15,16 +15,18 @@ const COLORS: Record<string, string> = {
 };
 
 // Upload a file straight to R2 with a presigned URL, then record it.
-async function upload(partId: string, type: string, file: File): Promise<string | null> {
-  const start = await startPartUpload(partId, type, file.name, file.size);
+async function upload(owner: FileOwner, type: string, file: File): Promise<string | null> {
+  const start = await startUpload(owner, type, file.name, file.size);
   if ("error" in start) return start.error;
   const res = await fetch(start.url, { method: "PUT", body: file }).catch(() => null);
   if (!res?.ok) return "The upload failed. Check your connection and try again.";
-  const done = await finishPartUpload(partId, type, start.key, file.name, file.type);
+  const done = await finishUpload(owner, type, start.key, file.name, file.type);
   return done.error ?? null;
 }
 
 // The FILES cell / card row (ref §2c): Drawing, Gcode, Image and Flattened, one file each.
+export const FILE_COLORS = COLORS;
+
 export function FilesField({ part }: { part: CardPart }) {
   const { isAdmin } = useBom();
   const byType = new Map(part.files.map((f) => [f.type, f]));
@@ -46,25 +48,48 @@ export function FilesField({ part }: { part: CardPart }) {
         )
       }
     >
-      {() => (
-        <ul className="space-y-1.5 text-xs">
-          {PART_FILE_TYPES.map((t) => (
-            <FileRow key={t.id} partId={part.id} type={t} file={byType.get(t.id)} isAdmin={isAdmin} drawingUrl={t.id === "drawing" ? part.drawingUrl : null} />
-          ))}
-        </ul>
-      )}
+      {() => <FileList owner={{ kind: "part", id: part.id }} files={part.files} isAdmin={isAdmin} drawingUrl={part.drawingUrl} />}
     </Popover>
   );
 }
 
+// One row per file type: open, upload or replace, download, and (admins) delete.
+export function FileList({
+  owner,
+  files,
+  isAdmin,
+  drawingUrl = null,
+}: {
+  owner: FileOwner;
+  files: { id: string; type: string; filename: string }[];
+  isAdmin: boolean;
+  drawingUrl?: string | null;
+}) {
+  const byType = new Map(files.map((f) => [f.type, f]));
+  return (
+    <ul className="space-y-1.5 text-xs">
+      {PART_FILE_TYPES.map((t) => (
+        <FileRow
+          key={t.id}
+          owner={owner}
+          type={t}
+          file={byType.get(t.id)}
+          isAdmin={isAdmin}
+          drawingUrl={t.id === "drawing" ? drawingUrl : null}
+        />
+      ))}
+    </ul>
+  );
+}
+
 function FileRow({
-  partId,
+  owner,
   type,
   file,
   isAdmin,
   drawingUrl,
 }: {
-  partId: string;
+  owner: FileOwner;
   type: { id: string; label: string };
   file?: { id: string; filename: string };
   isAdmin: boolean;
@@ -111,7 +136,7 @@ function FileRow({
             type="button"
             disabled={busy}
             onClick={() =>
-              confirm(`Delete ${file.filename}?`) && run(async () => (await deletePartFile(file.id)).error ?? null)
+              confirm(`Delete ${file.filename}?`) && run(async () => (await deleteFile(owner.kind, file.id)).error ?? null)
             }
             className="text-rose-400 hover:text-rose-200"
             aria-label={`Delete ${type.label}`}
@@ -126,7 +151,7 @@ function FileRow({
           onChange={(e) => {
             const f = e.target.files?.[0];
             e.target.value = "";
-            if (f) run(() => upload(partId, type.id, f));
+            if (f) run(() => upload(owner, type.id, f));
           }}
         />
       </div>

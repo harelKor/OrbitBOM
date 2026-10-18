@@ -9,6 +9,7 @@ import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { computeStatus } from "@/lib/status";
 import { updatePart, updateParts } from "@/app/(app)/parts-actions";
 import { BulkEditBar } from "./BulkEditBar";
+import { GroupBar, type GroupTarget } from "./GroupBar";
 import { BomProvider, type InventoryName } from "./BomContext";
 import { KanbanView } from "./KanbanView";
 import { PartCard } from "./PartCard";
@@ -27,6 +28,7 @@ export function BomView({
   isAdmin = false,
   showSystem = false,
   allowBulkEdit = true,
+  groupTarget,
   toolbar,
 }: {
   parts: CardPart[];
@@ -35,6 +37,7 @@ export function BomView({
   isAdmin?: boolean;
   showSystem?: boolean;
   allowBulkEdit?: boolean;
+  groupTarget?: GroupTarget; // set on a system page: enables Group parts
   toolbar?: React.ReactNode;
 }) {
   const router = useRouter();
@@ -70,7 +73,8 @@ export function BomView({
   const [chip, setChip] = useState<Chip>("all");
   const [material, setMaterial] = useState("");
   const [status, setStatus] = useState("");
-  const [selecting, setSelecting] = useState(false);
+  const [mode, setMode] = useState<"bulk" | "group" | null>(null);
+  const selecting = mode !== null;
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const search = useRef<HTMLInputElement>(null);
 
@@ -191,8 +195,13 @@ export function BomView({
             ))}
           </select>
           {allowBulkEdit && view !== "kanban" && (
-            <button className={selecting ? "btn-primary" : "btn"} onClick={() => setSelecting((s) => !s)}>
+            <button className={mode === "bulk" ? "btn-primary" : "btn"} onClick={() => setMode((m) => (m === "bulk" ? null : "bulk"))}>
               Bulk edit
+            </button>
+          )}
+          {groupTarget && view !== "kanban" && (
+            <button className={mode === "group" ? "btn-primary" : "btn"} onClick={() => setMode((m) => (m === "group" ? null : "group"))}>
+              Group parts
             </button>
           )}
           {toolbar}
@@ -225,14 +234,26 @@ export function BomView({
         </div>
       )}
 
-      {selecting && (
+      {mode === "bulk" && (
         <BulkEditBar
           count={selected.size}
           total={shown.length}
           onApply={(changes) => save([...selected], changes)}
           onSelectAll={() => setSelected(new Set(shown.map((p) => p.id)))}
           onDone={() => {
-            setSelecting(false);
+            setMode(null);
+            setSelected(new Set());
+          }}
+        />
+      )}
+      {mode === "group" && groupTarget && (
+        <GroupBar
+          target={groupTarget}
+          selected={[...selected]}
+          total={shown.length}
+          onSelectAll={() => setSelected(new Set(shown.map((p) => p.id)))}
+          onDone={() => {
+            setMode(null);
             setSelected(new Set());
           }}
         />

@@ -5,6 +5,7 @@ import { ManualPartButton } from "@/components/bom/ManualPartButton";
 import { UpdateBomButton } from "@/components/bom/UpdateBomButton";
 import { StatusBar } from "@/components/StatusBar";
 import { requireMember } from "@/lib/auth";
+import { listRobotGroups } from "@/lib/data/groups";
 import { listInventoryNames } from "@/lib/data/inventory";
 import { listMemberNames, listSystemParts } from "@/lib/data/parts";
 import { getSystem } from "@/lib/data/robots";
@@ -23,7 +24,12 @@ export default async function SystemPage({
   const data = await getSystem(robotId, systemId);
   if (!data) notFound();
   const { system, robot, breakdown } = data;
-  const [parts, memberNames, inventory] = await Promise.all([listSystemParts(system.id), listMemberNames(), listInventoryNames()]);
+  const [parts, memberNames, inventory, groups] = await Promise.all([
+    listSystemParts(system.id),
+    listMemberNames(),
+    listInventoryNames(),
+    listRobotGroups(system.robotId),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -59,7 +65,7 @@ export default async function SystemPage({
         <StatusBar breakdown={breakdown} />
       </section>
 
-      <BomView parts={parts} memberNames={memberNames} inventory={inventory} isAdmin={member.isAdmin} toolbar={<ManualPartButton key="manual-part" systemId={system.id} />} />
+      <BomView parts={parts} memberNames={memberNames} inventory={inventory} isAdmin={member.isAdmin} groupTarget={{ robotId: system.robotId, groups }} toolbar={<ManualPartButton key="manual-part" systemId={system.id} />} />
       {parts.length === 0 && (
         <p className="rounded-xl border border-dashed border-slate-700 p-8 text-center text-sm text-slate-400">
           {system.assemblyUrl

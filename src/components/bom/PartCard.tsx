@@ -20,6 +20,7 @@ import {
   type SaveFn,
 } from "./fields";
 import { FilesField } from "./FilesField";
+import { textOn } from "./options";
 import { Popover, InputEditor } from "./Popover";
 import { partTitle, type CardPart } from "./types";
 
@@ -85,6 +86,20 @@ export function PartCard({
           <div className="text-xs text-slate-500">Onshape: {part.onshapeName}</div>
         )}
         {showSystem && <div className="text-xs text-slate-500">{part.systemName}</div>}
+        {part.groups.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {part.groups.map((g) => (
+              <a
+                key={g.id}
+                href="/groups"
+                className="rounded px-1.5 text-[10px] font-medium"
+                style={{ background: g.color ?? "#475569", color: textOn(g.color ?? "#475569") }}
+              >
+                {g.name}
+              </a>
+            ))}
+          </div>
+        )}
 
         <Row label="Part number">
           <TextField part={part} save={save} field="partNumber" />
