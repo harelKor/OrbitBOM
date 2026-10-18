@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { BomView } from "@/components/bom/BomView";
+import { ManualPartButton } from "@/components/bom/ManualPartButton";
 import { StatusBar } from "@/components/StatusBar";
 import { requireMember } from "@/lib/auth";
+import { listMemberNames, listSystemParts } from "@/lib/data/parts";
 import { getSystem } from "@/lib/data/robots";
 import { renameSystem } from "../../../actions";
 
@@ -15,6 +18,7 @@ export default async function SystemPage({
   const data = await getSystem(robotId, systemId);
   if (!data) notFound();
   const { system, robot, breakdown } = data;
+  const [parts, memberNames] = await Promise.all([listSystemParts(system.id), listMemberNames()]);
 
   return (
     <div className="space-y-6">
@@ -48,11 +52,14 @@ export default async function SystemPage({
         <StatusBar breakdown={breakdown} />
       </section>
 
-      <section className="rounded-xl border border-dashed border-slate-700 p-10 text-center text-sm text-slate-400">
-        {system.assemblyUrl
-          ? "Parts appear here after Update BOM from Onshape, which arrives with the Onshape connection."
-          : "This system has no Onshape assembly yet. Manual parts and the Onshape BOM arrive in the next milestones."}
-      </section>
+      <BomView parts={parts} memberNames={memberNames} toolbar={<ManualPartButton key="manual-part" systemId={system.id} />} />
+      {parts.length === 0 && (
+        <p className="rounded-xl border border-dashed border-slate-700 p-8 text-center text-sm text-slate-400">
+          {system.assemblyUrl
+            ? "No parts yet. Update BOM from Onshape arrives with the Onshape connection; until then you can add manual parts."
+            : "No parts yet. Add manual parts, or give this system an Onshape assembly."}
+        </p>
+      )}
     </div>
   );
 }

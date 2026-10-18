@@ -1,16 +1,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { BomView } from "@/components/bom/BomView";
 import { ProgressBar, StatusBar } from "@/components/StatusBar";
 import { requireMember } from "@/lib/auth";
+import { listMemberNames, listRobotParts } from "@/lib/data/parts";
 import { getRobot } from "@/lib/data/robots";
 
-// "Main": every part of every system on one page (ref §1). The BOM views land with the card.
+// "Main": every part of every system on one page (ref §1). No merge, bulk edit or Advanced panel.
 export default async function MainPage({ params }: { params: Promise<{ robotId: string }> }) {
   await requireMember();
   const { robotId } = await params;
   const data = await getRobot(robotId);
   if (!data) notFound();
   const { robot, breakdown, systems } = data;
+  const [parts, memberNames] = await Promise.all([listRobotParts(robot.id), listMemberNames()]);
 
   return (
     <div className="space-y-6">
@@ -38,6 +41,7 @@ export default async function MainPage({ params }: { params: Promise<{ robotId: 
           </li>
         ))}
       </ul>
+      <BomView parts={parts} memberNames={memberNames} showSystem />
     </div>
   );
 }
