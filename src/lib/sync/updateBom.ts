@@ -1,0 +1,161 @@
+import "server-only";
+import { randomUUID } from "node:crypto";
+import { and, eq } from "drizzle-orm";
+import { db, schema } from "@/db";
+import { parseBom, type OnshapeBom } from "@/lib/onshape/bom";
+import { onshapeClient, OnshapeError } from "@/lib/onshape/client";
+import { apiPath, parseOnshapeUrl } from "@/lib/onshape/url";
+import { planPartUpdate } from "@/lib/parts/changes";
+import { planMerge } from "./merge";
+
+const { parts, partHistory, systems, syncJobs } = schema;
+
+export type SyncSummary = {
+  skipped?: "unchanged";
+  added: string[];
+  updated: number;
+  removed: string[];
+  relinked: string[];
+  restored: string[];
+  unknownMachines: string[];
+  calls: number;
+};
+
+// Update BOM from Onshape (ref §3, plan §4). With `force` false (the background refresh) it
+// first checks the document's microversion and stops if nothing changed.
+export async function updateBomFromOnshape(
+  systemId: string,
+  memberId: string,
+  { force = true } = {},
+): Promise<SyncSummary> {
+  const [system] = await db.select().from(systems).where(eq(systems.id, systemId)).limit(1);
+  if (!system) throw new OnshapeError("System not found.");
+  const ref = system.assemblyUrl ? parseOnshapeUrl(system.assemblyUrl) : null;
+  if (!ref?.eid) throw new OnshapeError("This system has no Onshape assembly URL.");
+
+  const [job] = await db
+    .insert(syncJobs)
+    .values({ systemId, kind: "update_bom", state: "running", byMember: memberId, startedAt: new Date() })
+    .returning({ id: syncJobs.id });
+  const client = onshapeClient(memberId, ref.baseUrl);
+
+  try {
+    // 1. Change check: one call per refresh.
+    let microversion: string | null = null;
+    if (ref.wvm === "w") {
+      const mv = await client.json<{ microversion: string }>(
+        `documents/d/${ref.did}/w/${ref.wvmid}/currentmicroversion`,
+      );
+      microversion = mv.microversion;
+      if (!force && system.docMicroversions[ref.did] === microversion) {
+        const summary: SyncSummary = { skipped: "unchanged", added: [], updated: 0, removed: [], relinked: [], restored: [], unknownMachines: [], calls: client.calls };
+        await finishJob(job.id, "done", summary);
+        return summary;
+      }
+    }
+
+    // 2. The assembly BOM with every column, custom properties included.
+    await db.update(syncJobs).set({ step: "bom" }).where(eq(syncJobs.id, job.id));
+    const bom = await client.json<OnshapeBom>(
+      `assemblies/${apiPath(ref)}/bom?indented=false&multiLevel=false&generateIfAbsent=true`,
+    );
+    const parsed = parseBom(bom);
+
+    // 3. Merge into the system's parts in one transaction.
+    const summary = await db.transaction(async (tx) => {
+      const existing = await tx.select().from(parts).where(eq(parts.systemId, systemId)).for("update");
+      const plan = planMerge(existing, parsed.rows);
+      const byId = new Map(existing.map((p) => [p.id, p]));
+      const batchId = randomUUID();
+      const now = new Date();
+      const result: SyncSummary = {
+        added: plan.insert.map((r) => r.onshapeName),
+        updated: 0,
+        removed: plan.remove.map((id) => byId.get(id)?.onshapeName ?? id),
+        relinked: [],
+        restored: [],
+        unknownMachines: parsed.unknownMachines,
+        calls: client.calls,
+      };
+
+      if (plan.insert.length) {
+        await tx.insert(parts).values(
+          plan.insert.map((r) => ({
+            systemId,
+            sourceDid: r.sourceDid,
+            sourceWid: r.sourceWid,
+            sourceWvm: r.sourceWvm,
+            sourceEid: r.sourceEid,
+            onshapePartId: r.onshapePartId,
+            onshapeName: r.onshapeName,
+            partNumber: r.partNumber,
+            description: r.description,
+            material: r.material,
+            quantity: r.quantity,
+            preProcess: r.preProcess,
+            process1: r.process1,
+            process2: r.process2,
+            // FRCBOM infers the type from the processes: no process means bought (COTS).
+            classification: r.preProcess || r.process1 || r.process2 ? ("inhouse" as const) : ("cots" as const),
+            geometry: r.onshapeMaterial ? { onshapeMaterial: r.onshapeMaterial } : null,
+            lastModifiedBy: memberId,
+          })),
+        );
+      }
+
+      for (const u of plan.update) {
+        const part = byId.get(u.id)!;
+        const { set, history } = planPartUpdate(part, u.changes, "sync");
+        if (history.length) result.updated++;
+        if (u.relinked) result.relinked.push(u.identity.onshapeName);
+        if (u.restore) result.restored.push(u.identity.onshapeName);
+        await tx
+          .update(parts)
+          .set({
+            ...set,
+            ...u.identity,
+            geometry: { ...(part.geometry ?? {}), onshapeMaterial: u.onshapeMaterial ?? undefined },
+            removedFromCadAt: null,
+            ...(history.length ? { lastModifiedAt: now, lastModifiedBy: memberId } : {}),
+          })
+          .where(eq(parts.id, u.id));
+        if (history.length) {
+          await tx.insert(partHistory).values(
+            history.map((h) => ({ partId: u.id, ...h, memberId, via: "sync" as const, batchId })),
+          );
+        }
+      }
+
+      for (const id of plan.remove) {
+        await tx
+          .update(parts)
+          .set({ removedFromCadAt: now })
+          .where(and(eq(parts.id, id), eq(parts.isManual, false)));
+      }
+
+      await tx
+        .update(systems)
+        .set({
+          lastSyncedAt: now,
+          docMicroversions: microversion
+            ? { ...system.docMicroversions, [ref.did]: microversion }
+            : system.docMicroversions,
+        })
+        .where(eq(systems.id, systemId));
+      return result;
+    });
+
+    await finishJob(job.id, "done", summary);
+    return summary;
+  } catch (err) {
+    await finishJob(job.id, "failed", null, (err as Error).message);
+    throw err;
+  }
+}
+
+async function finishJob(id: string, state: "done" | "failed", diff: unknown, error?: string) {
+  await db
+    .update(syncJobs)
+    .set({ state, diff, error, step: null, finishedAt: new Date() })
+    .where(eq(syncJobs.id, id));
+}

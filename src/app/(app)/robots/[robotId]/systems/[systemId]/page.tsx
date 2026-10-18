@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BomView } from "@/components/bom/BomView";
 import { ManualPartButton } from "@/components/bom/ManualPartButton";
+import { UpdateBomButton } from "@/components/bom/UpdateBomButton";
 import { StatusBar } from "@/components/StatusBar";
 import { requireMember } from "@/lib/auth";
 import { listMemberNames, listSystemParts } from "@/lib/data/parts";
@@ -42,6 +43,8 @@ export default async function SystemPage({
         )}
       </div>
 
+      {system.assemblyUrl && <UpdateBomButton systemId={system.id} lastSyncedAt={system.lastSyncedAt} />}
+
       <section className="panel p-5">
         <div className="mb-3 flex items-baseline gap-3">
           <span className="text-3xl font-semibold">{breakdown.percent}%</span>
@@ -56,7 +59,7 @@ export default async function SystemPage({
       {parts.length === 0 && (
         <p className="rounded-xl border border-dashed border-slate-700 p-8 text-center text-sm text-slate-400">
           {system.assemblyUrl
-            ? "No parts yet. Update BOM from Onshape arrives with the Onshape connection; until then you can add manual parts."
+            ? "No parts yet. Click Update BOM from Onshape to pull this system\u2019s parts."
             : "No parts yet. Add manual parts, or give this system an Onshape assembly."}
         </p>
       )}

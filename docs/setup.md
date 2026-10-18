@@ -45,14 +45,14 @@ in `.env.local`, and run `npm run onshape:test` on one real system's assembly UR
 property IDs it prints for Material, Pre Process, Process 1 and Process 2 into
 `src/config/onshapeProperties.ts`.
 
-**OAuth app (Harel, for the sync milestone):**
+**OAuth app (Harel; needed for Connect Onshape and Update BOM):**
 1. dev-portal.onshape.com → **OAuth applications → Create new OAuth application**.
    - Name: OrbitBOM. Primary format: `com.team1690.orbitbom`.
    - Redirect URLs: `https://<vercel-url>/api/onshape/callback` and
      `http://localhost:3000/api/onshape/callback`.
    - Scopes: **Read** and **Write** (Write is only for pushing part names back to Onshape).
-2. Send the client ID and secret privately; they go into Vercel as `ONSHAPE_CLIENT_ID` and
-   `ONSHAPE_CLIENT_SECRET`.
+2. Put the client ID and secret into Vercel as `ONSHAPE_CLIENT_ID` and `ONSHAPE_CLIENT_SECRET`,
+   and add `ONSHAPE_TOKEN_KEY` (generate it with `openssl rand -base64 32`).
 3. As Enterprise admin, allow the application for the Enterprise so students can connect it.
 
 ## 6. Cloudflare R2 (files milestone)

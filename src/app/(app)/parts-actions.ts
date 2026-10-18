@@ -6,8 +6,10 @@ import { z } from "zod";
 import { MACHINES } from "@/config/machines";
 import { db, schema } from "@/db";
 import { requireMember } from "@/lib/auth";
+import { OnshapeError } from "@/lib/onshape/client";
 import { applyPartChanges } from "@/lib/parts/apply";
 import { partChangesSchema } from "@/lib/parts/changes";
+import { updateBomFromOnshape } from "@/lib/sync/updateBom";
 import { isUuid } from "@/lib/uuid";
 
 export type ActionResult = { error?: string };
@@ -71,4 +73,30 @@ export async function deleteManualPart(partId: string): Promise<ActionResult> {
     .where(and(eq(schema.parts.id, partId), eq(schema.parts.isManual, true)));
   revalidatePath("/robots", "layout");
   return {};
+}
+
+export type SyncResult = { error?: string; message?: string };
+
+export async function syncSystem(systemId: string): Promise<SyncResult> {
+  const member = await requireMember();
+  if (!isUuid(systemId)) return { error: "Unknown system." };
+  if (!member.onshapeConnected) return { error: "Connect your Onshape account first (Profile → Connect Onshape)." };
+  try {
+    const s = await updateBomFromOnshape(systemId, member.id, { force: true });
+    revalidatePath("/robots", "layout");
+    const parts = [
+      `${s.added.length} added`,
+      `${s.updated} updated`,
+      `${s.removed.length} removed from CAD`,
+      s.relinked.length ? `${s.relinked.length} re-linked` : null,
+      s.restored.length ? `${s.restored.length} back in CAD` : null,
+    ].filter(Boolean);
+    const warning = s.unknownMachines.length
+      ? ` Unknown machines in Onshape: ${s.unknownMachines.join(", ")}.`
+      : "";
+    return { message: `BOM updated: ${parts.join(", ")} (${s.calls} Onshape calls).${warning}` };
+  } catch (err) {
+    if (err instanceof OnshapeError) return { error: err.message };
+    throw err;
+  }
 }

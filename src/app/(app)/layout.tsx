@@ -5,7 +5,13 @@ import { requireMember } from "@/lib/auth";
 // Navigation follows the plan (§2): Build · Shop · Team. Items appear as each screen ships.
 const NAV = [
   { section: "Build", items: [{ href: "/", label: "Home" }] },
-  { section: "Team", items: [{ href: "/members", label: "Members" }] },
+  {
+    section: "Team",
+    items: [
+      { href: "/members", label: "Members" },
+      { href: "/profile", label: "Profile" },
+    ],
+  },
 ];
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {

@@ -104,6 +104,7 @@ export type PartGeometry = {
   bodyType?: string;
   volume?: number;
   mass?: number;
+  onshapeMaterial?: string; // Onshape's own material, e.g. "Aluminum - 6061"
 };
 
 export const parts = pgTable(
