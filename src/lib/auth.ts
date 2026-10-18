@@ -9,16 +9,18 @@ export type SignedInUser = { id: string; email: string; name: string; avatarUrl:
 export type Member = typeof schema.members.$inferSelect;
 
 // The signed-in Google user, or null. Cached per request.
+// getClaims verifies the session JWT locally against the project's cached signing keys, so a
+// page doesn't wait on a round trip to Supabase Auth (getUser makes one on every call).
 export const getUser = cache(async (): Promise<SignedInUser | null> => {
   const supabase = await createClient();
-  const { data } = await supabase.auth.getUser();
-  const user = data.user;
-  if (!user?.email) return null;
-  const meta = user.user_metadata ?? {};
+  const { data } = await supabase.auth.getClaims();
+  const claims = data?.claims;
+  if (!claims?.email) return null;
+  const meta = claims.user_metadata ?? {};
   return {
-    id: user.id,
-    email: user.email.toLowerCase(),
-    name: meta.full_name ?? meta.name ?? user.email,
+    id: claims.sub,
+    email: claims.email.toLowerCase(),
+    name: meta.full_name ?? meta.name ?? claims.email,
     avatarUrl: meta.avatar_url ?? meta.picture ?? null,
   };
 });

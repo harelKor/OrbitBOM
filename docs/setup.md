@@ -32,6 +32,9 @@ graduation. Steps marked **(Harel)** need the Onshape Enterprise admin.
 2. Add the environment variables from `.env.example` (all except the Onshape test keys).
    `ADMIN_EMAILS` holds the first admin's Google email. `CRON_SECRET` and `MCP_SECRET` are any long random strings.
 3. Deploy. The daily keep-alive cron in `vercel.json` starts on its own.
+4. `vercel.json` pins the app's server functions to `bom1` (Mumbai), next to the Supabase
+   database (ap-south-1). Every page makes several database queries, so a server on another
+   continent adds a visible delay to each click. If the database moves, change `regions` to match.
 
 ## 4. Nightly backup
 
