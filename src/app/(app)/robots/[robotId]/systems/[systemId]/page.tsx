@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { AutoRefresh } from "@/components/bom/AutoRefresh";
 import { BomView } from "@/components/bom/BomView";
 import { ManualPartButton } from "@/components/bom/ManualPartButton";
 import { UpdateBomButton } from "@/components/bom/UpdateBomButton";
@@ -54,7 +55,12 @@ export default async function SystemPage({
         )}
       </div>
 
-      {system.assemblyUrl && <UpdateBomButton systemId={system.id} lastSyncedAt={system.lastSyncedAt} />}
+      {system.assemblyUrl && (
+        <>
+          <UpdateBomButton systemId={system.id} lastSyncedAt={system.lastSyncedAt} />
+          <AutoRefresh systemId={system.id} />
+        </>
+      )}
 
       <section className="panel p-5">
         <div className="mb-3 flex items-baseline gap-3">

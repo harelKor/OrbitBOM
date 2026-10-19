@@ -11,6 +11,7 @@ import { MERGE_PREFIX, fanOutChanges, isMergeId } from "@/lib/merges/merge";
 import { applyEachPartChanges, applyPartChanges } from "@/lib/parts/apply";
 import { partChangesSchema, type PartChanges } from "@/lib/parts/changes";
 import { refreshThumbnails } from "@/lib/onshape/thumbnails";
+import { refreshSystem } from "@/lib/sync/refresh";
 import { updateBomFromOnshape } from "@/lib/sync/updateBom";
 import { deleteObjects, fileKeysFor } from "@/lib/storage/cleanup";
 import { isUuid } from "@/lib/uuid";
@@ -111,6 +112,22 @@ export async function syncSystem(systemId: string): Promise<SyncResult> {
     if (err instanceof OnshapeError) return { error: err.message };
     throw err;
   }
+}
+
+// Called by an open system page every few minutes: checks Onshape for changes if the system
+// is due (one call), on the viewer's account or else the system's refresh account.
+export async function refreshIfDue(systemId: string): Promise<{ changed: boolean }> {
+  const member = await requireMember();
+  if (!isUuid(systemId)) return { changed: false };
+  const [system] = await db
+    .select({ refreshMemberId: schema.systems.refreshMemberId })
+    .from(schema.systems)
+    .where(eq(schema.systems.id, systemId));
+  const accountId = member.onshapeConnected ? member.id : system?.refreshMemberId;
+  if (!accountId) return { changed: false };
+  const r = await refreshSystem(systemId, accountId, Date.now() + 45_000);
+  if (r?.changed) revalidatePath("/robots", "layout");
+  return { changed: !!r?.changed };
 }
 
 // Bulk edit and Kanban moves: the same changes on many parts, one history batch.

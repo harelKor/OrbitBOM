@@ -8,6 +8,7 @@ const NAV = [
     section: "Build",
     items: [
       { href: "/", label: "Home" },
+      { href: "/my-parts", label: "My Parts" },
       { href: "/groups", label: "Part Groups" },
     ],
   },
