@@ -68,6 +68,12 @@ property IDs it prints for Material, Pre Process, Process 1 and Process 2 into
 2. Put the client ID and secret into Vercel as `ONSHAPE_CLIENT_ID` and `ONSHAPE_CLIENT_SECRET`,
    and add `ONSHAPE_TOKEN_KEY` (generate it with `openssl rand -base64 32`).
 3. As Enterprise admin, allow the application for the Enterprise so students can connect it.
+4. **Panel inside Onshape:** in the same OAuth application, open **Extensions → Add extension**.
+   - Name: OrbitBOM. Location: **Element right panel**. Context: **Selected assembly**.
+   - Action URL:
+     `https://<vercel-url>/onshape/panel?server={$server}&documentId={$documentId}&workspaceId={$workspaceId}&elementId={$elementId}`
+   - Students then subscribe to the app (or it is granted to the Enterprise) and open the OrbitBOM
+     icon on an assembly's right side. They sign in once in a popup; the sign-in lasts 60 days.
 
 ## 6. Cloudflare R2 (part files, thumbnails, CAD exports)
 

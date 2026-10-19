@@ -1,9 +1,10 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { PANEL_COOKIE, readPanelSession } from "@/lib/panelSession";
 
 // Paths reachable without signing in.
-// /api/mcp checks its own personal token.
-const PUBLIC_PATHS = ["/login", "/auth/", "/invite/", "/api/cron/", "/api/mcp"];
+// /api/mcp checks its own personal token; the Onshape panel shows its own sign-in.
+const PUBLIC_PATHS = ["/login", "/auth/", "/invite/", "/api/cron/", "/api/mcp", "/onshape/panel", "/api/panel/"];
 
 // Refreshes the Supabase session cookie on every request and sends signed-out visitors to /login.
 // Membership (member, pending, admin) is checked by the pages themselves, against the database.
@@ -32,7 +33,9 @@ export async function updateSession(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const isPublic = PUBLIC_PATHS.some((p) => path === p || path.startsWith(p));
 
-  if (!data?.claims && !isPublic) {
+  const panelSignedIn = !data?.claims && !!readPanelSession(request.cookies.get(PANEL_COOKIE)?.value);
+
+  if (!data?.claims && !panelSignedIn && !isPublic) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.search = path === "/" ? "" : `?next=${encodeURIComponent(path + request.nextUrl.search)}`;

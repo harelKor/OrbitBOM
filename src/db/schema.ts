@@ -361,6 +361,14 @@ export const syncJobs = pgTable(
   (t) => [index("sync_jobs_system_idx").on(t.systemId)],
 );
 
+// One-time sign-in codes for the panel inside Onshape. Google sign-in can't run in Onshape's
+// iframe, so the panel opens a popup where the member approves its code, then collects the code.
+export const panelLogins = pgTable("panel_logins", {
+  codeHash: text("code_hash").primaryKey(),
+  memberId: uuid("member_id").references(() => members.id, { onDelete: "cascade" }),
+  createdAt: createdAt(),
+});
+
 // ---------- MCP ----------
 
 // Personal tokens members paste into their own Claude to use the MCP server (plan §6).

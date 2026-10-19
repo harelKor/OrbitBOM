@@ -1,8 +1,10 @@
 import "server-only";
 import { eq } from "drizzle-orm";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 import { db, schema } from "@/db";
+import { PANEL_COOKIE, readPanelSession } from "@/lib/panelSession";
 import { createClient } from "@/lib/supabase/server";
 
 export type SignedInUser = { id: string; email: string; name: string; avatarUrl: string | null };
@@ -25,13 +27,15 @@ export const getUser = cache(async (): Promise<SignedInUser | null> => {
   };
 });
 
+// The member signed in with Google or, inside the Onshape panel, with the panel cookie.
 export const getMember = cache(async (): Promise<Member | null> => {
   const user = await getUser();
-  if (!user) return null;
+  const panelMemberId = user ? null : readPanelSession((await cookies()).get(PANEL_COOKIE)?.value);
+  if (!user && !panelMemberId) return null;
   const [member] = await db
     .select()
     .from(schema.members)
-    .where(eq(schema.members.userId, user.id))
+    .where(user ? eq(schema.members.userId, user.id) : eq(schema.members.id, panelMemberId!))
     .limit(1);
   return member ?? null;
 });
@@ -39,11 +43,9 @@ export const getMember = cache(async (): Promise<Member | null> => {
 // For pages and actions that need a team member. Signed-out users go to /login, signed-in
 // users who are not members yet go to /pending.
 export async function requireMember(): Promise<Member> {
-  const user = await getUser();
-  if (!user) redirect("/login");
   const member = await getMember();
-  if (!member) redirect("/pending");
-  return member;
+  if (member) return member;
+  redirect((await getUser()) ? "/pending" : "/login");
 }
 
 export async function requireAdmin(): Promise<Member> {
