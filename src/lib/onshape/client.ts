@@ -30,6 +30,10 @@ export class BudgetError extends OnshapeError {
   }
 }
 
+// The OAuth app's credentials from Vercel, with stray spaces or line breaks from pasting removed.
+export const onshapeClientId = () => process.env.ONSHAPE_CLIENT_ID?.trim() ?? "";
+const onshapeClientSecret = () => process.env.ONSHAPE_CLIENT_SECRET?.trim() ?? "";
+
 type TokenResponse = { access_token: string; refresh_token: string; expires_in: number };
 
 export async function requestToken(params: Record<string, string>): Promise<TokenResponse> {
@@ -38,8 +42,8 @@ export async function requestToken(params: Record<string, string>): Promise<Toke
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       ...params,
-      client_id: process.env.ONSHAPE_CLIENT_ID!,
-      client_secret: process.env.ONSHAPE_CLIENT_SECRET!,
+      client_id: onshapeClientId(),
+      client_secret: onshapeClientSecret(),
     }),
   });
   if (!res.ok) throw new OnshapeError(`Onshape token request failed (${res.status})`, res.status);
