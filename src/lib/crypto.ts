@@ -1,13 +1,14 @@
 import "server-only";
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 
-// AES-256-GCM for secrets at rest (Onshape tokens). ONSHAPE_TOKEN_KEY is 32 random bytes,
-// base64-encoded: `openssl rand -base64 32`.
+// AES-256-GCM for secrets at rest (Onshape tokens). ONSHAPE_TOKEN_KEY is ideally 32 random
+// bytes, base64-encoded (`openssl rand -base64 32`). Any other long random string also works:
+// it is hashed into a 32-byte key.
 function key(): Buffer {
-  const raw = process.env.ONSHAPE_TOKEN_KEY;
-  const buf = raw ? Buffer.from(raw, "base64") : Buffer.alloc(0);
-  if (buf.length !== 32) throw new Error("ONSHAPE_TOKEN_KEY must be 32 bytes, base64-encoded.");
-  return buf;
+  const raw = process.env.ONSHAPE_TOKEN_KEY?.trim() ?? "";
+  if (raw.length < 32) throw new Error("ONSHAPE_TOKEN_KEY must be a random string of at least 32 characters.");
+  const buf = Buffer.from(raw, "base64");
+  return buf.length === 32 ? buf : createHash("sha256").update(raw).digest();
 }
 
 export function encrypt(plain: string): string {

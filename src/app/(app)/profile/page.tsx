@@ -9,6 +9,8 @@ import { McpTokens } from "./McpTokens";
 const MESSAGES: Record<string, string> = {
   connected: "Onshape is connected.",
   failed: "Connecting Onshape didn't work. Please try again.",
+  denied: "Onshape didn't allow the connection. Check that the OrbitBOM app is allowed for your Enterprise.",
+  expired: "The Onshape sign-in took too long or was opened in another browser. Please try again.",
   "not-configured": "The Onshape app isn't set up on the server yet (ONSHAPE_CLIENT_ID).",
 };
 
