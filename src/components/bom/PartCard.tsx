@@ -153,6 +153,27 @@ export function PartCard({
         <Row label="Files">
           <FilesField part={part} />
         </Row>
+        {!part.isManual && (
+          <Row label="CAD">
+            <Popover trigger={<span className="text-slate-400">Download</span>}>
+              {(close) => (
+                <div className="space-y-1">
+                  {(["STL", "STEP", "PARASOLID"] as const).map((f) => (
+                    <a
+                      key={f}
+                      href={`/api/parts/${ownerPartId(part)}/export?format=${f}`}
+                      onClick={close}
+                      className="block rounded px-2 py-1.5 hover:bg-slate-800"
+                    >
+                      {f === "PARASOLID" ? "Parasolid (.x_t)" : `${f} (.${f.toLowerCase()})`}
+                    </a>
+                  ))}
+                  <p className="px-2 pt-1 text-xs text-slate-500">STEP and Parasolid can take up to a minute.</p>
+                </div>
+              )}
+            </Popover>
+          </Row>
+        )}
         <Row label="Designer">
           <PersonField value={part.designerName} names={memberNames} onSave={(v) => save({ designerName: v })} />
         </Row>
