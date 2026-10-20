@@ -189,3 +189,20 @@ export async function recoverMembers(groupId: string): Promise<ActionResult> {
     message: `Re-linked ${moves.length} part${moves.length === 1 ? "" : "s"}.${left ? ` ${left} could not be matched by name.` : ""}`,
   };
 }
+
+// To Fab's FAB toggle: the selected parts become the next batch, named "FAB 1", "FAB 2", …
+export async function createFabBatch(robotId: string, partIds: string[]): Promise<ActionResult> {
+  await requireMember();
+  if (!isUuid(robotId)) return { error: "Unknown robot." };
+  const rows = await robotParts(robotId, partIds);
+  if (!rows.length) return { error: "Pick parts to batch." };
+  const names = await db.select({ name: partGroups.name }).from(partGroups).where(eq(partGroups.robotId, robotId));
+  const next = Math.max(0, ...names.map((g) => Number(/^FAB (\d+)$/.exec(g.name)?.[1] ?? 0))) + 1;
+  const name = `FAB ${next}`;
+  await db.transaction(async (tx) => {
+    const [group] = await tx.insert(partGroups).values({ robotId, name }).returning({ id: partGroups.id });
+    await tx.insert(groupMembers).values(rows.map((p) => ({ groupId: group.id, partId: p.id, keySnapshot: snapshot(p) })));
+  });
+  refresh();
+  return { message: `Created ${name} with ${rows.length} part${rows.length === 1 ? "" : "s"}.` };
+}

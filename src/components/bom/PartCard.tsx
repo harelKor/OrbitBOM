@@ -143,7 +143,7 @@ export function PartCard({
 }
 
 // The CAD file for the part's first machine that takes one, else STEP.
-function cadFormat(part: CardPart): ExportFormat | null {
+export function cadFormat(part: CardPart): ExportFormat | null {
   if (part.isManual) return null;
   for (const slot of SLOTS) {
     const f = part[slot.key] ? getMachine(part[slot.key]!)?.cadFormat : undefined;
@@ -152,7 +152,7 @@ function cadFormat(part: CardPart): ExportFormat | null {
   return "STEP";
 }
 
-const label = (f: ExportFormat) => (f === "PARASOLID" ? "Parasolid" : f);
+export const label = (f: ExportFormat) => (f === "PARASOLID" ? "Parasolid" : f);
 
 function Tip({ children }: { children: React.ReactNode }) {
   return (

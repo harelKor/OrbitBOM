@@ -2,21 +2,21 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useOptimistic, useState, useTransition } from "react";
-import { getMachine } from "@/config/machines";
 import { STATUSES } from "@/config/statuses";
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { computeStatus } from "@/lib/status";
 import { updatePart, updateParts } from "@/app/(app)/parts-actions";
 import { BulkEditBar } from "./BulkEditBar";
-import { matchesDate, useFilters } from "@/components/shell/FilterContext";
+import { useFilters } from "@/components/shell/FilterContext";
 import { useEditMode } from "@/components/shell/ModeContext";
 import { MergeBar, type MergeInfo } from "./MergeBar";
 import { MERGE_PREFIX, fanOutChanges, isMergeId, mergedRow } from "@/lib/merges/merge";
 import { BomProvider, type InventoryName } from "./BomContext";
+import { matchesTopBar } from "./filter";
 import { KanbanView } from "./KanbanView";
 import { PartCard } from "./PartCard";
 import { TableView } from "./TableView";
-import { partTitle, type CardPart } from "./types";
+import { type CardPart } from "./types";
 
 type View = "card" | "table" | "kanban";
 type Chip = "all" | "cots" | "inhouse";
@@ -110,7 +110,6 @@ export function BomView({
   const saveFor = (id: string) => (changes: PartChanges) => save([id], changes);
 
   const { filters } = useFilters();
-  const { q, material, process, date } = filters;
   const [chip, setChip] = useState<Chip>("all");
   const [status, setStatus] = useState("");
   const [chosenMode, setMode] = useState<"bulk" | "merge" | null>(null);
@@ -118,28 +117,16 @@ export function BomView({
   const selecting = mode !== null;
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
-  const shown = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    return optimistic.filter((p) => {
-      if (chip === "cots" && p.classification !== "cots") return false;
-      if (chip === "inhouse" && p.classification !== "inhouse") return false;
-      if (process && ![p.preProcess, p.process1, p.process2].includes(process)) return false;
-      if (material && p.material !== material) return false;
-      if (!matchesDate(p.lastModifiedAt, date)) return false;
-      if (status && computeStatus(p) !== status) return false;
-      if (!needle) return true;
-      const haystack = [
-        partTitle(p),
-        p.onshapeName,
-        p.material,
-        ...[p.preProcess, p.process1, p.process2].map((m) => (m ? getMachine(m)?.name : null)),
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(needle);
-    });
-  }, [optimistic, q, chip, material, process, date, status]);
+  const shown = useMemo(
+    () =>
+      optimistic.filter((p) => {
+        if (chip === "cots" && p.classification !== "cots") return false;
+        if (chip === "inhouse" && p.classification !== "inhouse") return false;
+        if (status && computeStatus(p) !== status) return false;
+        return matchesTopBar(p, filters);
+      }),
+    [optimistic, filters, chip, status],
+  );
 
   const toggle = (id: string) =>
     setSelected((s) => {
