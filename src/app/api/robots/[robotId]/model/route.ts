@@ -33,6 +33,10 @@ export async function POST(_: Request, { params }: { params: Promise<{ robotId: 
     if (err instanceof OnshapeError || err instanceof StorageNotConfiguredError) {
       return NextResponse.json({ error: err.message }, { status: 400 });
     }
-    throw err;
+    // Anything else (storage, database, an unexpected Onshape answer): show the reason so it
+    // can be fixed, and keep the details in the function log.
+    console.error("3D model build failed", err);
+    const reason = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: `The 3D export failed: ${reason.slice(0, 300)}` }, { status: 500 });
   }
 }
