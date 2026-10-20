@@ -22,7 +22,7 @@ export default async function HomePage() {
 
   return (
     <div className="mx-auto max-w-4xl py-6">
-      <h1 className="mb-6 text-2xl font-bold tracking-tight">OrbitBOM</h1>
+      <h1 className="mb-6 display text-2xl text-accent">OrbitBOM</h1>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {tiles.map((t) => (
           <Link
@@ -30,12 +30,12 @@ export default async function HomePage() {
             href={t.href}
             className="card-interactive group flex aspect-square flex-col justify-end p-5"
           >
-            <span className="text-3xl font-bold tracking-tight group-hover:text-white">{t.title}</span>
-            <span className="mt-1 text-sm text-slate-400">{t.text}</span>
+            <span className="display text-3xl text-accent group-hover:text-fg">{t.title}</span>
+            <span className="mt-1 text-sm text-muted">{t.text}</span>
           </Link>
         ))}
-        <div className="flex aspect-square flex-col justify-end rounded-lg border border-dashed border-line p-5 text-slate-600">
-          <span className="text-3xl font-bold tracking-tight">More</span>
+        <div className="flex aspect-square flex-col justify-end rounded-lg border border-dashed border-line p-5 text-faint">
+          <span className="display text-3xl text-accent">More</span>
           <span className="mt-1 text-sm">Future apps</span>
         </div>
       </div>

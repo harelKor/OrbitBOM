@@ -33,6 +33,7 @@ export function ModeToggle() {
   const { mode, setMode } = useMode();
   return (
     <Segmented
+      tone="onAccent"
       label="Mode"
       value={mode}
       onChange={setMode}

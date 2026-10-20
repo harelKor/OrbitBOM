@@ -45,14 +45,14 @@ export default async function ProfilePage({
     <div className="max-w-2xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">{member.name}</h1>
-        <p className="text-sm text-slate-400">
+        <p className="text-sm text-muted">
           {member.email}
           {member.isAdmin && " · Admin"}
         </p>
       </div>
 
       {onshape && MESSAGES[onshape] && (
-        <p className={`rounded-md p-3 text-sm ${onshape === "connected" ? "bg-emerald-950 text-emerald-200" : "bg-rose-950 text-rose-200"}`}>
+        <p className={`rounded-md p-3 text-sm ${onshape === "connected" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
           {MESSAGES[onshape]}
         </p>
       )}
@@ -61,7 +61,7 @@ export default async function ProfilePage({
         <h2 className="font-semibold">Onshape</h2>
         {member.onshapeConnected ? (
           <>
-            <p className="text-sm text-slate-300">
+            <p className="text-sm text-fg-2">
               Connected. Syncs you start run on your Onshape account: {calls} of {DAILY_CALL_BUDGET} API calls used today.
             </p>
             <form action={disconnectOnshape}>
@@ -70,7 +70,7 @@ export default async function ProfilePage({
           </>
         ) : (
           <>
-            <p className="text-sm text-slate-300">
+            <p className="text-sm text-fg-2">
               Connect your Onshape account once so you can update BOMs from Onshape. Each member uses their own
               account, which spreads the daily API limit across the team.
             </p>
@@ -83,7 +83,7 @@ export default async function ProfilePage({
 
       <section className="panel space-y-3 p-5">
         <h2 className="font-semibold">Use OrbitBOM from Claude</h2>
-        <p className="text-sm text-slate-300">
+        <p className="text-sm text-fg-2">
           Add OrbitBOM to your own Claude as a connector, then change the BOM with prompts like &ldquo;Set CNC as
           Process 1 for every 5mm aluminum plate in Drivetrain&rdquo;. Claude shows you every change before it applies
           it, and each change can be undone.

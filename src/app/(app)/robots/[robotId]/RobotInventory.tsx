@@ -21,11 +21,11 @@ export function RobotInventory({ items }: { items: Item[] }) {
           Open team inventory →
         </Link>
       </div>
-      <p className="mb-3 text-sm text-slate-400">
+      <p className="mb-3 text-sm text-muted">
         Everything this robot&apos;s parts draw from the team inventory.
       </p>
       {items.length === 0 ? (
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-subtle">
           No parts are tied to inventory yet. Pick an item in a part&apos;s Material menu, or use To BOM on the
           Inventory page.
         </p>
@@ -38,7 +38,7 @@ export function RobotInventory({ items }: { items: Item[] }) {
                   key={g ?? "all"}
                   onClick={() => setGroup(g)}
                   className={`rounded-md border px-2 py-0.5 text-xs ${
-                    group === g ? "border-accent bg-accent/20 text-accent-soft" : "border-line-strong text-slate-300"
+                    group === g ? "border-accent bg-accent/20 text-accent-soft" : "border-line-strong text-fg-2"
                   }`}
                 >
                   {g ?? "All groups"}
@@ -50,19 +50,19 @@ export function RobotInventory({ items }: { items: Item[] }) {
             {shown.map((item) => {
               const short = item.inStock < item.needed;
               return (
-                <div key={item.id} className="rounded-lg border border-line bg-ink/40 p-3">
+                <div key={item.id} className="rounded-lg border border-line bg-ink p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="truncate font-medium" title={item.name}>
                         {item.name}
                       </div>
                       {item.group && (
-                        <span className="mt-1 inline-block rounded border border-line-strong px-1.5 text-[11px] text-slate-400">
+                        <span className="mt-1 inline-block rounded border border-line-strong px-1.5 text-[11px] text-muted">
                           {item.group}
                         </span>
                       )}
                     </div>
-                    <div className={`text-right ${short ? "text-amber-300" : "text-emerald-300"}`}>
+                    <div className={`text-right ${short ? "text-amber-700" : "text-emerald-700"}`}>
                       <div className="text-2xl leading-none font-semibold">
                         {item.inStock}
                         <span className="text-sm">/{item.needed}</span>
@@ -70,10 +70,10 @@ export function RobotInventory({ items }: { items: Item[] }) {
                       <div className="text-[10px] font-semibold tracking-wide uppercase">in stock</div>
                     </div>
                   </div>
-                  <ul className="mt-2 space-y-0.5 text-xs text-slate-400">
+                  <ul className="mt-2 space-y-0.5 text-xs text-muted">
                     {item.parts.map((p) => (
                       <li key={p.partId} className="truncate">
-                        {p.systemName} › <span className="text-slate-200">{p.partName}</span> ×{p.quantity}
+                        {p.systemName} › <span className="text-fg">{p.partName}</span> ×{p.quantity}
                       </li>
                     ))}
                   </ul>

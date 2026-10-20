@@ -13,16 +13,16 @@ export function RobotSwitcher({ robots, lastRobotId }: { robots: ShellRobot[]; l
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
-      <div className="flex items-center justify-between border-b border-line px-4 py-3.5">
-        <span className="text-xs font-semibold text-slate-400">Robots</span>
+      <div className="flex min-h-14 items-center justify-between bg-accent px-4 text-white">
+        <span className="text-sm font-semibold">Robots</span>
         <EditOnly>
-          <Link href="/robots/new" className="text-xs font-medium text-accent-soft hover:text-white">
+          <Link href="/robots/new" className="press rounded-md border border-white/40 px-2 py-1 text-xs font-semibold hover:bg-white/10">
             + New robot
           </Link>
         </EditOnly>
       </div>
       <div className="space-y-2 p-2">
-        {active.length === 0 && <p className="px-2 py-4 text-sm text-slate-500">No robots yet.</p>}
+        {active.length === 0 && <p className="px-2 py-4 text-sm text-subtle">No robots yet.</p>}
         {active.map((r) => (
           <RobotCard key={r.id} robot={r} current={r.id === current?.id} overview={r.id === current?.id && !systemId && !pathname.includes("/fab") && !pathname.includes("/review")} />
         ))}
@@ -30,19 +30,19 @@ export function RobotSwitcher({ robots, lastRobotId }: { robots: ShellRobot[]; l
 
       {current && (
         <div className="border-t border-line p-2">
-          <div className="px-1 pt-1 pb-2 text-xs font-semibold text-slate-400">{current.name} systems</div>
+          <div className="px-1 pt-1 pb-2 text-xs font-semibold text-muted">{current.name} systems</div>
           <div className="grid grid-cols-2 gap-2">
             {current.systems.map((s) => (
               <SystemTile key={s.id} robotId={current.id} system={s} active={s.id === systemId} />
             ))}
           </div>
-          {current.systems.length === 0 && <p className="px-2 text-xs text-slate-500">No systems yet.</p>}
+          {current.systems.length === 0 && <p className="px-2 text-xs text-subtle">No systems yet.</p>}
         </div>
       )}
 
       {archived.length > 0 && (
         <details className="mt-auto border-t border-line p-2 text-sm">
-          <summary className="cursor-pointer px-2 py-1 text-xs text-slate-500">Archived ({archived.length})</summary>
+          <summary className="cursor-pointer px-2 py-1 text-xs text-subtle">Archived ({archived.length})</summary>
           <div className="mt-2 space-y-2">
             {archived.map((r) => (
               <RobotCard key={r.id} robot={r} current={r.id === current?.id} overview={false} />
@@ -65,7 +65,7 @@ function RobotCard({ robot, current, overview }: { robot: ShellRobot; current: b
       <Picture url={robot.thumbUrl} className="h-12 w-12" />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-semibold">{robot.name}</div>
-        <div className="text-xs text-slate-500 tabular-nums">
+        <div className="text-xs text-subtle tabular-nums">
           {robot.year}, {robot.percent}% done
         </div>
       </div>
@@ -86,13 +86,13 @@ function SystemTile({ robotId, system, active }: { robotId: string; system: Shel
         <Picture url={system.thumbUrl} className="aspect-square w-full rounded-none" />
         <span
           className={`absolute right-1.5 bottom-1.5 rounded-full px-1.5 py-px text-[10px] font-bold tabular-nums ${
-            system.percent === 100 ? "bg-gold text-ink" : "bg-ink/85 text-white"
+            system.percent === 100 ? "bg-accent text-white" : "bg-fg/85 text-white"
           }`}
         >
           {system.percent}%
         </span>
       </span>
-      <span className={`block truncate px-2 py-1.5 text-xs font-medium ${active ? "text-white" : "text-slate-300"}`}>{system.name}</span>
+      <span className={`block truncate px-2 py-1.5 text-xs font-medium ${active ? "text-accent" : "text-fg-2"}`}>{system.name}</span>
     </Link>
   );
 }
@@ -104,7 +104,7 @@ function Picture({ url, className }: { url: string | null; className: string }) 
         // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
         <img src={url} alt="" loading="lazy" className="h-full w-full object-contain p-1" />
       ) : (
-        <span className="text-[10px] text-slate-400">No image</span>
+        <span className="text-[10px] text-muted">No image</span>
       )}
     </span>
   );

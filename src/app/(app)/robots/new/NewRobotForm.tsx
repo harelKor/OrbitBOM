@@ -36,9 +36,9 @@ export function NewRobotForm() {
           className="input"
           placeholder="https://…onshape.com/documents/…/w/…/e/…"
         />
-        <p className="mt-1 text-xs text-slate-500">Used for the robot&apos;s thumbnail.</p>
+        <p className="mt-1 text-xs text-subtle">Used for the robot&apos;s thumbnail.</p>
       </div>
-      {state?.error && <p className="text-sm text-rose-300">{state.error}</p>}
+      {state?.error && <p className="text-sm text-rose-700">{state.error}</p>}
       <button className="btn-primary" disabled={pending}>
         {pending ? "Creating…" : "Create robot"}
       </button>

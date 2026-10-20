@@ -58,7 +58,7 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
   return (
     <Dialog open={open} onClose={close} title="Import spreadsheet" wide>
       <div className="space-y-4 text-sm">
-        <p className="text-slate-400">
+        <p className="text-muted">
           Excel (.xlsx) or .csv. From Google Sheets: File → Download → .xlsx. Tell us which column holds what, check
           the preview, and import. Locations and groups named in the sheet are created; &ldquo;Hardware &gt;
           Bearings&rdquo; makes a sub-group.{" "}
@@ -74,7 +74,7 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
           type="file"
           accept=".xlsx,.csv"
           onChange={(e) => e.target.files?.[0] && load(e.target.files[0])}
-          className="block text-sm text-slate-300 file:mr-3 file:rounded-md file:border-0 file:bg-raised file:px-3 file:py-1.5 file:text-slate-100"
+          className="block text-sm text-fg-2 file:mr-3 file:rounded-md file:border-0 file:bg-raised file:px-3 file:py-1.5 file:text-fg"
         />
 
         {rows && (
@@ -105,13 +105,13 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
             </div>
             {map.spec !== undefined && (
               <Checkbox checked={specInName} onChange={setSpecInName}>
-                <span className="text-slate-300">Add Size / spec to the item name</span>
+                <span className="text-fg-2">Add Size / spec to the item name</span>
               </Checkbox>
             )}
 
             <div className="max-h-56 overflow-auto rounded-lg border border-line">
               <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-surface text-left text-slate-400">
+                <thead className="sticky top-0 bg-surface text-left text-muted">
                   <tr>
                     <th className="px-2 py-1">Item</th>
                     <th className="px-2 py-1">Qty</th>
@@ -135,14 +135,14 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
                 </tbody>
               </table>
             </div>
-            <div className="text-slate-400">
+            <div className="text-muted">
               {parsed.length} items to import{parsed.length > 50 && " (showing the first 50)"}.
             </div>
           </>
         )}
 
-        {result?.error && <p className="text-rose-300">{result.error}</p>}
-        {result?.message && <p className="text-emerald-300">{result.message}</p>}
+        {result?.error && <p className="text-rose-700">{result.error}</p>}
+        {result?.message && <p className="text-emerald-700">{result.message}</p>}
         <div className="flex justify-end gap-2">
           <button type="button" className="btn" onClick={close}>
             {result?.message ? "Close" : "Cancel"}

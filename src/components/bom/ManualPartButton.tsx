@@ -56,7 +56,7 @@ export function ManualPartButton({ systemId }: { systemId: string }) {
             {machineSelect("process2", "Process 2", "Process")}
           </div>
           <input name="drawingUrl" type="url" placeholder="Drawing PDF link (optional, https://…)" className="input" />
-          {state?.error && <p className="text-sm text-rose-300">{state.error}</p>}
+          {state?.error && <p className="text-sm text-rose-700">{state.error}</p>}
           <div className="flex justify-end gap-2">
             <button type="button" className="btn" onClick={() => setOpen(false)}>
               Cancel

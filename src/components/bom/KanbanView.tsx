@@ -58,7 +58,7 @@ function Column({ id, color, title, meta, children }: { id: string; color: strin
       <div className="mb-2 flex items-center gap-2 px-1 text-xs font-semibold">
         <span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} />
         <span className="uppercase">{title}</span>
-        <span className="ml-auto text-slate-500">{meta}</span>
+        <span className="ml-auto text-subtle">{meta}</span>
       </div>
       <div className="flex min-h-24 flex-col gap-2">{children}</div>
     </div>
@@ -79,18 +79,18 @@ function KanbanCard({ part, save, showSystem }: { part: CardPart; save: SaveFn; 
       <div className="flex items-start justify-between gap-1">
         {part.thumbUrl && <Thumb part={part} size={28} />}
         <span className="flex-1 font-semibold text-accent-soft">{partTitle(part)}</span>
-        <span className="text-slate-400">×{part.quantity}</span>
+        <span className="text-muted">×{part.quantity}</span>
       </div>
-      {showSystem && <div className="text-slate-500">{part.systemName}</div>}
+      {showSystem && <div className="text-subtle">{part.systemName}</div>}
       <div className="mt-1 flex flex-wrap items-center gap-1">
         <TypeField part={part} save={save} />
         {machines.map((m) => (
-          <span key={m} className="rounded bg-raised px-1.5 py-0.5 text-slate-300">{m}</span>
+          <span key={m} className="rounded bg-raised px-1.5 py-0.5 text-fg-2">{m}</span>
         ))}
       </div>
-      {part.material && <div className="mt-1 text-slate-400">{part.material}</div>}
+      {part.material && <div className="mt-1 text-muted">{part.material}</div>}
       <div className="mt-1"><StatusPill status={computeStatus(part)} /></div>
-      {part.note && <div className="mt-1 line-clamp-2 text-slate-500">{part.note}</div>}
+      {part.note && <div className="mt-1 line-clamp-2 text-subtle">{part.note}</div>}
     </div>
   );
 }

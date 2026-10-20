@@ -13,10 +13,10 @@ export default async function ReviewPage({ params }: { params: Promise<{ robotId
   return (
     <div className="space-y-6">
       <div>
-        <div className="text-xs font-semibold tracking-wide text-slate-500 uppercase">{data.robot.name}</div>
-        <h1 className="text-3xl font-semibold">To Review</h1>
+        <div className="text-xs font-semibold tracking-wide text-subtle uppercase">{data.robot.name}</div>
+        <h1 className="display text-3xl text-accent">To Review</h1>
       </div>
-      <div className="rounded-lg border border-dashed border-line p-10 text-center text-sm text-slate-400">
+      <div className="rounded-lg border border-dashed border-line p-10 text-center text-sm text-muted">
         Nothing to review. Parts that are set up automatically will wait here for their designer to approve.
       </div>
     </div>

@@ -33,8 +33,8 @@ export function TopBar({ onMenu, onRobots }: { onMenu: () => void; onRobots: () 
   const active = filters.q || filters.material || filters.process || filters.date;
 
   return (
-    <header className="sticky top-0 z-20 flex flex-wrap items-center gap-2 border-b border-line bg-ink/95 px-4 py-2.5 backdrop-blur md:px-6">
-      <button onClick={onMenu} className="btn px-2 lg:hidden" aria-label="Pages">
+    <header className="sticky top-0 z-20 flex min-h-14 flex-wrap items-center gap-2 bg-accent px-4 py-2.5 text-white shadow-[0_2px_8px_rgba(0,0,120,0.25)] md:px-6">
+      <button onClick={onMenu} className="press rounded-md border border-white/30 px-2 py-1 lg:hidden" aria-label="Pages">
         ☰
       </button>
       {partPages && (
@@ -45,9 +45,9 @@ export function TopBar({ onMenu, onRobots }: { onMenu: () => void; onRobots: () 
               value={filters.q}
               onChange={(e) => setFilters({ q: e.target.value })}
               placeholder="Search part name or number"
-              className="input pr-14"
+              className="input border-white bg-white pr-14"
             />
-            <kbd className="absolute top-1.5 right-2 rounded border border-line-strong px-1.5 text-[11px] text-slate-500">Ctrl K</kbd>
+            <kbd className="absolute top-1.5 right-2 rounded border border-line-strong px-1.5 text-[11px] text-subtle">Ctrl K</kbd>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             <Pill label="Material" value={filters.material || null} options={MATERIAL_PICK} pick={(v) => setFilters({ material: v ?? "" })} />
@@ -68,7 +68,7 @@ export function TopBar({ onMenu, onRobots }: { onMenu: () => void; onRobots: () 
             {active && (
               <button
                 onClick={() => setFilters({ q: "", material: "", process: "", date: "" } satisfies Filters)}
-                className="press px-1.5 text-xs text-slate-400 hover:text-white"
+                className="press px-1.5 text-xs text-white/80 hover:text-white"
               >
                 Clear
               </button>
@@ -78,7 +78,7 @@ export function TopBar({ onMenu, onRobots }: { onMenu: () => void; onRobots: () 
       )}
       <div className="ml-auto flex items-center gap-2">
         <ModeToggle />
-        <button onClick={onRobots} className="btn px-2 text-xs xl:hidden" aria-label="Robots and systems">
+        <button onClick={onRobots} className="press rounded-md border border-white/30 px-2 py-1 text-xs font-semibold xl:hidden" aria-label="Robots and systems">
           Robots
         </button>
       </div>
@@ -102,7 +102,7 @@ function Pill({
   return (
     <Popover
       triggerClassName={`rounded-full border px-3 py-1 text-xs font-medium ${
-        value ? "border-accent bg-accent text-white hover:text-white" : "border-line-strong text-slate-300 hover:border-slate-400 hover:bg-raised hover:text-white"
+        value ? "border-white bg-white text-accent hover:text-accent" : "border-white/40 text-white hover:border-white hover:bg-white/10 hover:text-white"
       }`}
       trigger={value ? (shown ?? value) : label}
     >

@@ -24,8 +24,8 @@ export function CompletionRing({ percent, done, total }: { percent: number; done
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-2xl font-bold tabular-nums">{percent}%</span>
-        <span className="text-[11px] text-slate-500 tabular-nums">
+        <span className="display text-2xl text-accent tabular-nums">{percent}%</span>
+        <span className="text-[11px] text-subtle tabular-nums">
           {done}/{total} done
         </span>
       </div>

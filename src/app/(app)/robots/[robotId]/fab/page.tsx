@@ -20,10 +20,10 @@ export default async function FabPage({
   return (
     <div className="space-y-6">
       <div>
-        <div className="text-xs font-semibold tracking-wide text-slate-500 uppercase">{data.robot.name}</div>
-        <h1 className="text-3xl font-semibold">To Fab{machineName && ` · ${machineName}`}</h1>
+        <div className="text-xs font-semibold tracking-wide text-subtle uppercase">{data.robot.name}</div>
+        <h1 className="display text-3xl text-accent">To Fab{machineName && ` · ${machineName}`}</h1>
       </div>
-      <div className="rounded-lg border border-dashed border-line p-10 text-center text-sm text-slate-400">
+      <div className="rounded-lg border border-dashed border-line p-10 text-center text-sm text-muted">
         The To Fab queue and FAB batches are coming in the next update.
       </div>
     </div>

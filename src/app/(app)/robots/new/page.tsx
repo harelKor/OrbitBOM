@@ -5,7 +5,7 @@ export default function NewRobotPage() {
   return (
     <div className="space-y-6">
       <div>
-        <Link href="/" className="text-sm text-slate-400 hover:text-slate-100">
+        <Link href="/" className="text-sm text-muted hover:text-fg">
           ← Robots
         </Link>
         <h1 className="mt-1 text-2xl font-semibold">New robot</h1>

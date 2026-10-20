@@ -27,10 +27,12 @@ export function LeftNav({
 
   return (
     <div className="flex h-full flex-col">
-      <Link href="/" className="flex items-center gap-2 border-b border-line px-4 py-4" aria-label="OrbitBOM home">
-        <span className="text-[17px] leading-none font-black tracking-[0.18em] text-white">ORBIT</span>
-        <span className="rounded bg-gold px-1.5 py-0.5 text-[11px] leading-none font-bold text-ink">1690</span>
-        <span className="ml-auto text-[11px] font-medium text-slate-500">BOM</span>
+      <Link href="/" className="flex min-h-14 items-center gap-2.5 bg-accent px-4 text-white" aria-label="OrbitBOM home">
+        <span className="display text-[26px] leading-none">1690</span>
+        <span className="leading-tight">
+          <span className="block text-[13px] font-semibold tracking-[0.12em]">ORBIT</span>
+          <span className="block text-[11px] text-white/75">BOM</span>
+        </span>
       </Link>
       <nav className="flex-1 space-y-0.5 overflow-y-auto p-2 text-sm">
         <Item href="/" icon="home" active={pathname === "/"}>
@@ -55,7 +57,7 @@ export function LeftNav({
                   onClick={() => setToggled(!fabOpen)}
                   aria-expanded={fabOpen}
                   aria-label={fabOpen ? "Hide processes" : "Show processes"}
-                  className="press absolute right-1 rounded p-1 text-slate-500 hover:bg-line hover:text-slate-100"
+                  className="press absolute right-1 rounded p-1 text-subtle hover:bg-line hover:text-fg"
                 >
                   <Icon name="chevron" className={`h-3.5 w-3.5 transition-transform duration-150 ${fabOpen ? "rotate-90" : ""}`} />
                 </button>
@@ -72,7 +74,7 @@ export function LeftNav({
                     key={m.id}
                     href={`${base}/fab?machine=${m.id}`}
                     className={`press flex items-center gap-2 rounded-md px-2 py-1 text-xs ${
-                      active ? "bg-accent/15 text-white" : n ? "text-slate-300 hover:bg-raised hover:text-white" : "text-slate-500 hover:bg-raised hover:text-slate-300"
+                      active ? "bg-accent/15 text-white" : n ? "text-fg-2 hover:bg-raised hover:text-fg" : "text-subtle hover:bg-raised hover:text-fg-2"
                     }`}
                   >
                     <span className="truncate">{m.name}</span>
@@ -98,8 +100,8 @@ export function LeftNav({
           Profile
         </Item>
         <div className="px-3 pt-2">
-          <div className="truncate text-xs font-medium text-slate-300">{member.name}</div>
-          <div className="truncate text-[11px] text-slate-500">
+          <div className="truncate text-xs font-medium text-fg-2">{member.name}</div>
+          <div className="truncate text-[11px] text-subtle">
             {member.email}
             {member.isAdmin && ", admin"}
           </div>
@@ -112,7 +114,7 @@ export function LeftNav({
 
 function Count({ n, className = "" }: { n: number; className?: string }) {
   return (
-    <span className={`rounded-full bg-raised px-1.5 text-[10px] leading-4 font-semibold text-slate-300 tabular-nums ${className}`}>{n}</span>
+    <span className={`rounded-full bg-raised px-1.5 text-[10px] leading-4 font-semibold text-fg-2 tabular-nums ${className}`}>{n}</span>
   );
 }
 
@@ -132,7 +134,7 @@ function Item({
   const cls = `press relative flex items-center gap-2.5 rounded-md px-3 py-1.5 ${className}`;
   if (!href)
     return (
-      <span className={`${cls} cursor-default text-slate-600`} title="Create a robot first">
+      <span className={`${cls} cursor-default text-faint`} title="Create a robot first">
         <Icon name={icon} />
         {children}
       </span>
@@ -141,7 +143,7 @@ function Item({
     <Link
       href={href}
       aria-current={active ? "page" : undefined}
-      className={`${cls} ${active ? "bg-raised font-medium text-white" : "text-slate-400 hover:bg-raised hover:text-slate-100"}`}
+      className={`${cls} ${active ? "bg-accent/10 font-semibold text-accent" : "text-muted hover:bg-raised hover:text-fg"}`}
     >
       {active && <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-accent" />}
       <Icon name={icon} className={`h-4 w-4 ${active ? "text-accent-hover" : ""}`} />
