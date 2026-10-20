@@ -13,7 +13,7 @@ export function RobotSwitcher({ robots, lastRobotId }: { robots: ShellRobot[]; l
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
-      <div className="flex min-h-14 items-center justify-between bg-accent px-4 text-white">
+      <div className="flex min-h-14 items-center justify-between bg-bar px-4 text-white">
         <span className="text-sm font-semibold">Robots</span>
         <EditOnly>
           <Link href="/robots/new" className="press rounded-md border border-white/40 px-2 py-1 text-xs font-semibold hover:bg-white/10">
@@ -86,7 +86,7 @@ function SystemTile({ robotId, system, active }: { robotId: string; system: Shel
         <Picture url={system.thumbUrl} className="aspect-square w-full rounded-none" />
         <span
           className={`absolute right-1.5 bottom-1.5 rounded-full px-1.5 py-px text-[10px] font-bold tabular-nums ${
-            system.percent === 100 ? "bg-accent text-white" : "bg-fg/85 text-white"
+            system.percent === 100 ? "bg-accent text-white" : "bg-[#111318]/85 text-white"
           }`}
         >
           {system.percent}%

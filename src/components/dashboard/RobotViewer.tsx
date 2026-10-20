@@ -28,7 +28,7 @@ export function RobotViewer({ statuses, locate }: { statuses: StatusCount[]; loc
           />
         </div>
       </div>
-      <div className="relative flex-1 overflow-hidden bg-[radial-gradient(ellipse_at_50%_35%,#ffffff_0%,#e6e8f2_75%)]">
+      <div className="relative flex-1 overflow-hidden bg-[radial-gradient(ellipse_at_50%_35%,var(--color-surface)_0%,var(--color-raised)_75%)]">
         {/* Grid floor in perspective. */}
         <div
           aria-hidden
@@ -46,7 +46,7 @@ export function RobotViewer({ statuses, locate }: { statuses: StatusCount[]; loc
           </p>
         </div>
         {locate && !dismissed && (
-          <div className="absolute top-3 left-3 flex animate-pop items-center gap-2 rounded-md border border-accent/50 bg-white/95 px-3 py-2 text-xs shadow-sm backdrop-blur">
+          <div className="absolute top-3 left-3 flex animate-pop items-center gap-2 rounded-md border border-accent/50 bg-surface/95 px-3 py-2 text-xs shadow-sm backdrop-blur">
             <Icon name="locate" className="h-4 w-4 text-accent-hover" />
             <span>
               Locating <span className="font-semibold text-fg">{locate.name}</span>. It will light up when the model is loaded.
