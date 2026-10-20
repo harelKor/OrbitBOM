@@ -16,10 +16,12 @@ type BuildAnswer =
 
 // The 3D robot stage. The model is built from the systems' Onshape assemblies on demand
 // (Edit mode's Update 3D model) and kept in R2; viewing it costs no Onshape calls. The expand
-// button blows it up over the whole page, leaving only the side panels. (Locate opens a part's
-// own window from its card: PartStage.)
+// button blows it up over the whole page, leaving only the side panels; there a side bar shows
+// and hides subsystems. On a system page (systemId) it shows only that subsystem. (Locate
+// opens a part's own window from its card: PartStage.)
 export function RobotViewer({
   robotId,
+  systemId,
   statuses,
   parts,
   builtAt,
@@ -27,6 +29,7 @@ export function RobotViewer({
   edit,
 }: {
   robotId: string;
+  systemId?: string;
   statuses: StatusCount[];
   parts: { key: string; color: string }[]; // BOM parts by Onshape identity, with status colour
   builtAt: string | null;
@@ -35,6 +38,7 @@ export function RobotViewer({
 }) {
   const [colors, setColors] = useState<"status" | "plain">("status");
   const [large, setLarge] = useState(false);
+  const [hiddenGroups, setHiddenGroups] = useState<Set<number>>(() => new Set());
   const [version, setVersion] = useState(builtAt);
   // undefined while loading, null when there is no model to show.
   const [model, setModel] = useState<ViewerModel | null | undefined>(builtAt ? undefined : null);
@@ -42,6 +46,20 @@ export function RobotViewer({
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
   const colorMap = useMemo(() => new Map(parts.map((p) => [p.key, p.color])), [parts]);
   const onLocated = useCallback(() => {}, []);
+  const groups = useMemo(() => model?.groups ?? [], [model]);
+  // A system page draws only the groups its system is in.
+  const ownGroups = useMemo(() => (systemId ? groups.flatMap((g, i) => (g.systemIds.includes(systemId) ? [i] : [])) : null), [groups, systemId]);
+  const hidden = useMemo(
+    () => (ownGroups ? new Set(groups.map((_, i) => i).filter((i) => !ownGroups.includes(i))) : hiddenGroups),
+    [ownGroups, groups, hiddenGroups],
+  );
+  const toggleGroup = (i: number) =>
+    setHiddenGroups((h) => {
+      const next = new Set(h);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
 
   useEffect(() => {
     if (!large) return;
@@ -102,12 +120,12 @@ export function RobotViewer({
       className={
         large
           ? "fixed inset-y-0 right-[var(--shell-right)] left-[var(--shell-left)] z-30 flex flex-col overflow-hidden border-x border-line bg-surface"
-          : "panel flex min-h-80 flex-col overflow-hidden"
+          : "panel flex min-h-80 flex-1 flex-col overflow-hidden"
       }
     >
       <div className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-3">
         <Icon name="cube" className="h-4 w-4 text-accent-hover" />
-        <h2 className="text-sm font-semibold">3D Assembly Status View</h2>
+        <h2 className="text-sm font-semibold">{systemId ? "3D View" : "3D Assembly Status View"}</h2>
         <div className="ml-auto flex items-center gap-2">
           {edit && hasAssembly && (
             <button className="btn h-8 text-xs" onClick={build} disabled={!!building}>
@@ -135,7 +153,7 @@ export function RobotViewer({
       </div>
       <div className="relative min-h-72 flex-1 overflow-hidden bg-[radial-gradient(ellipse_at_50%_35%,var(--color-surface)_0%,var(--color-raised)_75%)]">
         {model ? (
-          <ModelCanvas model={model} colors={colorMap} mode={colors} locateKey={null} onLocated={onLocated} />
+          <ModelCanvas model={model} colors={colorMap} mode={colors} locateKey={null} onLocated={onLocated} hidden={hidden} />
         ) : (
           <>
             {/* Grid floor in perspective. */}
@@ -164,6 +182,38 @@ export function RobotViewer({
             </div>
           </>
         )}
+        {large && !systemId && groups.length > 0 && (
+          <div className="absolute top-3 bottom-3 left-3 flex w-56 flex-col overflow-hidden rounded-md border border-line bg-surface/95 text-sm shadow-sm backdrop-blur">
+            <div className="flex items-center justify-between border-b border-line px-3 py-2 text-xs font-semibold text-muted">
+              Subsystems
+              <button
+                onClick={() => setHiddenGroups(hiddenGroups.size ? new Set() : new Set(groups.map((_, i) => i)))}
+                className="press font-medium text-accent-hover hover:underline"
+              >
+                {hiddenGroups.size ? "Show all" : "Hide all"}
+              </button>
+            </div>
+            <ul className="flex-1 overflow-y-auto p-1">
+              {groups.map((g, i) => (
+                <li key={i}>
+                  <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 hover:bg-raised">
+                    <input type="checkbox" checked={!hiddenGroups.has(i)} onChange={() => toggleGroup(i)} className="accent-[var(--color-accent)]" />
+                    <span className={`min-w-0 flex-1 truncate ${hiddenGroups.has(i) ? "text-subtle" : "text-fg"}`}>{g.name}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {model && systemId && !ownGroups?.length && (
+          <div className="absolute inset-0 flex items-center justify-center p-6 text-center">
+            <p className="max-w-72 rounded-md bg-surface/90 p-3 text-sm text-muted">
+              {edit
+                ? "This subsystem isn't in the robot's 3D model yet. Press Update 3D model."
+                : "This subsystem shows here once the robot's 3D model is updated in Edit mode."}
+            </p>
+          </div>
+        )}
         {message && (
           <div
             role="status"
@@ -175,7 +225,7 @@ export function RobotViewer({
           </div>
         )}
         {colors === "status" && statuses.length > 0 && (
-          <div className="pointer-events-none absolute right-3 bottom-3 left-3 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-fg-2">
+          <div className={`pointer-events-none absolute right-3 bottom-3 ${large && !systemId && groups.length > 0 ? "left-62" : "left-3"} flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-fg-2`}>
             {statuses.map((s) => (
               <span key={s.name} className="inline-flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full" style={{ background: s.color }} />

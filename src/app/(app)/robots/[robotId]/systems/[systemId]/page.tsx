@@ -4,14 +4,17 @@ import { AutoRefresh } from "@/components/bom/AutoRefresh";
 import { BomView } from "@/components/bom/BomView";
 import { ManualPartButton } from "@/components/bom/ManualPartButton";
 import { UpdateBomButton } from "@/components/bom/UpdateBomButton";
+import { RobotViewer } from "@/components/dashboard/RobotViewer";
 import { StatusBar } from "@/components/StatusBar";
+import { STATUSES } from "@/config/statuses";
 import { requireMember } from "@/lib/auth";
 import { listInventoryNames } from "@/lib/data/inventory";
 import { listSystemMerges, listSystemParts } from "@/lib/data/parts";
 import { getSystem } from "@/lib/data/robots";
+import { robotModelBuiltAt } from "@/lib/model/build";
 import { isEditMode } from "@/lib/mode";
 
-// Update BOM fetches the BOM and new thumbnails in one request.
+// Update BOM pulls the BOM in this request; thumbnails follow from /api/systems/[id]/thumbnails.
 export const maxDuration = 60;
 
 export default async function SystemPage({
@@ -24,12 +27,15 @@ export default async function SystemPage({
   const data = await getSystem(robotId, systemId);
   if (!data) notFound();
   const { system, robot, breakdown } = data;
-  const [parts, merges, inventory, edit] = await Promise.all([
+  const [parts, merges, inventory, edit, modelBuiltAt] = await Promise.all([
     listSystemParts(system.id),
     listSystemMerges(system.id),
     listInventoryNames(),
     isEditMode(),
+    robotModelBuiltAt(robot.id),
   ]);
+  const statusColor = new Map<string, string>(STATUSES.map((s) => [s.name, s.color]));
+  const viewerParts = parts.flatMap((p) => (p.modelKey ? [{ key: p.modelKey, color: statusColor.get(p.status) ?? "#cbd5e1" }] : []));
 
   return (
     <div className="space-y-5">
@@ -61,6 +67,20 @@ export default async function SystemPage({
           {edit && <UpdateBomButton systemId={system.id} lastSyncedAt={system.lastSyncedAt} />}
           <AutoRefresh systemId={system.id} />
         </>
+      )}
+
+      {system.assemblyUrl && (
+        <div className="flex h-[26rem] flex-col">
+          <RobotViewer
+            robotId={robot.id}
+            systemId={system.id}
+            statuses={breakdown.statuses.filter((s) => s.count > 0)}
+            parts={viewerParts}
+            builtAt={modelBuiltAt}
+            hasAssembly
+            edit={edit}
+          />
+        </div>
       )}
 
       <BomView parts={parts} inventory={inventory} isAdmin={member.isAdmin} merges={merges} mergeSystemId={system.id} robotId={robot.id} toolbar={<ManualPartButton key="manual-part" systemId={system.id} />} />
