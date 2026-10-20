@@ -103,6 +103,7 @@ export async function syncSystem(systemId: string): Promise<SyncResult> {
       s.restored.length ? `${s.restored.length} back in CAD` : null,
       t.fetched ? `${t.fetched} new thumbnails` : null,
       t.pending ? `${t.pending} thumbnails left for next time` : null,
+      t.failed ? `${t.failed} thumbnails failed (${t.error})` : null,
     ].filter(Boolean);
     const warning = s.unknownMachines.length
       ? ` Unknown machines in Onshape: ${s.unknownMachines.join(", ")}.`

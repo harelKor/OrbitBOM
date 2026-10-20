@@ -8,11 +8,13 @@ import { statusBreakdown } from "@/lib/stats";
 
 const { robots, systems, parts } = schema;
 
-export type ShellSystem = { id: string; name: string; percent: number; total: number; thumbUrl: string | null };
+export type ShellSystem = { id: string; name: string; assemblyUrl: string | null; percent: number; total: number; thumbUrl: string | null };
 export type ShellRobot = {
   id: string;
   name: string;
   year: number;
+  code: string | null;
+  mainAssemblyUrl: string | null;
   archived: boolean;
   percent: number;
   thumbUrl: string | null;
@@ -59,6 +61,7 @@ export async function listShellRobots(): Promise<ShellRobot[]> {
         robotId: s.robotId,
         id: s.id,
         name: s.name,
+        assemblyUrl: s.assemblyUrl,
         percent: b.percent,
         total: b.total,
         thumbUrl: key ? await imageUrl(key) : null,
@@ -81,10 +84,12 @@ export async function listShellRobots(): Promise<ShellRobot[]> {
         id: r.id,
         name: r.name,
         year: r.year,
+        code: r.code,
+        mainAssemblyUrl: r.mainAssemblyUrl,
         archived: r.archived,
         percent: statusBreakdown(statusRows.filter((x) => ids.has(x.systemId))).percent,
         thumbUrl: r.thumbnailPath ? await imageUrl(r.thumbnailPath) : (own.find((s) => s.thumbUrl)?.thumbUrl ?? null),
-        systems: own.map((s) => ({ id: s.id, name: s.name, percent: s.percent, total: s.total, thumbUrl: s.thumbUrl })),
+        systems: own.map((s) => ({ id: s.id, name: s.name, assemblyUrl: s.assemblyUrl, percent: s.percent, total: s.total, thumbUrl: s.thumbUrl })),
       };
     }),
   );

@@ -1,10 +1,11 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { getMachine } from "@/config/machines";
 import { fabStage } from "@/lib/fab";
 import { deleteManualPart, unmergeParts } from "@/app/(app)/parts-actions";
 import { useEditMode } from "@/components/shell/ModeContext";
+import { PartStage, type StageView } from "@/components/dashboard/PartStage";
 import { CheckBadge } from "@/components/ui/CheckBadge";
 import { Icon } from "@/components/ui/Icon";
 import { useBom } from "./BomContext";
@@ -17,9 +18,10 @@ type ExportFormat = (typeof EXPORTABLE)[number];
 
 const pill = "rounded-full border border-line-strong bg-raised px-2 py-0.5 text-[11px] font-medium text-fg-2 max-w-full truncate";
 
-// The part card: the Onshape thumbnail is the hero, with quantity and type on its top-left and
-// Download / Locate on its top-right; below it the name, the status, a notes button and the
-// material → process pills. Properties only open their editors in Edit mode.
+// The part card: the Onshape thumbnail is the hero (click it for the part's 3D preview), with
+// quantity and type on its top-left and Download / Locate on its top-right; below it the name,
+// the status, a notes button and the material → process pills. Properties only open their
+// editors in Edit mode.
 export function PartCard({
   part,
   save,
@@ -40,6 +42,7 @@ export function PartCard({
   const current = machines.find((s) => part[s.done] < Math.max(part.quantity, 1));
   const showCounter = !!current && part.classification !== "cots" && fabStage(part) !== null;
   const format = cadFormat(part);
+  const [stage, setStage] = useState<StageView | null>(null);
 
   return (
     <div data-selected={!!selected} className="card-interactive group flex flex-col text-sm">
@@ -57,11 +60,17 @@ export function PartCard({
       )}
 
       <div className="thumb-well relative flex aspect-[4/3] items-center justify-center">
-        {part.thumbUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
-          <img src={part.thumbUrl} alt="" loading="lazy" className="h-full w-full object-contain p-3" />
+        {part.isManual ? (
+          <span className="text-xs text-muted">Manual part</span>
         ) : (
-          <span className="text-xs text-muted">{part.isManual ? "Manual part" : "No thumbnail yet"}</span>
+          <button type="button" onClick={() => setStage("part")} className="flex h-full w-full cursor-zoom-in items-center justify-center" aria-label={`3D preview of ${partTitle(part)}`}>
+            {part.thumbUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
+              <img src={part.thumbUrl} alt="" loading="lazy" className="h-full w-full object-contain p-3" />
+            ) : (
+              <span className="text-xs text-muted">No thumbnail yet, click for 3D</span>
+            )}
+          </button>
         )}
         <div className="absolute top-2 left-2 flex items-center gap-1">
           <span className="rounded-full bg-[#111318]/85 px-2 py-0.5 text-[11px] font-bold text-white tabular-nums">
@@ -93,14 +102,25 @@ export function PartCard({
               <Tip>{label(format)}</Tip>
             </a>
           )}
-          {robotId && !part.isManual && (
-            <a href={`/robots/${robotId}?locate=${ownerPartId(part)}#viewer`} className="overlay-btn group/tip relative" aria-label="Locate in robot">
+          {robotId && part.modelKey && (
+            <button type="button" onClick={() => setStage("locate")} className="overlay-btn group/tip relative" aria-label="Locate in robot">
               <Icon name="locate" />
               <Tip>Locate in robot</Tip>
-            </a>
+            </button>
           )}
         </div>
       </div>
+      {stage && (
+        <PartStage
+          partId={ownerPartId(part)}
+          robotId={robotId ?? null}
+          modelKey={part.modelKey}
+          name={partTitle(part)}
+          view={stage}
+          onView={setStage}
+          onClose={() => setStage(null)}
+        />
+      )}
 
       <div className="flex min-w-0 flex-col gap-2 p-3">
         <div className="flex min-w-0 items-baseline gap-2">

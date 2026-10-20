@@ -5,17 +5,19 @@ import { ConfirmButton } from "@/components/ConfirmButton";
 import { Popover } from "@/components/bom/Popover";
 import { Icon } from "@/components/ui/Icon";
 import { deleteSystem, updateSystem, type FormState } from "../../../actions";
-import { OnshapeLinkField, SaveRow } from "../../RobotSettings";
+import { GEAR_SMALL, OnshapeLinkField, SaveRow } from "../../RobotSettings";
 
-// Edit mode's gear menu on a system page: name, Onshape assembly, delete.
+// Edit mode's gear menu on a system tile: name, Onshape assembly, delete.
 export function SystemSettings({
   robotId,
   system,
   isAdmin,
+  small = false,
 }: {
   robotId: string;
   system: { id: string; name: string; assemblyUrl: string | null };
   isAdmin: boolean;
+  small?: boolean;
 }) {
   const [state, update, pending] = useActionState(
     (prev: FormState, formData: FormData) => updateSystem(system.id, prev, formData),
@@ -25,10 +27,10 @@ export function SystemSettings({
     <Popover
       align="right"
       hideCaret
-      triggerClassName="btn h-9 w-9 justify-center px-0"
+      triggerClassName={small ? GEAR_SMALL : "btn h-9 w-9 justify-center px-0"}
       trigger={
         <>
-          <Icon name="gear" />
+          <Icon name="gear" className={small ? "h-3.5 w-3.5" : undefined} />
           <span className="sr-only">System settings</span>
         </>
       }

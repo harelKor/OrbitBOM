@@ -9,7 +9,7 @@ import { McpTokens } from "./McpTokens";
 const MESSAGES: Record<string, string> = {
   connected: "Onshape is connected.",
   failed: "Connecting Onshape didn't work. Please try again.",
-  denied: "Onshape didn't allow the connection. Check that the OrbitBOM app is allowed for your Enterprise.",
+  denied: "Onshape didn't allow the connection. Check that the OrbitMech app is allowed for your Enterprise.",
   expired: "The Onshape sign-in took too long or was opened in another browser. Please try again.",
   "not-configured": "The Onshape app isn't set up on the server yet (ONSHAPE_CLIENT_ID).",
 };
@@ -82,9 +82,9 @@ export default async function ProfilePage({
       </section>
 
       <section className="panel space-y-3 p-5">
-        <h2 className="font-semibold">Use OrbitBOM from Claude</h2>
+        <h2 className="font-semibold">Use OrbitMech from Claude</h2>
         <p className="text-sm text-fg-2">
-          Add OrbitBOM to your own Claude as a connector, then change the BOM with prompts like &ldquo;Set CNC as
+          Add OrbitMech to your own Claude as a connector, then change the BOM with prompts like &ldquo;Set CNC as
           Process 1 for every 5mm aluminum plate in Drivetrain&rdquo;. Claude shows you every change before it applies
           it, and each change can be undone.
         </p>

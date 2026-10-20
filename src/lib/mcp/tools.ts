@@ -517,7 +517,7 @@ write(
   async ({ system_id }, { member }) => {
     const [system] = await db.select().from(systems).where(eq(systems.id, system_id));
     if (!system) throw new ToolError("No such system.");
-    if (!member.onshapeConnected) throw new ToolError("Connect Onshape on your OrbitBOM profile first.");
+    if (!member.onshapeConnected) throw new ToolError("Connect Onshape on your OrbitMech profile first.");
     return {
       count: 1,
       preview: { system: system.name, assembly: system.assemblyUrl, note: "Uses a few of your Onshape API calls." },
@@ -526,7 +526,7 @@ write(
           const started = Date.now();
           const s = await updateBomFromOnshape(system_id, member.id, { force: true });
           const t = await refreshThumbnails(system_id, member.id, started + 45_000);
-          return { ...s, thumbnails: t.fetched, calls: s.calls + t.calls };
+          return { ...s, thumbnails: t.fetched, thumbnail_errors: t.failed ? `${t.failed} failed: ${t.error}` : undefined, calls: s.calls + t.calls };
         } catch (err) {
           if (err instanceof OnshapeError) throw new ToolError(err.message);
           throw err;

@@ -147,7 +147,7 @@ export function BomView({
     });
 
   const cards = (list: CardPart[], withSystem: boolean) => (
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3">
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(min(400px,100%),1fr))] gap-3">
       {list.map((p) => (
         <PartCard
           key={p.id}

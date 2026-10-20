@@ -22,7 +22,7 @@ export default async function HomePage() {
 
   return (
     <div className="mx-auto max-w-4xl py-6">
-      <h1 className="mb-6 display text-2xl text-accent">OrbitBOM</h1>
+      <h1 className="mb-6 display text-2xl text-accent">OrbitMech</h1>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {tiles.map((t) => (
           <Link

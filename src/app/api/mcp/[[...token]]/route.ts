@@ -4,14 +4,14 @@ import { ToolError, callTool, listTools } from "@/lib/mcp/tools";
 
 export const maxDuration = 60;
 
-// OrbitBOM's MCP server (plan §6), over Streamable HTTP without sessions: every POST is a
+// OrbitMech's MCP server (plan §6), over Streamable HTTP without sessions: every POST is a
 // JSON-RPC message (or batch) answered with JSON. The member's personal token comes either as
 // a Bearer header or as the last path segment (/api/mcp/<token>), because claude.ai's custom
 // connectors take only a URL.
 
 const PROTOCOL = "2025-06-18";
 const INSTRUCTIONS =
-  "OrbitBOM is FRC team 1690's BOM and inventory. Use list_statuses, list_machines and list_materials for exact names. " +
+  "OrbitMech is FRC team 1690's BOM and inventory. Use list_statuses, list_machines and list_materials for exact names. " +
   "Write tools always preview first: show the member the preview and apply with the confirm_token only after they agree. " +
   "Every applied change returns a batch_id that undo_batch can revert.";
 
@@ -23,7 +23,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   const member = await memberForToken(bearer ?? path?.at(-1) ?? "");
   if (!member) {
     return NextResponse.json(
-      { jsonrpc: "2.0", id: null, error: { code: -32001, message: "Invalid or revoked OrbitBOM token. Make a new one on your profile page." } },
+      { jsonrpc: "2.0", id: null, error: { code: -32001, message: "Invalid or revoked OrbitMech token. Make a new one on your profile page." } },
       { status: 401 },
     );
   }
@@ -43,7 +43,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
         return reply({
           protocolVersion: (msg.params?.protocolVersion as string) ?? PROTOCOL,
           capabilities: { tools: { listChanged: false } },
-          serverInfo: { name: "orbitbom", title: "OrbitBOM (Team 1690)", version: "1.0.0" },
+          serverInfo: { name: "orbitbom", title: "OrbitMech (Team 1690)", version: "1.0.0" },
           instructions: INSTRUCTIONS,
         });
       case "ping":

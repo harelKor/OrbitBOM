@@ -33,7 +33,7 @@ export default async function ConnectPanelPage({
 
   return (
     <main className="mx-auto max-w-sm space-y-4 p-8 text-center">
-      <h1 className="text-xl font-semibold">OrbitBOM in Onshape</h1>
+      <h1 className="text-xl font-semibold">OrbitMech in Onshape</h1>
       {done ? (
         <>
           <p className="text-sm text-fg-2">Signed in. You can close this window.</p>
@@ -42,13 +42,13 @@ export default async function ConnectPanelPage({
       ) : code ? (
         <form action={approve} className="space-y-4">
           <p className="text-sm text-fg-2">
-            Sign in to the OrbitBOM panel in Onshape as <b>{member.name}</b>? Only continue if you opened this
+            Sign in to the OrbitMech panel in Onshape as <b>{member.name}</b>? Only continue if you opened this
             window from that panel.
           </p>
           <button className="btn-primary w-full">Sign in to the panel</button>
         </form>
       ) : (
-        <p className="text-sm text-fg-2">Open this from the OrbitBOM panel in Onshape.</p>
+        <p className="text-sm text-fg-2">Open this from the OrbitMech panel in Onshape.</p>
       )}
     </main>
   );

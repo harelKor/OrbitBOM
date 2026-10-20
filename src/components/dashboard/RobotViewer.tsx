@@ -15,12 +15,13 @@ type BuildAnswer =
   | { error: string };
 
 // The 3D robot stage. The model is built from the systems' Onshape assemblies on demand
-// (Edit mode's Update 3D model) and kept in R2; viewing it costs no Onshape calls.
+// (Edit mode's Update 3D model) and kept in R2; viewing it costs no Onshape calls. The expand
+// button blows it up over the whole page, leaving only the side panels. (Locate opens a part's
+// own window from its card: PartStage.)
 export function RobotViewer({
   robotId,
   statuses,
   parts,
-  locate,
   builtAt,
   hasAssembly,
   edit,
@@ -28,21 +29,26 @@ export function RobotViewer({
   robotId: string;
   statuses: StatusCount[];
   parts: { key: string; color: string }[]; // BOM parts by Onshape identity, with status colour
-  locate: { name: string; key: string | null } | null;
   builtAt: string | null;
   hasAssembly: boolean;
   edit: boolean;
 }) {
   const [colors, setColors] = useState<"status" | "plain">("status");
-  const [dismissed, setDismissed] = useState(false);
+  const [large, setLarge] = useState(false);
   const [version, setVersion] = useState(builtAt);
   // undefined while loading, null when there is no model to show.
   const [model, setModel] = useState<ViewerModel | null | undefined>(builtAt ? undefined : null);
-  const [found, setFound] = useState<boolean | null>(null);
   const [building, setBuilding] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
   const colorMap = useMemo(() => new Map(parts.map((p) => [p.key, p.color])), [parts]);
-  const onLocated = useCallback((f: boolean) => setFound(f), []);
+  const onLocated = useCallback(() => {}, []);
+
+  useEffect(() => {
+    if (!large) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setLarge(false);
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [large]);
 
   useEffect(() => {
     if (!version) return;
@@ -90,16 +96,15 @@ export function RobotViewer({
     }
   }
 
-  const locateText = !locate
-    ? null
-    : !model
-      ? "It lights up once the robot model is exported."
-      : found === false
-        ? "It isn't in the linked Onshape assemblies."
-        : null;
-
   return (
-    <section id="viewer" className="panel flex min-h-80 flex-col overflow-hidden">
+    <section
+      id="viewer"
+      className={
+        large
+          ? "fixed inset-y-0 right-[var(--shell-right)] left-[var(--shell-left)] z-30 flex flex-col overflow-hidden border-x border-line bg-surface"
+          : "panel flex min-h-80 flex-col overflow-hidden"
+      }
+    >
       <div className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-3">
         <Icon name="cube" className="h-4 w-4 text-accent-hover" />
         <h2 className="text-sm font-semibold">3D Assembly Status View</h2>
@@ -118,11 +123,19 @@ export function RobotViewer({
               { value: "plain", label: "Plain" },
             ]}
           />
+          <button
+            onClick={() => setLarge(!large)}
+            className="btn h-8 w-8 justify-center px-0"
+            aria-label={large ? "Back to the dashboard" : "Open large"}
+            title={large ? "Back to the dashboard (Esc)" : "Open large"}
+          >
+            <Icon name={large ? "shrink" : "expand"} />
+          </button>
         </div>
       </div>
       <div className="relative min-h-72 flex-1 overflow-hidden bg-[radial-gradient(ellipse_at_50%_35%,var(--color-surface)_0%,var(--color-raised)_75%)]">
         {model ? (
-          <ModelCanvas model={model} colors={colorMap} mode={colors} locateKey={locate && !dismissed ? locate.key : null} onLocated={onLocated} />
+          <ModelCanvas model={model} colors={colorMap} mode={colors} locateKey={null} onLocated={onLocated} />
         ) : (
           <>
             {/* Grid floor in perspective. */}
@@ -151,18 +164,6 @@ export function RobotViewer({
             </div>
           </>
         )}
-        {locate && !dismissed && (
-          <div className="absolute top-3 left-3 flex max-w-[calc(100%-1.5rem)] animate-pop items-center gap-2 rounded-md border border-accent/50 bg-surface/95 px-3 py-2 text-xs shadow-sm backdrop-blur">
-            <Icon name="locate" className="h-4 w-4 shrink-0 text-accent-hover" />
-            <span>
-              {locateText ? "Locating" : "Showing"} <span className="font-semibold text-fg">{locate.name}</span>
-              {locateText && `. ${locateText}`}
-            </span>
-            <button onClick={() => setDismissed(true)} className="press ml-1 text-muted hover:text-fg" aria-label="Close">
-              ✕
-            </button>
-          </div>
-        )}
         {message && (
           <div
             role="status"
@@ -173,7 +174,7 @@ export function RobotViewer({
             {message.text}
           </div>
         )}
-        {colors === "status" && statuses.length > 0 && !(locate && !dismissed && model) && (
+        {colors === "status" && statuses.length > 0 && (
           <div className="pointer-events-none absolute right-3 bottom-3 left-3 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-fg-2">
             {statuses.map((s) => (
               <span key={s.name} className="inline-flex items-center gap-1.5">

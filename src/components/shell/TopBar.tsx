@@ -35,7 +35,7 @@ export function TopBar({ onMenu, onRobots }: { onMenu: () => void; onRobots: () 
 
   return (
     <header className="sticky top-0 z-20 flex min-h-14 flex-wrap items-center gap-2 bg-bar px-4 py-2.5 text-white shadow-[0_2px_8px_rgba(0,0,120,0.25)] md:px-6">
-      <button onClick={onMenu} className="press rounded-md border border-white/30 px-2 py-1" aria-label="Pages" title="Show or hide pages">
+      <button onClick={onMenu} className="press rounded-md border border-white/30 px-2 py-1 lg:hidden" aria-label="Pages" title="Show pages">
         ☰
       </button>
       {partPages && (
@@ -80,7 +80,7 @@ export function TopBar({ onMenu, onRobots }: { onMenu: () => void; onRobots: () 
       <div className="ml-auto flex items-center gap-2">
         <ThemeToggle />
         <ModeToggle />
-        <button onClick={onRobots} className="press rounded-md border border-white/30 px-2 py-1 text-xs font-semibold" aria-label="Robots and systems" title="Show or hide robots and systems">
+        <button onClick={onRobots} className="press rounded-md border border-white/30 px-2 py-1 text-xs font-semibold xl:hidden" aria-label="Robots and systems" title="Show robots and systems">
           Robots
         </button>
       </div>
