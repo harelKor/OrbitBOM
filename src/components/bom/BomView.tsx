@@ -17,6 +17,14 @@ import { KanbanView } from "./KanbanView";
 import { PartCard } from "./PartCard";
 import { TableView } from "./TableView";
 import { type CardPart } from "./types";
+import { Icon } from "@/components/ui/Icon";
+
+// Parts grouped by system, systems in name order.
+function bySystem(parts: CardPart[]): [string, CardPart[]][] {
+  const groups = new Map<string, CardPart[]>();
+  for (const p of parts) groups.set(p.systemName, [...(groups.get(p.systemName) ?? []), p]);
+  return [...groups].sort(([a], [b]) => a.localeCompare(b));
+}
 
 type View = "card" | "table" | "kanban";
 type Chip = "all" | "cots" | "inhouse";
@@ -34,6 +42,7 @@ export function BomView({
   mergeSystemId,
   robotId,
   toolbar,
+  groupBySystem = false,
 }: {
   parts: CardPart[];
   inventory?: InventoryName[];
@@ -44,6 +53,7 @@ export function BomView({
   mergeSystemId?: string; // set on a system page: enables Merge parts
   robotId?: string; // enables Locate on the cards
   toolbar?: React.ReactNode;
+  groupBySystem?: boolean; // card view: one collapsible section per system
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -136,6 +146,21 @@ export function BomView({
       return next;
     });
 
+  const cards = (list: CardPart[], withSystem: boolean) => (
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3">
+      {list.map((p) => (
+        <PartCard
+          key={p.id}
+          part={p}
+          save={saveFor(p.id)}
+          showSystem={withSystem}
+          selected={selected.has(p.id)}
+          onToggleSelect={selecting ? () => toggle(p.id) : undefined}
+        />
+      ))}
+    </div>
+  );
+
   const chips: { id: Chip; label: string }[] = [
     { id: "all", label: "All" },
     { id: "cots", label: "COTS" },
@@ -199,19 +224,21 @@ export function BomView({
         <TableView parts={shown} saveFor={saveFor} showSystem={showSystem} selection={selecting ? { ids: selected, toggle } : undefined} />
       ) : view === "kanban" ? (
         <KanbanView parts={shown} saveFor={saveFor} showSystem={showSystem} />
-      ) : (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3">
-          {shown.map((p) => (
-            <PartCard
-              key={p.id}
-              part={p}
-              save={saveFor(p.id)}
-              showSystem={showSystem}
-              selected={selected.has(p.id)}
-              onToggleSelect={selecting ? () => toggle(p.id) : undefined}
-            />
+      ) : groupBySystem ? (
+        <div className="space-y-3">
+          {bySystem(shown).map(([name, group]) => (
+            <details key={name} open className="group/sys">
+              <summary className="press flex cursor-pointer list-none items-center gap-2 py-1 text-sm font-semibold text-fg-2 hover:text-fg">
+                <Icon name="chevron" className="h-3.5 w-3.5 transition-transform group-open/sys:rotate-90" />
+                {name}
+                <span className="text-xs font-normal text-subtle tabular-nums">{group.length}</span>
+              </summary>
+              <div className="mt-2">{cards(group, false)}</div>
+            </details>
           ))}
         </div>
+      ) : (
+        cards(shown, showSystem)
       )}
 
       {mode === "bulk" && (
