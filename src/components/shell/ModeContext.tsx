@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { createContext, useContext, useState, useTransition } from "react";
+import { Segmented } from "@/components/ui/Segmented";
 import { MODE_COOKIE, type Mode } from "./mode";
 
 // View mode (the default) hides delete, sync and property editors; Edit mode shows them.
@@ -31,19 +32,14 @@ export function EditOnly({ children }: { children: React.ReactNode }) {
 export function ModeToggle() {
   const { mode, setMode } = useMode();
   return (
-    <div className="flex rounded-md border border-line-strong bg-ink p-0.5" role="group" aria-label="Mode">
-      {(["view", "edit"] as const).map((m) => (
-        <button
-          key={m}
-          onClick={() => mode !== m && setMode(m)}
-          aria-pressed={mode === m}
-          className={`rounded px-3 py-1 text-xs font-semibold capitalize transition-colors duration-75 ${
-            mode === m ? (m === "edit" ? "bg-accent text-white" : "bg-line text-white") : "text-slate-400 hover:text-slate-100"
-          }`}
-        >
-          {m}
-        </button>
-      ))}
-    </div>
+    <Segmented
+      label="Mode"
+      value={mode}
+      onChange={setMode}
+      options={[
+        { value: "view", label: "View" },
+        { value: "edit", label: "Edit" },
+      ]}
+    />
   );
 }

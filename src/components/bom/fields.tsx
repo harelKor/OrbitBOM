@@ -4,7 +4,6 @@
 // these, so a field edits the same way everywhere (ref §2a, §3).
 
 import { getMachine } from "@/config/machines";
-import { getStatus } from "@/config/statuses";
 import type { PartChanges } from "@/lib/parts/changes";
 import { computeStatus } from "@/lib/status";
 import {
@@ -15,9 +14,10 @@ import {
   TYPE_LABELS,
   TYPE_OPTIONS,
   machineOptions,
-  textOn,
 } from "./options";
 import { useEditMode } from "@/components/shell/ModeContext";
+import { StatusPill } from "@/components/ui/StatusPill";
+export { StatusPill };
 import { useBom } from "./BomContext";
 import { InputEditor, OptionList, Popover } from "./Popover";
 import { partTitle, type CardPart } from "./types";
@@ -159,15 +159,6 @@ export function QuantityField({ part, save }: Props) {
         />
       )}
     </Popover>
-  );
-}
-
-export function StatusPill({ status }: { status: string }) {
-  const color = getStatus(status)?.color ?? "#cbd5e1";
-  return (
-    <span className="rounded px-1.5 py-0.5 text-xs font-medium whitespace-nowrap" style={{ background: color, color: textOn(color) }}>
-      {status}
-    </span>
   );
 }
 

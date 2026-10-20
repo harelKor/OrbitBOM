@@ -61,9 +61,8 @@ function RobotCard({ robot, current, overview }: { robot: ShellRobot; current: b
     <Link
       href={`/robots/${robot.id}`}
       aria-current={overview ? "page" : undefined}
-      className={`flex items-center gap-3 rounded-md border p-2 transition-colors duration-75 ${
-        overview ? "border-accent bg-raised" : current ? "border-line-strong bg-raised" : "border-line hover:border-line-strong hover:bg-raised"
-      }`}
+      data-selected={overview}
+      className={`card-interactive group flex items-center gap-3 p-2 ${current && !overview ? "border-white/20" : ""}`}
     >
       <Picture url={robot.thumbUrl} className="h-12 w-12" />
       <div className="min-w-0 flex-1">
@@ -81,12 +80,11 @@ function SystemTile({ robotId, system, active }: { robotId: string; system: Shel
     <Link
       href={`/robots/${robotId}/systems/${system.id}`}
       aria-current={active ? "page" : undefined}
-      className={`block overflow-hidden rounded-md border transition-colors duration-75 ${
-        active ? "border-accent" : "border-line hover:border-line-strong"
-      }`}
+      data-selected={active}
+      className="card-interactive group block"
     >
       <Picture url={system.thumbUrl} className="aspect-square w-full rounded-none" />
-      <div className="bg-raised px-2 py-1.5">
+      <div className="px-2 py-1.5">
         <div className="truncate text-xs font-medium">{system.name}</div>
         <div className="mt-1 h-1 overflow-hidden rounded-full bg-line">
           <div className="h-full bg-emerald-500" style={{ width: `${system.percent}%` }} />
@@ -98,7 +96,7 @@ function SystemTile({ robotId, system, active }: { robotId: string; system: Shel
 
 function Picture({ url, className }: { url: string | null; className: string }) {
   return (
-    <span className={`flex shrink-0 items-center justify-center overflow-hidden rounded bg-well ${className}`}>
+    <span className={`thumb-well flex shrink-0 items-center justify-center rounded ${className}`}>
       {url ? (
         // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
         <img src={url} alt="" loading="lazy" className="h-full w-full object-contain p-1" />

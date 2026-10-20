@@ -28,7 +28,7 @@ export default async function HomePage() {
           <Link
             key={t.title}
             href={t.href}
-            className="group flex aspect-square flex-col justify-end rounded-lg border border-line bg-surface p-5 transition-colors duration-75 hover:border-accent"
+            className="card-interactive group flex aspect-square flex-col justify-end p-5"
           >
             <span className="text-3xl font-bold tracking-tight group-hover:text-white">{t.title}</span>
             <span className="mt-1 text-sm text-slate-400">{t.text}</span>

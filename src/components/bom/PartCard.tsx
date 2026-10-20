@@ -19,6 +19,7 @@ import {
   machineSlotsShown,
   type SaveFn,
 } from "./fields";
+import { CheckBadge } from "@/components/ui/CheckBadge";
 import { FilesField } from "./FilesField";
 import { Popover, InputEditor } from "./Popover";
 import { ownerPartId, partTitle, type CardPart } from "./types";
@@ -45,9 +46,8 @@ export function PartCard({
 
   return (
     <div
-      className={`relative flex flex-col overflow-hidden rounded-xl border text-sm ${
-        selected ? "border-accent ring-2 ring-accent" : done ? "border-emerald-800" : "border-line"
-      } ${done ? "bg-emerald-950/40" : "bg-surface"}`}
+      data-selected={!!selected}
+      className={`card-interactive group flex flex-col text-sm ${done && !selected ? "border-emerald-800/70" : ""}`}
     >
       {onToggleSelect && (
         // In a selection mode, clicking anywhere on the card toggles it, as in FRCBOM.
@@ -56,18 +56,12 @@ export function PartCard({
           onClick={onToggleSelect}
           aria-pressed={selected}
           aria-label={selected ? "Deselect part" : "Select part"}
-          className="absolute inset-0 z-20 flex items-start justify-end p-3"
+          className="absolute inset-0 z-20 flex cursor-pointer items-start justify-end p-2"
         >
-          <span
-            className={`flex h-5 w-5 items-center justify-center rounded border text-xs ${
-              selected ? "border-accent bg-accent text-white" : "border-slate-500 bg-surface"
-            }`}
-          >
-            {selected ? "✓" : ""}
-          </span>
+          <CheckBadge checked={!!selected} />
         </button>
       )}
-      <div className="flex h-28 items-center justify-center bg-well text-xs text-slate-500">
+      <div className="thumb-well flex h-28 items-center justify-center text-xs text-slate-500">
         {part.thumbUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
           <img src={part.thumbUrl} alt="" loading="lazy" className="h-full w-full object-contain" />

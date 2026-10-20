@@ -17,6 +17,19 @@
   --color-line: #262a30;
   --color-line-strong: #353a42;
   --color-well: #eef0f3;
+  --ease-snap: cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-pop: pop 180ms var(--ease-snap) both;
+
+  @keyframes pop {
+    from {
+      transform: scale(0.75);
+      opacity: 0;
+    }
+    to {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
 }
 
 :root {
@@ -26,20 +39,73 @@
 body {
   background: var(--color-ink);
   color: var(--color-slate-100);
+  /* Counts, percentages and quantities never shift width when they change. */
+  font-variant-numeric: tabular-nums;
+}
+
+:root {
+  --orbit-accent: var(--color-accent);
+}
+
+/* Interaction rules: everything clickable answers hover in 150ms and presses down on click. */
+@utility press {
+  transition-property: color, background-color, border-color, box-shadow, transform, opacity;
+  transition-duration: 150ms;
+  transition-timing-function: var(--ease-snap);
+  &:active:not(:disabled) {
+    transform: scale(0.96);
+  }
+}
+
+@utility skeleton {
+  border-radius: var(--radius-lg);
+  background: rgb(255 255 255 / 0.04);
+  animation: var(--animate-pulse);
 }
 
 @layer components {
+  /* Clickable cards and boxes. Add data-selected to lock one in (FAB selection, active system). */
+  .card-interactive {
+    @apply relative overflow-hidden rounded-lg border border-white/[0.08] bg-zinc-900/70 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)];
+    transition-property: background-color, border-color, box-shadow, transform;
+    transition-duration: 150ms;
+    transition-timing-function: var(--ease-snap);
+  }
+  .card-interactive:hover {
+    @apply border-white/25 bg-zinc-800/80 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08),0_8px_24px_-12px_rgba(0,0,0,0.8)];
+  }
+  .card-interactive:active {
+    transform: scale(0.98);
+  }
+  .card-interactive[data-selected="true"] {
+    @apply border-transparent bg-accent/10 ring-2 ring-accent;
+  }
+  /* The light studio backdrop behind CAD thumbnails; the image zooms a little on card hover. */
+  .thumb-well {
+    @apply overflow-hidden bg-gradient-to-b from-white to-well;
+  }
+  .thumb-well img {
+    transition: transform 200ms var(--ease-snap);
+  }
+  .group:hover .thumb-well img {
+    transform: scale(1.03);
+  }
+  /* Frosted buttons floating over a thumbnail (Download, Locate). */
+  .overlay-btn {
+    @apply press flex h-9 w-9 items-center justify-center rounded-md border border-white/15 bg-black/60 text-white/80 backdrop-blur-md hover:border-white hover:bg-white hover:text-black;
+  }
+
   .panel {
     @apply rounded-lg border border-line bg-surface;
   }
   .btn {
-    @apply inline-flex items-center gap-1.5 rounded-md border border-line-strong bg-raised px-3 py-1.5 text-sm text-slate-100 transition-colors duration-75 hover:bg-line disabled:opacity-50;
+    @apply inline-flex items-center gap-1.5 rounded-md border border-line-strong bg-raised px-3 py-1.5 text-sm text-slate-100 press hover:border-slate-500 hover:bg-line disabled:opacity-50;
   }
   .btn-primary {
-    @apply inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white transition-colors duration-75 hover:bg-accent-hover disabled:opacity-50;
+    @apply inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white press hover:bg-accent-hover disabled:opacity-50;
   }
   .btn-danger {
-    @apply inline-flex items-center gap-1.5 rounded-md border border-rose-900 bg-rose-950 px-3 py-1.5 text-sm text-rose-200 hover:bg-rose-900 disabled:opacity-50;
+    @apply inline-flex items-center gap-1.5 rounded-md border border-rose-900 bg-rose-950 px-3 py-1.5 text-sm text-rose-200 press hover:bg-rose-900 disabled:opacity-50;
   }
   .input {
     @apply w-full rounded-md border border-line-strong bg-ink px-3 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-accent focus:outline-none;

@@ -40,7 +40,7 @@ export function Popover({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className={`inline-flex items-center gap-1 rounded text-left hover:text-accent-soft ${triggerClassName}`}
+        className={`press inline-flex items-center gap-1 rounded text-left hover:text-accent-soft ${triggerClassName}`}
       >
         {trigger}
         <span className="text-[10px] text-slate-500">▾</span>

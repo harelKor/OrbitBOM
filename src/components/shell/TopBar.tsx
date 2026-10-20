@@ -68,7 +68,7 @@ export function TopBar({ onMenu, onRobots }: { onMenu: () => void; onRobots: () 
             {active && (
               <button
                 onClick={() => setFilters({ q: "", material: "", process: "", date: "" } satisfies Filters)}
-                className="px-1.5 text-xs text-slate-400 hover:text-white"
+                className="press px-1.5 text-xs text-slate-400 hover:text-white"
               >
                 Clear
               </button>
@@ -101,8 +101,8 @@ function Pill({
 }) {
   return (
     <Popover
-      triggerClassName={`rounded-full border px-2.5 py-1 text-xs transition-colors duration-75 ${
-        value ? "border-accent bg-accent text-white hover:text-white" : "border-line-strong text-slate-300 hover:border-slate-500"
+      triggerClassName={`rounded-full border px-3 py-1 text-xs font-medium ${
+        value ? "border-accent bg-accent text-white hover:text-white" : "border-line-strong text-slate-300 hover:border-slate-400 hover:bg-raised hover:text-white"
       }`}
       trigger={value ? (shown ?? value) : label}
     >

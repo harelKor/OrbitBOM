@@ -1,5 +1,6 @@
 "use client";
 
+import { Checkbox } from "@/components/ui/Checkbox";
 import { useState, useTransition } from "react";
 import { Dialog } from "@/components/Dialog";
 import {
@@ -103,10 +104,9 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
               ))}
             </div>
             {map.spec !== undefined && (
-              <label className="flex items-center gap-2 text-slate-300">
-                <input type="checkbox" checked={specInName} onChange={(e) => setSpecInName(e.target.checked)} />
-                Add Size / spec to the item name
-              </label>
+              <Checkbox checked={specInName} onChange={setSpecInName}>
+                <span className="text-slate-300">Add Size / spec to the item name</span>
+              </Checkbox>
             )}
 
             <div className="max-h-56 overflow-auto rounded-lg border border-line">

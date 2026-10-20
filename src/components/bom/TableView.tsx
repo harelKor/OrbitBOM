@@ -13,6 +13,7 @@ import {
   TypeField,
   type SaveFn,
 } from "./fields";
+import { Checkbox } from "@/components/ui/Checkbox";
 import { FilesField } from "./FilesField";
 import { Thumb } from "./Thumb";
 import { partTitle, type CardPart } from "./types";
@@ -69,11 +70,10 @@ export function TableView({
               <tr key={p.id} className={done ? "bg-emerald-950/30" : ""}>
                 {selection && (
                   <td className="px-2 py-1.5">
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={selection.ids.has(p.id)}
                       onChange={() => selection.toggle(p.id)}
-                      aria-label={`Select ${partTitle(p)}`}
+                      label={`Select ${partTitle(p)}`}
                     />
                   </td>
                 )}
