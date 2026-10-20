@@ -2,9 +2,17 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { eq, inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { planPartUpdate, type PartChanges } from "./changes";
+import { planPartUpdate, type PartChanges, type Plan } from "./changes";
 
 const { parts, partHistory } = schema;
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+type Ctx = {
+  memberId: string | null;
+  via: "ui" | "sync" | "mcp";
+  // Runs in the same transaction for each part that changed (To Review records its rows here).
+  afterEach?: (tx: Tx, row: typeof parts.$inferSelect, plan: Plan) => Promise<void>;
+};
 
 // Applies the same changes to each part in one transaction and records every field change in
 // part_history under one batch id, so the batch can be undone together. Returns the batch id
@@ -12,7 +20,7 @@ const { parts, partHistory } = schema;
 export function applyPartChanges(
   partIds: string[],
   changes: PartChanges,
-  ctx: { memberId: string | null; via: "ui" | "sync" | "mcp" },
+  ctx: Ctx,
 ) {
   return applyEachPartChanges(
     partIds.map((id) => ({ id, changes })),
@@ -23,7 +31,7 @@ export function applyPartChanges(
 // The same, with different changes per part (a merged row's edit fanned out to its members).
 export async function applyEachPartChanges(
   edits: { id: string; changes: PartChanges }[],
-  ctx: { memberId: string | null; via: "ui" | "sync" | "mcp" },
+  ctx: Ctx,
 ): Promise<{ batchId: string; changed: number }> {
   const batchId = randomUUID();
   if (!edits.length) return { batchId, changed: 0 };
@@ -33,7 +41,8 @@ export async function applyEachPartChanges(
     const rows = await tx.select().from(parts).where(inArray(parts.id, [...byId.keys()])).for("update");
     let changed = 0;
     for (const row of rows) {
-      const { set, history } = planPartUpdate(row, byId.get(row.id)!, ctx.via);
+      const plan = planPartUpdate(row, byId.get(row.id)!, ctx.via);
+      const { set, history } = plan;
       if (!history.length) continue;
       changed++;
       await tx
@@ -51,6 +60,7 @@ export async function applyEachPartChanges(
           batchId,
         })),
       );
+      await ctx.afterEach?.(tx, row, plan);
     }
     return { batchId, changed };
   });
