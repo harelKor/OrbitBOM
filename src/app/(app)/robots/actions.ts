@@ -7,6 +7,7 @@ import { z } from "zod";
 import { db, schema } from "@/db";
 import { requireAdmin, requireMember } from "@/lib/auth";
 import { deleteObjects, fileKeysFor } from "@/lib/storage/cleanup";
+import { deleteRobotModel } from "@/lib/model/build";
 import { onshapeUrl, parseOnshapeUrl } from "@/lib/onshape/url";
 
 export type FormState = { error?: string } | undefined;
@@ -47,13 +48,20 @@ const robotDetails = z.object({
   deadline: optionalText
     .refine((v) => v === null || /^\d{4}-\d{2}-\d{2}$/.test(v), "Invalid date")
     .optional(),
+  mainAssemblyUrl: optionalOnshapeUrl.optional(),
 });
 
-export async function updateRobot(robotId: string, formData: FormData) {
+export async function updateRobot(robotId: string, formData: FormData): Promise<FormState> {
   await requireMember();
-  const data = robotDetails.parse(Object.fromEntries(formData));
-  await db.update(schema.robots).set(data).where(eq(schema.robots.id, robotId));
+  const parsed = robotDetails.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const { mainAssemblyUrl, ...data } = parsed.data;
+  await db
+    .update(schema.robots)
+    .set({ ...data, ...(mainAssemblyUrl !== undefined ? { mainAssemblyUrl: normaliseUrl(mainAssemblyUrl) } : {}) })
+    .where(eq(schema.robots.id, robotId));
   revalidatePath("/", "layout");
+  return undefined;
 }
 
 export async function setRobotArchived(robotId: string, archived: boolean) {
@@ -66,6 +74,7 @@ export async function deleteRobot(robotId: string) {
   await requireAdmin();
   const keys = await fileKeysFor({ robotId });
   await db.delete(schema.robots).where(eq(schema.robots.id, robotId));
+  await deleteRobotModel(robotId);
   await deleteObjects(keys);
   revalidatePath("/", "layout");
   redirect("/");
