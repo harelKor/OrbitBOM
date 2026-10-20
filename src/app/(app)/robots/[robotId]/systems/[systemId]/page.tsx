@@ -10,7 +10,7 @@ import { listInventoryNames } from "@/lib/data/inventory";
 import { listSystemMerges, listSystemParts } from "@/lib/data/parts";
 import { getSystem } from "@/lib/data/robots";
 import { isEditMode } from "@/lib/mode";
-import { renameSystem } from "../../../actions";
+import { SystemSettings } from "./SystemSettings";
 
 // Update BOM fetches the BOM and new thumbnails in one request.
 export const maxDuration = 60;
@@ -39,19 +39,10 @@ export default async function SystemPage({
           <Link href={`/robots/${robot.id}`} className="text-sm text-subtle hover:text-fg">
             {robot.name}
           </Link>
-          {edit ? (
-            <form action={renameSystem.bind(null, robot.id, system.id)} className="flex items-center gap-2">
-              <input
-                name="name"
-                defaultValue={system.name}
-                aria-label="System name"
-                className="-ml-1 min-w-0 rounded-md border border-transparent bg-transparent px-1 display text-3xl text-accent hover:border-line-strong focus:border-accent focus:outline-none"
-              />
-              <button className="btn">Save</button>
-            </form>
-          ) : (
-            <h1 className="truncate display text-3xl text-accent">{system.name}</h1>
-          )}
+          <div className="flex items-center gap-2">
+            <h1 className="min-w-0 truncate display text-3xl text-accent">{system.name}</h1>
+            {edit && <SystemSettings robotId={robot.id} system={system} isAdmin={member.isAdmin} />}
+          </div>
           {system.assemblyUrl && (
             <a href={system.assemblyUrl} target="_blank" rel="noreferrer" className="text-sm text-subtle hover:text-fg">
               Open in Onshape ↗

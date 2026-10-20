@@ -10,7 +10,7 @@ import { deleteObjects, fileKeysFor } from "@/lib/storage/cleanup";
 import { deleteRobotModel } from "@/lib/model/build";
 import { onshapeUrl, parseOnshapeUrl } from "@/lib/onshape/url";
 
-export type FormState = { error?: string } | undefined;
+export type FormState = { error?: string; saved?: boolean } | undefined;
 
 const optionalText = z
   .string()
@@ -30,6 +30,7 @@ const robotForm = z.object({
   mainAssemblyUrl: optionalOnshapeUrl,
 });
 
+
 export async function createRobot(_: FormState, formData: FormData): Promise<FormState> {
   await requireMember();
   const parsed = robotForm.safeParse(Object.fromEntries(formData));
@@ -43,7 +44,8 @@ export async function createRobot(_: FormState, formData: FormData): Promise<For
 }
 
 const robotDetails = z.object({
-  name: z.string().trim().min(1).optional(),
+  name: z.string().trim().min(1, "Robot name is required.").optional(),
+  year: z.coerce.number().int().min(2000, "Enter a competition year.").max(2100).optional(),
   code: optionalText.optional(),
   deadline: optionalText
     .refine((v) => v === null || /^\d{4}-\d{2}-\d{2}$/.test(v), "Invalid date")
@@ -61,7 +63,7 @@ export async function updateRobot(robotId: string, formData: FormData): Promise<
     .set({ ...data, ...(mainAssemblyUrl !== undefined ? { mainAssemblyUrl: normaliseUrl(mainAssemblyUrl) } : {}) })
     .where(eq(schema.robots.id, robotId));
   revalidatePath("/", "layout");
-  return undefined;
+  return { saved: true };
 }
 
 export async function setRobotArchived(robotId: string, archived: boolean) {
@@ -106,11 +108,23 @@ export async function createSystem(
   redirect(`/robots/${robotId}/systems/${system.id}`);
 }
 
-export async function renameSystem(robotId: string, systemId: string, formData: FormData) {
+export async function updateSystem(systemId: string, _: FormState, formData: FormData): Promise<FormState> {
   await requireMember();
-  const name = z.string().trim().min(1).parse(formData.get("name"));
-  await db.update(schema.systems).set({ name }).where(eq(schema.systems.id, systemId));
+  const parsed = systemForm.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const assemblyUrl = normaliseUrl(parsed.data.assemblyUrl);
+  const [current] = await db.select({ assemblyUrl: schema.systems.assemblyUrl }).from(schema.systems).where(eq(schema.systems.id, systemId));
+  await db
+    .update(schema.systems)
+    .set({
+      name: parsed.data.name,
+      assemblyUrl,
+      // A new assembly is a new document: the next background check must not skip it.
+      ...(current?.assemblyUrl !== assemblyUrl ? { docMicroversions: {} } : {}),
+    })
+    .where(eq(schema.systems.id, systemId));
   revalidatePath("/", "layout");
+  return { saved: true };
 }
 
 export async function deleteSystem(robotId: string, systemId: string) {
@@ -119,4 +133,5 @@ export async function deleteSystem(robotId: string, systemId: string) {
   await db.delete(schema.systems).where(eq(schema.systems.id, systemId));
   await deleteObjects(keys);
   revalidatePath("/", "layout");
+  redirect(`/robots/${robotId}`);
 }
