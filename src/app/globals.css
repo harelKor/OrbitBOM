@@ -10,6 +10,7 @@
    for the top bar, active states and primary buttons, near-black text, Futura-style type. */
 @theme {
   --color-accent: #0000cc;
+  --color-bar: #0000cc;
   --color-accent-hover: #1f1fe0;
   --color-accent-soft: #0000cc;
   --color-gold: #0000cc;
@@ -19,6 +20,7 @@
   --color-line: #dcdfe6;
   --color-line-strong: #c3c8d2;
   --color-well: #ffffff;
+  --color-well-2: #f4f5f8;
   --color-fg: #111318;
   --color-fg-2: #2c3039;
   --color-muted: #4b5260;
@@ -41,6 +43,52 @@
 
 :root {
   color-scheme: light;
+}
+
+/* Dark mode: follows the device unless the theme button picked one (data-theme on <html>). */
+@layer base {
+:root[data-theme="dark"] {
+  --color-accent: #4d6bff;
+  --color-bar: #0d1aa6;
+  --color-accent-hover: #6f87ff;
+  --color-accent-soft: #4d6bff;
+  --color-gold: #4d6bff;
+  --color-ink: #0b0d14;
+  --color-surface: #151925;
+  --color-raised: #1d2230;
+  --color-line: #272d3d;
+  --color-line-strong: #353c50;
+  --color-well: #dfe3ec;
+  --color-well-2: #c9cfdc;
+  --color-fg: #eef0f6;
+  --color-fg-2: #cfd3de;
+  --color-muted: #a3a9b8;
+  --color-subtle: #8a91a2;
+  --color-faint: #5d6476;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+  --color-accent: #4d6bff;
+  --color-bar: #0d1aa6;
+  --color-accent-hover: #6f87ff;
+  --color-accent-soft: #4d6bff;
+  --color-gold: #4d6bff;
+  --color-ink: #0b0d14;
+  --color-surface: #151925;
+  --color-raised: #1d2230;
+  --color-line: #272d3d;
+  --color-line-strong: #353c50;
+  --color-well: #dfe3ec;
+  --color-well-2: #c9cfdc;
+  --color-fg: #eef0f6;
+  --color-fg-2: #cfd3de;
+  --color-muted: #a3a9b8;
+  --color-subtle: #8a91a2;
+  --color-faint: #5d6476;
+  color-scheme: dark;
+  }
+}
 }
 
 body {
@@ -87,9 +135,11 @@ body {
 /* The display face for big numbers and headings, like the site's "1690". */
 @utility display {
   font-family: var(--font-display);
-  font-weight: 800;
+  font-weight: 900;
   font-style: italic;
   letter-spacing: -0.01em;
+  /* The 1690 lettering: heavy italic with a soft gray drop shadow. */
+  text-shadow: 0.05em 0.05em 0 rgb(0 0 0 / 0.22);
 }
 
 @layer components {
@@ -111,7 +161,7 @@ body {
   }
   /* The light studio backdrop behind CAD thumbnails; the image zooms a little on card hover. */
   .thumb-well {
-    @apply overflow-hidden bg-gradient-to-b from-white to-[#f4f5f8] shadow-[inset_0_-1px_0_0_var(--color-line)];
+    @apply overflow-hidden bg-gradient-to-b from-well to-well-2 shadow-[inset_0_-1px_0_0_var(--color-line)];
   }
   .thumb-well img {
     transition: transform 200ms var(--ease-snap);
@@ -121,7 +171,7 @@ body {
   }
   /* Frosted buttons floating over a thumbnail (Download, Locate). */
   .overlay-btn {
-    @apply press flex h-9 w-9 items-center justify-center rounded-md border border-line bg-white/90 text-fg-2 shadow-sm backdrop-blur-md hover:border-accent hover:bg-accent hover:text-white;
+    @apply press flex h-9 w-9 items-center justify-center rounded-md border border-line bg-surface/90 text-fg-2 shadow-sm backdrop-blur-md hover:border-accent hover:bg-accent hover:text-white;
   }
 
   .panel {
@@ -137,7 +187,7 @@ body {
     @apply inline-flex items-center gap-1.5 rounded-md border border-rose-300 bg-rose-50 px-3 py-1.5 text-sm font-medium text-rose-700 press hover:bg-rose-100 disabled:opacity-50;
   }
   .input {
-    @apply w-full rounded-md border border-line-strong bg-white px-3 py-1.5 text-sm text-fg placeholder:text-subtle focus:border-accent focus:outline-none;
+    @apply w-full rounded-md border border-line-strong bg-surface px-3 py-1.5 text-sm text-fg placeholder:text-subtle focus:border-accent focus:outline-none;
   }
   .label {
     @apply mb-1 block text-xs font-medium text-muted;

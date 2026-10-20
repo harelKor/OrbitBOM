@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { MACHINES } from "@/config/machines";
@@ -27,7 +28,8 @@ export function LeftNav({
 
   return (
     <div className="flex h-full flex-col">
-      <Link href="/" className="flex min-h-14 items-center gap-2.5 bg-accent px-4 text-white" aria-label="OrbitBOM home">
+      <Link href="/" className="flex min-h-14 items-center gap-2.5 bg-bar px-4 text-white" aria-label="OrbitBOM home">
+        <Image src="/orbit-logo.png" alt="" width={34} height={34} className="h-[34px] w-[34px] rounded-md" priority />
         <span className="display text-[26px] leading-none">1690</span>
         <span className="leading-tight">
           <span className="block text-[13px] font-semibold tracking-[0.12em]">ORBIT</span>

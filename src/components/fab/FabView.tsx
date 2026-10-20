@@ -239,7 +239,7 @@ function BatchCard({
           className={`thumb-well grid grid-cols-2 grid-rows-2 gap-px overflow-hidden ${open ? "aspect-[4/3] w-40 rounded-lg" : "aspect-[4/3] w-full"}`}
         >
           {members.slice(0, 4).map((p) => (
-            <span key={p.id} className="flex items-center justify-center bg-white">
+            <span key={p.id} className="flex items-center justify-center bg-well">
               {p.thumbUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links
                 <img src={p.thumbUrl} alt="" loading="lazy" className="h-full w-full object-contain p-1.5" />

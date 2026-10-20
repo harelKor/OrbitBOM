@@ -64,20 +64,20 @@ export function PartCard({
           <span className="text-xs text-muted">{part.isManual ? "Manual part" : "No thumbnail yet"}</span>
         )}
         <div className="absolute top-2 left-2 flex items-center gap-1">
-          <span className="rounded-full bg-fg/85 px-2 py-0.5 text-[11px] font-bold text-white tabular-nums">
+          <span className="rounded-full bg-[#111318]/85 px-2 py-0.5 text-[11px] font-bold text-white tabular-nums">
             {edit ? <QuantityField part={part} save={save} /> : `×${part.quantity}`}
           </span>
           {edit ? (
-            <span className="rounded bg-white/95 shadow-sm">
+            <span className="rounded bg-surface/95 shadow-sm">
               <TypeField part={part} save={save} />
             </span>
           ) : (
-            <span className="rounded-full bg-white/90 px-1.5 py-0.5 text-[10px] font-semibold text-fg-2 shadow-sm">
+            <span className="rounded-full bg-surface/90 px-1.5 py-0.5 text-[10px] font-semibold text-fg-2 shadow-sm">
               {part.classification === "cots" ? "COTS" : "In-house"}
             </span>
           )}
           {part.memberIds && (
-            <span className="rounded-full bg-white/90 px-1.5 py-0.5 text-[10px] font-semibold text-fg-2 shadow-sm" title="Merged parts">
+            <span className="rounded-full bg-surface/90 px-1.5 py-0.5 text-[10px] font-semibold text-fg-2 shadow-sm" title="Merged parts">
               ⧉ {part.memberIds.length}
             </span>
           )}
