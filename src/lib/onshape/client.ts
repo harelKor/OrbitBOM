@@ -119,20 +119,25 @@ export function onshapeClient(memberId: string, baseUrl: string): OnshapeClient 
     if (new URL(url).origin !== new URL(baseUrl).origin) throw new OnshapeError("Unexpected Onshape link.");
     await countCall(memberId);
     client.calls++;
-    const res = await fetch(url, {
-      ...init,
-      headers: {
-        Accept: accept,
-        ...(init.body ? { "Content-Type": "application/json" } : {}),
-        Authorization: `Bearer ${await accessToken(memberId)}`,
-        ...init.headers,
-      },
-    });
-    const name = url.replace(/^https:\/\/[^/]+/, "").split("?")[0];
-    if (res.status === 401) {
-      await disconnect(memberId);
-      throw new NotConnectedError();
+    const headers = {
+      Accept: accept,
+      ...(init.body ? { "Content-Type": "application/json" } : {}),
+      Authorization: `Bearer ${await accessToken(memberId)}`,
+      ...init.headers,
+    };
+    // Exports and thumbnails answer with a redirect, sometimes to another Onshape host. fetch drops
+    // the token when following a redirect to another host, so follow Onshape redirects by hand.
+    let res = await fetch(url, { ...init, headers, redirect: "manual" });
+    for (let hops = 0; hops < 3 && res.status >= 300 && res.status < 400; hops++) {
+      const next = new URL(res.headers.get("location") ?? "", url);
+      if (next.protocol !== "https:" || !/(^|\.)onshape\.com$/i.test(next.hostname)) {
+        throw new OnshapeError("Unexpected Onshape link.");
+      }
+      res = await fetch(next, { headers, redirect: "manual" });
     }
+    const name = url.replace(/^https:\/\/[^/]+/, "").split("?")[0];
+    // A rejected request is not a lost connection: only a failed token refresh disconnects.
+    if (res.status === 401) throw new OnshapeError(`Onshape rejected ${name} (401). Try again, or reconnect Onshape on your profile.`, 401);
     if (res.status === 403 || res.status === 404) {
       throw new OnshapeError("Onshape refused access to this document. Check that your account can open it.", res.status);
     }
