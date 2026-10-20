@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { PART_FILE_TYPES } from "@/config/fileTypes";
 import { deleteFile, finishUpload, startUpload, type FileOwner } from "@/app/(app)/files-actions";
 import { useBom } from "./BomContext";
+import { useEditMode } from "@/components/shell/ModeContext";
 import { Popover } from "./Popover";
 import { ownerPartId, type CardPart } from "./types";
 
@@ -29,6 +30,7 @@ export const FILE_COLORS = COLORS;
 
 export function FilesField({ part }: { part: CardPart }) {
   const { isAdmin } = useBom();
+  const edit = useEditMode();
   const byType = new Map(part.files.map((f) => [f.type, f]));
   const has = (t: string) => byType.has(t) || (t === "drawing" && !!part.drawingUrl);
 
@@ -48,7 +50,7 @@ export function FilesField({ part }: { part: CardPart }) {
         )
       }
     >
-      {() => <FileList owner={{ kind: "part", id: ownerPartId(part) }} files={part.files} isAdmin={isAdmin} drawingUrl={part.drawingUrl} />}
+      {() => <FileList owner={{ kind: "part", id: ownerPartId(part) }} files={part.files} isAdmin={isAdmin && edit} drawingUrl={part.drawingUrl} />}
     </Popover>
   );
 }
@@ -107,7 +109,7 @@ function FileRow({
   }
 
   return (
-    <li className="rounded-md border border-slate-800 p-1.5">
+    <li className="rounded-md border border-line p-1.5">
       <div className="flex items-center gap-2">
         <span className={`w-16 shrink-0 font-medium ${COLORS[type.id].split(" ")[0]}`}>{type.label}</span>
         <span className="min-w-0 flex-1 truncate">
@@ -123,7 +125,7 @@ function FileRow({
             <span className="text-slate-500">None</span>
           )}
         </span>
-        <button type="button" disabled={busy} onClick={() => input.current?.click()} className="text-indigo-300 hover:text-indigo-200 disabled:opacity-50">
+        <button type="button" disabled={busy} onClick={() => input.current?.click()} className="text-accent-soft hover:text-accent-soft disabled:opacity-50">
           {busy ? "…" : file ? "Replace" : "Upload"}
         </button>
         {file && (

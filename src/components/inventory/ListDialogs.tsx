@@ -31,7 +31,7 @@ export function GroupsDialog({ open, onClose, lookups: { groups, locations } }: 
 
   return (
     <Dialog open={open} onClose={onClose} title="Groups" wide>
-      <ul className="mb-4 max-h-72 divide-y divide-slate-800 overflow-y-auto text-sm">
+      <ul className="mb-4 max-h-72 divide-y divide-line overflow-y-auto text-sm">
         {flattenTree(groups).map(({ group, depth }) => (
           <li key={group.id} className="flex items-center gap-2 py-1.5" style={{ paddingLeft: `${depth}rem` }}>
             <span className="flex-1 truncate">{group.name}</span>
@@ -42,7 +42,7 @@ export function GroupsDialog({ open, onClose, lookups: { groups, locations } }: 
               <span className="text-xs text-slate-500">📍 {locations.find((l) => l.id === group.locationId)?.name}</span>
             )}
             <button
-              className="text-xs text-indigo-300 hover:text-indigo-200"
+              className="text-xs text-accent-soft hover:text-accent-soft"
               onClick={() => {
                 setEditing(group);
                 setFormKey((k) => k + 1);
@@ -66,7 +66,7 @@ export function GroupsDialog({ open, onClose, lookups: { groups, locations } }: 
 
       <form
         key={formKey}
-        className="space-y-3 rounded-lg border border-slate-800 p-3"
+        className="space-y-3 rounded-lg border border-line p-3"
         action={(formData) =>
           startTransition(async () => {
             const result = await saveGroup(editing?.id ?? null, formData);
@@ -129,7 +129,7 @@ export function PartTypesDialog({ open, onClose }: DialogProps) {
         Part types add detail fields to an item and can build its name. They live in the code
         (<code className="text-xs">src/config/partTypes.ts</code>); ask Claude to change them.
       </p>
-      <ul className="max-h-[60vh] divide-y divide-slate-800 overflow-y-auto text-sm">
+      <ul className="max-h-[60vh] divide-y divide-line overflow-y-auto text-sm">
         {PART_TYPES.map((t) => (
           <li key={t.id} className="py-2">
             <div className="font-medium">{t.name}</div>
@@ -165,7 +165,7 @@ export function ConditionsDialog({ open, onClose, conditions }: DialogProps & { 
   const [pending, startTransition] = useTransition();
   return (
     <Dialog open={open} onClose={onClose} title="Conditions">
-      <ul className="mb-4 divide-y divide-slate-800 text-sm">
+      <ul className="mb-4 divide-y divide-line text-sm">
         {conditions.map((c) => (
           <li key={c.id} className="flex items-center gap-2 py-1.5">
             <span className="h-3 w-3 rounded-full" style={{ background: c.color }} />
@@ -212,7 +212,7 @@ export function LocationsDialog({ open, onClose, locations }: DialogProps & { lo
     <Dialog open={open} onClose={onClose} title="Locations">
       <ul className="mb-4 grid grid-cols-3 gap-2 text-sm">
         {locations.map((l) => (
-          <li key={l.id} className="flex items-center justify-between rounded border border-slate-800 px-2 py-1">
+          <li key={l.id} className="flex items-center justify-between rounded border border-line px-2 py-1">
             <span>{l.name}</span>
             <button
               className="text-xs text-rose-400 hover:text-rose-200"

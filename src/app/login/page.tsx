@@ -12,7 +12,7 @@ export default async function LoginPage({
   if (await getUser()) redirect(safeNext(next));
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-950 p-4">
+    <main className="flex min-h-screen items-center justify-center bg-ink p-4">
       <div className="panel w-full max-w-sm p-8">
         <h1 className="text-2xl font-semibold text-slate-100">OrbitBOM</h1>
         <p className="mt-1 text-sm text-slate-400">Team 1690 bill of materials and inventory</p>

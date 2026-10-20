@@ -5,6 +5,7 @@ import { getPartType } from "@/config/partTypes";
 import { flattenTree, groupPath, subtreeIds } from "@/lib/inventory/groups";
 import { adjustStock, deleteItem } from "@/app/(app)/inventory/actions";
 import { textOn } from "@/components/bom/options";
+import { EditOnly } from "@/components/shell/ModeContext";
 import { ConditionsDialog, GroupsDialog, LocationsDialog, PartTypesDialog } from "./ListDialogs";
 import { ImportDialog } from "./ImportDialog";
 import { ItemDialog } from "./ItemDialog";
@@ -68,7 +69,7 @@ export function InventoryView({ items, targets, ...lookups }: Lookups & { items:
       onClick={() => setGroup(key)}
       style={{ paddingLeft: `${0.5 + depth * 0.9}rem` }}
       className={`flex w-full items-center justify-between gap-2 rounded-md py-1 pr-2 text-left text-sm ${
-        group === key ? "bg-indigo-500/20 text-indigo-200" : "text-slate-300 hover:bg-slate-800"
+        group === key ? "bg-accent/20 text-accent-soft" : "text-slate-300 hover:bg-raised"
       }`}
     >
       <span className="truncate">{label}</span>
@@ -78,6 +79,7 @@ export function InventoryView({ items, targets, ...lookups }: Lookups & { items:
 
   return (
     <div className="space-y-4">
+      <EditOnly>
       <div className="panel flex flex-wrap items-center gap-2 p-3">
         <button className="btn" onClick={() => setOpen({ kind: "groups" })}>
           Groups
@@ -98,6 +100,7 @@ export function InventoryView({ items, targets, ...lookups }: Lookups & { items:
           + Add inventory item
         </button>
       </div>
+      </EditOnly>
 
       <div className="flex flex-wrap gap-2">
         <input
@@ -214,21 +217,21 @@ function ItemCard({
       <div className="min-w-0">
         <div className="font-semibold break-words">{item.name}</div>
         <div className="mt-1 flex flex-wrap gap-1.5 text-[11px]">
-          {group && <span className="rounded border border-slate-700 px-1.5 text-slate-400">▤ {group}</span>}
-          {type && <span className="rounded border border-slate-700 px-1.5 text-slate-400">{type.name}</span>}
+          {group && <span className="rounded border border-line-strong px-1.5 text-slate-400">▤ {group}</span>}
+          {type && <span className="rounded border border-line-strong px-1.5 text-slate-400">{type.name}</span>}
           {condition && (
             <span className="rounded px-1.5" style={{ background: condition.color, color: textOn(condition.color) }}>
               {condition.label}
             </span>
           )}
-          {location && <span className="rounded bg-slate-800 px-1.5 text-slate-300">📍 {location}</span>}
-          {item.material && <span className="rounded bg-slate-800 px-1.5 text-slate-300">{item.material}</span>}
+          {location && <span className="rounded bg-raised px-1.5 text-slate-300">📍 {location}</span>}
+          {item.material && <span className="rounded bg-raised px-1.5 text-slate-300">{item.material}</span>}
         </div>
         {spec && <div className="mt-1 text-xs text-slate-400">{spec}</div>}
         {(item.vendorName || item.vendorUrl || item.price != null) && (
           <div className="mt-1 text-xs text-slate-400">
             {item.vendorUrl ? (
-              <a href={item.vendorUrl} target="_blank" rel="noreferrer" className="text-indigo-300 hover:text-indigo-200">
+              <a href={item.vendorUrl} target="_blank" rel="noreferrer" className="text-accent-soft hover:text-accent-soft">
                 {item.vendorName || hostOf(item.vendorUrl)} ↗
               </a>
             ) : (
@@ -254,7 +257,7 @@ function ItemCard({
         )}
       </div>
 
-      <div className="mt-auto flex flex-wrap items-center gap-3 border-t border-slate-800 pt-2 text-sm">
+      <div className="mt-auto flex flex-wrap items-center gap-3 border-t border-line pt-2 text-sm">
         <span className="text-slate-400">
           In stock <span className="font-semibold text-slate-100">{item.inStock}</span>
         </span>
@@ -270,6 +273,7 @@ function ItemCard({
           </button>
         </div>
       </div>
+      <EditOnly>
       <div className="flex gap-2 text-sm">
         <button className="btn" onClick={onToBom}>
           To BOM
@@ -290,6 +294,7 @@ function ItemCard({
           </button>
         </form>
       </div>
+      </EditOnly>
     </div>
   );
 }

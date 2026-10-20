@@ -34,7 +34,7 @@ export default async function MainPage({ params }: { params: Promise<{ robotId: 
         </div>
         <StatusBar breakdown={breakdown} />
       </section>
-      <ul className="panel divide-y divide-slate-800 px-5">
+      <ul className="panel divide-y divide-line px-5">
         {systems.map((s) => (
           <li key={s.id} className="flex items-center gap-3 py-3">
             <span className="flex-1">{s.name}</span>

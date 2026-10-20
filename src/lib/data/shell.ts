@@ -1,0 +1,81 @@
+import "server-only";
+import { and, asc, desc, isNotNull, isNull } from "drizzle-orm";
+import { db, schema } from "@/db";
+import { thumbKey } from "@/lib/onshape/thumbnails";
+import { imageUrl } from "@/lib/storage/r2";
+import { statusBreakdown } from "@/lib/stats";
+
+const { robots, systems, parts } = schema;
+
+export type ShellSystem = { id: string; name: string; percent: number; total: number; thumbUrl: string | null };
+export type ShellRobot = {
+  id: string;
+  name: string;
+  year: number;
+  archived: boolean;
+  percent: number;
+  thumbUrl: string | null;
+  systems: ShellSystem[];
+};
+
+// The right sidebar: every robot with its systems, completion and a picture. A system's
+// picture is its stored thumbnail or, until one exists, one of its part thumbnails, so this
+// never calls Onshape.
+export async function listShellRobots(): Promise<ShellRobot[]> {
+  const [robotRows, systemRows, statusRows, partThumbs] = await Promise.all([
+    db.select().from(robots).orderBy(desc(robots.year), asc(robots.name)),
+    db.select().from(systems).orderBy(asc(systems.name)),
+    db
+      .select({
+        systemId: parts.systemId,
+        classification: parts.classification,
+        quantity: parts.quantity,
+        designState: parts.designState,
+        preProcess: parts.preProcess,
+        process1: parts.process1,
+        process2: parts.process2,
+        donePreprocess: parts.donePreprocess,
+        doneProcess1: parts.doneProcess1,
+        doneProcess2: parts.doneProcess2,
+      })
+      .from(parts)
+      .where(isNull(parts.removedFromCadAt)),
+    db
+      .selectDistinctOn([parts.systemId], { systemId: parts.systemId, id: parts.id, rev: parts.thumbnailRev })
+      .from(parts)
+      .where(and(isNotNull(parts.thumbnailRev), isNull(parts.removedFromCadAt)))
+      .orderBy(parts.systemId, desc(parts.quantity), asc(parts.id)),
+  ]);
+  const partThumb = new Map(partThumbs.map((t) => [t.systemId, thumbKey(t.id, t.rev!)]));
+
+  const shellSystems = await Promise.all(
+    systemRows.map(async (s) => {
+      const key = s.thumbnailPath ?? partThumb.get(s.id);
+      const b = statusBreakdown(statusRows.filter((r) => r.systemId === s.id));
+      return {
+        robotId: s.robotId,
+        id: s.id,
+        name: s.name,
+        percent: b.percent,
+        total: b.total,
+        thumbUrl: key ? await imageUrl(key) : null,
+      };
+    }),
+  );
+
+  return Promise.all(
+    robotRows.map(async (r) => {
+      const own = shellSystems.filter((s) => s.robotId === r.id);
+      const ids = new Set(own.map((s) => s.id));
+      return {
+        id: r.id,
+        name: r.name,
+        year: r.year,
+        archived: r.archived,
+        percent: statusBreakdown(statusRows.filter((x) => ids.has(x.systemId))).percent,
+        thumbUrl: r.thumbnailPath ? await imageUrl(r.thumbnailPath) : (own.find((s) => s.thumbUrl)?.thumbUrl ?? null),
+        systems: own.map((s) => ({ id: s.id, name: s.name, percent: s.percent, total: s.total, thumbUrl: s.thumbUrl })),
+      };
+    }),
+  );
+}

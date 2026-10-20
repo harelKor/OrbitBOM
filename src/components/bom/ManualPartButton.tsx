@@ -50,7 +50,6 @@ export function ManualPartButton({ systemId }: { systemId: string }) {
               ))}
             </datalist>
           </div>
-          <input name="description" placeholder="Description" className="input" />
           <div className="grid grid-cols-2 gap-3">
             {machineSelect("preProcess", "Pre Process", "PreProcess")}
             {machineSelect("process1", "Process 1", "Process")}

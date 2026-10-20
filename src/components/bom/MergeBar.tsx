@@ -16,7 +16,7 @@ export function MergeBar({ systemId, selected, onDone }: { systemId: string; sel
   const suggested = selected[0] ? (selected[0].displayName ?? selected[0].onshapeName ?? partTitle(selected[0])) : "";
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-700 bg-slate-900/95 p-3 backdrop-blur">
+    <div className="fixed inset-x-0 bottom-0 z-40 border-t border-line-strong bg-surface/95 p-3 backdrop-blur">
       <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-2 text-sm">
         <span className="font-semibold">
           {selected.length} selected{selected.length > 0 && ` · total quantity ${qty}`}

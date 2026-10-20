@@ -22,7 +22,7 @@ export default async function PendingPage({
   const denied = request?.status === "denied";
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-950 p-4">
+    <main className="flex min-h-screen items-center justify-center bg-ink p-4">
       <div className="panel w-full max-w-md p-8">
         <h1 className="text-xl font-semibold text-slate-100">
           {denied ? "Request declined" : "Waiting for approval"}

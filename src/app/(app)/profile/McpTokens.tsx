@@ -57,7 +57,7 @@ export function McpTokens({ tokens, origin }: { tokens: Token[]; origin: string 
         </form>
       )}
       {tokens.length > 0 && (
-        <ul className="divide-y divide-slate-800">
+        <ul className="divide-y divide-line">
           {tokens.map((t) => (
             <li key={t.id} className="flex items-center gap-3 py-2">
               <span className="flex-1">{t.label ?? "Connector link"}</span>

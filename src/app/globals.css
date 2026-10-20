@@ -5,31 +5,44 @@
   --font-mono: var(--font-geist-mono);
 }
 
-/* Dark UI, like FRCBOM. */
+/* Orbit 1690 look: obsidian surfaces, 1px structure lines, one accent for active states and
+   primary buttons, light wells behind CAD thumbnails. Change the accent here. */
+@theme {
+  --color-accent: #1e6fff;
+  --color-accent-hover: #3d84ff;
+  --color-accent-soft: #8db6ff;
+  --color-ink: #0a0b0d;
+  --color-surface: #111316;
+  --color-raised: #181b1f;
+  --color-line: #262a30;
+  --color-line-strong: #353a42;
+  --color-well: #eef0f3;
+}
+
 :root {
   color-scheme: dark;
 }
 
 body {
-  background: var(--color-slate-950);
+  background: var(--color-ink);
   color: var(--color-slate-100);
 }
 
 @layer components {
   .panel {
-    @apply rounded-xl border border-slate-800 bg-slate-900;
+    @apply rounded-lg border border-line bg-surface;
   }
   .btn {
-    @apply inline-flex items-center gap-1.5 rounded-md border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm text-slate-100 hover:bg-slate-700 disabled:opacity-50;
+    @apply inline-flex items-center gap-1.5 rounded-md border border-line-strong bg-raised px-3 py-1.5 text-sm text-slate-100 transition-colors duration-75 hover:bg-line disabled:opacity-50;
   }
   .btn-primary {
-    @apply inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50;
+    @apply inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white transition-colors duration-75 hover:bg-accent-hover disabled:opacity-50;
   }
   .btn-danger {
     @apply inline-flex items-center gap-1.5 rounded-md border border-rose-900 bg-rose-950 px-3 py-1.5 text-sm text-rose-200 hover:bg-rose-900 disabled:opacity-50;
   }
   .input {
-    @apply w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none;
+    @apply w-full rounded-md border border-line-strong bg-ink px-3 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-accent focus:outline-none;
   }
   .label {
     @apply mb-1 block text-xs font-medium text-slate-400;

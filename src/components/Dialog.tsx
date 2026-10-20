@@ -27,9 +27,9 @@ export function Dialog({
     <dialog
       ref={ref}
       onClose={onClose}
-      className={`m-auto ${wide ? "w-[min(40rem,calc(100vw-2rem))]" : "w-[min(28rem,calc(100vw-2rem))]"} rounded-xl border border-slate-700 bg-slate-900 p-0 text-slate-100 backdrop:bg-black/60`}
+      className={`m-auto ${wide ? "w-[min(40rem,calc(100vw-2rem))]" : "w-[min(28rem,calc(100vw-2rem))]"} rounded-xl border border-line-strong bg-surface p-0 text-slate-100 backdrop:bg-black/60`}
     >
-      <div className="flex items-center justify-between border-b border-slate-800 px-5 py-3">
+      <div className="flex items-center justify-between border-b border-line px-5 py-3">
         <h2 className="font-semibold">{title}</h2>
         <button onClick={onClose} className="text-slate-400 hover:text-slate-100" aria-label="Close">
           ✕

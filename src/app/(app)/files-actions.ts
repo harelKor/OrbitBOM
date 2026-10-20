@@ -20,7 +20,6 @@ const validOwner = (o: FileOwner) => (o.kind === "part" || o.kind === "group") &
 
 function refresh() {
   revalidatePath("/robots", "layout");
-  revalidatePath("/groups");
 }
 
 export type UploadStart = { error: string } | { url: string; key: string };

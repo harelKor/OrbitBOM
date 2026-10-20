@@ -5,7 +5,7 @@ export function StatusBar({ breakdown, legend = true }: { breakdown: Breakdown; 
   const shown = breakdown.statuses.filter((s) => s.count > 0);
   return (
     <div>
-      <div className="flex h-2.5 overflow-hidden rounded-full bg-slate-800">
+      <div className="flex h-2.5 overflow-hidden rounded-full bg-raised">
         {shown.map((s) => (
           <div
             key={s.name}
@@ -37,7 +37,7 @@ export function ProgressBar({ done, total }: { done: number; total: number }) {
       <span className="tabular-nums">
         <span className="font-semibold text-slate-100">{done}</span>/{total}
       </span>
-      <div className="h-1.5 w-20 overflow-hidden rounded-full bg-slate-800">
+      <div className="h-1.5 w-20 overflow-hidden rounded-full bg-raised">
         <div className="h-full bg-emerald-500" style={{ width: `${total ? (done / total) * 100 : 0}%` }} />
       </div>
     </div>

@@ -64,7 +64,7 @@ export function ItemDialog({
           {autoName && nameTouched && autoName !== name && (
             <button
               type="button"
-              className="mt-1 text-xs text-indigo-300 hover:text-indigo-200"
+              className="mt-1 text-xs text-accent-soft hover:text-accent-soft"
               onClick={() => setNameTouched(false)}
             >
               Use &ldquo;{autoName}&rdquo;
