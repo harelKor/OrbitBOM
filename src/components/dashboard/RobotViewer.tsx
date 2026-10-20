@@ -14,7 +14,7 @@ type BuildAnswer =
   | { state: "working"; done: number; total: number; calls: number }
   | { error: string };
 
-// The 3D robot stage. The model is the robot's main assembly, exported from Onshape on demand
+// The 3D robot stage. The model is built from the systems' Onshape assemblies on demand
 // (Edit mode's Update 3D model) and kept in R2; viewing it costs no Onshape calls.
 export function RobotViewer({
   robotId,
@@ -95,7 +95,7 @@ export function RobotViewer({
     : !model
       ? "It lights up once the robot model is exported."
       : found === false
-        ? "It isn't in the robot's main assembly."
+        ? "It isn't in the linked Onshape assemblies."
         : null;
 
   return (
@@ -142,8 +142,8 @@ export function RobotViewer({
                   ? "Loading the robot…"
                   : !hasAssembly
                     ? edit
-                      ? "Add the robot's main assembly link in robot settings (the gear), then press Update 3D model."
-                      : "The robot model shows here once its main assembly is linked in Edit mode."
+                      ? "Link this robot's systems to their Onshape assemblies (from the Onshape panel or a system's gear), then press Update 3D model."
+                      : "The robot model shows here once its systems are linked to Onshape."
                     : edit
                       ? "Press Update 3D model to export the robot from Onshape."
                       : "The robot model shows here once it's exported from Onshape in Edit mode."}

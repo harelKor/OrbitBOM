@@ -5,7 +5,9 @@ import { OnshapeError } from "@/lib/onshape/client";
 import { StorageNotConfiguredError } from "@/lib/storage/r2";
 import { isUuid } from "@/lib/uuid";
 
-export const maxDuration = 60;
+// Fluid compute lets a Hobby function run up to 300 s; new Part Studio exports stop starting
+// after 150 s so the slowest one still finishes inside the limit.
+export const maxDuration = 300;
 
 // The robot's 3D model for the dashboard viewer: placements plus short-lived mesh links.
 // Reads the database only; Onshape is called by POST.
@@ -28,7 +30,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ robotId: 
     return NextResponse.json({ error: "Connect your Onshape account first (Profile → Connect Onshape)." }, { status: 403 });
   }
   try {
-    return NextResponse.json(await buildRobotModel(robotId, member.id, started + 40_000));
+    return NextResponse.json(await buildRobotModel(robotId, member.id, started + 150_000));
   } catch (err) {
     if (err instanceof OnshapeError || err instanceof StorageNotConfiguredError) {
       return NextResponse.json({ error: err.message }, { status: 400 });

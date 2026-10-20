@@ -130,7 +130,7 @@ export default async function RobotPage({
           parts={viewerParts}
           locate={located ? { name: partTitle(located), key: keyOf(located) } : null}
           builtAt={modelBuiltAt}
-          hasAssembly={!!robot.mainAssemblyUrl}
+          hasAssembly={!!robot.mainAssemblyUrl || data.systems.some((s) => s.assemblyUrl)}
           edit={edit}
         />
       </div>

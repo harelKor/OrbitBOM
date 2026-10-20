@@ -49,7 +49,7 @@ export function RobotSettings({
                 <input id="robot-code" name="code" defaultValue={robot.code ?? ""} placeholder="e.g. A" className="input" />
               </div>
             </div>
-            <OnshapeLinkField id="robot-assembly" name="mainAssemblyUrl" label="Main assembly (for the 3D view)" value={robot.mainAssemblyUrl} />
+            <OnshapeLinkField id="robot-assembly" name="mainAssemblyUrl" label="Main assembly (3D view if no system is linked)" value={robot.mainAssemblyUrl} />
             <SaveRow pending={pending} state={state} />
           </form>
           <form action={setRobotArchived.bind(null, robot.id, !robot.archived)}>
