@@ -5,7 +5,11 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { decodeMeshes, type Mesh } from "@/lib/model/mesh";
 
-export type ViewerModel = { studios: (string | null)[]; placements: { s: number; k: string; t: number[] }[] };
+export type ViewerModel = {
+  studios: (string | null)[];
+  placements: { s: number; k: string; t: number[]; g?: number }[];
+  groups?: { systemIds: string[]; name: string }[]; // subsystems, by placement g
+};
 
 const PLAIN = "#9aa1ad";
 const UNKNOWN = "#b8bec9"; // placed in CAD but not on the BOM
@@ -28,18 +32,27 @@ export function ModelCanvas({
   mode,
   locateKey,
   onLocated,
+  hidden,
 }: {
   model: ViewerModel;
   colors: Map<string, string>; // part key → status colour
   mode: "status" | "plain";
   locateKey: string | null;
   onLocated: (found: boolean) => void;
+  hidden?: Set<number>; // subsystem groups not drawn
 }) {
   const host = useRef<HTMLDivElement>(null);
   // Recolours the parts and frames the located one; true when it is in the model.
-  const scene = useRef<{ paint: (colors: Map<string, string>, mode: "status" | "plain", locateKey: string | null) => boolean } | null>(null);
+  const scene = useRef<{
+    paint: (colors: Map<string, string>, mode: "status" | "plain", locateKey: string | null) => boolean;
+    hide: (hidden: Set<number>) => void;
+  } | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>({ done: 0, total: model.studios.length });
   const [error, setError] = useState<string | null>(null);
+  const hiddenAtLoad = useRef(hidden);
+  useEffect(() => {
+    hiddenAtLoad.current = hidden;
+  }, [hidden]);
 
   // Scene, camera, controls, and the model's geometry.
   useEffect(() => {
@@ -93,7 +106,7 @@ export function ModelCanvas({
     const ghost = new THREE.MeshStandardMaterial({ roughness: 0.6, transparent: true, opacity: 0.14, depthWrite: false });
     const glow = new THREE.MeshStandardMaterial({ color: LOCATED, emissive: LOCATED, emissiveIntensity: 0.55, roughness: 0.4 });
     const geometries: THREE.BufferGeometry[] = [];
-    const meshes: { mesh: THREE.InstancedMesh; keys: string[] }[] = [];
+    const meshes: { mesh: THREE.InstancedMesh; keys: string[]; g: number }[] = [];
     const highlights = new THREE.Group();
     root.add(highlights);
     const paint = (colors: Map<string, string>, mode: "status" | "plain", locateKey: string | null) => {
@@ -122,7 +135,12 @@ export function ModelCanvas({
       render();
       return found;
     };
-    scene.current = { paint };
+    // Hiding a subsystem hides its meshes; the framing stays where it is.
+    const hide = (hidden: Set<number>) => {
+      for (const { mesh, g } of meshes) mesh.visible = !hidden.has(g);
+      render();
+    };
+    scene.current = { paint, hide };
 
     (async () => {
       const shapes: Map<string, THREE.BufferGeometry>[] = [];
@@ -148,19 +166,19 @@ export function ModelCanvas({
       await Promise.all(Array.from({ length: 6 }, worker));
       if (disposed) return;
 
-      // One instanced mesh per (Part Studio, part).
-      const groups = new Map<string, { geometry: THREE.BufferGeometry; items: typeof model.placements }>();
+      // One instanced mesh per (subsystem, Part Studio, part).
+      const groups = new Map<string, { geometry: THREE.BufferGeometry; items: typeof model.placements; g: number }>();
       for (const p of model.placements) {
         const partId = p.k.slice(p.k.lastIndexOf(":") + 1);
         const geometry = shapes[p.s]?.get(partId);
         if (!geometry) continue;
-        const id = `${p.s}|${partId}`;
-        const group = groups.get(id) ?? { geometry, items: [] };
+        const id = `${p.g ?? 0}|${p.s}|${partId}`;
+        const group = groups.get(id) ?? { geometry, items: [], g: p.g ?? 0 };
         group.items.push(p);
         groups.set(id, group);
       }
       const m = new THREE.Matrix4();
-      for (const { geometry, items } of groups.values()) {
+      for (const { geometry, items, g } of groups.values()) {
         const mesh = new THREE.InstancedMesh(geometry, material, items.length);
         items.forEach((p, i) => {
           const t = p.t;
@@ -170,10 +188,16 @@ export function ModelCanvas({
         });
         mesh.computeBoundingSphere();
         root.add(mesh);
-        meshes.push({ mesh, keys: items.map((p) => p.k) });
+        meshes.push({ mesh, keys: items.map((p) => p.k), g });
       }
       root.updateMatrixWorld(true);
-      fit(new THREE.Box3().setFromObject(root));
+      // Frame what's shown: a subsystem page starts with only its own subsystem.
+      const shown = new THREE.Box3();
+      for (const { mesh, g } of meshes) {
+        mesh.visible = !hiddenAtLoad.current?.has(g);
+        if (mesh.visible) shown.expandByObject(mesh);
+      }
+      fit(shown);
       setProgress(null);
     })().catch(() => !disposed && setError("The 3D model couldn't load. Try reloading the page."));
 
@@ -198,6 +222,9 @@ export function ModelCanvas({
   useEffect(() => {
     if (loaded) onLocated(scene.current?.paint(colors, mode, locateKey) ?? false);
   }, [loaded, colors, mode, locateKey, onLocated]);
+  useEffect(() => {
+    if (loaded && hidden) scene.current?.hide(hidden);
+  }, [loaded, hidden]);
 
   return (
     <div ref={host} className="absolute inset-0">

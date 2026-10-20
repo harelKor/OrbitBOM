@@ -23,10 +23,14 @@ const { robots, systems, onshapeCache } = schema;
 export const TESS_VERSION = "1"; // bump to re-export every mesh after changing the parameters below
 export const TESS_QUERY = "angleTolerance=0.35&chordTolerance=0.0005&outputFacetNormals=false&outputVertexNormals=false";
 
-export type ModelPlacement = { s: number; k: string; t: number[] }; // studio index, part key, transform
+export type ModelPlacement = { s: number; k: string; t: number[]; g?: number }; // studio index, part key, transform, group
+// A group is one linked assembly: the systems that use it (usually one), for showing and
+// hiding subsystems in the viewer. Models built before groups existed have none.
+export type ModelGroup = { systemIds: string[]; name: string };
 type Job = { key: string; path: string; configuration?: string; linkDid?: string; done?: boolean };
-type Built = { rev: string; builtAt: string; studios: string[]; placements: ModelPlacement[] };
-type Draft = { rev: string; jobs: Job[]; placements: ModelPlacement[] };
+type Built = { rev: string; builtAt: string; studios: string[]; placements: ModelPlacement[]; groups?: ModelGroup[] };
+type Draft = { rev: string; jobs: Job[]; placements: ModelPlacement[]; groups?: ModelGroup[] };
+const PLAN_VERSION = "g1"; // bump when the plan's shape changes, so the next Update replans
 type State = { built?: Built; draft?: Draft };
 
 const cacheKey = (robotId: string) => `robot-model:${robotId}`;
@@ -65,6 +69,7 @@ export async function robotModel(robotId: string) {
     builtAt: built.builtAt,
     studios: await Promise.all(built.studios.map((key) => imageUrl(key))),
     placements: built.placements,
+    groups: built.groups ?? [],
   };
 }
 
@@ -79,21 +84,31 @@ export type BuildStep =
   | { state: "done"; unchanged: boolean; parts: number; calls: number }
   | { state: "working"; done: number; total: number; calls: number };
 
-type Source = NonNullable<ReturnType<typeof parseOnshapeUrl>>;
+type Source = NonNullable<ReturnType<typeof parseOnshapeUrl>> & { group: ModelGroup };
 
 // The assemblies the model is built from: every system's assembly, as FRCBOM's Onshape panel
 // links them (subsystems are drawn where their own assembly puts them). A robot without
 // linked systems falls back to its main assembly.
 async function modelSources(robotId: string): Promise<Source[]> {
-  const rows = await db.select({ url: systems.assemblyUrl }).from(systems).where(eq(systems.robotId, robotId)).orderBy(asc(systems.createdAt));
-  const fromSystems = rows.flatMap((r) => {
+  const rows = await db
+    .select({ id: systems.id, name: systems.name, url: systems.assemblyUrl })
+    .from(systems)
+    .where(eq(systems.robotId, robotId))
+    .orderBy(asc(systems.createdAt));
+  const sources: Source[] = [];
+  for (const r of rows) {
     const ref = r.url ? parseOnshapeUrl(r.url) : null;
-    return ref?.eid ? [ref] : [];
-  });
-  if (fromSystems.length) return fromSystems.filter((r, i) => fromSystems.findIndex((o) => onshapeUrl(o) === onshapeUrl(r)) === i);
-  const [robot] = await db.select({ url: robots.mainAssemblyUrl }).from(robots).where(eq(robots.id, robotId));
+    if (!ref?.eid) continue;
+    const same = sources.find((o) => onshapeUrl(o) === onshapeUrl(ref));
+    if (same) {
+      same.group.systemIds.push(r.id);
+      same.group.name += `, ${r.name}`;
+    } else sources.push({ ...ref, group: { systemIds: [r.id], name: r.name } });
+  }
+  if (sources.length) return sources;
+  const [robot] = await db.select({ name: robots.name, url: robots.mainAssemblyUrl }).from(robots).where(eq(robots.id, robotId));
   const main = robot?.url ? parseOnshapeUrl(robot.url) : null;
-  return main?.eid ? [main] : [];
+  return main?.eid ? [{ ...main, group: { systemIds: [], name: robot.name } }] : [];
 }
 
 export async function buildRobotModel(robotId: string, memberId: string, deadline: number): Promise<BuildStep> {
@@ -110,7 +125,7 @@ export async function buildRobotModel(robotId: string, memberId: string, deadlin
     const mv = await client.json<{ microversion: string }>(`documents/d/${ref.did}/w/${ref.wvmid}/currentmicroversion`);
     mvs.set(ref.wvmid, mv.microversion);
   }
-  const rev = sources.map((ref) => `${ref.wvm}:${ref.wvmid}:${ref.eid}:${mvs.get(ref.wvmid) ?? ""}`).join("|");
+  const rev = [PLAN_VERSION, ...sources.map((ref) => `${ref.wvm}:${ref.wvmid}:${ref.eid}:${mvs.get(ref.wvmid) ?? ""}:${ref.group.systemIds.join(",")}`)].join("|");
   if (state.built?.rev === rev) {
     return { state: "done", unchanged: true, parts: state.built.placements.length, calls: client.calls };
   }
@@ -146,7 +161,13 @@ export async function buildRobotModel(robotId: string, memberId: string, deadlin
   const done = draft.jobs.filter((j) => j.done).length;
   if (done < draft.jobs.length) return { state: "working", done, total: draft.jobs.length, calls: client.calls };
 
-  const built: Built = { rev, builtAt: new Date().toISOString(), studios: draft.jobs.map((j) => j.key), placements: draft.placements };
+  const built: Built = {
+    rev,
+    builtAt: new Date().toISOString(),
+    studios: draft.jobs.map((j) => j.key),
+    placements: draft.placements,
+    groups: draft.groups,
+  };
   await saveState(robotId, { built });
   return { state: "done", unchanged: false, parts: built.placements.length, calls: client.calls };
 }
@@ -157,7 +178,7 @@ async function planModel(client: OnshapeClient, sources: Source[], rev: string):
   const placements: ModelPlacement[] = [];
   const elementRevs = new Map<string, Map<string, string>>(); // workspace → element → microversion
 
-  for (const ref of sources) {
+  for (const [g, ref] of sources.entries()) {
     const def = await client.json<AssemblyDefinition>(
       `assemblies/${apiPath(ref)}?includeMateFeatures=false&includeNonSolids=false&includeMateConnectors=false`,
     );
@@ -210,7 +231,7 @@ async function planModel(client: OnshapeClient, sources: Source[], rev: string):
       return index;
     };
 
-    for (const p of placed) placements.push({ s: jobFor(p.studio), k: partKey(p.studio.did, p.studio.eid, p.partId), t: p.transform });
+    for (const p of placed) placements.push({ s: jobFor(p.studio), k: partKey(p.studio.did, p.studio.eid, p.partId), t: p.transform, g });
   }
-  return { rev, jobs, placements };
+  return { rev, jobs, placements, groups: sources.map((s) => s.group) };
 }

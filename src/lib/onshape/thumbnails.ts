@@ -52,30 +52,39 @@ export async function refreshThumbnails(systemId: string, memberId: string, dead
     summary.failed = (summary.failed ?? 0) + 1;
     summary.error ??= err instanceof Error ? err.message : String(err);
   };
-  for (const [path, studioParts] of studios) {
-    if (Date.now() > deadline) break;
-    let metas: PartMetadata[];
-    try {
-      metas = await client.json<PartMetadata[]>(`parts/${path}?withThumbnails=true`);
-    } catch (err) {
-      fail(err);
-      continue;
-    }
-    for (const part of studioParts) {
-      const meta = metas.find((m) => m.partId === part.onshapePartId);
-      const link = meta && thumbnailHref(meta);
-      const href = link && onOwnHost(link, ref.baseUrl);
-      if (!meta || !href) continue;
-      const rev = meta.microversionId ?? createHash("sha1").update(href).digest("hex").slice(0, 16);
-      if (meta.bodyType && part.geometry?.bodyType !== meta.bodyType) {
-        await db
-          .update(parts)
-          .set({ geometry: { ...(part.geometry ?? {}), bodyType: meta.bodyType } })
-          .where(eq(parts.id, part.id));
+  // Each Part Studio's parts list, a few at a time.
+  const studioQueue = [...studios];
+  const listWorker = async () => {
+    for (let next = studioQueue.shift(); next; next = studioQueue.shift()) {
+      const [path, studioParts] = next;
+      if (Date.now() > deadline) {
+        summary.pending += studioParts.filter((p) => !p.thumbnailRev).length;
+        continue;
       }
-      if (part.thumbnailRev !== rev) queue.push({ part, href, rev });
+      let metas: PartMetadata[];
+      try {
+        metas = await client.json<PartMetadata[]>(`parts/${path}?withThumbnails=true`);
+      } catch (err) {
+        fail(err);
+        continue;
+      }
+      for (const part of studioParts) {
+        const meta = metas.find((m) => m.partId === part.onshapePartId);
+        const link = meta && thumbnailHref(meta);
+        const href = link && onOwnHost(link, ref.baseUrl);
+        if (!meta || !href) continue;
+        const rev = meta.microversionId ?? createHash("sha1").update(href).digest("hex").slice(0, 16);
+        if (meta.bodyType && part.geometry?.bodyType !== meta.bodyType) {
+          await db
+            .update(parts)
+            .set({ geometry: { ...(part.geometry ?? {}), bodyType: meta.bodyType } })
+            .where(eq(parts.id, part.id));
+        }
+        if (part.thumbnailRev !== rev) queue.push({ part, href, rev });
+      }
     }
-  }
+  };
+  await Promise.all(Array.from({ length: 4 }, listWorker));
 
   // A few at a time, to be quick without hammering Onshape.
   const worker = async () => {
