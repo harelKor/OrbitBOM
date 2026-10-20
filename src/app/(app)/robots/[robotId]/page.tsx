@@ -137,7 +137,7 @@ export default async function RobotPage({
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">All parts</h2>
-        <BomView parts={parts} inventory={inventoryNames} isAdmin={member.isAdmin} showSystem allowBulkEdit={false} robotId={robot.id} />
+        <BomView parts={parts} inventory={inventoryNames} isAdmin={member.isAdmin} showSystem allowBulkEdit={false} robotId={robot.id} groupBySystem />
       </section>
 
       <details className="group">
