@@ -41,6 +41,18 @@ async function panelBody(ref: ReturnType<typeof parseOnshapeUrl>) {
   });
   if (system) redirect(`/robots/${system.robotId}/systems/${system.id}`);
 
+  // A robot's main assembly opens that robot's dashboard and its 3D view.
+  const mains = await db
+    .select({ id: schema.robots.id, url: schema.robots.mainAssemblyUrl })
+    .from(schema.robots)
+    .where(isNotNull(schema.robots.mainAssemblyUrl))
+    .orderBy(asc(schema.robots.archived), desc(schema.robots.year));
+  const robot = mains.find((r) => {
+    const m = parseOnshapeUrl(r.url!);
+    return m?.did === ref.did && m.eid === ref.eid;
+  });
+  if (robot) redirect(`/robots/${robot.id}`);
+
   const robots = await db
     .select({ id: schema.robots.id, name: schema.robots.name })
     .from(schema.robots)

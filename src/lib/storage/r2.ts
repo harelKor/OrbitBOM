@@ -76,13 +76,15 @@ export async function objectExists(key: string) {
   return res.ok;
 }
 
-export async function putObject(key: string, body: BodyInit, contentType: string) {
+// R2 needs a Content-Length on uploads. A signed Request carries its body as a stream, which
+// can go out chunked (no length) through the server's fetch, so the bytes are sent directly
+// with their length.
+export async function putObject(key: string, body: ArrayBuffer | Uint8Array, contentType: string) {
   const { client, base } = mustConfig();
-  const res = await client.fetch(objectUrl(base, key), {
-    method: "PUT",
-    body,
-    headers: { "content-type": contentType },
-  });
+  const bytes = new Uint8Array(body instanceof Uint8Array ? body : new Uint8Array(body)) as Uint8Array<ArrayBuffer>;
+  const headers = { "content-type": contentType, "content-length": String(bytes.byteLength) };
+  const signed = await client.sign(objectUrl(base, key).toString(), { method: "PUT", headers, body: bytes });
+  const res = await fetch(signed.url, { method: "PUT", headers: signed.headers, body: bytes, cache: "no-store" });
   if (!res.ok) throw new Error(`R2 upload failed (${res.status})`);
 }
 

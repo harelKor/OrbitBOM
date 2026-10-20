@@ -1,5 +1,7 @@
 "use server";
 
+import { eq } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db, schema } from "@/db";
@@ -26,4 +28,16 @@ export async function linkAssembly(assemblyUrl: string, _: { error?: string } | 
   // A failed first sync still links; the system page shows Update BOM to retry.
   if (member.onshapeConnected) await syncSystem(system.id);
   redirect(`/robots/${parsed.data.robotId}/systems/${system.id}`);
+}
+
+// Makes the assembly the panel is open on the robot's main assembly: the 3D view's source.
+export async function linkMainAssembly(assemblyUrl: string, _: { error?: string } | undefined, formData: FormData) {
+  await requireMember();
+  const ref = parseOnshapeUrl(assemblyUrl);
+  const robotId = z.uuid().safeParse(formData.get("robotId"));
+  if (!ref?.eid) return { error: "Open this panel from an Onshape assembly." };
+  if (!robotId.success) return { error: "Pick a robot." };
+  await db.update(schema.robots).set({ mainAssemblyUrl: onshapeUrl(ref) }).where(eq(schema.robots.id, robotId.data));
+  revalidatePath("/", "layout");
+  redirect(`/robots/${robotId.data}#viewer`);
 }
