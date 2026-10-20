@@ -5,18 +5,20 @@
   --font-mono: var(--font-geist-mono);
 }
 
-/* Orbit 1690 look: obsidian surfaces, 1px structure lines, one accent for active states and
-   primary buttons, light wells behind CAD thumbnails. Change the accent here. */
+/* Orbit 1690 palette (project UI spec): deep navy-obsidian surfaces, 1px slate lines that
+   light up sky-blue on hover, Electric Blue for active states and primary actions, Solar Gold
+   for completion, light studio wells behind CAD thumbnails. */
 @theme {
-  --color-accent: #1e6fff;
-  --color-accent-hover: #3d84ff;
-  --color-accent-soft: #8db6ff;
-  --color-ink: #0a0b0d;
-  --color-surface: #111316;
-  --color-raised: #181b1f;
-  --color-line: #262a30;
-  --color-line-strong: #353a42;
-  --color-well: #eef0f3;
+  --color-accent: #0ea5e9;
+  --color-accent-hover: #38bdf8;
+  --color-accent-soft: #7dd3fc;
+  --color-gold: #f59e0b;
+  --color-ink: #07090e;
+  --color-surface: #0d111a;
+  --color-raised: #131926;
+  --color-line: rgb(30 41 59 / 0.8);
+  --color-line-strong: #2a3446;
+  --color-well: #f1f5f9;
   --ease-snap: cubic-bezier(0.22, 1, 0.36, 1);
   --animate-pop: pop 180ms var(--ease-snap) both;
 
@@ -47,6 +49,20 @@ body {
   --orbit-accent: var(--color-accent);
 }
 
+:focus-visible {
+  outline: 2px solid var(--color-accent-hover);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
+}
+
 /* Interaction rules: everything clickable answers hover in 150ms and presses down on click. */
 @utility press {
   transition-property: color, background-color, border-color, box-shadow, transform, opacity;
@@ -66,23 +82,23 @@ body {
 @layer components {
   /* Clickable cards and boxes. Add data-selected to lock one in (FAB selection, active system). */
   .card-interactive {
-    @apply relative overflow-hidden rounded-lg border border-white/[0.08] bg-zinc-900/70 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)];
+    @apply relative overflow-hidden rounded-lg border border-line bg-surface shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)];
     transition-property: background-color, border-color, box-shadow, transform;
     transition-duration: 150ms;
     transition-timing-function: var(--ease-snap);
   }
   .card-interactive:hover {
-    @apply border-white/25 bg-zinc-800/80 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08),0_8px_24px_-12px_rgba(0,0,0,0.8)];
+    @apply border-sky-400/40 bg-raised shadow-[inset_0_1px_0_0_rgba(255,255,255,0.07),0_10px_28px_-14px_rgba(0,0,0,0.9)];
   }
-  .card-interactive:active {
+  .card-interactive:active:not(:has(:is(button, a, input, textarea):active)) {
     transform: scale(0.98);
   }
   .card-interactive[data-selected="true"] {
-    @apply border-transparent bg-accent/10 ring-2 ring-accent;
+    @apply border-transparent bg-accent/10 ring-2 ring-accent shadow-[0_0_24px_-6px_rgba(14,165,233,0.55)];
   }
   /* The light studio backdrop behind CAD thumbnails; the image zooms a little on card hover. */
   .thumb-well {
-    @apply overflow-hidden bg-gradient-to-b from-white to-well;
+    @apply overflow-hidden bg-gradient-to-b from-white to-slate-100 shadow-[inset_0_0_0_1px_rgba(15,23,42,0.08)];
   }
   .thumb-well img {
     transition: transform 200ms var(--ease-snap);
@@ -92,7 +108,7 @@ body {
   }
   /* Frosted buttons floating over a thumbnail (Download, Locate). */
   .overlay-btn {
-    @apply press flex h-9 w-9 items-center justify-center rounded-md border border-white/15 bg-black/60 text-white/80 backdrop-blur-md hover:border-white hover:bg-white hover:text-black;
+    @apply press flex h-9 w-9 items-center justify-center rounded-md border border-white/15 bg-ink/75 text-white/85 backdrop-blur-md hover:border-white hover:bg-white hover:text-black;
   }
 
   .panel {

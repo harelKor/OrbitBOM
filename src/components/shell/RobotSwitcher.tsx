@@ -14,7 +14,7 @@ export function RobotSwitcher({ robots, lastRobotId }: { robots: ShellRobot[]; l
   return (
     <div className="flex h-full flex-col overflow-y-auto">
       <div className="flex items-center justify-between border-b border-line px-4 py-3.5">
-        <span className="text-[11px] font-semibold tracking-wide text-slate-500 uppercase">Robots</span>
+        <span className="text-xs font-semibold text-slate-400">Robots</span>
         <EditOnly>
           <Link href="/robots/new" className="text-xs font-medium text-accent-soft hover:text-white">
             + New robot
@@ -30,9 +30,7 @@ export function RobotSwitcher({ robots, lastRobotId }: { robots: ShellRobot[]; l
 
       {current && (
         <div className="border-t border-line p-2">
-          <div className="px-2 pt-1 pb-2 text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
-            {current.name} systems
-          </div>
+          <div className="px-1 pt-1 pb-2 text-xs font-semibold text-slate-400">{current.name} systems</div>
           <div className="grid grid-cols-2 gap-2">
             {current.systems.map((s) => (
               <SystemTile key={s.id} robotId={current.id} system={s} active={s.id === systemId} />
@@ -67,8 +65,8 @@ function RobotCard({ robot, current, overview }: { robot: ShellRobot; current: b
       <Picture url={robot.thumbUrl} className="h-12 w-12" />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-semibold">{robot.name}</div>
-        <div className="text-xs text-slate-500">
-          {robot.year} · {robot.percent}%
+        <div className="text-xs text-slate-500 tabular-nums">
+          {robot.year}, {robot.percent}% done
         </div>
       </div>
     </Link>
@@ -82,14 +80,19 @@ function SystemTile({ robotId, system, active }: { robotId: string; system: Shel
       aria-current={active ? "page" : undefined}
       data-selected={active}
       className="card-interactive group block"
+      title={system.name}
     >
-      <Picture url={system.thumbUrl} className="aspect-square w-full rounded-none" />
-      <div className="px-2 py-1.5">
-        <div className="truncate text-xs font-medium">{system.name}</div>
-        <div className="mt-1 h-1 overflow-hidden rounded-full bg-line">
-          <div className="h-full bg-emerald-500" style={{ width: `${system.percent}%` }} />
-        </div>
-      </div>
+      <span className="relative block">
+        <Picture url={system.thumbUrl} className="aspect-square w-full rounded-none" />
+        <span
+          className={`absolute right-1.5 bottom-1.5 rounded-full px-1.5 py-px text-[10px] font-bold tabular-nums ${
+            system.percent === 100 ? "bg-gold text-ink" : "bg-ink/85 text-white"
+          }`}
+        >
+          {system.percent}%
+        </span>
+      </span>
+      <span className={`block truncate px-2 py-1.5 text-xs font-medium ${active ? "text-white" : "text-slate-300"}`}>{system.name}</span>
     </Link>
   );
 }

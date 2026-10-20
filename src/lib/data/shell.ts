@@ -3,6 +3,7 @@ import { and, asc, desc, isNotNull, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { thumbKey } from "@/lib/onshape/thumbnails";
 import { imageUrl } from "@/lib/storage/r2";
+import { fabStage, machinesOf } from "@/lib/fab";
 import { statusBreakdown } from "@/lib/stats";
 
 const { robots, systems, parts } = schema;
@@ -16,6 +17,8 @@ export type ShellRobot = {
   percent: number;
   thumbUrl: string | null;
   systems: ShellSystem[];
+  // Parts in process or ready to fab, in total and per machine (To Fab badges).
+  fab: { total: number; byMachine: Record<string, number> };
 };
 
 // The right sidebar: every robot with its systems, completion and a picture. A system's
@@ -67,7 +70,14 @@ export async function listShellRobots(): Promise<ShellRobot[]> {
     robotRows.map(async (r) => {
       const own = shellSystems.filter((s) => s.robotId === r.id);
       const ids = new Set(own.map((s) => s.id));
+      const fab = { total: 0, byMachine: {} as Record<string, number> };
+      for (const row of statusRows) {
+        if (!ids.has(row.systemId) || !fabStage(row)) continue;
+        fab.total += 1;
+        for (const m of machinesOf(row)) fab.byMachine[m] = (fab.byMachine[m] ?? 0) + 1;
+      }
       return {
+        fab,
         id: r.id,
         name: r.name,
         year: r.year,

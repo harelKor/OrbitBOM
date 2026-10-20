@@ -2,7 +2,8 @@
 // FRCBOM's status_breakdown). "Done" means a part is in one of the done statuses.
 
 import { DONE_STATUSES, STATUSES, type StatusName } from "@/config/statuses";
-import { computeStatus, type StatusInput } from "@/lib/status";
+import { getMachine } from "@/config/machines";
+import { computeStatus, isDone, type StatusInput } from "@/lib/status";
 
 export type StatusCount = { name: StatusName; color: string; count: number; percent: number };
 export type Breakdown = { total: number; done: number; percent: number; statuses: StatusCount[] };
@@ -27,4 +28,31 @@ export function statusBreakdown(parts: StatusInput[]): Breakdown {
       percent: pct(counts.get(s.name) ?? 0),
     })),
   };
+}
+
+export type ProcessCount = { id: string; name: string; total: number; done: number; percent: number };
+
+// Completion per machine: of the parts that go through a machine, how many have finished
+// that step (its done counter reached the quantity) or are done altogether.
+export function processBreakdown(parts: StatusInput[]): ProcessCount[] {
+  const slots = [
+    ["preProcess", "donePreprocess"],
+    ["process1", "doneProcess1"],
+    ["process2", "doneProcess2"],
+  ] as const;
+  const counts = new Map<string, { total: number; done: number }>();
+  for (const part of parts) {
+    const finished = isDone(part);
+    for (const [machine, done] of slots) {
+      const id = part[machine];
+      if (!id) continue;
+      const c = counts.get(id) ?? { total: 0, done: 0 };
+      c.total += 1;
+      if (finished || part[done] >= Math.max(part.quantity, 1)) c.done += 1;
+      counts.set(id, c);
+    }
+  }
+  return [...counts]
+    .map(([id, c]) => ({ id, name: getMachine(id)?.name ?? id, ...c, percent: Math.round((c.done / c.total) * 100) }))
+    .sort((a, b) => b.total - a.total);
 }

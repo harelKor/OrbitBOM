@@ -26,29 +26,31 @@ type Chip = "all" | "cots" | "inhouse";
 // roll back if the save fails.
 export function BomView({
   parts,
-  memberNames,
   inventory = [],
   isAdmin = false,
   showSystem = false,
   allowBulkEdit = true,
   merges = [],
   mergeSystemId,
+  robotId,
   toolbar,
 }: {
   parts: CardPart[];
-  memberNames: string[];
   inventory?: InventoryName[];
   isAdmin?: boolean;
   showSystem?: boolean;
   allowBulkEdit?: boolean;
   merges?: MergeInfo[];
   mergeSystemId?: string; // set on a system page: enables Merge parts
+  robotId?: string; // enables Locate on the cards
   toolbar?: React.ReactNode;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const view = (searchParams.get("view") as View) || "card";
+  const edit = useEditMode();
+  // View mode always shows cards; Table and Kanban are Edit-mode views.
+  const view = edit ? (searchParams.get("view") as View) || "card" : "card";
   const setView = (v: View) => {
     const params = new URLSearchParams(searchParams);
     if (v === "card") params.delete("view");
@@ -109,7 +111,6 @@ export function BomView({
 
   const { filters } = useFilters();
   const { q, material, process, date } = filters;
-  const edit = useEditMode();
   const [chip, setChip] = useState<Chip>("all");
   const [status, setStatus] = useState("");
   const [chosenMode, setMode] = useState<"bulk" | "merge" | null>(null);
@@ -155,7 +156,7 @@ export function BomView({
   ];
 
   return (
-    <BomProvider value={{ inventory, isAdmin }}>
+    <BomProvider value={{ inventory, isAdmin, robotId }}>
     <div className={`space-y-4 ${selecting ? "pb-20" : ""}`}>
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex flex-wrap gap-1.5">
@@ -163,26 +164,26 @@ export function BomView({
             <button
               key={c.id}
               onClick={() => setChip(c.id)}
-              className={`rounded-md border px-2.5 py-1 text-xs ${
-                chip === c.id ? "border-accent bg-accent text-white" : "border-line-strong bg-raised text-slate-300 hover:bg-line"
+              className={`press rounded-full border px-3 py-1 text-xs font-medium ${
+                chip === c.id ? "border-accent bg-accent text-white" : "border-line-strong text-slate-300 hover:border-slate-400 hover:bg-raised hover:text-white"
               }`}
             >
               {c.label}
             </button>
           ))}
         </div>
-          <div className="flex overflow-hidden rounded-md border border-line-strong" role="group" aria-label="View">
+          {edit && <div className="flex overflow-hidden rounded-md border border-line-strong" role="group" aria-label="View">
             {(["card", "table", "kanban"] as const).map((v) => (
               <button
                 key={v}
                 onClick={() => setView(v)}
-                className={`px-3 py-1.5 text-sm capitalize ${view === v ? "bg-accent text-white" : "bg-raised text-slate-300 hover:bg-line"}`}
+                className={`press px-3 py-1 text-xs font-medium capitalize ${view === v ? "bg-accent text-white" : "bg-raised text-slate-300 hover:bg-line"}`}
               >
                 {v}
               </button>
             ))}
-          </div>
-          <select value={status} onChange={(e) => setStatus(e.target.value)} className="input w-auto" aria-label="Status">
+          </div>}
+          <select value={status} onChange={(e) => setStatus(e.target.value)} className="input w-auto rounded-full py-1 text-xs" aria-label="Status">
             <option value="">All statuses</option>
             {STATUSES.map((s) => (
               <option key={s.name}>{s.name}</option>
@@ -203,7 +204,7 @@ export function BomView({
 
       {error && <p className="rounded-md bg-rose-950 p-3 text-sm text-rose-200">Couldn&apos;t save: {error}</p>}
 
-      <div className="text-sm text-slate-400">
+      <div className="text-xs text-slate-500 tabular-nums">
         {shown.length === optimistic.length ? `${optimistic.length} parts` : `${shown.length} of ${optimistic.length} parts`}
       </div>
 
@@ -212,13 +213,12 @@ export function BomView({
       ) : view === "kanban" ? (
         <KanbanView parts={shown} saveFor={saveFor} showSystem={showSystem} />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3">
           {shown.map((p) => (
             <PartCard
               key={p.id}
               part={p}
               save={saveFor(p.id)}
-              memberNames={memberNames}
               showSystem={showSystem}
               selected={selected.has(p.id)}
               onToggleSelect={selecting ? () => toggle(p.id) : undefined}

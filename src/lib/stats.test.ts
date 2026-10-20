@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import type { StatusInput } from "./status";
-import { statusBreakdown } from "./stats";
+import { processBreakdown, statusBreakdown } from "./stats";
 
 const part = (designState: string | null): StatusInput => ({
   classification: "inhouse",
@@ -25,4 +25,13 @@ it("counts parts per status and done parts", () => {
 
 it("handles an empty list", () => {
   expect(statusBreakdown([])).toMatchObject({ total: 0, done: 0, percent: 0 });
+});
+
+it("counts completion per machine", () => {
+  const laser = { ...part(null), process1: "laser", quantity: 2 };
+  const rows = processBreakdown([laser, { ...laser, doneProcess1: 2 }, { ...part("In Stock"), process1: "cnc" }]);
+  expect(rows).toEqual([
+    { id: "laser", name: "Laser", total: 2, done: 1, percent: 50 },
+    { id: "cnc", name: "CNC", total: 1, done: 1, percent: 100 },
+  ]);
 });

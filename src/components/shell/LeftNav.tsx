@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { MACHINES } from "@/config/machines";
 import type { ShellRobot } from "@/lib/data/shell";
 import { SignOutButton } from "@/components/SignOutButton";
+import { Icon, type IconName } from "@/components/ui/Icon";
 import { useRobotContext } from "./useRobotContext";
 
 export function LeftNav({
@@ -17,71 +19,89 @@ export function LeftNav({
   member: { name: string; email: string; isAdmin: boolean };
 }) {
   const { pathname, robot } = useRobotContext(robots, lastRobotId);
+  const machine = useSearchParams().get("machine");
   const base = robot ? `/robots/${robot.id}` : null;
   const onFab = !!base && pathname.startsWith(`${base}/fab`);
-  const [fabOpen, setFabOpen] = useState(false);
+  const [toggled, setToggled] = useState<boolean | null>(null);
+  const fabOpen = toggled ?? onFab;
 
   return (
     <div className="flex h-full flex-col">
-      <Link href="/" className="block border-b border-line px-4 py-3.5">
-        <div className="text-[15px] font-bold tracking-tight">OrbitBOM</div>
-        <div className="text-[11px] font-medium tracking-wide text-slate-500 uppercase">Team 1690</div>
+      <Link href="/" className="flex items-center gap-2 border-b border-line px-4 py-4" aria-label="OrbitBOM home">
+        <span className="text-[17px] leading-none font-black tracking-[0.18em] text-white">ORBIT</span>
+        <span className="rounded bg-gold px-1.5 py-0.5 text-[11px] leading-none font-bold text-ink">1690</span>
+        <span className="ml-auto text-[11px] font-medium text-slate-500">BOM</span>
       </Link>
       <nav className="flex-1 space-y-0.5 overflow-y-auto p-2 text-sm">
-        <Item href="/" active={pathname === "/"}>
+        <Item href="/" icon="home" active={pathname === "/"}>
           Home
         </Item>
         <Item
           href={base}
-          active={!!base && (pathname === base || pathname.startsWith(`${base}/systems`) || pathname.startsWith(`${base}/main`))}
+          icon="gauge"
+          active={!!base && (pathname === base || pathname.startsWith(`${base}/systems`))}
         >
           Robot Dashboard
         </Item>
         <div>
-          <div className="flex items-center">
-            <Item href={base && `${base}/fab`} active={onFab} className="flex-1">
+          <div className="relative flex items-center">
+            <Item href={base && `${base}/fab`} icon="fab" active={onFab && !machine} className="flex-1 pr-14">
               To Fab
             </Item>
             {base && (
-              <button
-                onClick={() => setFabOpen((o) => !o)}
-                aria-expanded={fabOpen || onFab}
-                aria-label="Processes"
-                className="rounded px-2 py-1.5 text-slate-500 hover:bg-raised hover:text-slate-100"
-              >
-                {fabOpen || onFab ? "▾" : "▸"}
-              </button>
+              <>
+                {robot!.fab.total > 0 && <Count n={robot!.fab.total} className="pointer-events-none absolute right-8" />}
+                <button
+                  onClick={() => setToggled(!fabOpen)}
+                  aria-expanded={fabOpen}
+                  aria-label={fabOpen ? "Hide processes" : "Show processes"}
+                  className="press absolute right-1 rounded p-1 text-slate-500 hover:bg-line hover:text-slate-100"
+                >
+                  <Icon name="chevron" className={`h-3.5 w-3.5 transition-transform duration-150 ${fabOpen ? "rotate-90" : ""}`} />
+                </button>
+              </>
             )}
           </div>
-          {base && (fabOpen || onFab) && (
-            <div className="ml-3 border-l border-line pl-2">
-              {MACHINES.map((m) => (
-                <Item key={m.id} href={`${base}/fab?machine=${m.id}`} small>
-                  {m.name}
-                </Item>
-              ))}
+          {base && fabOpen && (
+            <div className="mt-0.5 mb-1 ml-5 space-y-px border-l border-line pl-2">
+              {MACHINES.map((m) => {
+                const n = robot!.fab.byMachine[m.id] ?? 0;
+                const active = onFab && machine === m.id;
+                return (
+                  <Link
+                    key={m.id}
+                    href={`${base}/fab?machine=${m.id}`}
+                    className={`press flex items-center gap-2 rounded-md px-2 py-1 text-xs ${
+                      active ? "bg-accent/15 text-white" : n ? "text-slate-300 hover:bg-raised hover:text-white" : "text-slate-500 hover:bg-raised hover:text-slate-300"
+                    }`}
+                  >
+                    <span className="truncate">{m.name}</span>
+                    {n > 0 && <Count n={n} className="ml-auto" />}
+                  </Link>
+                );
+              })}
             </div>
           )}
         </div>
-        <Item href={base && `${base}/review`} active={!!base && pathname.startsWith(`${base}/review`)}>
+        <Item href={base && `${base}/review`} icon="review" active={!!base && pathname.startsWith(`${base}/review`)}>
           To Review
         </Item>
-        <Item href="/inventory" active={pathname.startsWith("/inventory")}>
+        <Item href="/inventory" icon="box" active={pathname.startsWith("/inventory")}>
           Inventory
         </Item>
       </nav>
       <div className="space-y-0.5 border-t border-line p-2 text-sm">
-        <Item href="/members" active={pathname.startsWith("/members")}>
+        <Item href="/members" icon="users" active={pathname.startsWith("/members")}>
           Members
         </Item>
-        <Item href="/profile" active={pathname.startsWith("/profile")}>
+        <Item href="/profile" icon="user" active={pathname.startsWith("/profile")}>
           Profile
         </Item>
         <div className="px-3 pt-2">
           <div className="truncate text-xs font-medium text-slate-300">{member.name}</div>
           <div className="truncate text-[11px] text-slate-500">
             {member.email}
-            {member.isAdmin && " · Admin"}
+            {member.isAdmin && ", admin"}
           </div>
           <SignOutButton className="mt-1 text-xs" />
         </div>
@@ -90,26 +110,41 @@ export function LeftNav({
   );
 }
 
+function Count({ n, className = "" }: { n: number; className?: string }) {
+  return (
+    <span className={`rounded-full bg-raised px-1.5 text-[10px] leading-4 font-semibold text-slate-300 tabular-nums ${className}`}>{n}</span>
+  );
+}
+
 function Item({
   href,
+  icon,
   active = false,
-  small = false,
   className = "",
   children,
 }: {
   href: string | null;
+  icon: IconName;
   active?: boolean;
-  small?: boolean;
   className?: string;
   children: React.ReactNode;
 }) {
-  const cls = `block rounded-md px-3 ${small ? "py-1 text-xs" : "py-1.5"} transition-colors duration-75 ${className}`;
-  if (!href) return <span className={`${cls} cursor-default text-slate-600`}>{children}</span>;
+  const cls = `press relative flex items-center gap-2.5 rounded-md px-3 py-1.5 ${className}`;
+  if (!href)
+    return (
+      <span className={`${cls} cursor-default text-slate-600`} title="Create a robot first">
+        <Icon name={icon} />
+        {children}
+      </span>
+    );
   return (
     <Link
       href={href}
-      className={`${cls} ${active ? "bg-raised font-medium text-white shadow-[inset_2px_0_0_var(--color-accent)]" : "text-slate-400 hover:bg-raised hover:text-slate-100"}`}
+      aria-current={active ? "page" : undefined}
+      className={`${cls} ${active ? "bg-raised font-medium text-white" : "text-slate-400 hover:bg-raised hover:text-slate-100"}`}
     >
+      {active && <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-accent" />}
+      <Icon name={icon} className={`h-4 w-4 ${active ? "text-accent-hover" : ""}`} />
       {children}
     </Link>
   );
