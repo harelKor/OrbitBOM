@@ -8,6 +8,9 @@ import { Icon } from "@/components/ui/Icon";
 import { requireMember } from "@/lib/auth";
 import { listInventoryNames, robotInventory } from "@/lib/data/inventory";
 import { listRobotParts } from "@/lib/data/parts";
+import { STATUSES } from "@/config/statuses";
+import { partKey } from "@/lib/model/assembly";
+import { robotModelBuiltAt } from "@/lib/model/build";
 import { getRobot } from "@/lib/data/robots";
 import { fabStage } from "@/lib/fab";
 import { isEditMode } from "@/lib/mode";
@@ -30,11 +33,12 @@ export default async function RobotPage({
   const data = await getRobot(robotId);
   if (!data) notFound();
   const { robot, breakdown } = data;
-  const [parts, inventoryNames, inventory, edit] = await Promise.all([
+  const [parts, inventoryNames, inventory, edit, modelBuiltAt] = await Promise.all([
     listRobotParts(robot.id),
     listInventoryNames(),
     robotInventory(robot.id),
     isEditMode(),
+    robotModelBuiltAt(robot.id),
   ]);
 
   const inProcess = parts.filter((p) => fabStage(p) === "inProcess").length;
@@ -42,6 +46,14 @@ export default async function RobotPage({
   const processes = processBreakdown(parts);
   const activeStatuses = breakdown.statuses.filter((s) => s.count > 0);
   const located = locate ? parts.find((p) => p.id === locate) : undefined;
+  // BOM parts by Onshape identity, for matching them to the 3D model.
+  const keyOf = (p: (typeof parts)[number]) =>
+    p.sourceDid && p.sourceEid && p.onshapePartId ? partKey(p.sourceDid, p.sourceEid, p.onshapePartId) : null;
+  const statusColor = new Map<string, string>(STATUSES.map((s) => [s.name, s.color]));
+  const viewerParts = parts.flatMap((p) => {
+    const key = keyOf(p);
+    return key ? [{ key, color: statusColor.get(p.status) ?? "#cbd5e1" }] : [];
+  });
 
   return (
     <div className="space-y-5">
@@ -112,7 +124,15 @@ export default async function RobotPage({
             </div>
           )}
         </section>
-        <RobotViewer statuses={activeStatuses} locate={located ? { name: partTitle(located) } : null} />
+        <RobotViewer
+          robotId={robot.id}
+          statuses={activeStatuses}
+          parts={viewerParts}
+          locate={located ? { name: partTitle(located), key: keyOf(located) } : null}
+          builtAt={modelBuiltAt}
+          hasAssembly={!!robot.mainAssemblyUrl}
+          edit={edit}
+        />
       </div>
 
       <section className="space-y-3">
