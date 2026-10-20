@@ -11,6 +11,7 @@ export type CardPart = PartRow & {
   lastModifiedByName: string | null;
   files: { id: string; type: string; filename: string }[];
   thumbUrl: string | null;
+  modelKey: string | null; // the part's key in the robot's 3D model
   groups: { id: string; name: string; color: string | null }[];
   memberIds?: string[]; // set on a merged row
 };

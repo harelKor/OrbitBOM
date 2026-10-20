@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { ShellRobot } from "@/lib/data/shell";
+import { Icon } from "@/components/ui/Icon";
 import { FilterProvider } from "./FilterContext";
 import { LeftNav } from "./LeftNav";
 import { ModeProvider } from "./ModeContext";
@@ -12,8 +13,9 @@ import { TopBar } from "./TopBar";
 
 // The app's three columns: page navigation on the left, robot and system switcher on the
 // right, search, filters and View | Edit on top. Below the wide breakpoints the side columns
-// slide over the page from the top bar's buttons; on wide screens the same buttons collapse
-// and reopen them (remembered per browser).
+// slide over the page from the top bar's buttons; on wide screens an arrow on each column's
+// inner edge collapses and reopens it (remembered per browser). --shell-left and
+// --shell-right hold the columns' current widths, for overlays that cover only the page.
 const COLLAPSE_KEY = "orbit-collapsed";
 const WIDE = { left: "(min-width: 64rem)", right: "(min-width: 80rem)" } as const;
 export function Shell({
@@ -56,7 +58,9 @@ export function Shell({
   return (
     <ModeProvider initial={mode}>
       <FilterProvider>
-        <div className="flex min-h-screen">
+        <div
+          className={`flex min-h-screen [--shell-left:0px] [--shell-right:0px] ${collapsed.left ? "" : "lg:[--shell-left:14rem]"} ${collapsed.right ? "" : "xl:[--shell-right:18rem]"}`}
+        >
           <aside
             className={`fixed inset-y-0 left-0 z-40 w-56 shrink-0 border-r border-line bg-surface lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${collapsed.left ? "lg:hidden" : ""} ${
               open === "left" ? "translate-x-0" : "-translate-x-full"
@@ -73,13 +77,35 @@ export function Shell({
               open === "right" ? "translate-x-0" : "translate-x-full"
             } transition-transform duration-150`}
           >
-            <RobotSwitcher robots={robots} lastRobotId={lastRobotId} />
+            <RobotSwitcher robots={robots} lastRobotId={lastRobotId} isAdmin={member.isAdmin} />
           </aside>
+          <EdgeArrow side="left" collapsed={collapsed.left} onClick={() => toggle("left")} />
+          <EdgeArrow side="right" collapsed={collapsed.right} onClick={() => toggle("right")} />
           {open && (
             <button aria-label="Close" onClick={() => setDrawer(null)} className="fixed inset-0 z-30 bg-black/50 xl:hidden" />
           )}
         </div>
       </FilterProvider>
     </ModeProvider>
+  );
+}
+
+// The wide-screen collapse handle: a round arrow half over the column's inner edge, at the
+// middle of the screen. It points the way the column will move.
+function EdgeArrow({ side, collapsed, onClick }: { side: "left" | "right"; collapsed: boolean; onClick: () => void }) {
+  const pointsLeft = side === "left" ? !collapsed : collapsed;
+  return (
+    <button
+      onClick={onClick}
+      aria-label={`${collapsed ? "Show" : "Hide"} ${side === "left" ? "pages" : "robots and systems"}`}
+      title={`${collapsed ? "Show" : "Hide"} ${side === "left" ? "pages" : "robots and systems"}`}
+      className={`press fixed top-1/2 z-50 hidden h-12 w-5 -translate-y-1/2 items-center justify-center border border-line-strong bg-surface text-muted shadow-sm hover:text-fg ${
+        side === "left"
+          ? "left-[calc(var(--shell-left)-1px)] rounded-r-md border-l-0 lg:flex"
+          : "right-[calc(var(--shell-right)-1px)] rounded-l-md border-r-0 xl:flex"
+      }`}
+    >
+      <Icon name="chevron" className={`h-3.5 w-3.5 transition-transform duration-150 ${pointsLeft ? "rotate-180" : ""}`} />
+    </button>
   );
 }

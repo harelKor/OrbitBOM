@@ -11,12 +11,24 @@ const { parts, systems } = schema;
 
 export const thumbKey = (partId: string, rev: string) => `thumbs/parts/${partId}/${rev}.png`;
 
-export type ThumbSummary = { fetched: number; pending: number; calls: number };
+export type ThumbSummary = { fetched: number; pending: number; calls: number; failed?: number; error?: string };
+
+// Onshape can answer an Enterprise request with thumbnail links on cad.onshape.com; the same
+// path works on the member's own Onshape host, where their token belongs.
+function onOwnHost(href: string, baseUrl: string): string | null {
+  const url = new URL(href, baseUrl);
+  if (url.protocol !== "https:" || !/(^|\.)onshape\.com$/i.test(url.hostname)) return null;
+  const base = new URL(baseUrl);
+  url.protocol = base.protocol;
+  url.host = base.host;
+  return url.toString();
+}
 
 // Part thumbnails (plan §4): one parts-list call per Part Studio tells us each part's
 // microversion; only parts whose microversion changed fetch a new image (one call each), and
 // the image is kept in R2. Stops at `deadline` so a request stays inside Vercel's time limit;
-// what's left is fetched on the next Update BOM.
+// what's left is fetched on the next Update BOM. A Part Studio or image that fails is skipped
+// and counted, so one bad part never hides every other thumbnail.
 export async function refreshThumbnails(systemId: string, memberId: string, deadline: number): Promise<ThumbSummary> {
   const summary: ThumbSummary = { fetched: 0, pending: 0, calls: 0 };
   if (!storageConfigured()) return summary;
@@ -36,12 +48,23 @@ export async function refreshThumbnails(systemId: string, memberId: string, dead
   }
 
   const queue: { part: (typeof rows)[number]; href: string; rev: string }[] = [];
+  const fail = (err: unknown) => {
+    summary.failed = (summary.failed ?? 0) + 1;
+    summary.error ??= err instanceof Error ? err.message : String(err);
+  };
   for (const [path, studioParts] of studios) {
     if (Date.now() > deadline) break;
-    const metas = await client.json<PartMetadata[]>(`parts/${path}?withThumbnails=true`);
+    let metas: PartMetadata[];
+    try {
+      metas = await client.json<PartMetadata[]>(`parts/${path}?withThumbnails=true`);
+    } catch (err) {
+      fail(err);
+      continue;
+    }
     for (const part of studioParts) {
       const meta = metas.find((m) => m.partId === part.onshapePartId);
-      const href = meta && thumbnailHref(meta);
+      const link = meta && thumbnailHref(meta);
+      const href = link && onOwnHost(link, ref.baseUrl);
       if (!meta || !href) continue;
       const rev = meta.microversionId ?? createHash("sha1").update(href).digest("hex").slice(0, 16);
       if (meta.bodyType && part.geometry?.bodyType !== meta.bodyType) {
@@ -61,11 +84,15 @@ export async function refreshThumbnails(systemId: string, memberId: string, dead
         summary.pending++;
         continue;
       }
-      const res = await client.raw(job.href, { headers: { Accept: "image/*" } });
-      await putObject(thumbKey(job.part.id, job.rev), await res.arrayBuffer(), res.headers.get("content-type") ?? "image/png");
-      await db.update(parts).set({ thumbnailRev: job.rev }).where(eq(parts.id, job.part.id));
-      if (job.part.thumbnailRev) await deleteObject(thumbKey(job.part.id, job.part.thumbnailRev));
-      summary.fetched++;
+      try {
+        const res = await client.raw(job.href, { headers: { Accept: "image/*" } });
+        await putObject(thumbKey(job.part.id, job.rev), await res.arrayBuffer(), res.headers.get("content-type") ?? "image/png");
+        await db.update(parts).set({ thumbnailRev: job.rev }).where(eq(parts.id, job.part.id));
+        if (job.part.thumbnailRev) await deleteObject(thumbKey(job.part.id, job.part.thumbnailRev));
+        summary.fetched++;
+      } catch (err) {
+        fail(err);
+      }
     }
   };
   await Promise.all(Array.from({ length: 4 }, worker));

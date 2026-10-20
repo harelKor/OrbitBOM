@@ -1,12 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import { RobotSettings } from "@/app/(app)/robots/[robotId]/RobotSettings";
+import { SystemSettings } from "@/app/(app)/robots/[robotId]/systems/[systemId]/SystemSettings";
 import type { ShellRobot, ShellSystem } from "@/lib/data/shell";
 import { EditOnly } from "./ModeContext";
 import { useRobotContext } from "./useRobotContext";
 
-// Robots, and the active robot's systems, one click away on every page.
-export function RobotSwitcher({ robots, lastRobotId }: { robots: ShellRobot[]; lastRobotId: string | null }) {
+// Robots, and the active robot's systems, one click away on every page. In Edit mode each
+// robot card and system tile has its settings gear in the corner.
+export function RobotSwitcher({ robots, lastRobotId, isAdmin }: { robots: ShellRobot[]; lastRobotId: string | null; isAdmin: boolean }) {
   const { pathname, robot: current, systemId } = useRobotContext(robots, lastRobotId);
   const active = robots.filter((r) => !r.archived);
   const archived = robots.filter((r) => r.archived);
@@ -24,7 +27,13 @@ export function RobotSwitcher({ robots, lastRobotId }: { robots: ShellRobot[]; l
       <div className="space-y-2 p-2">
         {active.length === 0 && <p className="px-2 py-4 text-sm text-subtle">No robots yet.</p>}
         {active.map((r) => (
-          <RobotCard key={r.id} robot={r} current={r.id === current?.id} overview={r.id === current?.id && !systemId && !pathname.includes("/fab") && !pathname.includes("/review")} />
+          <RobotCard
+            key={r.id}
+            robot={r}
+            current={r.id === current?.id}
+            overview={r.id === current?.id && !systemId && !pathname.includes("/fab") && !pathname.includes("/review")}
+            isAdmin={isAdmin}
+          />
         ))}
       </div>
 
@@ -33,7 +42,7 @@ export function RobotSwitcher({ robots, lastRobotId }: { robots: ShellRobot[]; l
           <div className="px-1 pt-1 pb-2 text-xs font-semibold text-muted">{current.name} systems</div>
           <div className="grid grid-cols-2 gap-2">
             {current.systems.map((s) => (
-              <SystemTile key={s.id} robotId={current.id} system={s} active={s.id === systemId} />
+              <SystemTile key={s.id} robotId={current.id} system={s} active={s.id === systemId} isAdmin={isAdmin} />
             ))}
           </div>
           {current.systems.length === 0 && <p className="px-2 text-xs text-subtle">No systems yet.</p>}
@@ -45,7 +54,7 @@ export function RobotSwitcher({ robots, lastRobotId }: { robots: ShellRobot[]; l
           <summary className="cursor-pointer px-2 py-1 text-xs text-subtle">Archived ({archived.length})</summary>
           <div className="mt-2 space-y-2">
             {archived.map((r) => (
-              <RobotCard key={r.id} robot={r} current={r.id === current?.id} overview={false} />
+              <RobotCard key={r.id} robot={r} current={r.id === current?.id} overview={false} isAdmin={isAdmin} />
             ))}
           </div>
         </details>
@@ -54,46 +63,60 @@ export function RobotSwitcher({ robots, lastRobotId }: { robots: ShellRobot[]; l
   );
 }
 
-function RobotCard({ robot, current, overview }: { robot: ShellRobot; current: boolean; overview: boolean }) {
+function RobotCard({ robot, current, overview, isAdmin }: { robot: ShellRobot; current: boolean; overview: boolean; isAdmin: boolean }) {
   return (
-    <Link
-      href={`/robots/${robot.id}`}
-      aria-current={overview ? "page" : undefined}
-      data-selected={overview}
-      className={`card-interactive group flex items-center gap-3 p-2 ${current && !overview ? "border-white/20" : ""}`}
-    >
-      <Picture url={robot.thumbUrl} className="h-12 w-12" />
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-semibold">{robot.name}</div>
-        <div className="text-xs text-subtle tabular-nums">
-          {robot.year}, {robot.percent}% done
+    <div className="relative">
+      <Link
+        href={`/robots/${robot.id}`}
+        aria-current={overview ? "page" : undefined}
+        data-selected={overview}
+        className={`card-interactive group flex items-center gap-3 p-2 ${current && !overview ? "border-white/20" : ""}`}
+      >
+        <Picture url={robot.thumbUrl} className="h-12 w-12" />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-semibold">{robot.name}</div>
+          <div className="text-xs text-subtle tabular-nums">
+            {robot.year}, {robot.percent}% done
+          </div>
         </div>
-      </div>
-    </Link>
+      </Link>
+      <EditOnly>
+        <span className="absolute top-1.5 right-1.5">
+          <RobotSettings robot={robot} isAdmin={isAdmin} small />
+        </span>
+      </EditOnly>
+    </div>
   );
 }
 
-function SystemTile({ robotId, system, active }: { robotId: string; system: ShellSystem; active: boolean }) {
+function SystemTile({ robotId, system, active, isAdmin }: { robotId: string; system: ShellSystem; active: boolean; isAdmin: boolean }) {
   return (
-    <Link
-      href={`/robots/${robotId}/systems/${system.id}`}
-      aria-current={active ? "page" : undefined}
-      data-selected={active}
-      className="card-interactive group block"
-      title={system.name}
-    >
-      <span className="relative block">
-        <Picture url={system.thumbUrl} className="aspect-square w-full rounded-none" />
-        <span
-          className={`absolute right-1.5 bottom-1.5 rounded-full px-1.5 py-px text-[10px] font-bold tabular-nums ${
-            system.percent === 100 ? "bg-accent text-white" : "bg-[#111318]/85 text-white"
-          }`}
-        >
-          {system.percent}%
+    <div className="relative">
+      <Link
+        href={`/robots/${robotId}/systems/${system.id}`}
+        aria-current={active ? "page" : undefined}
+        data-selected={active}
+        className="card-interactive group block"
+        title={system.name}
+      >
+        <span className="relative block">
+          <Picture url={system.thumbUrl} className="aspect-square w-full rounded-none" />
+          <span
+            className={`absolute right-1.5 bottom-1.5 rounded-full px-1.5 py-px text-[10px] font-bold tabular-nums ${
+              system.percent === 100 ? "bg-accent text-white" : "bg-[#111318]/85 text-white"
+            }`}
+          >
+            {system.percent}%
+          </span>
         </span>
-      </span>
-      <span className={`block truncate px-2 py-1.5 text-xs font-medium ${active ? "text-accent" : "text-fg-2"}`}>{system.name}</span>
-    </Link>
+        <span className={`block truncate px-2 py-1.5 text-xs font-medium ${active ? "text-accent" : "text-fg-2"}`}>{system.name}</span>
+      </Link>
+      <EditOnly>
+        <span className="absolute top-1.5 right-1.5">
+          <SystemSettings robotId={robotId} system={system} isAdmin={isAdmin} small />
+        </span>
+      </EditOnly>
+    </div>
   );
 }
 

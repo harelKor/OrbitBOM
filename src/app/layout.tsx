@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "OrbitBOM",
+  title: "OrbitMech",
   icons: { icon: "/orbit-logo.png" },
   description: "Team 1690 bill of materials, inventory and Onshape integration",
 };

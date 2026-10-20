@@ -1,0 +1,110 @@
+"use client";
+
+import dynamic from "next/dynamic";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Icon } from "@/components/ui/Icon";
+import type { ViewerModel } from "./ModelCanvas";
+
+const ModelCanvas = dynamic(() => import("./ModelCanvas").then((m) => m.ModelCanvas), { ssr: false });
+const NO_COLORS = new Map<string, string>();
+
+export type StageView = "part" | "locate";
+
+// A part's 3D window in the middle of the screen, opened from its card without leaving the
+// page: the part on its own ("part"), or where it sits in the see-through robot ("locate").
+// The corner button switches between the two.
+export function PartStage({
+  partId,
+  robotId,
+  modelKey,
+  name,
+  view,
+  onView,
+  onClose,
+}: {
+  partId: string;
+  robotId: string | null;
+  modelKey: string | null;
+  name: string;
+  view: StageView;
+  onView: (view: StageView) => void;
+  onClose: () => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const [models, setModels] = useState<Partial<Record<StageView, ViewerModel>>>({});
+  const [errors, setErrors] = useState<Partial<Record<StageView, string>>>({});
+  const [found, setFound] = useState<boolean | null>(null);
+  const onLocated = useCallback((f: boolean) => setFound(f), []);
+  const model = models[view];
+  const error = errors[view];
+
+  useEffect(() => {
+    dialog.current?.showModal();
+  }, []);
+
+  useEffect(() => {
+    if (models[view] || errors[view]) return;
+    let cancelled = false;
+    const load =
+      view === "part"
+        ? fetch(`/api/parts/${partId}/model`, { method: "POST" })
+        : fetch(`/api/robots/${robotId}/model`);
+    load
+      .then(async (res) => {
+        const body = (await res.json().catch(() => ({}))) as { model?: ViewerModel | null; error?: string };
+        if (cancelled) return;
+        if (body.model) setModels((m) => ({ ...m, [view]: body.model! }));
+        else
+          setErrors((e) => ({
+            ...e,
+            [view]:
+              body.error ??
+              (view === "locate" ? "The robot's 3D model isn't exported yet. Press Update 3D model on the robot page in Edit mode." : `The 3D preview failed (${res.status}).`),
+          }));
+      })
+      .catch(() => !cancelled && setErrors((e) => ({ ...e, [view]: "The 3D preview couldn't load. Try again." })));
+    return () => {
+      cancelled = true;
+    };
+  }, [view, partId, robotId, models, errors]);
+
+  const missing = view === "locate" && model && found === false;
+
+  return (
+    <dialog
+      ref={dialog}
+      onClose={onClose}
+      className="m-auto h-[min(max(50vh,26rem),calc(100vh-2rem))] w-[min(max(50vw,36rem),calc(100vw-2rem))] max-w-none overflow-hidden rounded-xl border border-line-strong bg-surface p-0 text-fg backdrop:bg-black/60"
+    >
+      <div className="flex h-full flex-col">
+        <div className="flex items-center gap-3 border-b border-line px-4 py-2.5">
+          <Icon name={view === "part" ? "cube" : "locate"} className="h-4 w-4 text-accent-hover" />
+          <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">{name}</h2>
+          <button onClick={() => dialog.current?.close()} className="press rounded p-1 text-muted hover:text-fg" aria-label="Close">
+            <Icon name="close" />
+          </button>
+        </div>
+        <div className="relative flex-1 bg-[radial-gradient(ellipse_at_50%_35%,var(--color-surface)_0%,var(--color-raised)_75%)]">
+          {model && <ModelCanvas key={view} model={model} colors={NO_COLORS} mode="plain" locateKey={view === "locate" ? modelKey : null} onLocated={onLocated} />}
+          {(error || !model || missing) && (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">
+              {error ?? (missing ? "This part isn't in the robot's linked Onshape assemblies." : view === "part" ? "Loading the part…" : "")}
+            </div>
+          )}
+          {robotId && modelKey && (
+            <button
+              onClick={() => {
+                setFound(null);
+                onView(view === "part" ? "locate" : "part");
+              }}
+              className="btn absolute top-3 right-3 h-8 gap-1.5 bg-surface/95 text-xs shadow-sm"
+            >
+              <Icon name={view === "part" ? "locate" : "cube"} className="h-3.5 w-3.5" />
+              {view === "part" ? "Locate in robot" : "Part only"}
+            </button>
+          )}
+        </div>
+      </div>
+    </dialog>
+  );
+}

@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BomView } from "@/components/bom/BomView";
-import { partTitle } from "@/components/bom/types";
 import { CompletionRing } from "@/components/dashboard/CompletionRing";
 import { RobotViewer } from "@/components/dashboard/RobotViewer";
 import { Icon } from "@/components/ui/Icon";
@@ -9,7 +8,6 @@ import { requireMember } from "@/lib/auth";
 import { listInventoryNames, robotInventory } from "@/lib/data/inventory";
 import { listRobotParts } from "@/lib/data/parts";
 import { STATUSES } from "@/config/statuses";
-import { partKey } from "@/lib/model/assembly";
 import { robotModelBuiltAt } from "@/lib/model/build";
 import { getRobot } from "@/lib/data/robots";
 import { fabStage } from "@/lib/fab";
@@ -17,19 +15,12 @@ import { isEditMode } from "@/lib/mode";
 import { processBreakdown } from "@/lib/stats";
 import { NewSystemButton } from "./NewSystemButton";
 import { RobotInventory } from "./RobotInventory";
-import { RobotSettings } from "./RobotSettings";
 
 // The robot dashboard: launch cards for To Fab and To Review, status and process completion,
 // the 3D stage, and every part of the robot (searched and filtered from the top bar).
-export default async function RobotPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ robotId: string }>;
-  searchParams: Promise<{ locate?: string }>;
-}) {
+export default async function RobotPage({ params }: { params: Promise<{ robotId: string }> }) {
   const member = await requireMember();
-  const [{ robotId }, { locate }] = await Promise.all([params, searchParams]);
+  const { robotId } = await params;
   const data = await getRobot(robotId);
   if (!data) notFound();
   const { robot, breakdown } = data;
@@ -45,15 +36,9 @@ export default async function RobotPage({
   const ready = parts.filter((p) => fabStage(p) === "ready").length;
   const processes = processBreakdown(parts);
   const activeStatuses = breakdown.statuses.filter((s) => s.count > 0);
-  const located = locate ? parts.find((p) => p.id === locate) : undefined;
-  // BOM parts by Onshape identity, for matching them to the 3D model.
-  const keyOf = (p: (typeof parts)[number]) =>
-    p.sourceDid && p.sourceEid && p.onshapePartId ? partKey(p.sourceDid, p.sourceEid, p.onshapePartId) : null;
+  // BOM parts by their key in the 3D model, with their status colour.
   const statusColor = new Map<string, string>(STATUSES.map((s) => [s.name, s.color]));
-  const viewerParts = parts.flatMap((p) => {
-    const key = keyOf(p);
-    return key ? [{ key, color: statusColor.get(p.status) ?? "#cbd5e1" }] : [];
-  });
+  const viewerParts = parts.flatMap((p) => (p.modelKey ? [{ key: p.modelKey, color: statusColor.get(p.status) ?? "#cbd5e1" }] : []));
 
   return (
     <div className="space-y-5">
@@ -66,12 +51,7 @@ export default async function RobotPage({
             {robot.archived && ", archived"}
           </div>
         </div>
-        {edit && (
-          <>
-            <NewSystemButton robotId={robot.id} />
-            <RobotSettings robot={robot} isAdmin={member.isAdmin} />
-          </>
-        )}
+        {edit && <NewSystemButton robotId={robot.id} />}
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
@@ -128,7 +108,6 @@ export default async function RobotPage({
           robotId={robot.id}
           statuses={activeStatuses}
           parts={viewerParts}
-          locate={located ? { name: partTitle(located), key: keyOf(located) } : null}
           builtAt={modelBuiltAt}
           hasAssembly={!!robot.mainAssemblyUrl || data.systems.some((s) => s.assemblyUrl)}
           edit={edit}
@@ -155,18 +134,18 @@ export default async function RobotPage({
 
 function LaunchCard({ href, icon, title, count, detail }: { href: string; icon: "fab" | "review"; title: string; count: number; detail: string }) {
   return (
-    <Link href={href} className="card-interactive group flex items-center gap-4 p-5">
-      <span className="flex h-11 w-11 items-center justify-center rounded-lg border border-line-strong bg-raised text-accent-hover group-hover:border-accent/60">
-        <Icon name={icon} className="h-5 w-5" />
+    <Link href={href} className="card-interactive group flex items-center gap-6 p-8">
+      <span className="flex h-20 w-20 items-center justify-center rounded-xl border border-line-strong bg-raised text-accent-hover group-hover:border-accent/60">
+        <Icon name={icon} className="h-9 w-9" />
       </span>
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium text-muted">{title}</div>
-        <div className="display text-3xl text-accent tabular-nums">
-          {count} <span className="text-base font-medium text-muted">{count === 1 ? "part" : "parts"}</span>
+        <div className="text-lg font-medium text-muted">{title}</div>
+        <div className="display text-6xl text-accent tabular-nums">
+          {count} <span className="text-2xl font-medium text-muted">{count === 1 ? "part" : "parts"}</span>
         </div>
-        <div className="truncate text-xs text-subtle">{detail}</div>
+        <div className="truncate text-sm text-subtle">{detail}</div>
       </div>
-      <Icon name="arrow" className="h-5 w-5 text-subtle transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-fg" />
+      <Icon name="arrow" className="h-8 w-8 text-subtle transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-fg" />
     </Link>
   );
 }

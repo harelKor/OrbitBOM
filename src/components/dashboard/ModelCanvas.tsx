@@ -9,6 +9,7 @@ export type ViewerModel = { studios: (string | null)[]; placements: { s: number;
 
 const PLAIN = "#9aa1ad";
 const UNKNOWN = "#b8bec9"; // placed in CAD but not on the BOM
+const LOCATED = "#22ff5e"; // the located part: bright green, through a see-through robot
 
 async function loadStudio(url: string): Promise<Mesh[]> {
   const res = await fetch(url);
@@ -17,8 +18,10 @@ async function loadStudio(url: string): Promise<Mesh[]> {
   return decodeMeshes(buf);
 }
 
-// The three.js stage: one instanced mesh per part shape, coloured by status (or plain), with
-// the located part lit up in the accent colour and everything else faded.
+// The three.js stage: one instanced mesh per part shape, coloured by status (or plain). While
+// locating, the robot turns see-through and the located part is drawn solid in bright green.
+// Like Onshape: right drag rotates, middle drag moves, the wheel zooms (left drag also rotates,
+// for touchpads).
 export function ModelCanvas({
   model,
   colors,
@@ -54,6 +57,10 @@ export function ModelCanvas({
     camera.position.set(1.4, 1, 1.4);
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = false;
+    controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.ROTATE };
+    // A middle click on a link-free canvas still starts the browser's auto-scroll; stop it.
+    const noAutoScroll = (e: MouseEvent) => e.button === 1 && e.preventDefault();
+    renderer.domElement.addEventListener("mousedown", noAutoScroll);
     const root = new THREE.Group();
     root.rotation.x = -Math.PI / 2; // Onshape is Z-up
     world.add(root);
@@ -70,10 +77,10 @@ export function ModelCanvas({
     };
     const observer = new ResizeObserver(resize);
     observer.observe(el);
-    const fit = (box: THREE.Box3) => {
+    const fit = (box: THREE.Box3, minRadius = 0.02) => {
       if (box.isEmpty()) return;
       const center = box.getCenter(new THREE.Vector3());
-      const radius = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 0.02);
+      const radius = Math.max(box.getSize(new THREE.Vector3()).length() / 2, minRadius);
       const dir = camera.position.clone().sub(controls.target).normalize();
       if (!dir.lengthSq()) dir.set(1, 0.7, 1).normalize();
       controls.target.copy(center);
@@ -83,35 +90,35 @@ export function ModelCanvas({
     };
 
     const material = new THREE.MeshStandardMaterial({ roughness: 0.55, metalness: 0.15 });
+    const ghost = new THREE.MeshStandardMaterial({ roughness: 0.6, transparent: true, opacity: 0.14, depthWrite: false });
+    const glow = new THREE.MeshStandardMaterial({ color: LOCATED, emissive: LOCATED, emissiveIntensity: 0.55, roughness: 0.4 });
     const geometries: THREE.BufferGeometry[] = [];
     const meshes: { mesh: THREE.InstancedMesh; keys: string[] }[] = [];
+    const highlights = new THREE.Group();
+    root.add(highlights);
     const paint = (colors: Map<string, string>, mode: "status" | "plain", locateKey: string | null) => {
-      const accent = getComputedStyle(el).getPropertyValue("--color-accent").trim() || "#0000cc";
-      const highlight = new THREE.Color(accent);
-      const faded = new THREE.Color(PLAIN).lerp(new THREE.Color("#ffffff"), 0.35);
+      highlights.clear();
+      const plain = new THREE.Color(PLAIN);
       const box = new THREE.Box3();
       const piece = new THREE.Box3();
-      const m = new THREE.Matrix4();
-      let found = false;
       for (const { mesh, keys } of meshes) {
+        mesh.material = locateKey ? ghost : material;
         keys.forEach((k, i) => {
-          let color: THREE.Color;
-          if (locateKey && k === locateKey) {
-            color = highlight;
-            found = true;
-            mesh.getMatrixAt(i, m);
-            if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
-            box.union(piece.copy(mesh.geometry.boundingBox!).applyMatrix4(m.premultiply(root.matrixWorld)));
-          } else if (locateKey) {
-            color = faded;
-          } else {
-            color = new THREE.Color(mode === "status" ? (colors.get(k) ?? UNKNOWN) : PLAIN);
-          }
-          mesh.setColorAt(i, color);
+          mesh.setColorAt(i, locateKey ? plain : new THREE.Color(mode === "status" ? (colors.get(k) ?? UNKNOWN) : PLAIN));
+          if (k !== locateKey) return;
+          // The located part, drawn solid on top of its see-through instance.
+          const lit = new THREE.Mesh(mesh.geometry, glow);
+          mesh.getMatrixAt(i, lit.matrix);
+          lit.matrixAutoUpdate = false;
+          highlights.add(lit);
+          if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+          box.union(piece.copy(mesh.geometry.boundingBox!).applyMatrix4(lit.matrix.clone().premultiply(root.matrixWorld)));
         });
         if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
       }
-      if (found) fit(box);
+      const found = highlights.children.length > 0;
+      // Close on the part, with enough of the robot around it to see where it sits.
+      if (found) fit(box, new THREE.Box3().setFromObject(root).getSize(new THREE.Vector3()).length() * 0.2);
       render();
       return found;
     };
@@ -174,9 +181,12 @@ export function ModelCanvas({
       disposed = true;
       observer.disconnect();
       controls.dispose();
+      renderer.domElement.removeEventListener("mousedown", noAutoScroll);
       geometries.forEach((g) => g.dispose());
       meshes.forEach(({ mesh }) => mesh.dispose());
       material.dispose();
+      ghost.dispose();
+      glow.dispose();
       renderer.dispose();
       renderer.domElement.remove();
       scene.current = null;

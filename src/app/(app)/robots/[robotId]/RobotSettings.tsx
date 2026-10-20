@@ -6,24 +6,29 @@ import { Popover } from "@/components/bom/Popover";
 import { Icon } from "@/components/ui/Icon";
 import { deleteRobot, setRobotArchived, updateRobot, type FormState } from "../actions";
 
-// Edit mode's gear menu on the robot dashboard: name, year, code, main assembly (the 3D
-// model's source), archive and delete.
+// The small gear in the corner of a robot card or system tile in the side panel.
+export const GEAR_SMALL = "flex h-6 w-6 items-center justify-center rounded-md bg-surface/90 text-muted shadow-sm hover:text-fg";
+
+// Edit mode's gear menu on a robot card: name, year, code, main assembly (the 3D model's
+// source when no system is linked), archive and delete.
 export function RobotSettings({
   robot,
   isAdmin,
+  small = false,
 }: {
   robot: { id: string; name: string; year: number; code: string | null; mainAssemblyUrl: string | null; archived: boolean };
   isAdmin: boolean;
+  small?: boolean;
 }) {
   const [state, update, pending] = useActionState((_: FormState, formData: FormData) => updateRobot(robot.id, formData), undefined);
   return (
     <Popover
       align="right"
       hideCaret
-      triggerClassName="btn h-9 w-9 justify-center px-0"
+      triggerClassName={small ? GEAR_SMALL : "btn h-9 w-9 justify-center px-0"}
       trigger={
         <>
-          <Icon name="gear" />
+          <Icon name="gear" className={small ? "h-3.5 w-3.5" : undefined} />
           <span className="sr-only">Robot settings</span>
         </>
       }

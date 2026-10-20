@@ -2,6 +2,7 @@ import "server-only";
 import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { groupsOfParts } from "@/lib/data/groups";
+import { partKey } from "@/lib/model/assembly";
 import { thumbKey } from "@/lib/onshape/thumbnails";
 import { computeStatus } from "@/lib/status";
 import { imageUrl } from "@/lib/storage/r2";
@@ -16,6 +17,7 @@ export type BomPart = typeof parts.$inferSelect & {
   lastModifiedByName: string | null;
   files: PartFileRef[];
   thumbUrl: string | null;
+  modelKey: string | null; // the part's key in the robot's 3D model
   groups: { id: string; name: string; color: string | null }[];
 };
 
@@ -50,6 +52,8 @@ async function load(where: ReturnType<typeof and>): Promise<BomPart[]> {
     ...r.part,
     groups: groups.get(r.part.id) ?? [],
     thumbUrl: thumbs.get(r.part.id) ?? null,
+    modelKey:
+      r.part.sourceDid && r.part.sourceEid && r.part.onshapePartId ? partKey(r.part.sourceDid, r.part.sourceEid, r.part.onshapePartId) : null,
     status: computeStatus(r.part),
     systemName: r.systemName,
     lastModifiedByName: r.lastModifiedByName,

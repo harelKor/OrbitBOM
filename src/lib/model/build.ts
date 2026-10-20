@@ -20,8 +20,8 @@ const { robots, systems, onshapeCache } = schema;
 // What's built is kept in onshape_cache under "robot-model:<robotId>"; nothing here runs
 // while a page renders.
 
-const TESS_VERSION = "1"; // bump to re-export every mesh after changing the parameters below
-const TESS_QUERY = "angleTolerance=0.35&chordTolerance=0.0005&outputFacetNormals=false&outputVertexNormals=false";
+export const TESS_VERSION = "1"; // bump to re-export every mesh after changing the parameters below
+export const TESS_QUERY = "angleTolerance=0.35&chordTolerance=0.0005&outputFacetNormals=false&outputVertexNormals=false";
 
 export type ModelPlacement = { s: number; k: string; t: number[] }; // studio index, part key, transform
 type Job = { key: string; path: string; configuration?: string; linkDid?: string; done?: boolean };
@@ -66,6 +66,13 @@ export async function robotModel(robotId: string) {
     studios: await Promise.all(built.studios.map((key) => imageUrl(key))),
     placements: built.placements,
   };
+}
+
+// The R2 file of the robot model's Part Studio that holds this part, if the model has it.
+export async function builtStudioFor(robotId: string, key: string): Promise<string | null> {
+  const { built } = await loadState(robotId);
+  const placement = built?.placements.find((p) => p.k === key);
+  return placement ? built!.studios[placement.s] : null;
 }
 
 export type BuildStep =
