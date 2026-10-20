@@ -36,10 +36,10 @@ export function GroupsDialog({ open, onClose, lookups: { groups, locations } }: 
           <li key={group.id} className="flex items-center gap-2 py-1.5" style={{ paddingLeft: `${depth}rem` }}>
             <span className="flex-1 truncate">{group.name}</span>
             {group.templateId && (
-              <span className="text-xs text-slate-500">{PART_TYPES.find((t) => t.id === group.templateId)?.name}</span>
+              <span className="text-xs text-subtle">{PART_TYPES.find((t) => t.id === group.templateId)?.name}</span>
             )}
             {group.locationId && (
-              <span className="text-xs text-slate-500">📍 {locations.find((l) => l.id === group.locationId)?.name}</span>
+              <span className="text-xs text-subtle">📍 {locations.find((l) => l.id === group.locationId)?.name}</span>
             )}
             <button
               className="text-xs text-accent-soft hover:text-accent-soft"
@@ -51,7 +51,7 @@ export function GroupsDialog({ open, onClose, lookups: { groups, locations } }: 
               Edit
             </button>
             <button
-              className="text-xs text-rose-400 hover:text-rose-200"
+              className="text-xs text-rose-700 hover:text-rose-700"
               onClick={() => {
                 if (confirm(`Delete the group "${group.name}"? Its items and sub-groups move up a level.`))
                   startTransition(() => deleteGroup(group.id));
@@ -61,7 +61,7 @@ export function GroupsDialog({ open, onClose, lookups: { groups, locations } }: 
             </button>
           </li>
         ))}
-        {groups.length === 0 && <li className="py-2 text-slate-500">No groups yet.</li>}
+        {groups.length === 0 && <li className="py-2 text-subtle">No groups yet.</li>}
       </ul>
 
       <form
@@ -105,8 +105,8 @@ export function GroupsDialog({ open, onClose, lookups: { groups, locations } }: 
             ))}
           </select>
         </div>
-        <p className="text-xs text-slate-500">Items in a group take its location unless they have their own.</p>
-        {error && <p className="text-sm text-rose-300">{error}</p>}
+        <p className="text-xs text-subtle">Items in a group take its location unless they have their own.</p>
+        {error && <p className="text-sm text-rose-700">{error}</p>}
         <div className="flex justify-end gap-2">
           {editing && (
             <button type="button" className="btn" onClick={reset}>
@@ -125,7 +125,7 @@ export function GroupsDialog({ open, onClose, lookups: { groups, locations } }: 
 export function PartTypesDialog({ open, onClose }: DialogProps) {
   return (
     <Dialog open={open} onClose={onClose} title="Part types" wide>
-      <p className="mb-3 text-sm text-slate-400">
+      <p className="mb-3 text-sm text-muted">
         Part types add detail fields to an item and can build its name. They live in the code
         (<code className="text-xs">src/config/partTypes.ts</code>); ask Claude to change them.
       </p>
@@ -133,12 +133,12 @@ export function PartTypesDialog({ open, onClose }: DialogProps) {
         {PART_TYPES.map((t) => (
           <li key={t.id} className="py-2">
             <div className="font-medium">{t.name}</div>
-            <div className="text-xs text-slate-400">
+            <div className="text-xs text-muted">
               {t.fields.map((f) => f.label + (f.options ? ` ▾` : "")).join(" · ")}
-              {t.materialSource && <span className="text-slate-500"> · material from {t.materialSource}</span>}
+              {t.materialSource && <span className="text-subtle"> · material from {t.materialSource}</span>}
             </div>
             {t.namePattern && (
-              <div className="text-xs text-slate-500">
+              <div className="text-xs text-subtle">
                 Name:{" "}
                 {t.namePattern
                   .map((n) =>
@@ -171,7 +171,7 @@ export function ConditionsDialog({ open, onClose, conditions }: DialogProps & { 
             <span className="h-3 w-3 rounded-full" style={{ background: c.color }} />
             <span className="flex-1">{c.label}</span>
             <button
-              className="text-xs text-rose-400 hover:text-rose-200"
+              className="text-xs text-rose-700 hover:text-rose-700"
               onClick={() => {
                 if (confirm(`Delete the condition "${c.label}"? Items keep their stock, without a condition.`))
                   startTransition(() => deleteCondition(c.id));
@@ -199,7 +199,7 @@ export function ConditionsDialog({ open, onClose, conditions }: DialogProps & { 
           Add
         </button>
       </form>
-      {error && <p className="mt-2 text-sm text-rose-300">{error}</p>}
+      {error && <p className="mt-2 text-sm text-rose-700">{error}</p>}
     </Dialog>
   );
 }
@@ -215,7 +215,7 @@ export function LocationsDialog({ open, onClose, locations }: DialogProps & { lo
           <li key={l.id} className="flex items-center justify-between rounded border border-line px-2 py-1">
             <span>{l.name}</span>
             <button
-              className="text-xs text-rose-400 hover:text-rose-200"
+              className="text-xs text-rose-700 hover:text-rose-700"
               aria-label={`Delete ${l.name}`}
               onClick={() => {
                 if (confirm(`Delete the location "${l.name}"?`)) startTransition(() => deleteLocation(l.id));
@@ -242,7 +242,7 @@ export function LocationsDialog({ open, onClose, locations }: DialogProps & { lo
           Add
         </button>
       </form>
-      {error && <p className="mt-2 text-sm text-rose-300">{error}</p>}
+      {error && <p className="mt-2 text-sm text-rose-700">{error}</p>}
     </Dialog>
   );
 }

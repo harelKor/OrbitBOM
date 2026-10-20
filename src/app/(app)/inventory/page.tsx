@@ -9,9 +9,9 @@ export default async function InventoryPage() {
   return (
     <div className="space-y-4">
       <div>
-        <div className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Shop</div>
-        <h1 className="text-3xl font-semibold">Inventory</h1>
-        <p className="mt-1 max-w-3xl text-sm text-slate-400">
+        <div className="text-xs font-semibold tracking-wide text-subtle uppercase">Shop</div>
+        <h1 className="display text-3xl text-accent">Inventory</h1>
+        <p className="mt-1 max-w-3xl text-sm text-muted">
           Track how many of each COTS part you physically have on hand. Stock is allocated to matching parts in every
           robot&apos;s BOM. Each unit can only be used once per robot, but the same units are available again to
           another robot.

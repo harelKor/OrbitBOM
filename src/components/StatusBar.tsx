@@ -15,12 +15,12 @@ export function StatusBar({ breakdown, legend = true }: { breakdown: Breakdown; 
         ))}
       </div>
       {legend && (
-        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400">
+        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
           {shown.map((s) => (
             <span key={s.name} className="inline-flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-full" style={{ background: s.color }} />
               {s.name}
-              <span className="text-slate-500 tabular-nums">
+              <span className="text-subtle tabular-nums">
                 {s.count} · {s.percent}%
               </span>
             </span>
@@ -33,9 +33,9 @@ export function StatusBar({ breakdown, legend = true }: { breakdown: Breakdown; 
 
 export function ProgressBar({ done, total }: { done: number; total: number }) {
   return (
-    <div className="flex items-center gap-2 text-xs text-slate-400">
+    <div className="flex items-center gap-2 text-xs text-muted">
       <span className="tabular-nums">
-        <span className="font-semibold text-slate-100">{done}</span>/{total}
+        <span className="font-semibold text-fg">{done}</span>/{total}
       </span>
       <div className="h-1.5 w-20 overflow-hidden rounded-full bg-raised">
         <div className="h-full bg-emerald-500" style={{ width: `${total ? (done / total) * 100 : 0}%` }} />

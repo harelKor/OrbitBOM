@@ -31,11 +31,11 @@ export function NewSystemButton({ robotId }: { robotId: string }) {
               className="input"
               placeholder="https://…onshape.com/documents/…/w/…/e/…"
             />
-            <p className="mt-1 text-xs text-slate-500">
+            <p className="mt-1 text-xs text-subtle">
               If provided, we&apos;ll fetch the document&apos;s part studios and subassemblies for you.
             </p>
           </div>
-          {state?.error && <p className="text-sm text-rose-300">{state.error}</p>}
+          {state?.error && <p className="text-sm text-rose-700">{state.error}</p>}
           <div className="flex justify-end gap-2">
             <button type="button" className="btn" onClick={() => setOpen(false)}>
               Cancel

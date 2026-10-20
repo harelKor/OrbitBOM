@@ -25,7 +25,7 @@ export function Checkbox({
     >
       <span
         className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors duration-150 ${
-          checked ? "border-accent bg-accent text-white" : "border-line-strong bg-ink group-hover:border-slate-400 group-hover:bg-raised"
+          checked ? "border-accent bg-accent text-white" : "border-line-strong bg-white group-hover:border-accent/50 group-hover:bg-raised"
         }`}
       >
         {checked && <CheckIcon className="h-3.5 w-3.5 animate-pop" />}

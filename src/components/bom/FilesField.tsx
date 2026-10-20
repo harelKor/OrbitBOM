@@ -9,9 +9,9 @@ import { Popover } from "./Popover";
 import { ownerPartId, type CardPart } from "./types";
 
 const COLORS: Record<string, string> = {
-  drawing: "text-sky-300 border-sky-700",
-  gcode: "text-amber-300 border-amber-700",
-  image: "text-emerald-300 border-emerald-700",
+  drawing: "text-accent border-accent/40",
+  gcode: "text-amber-700 border-amber-300",
+  image: "text-emerald-700 border-emerald-300",
   flattened: "text-fuchsia-300 border-fuchsia-700",
 };
 
@@ -46,7 +46,7 @@ export function FilesField({ part }: { part: CardPart }) {
             ))}
           </span>
         ) : (
-          <span className="whitespace-nowrap text-slate-500">Add files</span>
+          <span className="whitespace-nowrap text-subtle">Add files</span>
         )
       }
     >
@@ -114,22 +114,22 @@ function FileRow({
         <span className={`w-16 shrink-0 font-medium ${COLORS[type.id].split(" ")[0]}`}>{type.label}</span>
         <span className="min-w-0 flex-1 truncate">
           {file ? (
-            <a href={`/api/files/${file.id}`} target="_blank" rel="noreferrer" className="text-slate-200 hover:underline" title={file.filename}>
+            <a href={`/api/files/${file.id}`} target="_blank" rel="noreferrer" className="text-fg hover:underline" title={file.filename}>
               {file.filename}
             </a>
           ) : drawingUrl ? (
-            <a href={drawingUrl} target="_blank" rel="noreferrer" className="text-slate-200 hover:underline">
+            <a href={drawingUrl} target="_blank" rel="noreferrer" className="text-fg hover:underline">
               Linked drawing ↗
             </a>
           ) : (
-            <span className="text-slate-500">None</span>
+            <span className="text-subtle">None</span>
           )}
         </span>
         <button type="button" disabled={busy} onClick={() => input.current?.click()} className="text-accent-soft hover:text-accent-soft disabled:opacity-50">
           {busy ? "…" : file ? "Replace" : "Upload"}
         </button>
         {file && (
-          <a href={`/api/files/${file.id}?download=1`} className="text-slate-400 hover:text-slate-100" aria-label={`Download ${type.label}`}>
+          <a href={`/api/files/${file.id}?download=1`} className="text-muted hover:text-fg" aria-label={`Download ${type.label}`}>
             ⤓
           </a>
         )}
@@ -140,7 +140,7 @@ function FileRow({
             onClick={() =>
               confirm(`Delete ${file.filename}?`) && run(async () => (await deleteFile(owner.kind, file.id)).error ?? null)
             }
-            className="text-rose-400 hover:text-rose-200"
+            className="text-rose-700 hover:text-rose-700"
             aria-label={`Delete ${type.label}`}
           >
             ✕
@@ -157,7 +157,7 @@ function FileRow({
           }}
         />
       </div>
-      {error && <div className="mt-1 text-rose-300">{error}</div>}
+      {error && <div className="mt-1 text-rose-700">{error}</div>}
     </li>
   );
 }

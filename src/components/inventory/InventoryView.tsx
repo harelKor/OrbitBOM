@@ -69,11 +69,11 @@ export function InventoryView({ items, targets, ...lookups }: Lookups & { items:
       onClick={() => setGroup(key)}
       style={{ paddingLeft: `${0.5 + depth * 0.9}rem` }}
       className={`flex w-full items-center justify-between gap-2 rounded-md py-1 pr-2 text-left text-sm ${
-        group === key ? "bg-accent/20 text-accent-soft" : "text-slate-300 hover:bg-raised"
+        group === key ? "bg-accent/10 font-semibold text-accent" : "text-fg-2 hover:bg-raised"
       }`}
     >
       <span className="truncate">{label}</span>
-      <span className="text-xs text-slate-500">{count}</span>
+      <span className="text-xs text-subtle">{count}</span>
     </button>
   );
 
@@ -127,22 +127,22 @@ export function InventoryView({ items, targets, ...lookups }: Lookups & { items:
         </select>
       </div>
 
-      {error && <p className="rounded-md bg-rose-950 p-3 text-sm text-rose-200">Couldn&apos;t save: {error}</p>}
+      {error && <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">Couldn&apos;t save: {error}</p>}
 
       <div className="flex flex-col gap-4 lg:flex-row">
         <aside className="panel h-fit shrink-0 p-2 lg:w-60">
-          <div className="px-2 pt-1 pb-2 text-[11px] font-semibold tracking-wide text-slate-500 uppercase">Groups</div>
+          <div className="px-2 pt-1 pb-2 text-[11px] font-semibold tracking-wide text-subtle uppercase">Groups</div>
           {treeButton("all", "All items", items.length)}
           {treeButton("ungrouped", "Ungrouped", items.filter((i) => !i.groupId).length)}
           {tree.map(({ group: g, depth }) => treeButton(g.id, g.name, counts.get(g.id) ?? 0, depth))}
         </aside>
 
         <div className="min-w-0 flex-1 space-y-2">
-          <div className="text-sm text-slate-400">
+          <div className="text-sm text-muted">
             {shown.length === items.length ? `${items.length} items` : `${shown.length} of ${items.length} items`}
           </div>
           {items.length === 0 && (
-            <div className="panel p-6 text-sm text-slate-400">
+            <div className="panel p-6 text-sm text-muted">
               No inventory yet. Add items one by one, or import the spreadsheet you already keep.
             </div>
           )}
@@ -217,19 +217,19 @@ function ItemCard({
       <div className="min-w-0">
         <div className="font-semibold break-words">{item.name}</div>
         <div className="mt-1 flex flex-wrap gap-1.5 text-[11px]">
-          {group && <span className="rounded border border-line-strong px-1.5 text-slate-400">▤ {group}</span>}
-          {type && <span className="rounded border border-line-strong px-1.5 text-slate-400">{type.name}</span>}
+          {group && <span className="rounded border border-line-strong px-1.5 text-muted">▤ {group}</span>}
+          {type && <span className="rounded border border-line-strong px-1.5 text-muted">{type.name}</span>}
           {condition && (
             <span className="rounded px-1.5" style={{ background: condition.color, color: textOn(condition.color) }}>
               {condition.label}
             </span>
           )}
-          {location && <span className="rounded bg-raised px-1.5 text-slate-300">📍 {location}</span>}
-          {item.material && <span className="rounded bg-raised px-1.5 text-slate-300">{item.material}</span>}
+          {location && <span className="rounded bg-raised px-1.5 text-fg-2">📍 {location}</span>}
+          {item.material && <span className="rounded bg-raised px-1.5 text-fg-2">{item.material}</span>}
         </div>
-        {spec && <div className="mt-1 text-xs text-slate-400">{spec}</div>}
+        {spec && <div className="mt-1 text-xs text-muted">{spec}</div>}
         {(item.vendorName || item.vendorUrl || item.price != null) && (
-          <div className="mt-1 text-xs text-slate-400">
+          <div className="mt-1 text-xs text-muted">
             {item.vendorUrl ? (
               <a href={item.vendorUrl} target="_blank" rel="noreferrer" className="text-accent-soft hover:text-accent-soft">
                 {item.vendorName || hostOf(item.vendorUrl)} ↗
@@ -237,19 +237,19 @@ function ItemCard({
             ) : (
               item.vendorName
             )}
-            {item.price != null && <span className="ml-2 text-emerald-300">${item.price.toFixed(2)}</span>}
+            {item.price != null && <span className="ml-2 text-emerald-700">${item.price.toFixed(2)}</span>}
           </div>
         )}
         {usedBy > 0 && (
           <details className="mt-1 text-xs">
-            <summary className={`cursor-pointer ${short ? "text-amber-300" : "text-sky-300"}`}>
+            <summary className={`cursor-pointer ${short ? "text-amber-700" : "text-accent"}`}>
               Used by {usedBy} robot part{usedBy === 1 ? "" : "s"}
               {short && " · not enough in stock"}
             </summary>
-            <ul className="mt-1 space-y-0.5 text-slate-400">
+            <ul className="mt-1 space-y-0.5 text-muted">
               {item.usage!.parts.map((p) => (
                 <li key={p.partId} className="truncate">
-                  {p.robotName} › {p.systemName} › <span className="text-slate-200">{p.partName}</span> ×{p.quantity}
+                  {p.robotName} › {p.systemName} › <span className="text-fg">{p.partName}</span> ×{p.quantity}
                 </li>
               ))}
             </ul>
@@ -258,11 +258,11 @@ function ItemCard({
       </div>
 
       <div className="mt-auto flex flex-wrap items-center gap-3 border-t border-line pt-2 text-sm">
-        <span className="text-slate-400">
-          In stock <span className="font-semibold text-slate-100">{item.inStock}</span>
+        <span className="text-muted">
+          In stock <span className="font-semibold text-fg">{item.inStock}</span>
         </span>
-        <span className="text-slate-400">
-          Used <span className="font-semibold text-slate-100">{used}</span>
+        <span className="text-muted">
+          Used <span className="font-semibold text-fg">{used}</span>
         </span>
         <div className="ml-auto flex items-center gap-1">
           <button className="btn px-2 py-0.5" onClick={() => onStep(-1)} disabled={item.inStock === 0} aria-label="One less">
@@ -289,7 +289,7 @@ function ItemCard({
           }}
           className="ml-auto"
         >
-          <button className="btn text-rose-300 hover:text-rose-200" aria-label="Delete item">
+          <button className="btn text-rose-700 hover:text-rose-700" aria-label="Delete item">
             Delete
           </button>
         </form>

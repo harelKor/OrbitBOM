@@ -32,7 +32,7 @@ export function TableView({
 }) {
   const [desc, setDesc] = useState(false);
   const sorted = [...parts].sort((a, b) => partTitle(a).localeCompare(partTitle(b), undefined, { numeric: true }) * (desc ? -1 : 1));
-  const th = "px-2 py-2 text-left text-[11px] font-semibold tracking-wide text-slate-400 uppercase whitespace-nowrap";
+  const th = "px-2 py-2 text-left text-[11px] font-semibold tracking-wide text-muted uppercase whitespace-nowrap";
 
   return (
     <div className="panel overflow-x-auto">
@@ -42,7 +42,7 @@ export function TableView({
             {selection && <th className={th} />}
             <th className={th} />
             <th className={th}>
-              <button onClick={() => setDesc((d) => !d)} className="uppercase hover:text-slate-100">
+              <button onClick={() => setDesc((d) => !d)} className="uppercase hover:text-fg">
                 Part name {desc ? "▼" : "▲"}
               </button>
             </th>
@@ -67,7 +67,7 @@ export function TableView({
             const save = saveFor(p.id);
             const done = isDone(p);
             return (
-              <tr key={p.id} className={done ? "bg-emerald-950/30" : ""}>
+              <tr key={p.id} className={done ? "bg-emerald-50" : ""}>
                 {selection && (
                   <td className="px-2 py-1.5">
                     <Checkbox
@@ -79,7 +79,7 @@ export function TableView({
                 )}
                 <td className="py-1 pl-2"><Thumb part={p} /></td>
                 <td className="px-2 py-1.5"><NameField part={p} save={save} /></td>
-                {showSystem && <td className="px-2 py-1.5 text-slate-400">{p.systemName}</td>}
+                {showSystem && <td className="px-2 py-1.5 text-muted">{p.systemName}</td>}
                 <td className="px-2 py-1.5"><TypeField part={p} save={save} /></td>
                 <td className="px-2 py-1.5"><QuantityField part={p} save={save} /></td>
                 <td className="px-2 py-1.5"><MaterialField part={p} save={save} /></td>
@@ -89,8 +89,8 @@ export function TableView({
                 <td className="px-2 py-1.5"><StatusField part={p} save={save} /></td>
                 <td className="px-2 py-1.5"><FilesField part={p} /></td>
                 <td className="px-2 py-1.5"><NoteField part={p} save={save} /></td>
-                <td className="px-2 py-1.5 whitespace-nowrap text-slate-400">{p.lastModifiedAt.toISOString().slice(0, 10)}</td>
-                <td className="px-2 py-1.5 whitespace-nowrap text-slate-400">{p.lastModifiedByName ?? "—"}</td>
+                <td className="px-2 py-1.5 whitespace-nowrap text-muted">{p.lastModifiedAt.toISOString().slice(0, 10)}</td>
+                <td className="px-2 py-1.5 whitespace-nowrap text-muted">{p.lastModifiedByName ?? "—"}</td>
               </tr>
             );
           })}

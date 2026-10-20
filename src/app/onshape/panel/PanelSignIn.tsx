@@ -26,11 +26,11 @@ export function PanelSignIn() {
   return (
     <div className="space-y-3">
       <h1 className="text-base font-semibold">OrbitBOM</h1>
-      <p className="text-slate-400">Sign in with your team Google account to see this assembly&apos;s BOM.</p>
+      <p className="text-muted">Sign in with your team Google account to see this assembly&apos;s BOM.</p>
       <button className="btn-primary w-full" onClick={signIn} disabled={state === "waiting"}>
         {state === "waiting" ? "Finish signing in in the popup…" : "Sign in"}
       </button>
-      {state === "expired" && <p className="text-rose-300">The sign-in timed out. Try again.</p>}
+      {state === "expired" && <p className="text-rose-700">The sign-in timed out. Try again.</p>}
     </div>
   );
 }

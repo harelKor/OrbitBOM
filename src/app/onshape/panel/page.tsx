@@ -25,7 +25,7 @@ export default async function OnshapePanelPage({
 }
 
 async function panelBody(ref: ReturnType<typeof parseOnshapeUrl>) {
-  if (!ref?.eid) return <p className="text-slate-400">Open this panel from an Onshape assembly.</p>;
+  if (!ref?.eid) return <p className="text-muted">Open this panel from an Onshape assembly.</p>;
   const member = await getMember();
   if (!member) return <PanelSignIn />;
 

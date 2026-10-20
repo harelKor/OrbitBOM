@@ -36,19 +36,19 @@ export default async function ConnectPanelPage({
       <h1 className="text-xl font-semibold">OrbitBOM in Onshape</h1>
       {done ? (
         <>
-          <p className="text-sm text-slate-300">Signed in. You can close this window.</p>
+          <p className="text-sm text-fg-2">Signed in. You can close this window.</p>
           <CloseWindow />
         </>
       ) : code ? (
         <form action={approve} className="space-y-4">
-          <p className="text-sm text-slate-300">
+          <p className="text-sm text-fg-2">
             Sign in to the OrbitBOM panel in Onshape as <b>{member.name}</b>? Only continue if you opened this
             window from that panel.
           </p>
           <button className="btn-primary w-full">Sign in to the panel</button>
         </form>
       ) : (
-        <p className="text-sm text-slate-300">Open this from the OrbitBOM panel in Onshape.</p>
+        <p className="text-sm text-fg-2">Open this from the OrbitBOM panel in Onshape.</p>
       )}
     </main>
   );

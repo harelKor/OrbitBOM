@@ -16,10 +16,10 @@ export function UpdateBomButton({ systemId, lastSyncedAt }: { systemId: string; 
       >
         {pending ? "Updating from Onshape…" : "Update BOM from Onshape"}
       </button>
-      {result?.message && <span className="text-sm text-emerald-300">{result.message}</span>}
-      {result?.error && <span className="text-sm text-rose-300">{result.error}</span>}
+      {result?.message && <span className="text-sm text-emerald-700">{result.message}</span>}
+      {result?.error && <span className="text-sm text-rose-700">{result.error}</span>}
       {!result && lastSyncedAt && (
-        <span className="text-xs text-slate-500">Last updated {lastSyncedAt.toISOString().slice(0, 16).replace("T", " ")} UTC</span>
+        <span className="text-xs text-subtle">Last updated {lastSyncedAt.toISOString().slice(0, 16).replace("T", " ")} UTC</span>
       )}
     </div>
   );

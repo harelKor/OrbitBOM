@@ -14,7 +14,7 @@ export function LinkAssemblyForm({
 }) {
   const [state, action, pending] = useActionState(linkAssembly.bind(null, assemblyUrl), undefined);
 
-  if (!robots.length) return <p className="text-slate-400">Create a robot in OrbitBOM first, then reopen this panel.</p>;
+  if (!robots.length) return <p className="text-muted">Create a robot in OrbitBOM first, then reopen this panel.</p>;
   return (
     <form action={action} className="space-y-3">
       <h1 className="text-base font-semibold">Add this assembly to a robot</h1>
@@ -37,9 +37,9 @@ export function LinkAssemblyForm({
         <input id="panel-name" name="name" className="input" required placeholder="e.g. Intake" />
       </div>
       {!onshapeConnected && (
-        <p className="text-amber-300">Connect Onshape on your OrbitBOM profile page to pull the parts.</p>
+        <p className="text-amber-700">Connect Onshape on your OrbitBOM profile page to pull the parts.</p>
       )}
-      {state?.error && <p className="text-rose-300">{state.error}</p>}
+      {state?.error && <p className="text-rose-700">{state.error}</p>}
       <button className="btn-primary w-full" disabled={pending}>
         {pending ? "Linking and syncing…" : "Link & sync"}
       </button>

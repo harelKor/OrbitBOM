@@ -24,15 +24,15 @@ export default async function PendingPage({
   return (
     <main className="flex min-h-screen items-center justify-center bg-ink p-4">
       <div className="panel w-full max-w-md p-8">
-        <h1 className="text-xl font-semibold text-slate-100">
+        <h1 className="text-xl font-semibold text-fg">
           {denied ? "Request declined" : "Waiting for approval"}
         </h1>
         {invite === "invalid" && (
-          <p className="mt-3 rounded-md bg-amber-950 p-3 text-sm text-amber-200">
+          <p className="mt-3 rounded-md bg-amber-50 p-3 text-sm text-amber-700">
             That invite link has expired or was already used.
           </p>
         )}
-        <p className="mt-3 text-sm text-slate-300">
+        <p className="mt-3 text-sm text-fg-2">
           {denied
             ? "An admin declined your request to join. Ask a team admin for an invite link."
             : `You're signed in as ${user.email}. An admin needs to approve your request, or you can open an invite link from a team admin.`}

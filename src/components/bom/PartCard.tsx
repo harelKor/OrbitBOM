@@ -15,7 +15,7 @@ import { ownerPartId, partTitle, type CardPart } from "./types";
 const EXPORTABLE = ["STEP", "STL", "PARASOLID"] as const;
 type ExportFormat = (typeof EXPORTABLE)[number];
 
-const pill = "rounded-full border border-line-strong bg-raised px-2 py-0.5 text-[11px] font-medium text-slate-300 max-w-full truncate";
+const pill = "rounded-full border border-line-strong bg-raised px-2 py-0.5 text-[11px] font-medium text-fg-2 max-w-full truncate";
 
 // The part card: the Onshape thumbnail is the hero, with quantity and type on its top-left and
 // Download / Locate on its top-right; below it the name, the status, a notes button and the
@@ -61,10 +61,10 @@ export function PartCard({
           // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
           <img src={part.thumbUrl} alt="" loading="lazy" className="h-full w-full object-contain p-3" />
         ) : (
-          <span className="text-xs text-slate-400">{part.isManual ? "Manual part" : "No thumbnail yet"}</span>
+          <span className="text-xs text-muted">{part.isManual ? "Manual part" : "No thumbnail yet"}</span>
         )}
         <div className="absolute top-2 left-2 flex items-center gap-1">
-          <span className="rounded-full bg-ink/85 px-2 py-0.5 text-[11px] font-bold text-white tabular-nums">
+          <span className="rounded-full bg-fg/85 px-2 py-0.5 text-[11px] font-bold text-white tabular-nums">
             {edit ? <QuantityField part={part} save={save} /> : `×${part.quantity}`}
           </span>
           {edit ? (
@@ -72,12 +72,12 @@ export function PartCard({
               <TypeField part={part} save={save} />
             </span>
           ) : (
-            <span className="rounded-full bg-white/90 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 shadow-sm">
+            <span className="rounded-full bg-white/90 px-1.5 py-0.5 text-[10px] font-semibold text-fg-2 shadow-sm">
               {part.classification === "cots" ? "COTS" : "In-house"}
             </span>
           )}
           {part.memberIds && (
-            <span className="rounded-full bg-white/90 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 shadow-sm" title="Merged parts">
+            <span className="rounded-full bg-white/90 px-1.5 py-0.5 text-[10px] font-semibold text-fg-2 shadow-sm" title="Merged parts">
               ⧉ {part.memberIds.length}
             </span>
           )}
@@ -104,17 +104,17 @@ export function PartCard({
 
       <div className="flex min-w-0 flex-col gap-2 p-3">
         <div className="flex min-w-0 items-baseline gap-2">
-          <div className="min-w-0 flex-1 truncate font-semibold text-slate-100" title={part.displayName ?? part.onshapeName ?? undefined}>
+          <div className="min-w-0 flex-1 truncate font-semibold text-fg" title={part.displayName ?? part.onshapeName ?? undefined}>
             {edit ? <NameField part={part} save={save} bare /> : (part.displayName ?? part.onshapeName ?? "Unnamed part")}
           </div>
           {(part.partNumber || edit) && (
-            <span className="shrink-0 font-mono text-[11px] text-slate-500">
+            <span className="shrink-0 font-mono text-[11px] text-subtle">
               {edit ? <TextField part={part} save={save} field="partNumber" empty="P/N" /> : part.partNumber}
             </span>
           )}
           {edit && <EditMenu part={part} />}
         </div>
-        {showSystem && <div className="-mt-1.5 truncate text-xs text-slate-500">{part.systemName}</div>}
+        {showSystem && <div className="-mt-1.5 truncate text-xs text-subtle">{part.systemName}</div>}
 
         <div className="flex items-center gap-2">
           <div className="min-w-0 flex-1">
@@ -127,14 +127,14 @@ export function PartCard({
           {(part.material || part.inventoryItemId || edit) && <MaterialField part={part} save={save} className={pill} />}
           {machines.map((slot) => (
             <span key={slot.key} className="contents">
-              <span className="text-[10px] text-slate-600">→</span>
-              <MachineField part={part} save={save} slot={slot} className={`${pill} ${slot === current ? "border-accent/50 text-white" : ""}`} />
+              <span className="text-[10px] text-faint">→</span>
+              <MachineField part={part} save={save} slot={slot} className={`${pill} ${slot === current ? "border-accent/60 text-accent" : ""}`} />
             </span>
           ))}
           {edit &&
             SLOTS.filter((s) => !part[s.key] && s.stage === "Process")
               .slice(0, 1)
-              .map((slot) => <MachineField key={slot.key} part={part} save={save} slot={slot} placeholder={`+ ${slot.label}`} className={`${pill} border-dashed text-slate-500`} />)}
+              .map((slot) => <MachineField key={slot.key} part={part} save={save} slot={slot} placeholder={`+ ${slot.label}`} className={`${pill} border-dashed text-subtle`} />)}
           {showCounter && <DoneCounter part={part} save={save} slot={current!} />}
         </div>
       </div>
@@ -156,7 +156,7 @@ const label = (f: ExportFormat) => (f === "PARASOLID" ? "Parasolid" : f);
 
 function Tip({ children }: { children: React.ReactNode }) {
   return (
-    <span className="pointer-events-none absolute top-full right-0 mt-1 rounded bg-ink px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap text-white opacity-0 group-hover/tip:opacity-100">
+    <span className="pointer-events-none absolute top-full right-0 mt-1 rounded bg-fg px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap text-white opacity-0 group-hover/tip:opacity-100">
       {children}
     </span>
   );
@@ -167,12 +167,12 @@ function NotesButton({ part, save }: { part: CardPart; save: SaveFn }) {
     <Popover
       align="right"
       hideCaret
-      triggerClassName="relative h-8 w-8 justify-center rounded-md border border-line-strong text-slate-400 hover:border-slate-500 hover:text-white"
+      triggerClassName="relative h-8 w-8 justify-center rounded-md border border-line-strong text-muted hover:border-accent/50 hover:text-fg"
       trigger={
         <>
           <Icon name="note" />
           <span className="sr-only">{part.note ? "Notes" : "Add a note"}</span>
-          {part.note && <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-gold shadow-[0_0_6px_rgba(245,158,11,0.9)]" />}
+          {part.note && <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-gold ring-2 ring-white" />}
         </>
       }
     >
@@ -197,13 +197,13 @@ function DoneCounter({ part, save, slot }: { part: CardPart; save: SaveFn; slot:
   const step = (d: number) => save({ [slot.done]: Math.max(0, done + d) });
   return (
     <span className="ml-auto inline-flex items-center rounded-full border border-line-strong bg-ink text-[11px] tabular-nums">
-      <button onClick={() => step(-1)} disabled={done === 0} className="press px-1.5 text-slate-400 hover:text-white disabled:opacity-30" aria-label="One less done">
+      <button onClick={() => step(-1)} disabled={done === 0} className="press px-1.5 text-muted hover:text-fg disabled:opacity-30" aria-label="One less done">
         −
       </button>
-      <span className="font-semibold text-slate-200" title={`Done at ${getMachine(part[slot.key]!)?.name}`}>
+      <span className="font-semibold text-fg" title={`Done at ${getMachine(part[slot.key]!)?.name}`}>
         {done}/{part.quantity}
       </span>
-      <button onClick={() => step(1)} className="press px-1.5 text-slate-400 hover:text-white" aria-label="One more done">
+      <button onClick={() => step(1)} className="press px-1.5 text-muted hover:text-fg" aria-label="One more done">
         +
       </button>
     </span>
@@ -214,7 +214,7 @@ function EditMenu({ part }: { part: CardPart }) {
   const [, startTransition] = useTransition();
   if (!part.memberIds && !part.isManual) return null;
   return (
-    <Popover align="right" hideCaret triggerClassName="rounded p-0.5 text-slate-500 hover:text-white" trigger={<Icon name="more" />}>
+    <Popover align="right" hideCaret triggerClassName="rounded p-0.5 text-subtle hover:text-fg" trigger={<Icon name="more" />}>
       {(close) => (
         <div className="space-y-0.5 text-sm">
           {part.memberIds && (
@@ -230,7 +230,7 @@ function EditMenu({ part }: { part: CardPart }) {
           )}
           {part.isManual && (
             <button
-              className="block w-full rounded px-2 py-1.5 text-left text-rose-300 hover:bg-raised"
+              className="block w-full rounded px-2 py-1.5 text-left text-rose-700 hover:bg-raised"
               onClick={() => {
                 close();
                 if (confirm(`Delete "${partTitle(part)}"?`)) startTransition(() => void deleteManualPart(part.id));

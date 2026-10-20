@@ -1,24 +1,29 @@
 @import "tailwindcss";
 
 @theme inline {
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-jost);
+  --font-display: var(--font-jost);
   --font-mono: var(--font-geist-mono);
 }
 
-/* Orbit 1690 palette (project UI spec): deep navy-obsidian surfaces, 1px slate lines that
-   light up sky-blue on hover, Electric Blue for active states and primary actions, Solar Gold
-   for completion, light studio wells behind CAD thumbnails. */
+/* Orbit 1690 theme, from 1690orbit.com: light gray page, white cards, royal blue (#0000cc)
+   for the top bar, active states and primary buttons, near-black text, Futura-style type. */
 @theme {
-  --color-accent: #0ea5e9;
-  --color-accent-hover: #38bdf8;
-  --color-accent-soft: #7dd3fc;
-  --color-gold: #f59e0b;
-  --color-ink: #07090e;
-  --color-surface: #0d111a;
-  --color-raised: #131926;
-  --color-line: rgb(30 41 59 / 0.8);
-  --color-line-strong: #2a3446;
-  --color-well: #f1f5f9;
+  --color-accent: #0000cc;
+  --color-accent-hover: #1f1fe0;
+  --color-accent-soft: #0000cc;
+  --color-gold: #0000cc;
+  --color-ink: #f2f2f2;
+  --color-surface: #ffffff;
+  --color-raised: #eceef3;
+  --color-line: #dcdfe6;
+  --color-line-strong: #c3c8d2;
+  --color-well: #ffffff;
+  --color-fg: #111318;
+  --color-fg-2: #2c3039;
+  --color-muted: #4b5260;
+  --color-subtle: #6b7280;
+  --color-faint: #9aa1ad;
   --ease-snap: cubic-bezier(0.22, 1, 0.36, 1);
   --animate-pop: pop 180ms var(--ease-snap) both;
 
@@ -35,12 +40,12 @@
 }
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body {
   background: var(--color-ink);
-  color: var(--color-slate-100);
+  color: var(--color-fg);
   /* Counts, percentages and quantities never shift width when they change. */
   font-variant-numeric: tabular-nums;
 }
@@ -75,30 +80,38 @@ body {
 
 @utility skeleton {
   border-radius: var(--radius-lg);
-  background: rgb(255 255 255 / 0.04);
+  background: rgb(17 19 24 / 0.06);
   animation: var(--animate-pulse);
+}
+
+/* The display face for big numbers and headings, like the site's "1690". */
+@utility display {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-style: italic;
+  letter-spacing: -0.01em;
 }
 
 @layer components {
   /* Clickable cards and boxes. Add data-selected to lock one in (FAB selection, active system). */
   .card-interactive {
-    @apply relative overflow-hidden rounded-lg border border-line bg-surface shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)];
+    @apply relative overflow-hidden rounded-xl border border-line bg-surface shadow-[0_1px_2px_rgba(17,19,24,0.06)];
     transition-property: background-color, border-color, box-shadow, transform;
     transition-duration: 150ms;
     transition-timing-function: var(--ease-snap);
   }
   .card-interactive:hover {
-    @apply border-sky-400/40 bg-raised shadow-[inset_0_1px_0_0_rgba(255,255,255,0.07),0_10px_28px_-14px_rgba(0,0,0,0.9)];
+    @apply border-accent/50 shadow-[0_10px_24px_-14px_rgba(0,0,204,0.45)];
   }
   .card-interactive:active:not(:has(:is(button, a, input, textarea):active)) {
     transform: scale(0.98);
   }
   .card-interactive[data-selected="true"] {
-    @apply border-transparent bg-accent/10 ring-2 ring-accent shadow-[0_0_24px_-6px_rgba(14,165,233,0.55)];
+    @apply border-transparent bg-accent/5 ring-2 ring-accent shadow-[0_8px_24px_-10px_rgba(0,0,204,0.5)];
   }
   /* The light studio backdrop behind CAD thumbnails; the image zooms a little on card hover. */
   .thumb-well {
-    @apply overflow-hidden bg-gradient-to-b from-white to-slate-100 shadow-[inset_0_0_0_1px_rgba(15,23,42,0.08)];
+    @apply overflow-hidden bg-gradient-to-b from-white to-[#f4f5f8] shadow-[inset_0_-1px_0_0_var(--color-line)];
   }
   .thumb-well img {
     transition: transform 200ms var(--ease-snap);
@@ -108,25 +121,25 @@ body {
   }
   /* Frosted buttons floating over a thumbnail (Download, Locate). */
   .overlay-btn {
-    @apply press flex h-9 w-9 items-center justify-center rounded-md border border-white/15 bg-ink/75 text-white/85 backdrop-blur-md hover:border-white hover:bg-white hover:text-black;
+    @apply press flex h-9 w-9 items-center justify-center rounded-md border border-line bg-white/90 text-fg-2 shadow-sm backdrop-blur-md hover:border-accent hover:bg-accent hover:text-white;
   }
 
   .panel {
     @apply rounded-lg border border-line bg-surface;
   }
   .btn {
-    @apply inline-flex items-center gap-1.5 rounded-md border border-line-strong bg-raised px-3 py-1.5 text-sm text-slate-100 press hover:border-slate-500 hover:bg-line disabled:opacity-50;
+    @apply inline-flex items-center gap-1.5 rounded-md border border-line-strong bg-surface px-3 py-1.5 text-sm font-medium text-fg press hover:border-accent/50 hover:bg-raised disabled:opacity-50;
   }
   .btn-primary {
-    @apply inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white press hover:bg-accent-hover disabled:opacity-50;
+    @apply inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-white press hover:bg-accent-hover disabled:opacity-50;
   }
   .btn-danger {
-    @apply inline-flex items-center gap-1.5 rounded-md border border-rose-900 bg-rose-950 px-3 py-1.5 text-sm text-rose-200 press hover:bg-rose-900 disabled:opacity-50;
+    @apply inline-flex items-center gap-1.5 rounded-md border border-rose-300 bg-rose-50 px-3 py-1.5 text-sm font-medium text-rose-700 press hover:bg-rose-100 disabled:opacity-50;
   }
   .input {
-    @apply w-full rounded-md border border-line-strong bg-ink px-3 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-accent focus:outline-none;
+    @apply w-full rounded-md border border-line-strong bg-white px-3 py-1.5 text-sm text-fg placeholder:text-subtle focus:border-accent focus:outline-none;
   }
   .label {
-    @apply mb-1 block text-xs font-medium text-slate-400;
+    @apply mb-1 block text-xs font-medium text-muted;
   }
 }

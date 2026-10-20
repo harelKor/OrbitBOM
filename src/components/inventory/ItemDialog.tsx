@@ -181,7 +181,7 @@ export function ItemDialog({
 
         {type && type.fields.length > 0 && (
           <div>
-            <div className="mb-1 text-[11px] font-semibold tracking-wide text-slate-500 uppercase">Part type details</div>
+            <div className="mb-1 text-[11px] font-semibold tracking-wide text-subtle uppercase">Part type details</div>
             <div className="grid grid-cols-2 gap-3">
               {type.fields.map((f) => (
                 <div key={f.id}>
@@ -254,7 +254,7 @@ export function ItemDialog({
           </div>
         </div>
 
-        {state?.error && <p className="text-sm text-rose-300">{state.error}</p>}
+        {state?.error && <p className="text-sm text-rose-700">{state.error}</p>}
         <div className="flex justify-end gap-2">
           <button type="button" className="btn" onClick={onClose}>
             Cancel

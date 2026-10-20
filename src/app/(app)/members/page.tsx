@@ -42,7 +42,7 @@ export default async function MembersPage() {
               <li key={r.userId} className="flex flex-wrap items-center gap-3 px-4 py-3">
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-medium">{r.name}</div>
-                  <div className="truncate text-sm text-slate-400">{r.email}</div>
+                  <div className="truncate text-sm text-muted">{r.email}</div>
                 </div>
                 <form action={approveRequest.bind(null, r.userId)}>
                   <button className="btn">Approve</button>
@@ -70,7 +70,7 @@ export default async function MembersPage() {
                     </span>
                   )}
                 </div>
-                <div className="truncate text-sm text-slate-400">{m.email}</div>
+                <div className="truncate text-sm text-muted">{m.email}</div>
               </div>
               {me.isAdmin && m.id !== me.id && (
                 <>
@@ -95,24 +95,24 @@ export default async function MembersPage() {
               <button className="btn">New invite link</button>
             </form>
           </div>
-          <p className="mb-2 text-sm text-slate-400">
+          <p className="mb-2 text-sm text-muted">
             Each link works once and expires after 7 days.
           </p>
           {invites.length === 0 ? (
-            <p className="text-sm text-slate-500">No open invite links.</p>
+            <p className="text-sm text-subtle">No open invite links.</p>
           ) : (
             <ul className="panel divide-y divide-line">
               {invites.map((i) => (
                 <li key={i.token} className="flex items-center gap-3 px-4 py-3">
-                  <code className="min-w-0 flex-1 truncate text-sm text-slate-300">
+                  <code className="min-w-0 flex-1 truncate text-sm text-fg-2">
                     /invite/{i.token}
                   </code>
-                  <span className="text-xs text-slate-400">
+                  <span className="text-xs text-muted">
                     expires {i.expiresAt.toISOString().slice(0, 10)}
                   </span>
                   <CopyLink path={`/invite/${i.token}`} />
                   <form action={revokeInvite.bind(null, i.token)}>
-                    <button className="text-sm text-rose-300">Revoke</button>
+                    <button className="text-sm text-rose-700">Revoke</button>
                   </form>
                 </li>
               ))}

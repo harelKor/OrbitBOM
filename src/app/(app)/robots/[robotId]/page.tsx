@@ -47,8 +47,8 @@ export default async function RobotPage({
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-3xl font-bold tracking-tight">{robot.name}</h1>
-          <div className="text-sm text-slate-500 tabular-nums">
+          <h1 className="truncate display text-3xl text-accent">{robot.name}</h1>
+          <div className="text-sm text-subtle tabular-nums">
             {robot.year}
             {robot.code && `, robot ${robot.code}`}
             {robot.archived && ", archived"}
@@ -81,24 +81,24 @@ export default async function RobotPage({
               {activeStatuses.map((s) => (
                 <li key={s.name} className="flex items-center gap-2">
                   <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: s.color }} />
-                  <span className="min-w-0 flex-1 truncate text-slate-300">{s.name}</span>
+                  <span className="min-w-0 flex-1 truncate text-fg-2">{s.name}</span>
                   <span className="font-semibold tabular-nums">{s.count}</span>
-                  <span className="w-10 text-right text-xs text-slate-500 tabular-nums">{s.percent}%</span>
+                  <span className="w-10 text-right text-xs text-subtle tabular-nums">{s.percent}%</span>
                 </li>
               ))}
-              {activeStatuses.length === 0 && <li className="text-slate-500">No parts yet. Pick a system on the right and update its BOM.</li>}
+              {activeStatuses.length === 0 && <li className="text-subtle">No parts yet. Pick a system on the right and update its BOM.</li>}
             </ul>
           </div>
           {processes.length > 0 && (
             <div>
-              <h2 className="mb-2 text-xs font-semibold text-slate-400">By process</h2>
+              <h2 className="mb-2 text-xs font-semibold text-muted">By process</h2>
               <ul className="space-y-2">
                 {processes.map((p) => (
                   <li key={p.id}>
                     <Link href={`/robots/${robot.id}/fab?machine=${p.id}`} className="group block">
                       <div className="mb-1 flex items-baseline justify-between text-xs">
-                        <span className="text-slate-300 group-hover:text-white">{p.name}</span>
-                        <span className="text-slate-500 tabular-nums">
+                        <span className="text-fg-2 group-hover:text-fg">{p.name}</span>
+                        <span className="text-subtle tabular-nums">
                           {p.done}/{p.total}, {p.percent}%
                         </span>
                       </div>
@@ -121,7 +121,7 @@ export default async function RobotPage({
       </section>
 
       <details className="group">
-        <summary className="press flex cursor-pointer list-none items-center gap-2 text-sm text-slate-400 hover:text-white">
+        <summary className="press flex cursor-pointer list-none items-center gap-2 text-sm text-muted hover:text-fg">
           <Icon name="chevron" className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
           Inventory used by this robot
         </summary>
@@ -140,13 +140,13 @@ function LaunchCard({ href, icon, title, count, detail }: { href: string; icon: 
         <Icon name={icon} className="h-5 w-5" />
       </span>
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium text-slate-400">{title}</div>
-        <div className="text-3xl font-bold tracking-tight tabular-nums">
-          {count} <span className="text-base font-medium text-slate-400">{count === 1 ? "part" : "parts"}</span>
+        <div className="text-sm font-medium text-muted">{title}</div>
+        <div className="display text-3xl text-accent tabular-nums">
+          {count} <span className="text-base font-medium text-muted">{count === 1 ? "part" : "parts"}</span>
         </div>
-        <div className="truncate text-xs text-slate-500">{detail}</div>
+        <div className="truncate text-xs text-subtle">{detail}</div>
       </div>
-      <Icon name="arrow" className="h-5 w-5 text-slate-500 transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-white" />
+      <Icon name="arrow" className="h-5 w-5 text-subtle transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-fg" />
     </Link>
   );
 }

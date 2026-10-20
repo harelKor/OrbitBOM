@@ -33,7 +33,7 @@ export const SLOTS = [
 export type Slot = (typeof SLOTS)[number];
 
 export function Empty({ text = "—" }: { text?: string }) {
-  return <span className="text-slate-500">{text}</span>;
+  return <span className="text-subtle">{text}</span>;
 }
 
 // `bare` shows the name alone (the part card shows the number beside it).
@@ -44,7 +44,7 @@ export function NameField({ part, save, bare = false }: Props & { bare?: boolean
     <Popover
       locked={locked}
       triggerClassName={bare ? "max-w-full" : ""}
-      trigger={<span className={`font-semibold ${bare ? "truncate text-slate-100" : "text-accent-soft"}`}>{name}</span>}
+      trigger={<span className={`font-semibold ${bare ? "truncate text-fg" : "text-accent-soft"}`}>{name}</span>}
     >
       {(close) => (
         <InputEditor
@@ -67,7 +67,7 @@ export function TypeField({ part, save }: Props) {
       trigger={
         <span
           className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${
-            part.classification === "cots" ? "border-amber-700 text-amber-300" : "border-emerald-700 text-emerald-300"
+            part.classification === "cots" ? "border-amber-300 text-amber-700" : "border-emerald-300 text-emerald-700"
           }`}
         >
           {TYPE_LABELS[part.classification]}
@@ -126,7 +126,7 @@ export function MaterialField({ part, save, className }: Props & { className?: s
     <Popover locked={locked} triggerClassName={className}
       trigger={
         linked ? (
-          <span className="text-emerald-300" title="Drawn from the team inventory">
+          <span className="text-emerald-700" title="Drawn from the team inventory">
             {linked.name}
           </span>
         ) : (
@@ -242,7 +242,7 @@ export function PersonField({
 }) {
   const locked = !useEditMode();
   return (
-    <Popover locked={locked} trigger={value ?? <span className="text-slate-500 italic">Unassigned</span>}>
+    <Popover locked={locked} trigger={value ?? <span className="text-subtle italic">Unassigned</span>}>
       {(close) => (
         <InputEditor
           value={value ?? ""}

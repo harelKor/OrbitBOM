@@ -27,12 +27,12 @@ export function ToBomDialog({ item, targets, onClose }: { item: Item | null; tar
             });
           }}
         >
-          <p className="text-sm text-slate-400">
-            Put <span className="text-slate-100">{item.name}</span> on a system&apos;s BOM as an ordinary part. Its stock
+          <p className="text-sm text-muted">
+            Put <span className="text-fg">{item.name}</span> on a system&apos;s BOM as an ordinary part. Its stock
             is allocated to the new part automatically.
           </p>
           {targets.length === 0 ? (
-            <p className="text-sm text-amber-300">Create a robot with a system first.</p>
+            <p className="text-sm text-amber-700">Create a robot with a system first.</p>
           ) : (
             <>
               <div>
@@ -82,8 +82,8 @@ export function ToBomDialog({ item, targets, onClose }: { item: Item | null; tar
               </div>
             </>
           )}
-          {result?.error && <p className="text-sm text-rose-300">{result.error}</p>}
-          {result?.message && <p className="text-sm text-emerald-300">{result.message}</p>}
+          {result?.error && <p className="text-sm text-rose-700">{result.error}</p>}
+          {result?.message && <p className="text-sm text-emerald-700">{result.message}</p>}
           <div className="flex justify-end gap-2">
             <button type="button" className="btn" onClick={onClose}>
               {result?.message ? "Close" : "Cancel"}

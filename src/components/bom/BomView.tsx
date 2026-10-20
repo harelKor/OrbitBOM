@@ -165,7 +165,7 @@ export function BomView({
               key={c.id}
               onClick={() => setChip(c.id)}
               className={`press rounded-full border px-3 py-1 text-xs font-medium ${
-                chip === c.id ? "border-accent bg-accent text-white" : "border-line-strong text-slate-300 hover:border-slate-400 hover:bg-raised hover:text-white"
+                chip === c.id ? "border-accent bg-accent text-white" : "border-line-strong text-fg-2 hover:border-accent/50 hover:bg-raised hover:text-fg"
               }`}
             >
               {c.label}
@@ -177,7 +177,7 @@ export function BomView({
               <button
                 key={v}
                 onClick={() => setView(v)}
-                className={`press px-3 py-1 text-xs font-medium capitalize ${view === v ? "bg-accent text-white" : "bg-raised text-slate-300 hover:bg-line"}`}
+                className={`press px-3 py-1 text-xs font-medium capitalize ${view === v ? "bg-accent text-white" : "bg-raised text-fg-2 hover:bg-line"}`}
               >
                 {v}
               </button>
@@ -202,9 +202,9 @@ export function BomView({
           {edit && toolbar}
       </div>
 
-      {error && <p className="rounded-md bg-rose-950 p-3 text-sm text-rose-200">Couldn&apos;t save: {error}</p>}
+      {error && <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">Couldn&apos;t save: {error}</p>}
 
-      <div className="text-xs text-slate-500 tabular-nums">
+      <div className="text-xs text-subtle tabular-nums">
         {shown.length === optimistic.length ? `${optimistic.length} parts` : `${shown.length} of ${optimistic.length} parts`}
       </div>
 

@@ -39,7 +39,7 @@ export function MergeBar({ systemId, selected, onDone }: { systemId: string; sel
         <button className="btn ml-auto" onClick={onDone}>
           Done
         </button>
-        {error && <span className="w-full text-rose-300">{error}</span>}
+        {error && <span className="w-full text-rose-700">{error}</span>}
       </div>
     </div>
   );
