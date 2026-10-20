@@ -36,10 +36,16 @@ export function Empty({ text = "—" }: { text?: string }) {
   return <span className="text-slate-500">{text}</span>;
 }
 
-export function NameField({ part, save }: Props) {
+// `bare` shows the name alone (the part card shows the number beside it).
+export function NameField({ part, save, bare = false }: Props & { bare?: boolean }) {
   const locked = !useEditMode();
+  const name = bare ? (part.displayName ?? part.onshapeName ?? "Unnamed part") : partTitle(part);
   return (
-    <Popover locked={locked} trigger={<span className="font-semibold text-accent-soft">{partTitle(part)}</span>}>
+    <Popover
+      locked={locked}
+      triggerClassName={bare ? "max-w-full" : ""}
+      trigger={<span className={`font-semibold ${bare ? "truncate text-slate-100" : "text-accent-soft"}`}>{name}</span>}
+    >
       {(close) => (
         <InputEditor
           value={part.displayName ?? part.onshapeName ?? ""}
@@ -108,7 +114,7 @@ export function TextField({
 }
 
 // Materials, then the team's inventory items: picking an item ties the part to it (ref §5).
-export function MaterialField({ part, save }: Props) {
+export function MaterialField({ part, save, className }: Props & { className?: string }) {
   const locked = !useEditMode();
   const { inventory } = useBom();
   const linked = part.inventoryItemId ? inventory.find((i) => i.id === part.inventoryItemId) : undefined;
@@ -117,11 +123,11 @@ export function MaterialField({ part, save }: Props) {
     ...inventory.map((i) => ({ value: `inv:${i.id}`, label: i.name, group: "Inventory" })),
   ];
   return (
-    <Popover locked={locked}
+    <Popover locked={locked} triggerClassName={className}
       trigger={
         linked ? (
           <span className="text-emerald-300" title="Drawn from the team inventory">
-            ▣ {linked.name}
+            {linked.name}
           </span>
         ) : (
           (part.material ?? <Empty />)
@@ -165,7 +171,7 @@ export function QuantityField({ part, save }: Props) {
 export function StatusField({ part, save }: Props) {
   const status = computeStatus(part);
   return (
-    <Popover trigger={<StatusPill status={status} />}>
+    <Popover trigger={<StatusPill status={status} size="md" />}>
       {(close) => (
         <OptionList
           options={STATUS_OPTIONS}
@@ -205,12 +211,12 @@ export function PriorityField({ part, save }: Props) {
   );
 }
 
-export function MachineField({ part, save, slot, placeholder }: Props & { slot: Slot; placeholder?: string }) {
+export function MachineField({ part, save, slot, placeholder, className }: Props & { slot: Slot; placeholder?: string; className?: string }) {
   const locked = !useEditMode();
   const machineId = part[slot.key];
   const name = machineId ? (getMachine(machineId)?.name ?? machineId) : null;
   return (
-    <Popover locked={locked} trigger={name ?? <Empty text={placeholder} />}>
+    <Popover locked={locked} triggerClassName={className} trigger={name ?? <Empty text={placeholder} />}>
       {(close) => (
         <OptionList
           options={machineOptions(slot.stage)}

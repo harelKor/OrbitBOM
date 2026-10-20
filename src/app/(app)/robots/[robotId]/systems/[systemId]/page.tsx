@@ -7,7 +7,7 @@ import { UpdateBomButton } from "@/components/bom/UpdateBomButton";
 import { StatusBar } from "@/components/StatusBar";
 import { requireMember } from "@/lib/auth";
 import { listInventoryNames } from "@/lib/data/inventory";
-import { listMemberNames, listSystemMerges, listSystemParts } from "@/lib/data/parts";
+import { listSystemMerges, listSystemParts } from "@/lib/data/parts";
 import { getSystem } from "@/lib/data/robots";
 import { isEditMode } from "@/lib/mode";
 import { renameSystem } from "../../../actions";
@@ -25,38 +25,48 @@ export default async function SystemPage({
   const data = await getSystem(robotId, systemId);
   if (!data) notFound();
   const { system, robot, breakdown } = data;
-  const [parts, merges, memberNames, inventory, edit] = await Promise.all([
+  const [parts, merges, inventory, edit] = await Promise.all([
     listSystemParts(system.id),
     listSystemMerges(system.id),
-    listMemberNames(),
     listInventoryNames(),
     isEditMode(),
   ]);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <Link href={`/robots/${robot.id}`} className="text-sm text-slate-400 hover:text-slate-100">
-          ← {robot.name}
-        </Link>
-        {edit ? (
-          <form action={renameSystem.bind(null, robot.id, system.id)} className="mt-1 flex items-center gap-2">
-            <input
-              name="name"
-              defaultValue={system.name}
-              aria-label="System name"
-              className="-ml-1 rounded-md border border-transparent bg-transparent px-1 text-3xl font-semibold hover:border-line-strong focus:border-accent focus:outline-none"
-            />
-            <button className="btn">Save</button>
-          </form>
-        ) : (
-          <h1 className="mt-1 text-3xl font-semibold">{system.name}</h1>
-        )}
-        {system.assemblyUrl && (
-          <a href={system.assemblyUrl} target="_blank" rel="noreferrer" className="text-sm text-slate-400 hover:text-slate-100">
-            Open in Onshape ↗
-          </a>
-        )}
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
+        <div className="min-w-0 flex-1">
+          <Link href={`/robots/${robot.id}`} className="text-sm text-slate-500 hover:text-white">
+            {robot.name}
+          </Link>
+          {edit ? (
+            <form action={renameSystem.bind(null, robot.id, system.id)} className="flex items-center gap-2">
+              <input
+                name="name"
+                defaultValue={system.name}
+                aria-label="System name"
+                className="-ml-1 min-w-0 rounded-md border border-transparent bg-transparent px-1 text-3xl font-bold tracking-tight hover:border-line-strong focus:border-accent focus:outline-none"
+              />
+              <button className="btn">Save</button>
+            </form>
+          ) : (
+            <h1 className="truncate text-3xl font-bold tracking-tight">{system.name}</h1>
+          )}
+          {system.assemblyUrl && (
+            <a href={system.assemblyUrl} target="_blank" rel="noreferrer" className="text-sm text-slate-500 hover:text-white">
+              Open in Onshape ↗
+            </a>
+          )}
+        </div>
+        <div className="w-full max-w-md min-w-60 flex-1">
+          <div className="mb-2 flex items-baseline gap-2">
+            <span className="text-2xl font-bold tabular-nums">{breakdown.percent}%</span>
+            <span className="text-sm text-slate-500 tabular-nums">
+              {breakdown.done}/{breakdown.total} parts done
+            </span>
+          </div>
+          <StatusBar breakdown={breakdown} />
+        </div>
       </div>
 
       {system.assemblyUrl && (
@@ -66,22 +76,14 @@ export default async function SystemPage({
         </>
       )}
 
-      <section className="panel p-5">
-        <div className="mb-3 flex items-baseline gap-3">
-          <span className="text-3xl font-semibold">{breakdown.percent}%</span>
-          <span className="text-sm text-slate-400">
-            {breakdown.done} / {breakdown.total} parts done
-          </span>
-        </div>
-        <StatusBar breakdown={breakdown} />
-      </section>
-
-      <BomView parts={parts} memberNames={memberNames} inventory={inventory} isAdmin={member.isAdmin} merges={merges} mergeSystemId={system.id} toolbar={<ManualPartButton key="manual-part" systemId={system.id} />} />
+      <BomView parts={parts} inventory={inventory} isAdmin={member.isAdmin} merges={merges} mergeSystemId={system.id} robotId={robot.id} toolbar={<ManualPartButton key="manual-part" systemId={system.id} />} />
       {parts.length === 0 && (
-        <p className="rounded-xl border border-dashed border-line-strong p-8 text-center text-sm text-slate-400">
+        <p className="rounded-lg border border-dashed border-line-strong p-8 text-center text-sm text-slate-400">
           {system.assemblyUrl
-            ? "No parts yet. Click Update BOM from Onshape to pull this system\u2019s parts."
-            : "No parts yet. Add manual parts, or give this system an Onshape assembly."}
+            ? edit
+              ? "No parts yet. Click Update BOM from Onshape to pull this system\u2019s parts."
+              : "No parts yet. Switch to Edit and click Update BOM from Onshape to pull this system\u2019s parts."
+            : "No parts yet. Add manual parts in Edit mode, or give this system an Onshape assembly."}
         </p>
       )}
     </div>

@@ -35,7 +35,7 @@ export function ManualPartButton({ systemId }: { systemId: string }) {
 
   return (
     <>
-      <button className="btn-primary bg-emerald-600 hover:bg-emerald-500" onClick={() => setOpen(true)}>
+      <button className="btn" onClick={() => setOpen(true)}>
         + Manual part
       </button>
       <Dialog open={open} onClose={() => setOpen(false)} title="Add Manual Part">

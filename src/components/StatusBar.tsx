@@ -1,6 +1,6 @@
 import type { Breakdown } from "@/lib/stats";
 
-// FRCBOM's stacked status bar with a count and % per status (ref §1).
+// A stacked status bar with a count and % for each status that has parts.
 export function StatusBar({ breakdown, legend = true }: { breakdown: Breakdown; legend?: boolean }) {
   const shown = breakdown.statuses.filter((s) => s.count > 0);
   return (
@@ -16,11 +16,11 @@ export function StatusBar({ breakdown, legend = true }: { breakdown: Breakdown; 
       </div>
       {legend && (
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400">
-          {breakdown.statuses.map((s) => (
+          {shown.map((s) => (
             <span key={s.name} className="inline-flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-full" style={{ background: s.color }} />
               {s.name}
-              <span className="text-slate-500">
+              <span className="text-slate-500 tabular-nums">
                 {s.count} · {s.percent}%
               </span>
             </span>

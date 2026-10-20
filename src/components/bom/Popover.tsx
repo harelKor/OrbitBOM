@@ -10,12 +10,14 @@ export function Popover({
   triggerClassName = "",
   align = "left",
   locked = false,
+  hideCaret = false,
 }: {
   trigger: React.ReactNode;
   children: (close: () => void) => React.ReactNode;
   triggerClassName?: string;
   align?: "left" | "right";
   locked?: boolean;
+  hideCaret?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -43,7 +45,7 @@ export function Popover({
         className={`press inline-flex items-center gap-1 rounded text-left hover:text-accent-soft ${triggerClassName}`}
       >
         {trigger}
-        <span className="text-[10px] text-slate-500">▾</span>
+        {!hideCaret && <span className="text-[10px] text-slate-500">▾</span>}
       </button>
       {open && (
         <div
