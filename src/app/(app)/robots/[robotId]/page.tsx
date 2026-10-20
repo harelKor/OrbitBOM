@@ -5,7 +5,8 @@ import { ProgressBar, StatusBar } from "@/components/StatusBar";
 import { requireMember } from "@/lib/auth";
 import { robotInventory } from "@/lib/data/inventory";
 import { getRobot } from "@/lib/data/robots";
-import { deleteRobot, deleteSystem, updateRobot } from "../actions";
+import { isEditMode } from "@/lib/mode";
+import { deleteRobot, deleteSystem, setRobotArchived, updateRobot } from "../actions";
 import { NewSystemButton } from "./NewSystemButton";
 import { RobotInventory } from "./RobotInventory";
 
@@ -15,24 +16,21 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
   const data = await getRobot(robotId);
   if (!data) notFound();
   const { robot, breakdown, systems } = data;
-  const inventory = await robotInventory(robot.id);
+  const [inventory, edit] = await Promise.all([robotInventory(robot.id), isEditMode()]);
   const update = updateRobot.bind(null, robot.id);
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <Link href="/" className="text-sm text-slate-400 hover:text-slate-100">
-            ← Robots
-          </Link>
-          <div className="mt-1 text-xs font-semibold tracking-wide text-slate-500 uppercase">Robot</div>
+          <div className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Robot</div>
           <h1 className="text-3xl font-semibold">{robot.name}</h1>
           <div className="text-sm text-slate-400">{robot.year}</div>
         </div>
-        <NewSystemButton robotId={robot.id} />
+        {edit && <NewSystemButton robotId={robot.id} />}
       </div>
 
-      <div className="flex flex-wrap gap-6">
+      {edit && <div className="flex flex-wrap items-end gap-6">
         <form action={update} className="flex items-end gap-2">
           <div>
             <label className="label" htmlFor="code">
@@ -51,7 +49,10 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
           </div>
           <button className="btn">Save</button>
         </form>
-      </div>
+        <form action={setRobotArchived.bind(null, robot.id, !robot.archived)}>
+          <button className="btn">{robot.archived ? "Unarchive robot" : "Archive robot"}</button>
+        </form>
+      </div>}
 
       <section className="panel p-5">
         <div className="mb-3 flex items-baseline gap-3">
@@ -67,13 +68,13 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
       <section className="panel p-5">
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-lg font-semibold">Systems</h2>
-          <span className="text-xs text-slate-500">Add systems with the New system button above.</span>
+          {edit && <span className="text-xs text-slate-500">Add systems with the New system button above.</span>}
         </div>
-        <ul className="divide-y divide-slate-800">
+        <ul className="divide-y divide-line">
           <li>
             <Link
               href={`/robots/${robot.id}/main`}
-              className="flex items-center gap-3 py-3 hover:text-indigo-300"
+              className="flex items-center gap-3 py-3 hover:text-accent-soft"
             >
               <span className="flex-1 font-medium">Main</span>
               <span className="text-xs text-slate-500">All systems</span>
@@ -81,7 +82,7 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
           </li>
           {systems.map((s) => (
             <li key={s.id} className="flex items-center gap-3 py-3">
-              <Link href={`/robots/${robot.id}/systems/${s.id}`} className="flex-1 font-medium hover:text-indigo-300">
+              <Link href={`/robots/${robot.id}/systems/${s.id}`} className="flex-1 font-medium hover:text-accent-soft">
                 {s.name}
               </Link>
               <ProgressBar done={s.breakdown.done} total={s.breakdown.total} />
@@ -90,7 +91,7 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
                   Onshape ↗
                 </a>
               )}
-              {member.isAdmin && (
+              {edit && member.isAdmin && (
                 <ConfirmButton
                   action={deleteSystem.bind(null, robot.id, s.id)}
                   message={`Delete the system "${s.name}" and all its parts? This can't be undone.`}
@@ -107,7 +108,7 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
 
       <RobotInventory items={inventory} />
 
-      {member.isAdmin && (
+      {edit && member.isAdmin && (
         <div className="flex justify-end">
           <ConfirmButton
             action={deleteRobot.bind(null, robot.id)}

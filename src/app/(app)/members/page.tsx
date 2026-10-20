@@ -37,7 +37,7 @@ export default async function MembersPage() {
       {me.isAdmin && requests.length > 0 && (
         <section>
           <h2 className="mb-2 font-medium">Join requests</h2>
-          <ul className="panel divide-y divide-slate-800">
+          <ul className="panel divide-y divide-line">
             {requests.map((r) => (
               <li key={r.userId} className="flex flex-wrap items-center gap-3 px-4 py-3">
                 <div className="min-w-0 flex-1">
@@ -58,14 +58,14 @@ export default async function MembersPage() {
 
       <section>
         <h2 className="mb-2 font-medium">Team ({members.length})</h2>
-        <ul className="panel divide-y divide-slate-800">
+        <ul className="panel divide-y divide-line">
           {members.map((m) => (
             <li key={m.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
               <div className="min-w-0 flex-1">
                 <div className="truncate font-medium">
                   {m.name}
                   {m.isAdmin && (
-                    <span className="ml-2 rounded bg-indigo-600 px-1.5 py-0.5 text-[11px] text-white">
+                    <span className="ml-2 rounded bg-accent px-1.5 py-0.5 text-[11px] text-white">
                       Admin
                     </span>
                   )}
@@ -101,7 +101,7 @@ export default async function MembersPage() {
           {invites.length === 0 ? (
             <p className="text-sm text-slate-500">No open invite links.</p>
           ) : (
-            <ul className="panel divide-y divide-slate-800">
+            <ul className="panel divide-y divide-line">
               {invites.map((i) => (
                 <li key={i.token} className="flex items-center gap-3 px-4 py-3">
                   <code className="min-w-0 flex-1 truncate text-sm text-slate-300">

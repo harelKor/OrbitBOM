@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { isDone } from "@/lib/status";
 import {
-  DeadlineField,
   MachineField,
   MaterialField,
   NameField,
@@ -14,6 +13,7 @@ import {
   TypeField,
   type SaveFn,
 } from "./fields";
+import { Checkbox } from "@/components/ui/Checkbox";
 import { FilesField } from "./FilesField";
 import { Thumb } from "./Thumb";
 import { partTitle, type CardPart } from "./types";
@@ -37,7 +37,7 @@ export function TableView({
   return (
     <div className="panel overflow-x-auto">
       <table className="w-full text-sm">
-        <thead className="border-b border-slate-800">
+        <thead className="border-b border-line">
           <tr>
             {selection && <th className={th} />}
             <th className={th} />
@@ -56,14 +56,13 @@ export function TableView({
               </th>
             ))}
             <th className={th}>Status</th>
-            <th className={th}>Deadline</th>
             <th className={th}>Files</th>
             <th className={th}>Notes</th>
             <th className={th}>Last edited</th>
             <th className={th}>Edited by</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-800">
+        <tbody className="divide-y divide-line">
           {sorted.map((p) => {
             const save = saveFor(p.id);
             const done = isDone(p);
@@ -71,11 +70,10 @@ export function TableView({
               <tr key={p.id} className={done ? "bg-emerald-950/30" : ""}>
                 {selection && (
                   <td className="px-2 py-1.5">
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={selection.ids.has(p.id)}
                       onChange={() => selection.toggle(p.id)}
-                      aria-label={`Select ${partTitle(p)}`}
+                      label={`Select ${partTitle(p)}`}
                     />
                   </td>
                 )}
@@ -89,7 +87,6 @@ export function TableView({
                   <td key={s.key} className="px-2 py-1.5"><MachineField part={p} save={save} slot={s} /></td>
                 ))}
                 <td className="px-2 py-1.5"><StatusField part={p} save={save} /></td>
-                <td className="px-2 py-1.5"><DeadlineField part={p} save={save} done={done} /></td>
                 <td className="px-2 py-1.5"><FilesField part={p} /></td>
                 <td className="px-2 py-1.5"><NoteField part={p} save={save} /></td>
                 <td className="px-2 py-1.5 whitespace-nowrap text-slate-400">{p.lastModifiedAt.toISOString().slice(0, 10)}</td>

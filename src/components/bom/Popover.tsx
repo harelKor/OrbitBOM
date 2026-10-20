@@ -3,16 +3,19 @@
 import { useEffect, useId, useRef, useState } from "react";
 
 // FRCBOM's card editing pattern: the field value is a button that opens a small panel.
+// A locked popover (a property in View mode) shows only its value.
 export function Popover({
   trigger,
   children,
   triggerClassName = "",
   align = "left",
+  locked = false,
 }: {
   trigger: React.ReactNode;
   children: (close: () => void) => React.ReactNode;
   triggerClassName?: string;
   align?: "left" | "right";
+  locked?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -31,19 +34,20 @@ export function Popover({
     };
   }, [open]);
 
+  if (locked) return <span className={`inline-flex items-center gap-1 ${triggerClassName}`}>{trigger}</span>;
   return (
     <div ref={ref} className="relative inline-block">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className={`inline-flex items-center gap-1 rounded text-left hover:text-indigo-300 ${triggerClassName}`}
+        className={`press inline-flex items-center gap-1 rounded text-left hover:text-accent-soft ${triggerClassName}`}
       >
         {trigger}
         <span className="text-[10px] text-slate-500">▾</span>
       </button>
       {open && (
         <div
-          className={`absolute z-30 mt-1 w-64 rounded-lg border border-slate-700 bg-slate-900 p-2 shadow-xl ${
+          className={`absolute z-30 mt-1 w-64 rounded-lg border border-line-strong bg-surface p-2 shadow-xl ${
             align === "right" ? "right-0" : "left-0"
           }`}
         >
@@ -86,8 +90,8 @@ export function OptionList({
               <button
                 type="button"
                 onClick={() => onPick(o.value)}
-                className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left hover:bg-slate-800 ${
-                  o.value === value ? "bg-slate-800 text-white" : "text-slate-300"
+                className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left hover:bg-raised ${
+                  o.value === value ? "bg-raised text-white" : "text-slate-300"
                 }`}
               >
                 {o.color && <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: o.color }} />}

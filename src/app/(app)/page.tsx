@@ -1,67 +1,44 @@
+import { cookies } from "next/headers";
 import Link from "next/link";
-import { ProgressBar, StatusBar } from "@/components/StatusBar";
+import { ROBOT_COOKIE } from "@/components/shell/mode";
 import { requireMember } from "@/lib/auth";
-import { listRobots, type RobotSummary } from "@/lib/data/robots";
-import { setRobotArchived } from "./robots/actions";
+import { listRobots } from "@/lib/data/robots";
 
+// The landing page: one tile per app. Robots are picked in the right sidebar.
 export default async function HomePage() {
   await requireMember();
-  const robots = await listRobots();
-  const active = robots.filter((r) => !r.archived);
-  const archived = robots.filter((r) => r.archived);
+  const [robots, jar] = await Promise.all([listRobots(), cookies()]);
+  const last = jar.get(ROBOT_COOKIE)?.value;
+  const robot = robots.find((r) => r.id === last) ?? robots.find((r) => !r.archived);
+
+  const tiles = [
+    {
+      href: robot ? `/robots/${robot.id}` : "/robots/new",
+      title: "BOM",
+      text: robot ? `${robot.name} · ${robot.breakdown.percent}% complete` : "Create the first robot",
+    },
+    { href: "/inventory", title: "Inventory", text: "Stock, locations and what each robot uses" },
+  ];
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Robots</h1>
-        <Link href="/robots/new" className="btn-primary">
-          + New robot
-        </Link>
-      </div>
-
-      {active.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-slate-700 p-10 text-center text-sm text-slate-400">
-          No robots yet. Create one, then add its systems from their Onshape assemblies.
+    <div className="mx-auto max-w-4xl py-6">
+      <h1 className="mb-6 text-2xl font-bold tracking-tight">OrbitBOM</h1>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {tiles.map((t) => (
+          <Link
+            key={t.title}
+            href={t.href}
+            className="card-interactive group flex aspect-square flex-col justify-end p-5"
+          >
+            <span className="text-3xl font-bold tracking-tight group-hover:text-white">{t.title}</span>
+            <span className="mt-1 text-sm text-slate-400">{t.text}</span>
+          </Link>
+        ))}
+        <div className="flex aspect-square flex-col justify-end rounded-lg border border-dashed border-line p-5 text-slate-600">
+          <span className="text-3xl font-bold tracking-tight">More</span>
+          <span className="mt-1 text-sm">Future apps</span>
         </div>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {active.map((r) => (
-            <RobotCard key={r.id} robot={r} />
-          ))}
-        </div>
-      )}
-
-      {archived.length > 0 && (
-        <details className="text-sm">
-          <summary className="cursor-pointer text-slate-400">Archived ({archived.length})</summary>
-          <div className="mt-3 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {archived.map((r) => (
-              <RobotCard key={r.id} robot={r} />
-            ))}
-          </div>
-        </details>
-      )}
-    </div>
-  );
-}
-
-function RobotCard({ robot }: { robot: RobotSummary }) {
-  return (
-    <div className="panel flex flex-col gap-3 p-4">
-      <Link href={`/robots/${robot.id}`} className="group">
-        <div className="text-lg font-semibold group-hover:text-indigo-300">{robot.name}</div>
-        <div className="text-sm text-slate-400">{robot.year}</div>
-      </Link>
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-slate-400">{robot.breakdown.percent}% complete</span>
-        <ProgressBar done={robot.breakdown.done} total={robot.breakdown.total} />
       </div>
-      <StatusBar breakdown={robot.breakdown} legend={false} />
-      <form action={setRobotArchived.bind(null, robot.id, !robot.archived)} className="mt-auto">
-        <button className="text-xs text-slate-500 hover:text-slate-200">
-          {robot.archived ? "Unarchive" : "Archive"}
-        </button>
-      </form>
     </div>
   );
 }

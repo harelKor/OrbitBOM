@@ -37,7 +37,7 @@ export async function createRobot(_: FormState, formData: FormData): Promise<For
     .insert(schema.robots)
     .values({ ...parsed.data, mainAssemblyUrl: normaliseUrl(parsed.data.mainAssemblyUrl) })
     .returning({ id: schema.robots.id });
-  revalidatePath("/");
+  revalidatePath("/", "layout");
   redirect(`/robots/${robot.id}`);
 }
 
@@ -53,13 +53,13 @@ export async function updateRobot(robotId: string, formData: FormData) {
   await requireMember();
   const data = robotDetails.parse(Object.fromEntries(formData));
   await db.update(schema.robots).set(data).where(eq(schema.robots.id, robotId));
-  revalidatePath(`/robots/${robotId}`);
+  revalidatePath("/", "layout");
 }
 
 export async function setRobotArchived(robotId: string, archived: boolean) {
   await requireMember();
   await db.update(schema.robots).set({ archived }).where(eq(schema.robots.id, robotId));
-  revalidatePath("/");
+  revalidatePath("/", "layout");
 }
 
 export async function deleteRobot(robotId: string) {
@@ -67,7 +67,7 @@ export async function deleteRobot(robotId: string) {
   const keys = await fileKeysFor({ robotId });
   await db.delete(schema.robots).where(eq(schema.robots.id, robotId));
   await deleteObjects(keys);
-  revalidatePath("/");
+  revalidatePath("/", "layout");
   redirect("/");
 }
 
@@ -93,7 +93,7 @@ export async function createSystem(
       assemblyUrl: normaliseUrl(parsed.data.assemblyUrl),
     })
     .returning({ id: schema.systems.id });
-  revalidatePath(`/robots/${robotId}`);
+  revalidatePath("/", "layout");
   redirect(`/robots/${robotId}/systems/${system.id}`);
 }
 
@@ -101,8 +101,7 @@ export async function renameSystem(robotId: string, systemId: string, formData: 
   await requireMember();
   const name = z.string().trim().min(1).parse(formData.get("name"));
   await db.update(schema.systems).set({ name }).where(eq(schema.systems.id, systemId));
-  revalidatePath(`/robots/${robotId}`);
-  revalidatePath(`/robots/${robotId}/systems/${systemId}`);
+  revalidatePath("/", "layout");
 }
 
 export async function deleteSystem(robotId: string, systemId: string) {
@@ -110,5 +109,5 @@ export async function deleteSystem(robotId: string, systemId: string) {
   const keys = await fileKeysFor({ systemId });
   await db.delete(schema.systems).where(eq(schema.systems.id, systemId));
   await deleteObjects(keys);
-  revalidatePath(`/robots/${robotId}`);
+  revalidatePath("/", "layout");
 }

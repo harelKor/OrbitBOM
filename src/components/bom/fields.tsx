@@ -3,9 +3,7 @@
 // The popover editors for each part field. The card, the table and the Kanban cards all use
 // these, so a field edits the same way everywhere (ref §2a, §3).
 
-import { useState } from "react";
 import { getMachine } from "@/config/machines";
-import { getStatus } from "@/config/statuses";
 import type { PartChanges } from "@/lib/parts/changes";
 import { computeStatus } from "@/lib/status";
 import {
@@ -16,8 +14,10 @@ import {
   TYPE_LABELS,
   TYPE_OPTIONS,
   machineOptions,
-  textOn,
 } from "./options";
+import { useEditMode } from "@/components/shell/ModeContext";
+import { StatusPill } from "@/components/ui/StatusPill";
+export { StatusPill };
 import { useBom } from "./BomContext";
 import { InputEditor, OptionList, Popover } from "./Popover";
 import { partTitle, type CardPart } from "./types";
@@ -37,8 +37,9 @@ export function Empty({ text = "—" }: { text?: string }) {
 }
 
 export function NameField({ part, save }: Props) {
+  const locked = !useEditMode();
   return (
-    <Popover trigger={<span className="font-semibold text-indigo-300">{partTitle(part)}</span>}>
+    <Popover locked={locked} trigger={<span className="font-semibold text-accent-soft">{partTitle(part)}</span>}>
       {(close) => (
         <InputEditor
           value={part.displayName ?? part.onshapeName ?? ""}
@@ -54,8 +55,9 @@ export function NameField({ part, save }: Props) {
 }
 
 export function TypeField({ part, save }: Props) {
+  const locked = !useEditMode();
   return (
-    <Popover
+    <Popover locked={locked}
       trigger={
         <span
           className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${
@@ -87,8 +89,9 @@ export function TextField({
   type = "text",
   empty,
 }: Props & { field: "partNumber" | "description" | "drawingUrl"; type?: "text" | "url"; empty?: string }) {
+  const locked = !useEditMode();
   return (
-    <Popover trigger={part[field] ?? <Empty text={empty} />}>
+    <Popover locked={locked} trigger={part[field] ?? <Empty text={empty} />}>
       {(close) => (
         <InputEditor
           type={type}
@@ -106,6 +109,7 @@ export function TextField({
 
 // Materials, then the team's inventory items: picking an item ties the part to it (ref §5).
 export function MaterialField({ part, save }: Props) {
+  const locked = !useEditMode();
   const { inventory } = useBom();
   const linked = part.inventoryItemId ? inventory.find((i) => i.id === part.inventoryItemId) : undefined;
   const options = [
@@ -113,7 +117,7 @@ export function MaterialField({ part, save }: Props) {
     ...inventory.map((i) => ({ value: `inv:${i.id}`, label: i.name, group: "Inventory" })),
   ];
   return (
-    <Popover
+    <Popover locked={locked}
       trigger={
         linked ? (
           <span className="text-emerald-300" title="Drawn from the team inventory">
@@ -140,8 +144,9 @@ export function MaterialField({ part, save }: Props) {
 }
 
 export function QuantityField({ part, save }: Props) {
+  const locked = !useEditMode();
   return (
-    <Popover trigger={part.quantity}>
+    <Popover locked={locked} trigger={part.quantity}>
       {(close) => (
         <InputEditor
           type="number"
@@ -154,15 +159,6 @@ export function QuantityField({ part, save }: Props) {
         />
       )}
     </Popover>
-  );
-}
-
-export function StatusPill({ status }: { status: string }) {
-  const color = getStatus(status)?.color ?? "#cbd5e1";
-  return (
-    <span className="rounded px-1.5 py-0.5 text-xs font-medium whitespace-nowrap" style={{ background: color, color: textOn(color) }}>
-      {status}
-    </span>
   );
 }
 
@@ -186,8 +182,9 @@ export function StatusField({ part, save }: Props) {
 }
 
 export function PriorityField({ part, save }: Props) {
+  const locked = !useEditMode();
   return (
-    <Popover
+    <Popover locked={locked}
       trigger={
         <span className="rounded px-1.5 py-0.5 text-xs font-medium text-white" style={{ background: PRIORITY_COLORS[part.priority] }}>
           {part.priority[0].toUpperCase() + part.priority.slice(1)}
@@ -208,37 +205,12 @@ export function PriorityField({ part, save }: Props) {
   );
 }
 
-export function DeadlineField({ part, save, done }: Props & { done: boolean }) {
-  const [now] = useState(() => Date.now());
-  let label: React.ReactNode = <Empty text="Set a date" />;
-  if (part.deadline) {
-    const days = Math.ceil((new Date(part.deadline).getTime() - now) / 86_400_000);
-    // FRCBOM flags overdue and within-7-days deadlines (deadline_warn_days = 7).
-    const color = done ? "text-slate-300" : days < 0 ? "text-rose-400" : days <= 7 ? "text-amber-300" : "text-slate-300";
-    label = <span className={color}>{part.deadline}</span>;
-  }
-  return (
-    <Popover trigger={label}>
-      {(close) => (
-        <InputEditor
-          type="date"
-          value={part.deadline ?? ""}
-          onCancel={close}
-          onSave={(v) => {
-            save({ deadline: v || null });
-            close();
-          }}
-        />
-      )}
-    </Popover>
-  );
-}
-
 export function MachineField({ part, save, slot, placeholder }: Props & { slot: Slot; placeholder?: string }) {
+  const locked = !useEditMode();
   const machineId = part[slot.key];
   const name = machineId ? (getMachine(machineId)?.name ?? machineId) : null;
   return (
-    <Popover trigger={name ?? <Empty text={placeholder} />}>
+    <Popover locked={locked} trigger={name ?? <Empty text={placeholder} />}>
       {(close) => (
         <OptionList
           options={machineOptions(slot.stage)}
@@ -262,8 +234,9 @@ export function PersonField({
   names: string[];
   onSave: (value: string | null) => void;
 }) {
+  const locked = !useEditMode();
   return (
-    <Popover trigger={value ?? <span className="text-slate-500 italic">Unassigned</span>}>
+    <Popover locked={locked} trigger={value ?? <span className="text-slate-500 italic">Unassigned</span>}>
       {(close) => (
         <InputEditor
           value={value ?? ""}

@@ -4,8 +4,8 @@ import { useTransition } from "react";
 import { getMachine } from "@/config/machines";
 import { isDone } from "@/lib/status";
 import { deleteManualPart, unmergeParts } from "@/app/(app)/parts-actions";
+import { useEditMode } from "@/components/shell/ModeContext";
 import {
-  DeadlineField,
   MachineField,
   MaterialField,
   NameField,
@@ -19,8 +19,8 @@ import {
   machineSlotsShown,
   type SaveFn,
 } from "./fields";
+import { CheckBadge } from "@/components/ui/CheckBadge";
 import { FilesField } from "./FilesField";
-import { textOn } from "./options";
 import { Popover, InputEditor } from "./Popover";
 import { ownerPartId, partTitle, type CardPart } from "./types";
 
@@ -40,14 +40,14 @@ export function PartCard({
   onToggleSelect?: () => void; // set while a selection mode (Bulk edit) is on
 }) {
   const [, startTransition] = useTransition();
+  const edit = useEditMode();
   const done = isDone(part);
   const currentSlot = SLOTS.find((s) => part[s.key] && part[s.done] < Math.max(part.quantity, 1));
 
   return (
     <div
-      className={`relative flex flex-col overflow-hidden rounded-xl border text-sm ${
-        selected ? "border-indigo-400 ring-2 ring-indigo-500" : done ? "border-emerald-800" : "border-slate-800"
-      } ${done ? "bg-emerald-950/40" : "bg-slate-900"}`}
+      data-selected={!!selected}
+      className={`card-interactive group flex flex-col text-sm ${done && !selected ? "border-emerald-800/70" : ""}`}
     >
       {onToggleSelect && (
         // In a selection mode, clicking anywhere on the card toggles it, as in FRCBOM.
@@ -56,18 +56,12 @@ export function PartCard({
           onClick={onToggleSelect}
           aria-pressed={selected}
           aria-label={selected ? "Deselect part" : "Select part"}
-          className="absolute inset-0 z-20 flex items-start justify-end p-3"
+          className="absolute inset-0 z-20 flex cursor-pointer items-start justify-end p-2"
         >
-          <span
-            className={`flex h-5 w-5 items-center justify-center rounded border text-xs ${
-              selected ? "border-indigo-400 bg-indigo-500 text-white" : "border-slate-500 bg-slate-900"
-            }`}
-          >
-            {selected ? "✓" : ""}
-          </span>
+          <CheckBadge checked={!!selected} />
         </button>
       )}
-      <div className="flex h-28 items-center justify-center bg-slate-800/50 text-xs text-slate-600">
+      <div className="thumb-well flex h-28 items-center justify-center text-xs text-slate-500">
         {part.thumbUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
           <img src={part.thumbUrl} alt="" loading="lazy" className="h-full w-full object-contain" />
@@ -89,23 +83,9 @@ export function PartCard({
         {part.memberIds && (
           <div className="flex items-center gap-2 text-xs text-slate-400">
             ⧉ Merged from {part.memberIds.length} parts
-            <button className="text-indigo-300 hover:text-indigo-200" onClick={() => startTransition(() => void unmergeParts(part.id))}>
+            {edit && <button className="text-accent-soft hover:text-accent-soft" onClick={() => startTransition(() => void unmergeParts(part.id))}>
               Unmerge
-            </button>
-          </div>
-        )}
-        {part.groups.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {part.groups.map((g) => (
-              <a
-                key={g.id}
-                href="/groups"
-                className="rounded px-1.5 text-[10px] font-medium"
-                style={{ background: g.color ?? "#475569", color: textOn(g.color ?? "#475569") }}
-              >
-                {g.name}
-              </a>
-            ))}
+            </button>}
           </div>
         )}
 
@@ -114,9 +94,6 @@ export function PartCard({
         </Row>
         <Row label="Material">
           <MaterialField part={part} save={save} />
-        </Row>
-        <Row label="Description">
-          <TextField part={part} save={save} field="description" />
         </Row>
         <Row label="Quantity Needed">
           <QuantityField part={part} save={save} />
@@ -127,16 +104,13 @@ export function PartCard({
         <Row label="Priority">
           <PriorityField part={part} save={save} />
         </Row>
-        <Row label="Deadline">
-          <DeadlineField part={part} save={save} done={done} />
-        </Row>
         <Row label="Drawing">
           {part.drawingUrl && (
             <a href={part.drawingUrl} target="_blank" rel="noreferrer" className="mr-2 text-sky-300 hover:underline">
               Open
             </a>
           )}
-          <Popover trigger={<span className="text-slate-400">{part.drawingUrl ? "Change" : "Add link"}</span>}>
+          <Popover locked={!edit} trigger={<span className="text-slate-400">{edit ? (part.drawingUrl ? "Change" : "Add link") : part.drawingUrl ? "" : "—"}</span>}>
             {(close) => (
               <InputEditor
                 type="url"
@@ -163,7 +137,7 @@ export function PartCard({
                       key={f}
                       href={`/api/parts/${ownerPartId(part)}/export?format=${f}`}
                       onClick={close}
-                      className="block rounded px-2 py-1.5 hover:bg-slate-800"
+                      className="block rounded px-2 py-1.5 hover:bg-raised"
                     >
                       {f === "PARASOLID" ? "Parasolid (.x_t)" : `${f} (.${f.toLowerCase()})`}
                     </a>
@@ -174,9 +148,6 @@ export function PartCard({
             </Popover>
           </Row>
         )}
-        <Row label="Designer">
-          <PersonField value={part.designerName} names={memberNames} onSave={(v) => save({ designerName: v })} />
-        </Row>
 
         <div className="pt-1 font-medium text-slate-300">Manufacturing</div>
         {currentSlot && (
@@ -188,7 +159,7 @@ export function PartCard({
           const machineId = part[slot.key];
           const machineName = machineId ? (getMachine(machineId)?.name ?? machineId) : null;
           return (
-            <div key={slot.key} className="space-y-1 border-l-2 border-slate-700 pl-2 text-xs">
+            <div key={slot.key} className="space-y-1 border-l-2 border-line-strong pl-2 text-xs">
               <div className="flex gap-1">
                 <span className="text-slate-400">{slot.label}:</span>
                 <MachineField part={part} save={save} slot={slot} placeholder={`Add ${slot.label}`} />
@@ -246,6 +217,7 @@ export function PartCard({
                 defaultValue={part[field] ?? ""}
                 key={part[field] ?? ""}
                 placeholder="—"
+                disabled={!edit}
                 onBlur={(e) => {
                   const v = e.target.value === "" ? null : Number(e.target.value);
                   if (v !== part[field]) save({ [field]: v });
@@ -261,7 +233,7 @@ export function PartCard({
             Edited {part.lastModifiedAt.toISOString().slice(0, 10)}
             {part.lastModifiedByName && ` by ${part.lastModifiedByName}`}
           </span>
-          {part.isManual && (
+          {edit && part.isManual && (
             <button
               className="text-rose-400 hover:text-rose-200"
               onClick={() => {

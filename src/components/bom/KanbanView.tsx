@@ -54,7 +54,7 @@ export function KanbanView({
 function Column({ id, color, title, meta, children }: { id: string; color: string; title: string; meta: string; children: React.ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id });
   return (
-    <div ref={setNodeRef} className={`flex w-64 shrink-0 flex-col rounded-xl border p-2 ${isOver ? "border-indigo-500 bg-slate-800/60" : "border-slate-800 bg-slate-900/60"}`}>
+    <div ref={setNodeRef} className={`flex w-64 shrink-0 flex-col rounded-xl border p-2 ${isOver ? "border-accent bg-raised/60" : "border-line bg-surface/60"}`}>
       <div className="mb-2 flex items-center gap-2 px-1 text-xs font-semibold">
         <span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} />
         <span className="uppercase">{title}</span>
@@ -74,23 +74,22 @@ function KanbanCard({ part, save, showSystem }: { part: CardPart; save: SaveFn; 
       {...listeners}
       {...attributes}
       style={transform ? { transform: `translate(${transform.x}px, ${transform.y}px)` } : undefined}
-      className={`cursor-grab rounded-lg border border-slate-700 bg-slate-900 p-2 text-xs ${isDragging ? "z-50 opacity-80 shadow-xl" : ""}`}
+      className={`cursor-grab rounded-lg border border-line-strong bg-surface p-2 text-xs ${isDragging ? "z-50 opacity-80 shadow-xl" : ""}`}
     >
       <div className="flex items-start justify-between gap-1">
         {part.thumbUrl && <Thumb part={part} size={28} />}
-        <span className="flex-1 font-semibold text-indigo-300">{partTitle(part)}</span>
+        <span className="flex-1 font-semibold text-accent-soft">{partTitle(part)}</span>
         <span className="text-slate-400">×{part.quantity}</span>
       </div>
       {showSystem && <div className="text-slate-500">{part.systemName}</div>}
       <div className="mt-1 flex flex-wrap items-center gap-1">
         <TypeField part={part} save={save} />
         {machines.map((m) => (
-          <span key={m} className="rounded bg-slate-800 px-1.5 py-0.5 text-slate-300">{m}</span>
+          <span key={m} className="rounded bg-raised px-1.5 py-0.5 text-slate-300">{m}</span>
         ))}
       </div>
       {part.material && <div className="mt-1 text-slate-400">{part.material}</div>}
       <div className="mt-1"><StatusPill status={computeStatus(part)} /></div>
-      {part.deadline && <div className="mt-1 text-slate-400">Due {part.deadline}</div>}
       {part.note && <div className="mt-1 line-clamp-2 text-slate-500">{part.note}</div>}
     </div>
   );

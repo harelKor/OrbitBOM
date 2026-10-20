@@ -17,7 +17,6 @@ const { partGroups, groupMembers, parts, systems } = schema;
 export type ActionResult = { error?: string; message?: string };
 
 function refresh() {
-  revalidatePath("/groups");
   revalidatePath("/robots", "layout");
 }
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { Checkbox } from "@/components/ui/Checkbox";
 import { useState, useTransition } from "react";
 import { Dialog } from "@/components/Dialog";
 import {
@@ -64,7 +65,7 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
           <a
             href={`data:text/csv;charset=utf-8,${encodeURIComponent(TEMPLATE)}`}
             download="OrbitBOM_Inventory_Template.csv"
-            className="text-indigo-300 hover:text-indigo-200"
+            className="text-accent-soft hover:text-accent-soft"
           >
             Download the template
           </a>
@@ -73,7 +74,7 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
           type="file"
           accept=".xlsx,.csv"
           onChange={(e) => e.target.files?.[0] && load(e.target.files[0])}
-          className="block text-sm text-slate-300 file:mr-3 file:rounded-md file:border-0 file:bg-slate-800 file:px-3 file:py-1.5 file:text-slate-100"
+          className="block text-sm text-slate-300 file:mr-3 file:rounded-md file:border-0 file:bg-raised file:px-3 file:py-1.5 file:text-slate-100"
         />
 
         {rows && (
@@ -103,15 +104,14 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
               ))}
             </div>
             {map.spec !== undefined && (
-              <label className="flex items-center gap-2 text-slate-300">
-                <input type="checkbox" checked={specInName} onChange={(e) => setSpecInName(e.target.checked)} />
-                Add Size / spec to the item name
-              </label>
+              <Checkbox checked={specInName} onChange={setSpecInName}>
+                <span className="text-slate-300">Add Size / spec to the item name</span>
+              </Checkbox>
             )}
 
-            <div className="max-h-56 overflow-auto rounded-lg border border-slate-800">
+            <div className="max-h-56 overflow-auto rounded-lg border border-line">
               <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-slate-900 text-left text-slate-400">
+                <thead className="sticky top-0 bg-surface text-left text-slate-400">
                   <tr>
                     <th className="px-2 py-1">Item</th>
                     <th className="px-2 py-1">Qty</th>
@@ -121,7 +121,7 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
                     <th className="px-2 py-1">Material</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800">
+                <tbody className="divide-y divide-line">
                   {parsed.slice(0, 50).map((r, i) => (
                     <tr key={i}>
                       <td className="px-2 py-1">{r.name}</td>
