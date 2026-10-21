@@ -193,3 +193,17 @@ body {
     @apply mb-1 block text-xs font-medium text-muted;
   }
 }
+
+/* A part card or row that Recent actions just scrolled to. */
+.focus-flash {
+  animation: focus-flash 2.4s var(--ease-snap);
+}
+@keyframes focus-flash {
+  0%,
+  60% {
+    box-shadow: 0 0 0 3px var(--color-accent);
+  }
+  100% {
+    box-shadow: 0 0 0 3px transparent;
+  }
+}

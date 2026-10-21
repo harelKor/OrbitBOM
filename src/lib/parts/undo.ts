@@ -2,6 +2,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { asc, eq, inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { currentVisit } from "@/lib/visits";
 
 const { parts, partHistory } = schema;
 
@@ -31,6 +32,7 @@ export async function planUndo(batchId: string) {
 
 export async function applyUndo(reverts: Revert[], memberId: string, via: "ui" | "mcp") {
   const batchId = randomUUID();
+  const visit = via === "ui" ? await currentVisit() : null;
   await db.transaction(async (tx) => {
     for (const partId of new Set(reverts.map((r) => r.partId))) {
       const mine = reverts.filter((r) => r.partId === partId);
@@ -39,7 +41,7 @@ export async function applyUndo(reverts: Revert[], memberId: string, via: "ui" |
         .set({ ...Object.fromEntries(mine.map((r) => [r.field, r.to])), lastModifiedAt: new Date(), lastModifiedBy: memberId })
         .where(eq(parts.id, partId));
       await tx.insert(partHistory).values(
-        mine.map((r) => ({ partId, field: r.field, oldValue: r.from, newValue: r.to, memberId, via, batchId })),
+        mine.map((r) => ({ partId, field: r.field, oldValue: r.from, newValue: r.to, memberId, via, batchId, visitId: visit?.id, page: visit?.page })),
       );
     }
   });

@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import type { ShellRobot } from "@/lib/data/shell";
 import { Icon } from "@/components/ui/Icon";
 import { FilterProvider } from "./FilterContext";
@@ -10,6 +10,7 @@ import { ModeProvider } from "./ModeContext";
 import type { Mode } from "./mode";
 import { RobotSwitcher } from "./RobotSwitcher";
 import { TopBar } from "./TopBar";
+import { VisitTracker } from "./VisitTracker";
 
 // The app's three columns: page navigation on the left, robot and system switcher on the
 // right, search, filters and View | Edit on top. Below the wide breakpoints the side columns
@@ -71,6 +72,9 @@ export function Shell({
           <div className="flex min-w-0 flex-1 flex-col">
             <TopBar onMenu={() => toggle("left")} onRobots={() => toggle("right")} />
             <main className="min-w-0 flex-1 p-4 md:p-6">{children}</main>
+            <Suspense>
+              <VisitTracker />
+            </Suspense>
           </div>
           <aside
             className={`fixed inset-y-0 right-0 z-40 w-72 shrink-0 border-l border-line bg-surface xl:sticky xl:top-0 xl:h-screen xl:translate-x-0 ${collapsed.right ? "xl:hidden" : ""} ${

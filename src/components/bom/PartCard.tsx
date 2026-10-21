@@ -11,7 +11,7 @@ import { Icon } from "@/components/ui/Icon";
 import { useBom } from "./BomContext";
 import { MachineField, MaterialField, NameField, QuantityField, SLOTS, StatusField, TextField, TypeField, type SaveFn } from "./fields";
 import { InputEditor, Popover } from "./Popover";
-import { ownerPartId, partTitle, type CardPart } from "./types";
+import { ownerPartId, partIds, partTitle, type CardPart } from "./types";
 
 const EXPORTABLE = ["STEP", "STL", "PARASOLID"] as const;
 type ExportFormat = (typeof EXPORTABLE)[number];
@@ -45,7 +45,7 @@ export function PartCard({
   const [stage, setStage] = useState<StageView | null>(null);
 
   return (
-    <div data-selected={!!selected} className="card-interactive group flex flex-col text-sm">
+    <div data-selected={!!selected} data-part={partIds(part)} className="card-interactive group flex flex-col text-sm">
       {onToggleSelect && (
         // While selecting, a click anywhere on the card toggles it.
         <button

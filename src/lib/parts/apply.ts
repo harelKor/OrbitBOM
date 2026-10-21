@@ -2,6 +2,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { eq, inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { currentVisit } from "@/lib/visits";
 import { planPartUpdate, type PartChanges, type Plan } from "./changes";
 
 const { parts, partHistory } = schema;
@@ -37,6 +38,8 @@ export async function applyEachPartChanges(
   const batchId = ctx.batchId ?? randomUUID();
   if (!edits.length) return { batchId, changed: 0 };
   const byId = new Map(edits.map((e) => [e.id, e.changes]));
+  // Changes made from a page belong to that page visit (Recent actions on the dashboard).
+  const visit = ctx.via === "ui" ? await currentVisit() : null;
 
   return db.transaction(async (tx) => {
     const rows = await tx.select().from(parts).where(inArray(parts.id, [...byId.keys()])).for("update");
@@ -59,6 +62,8 @@ export async function applyEachPartChanges(
           memberId: ctx.memberId,
           via: ctx.via,
           batchId,
+          visitId: visit?.id,
+          page: visit?.page,
         })),
       );
       await ctx.afterEach?.(tx, row, plan);
