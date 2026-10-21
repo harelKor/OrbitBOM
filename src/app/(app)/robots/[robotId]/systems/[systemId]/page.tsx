@@ -6,6 +6,7 @@ import { ManualPartButton } from "@/components/bom/ManualPartButton";
 import { UpdateBomButton } from "@/components/bom/UpdateBomButton";
 import { partTitle } from "@/components/bom/types";
 import { RobotViewer } from "@/components/dashboard/RobotViewer";
+import { QaSection } from "@/components/qa/QaSection";
 import { StatusBar } from "@/components/StatusBar";
 import { STATUSES } from "@/config/statuses";
 import { requireMember } from "@/lib/auth";
@@ -67,6 +68,8 @@ export default async function SystemPage({
           <StatusBar breakdown={breakdown} />
         </div>
       </div>
+
+      <QaSection parts={parts.filter((p) => p.status === "Ready for QA")} inventory={inventory} isAdmin={member.isAdmin} robotId={robot.id} />
 
       {system.assemblyUrl && (
         <>
