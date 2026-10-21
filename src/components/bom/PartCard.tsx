@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { getMachine } from "@/config/machines";
-import { fabStage } from "@/lib/fab";
+import { IN_PROCESS_STATUS, READY_STATUS, fabStage, isFabFinished } from "@/lib/fab";
 import { deleteManualPart, unmergeParts } from "@/app/(app)/parts-actions";
 import { useEditMode } from "@/components/shell/ModeContext";
 import { PartStage, type StageView } from "@/components/dashboard/PartStage";
@@ -17,12 +17,14 @@ import { InputEditor, Popover } from "./Popover";
 import { ownerPartId, partIds, partTitle, type CardPart } from "./types";
 
 const EXPORTABLE = ["STEP", "STL", "PARASOLID"] as const;
-type ExportFormat = (typeof EXPORTABLE)[number];
+const FLAT = ["DXF_FLAT", "STEP_FLAT"] as const; // only for Onshape sheet metal parts
+type ExportFormat = (typeof EXPORTABLE)[number] | (typeof FLAT)[number];
 
 const pill = "rounded-full border border-line-strong bg-raised px-2 py-0.5 text-[11px] font-medium text-fg-2 max-w-full truncate";
 
-// The part card: the Onshape thumbnail is the hero (click it for the part's 3D preview), with
-// quantity and type on its top-left and Download / Locate on its top-right; below it the name,
+// The part card: the Onshape thumbnail is the hero (click it for the part's 3D preview, where
+// Locate in robot lives), with quantity and type on its top-left and Download on its top-right;
+// below it the name,
 // the status, a notes button and the material → process pills. Properties only open their
 // editors in Edit mode.
 export function PartCard({
@@ -50,8 +52,15 @@ export function PartCard({
   // The process being worked on: the first slot whose done counter hasn't reached the quantity.
   const current = machines.find((s) => part[s.done] < Math.max(part.quantity, 1));
   const showCounter = !!current && part.classification !== "cots" && fabStage(part) !== null;
-  // On To Fab, − takes back the last one counted (also on a finished part), + counts one more.
+  // On To Fab, + counts one more and − takes back the last one counted. When − would leave nothing
+  // counted, the part goes back to In process if it was finished, else to Ready to Fab.
   const counted = machines.slice(0, current ? machines.indexOf(current) + 1 : machines.length).reverse().find((s) => part[s.done] > 0);
+  const finished = isFabFinished(part);
+  const takeBack = () => {
+    const left = part.donePreprocess + part.doneProcess1 + part.doneProcess2 - 1;
+    if (counted && left > 0) save({ [counted.done]: part[counted.done] - 1 });
+    else save({ status: finished ? IN_PROCESS_STATUS : READY_STATUS });
+  };
   const fabControls = fabCounter && part.classification !== "cots" && machines.length > 0;
   const format = cadFormat(part);
   const [stage, setStage] = useState<StageView | null>(null);
@@ -114,7 +123,7 @@ export function PartCard({
           ) : (
             (format || part.files.length > 0) && <DownloadMenu part={part} format={format} />
           )}
-          {part.thumbUrl && hasMaterial && (
+          {part.thumbUrl && hasMaterial && !fabCounter && (
             <button
               type="button"
               onClick={() => setTinted(!tinted)}
@@ -129,20 +138,14 @@ export function PartCard({
               <Tip>{tinted ? "Onshape appearance" : "Material colour"}</Tip>
             </button>
           )}
-          {robotId && part.modelKey && (
-            <button type="button" onClick={() => setStage("locate")} className="overlay-btn group/tip relative" aria-label="Locate in robot">
-              <Icon name="locate" />
-              <Tip>Locate in robot</Tip>
-            </button>
-          )}
         </div>
         {part.note && <NoteCloud note={part.note} raised={fabControls} />}
         {fabControls && (
           <>
             <button
               type="button"
-              onClick={() => counted && save({ [counted.done]: part[counted.done] - 1 })}
-              disabled={!counted}
+              onClick={takeBack}
+              disabled={!counted && !finished}
               className="overlay-btn absolute bottom-2 left-2 text-lg font-bold disabled:opacity-30"
               aria-label="One less made"
             >
@@ -215,17 +218,21 @@ export function PartCard({
   );
 }
 
-// The CAD file for the part's first machine that takes one, else STEP.
+// The CAD file for the part's first machine that takes one (a sheet metal part's flat pattern
+// for a cutting machine), else STEP.
 export function cadFormat(part: CardPart): ExportFormat | null {
   if (part.isManual) return null;
   for (const slot of SLOTS) {
-    const f = part[slot.key] ? getMachine(part[slot.key]!)?.cadFormat : undefined;
+    const machine = part[slot.key] ? getMachine(part[slot.key]!) : undefined;
+    if (machine?.sheetFormat && part.geometry?.sheetMetal) return machine.sheetFormat;
+    const f = machine?.cadFormat;
     if (f && (EXPORTABLE as readonly string[]).includes(f)) return f as ExportFormat;
   }
   return "STEP";
 }
 
-export const label = (f: ExportFormat) => (f === "PARASOLID" ? "Parasolid" : f);
+const LABELS: Partial<Record<ExportFormat, string>> = { PARASOLID: "Parasolid", DXF_FLAT: "Flat DXF", STEP_FLAT: "Flat STEP" };
+export const label = (f: ExportFormat) => LABELS[f] ?? f;
 
 function Tip({ children }: { children: React.ReactNode }) {
   return (
@@ -238,7 +245,8 @@ function Tip({ children }: { children: React.ReactNode }) {
 // Every way to download the part: the CAD exports (the first machine's format on top) and any
 // files attached to it.
 function DownloadMenu({ part, format }: { part: CardPart; format: ExportFormat | null }) {
-  const exports = format ? [format, ...EXPORTABLE.filter((f) => f !== format)] : [];
+  const all: ExportFormat[] = part.geometry?.sheetMetal ? [...FLAT, ...EXPORTABLE] : [...EXPORTABLE];
+  const exports = format ? [format, ...all.filter((f) => f !== format)] : [];
   const item = "flex items-center justify-between gap-3 rounded px-2 py-1.5 hover:bg-raised";
   return (
     <Popover align="right" hideCaret triggerClassName="overlay-btn" trigger={<><Icon name="download" /><span className="sr-only">Download</span></>}>

@@ -10,17 +10,19 @@ export type MachineDef = {
   name: string;
   stage: MachineStage;
   cadFormat: CadFormat;
+  // What a cutting machine takes for an Onshape sheet metal part: its flat pattern.
+  sheetFormat?: "DXF_FLAT" | "STEP_FLAT";
 };
 
 export const MACHINES = [
-  { id: "hadasas", name: "HadasaS", stage: "Process", cadFormat: "STEP" },
-  { id: "laser", name: "Laser", stage: "Process", cadFormat: "STEP" },
+  { id: "hadasas", name: "HadasaS", stage: "Process", cadFormat: "STEP", sheetFormat: "STEP_FLAT" },
+  { id: "laser", name: "Laser", stage: "Process", cadFormat: "STEP", sheetFormat: "DXF_FLAT" },
   { id: "manual-mill", name: "Manual Mill", stage: "Process", cadFormat: "PDF" },
   { id: "3d-pcbway", name: "3D Print - PCBway", stage: "Process", cadFormat: "STL" },
   { id: "bending", name: "Bending", stage: "Process", cadFormat: "PARASOLID" },
   { id: "countersunk", name: "Countersunk", stage: "Process", cadFormat: "PDF" },
   { id: "lathe", name: "LATHE", stage: "Process", cadFormat: "PDF" },
-  { id: "cnc", name: "CNC", stage: "Process", cadFormat: "STEP" },
+  { id: "cnc", name: "CNC", stage: "Process", cadFormat: "STEP", sheetFormat: "STEP_FLAT" },
   { id: "zivudim", name: "Zivudim", stage: "Process", cadFormat: "PARASOLID" },
   { id: "3d-bambu", name: "3D Print - Bambu", stage: "Process", cadFormat: "STL" },
   { id: "3d-markforged", name: "3D Print - Markforged", stage: "Process", cadFormat: "STL" },

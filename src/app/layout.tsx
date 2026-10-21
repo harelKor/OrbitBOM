@@ -19,7 +19,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "OrbitMech",
-  icons: { icon: "/orbit-logo.png" },
+  icons: { icon: [{ url: "/orbit-icon.png", type: "image/png" }, { url: "/favicon.ico" }], apple: "/apple-icon.png" },
   description: "Team 1690 bill of materials, inventory and Onshape integration",
 };
 

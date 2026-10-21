@@ -25,7 +25,7 @@ function onOwnHost(href: string, baseUrl: string): string | null {
 }
 
 // Part thumbnails (plan §4): one parts-list call per Part Studio tells us each part's
-// microversion; only parts whose microversion changed fetch a new image (one call each), and
+// microversion and, through its flat pattern body, whether it is sheet metal; only parts whose microversion changed fetch a new image (one call each), and
 // the image is kept in R2. Stops at `deadline` so a request stays inside Vercel's time limit;
 // what's left is fetched on the next Update BOM. A Part Studio or image that fails is skipped
 // and counted, so one bad part never hides every other thumbnail.
@@ -63,23 +63,27 @@ export async function refreshThumbnails(systemId: string, memberId: string, dead
       }
       let metas: PartMetadata[];
       try {
-        metas = await client.json<PartMetadata[]>(`parts/${path}?withThumbnails=true`);
+        metas = await client.json<PartMetadata[]>(`parts/${path}?withThumbnails=true&includeFlatParts=true`);
       } catch (err) {
         fail(err);
         continue;
       }
+      const flatOf = new Map(metas.filter((m) => m.isFlattenedBody && m.unflattenedPartId).map((m) => [m.unflattenedPartId!, m.partId]));
       for (const part of studioParts) {
-        const meta = metas.find((m) => m.partId === part.onshapePartId);
+        const meta = metas.find((m) => m.partId === part.onshapePartId && !m.isFlattenedBody);
+        if (meta) {
+          const flatPartId = flatOf.get(meta.partId);
+          const geometry = { ...(part.geometry ?? {}), ...(meta.bodyType ? { bodyType: meta.bodyType } : {}) };
+          if (flatPartId) geometry.sheetMetal = { flatPartId };
+          else delete geometry.sheetMetal;
+          if (JSON.stringify(geometry) !== JSON.stringify(part.geometry ?? {})) {
+            await db.update(parts).set({ geometry }).where(eq(parts.id, part.id));
+          }
+        }
         const link = meta && thumbnailHref(meta);
         const href = link && onOwnHost(link, ref.baseUrl);
         if (!meta || !href) continue;
         const rev = meta.microversionId ?? createHash("sha1").update(href).digest("hex").slice(0, 16);
-        if (meta.bodyType && part.geometry?.bodyType !== meta.bodyType) {
-          await db
-            .update(parts)
-            .set({ geometry: { ...(part.geometry ?? {}), bodyType: meta.bodyType } })
-            .where(eq(parts.id, part.id));
-        }
         if (part.thumbnailRev !== rev) queue.push({ part, href, rev });
       }
     }

@@ -134,6 +134,10 @@ function summarise(p: typeof parts.$inferSelect & { systemName?: string }) {
     onshape_material: p.geometry?.onshapeMaterial ?? null,
     body_type: p.geometry?.bodyType ?? null,
     size_mm: p.geometry?.bbox ?? null,
+    // Bent sheet uses the plate materials: sheet_metal is Onshape sheet metal (it has a flat
+    // pattern), wall_mm the measured sheet thickness of a flat or bent thin wall.
+    sheet_metal: !!p.geometry?.sheetMetal,
+    wall_mm: p.geometry?.wallMm ?? null,
     pre_process: machineName(p.preProcess),
     process_1: machineName(p.process1),
     process_2: machineName(p.process2),
@@ -358,7 +362,7 @@ write(
 
 read(
   "parts_to_set_up",
-  "A robot's CAD parts that have no material or no processes and aren't waiting in To Review, with their size (size_mm: the 3D model's extents, smallest first, so a plate's thickness is size_mm[0]) and the site's own guess (site_guess) where its rules can tell. Sizes need the robot's 3D model to be built.",
+  "A robot's CAD parts that have no material or no processes and aren't waiting in To Review, with their size (size_mm: the 3D model's extents, smallest first, so a flat plate's thickness is size_mm[0]; for bent sheet, such as an angle or U channel, use wall_mm, and sheet_metal says Onshape can flatten it) and the site's own guess (site_guess) where its rules can tell. Sizes need the robot's 3D model to be built.",
   z.object({ robot_id: uuid, system_id: uuid.optional(), limit: z.number().int().min(1).max(500).optional() }),
   async ({ robot_id, system_id, limit = 200 }) => {
     const rows = await partsToSetUp(robot_id, system_id);
