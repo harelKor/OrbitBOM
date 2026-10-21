@@ -282,7 +282,6 @@ function ReviewCard({ item, disabled, onDecide }: { item: ReviewItem; disabled: 
           <div className="min-w-0 flex-1 truncate font-semibold text-fg" title={partTitle(part)}>
             {part.displayName ?? part.onshapeName ?? "Unnamed part"}
           </div>
-          {part.partNumber && <span className="shrink-0 font-mono text-[11px] text-subtle">{part.partNumber}</span>}
         </div>
 
         <ul className="space-y-1">

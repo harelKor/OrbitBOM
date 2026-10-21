@@ -106,29 +106,53 @@ export async function refreshThumbnails(systemId: string, memberId: string, dead
   };
   await Promise.all(Array.from({ length: 4 }, worker));
 
-  // The picture of the whole subsystem, and of the whole robot, for the sidebar tiles.
-  if (Date.now() < deadline) {
-    const path = await assemblyThumbnail(client, system.assemblyUrl!, `thumbs/systems/${systemId}`, system.thumbnailPath);
-    if (path !== system.thumbnailPath) await db.update(systems).set({ thumbnailPath: path }).where(eq(systems.id, systemId));
-    const [robot] = await db.select().from(robots).where(eq(robots.id, system.robotId));
-    const main = robot?.mainAssemblyUrl ? parseOnshapeUrl(robot.mainAssemblyUrl) : null;
-    if (robot && main?.baseUrl === ref.baseUrl) {
-      const robotPath = await assemblyThumbnail(client, robot.mainAssemblyUrl!, `thumbs/robots/${robot.id}`, robot.thumbnailPath);
-      if (robotPath !== robot.thumbnailPath) await db.update(robots).set({ thumbnailPath: robotPath }).where(eq(robots.id, robot.id));
-    }
-  }
+  if (Date.now() < deadline) await assemblyThumbnails(client, system);
   summary.calls = client.calls;
   return summary;
 }
 
+// The sidebar pictures for a system that has none yet, without a BOM pull: the background
+// refresh calls this for a system whose document hasn't changed. Returns the Onshape calls made.
+export async function missingAssemblyThumbnails(systemId: string, memberId: string): Promise<number> {
+  if (!storageConfigured()) return 0;
+  const [system] = await db.select().from(systems).where(eq(systems.id, systemId));
+  const ref = system?.assemblyUrl ? parseOnshapeUrl(system.assemblyUrl) : null;
+  if (!ref || system.thumbnailPath) return 0;
+  const client = onshapeClient(memberId, ref.baseUrl);
+  await assemblyThumbnails(client, system);
+  return client.calls;
+}
+
+// The picture of the whole subsystem, and of the whole robot, for the sidebar tiles.
+async function assemblyThumbnails(client: OnshapeClient, system: typeof systems.$inferSelect) {
+  const path = await assemblyThumbnail(client, system.assemblyUrl!, `thumbs/systems/${system.id}`, system.thumbnailPath);
+  if (path !== system.thumbnailPath) await db.update(systems).set({ thumbnailPath: path }).where(eq(systems.id, system.id));
+  const [robot] = await db.select().from(robots).where(eq(robots.id, system.robotId));
+  const main = robot?.mainAssemblyUrl ? parseOnshapeUrl(robot.mainAssemblyUrl) : null;
+  if (robot && main && main.baseUrl === parseOnshapeUrl(system.assemblyUrl!)?.baseUrl) {
+    const robotPath = await assemblyThumbnail(client, robot.mainAssemblyUrl!, `thumbs/robots/${robot.id}`, robot.thumbnailPath);
+    if (robotPath !== robot.thumbnailPath) await db.update(robots).set({ thumbnailPath: robotPath }).where(eq(robots.id, robot.id));
+  }
+}
+
 // An assembly's own Onshape thumbnail, kept in R2 under `prefix` and named by its content, so
-// an unchanged picture is never stored twice. Returns the path to keep (the current one when
-// the assembly has no thumbnail or Onshape refuses).
+// an unchanged picture is never stored twice. Asks Onshape which sizes the element has, as the
+// parts list does, and falls back to the fixed-size link. Returns the path to keep (the current
+// one when the assembly has no thumbnail or Onshape refuses).
 async function assemblyThumbnail(client: OnshapeClient, url: string, prefix: string, current: string | null): Promise<string | null> {
   const ref = parseOnshapeUrl(url);
-  if (!ref?.eid || ref.wvm === "m") return current;
+  if (!ref?.eid) return current;
   try {
-    const res = await client.raw(`thumbnails/${apiPath(ref)}/s/300x300`, { headers: { Accept: "image/*" } });
+    let res: Response;
+    try {
+      const info = await client.json<NonNullable<PartMetadata["thumbnailInfo"]>>(`thumbnails/${apiPath(ref)}`);
+      const link = thumbnailHref({ partId: "", thumbnailInfo: info });
+      const href = link && onOwnHost(link, ref.baseUrl);
+      if (!href) throw new Error("No thumbnail sizes");
+      res = await client.raw(href, { headers: { Accept: "image/*" } });
+    } catch {
+      res = await client.raw(`thumbnails/${apiPath(ref)}/s/300x300`, { headers: { Accept: "image/*" } });
+    }
     const body = await res.arrayBuffer();
     const path = `${prefix}/${createHash("sha1").update(new Uint8Array(body)).digest("hex").slice(0, 16)}.png`;
     if (path === current) return current;

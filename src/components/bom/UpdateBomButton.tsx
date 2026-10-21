@@ -40,7 +40,7 @@ export function UpdateBomButton({ systemId, lastSyncedAt }: { systemId: string; 
       <button
         className="btn"
         disabled={pending}
-        title="Re-fetch this system's Bill of Materials from Onshape. Existing part numbers, statuses, progress and notes are kept."
+        title="Re-fetch this system's Bill of Materials from Onshape. Existing names, statuses, progress and notes are kept."
         onClick={() =>
           start(async () => {
             setThumbs(null);

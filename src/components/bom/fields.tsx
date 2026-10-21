@@ -36,10 +36,10 @@ export function Empty({ text = "—" }: { text?: string }) {
   return <span className="text-subtle">{text}</span>;
 }
 
-// `bare` shows the name alone (the part card shows the number beside it).
+// `bare` is the part card's plain, truncating style.
 export function NameField({ part, save, bare = false }: Props & { bare?: boolean }) {
   const locked = !useEditMode();
-  const name = bare ? (part.displayName ?? part.onshapeName ?? "Unnamed part") : partTitle(part);
+  const name = partTitle(part);
   return (
     <Popover
       locked={locked}
@@ -112,7 +112,7 @@ export function TextField({
   field,
   type = "text",
   empty,
-}: Props & { field: "partNumber" | "description" | "drawingUrl"; type?: "text" | "url"; empty?: string }) {
+}: Props & { field: "description" | "drawingUrl"; type?: "text" | "url"; empty?: string }) {
   const locked = !useEditMode();
   return (
     <Popover locked={locked} trigger={part[field] ?? <Empty text={empty} />}>

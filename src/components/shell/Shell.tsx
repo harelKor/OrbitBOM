@@ -75,7 +75,8 @@ export function Shell({
             </aside>
             <div className="flex min-w-0 flex-1 flex-col">
               <TopBar onMenu={() => toggle("left")} onRobots={() => toggle("right")} />
-              <main className="min-w-0 flex-1 p-4 md:p-6">{children}</main>
+              {/* The wide side gutters keep the collapse arrows clear of the page. */}
+            <main className="min-w-0 flex-1 p-4 md:p-6 lg:pl-11 xl:pr-11">{children}</main>
               <Suspense>
                 <VisitTracker />
               </Suspense>
@@ -99,8 +100,9 @@ export function Shell({
   );
 }
 
-// The wide-screen collapse handle: a bright accent tab with a big arrow, half over the column's inner edge, at the
-// middle of the screen. It points the way the column will move.
+// The wide-screen collapse handle: a bright accent tab with a big arrow on the column's inner
+// edge, at the middle of the screen. It sits in the page's side gutter (main pads for it), so it
+// never covers content. It points the way the column will move.
 function EdgeArrow({ side, collapsed, onClick }: { side: "left" | "right"; collapsed: boolean; onClick: () => void }) {
   const pointsLeft = side === "left" ? !collapsed : collapsed;
   return (
@@ -108,7 +110,7 @@ function EdgeArrow({ side, collapsed, onClick }: { side: "left" | "right"; colla
       onClick={onClick}
       aria-label={`${collapsed ? "Show" : "Hide"} ${side === "left" ? "pages" : "robots and systems"}`}
       title={`${collapsed ? "Show" : "Hide"} ${side === "left" ? "pages" : "robots and systems"}`}
-      className={`press fixed top-1/2 z-50 hidden h-20 w-8 -translate-y-1/2 items-center justify-center bg-accent text-white shadow-[0_6px_18px_-4px_var(--color-accent)] hover:bg-accent-hover ${
+      className={`press fixed top-1/2 z-50 hidden h-20 w-7 -translate-y-1/2 items-center justify-center bg-accent text-white shadow-[0_6px_18px_-4px_var(--color-accent)] hover:bg-accent-hover ${
         side === "left"
           ? "left-[calc(var(--shell-left)-1px)] rounded-r-xl lg:flex"
           : "right-[calc(var(--shell-right)-1px)] rounded-l-xl xl:flex"
