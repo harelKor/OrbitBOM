@@ -33,6 +33,8 @@ export function ModelCanvas({
   locateKey,
   onLocated,
   hidden,
+  selectedKey,
+  onPick,
 }: {
   model: ViewerModel;
   colors: Map<string, string>; // part key → status colour
@@ -40,13 +42,20 @@ export function ModelCanvas({
   locateKey: string | null;
   onLocated: (found: boolean) => void;
   hidden?: Set<number>; // subsystem groups not drawn
+  selectedKey?: string | null; // a part picked with a click: drawn in bright green
+  onPick?: (key: string | null) => void; // a click on a part (its key) or on empty space (null)
 }) {
   const host = useRef<HTMLDivElement>(null);
   // Recolours the parts and frames the located one; true when it is in the model.
   const scene = useRef<{
     paint: (colors: Map<string, string>, mode: "status" | "plain", locateKey: string | null) => boolean;
     hide: (hidden: Set<number>) => void;
+    select: (key: string | null) => void;
   } | null>(null);
+  const pick = useRef(onPick);
+  useEffect(() => {
+    pick.current = onPick;
+  }, [onPick]);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>({ done: 0, total: model.studios.length });
   const [error, setError] = useState<string | null>(null);
   const hiddenAtLoad = useRef(hidden);
@@ -108,7 +117,8 @@ export function ModelCanvas({
     const geometries: THREE.BufferGeometry[] = [];
     const meshes: { mesh: THREE.InstancedMesh; keys: string[]; g: number }[] = [];
     const highlights = new THREE.Group();
-    root.add(highlights);
+    const picks = new THREE.Group();
+    root.add(highlights, picks);
     const paint = (colors: Map<string, string>, mode: "status" | "plain", locateKey: string | null) => {
       highlights.clear();
       const plain = new THREE.Color(PLAIN);
@@ -140,7 +150,44 @@ export function ModelCanvas({
       for (const { mesh, g } of meshes) mesh.visible = !hidden.has(g);
       render();
     };
-    scene.current = { paint, hide };
+    // A clicked part, drawn solid in bright green over its instances (every copy of it).
+    const select = (key: string | null) => {
+      picks.clear();
+      if (key) {
+        for (const { mesh, keys } of meshes) {
+          keys.forEach((k, i) => {
+            if (k !== key) return;
+            const lit = new THREE.Mesh(mesh.geometry, glow);
+            mesh.getMatrixAt(i, lit.matrix);
+            lit.matrixAutoUpdate = false;
+            lit.visible = mesh.visible;
+            lit.userData.of = mesh;
+            picks.add(lit);
+          });
+        }
+      }
+      render();
+    };
+    scene.current = { paint, hide, select };
+
+    // Left click (not a drag) picks the part under the pointer.
+    const ray = new THREE.Raycaster();
+    let down: { x: number; y: number } | null = null;
+    const onDown = (e: PointerEvent) => {
+      down = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
+    };
+    const onUp = (e: PointerEvent) => {
+      if (!down || e.button !== 0 || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
+      down = null;
+      const rect = renderer.domElement.getBoundingClientRect();
+      ray.setFromCamera(new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -(((e.clientY - rect.top) / rect.height) * 2 - 1)), camera);
+      const shown = meshes.filter((m) => m.mesh.visible);
+      const [hit] = ray.intersectObjects(shown.map((m) => m.mesh), false);
+      const owner = hit && shown.find((m) => m.mesh === hit.object);
+      pick.current?.(owner && hit.instanceId !== undefined ? (owner.keys[hit.instanceId] ?? null) : null);
+    };
+    renderer.domElement.addEventListener("pointerdown", onDown);
+    renderer.domElement.addEventListener("pointerup", onUp);
 
     (async () => {
       const shapes: Map<string, THREE.BufferGeometry>[] = [];
@@ -206,6 +253,8 @@ export function ModelCanvas({
       observer.disconnect();
       controls.dispose();
       renderer.domElement.removeEventListener("mousedown", noAutoScroll);
+      renderer.domElement.removeEventListener("pointerdown", onDown);
+      renderer.domElement.removeEventListener("pointerup", onUp);
       geometries.forEach((g) => g.dispose());
       meshes.forEach(({ mesh }) => mesh.dispose());
       material.dispose();
@@ -222,9 +271,16 @@ export function ModelCanvas({
   useEffect(() => {
     if (loaded) onLocated(scene.current?.paint(colors, mode, locateKey) ?? false);
   }, [loaded, colors, mode, locateKey, onLocated]);
+  const selectedKeyRef = useRef(selectedKey);
   useEffect(() => {
-    if (loaded && hidden) scene.current?.hide(hidden);
+    if (!loaded) return;
+    if (hidden) scene.current?.hide(hidden);
+    scene.current?.select(selectedKeyRef.current ?? null);
   }, [loaded, hidden]);
+  useEffect(() => {
+    selectedKeyRef.current = selectedKey;
+    if (loaded) scene.current?.select(selectedKey ?? null);
+  }, [loaded, selectedKey]);
 
   return (
     <div ref={host} className="absolute inset-0">

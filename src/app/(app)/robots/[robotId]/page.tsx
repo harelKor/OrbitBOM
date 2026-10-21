@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BomView } from "@/components/bom/BomView";
+import { partTitle } from "@/components/bom/types";
 import { CompletionRing } from "@/components/dashboard/CompletionRing";
 import { RobotViewer } from "@/components/dashboard/RobotViewer";
 import { Icon } from "@/components/ui/Icon";
@@ -41,7 +42,11 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
   const activeStatuses = breakdown.statuses.filter((s) => s.count > 0);
   // BOM parts by their key in the 3D model, with their status colour.
   const statusColor = new Map<string, string>(STATUSES.map((s) => [s.name, s.color]));
-  const viewerParts = parts.flatMap((p) => (p.modelKey ? [{ key: p.modelKey, color: statusColor.get(p.status) ?? "#cbd5e1" }] : []));
+  const viewerParts = parts.flatMap((p) =>
+    p.modelKey
+      ? [{ key: p.modelKey, color: statusColor.get(p.status) ?? "#cbd5e1", id: p.id, systemId: p.systemId, name: partTitle(p), fab: fabStage(p) !== null }]
+      : [],
+  );
 
   return (
     <div className="space-y-5">

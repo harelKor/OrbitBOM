@@ -67,7 +67,7 @@ export function TableView({
             const save = saveFor(p.id);
             const done = isDone(p);
             return (
-              <tr key={p.id} className={done ? "bg-emerald-50" : ""}>
+              <tr key={p.id} id={`part-${p.id}`} className={`scroll-mt-20 target:bg-accent/10 ${done ? "bg-emerald-50" : ""}`}>
                 {selection && (
                   <td className="px-2 py-1.5">
                     <Checkbox

@@ -73,6 +73,7 @@ function KanbanCard({ part, save, showSystem }: { part: CardPart; save: SaveFn; 
       ref={setNodeRef}
       {...listeners}
       {...attributes}
+      id={`part-${part.id}`}
       style={transform ? { transform: `translate(${transform.x}px, ${transform.y}px)` } : undefined}
       className={`cursor-grab rounded-lg border border-line-strong bg-surface p-2 text-xs ${isDragging ? "z-50 opacity-80 shadow-xl" : ""}`}
     >
