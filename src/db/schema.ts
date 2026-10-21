@@ -279,6 +279,8 @@ export const partReviews = pgTable("part_reviews", {
   memberId: uuid("member_id").references(() => members.id, { onDelete: "set null" }),
   // The history batch of the run that suggested it, so To Review can group by run.
   batchId: uuid("batch_id"),
+  // The name the AI gave itself (e.g. "Claude Opus 5.5"); null for the site's rules.
+  aiName: text("ai_name"),
   createdAt: createdAt(),
 });
 
@@ -292,6 +294,7 @@ export const aiLogs = pgTable(
     tool: text("tool").notNull(),
     memberId: uuid("member_id").references(() => members.id, { onDelete: "set null" }),
     batchId: uuid("batch_id"),
+    aiName: text("ai_name"),
     summary: text("summary").notNull(),
     parts: integer("parts"),
     createdAt: createdAt(),

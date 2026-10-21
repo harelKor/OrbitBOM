@@ -17,6 +17,7 @@ export type ReviewItem = {
   at: string;
   batchId: string | null;
   memberName: string | null;
+  aiName: string | null;
 };
 
 const TYPES: Record<string, string> = { inhouse: "In-house", cots: "COTS", external: "External" };
@@ -51,7 +52,7 @@ function groupItems(items: ReviewItem[]): SystemGroup[] {
     if (!batch) {
       batch = {
         key,
-        label: item.batchId ? (item.source === "ai" ? "Claude" : "Suggest setup") : "Earlier",
+        label: item.batchId ? (item.source === "ai" ? (item.aiName ?? "Claude") : "Suggest setup") : "Earlier",
         detail: item.batchId ? `${when(item.at)}${item.memberName ? `, ${item.memberName}` : ""}` : "",
         items: [],
       };
@@ -117,11 +118,14 @@ export function ReviewView({ robotId, items }: { robotId: string; items: ReviewI
       {systems.length ? (
         <div className="space-y-5">
           {systems.map((sys) => (
-            <section key={sys.id} aria-label={sys.name} className="rounded-xl border border-line bg-surface p-4 shadow-sm">
-              <div className="mb-3 flex flex-wrap items-center gap-2">
-                <h2 className="mr-auto text-lg font-bold text-fg">
+            <details key={sys.id} aria-label={sys.name} className="group rounded-xl border border-line bg-surface p-4 shadow-sm">
+              <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 [&::-webkit-details-marker]:hidden">
+                <h2 className="mr-auto flex items-center gap-2 text-lg font-bold text-fg">
+                  <span aria-hidden className="text-sm text-muted transition-transform group-open:rotate-90">
+                    ▸
+                  </span>
                   {sys.name}
-                  <span className="ml-2 rounded-full bg-raised px-2 py-0.5 font-mono text-xs font-semibold text-fg-2 tabular-nums">{sys.count}</span>
+                  <span className="rounded-full bg-raised px-2 py-0.5 font-mono text-xs font-semibold text-fg-2 tabular-nums">{sys.count}</span>
                 </h2>
                 <BulkButtons
                   disabled={pending}
@@ -130,13 +134,13 @@ export function ReviewView({ robotId, items }: { robotId: string; items: ReviewI
                   ids={sys.batches.flatMap((b) => b.items.map((i) => i.part.id))}
                   onDecide={decide}
                 />
-              </div>
-              <div className="space-y-4">
+              </summary>
+              <div className="mt-3 space-y-4">
                 {sys.batches.map((batch) => (
                   <BatchSection key={batch.key} system={sys.name} batch={batch} pending={pending} onDecide={decide} />
                 ))}
               </div>
-            </section>
+            </details>
           ))}
         </div>
       ) : (
@@ -175,7 +179,8 @@ function BulkButtons({
 }) {
   const word = filtered ? "shown" : "all";
   return (
-    <div className="flex gap-2">
+    // Inside a <summary>: keep a click on the buttons from folding the box.
+    <div className="flex gap-2" onClick={(e) => e.preventDefault()}>
       <button
         type="button"
         disabled={disabled || !count}
@@ -270,10 +275,10 @@ function ReviewCard({ item, disabled, onDecide }: { item: ReviewItem; disabled: 
           </span>
         </div>
         <span
-          className={`absolute top-2 right-2 rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide ${item.source === "ai" ? "bg-accent text-white" : "bg-surface/90 text-fg-2 shadow-sm"}`}
-          title={item.source === "ai" ? "Set by a member's Claude" : "Set by Suggest setup"}
+          className={`absolute top-2 right-2 max-w-[60%] truncate rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide ${item.source === "ai" ? "bg-accent text-white" : "bg-surface/90 text-fg-2 shadow-sm"}`}
+          title={item.source === "ai" ? `Set by ${item.aiName ?? "a member's Claude"}` : "Set by Suggest setup"}
         >
-          {item.source === "ai" ? "AI" : "RULE"}
+          {item.source === "ai" ? (item.aiName ?? "AI") : "RULE"}
         </span>
       </div>
 
