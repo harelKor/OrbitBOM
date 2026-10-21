@@ -14,7 +14,7 @@ import { refreshThumbnails } from "@/lib/onshape/thumbnails";
 import { applyPartChanges } from "@/lib/parts/apply";
 import { partChangesSchema, planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { applyUndo, planUndo } from "@/lib/parts/undo";
-import { applySuggestions, partsToSetUp } from "@/lib/review/review";
+import { applySuggestions, logAiAction, partsToSetUp } from "@/lib/review/review";
 import { computeStatus } from "@/lib/status";
 import { statusBreakdown } from "@/lib/stats";
 import { updateBomFromOnshape } from "@/lib/sync/updateBom";
@@ -30,7 +30,7 @@ const LARGE = 50;
 const uuid = z.guid(); // any UUID shape, like isUuid
 
 type Ctx = { member: Member };
-type Planned = { preview: unknown; count: number; apply: () => Promise<unknown> };
+type Planned = { preview: unknown; count: number; summary?: string; apply: () => Promise<unknown> };
 
 type Tool = {
   name: string;
@@ -76,7 +76,18 @@ function write<S extends z.ZodObject>(
       if (planned.count > LARGE && !args.confirm_large) {
         throw new ToolError(`This changes ${planned.count} parts. Confirm with the member, then pass confirm_large: true.`);
       }
-      return planned.apply();
+      const result = await planned.apply();
+      // Every applied change shows on the AI logs page.
+      const batchId = (result as { batch_id?: unknown } | null)?.batch_id;
+      await logAiAction({
+        source: "ai",
+        tool: name,
+        memberId: ctx.member.id,
+        batchId: typeof batchId === "string" ? batchId : null,
+        parts: planned.count,
+        summary: planned.summary ?? `Applied to ${planned.count} ${planned.count === 1 ? "item" : "items"}`,
+      }).catch((err) => console.error("AI log failed", err));
+      return result;
     }) as Tool["run"],
   });
 }
@@ -325,8 +336,10 @@ write(
     const diffs = rows
       .map((p) => ({ part: nameOf(p), id: p.id, changes: planPartUpdate(p, normal, "mcp").history }))
       .filter((d) => d.changes.length);
+    const fields = [...new Set(diffs.flatMap((d) => d.changes.map((c) => c.field)))];
     return {
       count: diffs.length,
+      summary: `Changed ${fields.join(", ") || "nothing"} on ${diffs.length} ${diffs.length === 1 ? "part" : "parts"}`,
       preview: diffs.map((d) => ({ id: d.id, part: d.part, changes: d.changes.map(readable) })),
       apply: async () => {
         const { batchId, changed } = await applyPartChanges(part_ids, normal, { memberId: member.id, via: "mcp" });
@@ -393,6 +406,7 @@ write(
       .filter((d) => d.changes.length);
     return {
       count: diffs.length,
+      summary: `Set up ${diffs.length} ${diffs.length === 1 ? "part" : "parts"}: ${[...new Set(diffs.map((d) => d.reason))].slice(0, 3).join(" / ")}`,
       preview: diffs.map((d) => ({ id: d.id, part: d.part, changes: d.changes.map(readable), reason: d.reason })),
       apply: async () => {
         const { batchId, changed } = await applySuggestions(edits, { memberId: member.id, source: "ai", via: "mcp" });

@@ -16,7 +16,9 @@ export default async function ReviewPage({ params }: { params: Promise<{ robotId
   const byPart = new Map(parts.map((p) => [p.id, p]));
   const items = reviews.flatMap((r) => {
     const part = byPart.get(r.partId);
-    return part ? [{ part, source: r.source, reason: r.reason, changes: r.changes, at: r.createdAt.toISOString() }] : [];
+    return part
+      ? [{ part, source: r.source, reason: r.reason, changes: r.changes, at: r.createdAt.toISOString(), batchId: r.batchId, memberName: r.memberName }]
+      : [];
   });
 
   return (

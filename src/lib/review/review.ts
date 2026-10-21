@@ -1,7 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { gunzipSync } from "node:zlib";
-import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { partKey } from "@/lib/model/assembly";
 import { builtStudios } from "@/lib/model/build";
@@ -11,7 +11,7 @@ import type { PartChanges } from "@/lib/parts/changes";
 import { getObject, storageConfigured } from "@/lib/storage/r2";
 import { sizeOf, suggestSetup, type Learned } from "./rules";
 
-const { parts, systems, partReviews, partHistory } = schema;
+const { parts, systems, partReviews, partHistory, members, aiLogs } = schema;
 
 type Part = typeof parts.$inferSelect;
 export type ReviewSource = "rule" | "ai";
@@ -74,11 +74,13 @@ export async function applySuggestions(
   ctx: { memberId: string | null; source: ReviewSource; via: "ui" | "mcp" },
 ) {
   const reasons = new Map(edits.map((e) => [e.id, e.reason]));
+  const batchId = randomUUID();
   return applyEachPartChanges(
     edits.map((e) => ({ id: e.id, changes: e.changes })),
     {
       memberId: ctx.memberId,
       via: ctx.via,
+      batchId,
       afterEach: async (tx, row, plan) => {
         const [existing] = await tx.select().from(partReviews).where(eq(partReviews.partId, row.id)).for("update");
         const changes = { ...(existing?.changes ?? {}) };
@@ -95,6 +97,7 @@ export async function applySuggestions(
           changes,
           addedOverrides: [...new Set([...(existing?.addedOverrides ?? []), ...added])],
           memberId: ctx.memberId,
+          batchId,
           createdAt: new Date(),
         };
         if (!Object.keys(changes).length) await tx.delete(partReviews).where(eq(partReviews.partId, row.id));
@@ -151,20 +154,124 @@ export async function partsToSetUp(robotId: string, systemId?: string) {
 export async function suggestRobotSetups(robotId: string, memberId: string) {
   const todo = await partsToSetUp(robotId);
   const edits = todo.flatMap((t) => (t.guess ? [{ id: t.part.id, ...t.guess }] : []));
-  const { changed } = await applySuggestions(edits, { memberId, source: "rule", via: "ui" });
+  const { changed, batchId } = await applySuggestions(edits, { memberId, source: "rule", via: "ui" });
+  if (changed) {
+    await logAiAction({ source: "rule", tool: "Suggest setup", memberId, batchId, parts: changed, summary: `Set up ${changed} of ${todo.length} parts that had no material or processes` });
+  }
   return { checked: todo.length, suggested: changed };
 }
 
 // ---------- review ----------
 
-export async function listRobotReviews(robotId: string): Promise<Review[]> {
-  return db
-    .select({ review: partReviews })
+export type RobotReview = Review & { memberName: string | null };
+
+export async function listRobotReviews(robotId: string): Promise<RobotReview[]> {
+  const rows = await db
+    .select({ review: partReviews, memberName: members.name })
     .from(partReviews)
     .innerJoin(parts, eq(parts.id, partReviews.partId))
     .innerJoin(systems, eq(systems.id, parts.systemId))
-    .where(and(eq(systems.robotId, robotId), isNull(parts.removedFromCadAt)))
-    .then((rows) => rows.map((r) => r.review));
+    .leftJoin(members, eq(members.id, partReviews.memberId))
+    .where(and(eq(systems.robotId, robotId), isNull(parts.removedFromCadAt)));
+  return rows.map((r) => ({ ...r.review, memberName: r.memberName }));
+}
+
+// ---------- AI logs ----------
+
+export async function logAiAction(entry: {
+  source: ReviewSource;
+  tool: string;
+  memberId: string | null;
+  batchId?: string | null;
+  summary: string;
+  parts?: number | null;
+}) {
+  await db.insert(aiLogs).values({
+    source: entry.source,
+    tool: entry.tool,
+    memberId: entry.memberId,
+    batchId: entry.batchId ?? null,
+    summary: entry.summary.slice(0, 500),
+    parts: entry.parts ?? null,
+  });
+}
+
+export type AiLogChange = { partId: string; part: string; system: string; robot: string; field: string; from: unknown; to: unknown };
+export type AiLog = {
+  id: string;
+  source: ReviewSource | "manual";
+  tool: string;
+  memberName: string | null;
+  summary: string;
+  parts: number | null;
+  at: string;
+  changes: AiLogChange[]; // up to CHANGES_PER_LOG, in part order
+  changeCount: number;
+  waiting: number; // parts of the batch still in To Review
+};
+
+const CHANGES_PER_LOG = 60;
+
+// The most recent AI actions with what they changed, for the AI logs page.
+export async function listAiLogs(limit = 100): Promise<AiLog[]> {
+  const logs = await db
+    .select({ log: aiLogs, memberName: members.name })
+    .from(aiLogs)
+    .leftJoin(members, eq(members.id, aiLogs.memberId))
+    .orderBy(desc(aiLogs.createdAt))
+    .limit(limit);
+  const batchIds = [...new Set(logs.flatMap((l) => (l.log.batchId ? [l.log.batchId] : [])))];
+  const history = batchIds.length
+    ? await db
+        .select({
+          batchId: partHistory.batchId,
+          partId: partHistory.partId,
+          field: partHistory.field,
+          from: partHistory.oldValue,
+          to: partHistory.newValue,
+          name: parts.displayName,
+          onshapeName: parts.onshapeName,
+          partNumber: parts.partNumber,
+          system: systems.name,
+          robot: schema.robots.name,
+        })
+        .from(partHistory)
+        .innerJoin(parts, eq(parts.id, partHistory.partId))
+        .innerJoin(systems, eq(systems.id, parts.systemId))
+        .innerJoin(schema.robots, eq(schema.robots.id, systems.robotId))
+        .where(inArray(partHistory.batchId, batchIds))
+        .orderBy(asc(partHistory.at))
+    : [];
+  const waiting = batchIds.length
+    ? await db
+        .select({ batchId: partReviews.batchId, n: sql<number>`count(*)::int` })
+        .from(partReviews)
+        .where(inArray(partReviews.batchId, batchIds))
+        .groupBy(partReviews.batchId)
+    : [];
+  return logs.map(({ log, memberName }) => {
+    const mine = history.filter((h) => h.batchId === log.batchId);
+    return {
+      id: log.id,
+      source: log.source,
+      tool: log.tool,
+      memberName,
+      summary: log.summary,
+      parts: log.parts,
+      at: log.createdAt.toISOString(),
+      changeCount: mine.length,
+      waiting: waiting.find((w) => w.batchId === log.batchId)?.n ?? 0,
+      changes: mine.slice(0, CHANGES_PER_LOG).map((h) => ({
+        partId: h.partId,
+        part: [h.partNumber, h.name ?? h.onshapeName ?? "Unnamed part"].filter(Boolean).join(" "),
+        system: h.system,
+        robot: h.robot,
+        field: h.field,
+        from: h.from,
+        to: h.to,
+      })),
+    };
+  });
 }
 
 // Approve keeps the suggestion and takes the part off To Review.

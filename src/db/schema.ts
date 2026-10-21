@@ -275,8 +275,27 @@ export const partReviews = pgTable("part_reviews", {
   // Onshape fields the suggestion marked overridden; Reject un-marks them again.
   addedOverrides: text("added_overrides").array().notNull().default(sql`'{}'::text[]`),
   memberId: uuid("member_id").references(() => members.id, { onDelete: "set null" }),
+  // The history batch of the run that suggested it, so To Review can group by run.
+  batchId: uuid("batch_id"),
   createdAt: createdAt(),
 });
+
+// AI logs: every change a member's Claude applied through the MCP server, and every Suggest
+// setup run. For a change to parts, batch_id points at its part_history rows.
+export const aiLogs = pgTable(
+  "ai_logs",
+  {
+    id: id(),
+    source: classSource("source").notNull(), // rule = Suggest setup, ai = a member's Claude
+    tool: text("tool").notNull(),
+    memberId: uuid("member_id").references(() => members.id, { onDelete: "set null" }),
+    batchId: uuid("batch_id"),
+    summary: text("summary").notNull(),
+    parts: integer("parts"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("ai_logs_created_idx").on(t.createdAt)],
+);
 
 export const changeVia = pgEnum("change_via", ["ui", "sync", "mcp"]);
 

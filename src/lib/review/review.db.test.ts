@@ -12,7 +12,7 @@ else
     const { db, schema } = await import("@/db");
     const { eq } = await import("drizzle-orm");
     const { applyPartChanges } = await import("@/lib/parts/apply");
-    const { applySuggestions, approveReviews, listRobotReviews, rejectReviews } = await import("./review");
+    const { applySuggestions, approveReviews, listAiLogs, listRobotReviews, logAiAction, rejectReviews } = await import("./review");
 
     const userId = randomUUID();
     const [member] = await db.insert(schema.members).values({ userId, email: `${userId}@t.org`, name: "Reviewer" }).returning();
@@ -34,7 +34,7 @@ else
     });
 
     it("applies a suggestion and queues the part", async () => {
-      await applySuggestions(
+      const { batchId } = await applySuggestions(
         [
           { id: a.id, changes: { material: "3mm 6061-T6", process1: "cnc", classification: "inhouse" }, reason: "3 mm aluminum" },
           { id: b.id, changes: { material: "2mm Poly" }, reason: "unchanged" },
@@ -47,12 +47,24 @@ else
       expect(reviews.map((r) => r.partId)).toEqual([a.id]); // b didn't change
       expect(reviews[0].changes.material).toEqual({ from: null, to: "3mm 6061-T6" });
       expect(reviews[0].addedOverrides.sort()).toEqual(["material", "process1"]);
+      expect(reviews[0].batchId).toBe(batchId);
+      expect(reviews[0].memberName).toBe("Reviewer");
+    });
+
+    it("lists an AI action with what it changed and what still waits", async () => {
+      const [r] = await listRobotReviews(robot.id);
+      await logAiAction({ source: "ai", tool: "set_up_parts", memberId: member.id, batchId: r.batchId, parts: 1, summary: "Set up 1 part: 3 mm aluminum" });
+      const [log] = await listAiLogs(5);
+      expect(log).toMatchObject({ tool: "set_up_parts", source: "ai", memberName: "Reviewer", waiting: 1, parts: 1 });
+      expect(log.changes.map((c) => c.field).sort()).toEqual(["classification", "material", "process1"]);
+      expect(log.changes[0]).toMatchObject({ part: "Side plate", system: "Intake", robot: "Review bot" });
     });
 
     it("keeps the original values when a waiting part is suggested again", async () => {
       await applySuggestions([{ id: a.id, changes: { material: "4mm 6061-T6" }, reason: "4 mm" }], ctx);
       const [r] = await listRobotReviews(robot.id);
       expect(r.changes.material).toEqual({ from: null, to: "4mm 6061-T6" });
+      expect(r.batchId).toBeTruthy();
       expect(r.changes.process1).toEqual({ from: null, to: "cnc" });
       expect(r.reason).toBe("4 mm");
     });
