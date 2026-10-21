@@ -8,8 +8,8 @@ export async function GET(request: NextRequest) {
   if (request.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const [row] = await db.execute<{ members: number }>(
-    sql`select count(*)::int as members from members`,
-  );
+  const {
+    rows: [row],
+  } = await db.execute<{ members: number }>(sql`select count(*)::int as members from members`);
   return NextResponse.json({ ok: true, members: row?.members ?? 0, at: new Date().toISOString() });
 }
