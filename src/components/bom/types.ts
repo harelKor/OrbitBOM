@@ -22,7 +22,7 @@ export const partIds = (p: Pick<CardPart, "id" | "memberIds">) => (p.memberIds ?
 
 export const ownerPartId = (p: Pick<CardPart, "id" | "memberIds">) => p.memberIds?.[0] ?? p.id;
 
-export function partTitle(p: Pick<CardPart, "partNumber" | "displayName" | "onshapeName">): string {
-  const name = p.displayName ?? p.onshapeName ?? "Unnamed part";
-  return p.partNumber ? `${p.partNumber} ${name}` : name;
+// The app has no part number field: a part goes by its name (the Onshape name unless renamed).
+export function partTitle(p: Pick<CardPart, "displayName" | "onshapeName">): string {
+  return p.displayName ?? p.onshapeName ?? "Unnamed part";
 }

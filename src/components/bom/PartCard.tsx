@@ -10,7 +10,7 @@ import { CheckBadge } from "@/components/ui/CheckBadge";
 import { Icon } from "@/components/ui/Icon";
 import { useBom } from "./BomContext";
 import { PART_FILE_TYPES } from "@/config/fileTypes";
-import { MachineField, MaterialField, NameField, QuantityField, SLOTS, StatusField, TextField, TypeBadge, TypeField, type SaveFn } from "./fields";
+import { MachineField, MaterialField, NameField, QuantityField, SLOTS, StatusField, TypeBadge, TypeField, type SaveFn } from "./fields";
 import { InputEditor, Popover } from "./Popover";
 import { ownerPartId, partIds, partTitle, type CardPart } from "./types";
 
@@ -113,11 +113,6 @@ export function PartCard({
           <div className="min-w-0 flex-1 truncate font-semibold text-fg" title={part.displayName ?? part.onshapeName ?? undefined}>
             {edit ? <NameField part={part} save={save} bare /> : (part.displayName ?? part.onshapeName ?? "Unnamed part")}
           </div>
-          {(part.partNumber || edit) && (
-            <span className="shrink-0 font-mono text-[11px] text-subtle">
-              {edit ? <TextField part={part} save={save} field="partNumber" empty="P/N" /> : part.partNumber}
-            </span>
-          )}
           {edit && <EditMenu part={part} />}
         </div>
         {showSystem && <div className="-mt-1.5 truncate text-xs text-subtle">{part.systemName}</div>}

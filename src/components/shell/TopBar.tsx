@@ -45,7 +45,7 @@ export function TopBar({ onMenu, onRobots }: { onMenu: () => void; onRobots: () 
               ref={search}
               value={filters.q}
               onChange={(e) => setFilters({ q: e.target.value })}
-              placeholder="Search part name or number"
+              placeholder="Search part name"
               className="input border-white bg-white pr-14 text-[#111318]"
             />
             <kbd className="absolute top-1.5 right-2 rounded border border-line-strong px-1.5 text-[11px] text-subtle">Ctrl K</kbd>
