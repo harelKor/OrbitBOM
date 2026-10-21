@@ -5,6 +5,7 @@ import { BomView } from "@/components/bom/BomView";
 import { partTitle } from "@/components/bom/types";
 import { CompletionRing } from "@/components/dashboard/CompletionRing";
 import { RobotViewer } from "@/components/dashboard/RobotViewer";
+import { QaBox } from "@/components/qa/QaBox";
 import { Icon } from "@/components/ui/Icon";
 import { requireMember } from "@/lib/auth";
 import { listRecentActions } from "@/lib/data/actions";
@@ -42,6 +43,9 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
   const inProcess = parts.filter((p) => fabStage(p) === "inProcess").length;
   const ready = parts.filter((p) => fabStage(p) === "ready").length;
   const processes = processBreakdown(parts);
+  const qaCount = new Map<string, number>();
+  for (const p of parts) if (p.status === "Ready for QA") qaCount.set(p.systemId, (qaCount.get(p.systemId) ?? 0) + 1);
+  const qaSystems = data.systems.flatMap((s) => (qaCount.has(s.id) ? [{ id: s.id, name: s.name, count: qaCount.get(s.id)! }] : []));
   const activeStatuses = breakdown.statuses.filter((s) => s.count > 0);
   // BOM parts by their key in the 3D model, with their status colour.
   const statusColor = new Map<string, string>(STATUSES.map((s) => [s.name, s.color]));
@@ -82,7 +86,7 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
         />
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,5fr)_minmax(0,2fr)_minmax(0,5fr)]">
         <section className="panel space-y-5 p-4">
           <div className="flex items-center gap-5">
             <CompletionRing percent={breakdown.percent} done={breakdown.done} total={breakdown.total} />
@@ -121,6 +125,7 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
             </div>
           )}
         </section>
+        <QaBox robotId={robot.id} systems={qaSystems} />
         <RobotViewer
           robotId={robot.id}
           statuses={activeStatuses}

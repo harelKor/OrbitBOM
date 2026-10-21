@@ -6,7 +6,7 @@ import { fabStage } from "@/lib/fab";
 import { deleteManualPart, unmergeParts } from "@/app/(app)/parts-actions";
 import { useEditMode } from "@/components/shell/ModeContext";
 import { PartStage, type StageView } from "@/components/dashboard/PartStage";
-import { CheckBadge } from "@/components/ui/CheckBadge";
+import { CheckBadge, CheckIcon } from "@/components/ui/CheckBadge";
 import { Icon } from "@/components/ui/Icon";
 import { useBom } from "./BomContext";
 import { PART_FILE_TYPES } from "@/config/fileTypes";
@@ -29,12 +29,14 @@ export function PartCard({
   showSystem = false,
   selected,
   onToggleSelect,
+  onCheck,
 }: {
   part: CardPart;
   save: SaveFn;
   showSystem?: boolean;
   selected?: boolean;
   onToggleSelect?: () => void; // set while a selection mode (Bulk edit, Merge) is on
+  onCheck?: () => void; // Ready for QA: a big check mark replaces Download and moves the part to In Stock
 }) {
   const edit = useEditMode();
   const { robotId } = useBom();
@@ -85,7 +87,19 @@ export function PartCard({
           )}
         </div>
         <div className="absolute top-2 right-2 flex gap-1.5">
-          {(format || part.files.length > 0) && <DownloadMenu part={part} format={format} />}
+          {onCheck ? (
+            <button
+              type="button"
+              onClick={onCheck}
+              className="press flex h-14 w-14 items-center justify-center rounded-full border-2 border-emerald-400 bg-emerald-500/90 text-white shadow-lg backdrop-blur-md hover:bg-emerald-400"
+              aria-label={`Checked: move ${partTitle(part)} to In Stock`}
+              title="Checked: move to In Stock"
+            >
+              <CheckIcon className="h-8 w-8" />
+            </button>
+          ) : (
+            (format || part.files.length > 0) && <DownloadMenu part={part} format={format} />
+          )}
           {robotId && part.modelKey && (
             <button type="button" onClick={() => setStage("locate")} className="overlay-btn group/tip relative" aria-label="Locate in robot">
               <Icon name="locate" />
