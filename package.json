@@ -11,7 +11,8 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "onshape:test": "tsx scripts/onshape-test.ts"
+    "onshape:test": "tsx scripts/onshape-test.ts",
+    "drawing:spike": "tsx scripts/drawing-spike.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

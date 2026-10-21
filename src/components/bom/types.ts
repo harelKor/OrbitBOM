@@ -16,6 +16,7 @@ export type CardPart = PartRow & {
   groups: { id: string; name: string; color: string | null }[];
   memberIds?: string[]; // set on a merged row
   fabFinishedAt?: Date | null; // first made (To Fab's Finished section)
+  hasDrawing?: boolean; // a fabrication drawing was made for it (system page → Drawings)
 };
 
 // The real part behind a row: a merged row's files and exports belong to its first member.

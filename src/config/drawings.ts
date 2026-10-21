@@ -1,0 +1,18 @@
+// Fabrication drawing rules (plan/auto-drawings.md). Only taps and fits are noted on a drawing.
+
+// A hole matches a size when its diameter is within this many mm.
+export const HOLE_MATCH_MM = 0.05;
+
+// Tap drill diameters noted as a tap.
+export const TAPS = [{ drillMm: 4.2, note: "M5 tapped" }];
+
+// Bearing bores that get a fit note.
+export const BEARINGS = [
+  { boreMm: 28.7, name: "1/2IN HEX Bearing" },
+  { boreMm: 22.35, name: "3/8IN HEX Bearing" },
+  { boreMm: 16.1, name: "8x16x5 Radial Bearing" },
+];
+
+export const FITS = ["light press", "heavy press", "slip", "precise slip"] as const;
+export type Fit = (typeof FITS)[number];
+export const DEFAULT_FIT: Fit = "light press";

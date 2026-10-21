@@ -15,6 +15,7 @@ import { PART_FILE_TYPES } from "@/config/fileTypes";
 import { MachineField, MaterialField, NameField, QuantityField, SLOTS, StatusField, TypeBadge, TypeField, type SaveFn } from "./fields";
 import { InputEditor, Popover } from "./Popover";
 import { ownerPartId, partIds, partTitle, type CardPart } from "./types";
+import { downloadDrawing } from "@/lib/drawing/download";
 
 const EXPORTABLE = ["STEP", "STL", "PARASOLID"] as const;
 const FLAT = ["DXF_FLAT", "STEP_FLAT"] as const; // only for Onshape sheet metal parts
@@ -121,7 +122,7 @@ export function PartCard({
               <CheckIcon className="h-8 w-8" />
             </button>
           ) : (
-            (format || part.files.length > 0) && <DownloadMenu part={part} format={format} />
+            (format || part.files.length > 0 || part.hasDrawing) && <DownloadMenu part={part} format={format} />
           )}
           {part.thumbUrl && hasMaterial && !fabCounter && (
             <button
@@ -259,6 +260,21 @@ function DownloadMenu({ part, format }: { part: CardPart; format: ExportFormat |
               {i === 0 && <span className="text-[11px] text-subtle">for its machine</span>}
             </a>
           ))}
+          {part.hasDrawing && <div className="px-2 pt-2 pb-1 text-[11px] font-semibold text-subtle">Drawing</div>}
+          {part.hasDrawing &&
+            (["pdf", "png"] as const).map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => {
+                  close();
+                  downloadDrawing(ownerPartId(part), f).catch((err: Error) => alert(err.message));
+                }}
+                className={`${item} w-full text-left`}
+              >
+                <span className="font-medium text-fg">{f.toUpperCase()}</span>
+              </button>
+            ))}
           {part.files.length > 0 && <div className="px-2 pt-2 pb-1 text-[11px] font-semibold text-subtle">Attached files</div>}
           {part.files.map((file) => (
             <a key={file.id} href={`/api/files/${file.id}?download=1`} onClick={close} className={item}>

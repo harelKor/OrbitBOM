@@ -7,7 +7,7 @@ import { thumbKey } from "@/lib/onshape/thumbnails";
 import { computeStatus } from "@/lib/status";
 import { imageUrl } from "@/lib/storage/r2";
 
-const { parts, systems, robots, members, partFiles, merges, mergeMembers } = schema;
+const { parts, systems, robots, members, partFiles, merges, mergeMembers, partDrawings } = schema;
 
 export type PartFileRef = { id: string; type: string; filename: string };
 
@@ -19,14 +19,16 @@ export type BomPart = typeof parts.$inferSelect & {
   thumbUrl: string | null;
   modelKey: string | null; // the part's key in the robot's 3D model
   groups: { id: string; name: string; color: string | null }[];
+  hasDrawing: boolean;
 };
 
 async function load(where: ReturnType<typeof and>): Promise<BomPart[]> {
   const rows = await db
-    .select({ part: parts, systemName: systems.name, lastModifiedByName: members.name })
+    .select({ part: parts, systemName: systems.name, lastModifiedByName: members.name, drawingOf: partDrawings.partId })
     .from(parts)
     .innerJoin(systems, eq(systems.id, parts.systemId))
     .leftJoin(members, eq(members.id, parts.lastModifiedBy))
+    .leftJoin(partDrawings, eq(partDrawings.partId, parts.id))
     .where(where)
     .orderBy(asc(parts.partNumber), asc(parts.displayName), asc(parts.onshapeName));
   const files = rows.length
@@ -57,6 +59,7 @@ async function load(where: ReturnType<typeof and>): Promise<BomPart[]> {
     status: computeStatus(r.part),
     systemName: r.systemName,
     lastModifiedByName: r.lastModifiedByName,
+    hasDrawing: r.drawingOf !== null,
     files: files.filter((f) => f.partId === r.part.id).map(({ id, type, filename }) => ({ id, type, filename })),
   }));
 }
