@@ -3,10 +3,12 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { getMachine } from "@/config/machines";
 import { PRIORITIES } from "@/config/priorities";
 import { STATUSES } from "@/config/statuses";
 import { db, schema } from "@/db";
 import { requireMember } from "@/lib/auth";
+import { READY_STATUS, fabBatchName, machinesOf } from "@/lib/fab";
 import { analyseMissing } from "@/lib/groups/missing";
 import { applyPartChanges } from "@/lib/parts/apply";
 import { deleteObjects, fileKeysForGroup } from "@/lib/storage/cleanup";
@@ -190,19 +192,40 @@ export async function recoverMembers(groupId: string): Promise<ActionResult> {
   };
 }
 
-// To Fab's FAB toggle: the selected parts become the next batch, named "FAB 1", "FAB 2", …
-export async function createFabBatch(robotId: string, partIds: string[]): Promise<ActionResult> {
-  await requireMember();
+// To Fab's Fab button: the selected parts become a batch on one machine, named after the machine
+// and the day ("Laser 21/10"). Every part must go through that machine and share one material.
+// The parts move to Ready to Fab.
+export async function createFabBatch(robotId: string, partIds: string[], machineId: string): Promise<ActionResult> {
+  const member = await requireMember();
   if (!isUuid(robotId)) return { error: "Unknown robot." };
-  const rows = await robotParts(robotId, partIds);
+  const machine = getMachine(machineId);
+  if (!machine) return { error: "Pick the machine for this fab." };
+  if (!partIds.length || partIds.some((id) => !isUuid(id))) return { error: "Pick parts to batch." };
+  const rows = await db
+    .select({ part: parts })
+    .from(parts)
+    .innerJoin(systems, eq(systems.id, parts.systemId))
+    .where(and(inArray(parts.id, partIds), eq(systems.robotId, robotId)));
   if (!rows.length) return { error: "Pick parts to batch." };
-  const names = await db.select({ name: partGroups.name }).from(partGroups).where(eq(partGroups.robotId, robotId));
-  const next = Math.max(0, ...names.map((g) => Number(/^FAB (\d+)$/.exec(g.name)?.[1] ?? 0))) + 1;
-  const name = `FAB ${next}`;
+  if (rows.some(({ part }) => !machinesOf(part).includes(machine.id))) return { error: `Every part in the fab must go through ${machine.name}.` };
+  if (new Set(rows.map(({ part }) => part.material ?? "")).size > 1) return { error: "A fab can only hold parts of one material." };
+
+  const names = new Set(
+    (await db.select({ name: partGroups.name }).from(partGroups).where(eq(partGroups.robotId, robotId))).map((g) => g.name),
+  );
+  const base = fabBatchName(machine.name);
+  let name = base;
+  for (let n = 2; names.has(name); n++) name = `${base} (${n})`;
+
   await db.transaction(async (tx) => {
-    const [group] = await tx.insert(partGroups).values({ robotId, name }).returning({ id: partGroups.id });
-    await tx.insert(groupMembers).values(rows.map((p) => ({ groupId: group.id, partId: p.id, keySnapshot: snapshot(p) })));
+    const [group] = await tx.insert(partGroups).values({ robotId, name, machine: machine.id }).returning({ id: partGroups.id });
+    await tx.insert(groupMembers).values(rows.map(({ part }) => ({ groupId: group.id, partId: part.id, keySnapshot: snapshot(part) })));
   });
+  await applyPartChanges(
+    rows.map(({ part }) => part.id),
+    { status: READY_STATUS },
+    { memberId: member.id, via: "ui" },
+  );
   refresh();
   return { message: `Created ${name} with ${rows.length} part${rows.length === 1 ? "" : "s"}.` };
 }

@@ -233,6 +233,7 @@ export const partGroups = pgTable("part_groups", {
   color: text("color"),
   description: text("description"),
   priority: priority("priority").notNull().default("normal"),
+  machine: text("machine"), // set on a To Fab batch: the machine (config id) its parts are made on
   createdAt: createdAt(),
 });
 

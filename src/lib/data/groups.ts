@@ -78,10 +78,10 @@ export async function listGroups(): Promise<GroupSummary[]> {
   });
 }
 
-// For the BOM's Group parts bar: the robot's groups.
+// For the BOM's Group parts bar and To Fab's batches: the robot's groups.
 export async function listRobotGroups(robotId: string) {
   return db
-    .select({ id: partGroups.id, name: partGroups.name, color: partGroups.color })
+    .select({ id: partGroups.id, name: partGroups.name, color: partGroups.color, machine: partGroups.machine })
     .from(partGroups)
     .where(eq(partGroups.robotId, robotId))
     .orderBy(asc(partGroups.name));

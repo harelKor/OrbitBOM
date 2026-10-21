@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useOptimistic, useState, useTransition } from "react";
 import { MACHINES, getMachine } from "@/config/machines";
 import { DONE_STATUSES, type StatusName } from "@/config/statuses";
-import { createFabBatch, deleteGroup, removeFromGroup } from "@/app/(app)/groups/actions";
+import { createFabBatch, deleteGroup, removeFromGroup, updateGroup } from "@/app/(app)/groups/actions";
 import { updatePart, updateParts } from "@/app/(app)/parts-actions";
 import { BomProvider, type InventoryName } from "@/components/bom/BomContext";
 import { matchesTopBar } from "@/components/bom/filter";
@@ -13,18 +13,31 @@ import { STATUS_OPTIONS } from "@/components/bom/options";
 import { PartCard, cadFormat } from "@/components/bom/PartCard";
 import { partTitle, type CardPart } from "@/components/bom/types";
 import { useFilters } from "@/components/shell/FilterContext";
+import { useEditMode } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
 import { StatusPill } from "@/components/ui/StatusPill";
-import { fabStage, machinesOf } from "@/lib/fab";
+import { IN_PROCESS_STATUS, READY_STATUS, fabStage, machinesOf } from "@/lib/fab";
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { computeStatus } from "@/lib/status";
 
-export type Batch = { id: string; name: string };
+export type Batch = { id: string; name: string; machine: string | null };
 
 const isDone = (p: CardPart) => (DONE_STATUSES as string[]).includes(computeStatus(p));
 
-// To Fab: machine boxes, then FAB batches, parts in process and parts ready to fab (and, for one
-// machine, its other parts). The FAB toggle picks cards and turns them into the next batch.
+// Dragging cards or batches between sections sets their status.
+const DRAG_TYPE = "application/x-orbit-parts";
+const SECTION_STATUS = { ready: READY_STATUS, inProcess: IN_PROCESS_STATUS } as const;
+type Stage = keyof typeof SECTION_STATUS;
+
+// A batch sits in Ready to fab while any part still waits there, then in In process.
+const batchStage = (members: CardPart[]): Stage =>
+  members.some((p) => fabStage(p) === "ready") || !members.some((p) => fabStage(p) === "inProcess") ? "ready" : "inProcess";
+
+const common = (lists: string[][]) => (lists.length ? lists.reduce((acc, l) => acc.filter((m) => l.includes(m))) : []);
+
+// To Fab: machine boxes, then Ready to fab and In process, each with its fab batches first (and,
+// for one machine, its other parts). The Fab button picks cards of one material on one machine
+// and turns them into a batch.
 export function FabView({
   parts,
   batches,
@@ -57,6 +70,7 @@ export function FabView({
   const { filters } = useFilters();
   const [fab, setFab] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [pickedMachine, setPickedMachine] = useState("");
   const toggle = (id: string) =>
     setSelected((s) => {
       const next = new Set(s);
@@ -83,23 +97,50 @@ export function FabView({
     // A batch stays on To Fab until all its parts are done.
     const shownBatches = batches
       .map((b) => ({ ...b, members: optimistic.filter((p) => p.groups.some((g) => g.id === b.id)) }))
-      .filter((b) => b.members.some((p) => !isDone(p)) && b.members.some(onMachine) && b.members.some((p) => matchesTopBar(p, filters)));
+      .filter(
+        (b) =>
+          b.members.some((p) => !isDone(p)) &&
+          (machine ? (b.machine ? b.machine === machine : b.members.some(onMachine)) : true) &&
+          b.members.some((p) => matchesTopBar(p, filters)),
+      );
     const batched = new Set(shownBatches.flatMap((b) => b.members.map((p) => p.id)));
     const loose = optimistic.filter((p) => !batched.has(p.id) && onMachine(p) && matchesTopBar(p, filters));
     return {
-      batches: shownBatches,
-      inProcess: loose.filter((p) => fabStage(p) === "inProcess"),
+      batches: { ready: shownBatches.filter((b) => batchStage(b.members) === "ready"), inProcess: shownBatches.filter((b) => batchStage(b.members) === "inProcess") },
       ready: loose.filter((p) => fabStage(p) === "ready"),
+      inProcess: loose.filter((p) => fabStage(p) === "inProcess"),
       other: machine ? loose.filter((p) => !fabStage(p)) : [],
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onMachine only reads `machine`
   }, [optimistic, batches, filters, machine]);
 
-  const card = (p: CardPart) => (
-    <PartCard key={p.id} part={p} save={(c) => save([p.id], c)} showSystem selected={selected.has(p.id)} onToggleSelect={fab ? () => toggle(p.id) : undefined} />
-  );
+  // While picking a fab: the material of the first pick and the machines every pick goes through.
+  const picked = optimistic.filter((p) => selected.has(p.id));
+  const material = picked.length ? (picked[0].material ?? "") : null;
+  const sharedMachines = machine ? [machine] : common(picked.map(machinesOf));
+  const fabMachine = machine ?? (sharedMachines.includes(pickedMachine) ? pickedMachine : sharedMachines[0]);
+  const canPick = (p: CardPart) =>
+    selected.has(p.id) ||
+    (machinesOf(p).some((m) => (picked.length ? sharedMachines : machine ? [machine] : MACHINES.map((x) => x.id as string)).includes(m)) &&
+      (material === null || (p.material ?? "") === material));
+
+  const card = (p: CardPart) => {
+    const pickable = fab && canPick(p);
+    return (
+      <div
+        key={p.id}
+        draggable={!fab}
+        onDragStart={(e) => e.dataTransfer.setData(DRAG_TYPE, JSON.stringify([p.id]))}
+        className={fab && !pickable ? "opacity-40" : undefined}
+      >
+        <PartCard part={p} save={(c) => save([p.id], c)} showSystem selected={selected.has(p.id)} onToggleSelect={pickable ? () => toggle(p.id) : undefined} />
+      </div>
+    );
+  };
+  const batchCard = (b: Batch & { members: CardPart[] }) => <BatchCard key={b.id} batch={b} members={b.members} save={save} card={card} draggable={!fab} />;
   const machinesWithParts = MACHINES.filter((m) => counts.byMachine.has(m.id));
   const base = `/robots/${robotId}/fab`;
+  const drop = (stage: Stage) => (ids: string[]) => save(ids, { status: SECTION_STATUS[stage] });
 
   return (
     <BomProvider value={{ inventory, isAdmin, robotId }}>
@@ -115,26 +156,33 @@ export function FabView({
               setSelected(new Set());
             }}
             aria-pressed={fab}
-            className={`press ml-auto self-center ${fab ? "btn-primary" : "btn"}`}
+            className={`press ml-auto self-center rounded-xl px-7 py-3 text-lg font-bold shadow-lg transition-colors ${
+              fab ? "border border-line-strong bg-surface text-fg" : "bg-amber-400 text-slate-950 shadow-amber-400/40 hover:bg-amber-300"
+            }`}
           >
-            {fab ? "Cancel FAB" : "FAB"}
+            {fab ? "Cancel" : "＋ Fab"}
           </button>
         </div>
 
         {error && <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">Couldn&apos;t save: {error}</p>}
 
-        {view.batches.length > 0 && (
-          <Section title="FAB batches" count={view.batches.length}>
-            {view.batches.map((b) => (
-              <BatchCard key={b.id} batch={b} members={b.members} save={save} card={card} />
-            ))}
-          </Section>
-        )}
-        <Section title="In process" count={view.inProcess.length} empty="Nothing is being made right now.">
-          {view.inProcess.map(card)}
-        </Section>
-        <Section title="Ready to fab" count={view.ready.length} empty="No parts are waiting to be made.">
+        <Section
+          title="Ready to fab"
+          count={view.batches.ready.length + view.ready.length}
+          empty="No parts are waiting to be made."
+          onDropParts={fab ? undefined : drop("ready")}
+        >
+          {view.batches.ready.map(batchCard)}
           {view.ready.map(card)}
+        </Section>
+        <Section
+          title="In process"
+          count={view.batches.inProcess.length + view.inProcess.length}
+          empty="Nothing is being made right now."
+          onDropParts={fab ? undefined : drop("inProcess")}
+        >
+          {view.batches.inProcess.map(batchCard)}
+          {view.inProcess.map(card)}
         </Section>
         {machine && view.other.length > 0 && (
           <Section title={`Other parts on ${getMachine(machine)?.name ?? "this machine"}`} count={view.other.length}>
@@ -145,16 +193,36 @@ export function FabView({
         {fab && (
           <div className="sticky bottom-3 z-30 rounded-xl border border-line-strong bg-surface/95 p-3 shadow-lg backdrop-blur">
             <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="font-semibold tabular-nums">
-                {selected.size} selected
+              <span className="font-semibold tabular-nums">{selected.size} selected</span>
+              <span className="text-subtle">
+                {material === null ? "Tap cards to add them to the fab." : `Only ${material || "parts with no material"} on the same machine can join.`}
               </span>
-              <span className="text-subtle">Tap cards to add them to the batch.</span>
+              <span className="ml-auto" />
+              {machine ? (
+                <span className="rounded-full bg-raised px-2.5 py-1 text-xs font-semibold">{getMachine(machine)?.name}</span>
+              ) : (
+                selected.size > 0 && (
+                  <select
+                    className="input w-auto py-1"
+                    value={fabMachine ?? ""}
+                    onChange={(e) => setPickedMachine(e.target.value)}
+                    aria-label="Machine for this fab"
+                  >
+                    {sharedMachines.length === 0 && <option value="">No shared machine</option>}
+                    {sharedMachines.map((m) => (
+                      <option key={m} value={m}>
+                        {getMachine(m)?.name ?? m}
+                      </option>
+                    ))}
+                  </select>
+                )
+              )}
               <button
-                className="btn-primary ml-auto"
-                disabled={pending || selected.size === 0}
+                className="btn-primary"
+                disabled={pending || selected.size === 0 || !fabMachine}
                 onClick={() =>
                   startTransition(async () => {
-                    const r = await createFabBatch(robotId, [...selected]);
+                    const r = await createFabBatch(robotId, [...selected], fabMachine!);
                     setError(r.error ?? null);
                     if (!r.error) {
                       setFab(false);
@@ -163,7 +231,7 @@ export function FabView({
                   })
                 }
               >
-                ✓ Create batch
+                ✓ Create fab
               </button>
               <button className="btn" onClick={() => setSelected(new Set())} disabled={selected.size === 0}>
                 Clear
@@ -189,16 +257,47 @@ function MachineBox({ href, name, count, active }: { href: string; name: string;
   );
 }
 
-function Section({ title, count, empty, children }: { title: string; count: number; empty?: string; children: React.ReactNode }) {
+function Section({
+  title,
+  count,
+  empty,
+  onDropParts,
+  children,
+}: {
+  title: string;
+  count: number;
+  empty?: string;
+  onDropParts?: (ids: string[]) => void;
+  children: React.ReactNode;
+}) {
+  const [over, setOver] = useState(false);
+  const dropProps = onDropParts && {
+    onDragOver: (e: React.DragEvent) => {
+      if (!e.dataTransfer.types.includes(DRAG_TYPE)) return;
+      e.preventDefault();
+      setOver(true);
+    },
+    onDragLeave: (e: React.DragEvent) => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false);
+    },
+    onDrop: (e: React.DragEvent) => {
+      setOver(false);
+      const ids = JSON.parse(e.dataTransfer.getData(DRAG_TYPE) || "[]") as string[];
+      if (ids.length) {
+        e.preventDefault();
+        onDropParts(ids);
+      }
+    },
+  };
   return (
-    <section className="space-y-3">
+    <section {...dropProps} className={`-m-2 space-y-3 rounded-xl p-2 transition-colors ${over ? "bg-accent/5 ring-2 ring-accent/40" : ""}`}>
       <div className="flex items-center gap-3">
         <h2 className="text-lg font-semibold">{title}</h2>
         <span className="rounded-full bg-raised px-2 py-0.5 text-xs font-semibold text-fg-2 tabular-nums">{count}</span>
         <div className="h-px flex-1 bg-line" />
       </div>
       {count === 0 && empty ? (
-        <p className="text-sm text-subtle">{empty}</p>
+        <p className={`text-sm text-subtle ${onDropParts ? "rounded-lg border border-dashed border-line py-6 text-center" : ""}`}>{empty}</p>
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3">{children}</div>
       )}
@@ -206,31 +305,46 @@ function Section({ title, count, empty, children }: { title: string; count: numb
   );
 }
 
-// A FAB batch: a collage of its parts, one status for all of them, download all, and the
-// member cards when opened.
+// A fab batch: a collage of its parts, its machine and material, one status for all of them,
+// download all, and the member cards when opened. Rename and delete are in Edit mode.
 function BatchCard({
   batch,
   members,
   save,
   card,
+  draggable,
 }: {
   batch: Batch;
   members: CardPart[];
   save: (ids: string[], changes: PartChanges) => void;
   card: (p: CardPart) => React.ReactNode;
+  draggable: boolean;
 }) {
+  const edit = useEditMode();
   const [open, setOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
   const [, startTransition] = useTransition();
   const statuses = [...new Set(members.map((p) => computeStatus(p)))];
   const shared = statuses.length === 1 ? statuses[0] : null;
   const qty = members.reduce((n, p) => n + p.quantity, 0);
+  const materials = [...new Set(members.map((p) => p.material ?? ""))];
+  const material = materials.length === 1 ? materials[0] || "No material" : "Mixed materials";
+  const machineName = batch.machine ? (getMachine(batch.machine)?.name ?? batch.machine) : null;
   const downloads = members.flatMap((p) => {
     const f = cadFormat(p);
     return f ? [`/api/parts/${p.id}/export?format=${f}`] : [];
   });
+  const rename = (name: string) => {
+    setRenaming(false);
+    if (name.trim() && name.trim() !== batch.name) startTransition(() => void updateGroup(batch.id, { name }));
+  };
 
   return (
-    <div className={`card-interactive flex flex-col text-sm ${open ? "col-span-full" : ""}`}>
+    <div
+      draggable={draggable && !renaming}
+      onDragStart={(e) => e.dataTransfer.setData(DRAG_TYPE, JSON.stringify(members.filter((p) => !isDone(p)).map((p) => p.id)))}
+      className={`card-interactive flex flex-col text-sm ${open ? "col-span-full" : ""}`}
+    >
       <div className={open ? "flex flex-wrap gap-4 p-3" : "flex flex-col"}>
         <button
           onClick={() => setOpen((o) => !o)}
@@ -250,11 +364,36 @@ function BatchCard({
           ))}
         </button>
         <div className="flex min-w-0 flex-1 flex-col gap-2 p-3">
-          <div className="flex items-baseline gap-2">
-            <span className="display text-xl text-accent">{batch.name}</span>
-            <span className="text-xs text-subtle tabular-nums">
+          <div className="min-w-0">
+            {renaming ? (
+              <input
+                autoFocus
+                defaultValue={batch.name}
+                aria-label="Fab name"
+                className="input py-1 text-base font-semibold"
+                onBlur={(e) => rename(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") rename(e.currentTarget.value);
+                  if (e.key === "Escape") setRenaming(false);
+                }}
+              />
+            ) : (
+              <div className="flex items-baseline gap-2">
+                <span className="display truncate text-xl text-accent">{batch.name}</span>
+                {edit && (
+                  <button className="press shrink-0 text-xs text-subtle hover:text-accent" onClick={() => setRenaming(true)}>
+                    Rename
+                  </button>
+                )}
+              </div>
+            )}
+            <div className="truncate text-xs font-medium text-fg-2">
+              {material}
+              {machineName && ` · ${machineName}`}
+            </div>
+            <div className="text-xs text-subtle tabular-nums">
               {members.length} parts, {qty} pcs
-            </span>
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Popover trigger={<StatusPill status={shared ?? "Mixed"} size="md" />}>
@@ -279,14 +418,14 @@ function BatchCard({
               {open ? "Close" : "Open"}
             </button>
           </div>
-          {open && (
+          {edit && (
             <button
-              className="self-start text-xs text-subtle hover:text-rose-700"
+              className="press self-start text-xs text-subtle hover:text-rose-700"
               onClick={() => {
-                if (confirm(`Ungroup ${batch.name}? Its parts go back to the lists.`)) startTransition(() => void deleteGroup(batch.id));
+                if (confirm(`Delete ${batch.name}? Its parts stay on the BOM with their status.`)) startTransition(() => void deleteGroup(batch.id));
               }}
             >
-              Ungroup batch
+              Delete fab
             </button>
           )}
         </div>
@@ -296,12 +435,14 @@ function BatchCard({
           {members.map((p) => (
             <div key={p.id} className="flex flex-col gap-1">
               {card(p)}
-              <button
-                className="self-start text-xs text-subtle hover:text-rose-700"
-                onClick={() => startTransition(() => void removeFromGroup(batch.id, p.id))}
-              >
-                Remove from {batch.name}
-              </button>
+              {edit && (
+                <button
+                  className="self-start text-xs text-subtle hover:text-rose-700"
+                  onClick={() => startTransition(() => void removeFromGroup(batch.id, p.id))}
+                >
+                  Remove from {batch.name}
+                </button>
+              )}
             </div>
           ))}
         </div>
