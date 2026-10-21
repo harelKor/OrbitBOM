@@ -1,7 +1,7 @@
 import { MATERIALS, materialCategory } from "./materials";
 
-// Default 3D colour of each material category; the team can change them from the right
-// panel in Edit mode (stored in material_colors). Parts whose material isn't on the list
+// The 3D colour of each material category, for Material mode and a thumbnail's material
+// button (rows in material_colors override them). Parts whose material isn't on the list
 // take the colour of Onshape's material, else OTHER; parts with no material at all NONE.
 export const OTHER_MATERIAL = "Other";
 export const NO_MATERIAL = "No material";
