@@ -1,8 +1,8 @@
 // A drawing as one SVG in sheet millimetres, ISO style: thick visible lines, thin dimension and
 // leader lines, thin chain centre lines, 3.5 mm lettering, BOM block bottom right.
 
-import { fmt, TITLE_BLOCK } from "./plate";
-import type { Drawing, Pt, Stroke } from "./types";
+import { MARGIN, TITLE } from "./layout";
+import type { Dim, Drawing, Note, Pt, Stroke } from "./types";
 
 const STROKES: Record<Stroke, string> = {
   visible: 'stroke-width="0.5"',
@@ -13,6 +13,7 @@ const STROKES: Record<Stroke, string> = {
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const n = (x: number) => String(Math.round(x * 100) / 100);
 const path = (pts: Pt[]) => pts.map((p, i) => `${i ? "L" : "M"}${n(p[0])} ${n(p[1])}`).join("");
+const thin = (pts: Pt[]) => `<path d="${path(pts)}" fill="none" stroke="#000" stroke-width="0.25"/>`;
 
 // A filled arrowhead with its tip at `tip`, pointing away from `from`.
 function arrow(tip: Pt, from: Pt) {
@@ -23,11 +24,48 @@ function arrow(tip: Pt, from: Pt) {
   return `<path d="M${n(tip[0])} ${n(tip[1])}L${n(bx - uy * 0.6)} ${n(by + ux * 0.6)}L${n(bx + uy * 0.6)} ${n(by - ux * 0.6)}Z" fill="#000"/>`;
 }
 
-function text(at: Pt, value: string, size = 3.5, anchor = "start") {
-  const lines = value.split("\n");
-  return `<text x="${n(at[0])}" y="${n(at[1])}" font-size="${size}" text-anchor="${anchor}">${lines
+function text(at: Pt, value: string, opts: { size?: number; anchor?: string; bold?: boolean; rotate?: boolean } = {}) {
+  const size = opts.size ?? 3.5;
+  const attrs = [
+    `font-size="${size}"`,
+    opts.anchor ? `text-anchor="${opts.anchor}"` : "",
+    opts.bold ? 'font-weight="bold"' : "",
+    opts.rotate ? `transform="rotate(-90 ${n(at[0])} ${n(at[1])})"` : "",
+  ].join(" ");
+  return `<text x="${n(at[0])}" y="${n(at[1])}" ${attrs}>${value
+    .split("\n")
     .map((l, i) => `<tspan x="${n(at[0])}" dy="${i ? size * 1.3 : 0}">${esc(l)}</tspan>`)
     .join("")}</text>`;
+}
+
+// Extension lines, the dimension line, and arrows outside when the gap is too small for them.
+// Worked out along the dimension, then mapped back for vertical ones.
+function dimension(dim: Dim): string {
+  const v = dim.dir === "v";
+  const P = (along: number, off: number): Pt => (v ? [off, along] : [along, off]);
+  const [a, b] = v ? [dim.a[1], dim.b[1]] : [dim.a[0], dim.b[0]];
+  const [ea, eb] = v ? [dim.a[0], dim.b[0]] : [dim.a[1], dim.b[1]];
+  const side = Math.sign(dim.at - ea) || -1;
+  const out = [thin([P(a, ea + side), P(a, dim.at + side * 2)]), thin([P(b, eb + side), P(b, dim.at + side * 2)])];
+  const [lo, hi] = a < b ? [a, b] : [b, a];
+  if (hi - lo < 10) {
+    out.push(thin([P(lo - 10, dim.at), P(hi + 10, dim.at)]), arrow(P(lo, dim.at), P(lo - 5, dim.at)), arrow(P(hi, dim.at), P(hi + 5, dim.at)));
+    out.push(v ? text(P(lo - 12, dim.at - 1), dim.text, { rotate: true, anchor: "end" }) : text(P(hi + 12, dim.at + 1.2), dim.text));
+  } else {
+    out.push(thin([P(lo, dim.at), P(hi, dim.at)]), arrow(P(lo, dim.at), P(hi, dim.at)), arrow(P(hi, dim.at), P(lo, dim.at)));
+    out.push(text(P((lo + hi) / 2, dim.at - 1), dim.text, { anchor: "middle", rotate: v }));
+  }
+  return out.join("");
+}
+
+function note(nt: Note): string {
+  if (!nt.leader) return text(nt.at, nt.text, nt.kind === "tool" ? { size: 5, bold: true } : {});
+  // The leader leaves from the text's lower edge (above the view) or upper edge (below it).
+  const rows = nt.text.split("\n");
+  const width = Math.max(...rows.map((l) => l.length)) * 1.9;
+  const below = nt.leader[1] < nt.at[1];
+  const end: Pt = [nt.at[0] + width / 2, below ? nt.at[1] - 3.5 : nt.at[1] + (rows.length - 1) * 3.5 * 1.3 + 1.2];
+  return thin([end, nt.leader]) + arrow(nt.leader, end) + text(nt.at, nt.text);
 }
 
 export function drawingSvg(d: Drawing): string {
@@ -35,78 +73,38 @@ export function drawingSvg(d: Drawing): string {
   const out: string[] = [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${w}mm" height="${h}mm" viewBox="0 0 ${w} ${h}" font-family="Arial, Helvetica, sans-serif">`,
     `<rect width="${w}" height="${h}" fill="#fff"/>`,
-    `<rect x="10" y="10" width="${w - 20}" height="${h - 20}" fill="none" stroke="#000" stroke-width="0.7"/>`,
+    `<rect x="${MARGIN}" y="${MARGIN}" width="${w - 2 * MARGIN}" height="${h - 2 * MARGIN}" fill="none" stroke="#000" stroke-width="0.7"/>`,
   ];
   if (d.image) out.push(`<image href="${esc(d.image.href)}" x="${d.image.x}" y="${d.image.y}" width="${d.image.w}" height="${d.image.h}" preserveAspectRatio="xMidYMid meet"/>`);
-
   out.push('<g fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round">');
   for (const l of d.lines) out.push(`<path d="${path(l.pts)}" ${STROKES[l.stroke]}/>`);
-  out.push("</g>");
-
-  // Dimensions: extension lines, the dimension line, arrows outside when the gap is small.
-  for (const dim of d.dims) {
-    const [a, b] = [dim.a, dim.b];
-    const tight = Math.abs(b[0] - a[0]) < 10;
-    const g: string[] = [
-      `<path d="${path([[a[0], a[1] - 1], [a[0], dim.y - 2]])}M${n(b[0])} ${n(b[1] - 1)}L${n(b[0])} ${n(dim.y - 2)}" stroke="#000" stroke-width="0.25"/>`,
-    ];
-    const pa: Pt = [a[0], dim.y];
-    const pb: Pt = [b[0], dim.y];
-    if (tight) {
-      g.push(`<path d="${path([[a[0] - 10, dim.y], [b[0] + 10, dim.y]])}" stroke="#000" stroke-width="0.25"/>`);
-      g.push(arrow(pa, [a[0] - 5, dim.y]), arrow(pb, [b[0] + 5, dim.y]));
-      g.push(text([b[0] + 12, dim.y + 1.2], dim.text));
-    } else {
-      g.push(`<path d="${path([pa, pb])}" stroke="#000" stroke-width="0.25"/>`);
-      g.push(arrow(pa, pb), arrow(pb, pa));
-      g.push(text([(a[0] + b[0]) / 2, dim.y - 1], dim.text, 3.5, "middle"));
-    }
-    out.push(...g);
-  }
-
-  for (const note of d.notes) {
-    if (note.leader) {
-      // The leader leaves from the text's lower edge (above the view) or upper edge (below it).
-      const rows = note.text.split("\n").length;
-      const width = Math.max(...note.text.split("\n").map((l) => l.length)) * 1.9;
-      const below = note.leader[1] < note.at[1];
-      const end: Pt = [note.at[0] + width / 2, below ? note.at[1] - 3.5 : note.at[1] + (rows - 1) * 3.5 * 1.3 + 1.2];
-      out.push(`<path d="${path([end, note.leader])}" fill="none" stroke="#000" stroke-width="0.25"/>`, arrow(note.leader, end));
-      out.push(text(note.at, note.text));
-    } else out.push(text(note.at, note.text));
-  }
-
-  out.push(titleBlock(d));
-  out.push("</svg>");
+  out.push("</g>", ...d.dims.map(dimension), ...d.notes.map(note), titleBlock(d), "</svg>");
   return out.join("");
 }
 
 function titleBlock(d: Drawing) {
-  const { w: tw, h: th } = TITLE_BLOCK;
-  const x = d.sheet.w - 10 - tw;
-  const y = d.sheet.h - 10 - th;
+  const { w: tw, h: th } = TITLE;
+  const x = d.sheet.w - MARGIN - tw;
+  const y = d.sheet.h - MARGIN - th;
   const t = d.title;
-  const scale = d.scale >= 1 ? `${fmt(d.scale)}:1` : `1:${fmt(1 / d.scale)}`;
   const rows: [string, string][][] = [
-    [["Part no.", t.partNumber ?? ""], ["Qty", t.quantity != null ? String(t.quantity) : ""]],
-    [["Material", t.material ?? ""], ["Stock", d.stock]],
-    [["Process", (t.processes ?? []).join(" → ")], ["Scale", scale]],
-    [["System", [t.robot, t.system].filter(Boolean).join(" / ")], ["Rev", t.revision ?? ""]],
-    [["Designer", t.designer ?? ""], ["Date", t.date ?? ""]],
+    [["Material", t.material ?? ""], ["Qty", t.quantity != null ? String(t.quantity) : ""]],
+    [["Stock", d.stock], ["Rev", t.revision ?? ""]],
+    [["Process", (t.processes ?? []).join(" → ")], ["Date", t.date ?? ""]],
+    [["System", [t.robot, t.system].filter(Boolean).join(" / ")]],
   ];
-  const g: string[] = [`<g stroke="#000" fill="none"><rect x="${x}" y="${y}" width="${tw}" height="${th}" stroke-width="0.5"/>`];
   const nameH = 8;
   const rowH = (th - nameH) / rows.length;
+  const split = x + tw * 0.68;
+  const g: string[] = [`<g stroke="#000" fill="none"><rect x="${x}" y="${y}" width="${tw}" height="${th}" stroke-width="0.5"/>`];
   g.push(`<path d="M${x} ${y + nameH}h${tw}" stroke-width="0.25"/>`);
   for (let i = 1; i < rows.length; i++) g.push(`<path d="M${x} ${n(y + nameH + i * rowH)}h${tw}" stroke-width="0.25"/>`);
-  g.push(`<path d="M${x + tw * 0.68} ${y + nameH}v${th - nameH}" stroke-width="0.25"/></g>`);
+  g.push(`<path d="M${split} ${y + nameH}v${n(rowH * (rows.length - 1))}" stroke-width="0.25"/></g>`);
   g.push(`<text x="${x + 2}" y="${y + 5.8}" font-size="5" font-weight="bold">${esc(t.name)}</text>`);
-  g.push(`<text x="${x + tw - 2}" y="${y + 5.8}" font-size="2.5" text-anchor="end">ISO · first angle · mm</text>`);
   rows.forEach((row, i) => {
     const ty = y + nameH + i * rowH + rowH / 2 + 1;
     row.forEach(([label, value], j) => {
-      const cx = x + (j ? tw * 0.68 : 0) + 2;
-      g.push(`<text x="${n(cx)}" y="${n(ty)}" font-size="2"><tspan fill="#666">${label}</tspan><tspan dx="1.5" font-size="2.8">${esc(value)}</tspan></text>`);
+      g.push(`<text x="${n((j ? split : x) + 2)}" y="${n(ty)}" font-size="2"><tspan fill="#666">${label}</tspan><tspan dx="1.5" font-size="2.8">${esc(value)}</tspan></text>`);
     });
   });
   return g.join("");

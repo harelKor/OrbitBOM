@@ -1,18 +1,20 @@
 // A drawing, laid out on its sheet (mm, y down), ready for svg.ts. Notes carry stable ids so the
 // drawing editor can hide, change or move them later.
 
+import type { Part } from "./read";
+
 export type Pt = [number, number];
 export type Stroke = "visible" | "thin" | "center";
 export type Line = { pts: Pt[]; stroke: Stroke };
-// A horizontal dimension between a and b, its line drawn at y.
-export type Dim = { a: Pt; b: Pt; y: number; text: string };
-export type NoteKind = "tap" | "fit" | "tool" | "custom";
+// A dimension between a and b, its line drawn at y = at (horizontal) or x = at (vertical).
+export type Dim = { a: Pt; b: Pt; at: number; dir: "h" | "v"; text: string };
+export type NoteKind = "tap" | "fit" | "bore" | "tool" | "size" | "custom";
 export type Note = { id: string; kind: NoteKind; text: string; at: Pt; leader?: Pt };
 
-// The BOM block, bottom right. Filled by the caller from the part's BOM row.
+// The BOM block, bottom right, filled by the caller from the part's BOM row. The name is the
+// part's number too.
 export type TitleBlock = {
   name: string;
-  partNumber?: string;
   material?: string;
   processes?: string[];
   quantity?: number;
@@ -20,13 +22,11 @@ export type TitleBlock = {
   robot?: string;
   revision?: string;
   date?: string;
-  designer?: string;
 };
 
 export type Drawing = {
-  kind: "plate";
+  kind: Part["kind"];
   sheet: { w: number; h: number };
-  scale: number;
   lines: Line[];
   dims: Dim[];
   notes: Note[];

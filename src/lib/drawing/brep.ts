@@ -20,8 +20,9 @@ export type Face = {
   id: string;
   type: string; // PLANE, CYLINDER, ...
   area: number; // mm²
-  concave: boolean; // the face's normal points against its surface's: holes, inner walls, inner corners
+  concave: boolean; // a cylinder whose material is outside it: holes and inner corners
   dir?: V3; // plane normal or cylinder axis
+  out?: V3; // a plane's outward normal (its surface normal may point into the part)
   radius?: number; // mm
   loops: number;
   center: V3; // centre of the face's box, mm. A cylinder's origin can lie anywhere on its axis.
@@ -59,6 +60,7 @@ export function readBodies(details: BodyDetails, edges: TessellatedEdges): Body[
           area: (f.area ?? 0) * M * M,
           concave: f.orientation === false,
           ...(dir ? { dir: v3(dir) } : {}),
+          ...(s.normal ? { out: v3(s.normal, f.orientation === false ? -1 : 1) } : {}),
           ...(s.radius != null ? { radius: s.radius * M } : {}),
           loops: f.loops?.length ?? 0,
           center: [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2],
