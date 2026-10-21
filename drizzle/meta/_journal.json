@@ -78,6 +78,20 @@
       "when": 1792592495719,
       "tag": "0010_dismissed_actions",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792595006624,
+      "tag": "0011_ai_names",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1792595231695,
+      "tag": "0012_fab_finished_at",
+      "breakpoints": true
     }
   ]
 }

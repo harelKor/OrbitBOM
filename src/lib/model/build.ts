@@ -20,8 +20,8 @@ const { robots, systems, onshapeCache } = schema;
 // What's built is kept in onshape_cache under "robot-model:<robotId>"; nothing here runs
 // while a page renders.
 
-export const TESS_VERSION = "1"; // bump to re-export every mesh after changing the parameters below
-export const TESS_QUERY = "angleTolerance=0.35&chordTolerance=0.0005&outputFacetNormals=false&outputVertexNormals=false";
+export const TESS_VERSION = "2"; // bump to re-export every mesh after changing the parameters below or the file format
+export const TESS_QUERY = "angleTolerance=0.35&chordTolerance=0.0005&outputFacetNormals=false&outputVertexNormals=false&outputFaceAppearances=true";
 
 export type ModelPlacement = { s: number; k: string; t: number[]; g?: number }; // studio index, part key, transform, group
 // A group is one linked assembly: the systems that use it (usually one), for showing and
@@ -131,7 +131,7 @@ export async function buildRobotModel(robotId: string, memberId: string, deadlin
     const mv = await client.json<{ microversion: string }>(`documents/d/${ref.did}/w/${ref.wvmid}/currentmicroversion`);
     mvs.set(ref.wvmid, mv.microversion);
   }
-  const rev = [PLAN_VERSION, ...sources.map((ref) => `${ref.wvm}:${ref.wvmid}:${ref.eid}:${mvs.get(ref.wvmid) ?? ""}:${ref.group.systemIds.join(",")}`)].join("|");
+  const rev = [PLAN_VERSION, TESS_VERSION, ...sources.map((ref) => `${ref.wvm}:${ref.wvmid}:${ref.eid}:${mvs.get(ref.wvmid) ?? ""}:${ref.group.systemIds.join(",")}`)].join("|");
   if (state.built?.rev === rev) {
     return { state: "done", unchanged: true, parts: state.built.placements.length, calls: client.calls };
   }

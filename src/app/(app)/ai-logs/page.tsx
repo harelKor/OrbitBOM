@@ -78,7 +78,7 @@ function LogRow({ log }: { log: AiLog }) {
       <details className="group">
         <summary className="press flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1 p-3">
           <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide ${log.source === "ai" ? "bg-accent text-white" : "border border-line-strong bg-raised text-fg-2"}`}>
-            {log.source === "ai" ? "AI" : "RULE"}
+            {log.source === "ai" ? (log.aiName ?? "AI") : "RULE"}
           </span>
           <span className="font-semibold text-fg">{tool(log.tool)}</span>
           <span className="min-w-0 flex-1 truncate text-sm text-muted" title={log.summary}>

@@ -72,7 +72,7 @@ export const SETUP_FIELDS = ["classification", "material", "preProcess", "proces
 // is already waiting keeps its original "before" values, so Reject still restores them.
 export async function applySuggestions(
   edits: { id: string; changes: Pick<PartChanges, (typeof SETUP_FIELDS)[number]>; reason: string }[],
-  ctx: { memberId: string | null; source: ReviewSource; via: "ui" | "mcp" },
+  ctx: { memberId: string | null; source: ReviewSource; via: "ui" | "mcp"; aiName?: string },
 ) {
   const reasons = new Map(edits.map((e) => [e.id, e.reason]));
   const batchId = randomUUID();
@@ -99,6 +99,7 @@ export async function applySuggestions(
           addedOverrides: [...new Set([...(existing?.addedOverrides ?? []), ...added])],
           memberId: ctx.memberId,
           batchId,
+          aiName: ctx.aiName ?? null,
           createdAt: new Date(),
         };
         if (!Object.keys(changes).length) await tx.delete(partReviews).where(eq(partReviews.partId, row.id));
@@ -184,6 +185,7 @@ export async function logAiAction(entry: {
   tool: string;
   memberId: string | null;
   batchId?: string | null;
+  aiName?: string | null;
   summary: string;
   parts?: number | null;
 }) {
@@ -192,6 +194,7 @@ export async function logAiAction(entry: {
     tool: entry.tool,
     memberId: entry.memberId,
     batchId: entry.batchId ?? null,
+    aiName: entry.aiName ?? null,
     summary: entry.summary.slice(0, 500),
     parts: entry.parts ?? null,
   });
@@ -202,6 +205,7 @@ export type AiLog = {
   id: string;
   source: ReviewSource | "manual";
   tool: string;
+  aiName: string | null;
   memberName: string | null;
   summary: string;
   parts: number | null;
@@ -256,6 +260,7 @@ export async function listAiLogs(limit = 100): Promise<AiLog[]> {
       id: log.id,
       source: log.source,
       tool: log.tool,
+      aiName: log.aiName,
       memberName,
       summary: log.summary,
       parts: log.parts,

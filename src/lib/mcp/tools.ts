@@ -29,7 +29,7 @@ const { parts, systems, partFiles, partGroups, groupMembers, inventoryItems } = 
 const LARGE = 50;
 const uuid = z.guid(); // any UUID shape, like isUuid
 
-type Ctx = { member: Member };
+type Ctx = { member: Member; aiName?: string };
 type Planned = { preview: unknown; count: number; summary?: string; apply: () => Promise<unknown> };
 
 type Tool = {
@@ -54,12 +54,16 @@ function write<S extends z.ZodObject>(
     name,
     description: `${description} Preview first: call without confirm_token to see exactly what would change, then call again with the same arguments and the confirm_token from the preview to apply it. More than ${LARGE} parts also needs confirm_large: true.`,
     input: input.extend({
+      ai_name: z.string().trim().min(1).max(60).describe("Your own name, e.g. 'Claude Opus 5.5'. Shown to the team on To Review and AI logs instead of 'AI'."),
       confirm_token: z.string().optional().describe("From this tool's preview, to apply the change."),
       confirm_large: z.boolean().optional().describe(`Required with confirm_token when more than ${LARGE} parts change.`),
     }),
     write: true,
-    run: (async (args: z.infer<S> & { confirm_token?: string; confirm_large?: boolean }, ctx: Ctx) => {
-      const planned = await plan(args, ctx);
+    run: (async (allArgs: z.infer<S> & { ai_name: string; confirm_token?: string; confirm_large?: boolean }, member: Ctx) => {
+      // The AI's name labels the action but isn't part of what the member confirms.
+      const { ai_name: aiName, ...args } = allArgs;
+      const ctx: Ctx = { ...member, aiName };
+      const planned = await plan(args as z.infer<S>, ctx);
       if (!args.confirm_token) {
         return {
           preview: planned.preview,
@@ -83,6 +87,7 @@ function write<S extends z.ZodObject>(
         source: "ai",
         tool: name,
         memberId: ctx.member.id,
+        aiName,
         batchId: typeof batchId === "string" ? batchId : null,
         parts: planned.count,
         summary: planned.summary ?? `Applied to ${planned.count} ${planned.count === 1 ? "item" : "items"}`,
@@ -382,7 +387,7 @@ write(
   "set_up_parts",
   "Set the material, processes and type you worked out for parts (each part can differ). The parts change at once and wait in To Review, where their designer approves or rejects each one; Reject puts the old values back. Use this, not update_parts, for setups you inferred yourself.",
   z.object({ parts: z.array(setupInput).min(1).max(500) }),
-  async ({ parts: input }, { member }) => {
+  async ({ parts: input }, { member, aiName }) => {
     const edits = input.map((e) => {
       if (e.material !== undefined && !ALL_MATERIALS.includes(e.material)) {
         throw new ToolError(`Unknown material "${e.material}". Use list_materials for the exact names.`);
@@ -409,7 +414,7 @@ write(
       summary: `Set up ${diffs.length} ${diffs.length === 1 ? "part" : "parts"}: ${[...new Set(diffs.map((d) => d.reason))].slice(0, 3).join(" / ")}`,
       preview: diffs.map((d) => ({ id: d.id, part: d.part, changes: d.changes.map(readable), reason: d.reason })),
       apply: async () => {
-        const { batchId, changed } = await applySuggestions(edits, { memberId: member.id, source: "ai", via: "mcp" });
+        const { batchId, changed } = await applySuggestions(edits, { memberId: member.id, source: "ai", via: "mcp", aiName });
         return { changed, batch_id: batchId, next: "The parts now wait in the robot's To Review page for their designer." };
       },
     };

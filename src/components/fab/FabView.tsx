@@ -16,9 +16,9 @@ import { useFilters } from "@/components/shell/FilterContext";
 import { useEditMode } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
 import { StatusPill } from "@/components/ui/StatusPill";
-import { FINISHED_STATUS, IN_PROCESS_STATUS, READY_STATUS, fabStage, machinesOf } from "@/lib/fab";
+import { FINISHED_STATUS, IN_PROCESS_STATUS, READY_STATUS, fabStage, isFabFinished, machinesOf } from "@/lib/fab";
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
-import { computeStatus, hasProgress } from "@/lib/status";
+import { computeStatus } from "@/lib/status";
 
 export type Batch = { id: string; name: string; machine: string | null; madeBy: string | null };
 
@@ -118,15 +118,18 @@ export function FabView({
           b.members.some((p) => matchesTopBar(p, filters)),
       );
     const batched = new Set(shownBatches.flatMap((b) => b.members.map((p) => p.id)));
-    const loose = optimistic.filter((p) => !batched.has(p.id) && onMachine(p) && matchesTopBar(p, filters));
-    // Finished: done parts that were made here (counted on a machine, or in a fab).
-    const finished = (p: CardPart) => isDone(p) && machinesOf(p).length > 0 && (hasProgress(p) || p.groups.some((g) => batches.some((b) => b.id === g.id)));
+    const shown = optimistic.filter((p) => onMachine(p) && matchesTopBar(p, filters));
+    const loose = shown.filter((p) => !batched.has(p.id));
     const batchesIn = (stage: Stage) => shownBatches.filter((b) => batchStage(b.members) === stage);
+    // Finished keeps every part that was ever made, also while it shows in another section (a
+    // Reproduction, or a batch still in process); a finished batch already shows its parts.
+    const inFinishedBatch = new Set(batchesIn("finished").flatMap((b) => b.members.map((p) => p.id)));
+    const finished = (p: CardPart) => !!p.fabFinishedAt || isFabFinished(p);
     return {
       batches: { ready: batchesIn("ready"), inProcess: batchesIn("inProcess"), finished: batchesIn("finished") },
       ready: loose.filter((p) => fabStage(p) === "ready"),
       inProcess: loose.filter((p) => fabStage(p) === "inProcess"),
-      finished: loose.filter(finished),
+      finished: shown.filter((p) => finished(p) && !inFinishedBatch.has(p.id)),
       other: machine ? loose.filter((p) => !fabStage(p) && !finished(p)) : [],
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onMachine only reads `machine`
