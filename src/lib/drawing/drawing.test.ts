@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { expect, it } from "vitest";
-import { readBodies } from "./brep";
-import { partDrawing } from "./layout";
+import { type Body, type Face, readBodies, type V3 } from "./brep";
+import { dimRect, noteBox, partDrawing } from "./layout";
 import { readPart } from "./read";
 import { drawingSvg } from "./svg";
 import { drawingSummary } from "./summary";
@@ -70,4 +70,57 @@ it("sums a drawing up for the AI tools, edits included", () => {
   expect(s.holes.find((h) => h.diameter_mm === 28.7)?.bearing).toBe("1/2IN HEX Bearing");
   expect(s.notes.find((n) => n.id === "tool")).toMatchObject({ hidden: true });
   expect(s.notes.at(-1)).toEqual({ id: "a1", text: "Deburr", added: true });
+});
+
+// A 10×10×80 bar like Harel's 1691-26-411-07A: three M5 taps on one face (one tapped through to
+// the opposite face), one on a third face and both ends tapped.
+function bar(): Body {
+  const V = (x: number, y: number, z: number): V3 => [x, y, z];
+  const plane = (id: string, n: V3, center: V3, area: number): Face => ({ id, type: "PLANE", area, concave: false, dir: n, out: n, loops: 1, center });
+  const tap = (id: string, dir: V3, center: V3): Face => ({ id, type: "CYLINDER", area: 26, concave: true, dir, radius: 2.1, loops: 2, center });
+  const c = [V(0, 0, 0), V(10, 0, 0), V(10, 10, 0), V(0, 10, 0)];
+  const top = c.map(([x, y]) => V(x, y, 80));
+  const edges: V3[][] = [...c.map((p, i) => [p, c[(i + 1) % 4]]), ...top.map((p, i) => [p, top[(i + 1) % 4]]), ...c.map((p, i) => [p, top[i]])];
+  return {
+    id: "bar",
+    name: "1691-26-411-07A",
+    edges,
+    faces: [
+      plane("+x", V(1, 0, 0), V(10, 5, 40), 800),
+      plane("-x", V(-1, 0, 0), V(0, 5, 40), 800),
+      plane("+y", V(0, 1, 0), V(5, 10, 40), 800),
+      plane("-y", V(0, -1, 0), V(5, 0, 40), 800),
+      plane("+z", V(0, 0, 1), V(5, 5, 80), 100),
+      plane("-z", V(0, 0, -1), V(5, 5, 0), 100),
+      tap("a", V(1, 0, 0), V(9, 5, 20)),
+      tap("b", V(1, 0, 0), V(9, 5, 40)),
+      tap("c", V(1, 0, 0), V(9, 5, 60)),
+      tap("b2", V(1, 0, 0), V(1, 5, 40)),
+      tap("d", V(0, 1, 0), V(5, 1, 70)),
+      tap("e1", V(0, 0, 1), V(5, 5, 79)),
+      tap("e2", V(0, 0, 1), V(5, 5, 1)),
+    ],
+  };
+}
+
+it("draws every drilled face of a square bar, and its tapped ends", () => {
+  const p = readPart(bar());
+  if (p?.kind !== "square-tube") throw new Error(`bar read as ${p?.kind}`);
+  expect(p.long).toHaveLength(2); // +x (with the tap through to −x) and −y
+  expect(p.long.map((v) => v.holes.length)).toEqual([3, 1]);
+  expect(p.end.holes).toHaveLength(1);
+  const d = partDrawing(p, { name: "Bar" });
+  expect(d.notes.map((n) => n.text).sort()).toEqual(["3× M5 tapped", "M5 tapped", "M5 tapped, both ends"]);
+});
+
+it("keeps notes clear of each other and of the sizes", () => {
+  for (const d of [partDrawing(readPart(bar())!, { name: "Bar" }), partDrawing(part("plate")!, { name: "Plate" })]) {
+    const notes = d.notes.map((n) => noteBox(n.text, n.at, n.leader).rect);
+    const sizes = d.dims.map(dimRect);
+    const hit = (a: (typeof notes)[0], b: (typeof notes)[0]) => a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0;
+    notes.forEach((a, i) => {
+      notes.slice(i + 1).forEach((b) => expect(hit(a, b)).toBe(false));
+      sizes.forEach((b) => expect(hit(a, b)).toBe(false));
+    });
+  }
 });

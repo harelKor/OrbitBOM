@@ -1,7 +1,7 @@
 // A drawing as one SVG in sheet millimetres, ISO style: thick visible lines, thin dimension and
 // leader lines, thin chain centre lines, 3.5 mm lettering, BOM block bottom right.
 
-import { MARGIN, TITLE } from "./layout";
+import { MARGIN, noteBox, TITLE } from "./layout";
 import type { Dim, Drawing, Note, Pt, Stroke } from "./types";
 
 const STROKES: Record<Stroke, string> = {
@@ -61,11 +61,8 @@ function dimension(dim: Dim): string {
 function note(nt: Note): string {
   if (!nt.leader) return text(nt.at, nt.text, nt.kind === "tool" ? { size: 5, bold: true } : {});
   // The leader leaves from the text's lower edge (above the view) or upper edge (below it).
-  const rows = nt.text.split("\n");
-  const width = Math.max(...rows.map((l) => l.length)) * 1.9;
-  const below = nt.leader[1] < nt.at[1];
-  const end: Pt = [nt.at[0] + width / 2, below ? nt.at[1] - 3.5 : nt.at[1] + (rows.length - 1) * 3.5 * 1.3 + 1.2];
-  return thin([end, nt.leader]) + arrow(nt.leader, end) + text(nt.at, nt.text);
+  const { end } = noteBox(nt.text, nt.at, nt.leader);
+  return thin([end!, nt.leader]) + arrow(nt.leader, end!) + text(nt.at, nt.text);
 }
 
 export function drawingSvg(d: Drawing): string {

@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { BEARINGS, DEFAULT_FIT, FITS, type Fit } from "@/config/drawings";
 import type { DrawingEdits } from "@/db/schema";
 import { downloadDrawing, fetchDrawing, type DrawingResponse } from "@/lib/drawing/download";
-import { applyEdits, fmt, partDrawing } from "@/lib/drawing/layout";
+import { applyEdits, fmt, freeSpot, partDrawing } from "@/lib/drawing/layout";
 import { drawingSvg } from "@/lib/drawing/svg";
 import type { Drawing, Pt } from "@/lib/drawing/types";
 import { Icon } from "@/components/ui/Icon";
@@ -67,9 +68,7 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
   }
 
   function addHoleNote(h: Hole, text: string) {
-    const r = h.r;
-    const leader: Pt = [h.at[0] + r * 0.7, h.at[1] - r * 0.7];
-    const at: Pt = [Math.min(h.at[0] + r + 14, drawing!.sheet.w - 60), Math.max(h.at[1] - r - 14, 16)];
+    const { at, leader } = freeSpot(drawing!, h.at, h.r, text);
     change({ ...edits, added: [...added, { id: `hole:${h.id}:${Date.now()}`, text, at, leader }] });
     setHole(null);
   }
@@ -87,8 +86,10 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
     if (!dirty || confirm("Close without saving your changes?")) onClose();
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#07090E]/95 p-3 backdrop-blur sm:p-5" role="dialog" aria-label="Drawing editor">
+  // On document.body: inside the part card, pressing the sheet would scale the card (:active) and
+  // pull the fixed editor into it. Clicks still bubble through React, so they stop here.
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex flex-col bg-[#07090E]/95 p-3 backdrop-blur sm:p-5" role="dialog" aria-label="Drawing editor" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <h2 className="min-w-0 flex-1 truncate text-lg font-semibold text-white">{data?.title.name ?? "Drawing"}</h2>
         {mode.kind !== "idle" && <span className="text-sm text-sky-300">{mode.kind === "place" ? "Click where the note goes" : "Click the note's new place"}</span>}
@@ -125,7 +126,7 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
 
         <aside className="w-full shrink-0 space-y-3 overflow-auto rounded-lg border border-white/10 bg-[#0D111A] p-3 text-sm text-white lg:w-80">
           {hole ? (
-            <HoleForm hole={hole} others={data?.others ?? []} onAdd={(t) => addHoleNote(hole, t)} onCancel={() => setHole(null)} />
+            <HoleForm key={hole.id} hole={hole} others={data?.others ?? []} onAdd={(t) => addHoleNote(hole, t)} onCancel={() => setHole(null)} />
           ) : (
             <p className="text-xs text-white/50">Click a hole to add a fit or a note to it.</p>
           )}
@@ -154,7 +155,8 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
           </div>
         </aside>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -181,42 +183,78 @@ function NoteRow(props: { text: string; hidden?: boolean; onText: (t: string) =>
   );
 }
 
-// A fit (to a stored bearing, another part of the system, or anything typed) or a plain note.
+// A fit (to a stored bearing or another part of the system) or a plain note.
 function HoleForm({ hole, others, onAdd, onCancel }: { hole: Hole; others: string[]; onAdd: (text: string) => void; onCancel: () => void }) {
   const [kind, setKind] = useState<"fit" | "note">("fit");
   const [fit, setFit] = useState<Fit>(DEFAULT_FIT);
-  const [target, setTarget] = useState(BEARINGS[0].name);
+  const [to, setTo] = useState<"bearing" | "part">("bearing");
+  const [bearing, setBearing] = useState(BEARINGS[0].name);
+  const [search, setSearch] = useState("");
+  const [part, setPart] = useState<string | null>(null);
   const [note, setNote] = useState("");
-  const text = kind === "fit" ? `${fit} fit for\n${target}\nØ${fmt(hole.d)}` : note;
+  const target = to === "bearing" ? bearing : part;
+  const text = kind === "fit" ? (target ? `${fit} fit for\n${target}\nØ${fmt(hole.d)}` : "") : note;
+  const found = others.filter((o) => o.toLowerCase().includes(search.trim().toLowerCase())).slice(0, 30);
+  const tab = (on: boolean) => (on ? "btn-primary py-0.5 text-xs" : "btn py-0.5 text-xs");
   return (
     <div className="space-y-2">
       <div className="font-semibold tabular-nums">Hole Ø{fmt(hole.d)}</div>
       <div className="flex gap-1.5">
         {(["fit", "note"] as const).map((k) => (
-          <button key={k} className={kind === k ? "btn-primary py-0.5 text-xs" : "btn py-0.5 text-xs"} onClick={() => setKind(k)}>
+          <button key={k} className={tab(kind === k)} onClick={() => setKind(k)}>
             {k === "fit" ? "Fit" : "Note"}
           </button>
         ))}
       </div>
       {kind === "fit" ? (
         <>
-          <select value={fit} onChange={(e) => setFit(e.target.value as Fit)} className="input w-full text-sm" aria-label="Fit">
-            {FITS.map((f) => (
-              <option key={f}>{f}</option>
-            ))}
-          </select>
-          <input value={target} onChange={(e) => setTarget(e.target.value)} list="drawing-fit-targets" className="input w-full text-sm" aria-label="Fit for" placeholder="Bearing or part" />
-          <datalist id="drawing-fit-targets">
-            {[...BEARINGS.map((b) => b.name), ...others].map((n) => (
-              <option key={n} value={n} />
-            ))}
-          </datalist>
+          <label className="block text-xs text-white/60">
+            Fit
+            <select value={fit} onChange={(e) => setFit(e.target.value as Fit)} className="input mt-1 w-full text-sm">
+              {FITS.map((f) => (
+                <option key={f}>{f}</option>
+              ))}
+            </select>
+          </label>
+          <div className="flex gap-1.5">
+            <button className={tab(to === "bearing")} onClick={() => setTo("bearing")}>
+              Bearing
+            </button>
+            <button className={tab(to === "part")} onClick={() => setTo("part")}>
+              Part
+            </button>
+          </div>
+          {to === "bearing" ? (
+            <select value={bearing} onChange={(e) => setBearing(e.target.value)} className="input w-full text-sm" aria-label="Bearing">
+              {BEARINGS.map((b) => (
+                <option key={b.name} value={b.name}>
+                  {b.name} (Ø{fmt(b.boreMm)})
+                </option>
+              ))}
+            </select>
+          ) : (
+            <div className="space-y-1">
+              <input value={search} onChange={(e) => setSearch(e.target.value)} className="input w-full text-sm" placeholder="Search parts" aria-label="Search parts" />
+              <div className="max-h-48 overflow-auto rounded-md border border-white/10">
+                {found.length ? (
+                  found.map((o) => (
+                    <button key={o} onClick={() => setPart(o)} className={`block w-full truncate px-2 py-1 text-left text-xs hover:bg-white/10 ${part === o ? "bg-sky-500/30" : ""}`}>
+                      {o}
+                    </button>
+                  ))
+                ) : (
+                  <p className="px-2 py-1 text-xs text-white/50">No parts match.</p>
+                )}
+              </div>
+            </div>
+          )}
         </>
       ) : (
         <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} className="input w-full text-sm" placeholder="Note" />
       )}
+      {text && <pre className="whitespace-pre-wrap rounded-md bg-white/5 p-2 font-sans text-xs text-white/80">{text}</pre>}
       <div className="flex gap-1.5">
-        <button className="btn-primary py-0.5 text-xs" disabled={!text.trim() || (kind === "fit" && !target.trim())} onClick={() => onAdd(text)}>
+        <button className="btn-primary py-0.5 text-xs" disabled={!text.trim()} onClick={() => onAdd(text)}>
           Add
         </button>
         <button className="btn py-0.5 text-xs" onClick={onCancel}>
