@@ -26,8 +26,8 @@ export function fabStage(part: StatusInput): FabStage {
 export const machinesOf = (part: Pick<StatusInput, "preProcess" | "process1" | "process2">) =>
   [part.preProcess, part.process1, part.process2].filter((m): m is string => !!m);
 
-// A made part: an in-house part with a machine that reached a done status. To Fab keeps it in
-// Finished for good (parts.fab_finished_at), even when its status moves on.
+// A made part: an in-house part with a machine in a done status (Ready for QA, In Stock, …). To Fab
+// shows it in Finished; parts.fab_finished_at records since when.
 export const isFabFinished = (part: StatusInput) => part.classification !== "cots" && machinesOf(part).length > 0 && isDone(part);
 
 // A batch made under a machine is named after it and the day it was made: "Laser 21/10".
