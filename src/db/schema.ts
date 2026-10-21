@@ -103,8 +103,9 @@ export const priority = pgEnum("priority", ["critical", "high", "normal", "low"]
 export const classSource = pgEnum("class_source", ["rule", "ai", "manual"]);
 
 export type PartGeometry = {
-  bbox?: [number, number, number]; // sorted extents, mm
+  bbox?: [number, number, number]; // sorted extents, mm (smallest first)
   minDim?: number;
+  sizedFrom?: string; // the 3D model file the bbox was measured from
   bodyType?: string;
   volume?: number;
   mass?: number;
@@ -259,6 +260,22 @@ export const groupFiles = pgTable("group_files", {
   filename: text("filename").notNull(),
   type: text("type").notNull(),
   uploadedAt: timestamp("uploaded_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// To Review: parts whose material, processes or type were set automatically (by the site's
+// rules or by a member's Claude), waiting for their designer to approve. `changes` keeps each
+// field's value before and after, so Reject can put it back.
+export const partReviews = pgTable("part_reviews", {
+  partId: uuid("part_id")
+    .primaryKey()
+    .references(() => parts.id, { onDelete: "cascade" }),
+  source: classSource("source").notNull(),
+  reason: text("reason"),
+  changes: jsonb("changes").$type<Record<string, { from: unknown; to: unknown }>>().notNull(),
+  // Onshape fields the suggestion marked overridden; Reject un-marks them again.
+  addedOverrides: text("added_overrides").array().notNull().default(sql`'{}'::text[]`),
+  memberId: uuid("member_id").references(() => members.id, { onDelete: "set null" }),
+  createdAt: createdAt(),
 });
 
 export const changeVia = pgEnum("change_via", ["ui", "sync", "mcp"]);

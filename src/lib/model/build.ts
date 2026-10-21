@@ -73,6 +73,12 @@ export async function robotModel(robotId: string) {
   };
 }
 
+// Every part key in the built model with the R2 file of the Part Studio that holds it.
+export async function builtStudios(robotId: string): Promise<Map<string, string>> {
+  const { built } = await loadState(robotId);
+  return new Map(built?.placements.map((p) => [p.k, built.studios[p.s]]) ?? []);
+}
+
 // The R2 file of the robot model's Part Studio that holds this part, if the model has it.
 export async function builtStudioFor(robotId: string, key: string): Promise<string | null> {
   const { built } = await loadState(robotId);

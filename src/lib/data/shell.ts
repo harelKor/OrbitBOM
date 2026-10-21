@@ -1,12 +1,12 @@
 import "server-only";
-import { and, asc, desc, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { thumbKey } from "@/lib/onshape/thumbnails";
 import { imageUrl } from "@/lib/storage/r2";
 import { fabStage, machinesOf } from "@/lib/fab";
 import { statusBreakdown } from "@/lib/stats";
 
-const { robots, systems, parts } = schema;
+const { robots, systems, parts, partReviews } = schema;
 
 export type ShellSystem = { id: string; name: string; assemblyUrl: string | null; percent: number; total: number; thumbUrl: string | null };
 export type ShellRobot = {
@@ -21,13 +21,14 @@ export type ShellRobot = {
   systems: ShellSystem[];
   // Parts in process or ready to fab, in total and per machine (To Fab badges).
   fab: { total: number; byMachine: Record<string, number> };
+  review: number; // parts waiting in To Review
 };
 
 // The right sidebar: every robot with its systems, completion and a picture. A system's
 // picture is its stored thumbnail or, until one exists, one of its part thumbnails, so this
 // never calls Onshape.
 export async function listShellRobots(): Promise<ShellRobot[]> {
-  const [robotRows, systemRows, statusRows, partThumbs] = await Promise.all([
+  const [robotRows, systemRows, statusRows, partThumbs, reviewRows] = await Promise.all([
     db.select().from(robots).orderBy(desc(robots.year), asc(robots.name)),
     db.select().from(systems).orderBy(asc(systems.name)),
     db
@@ -50,6 +51,11 @@ export async function listShellRobots(): Promise<ShellRobot[]> {
       .from(parts)
       .where(and(isNotNull(parts.thumbnailRev), isNull(parts.removedFromCadAt)))
       .orderBy(parts.systemId, desc(parts.quantity), asc(parts.id)),
+    db
+      .select({ systemId: parts.systemId })
+      .from(partReviews)
+      .innerJoin(parts, eq(parts.id, partReviews.partId))
+      .where(isNull(parts.removedFromCadAt)),
   ]);
   const partThumb = new Map(partThumbs.map((t) => [t.systemId, thumbKey(t.id, t.rev!)]));
 
@@ -81,6 +87,7 @@ export async function listShellRobots(): Promise<ShellRobot[]> {
       }
       return {
         fab,
+        review: reviewRows.filter((x) => ids.has(x.systemId)).length,
         id: r.id,
         name: r.name,
         year: r.year,

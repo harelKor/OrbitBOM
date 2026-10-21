@@ -2,7 +2,7 @@ import "server-only";
 import { and, asc, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { findMachineByName, getMachine, MACHINES } from "@/config/machines";
-import { MATERIALS } from "@/config/materials";
+import { ALL_MATERIALS, MATERIALS } from "@/config/materials";
 import { STATUSES } from "@/config/statuses";
 import { PRIORITIES } from "@/config/priorities";
 import { db, schema } from "@/db";
@@ -14,6 +14,7 @@ import { refreshThumbnails } from "@/lib/onshape/thumbnails";
 import { applyPartChanges } from "@/lib/parts/apply";
 import { partChangesSchema, planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { applyUndo, planUndo } from "@/lib/parts/undo";
+import { applySuggestions, partsToSetUp } from "@/lib/review/review";
 import { computeStatus } from "@/lib/status";
 import { statusBreakdown } from "@/lib/stats";
 import { updateBomFromOnshape } from "@/lib/sync/updateBom";
@@ -116,6 +117,7 @@ function summarise(p: typeof parts.$inferSelect & { systemName?: string }) {
     material: p.material,
     onshape_material: p.geometry?.onshapeMaterial ?? null,
     body_type: p.geometry?.bodyType ?? null,
+    size_mm: p.geometry?.bbox ?? null,
     pre_process: machineName(p.preProcess),
     process_1: machineName(p.process1),
     process_2: machineName(p.process2),
@@ -329,6 +331,72 @@ write(
       apply: async () => {
         const { batchId, changed } = await applyPartChanges(part_ids, normal, { memberId: member.id, via: "mcp" });
         return { changed, batch_id: batchId, undo: `undo_batch with batch_id ${batchId}` };
+      },
+    };
+  },
+);
+
+// ---------- To Review ----------
+
+read(
+  "parts_to_set_up",
+  "A robot's CAD parts that have no material or no processes and aren't waiting in To Review, with their size (size_mm: the 3D model's extents, smallest first, so a plate's thickness is size_mm[0]) and the site's own guess (site_guess) where its rules can tell. Sizes need the robot's 3D model to be built.",
+  z.object({ robot_id: uuid, system_id: uuid.optional(), limit: z.number().int().min(1).max(500).optional() }),
+  async ({ robot_id, system_id, limit = 200 }) => {
+    const rows = await partsToSetUp(robot_id, system_id);
+    return {
+      total: rows.length,
+      parts: rows.slice(0, limit).map(({ part, guess }) => ({
+        ...summarise(part),
+        site_guess: guess ? { ...guess.changes, reason: guess.reason } : null,
+      })),
+      truncated: rows.length > limit,
+    };
+  },
+);
+
+const setupInput = z.object({
+  part_id: uuid,
+  type: z.enum(["inhouse", "cots", "external"]).optional(),
+  material: z.string().optional().describe("An exact name from list_materials."),
+  pre_process: z.string().nullable().optional().describe("Machine name or id, or null."),
+  process_1: z.string().nullable().optional().describe("Machine name or id, or null."),
+  process_2: z.string().nullable().optional().describe("Machine name or id, or null."),
+  reason: z.string().min(1).max(500).describe("One short sentence for the designer: why this material and these processes."),
+});
+
+write(
+  "set_up_parts",
+  "Set the material, processes and type you worked out for parts (each part can differ). The parts change at once and wait in To Review, where their designer approves or rejects each one; Reject puts the old values back. Use this, not update_parts, for setups you inferred yourself.",
+  z.object({ parts: z.array(setupInput).min(1).max(500) }),
+  async ({ parts: input }, { member }) => {
+    const edits = input.map((e) => {
+      if (e.material !== undefined && !ALL_MATERIALS.includes(e.material)) {
+        throw new ToolError(`Unknown material "${e.material}". Use list_materials for the exact names.`);
+      }
+      const changes = normaliseChanges(
+        Object.fromEntries(
+          Object.entries({ classification: e.type, material: e.material, preProcess: e.pre_process, process1: e.process_1, process2: e.process_2 }).filter(
+            ([, v]) => v !== undefined,
+          ),
+        ),
+      );
+      return { id: e.part_id, changes, reason: e.reason };
+    });
+    const ids = [...new Set(edits.map((e) => e.id))];
+    if (ids.length !== edits.length) throw new ToolError("Each part may appear once.");
+    const rows = await db.select().from(parts).where(inArray(parts.id, ids));
+    if (rows.length !== ids.length) throw new ToolError("Some part ids don't exist.");
+    const byId = new Map(edits.map((e) => [e.id, e]));
+    const diffs = rows
+      .map((p) => ({ id: p.id, part: nameOf(p), reason: byId.get(p.id)!.reason, changes: planPartUpdate(p, byId.get(p.id)!.changes, "mcp").history }))
+      .filter((d) => d.changes.length);
+    return {
+      count: diffs.length,
+      preview: diffs.map((d) => ({ id: d.id, part: d.part, changes: d.changes.map(readable), reason: d.reason })),
+      apply: async () => {
+        const { batchId, changed } = await applySuggestions(edits, { memberId: member.id, source: "ai", via: "mcp" });
+        return { changed, batch_id: batchId, next: "The parts now wait in the robot's To Review page for their designer." };
       },
     };
   },

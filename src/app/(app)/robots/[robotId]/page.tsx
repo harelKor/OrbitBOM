@@ -12,6 +12,7 @@ import { robotModelBuiltAt } from "@/lib/model/build";
 import { getRobot } from "@/lib/data/robots";
 import { fabStage } from "@/lib/fab";
 import { isEditMode } from "@/lib/mode";
+import { listRobotReviews } from "@/lib/review/review";
 import { processBreakdown } from "@/lib/stats";
 import { NewSystemButton } from "./NewSystemButton";
 import { RobotInventory } from "./RobotInventory";
@@ -24,13 +25,15 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
   const data = await getRobot(robotId);
   if (!data) notFound();
   const { robot, breakdown } = data;
-  const [parts, inventoryNames, inventory, edit, modelBuiltAt] = await Promise.all([
+  const [parts, inventoryNames, inventory, edit, modelBuiltAt, reviews] = await Promise.all([
     listRobotParts(robot.id),
     listInventoryNames(),
     robotInventory(robot.id),
     isEditMode(),
     robotModelBuiltAt(robot.id),
+    listRobotReviews(robot.id),
   ]);
+  const aiReviews = reviews.filter((r) => r.source === "ai").length;
 
   const inProcess = parts.filter((p) => fabStage(p) === "inProcess").length;
   const ready = parts.filter((p) => fabStage(p) === "ready").length;
@@ -62,7 +65,13 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
           count={inProcess + ready}
           detail={`${inProcess} in process, ${ready} ready to fab`}
         />
-        <LaunchCard href={`/robots/${robot.id}/review`} icon="review" title="To Review" count={0} detail="Parts set up automatically wait here" />
+        <LaunchCard
+          href={`/robots/${robot.id}/review`}
+          icon="review"
+          title="To Review"
+          count={reviews.length}
+          detail={reviews.length ? `${aiReviews} set up by Claude, ${reviews.length - aiReviews} by Suggest setup` : "Parts set up automatically wait here"}
+        />
       </div>
 
       <div className="grid gap-3 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">

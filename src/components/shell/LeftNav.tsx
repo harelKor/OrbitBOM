@@ -87,9 +87,12 @@ export function LeftNav({
             </div>
           )}
         </div>
-        <Item href={base && `${base}/review`} icon="review" active={!!base && pathname.startsWith(`${base}/review`)}>
-          To Review
-        </Item>
+        <div className="relative flex items-center">
+          <Item href={base && `${base}/review`} icon="review" active={!!base && pathname.startsWith(`${base}/review`)} className="flex-1 pr-14">
+            To Review
+          </Item>
+          {base && robot!.review > 0 && <Count n={robot!.review} className="pointer-events-none absolute right-8" />}
+        </div>
         <Item href="/inventory" icon="box" active={pathname.startsWith("/inventory")}>
           Inventory
         </Item>
