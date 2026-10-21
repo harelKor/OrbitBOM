@@ -9,7 +9,8 @@ import { PartStage, type StageView } from "@/components/dashboard/PartStage";
 import { CheckBadge } from "@/components/ui/CheckBadge";
 import { Icon } from "@/components/ui/Icon";
 import { useBom } from "./BomContext";
-import { MachineField, MaterialField, NameField, QuantityField, SLOTS, StatusField, TextField, TypeField, type SaveFn } from "./fields";
+import { PART_FILE_TYPES } from "@/config/fileTypes";
+import { MachineField, MaterialField, NameField, QuantityField, SLOTS, StatusField, TextField, TypeBadge, TypeField, type SaveFn } from "./fields";
 import { InputEditor, Popover } from "./Popover";
 import { ownerPartId, partTitle, type CardPart } from "./types";
 
@@ -76,15 +77,7 @@ export function PartCard({
           <span className="rounded-full bg-[#111318]/85 px-2 py-0.5 text-[11px] font-bold text-white tabular-nums">
             {edit ? <QuantityField part={part} save={save} /> : `×${part.quantity}`}
           </span>
-          {edit ? (
-            <span className="rounded bg-surface/95 shadow-sm">
-              <TypeField part={part} save={save} />
-            </span>
-          ) : (
-            <span className="rounded-full bg-surface/90 px-1.5 py-0.5 text-[10px] font-semibold text-fg-2 shadow-sm">
-              {part.classification === "cots" ? "COTS" : "In-house"}
-            </span>
-          )}
+          {edit ? <TypeField part={part} save={save} badge /> : <TypeBadge type={part.classification} />}
           {part.memberIds && (
             <span className="rounded-full bg-surface/90 px-1.5 py-0.5 text-[10px] font-semibold text-fg-2 shadow-sm" title="Merged parts">
               ⧉ {part.memberIds.length}
@@ -92,16 +85,7 @@ export function PartCard({
           )}
         </div>
         <div className="absolute top-2 right-2 flex gap-1.5">
-          {format && (
-            <a
-              href={`/api/parts/${ownerPartId(part)}/export?format=${format}`}
-              className="overlay-btn group/tip relative"
-              aria-label={`Download ${label(format)}`}
-            >
-              <Icon name="download" />
-              <Tip>{label(format)}</Tip>
-            </a>
-          )}
+          {(format || part.files.length > 0) && <DownloadMenu part={part} format={format} />}
           {robotId && part.modelKey && (
             <button type="button" onClick={() => setStage("locate")} className="overlay-btn group/tip relative" aria-label="Locate in robot">
               <Icon name="locate" />
@@ -109,6 +93,7 @@ export function PartCard({
             </button>
           )}
         </div>
+        {part.note && <NoteCloud note={part.note} />}
       </div>
       {stage && (
         <PartStage
@@ -180,6 +165,51 @@ function Tip({ children }: { children: React.ReactNode }) {
     <span className="pointer-events-none absolute top-full right-0 mt-1 rounded bg-fg px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap text-white opacity-0 group-hover/tip:opacity-100">
       {children}
     </span>
+  );
+}
+
+// Every way to download the part: the CAD exports (the first machine's format on top) and any
+// files attached to it.
+function DownloadMenu({ part, format }: { part: CardPart; format: ExportFormat | null }) {
+  const exports = format ? [format, ...EXPORTABLE.filter((f) => f !== format)] : [];
+  const item = "flex items-center justify-between gap-3 rounded px-2 py-1.5 hover:bg-raised";
+  return (
+    <Popover align="right" hideCaret triggerClassName="overlay-btn" trigger={<><Icon name="download" /><span className="sr-only">Download</span></>}>
+      {(close) => (
+        <div className="space-y-0.5 text-sm">
+          {exports.length > 0 && <div className="px-2 pb-1 text-[11px] font-semibold text-subtle">CAD from Onshape</div>}
+          {exports.map((f, i) => (
+            <a key={f} href={`/api/parts/${ownerPartId(part)}/export?format=${f}`} onClick={close} className={item}>
+              <span className="font-medium text-fg">{label(f)}</span>
+              {i === 0 && <span className="text-[11px] text-subtle">for its machine</span>}
+            </a>
+          ))}
+          {part.files.length > 0 && <div className="px-2 pt-2 pb-1 text-[11px] font-semibold text-subtle">Attached files</div>}
+          {part.files.map((file) => (
+            <a key={file.id} href={`/api/files/${file.id}?download=1`} onClick={close} className={item}>
+              <span className="min-w-0 truncate text-fg" title={file.filename}>
+                {file.filename}
+              </span>
+              <span className="shrink-0 text-[11px] text-subtle">{PART_FILE_TYPES.find((t) => t.id === file.type)?.label ?? file.type}</span>
+            </a>
+          ))}
+        </div>
+      )}
+    </Popover>
+  );
+}
+
+// The part's note as a comic-book thought cloud over the thumbnail; the notes button edits it.
+function NoteCloud({ note }: { note: string }) {
+  return (
+    <div className="pointer-events-none absolute bottom-3 left-3 max-w-[70%]">
+      <div className="relative rounded-[1.4rem] border-2 border-[#111318] bg-white px-3 py-1.5 text-xs leading-snug font-semibold text-[#111318] shadow-[2px_3px_0_0_rgba(17,19,24,0.85)]">
+        <span className="line-clamp-3 break-words whitespace-pre-line">{note}</span>
+      </div>
+      {/* The cloud's trailing puffs. */}
+      <span className="absolute -bottom-2 left-4 h-2.5 w-2.5 rounded-full border-2 border-[#111318] bg-white" />
+      <span className="absolute -bottom-3.5 left-1.5 h-1.5 w-1.5 rounded-full border-2 border-[#111318] bg-white" />
+    </div>
   );
 }
 

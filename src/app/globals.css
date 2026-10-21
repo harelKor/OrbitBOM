@@ -89,6 +89,28 @@
   color-scheme: dark;
   }
 }
+
+/* The colour slider (right panel): data-hue on <html> turns the accents to --hue, keeping the
+   Orbit blue's lightness and strength in each theme. */
+:root[data-hue] {
+  --color-accent: oklch(0.382 0.265 var(--hue));
+  --color-bar: oklch(0.382 0.265 var(--hue));
+  --color-accent-hover: oklch(0.434 0.268 var(--hue));
+  --color-accent-soft: var(--color-accent);
+  --color-gold: var(--color-accent);
+}
+:root[data-hue][data-theme="dark"] {
+  --color-accent: oklch(0.592 0.221 var(--hue));
+  --color-bar: oklch(0.351 0.212 var(--hue));
+  --color-accent-hover: oklch(0.663 0.179 var(--hue));
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-hue]:not([data-theme="light"]) {
+    --color-accent: oklch(0.592 0.221 var(--hue));
+    --color-bar: oklch(0.351 0.212 var(--hue));
+    --color-accent-hover: oklch(0.663 0.179 var(--hue));
+  }
+}
 }
 
 body {
@@ -172,6 +194,24 @@ body {
   /* Frosted buttons floating over a thumbnail (Download, Locate). */
   .overlay-btn {
     @apply press flex h-9 w-9 items-center justify-center rounded-md border border-line bg-surface/90 text-fg-2 shadow-sm backdrop-blur-md hover:border-accent hover:bg-accent hover:text-white;
+  }
+
+  /* Part card grids follow the card size slider (right panel). Pass the default card width in
+     --card-min. */
+  .card-grid {
+    @apply grid gap-3;
+    grid-template-columns: repeat(auto-fill, minmax(min(calc(var(--card-min, 400px) * var(--card-scale, 1)), 100%), 1fr));
+  }
+  /* The colour slider's track shows every colour it can pick. */
+  .hue-slider {
+    @apply h-2 cursor-pointer appearance-none rounded-full;
+    background: linear-gradient(to right in oklch longer hue, oklch(0.6 0.2 0), oklch(0.6 0.2 359));
+  }
+  .hue-slider::-webkit-slider-thumb {
+    @apply h-4 w-4 appearance-none rounded-full border-2 border-white bg-accent shadow;
+  }
+  .hue-slider::-moz-range-thumb {
+    @apply h-4 w-4 rounded-full border-2 border-white bg-accent shadow;
   }
 
   .panel {
