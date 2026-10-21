@@ -96,6 +96,9 @@ export function LeftNav({
         <Item href="/inventory" icon="box" active={pathname.startsWith("/inventory")}>
           Inventory
         </Item>
+        <Item href="/ai-logs" icon="spark" active={pathname.startsWith("/ai-logs")}>
+          AI logs
+        </Item>
       </nav>
       <div className="space-y-0.5 border-t border-line p-2 text-sm">
         <Item href="/members" icon="users" active={pathname.startsWith("/members")}>

@@ -8,6 +8,7 @@ import { partTitle, type CardPart } from "@/components/bom/types";
 import { useFilters } from "@/components/shell/FilterContext";
 import { useEditMode } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
+import { Segmented } from "@/components/ui/Segmented";
 
 export type ReviewItem = {
   part: CardPart;
@@ -15,6 +16,8 @@ export type ReviewItem = {
   reason: string | null;
   changes: Record<string, { from: unknown; to: unknown }>;
   at: string;
+  batchId: string | null;
+  memberName: string | null;
 };
 
 const TYPES: Record<string, string> = { inhouse: "In-house", cots: "COTS", external: "External" };
@@ -27,16 +30,66 @@ function shown(field: string, value: unknown): string | null {
   return String(value);
 }
 
-// To Review: one compact card per part that was set up automatically, with what changed and
-// why. Approve keeps the change; Reject puts the old values back. Both work in View mode too,
-// since reviewing is what the page is for; Suggest setup (the site's rules) is Edit mode only.
+type Grouping = "batch" | "system";
+
+const when = (iso: string) =>
+  new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jerusalem", hour12: false }).format(new Date(iso));
+
+type Group = { key: string; label: string; detail: string; items: ReviewItem[] };
+
+// Groups of waiting parts: one per suggestion run (newest first), or one per system.
+function groupItems(items: ReviewItem[], by: Grouping): Group[] {
+  const groups = new Map<string, Group>();
+  for (const item of items) {
+    const key = by === "system" ? item.part.systemId : (item.batchId ?? "earlier");
+    let g = groups.get(key);
+    if (!g) {
+      g =
+        by === "system"
+          ? { key, label: item.part.systemName, detail: "", items: [] }
+          : {
+              key,
+              label: item.batchId ? (item.source === "ai" ? "Claude" : "Suggest setup") : "Earlier",
+              detail: item.batchId ? `${when(item.at)}${item.memberName ? `, ${item.memberName}` : ""}` : "",
+              items: [],
+            };
+      groups.set(key, g);
+    }
+    g.items.push(item);
+  }
+  const list = [...groups.values()];
+  return by === "system"
+    ? list.sort((a, b) => a.label.localeCompare(b.label))
+    : list.sort((a, b) => (b.items[0]?.at ?? "").localeCompare(a.items[0]?.at ?? ""));
+}
+
+const machinesOf = (p: CardPart) => [p.preProcess, p.process1, p.process2].filter((m): m is string => !!m);
+
+// To Review: compact cards for parts that were set up automatically, with what changed and why.
+// They are split by suggestion run or by system; inside a group they filter by material and
+// machine. Approve keeps the change, Reject puts the old values back (also for the whole group).
+// Both work in View mode too, since reviewing is what the page is for; Suggest setup (the
+// site's rules) is Edit mode only.
 export function ReviewView({ robotId, items }: { robotId: string; items: ReviewItem[] }) {
   const edit = useEditMode();
   const { filters } = useFilters();
   const [optimistic, removeOptimistic] = useOptimistic(items, (state, ids: string[]) => state.filter((i) => !ids.includes(i.part.id)));
   const [pending, startTransition] = useTransition();
   const [note, setNote] = useState<{ error?: string; message?: string } | null>(null);
-  const visible = optimistic.filter((i) => matchesTopBar(i.part, filters));
+  const [by, setBy] = useState<Grouping>("batch");
+  const [picked, setPicked] = useState<string | null>(null);
+  const [material, setMaterial] = useState("");
+  const [machine, setMachine] = useState("");
+
+  const matching = optimistic.filter((i) => matchesTopBar(i.part, filters));
+  const groups = groupItems(matching, by);
+  const group = groups.find((g) => g.key === picked) ?? groups[0];
+  const materials = [...new Set((group?.items ?? []).flatMap((i) => (i.part.material ? [i.part.material] : [])))].sort();
+  const machines = [...new Set((group?.items ?? []).flatMap((i) => machinesOf(i.part)))];
+  const visible = (group?.items ?? []).filter(
+    (i) => (!material || i.part.material === material) && (!machine || machinesOf(i.part).includes(machine)),
+  );
+  const filtered = visible.length !== (group?.items.length ?? 0);
 
   const decide = (ids: string[], approve: boolean) => {
     setNote(null);
@@ -46,9 +99,20 @@ export function ReviewView({ robotId, items }: { robotId: string; items: ReviewI
       if (r.error || r.message) setNote(r);
     });
   };
+  const rejectAll = () => {
+    const what = `${filtered ? "the " : "all "}${visible.length} ${visible.length === 1 ? "part" : "parts"} shown in ${group.label}${group.detail ? ` (${group.detail})` : ""}`;
+    if (confirm(`Reject ${what}? Their material and processes go back to what they were.`)) {
+      decide(visible.map((i) => i.part.id), false);
+    }
+  };
   const suggest = () => {
     setNote(null);
     startTransition(async () => setNote(await suggestSetup(robotId)));
+  };
+  const pick = (key: string) => {
+    setPicked(key);
+    setMaterial("");
+    setMachine("");
   };
 
   return (
@@ -58,16 +122,22 @@ export function ReviewView({ robotId, items }: { robotId: string; items: ReviewI
           <span className="font-mono font-semibold text-fg tabular-nums">{optimistic.length}</span> {optimistic.length === 1 ? "part waits" : "parts wait"} for
           their designer
         </div>
+        <Segmented
+          label="Group by"
+          value={by}
+          onChange={(v) => {
+            setBy(v);
+            pick("");
+          }}
+          options={[
+            { value: "batch", label: "Batches" },
+            { value: "system", label: "Subsystems" },
+          ]}
+        />
         {edit && (
           <button type="button" onClick={suggest} disabled={pending} className="btn" title="Material from Onshape and the 3D model's sizes, processes from what the team usually does">
             <Icon name="gear" />
             Suggest setup
-          </button>
-        )}
-        {visible.length > 1 && (
-          <button type="button" onClick={() => decide(visible.map((i) => i.part.id), true)} disabled={pending} className="btn-primary">
-            <Icon name="review" />
-            Approve all <span className="font-mono tabular-nums">{visible.length}</span>
           </button>
         )}
       </div>
@@ -78,11 +148,64 @@ export function ReviewView({ robotId, items }: { robotId: string; items: ReviewI
         </div>
       )}
 
-      {visible.length ? (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(260px,100%),1fr))] gap-3">
-          {visible.map((item) => (
-            <ReviewCard key={item.part.id} item={item} disabled={pending} onDecide={(approve) => decide([item.part.id], approve)} />
-          ))}
+      {groups.length && group ? (
+        <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
+          <nav aria-label={by === "batch" ? "Batches" : "Subsystems"} className="flex gap-2 overflow-x-auto lg:flex-col lg:overflow-visible">
+            {groups.map((g) => (
+              <button
+                key={g.key}
+                type="button"
+                onClick={() => pick(g.key)}
+                aria-current={g.key === group.key}
+                className={`press flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm lg:shrink ${
+                  g.key === group.key ? "border-accent bg-accent/5 text-accent" : "border-line bg-surface text-fg-2 hover:border-accent/50"
+                }`}
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-semibold">{g.label}</span>
+                  {g.detail && <span className="block truncate text-[11px] text-subtle tabular-nums">{g.detail}</span>}
+                </span>
+                <span className="rounded-full bg-raised px-1.5 font-mono text-[10px] leading-4 font-semibold text-fg-2 tabular-nums">{g.items.length}</span>
+              </button>
+            ))}
+          </nav>
+
+          <section className="min-w-0 space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <select value={material} onChange={(e) => setMaterial(e.target.value)} aria-label="Material" className="input w-auto">
+                <option value="">All materials</option>
+                {materials.map((m) => (
+                  <option key={m}>{m}</option>
+                ))}
+              </select>
+              <select value={machine} onChange={(e) => setMachine(e.target.value)} aria-label="Machine" className="input w-auto">
+                <option value="">All machines</option>
+                {machines.map((m) => (
+                  <option key={m} value={m}>
+                    {getMachine(m)?.name ?? m}
+                  </option>
+                ))}
+              </select>
+              <div className="ml-auto flex gap-2">
+                <button type="button" onClick={rejectAll} disabled={pending || !visible.length} className="btn-danger">
+                  Reject {filtered ? "shown" : "all"} <span className="font-mono tabular-nums">{visible.length}</span>
+                </button>
+                <button type="button" onClick={() => decide(visible.map((i) => i.part.id), true)} disabled={pending || !visible.length} className="btn-primary">
+                  <Icon name="review" />
+                  Approve {filtered ? "shown" : "all"} <span className="font-mono tabular-nums">{visible.length}</span>
+                </button>
+              </div>
+            </div>
+            {visible.length ? (
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(min(260px,100%),1fr))] gap-3">
+                {visible.map((item) => (
+                  <ReviewCard key={item.part.id} item={item} disabled={pending} onDecide={(approve) => decide([item.part.id], approve)} />
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed border-line p-8 text-center text-sm text-muted">No parts match these filters.</div>
+            )}
+          </section>
         </div>
       ) : (
         <div className="rounded-lg border border-dashed border-line p-10 text-center text-sm text-muted">

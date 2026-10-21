@@ -10,6 +10,7 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Ctx = {
   memberId: string | null;
   via: "ui" | "sync" | "mcp";
+  batchId?: string; // to know the batch before it runs; a new one by default
   // Runs in the same transaction for each part that changed (To Review records its rows here).
   afterEach?: (tx: Tx, row: typeof parts.$inferSelect, plan: Plan) => Promise<void>;
 };
@@ -33,7 +34,7 @@ export async function applyEachPartChanges(
   edits: { id: string; changes: PartChanges }[],
   ctx: Ctx,
 ): Promise<{ batchId: string; changed: number }> {
-  const batchId = randomUUID();
+  const batchId = ctx.batchId ?? randomUUID();
   if (!edits.length) return { batchId, changed: 0 };
   const byId = new Map(edits.map((e) => [e.id, e.changes]));
 
