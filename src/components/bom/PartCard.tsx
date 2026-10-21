@@ -29,12 +29,16 @@ export function PartCard({
   showSystem = false,
   selected,
   onToggleSelect,
+  fabCounter = false,
+  style,
 }: {
   part: CardPart;
   save: SaveFn;
   showSystem?: boolean;
   selected?: boolean;
   onToggleSelect?: () => void; // set while a selection mode (Bulk edit, Merge) is on
+  fabCounter?: boolean; // To Fab: − / + on the thumbnail's bottom corners count parts made
+  style?: React.CSSProperties;
 }) {
   const edit = useEditMode();
   const { robotId } = useBom();
@@ -42,11 +46,14 @@ export function PartCard({
   // The process being worked on: the first slot whose done counter hasn't reached the quantity.
   const current = machines.find((s) => part[s.done] < Math.max(part.quantity, 1));
   const showCounter = !!current && part.classification !== "cots" && fabStage(part) !== null;
+  // On To Fab, − takes back the last one counted (also on a finished part), + counts one more.
+  const counted = machines.slice(0, current ? machines.indexOf(current) + 1 : machines.length).reverse().find((s) => part[s.done] > 0);
+  const fabControls = fabCounter && part.classification !== "cots" && machines.length > 0;
   const format = cadFormat(part);
   const [stage, setStage] = useState<StageView | null>(null);
 
   return (
-    <div id={`part-${part.id}`} data-selected={!!selected} data-part={partIds(part)} className="card-interactive group flex scroll-mt-20 flex-col text-sm target:border-accent target:ring-2 target:ring-accent">
+    <div id={`part-${part.id}`} data-selected={!!selected} data-part={partIds(part)} style={style} className="card-interactive group flex scroll-mt-20 flex-col text-sm target:border-accent target:ring-2 target:ring-accent">
       {onToggleSelect && (
         // While selecting, a click anywhere on the card toggles it.
         <button
@@ -93,7 +100,29 @@ export function PartCard({
             </button>
           )}
         </div>
-        {part.note && <NoteCloud note={part.note} />}
+        {part.note && <NoteCloud note={part.note} raised={fabControls} />}
+        {fabControls && (
+          <>
+            <button
+              type="button"
+              onClick={() => counted && save({ [counted.done]: part[counted.done] - 1 })}
+              disabled={!counted}
+              className="overlay-btn absolute bottom-2 left-2 text-lg font-bold disabled:opacity-30"
+              aria-label="One less made"
+            >
+              −
+            </button>
+            <button
+              type="button"
+              onClick={() => current && save({ [current.done]: part[current.done] + 1 })}
+              disabled={!current}
+              className="overlay-btn absolute right-2 bottom-2 text-lg font-bold disabled:opacity-30"
+              aria-label="One more made"
+            >
+              +
+            </button>
+          </>
+        )}
       </div>
       {stage && (
         <PartStage
@@ -141,7 +170,13 @@ export function PartCard({
             SLOTS.filter((s) => !part[s.key] && s.stage === "Process")
               .slice(0, 1)
               .map((slot) => <MachineField key={slot.key} part={part} save={save} slot={slot} placeholder={`+ ${slot.label}`} className={`${pill} border-dashed text-subtle`} />)}
-          {showCounter && <DoneCounter part={part} save={save} slot={current!} />}
+          {fabControls ? (
+            <span className="ml-auto font-mono text-[11px] font-semibold text-fg tabular-nums" title={current ? `Made at ${getMachine(part[current.key]!)?.name}` : "All made"}>
+              {current ? part[current.done] : part.quantity}/{part.quantity}
+            </span>
+          ) : (
+            showCounter && <DoneCounter part={part} save={save} slot={current!} />
+          )}
         </div>
       </div>
     </div>
@@ -200,9 +235,9 @@ function DownloadMenu({ part, format }: { part: CardPart; format: ExportFormat |
 }
 
 // The part's note as a comic-book thought cloud over the thumbnail; the notes button edits it.
-function NoteCloud({ note }: { note: string }) {
+function NoteCloud({ note, raised = false }: { note: string; raised?: boolean }) {
   return (
-    <div className="pointer-events-none absolute bottom-3 left-3 max-w-[70%]">
+    <div className={`pointer-events-none absolute left-3 max-w-[70%] ${raised ? "bottom-14" : "bottom-3"}`}>
       <div className="relative rounded-[1.4rem] border-2 border-[#111318] bg-white px-3 py-1.5 text-xs leading-snug font-semibold text-[#111318] shadow-[2px_3px_0_0_rgba(17,19,24,0.85)]">
         <span className="line-clamp-3 break-words whitespace-pre-line">{note}</span>
       </div>

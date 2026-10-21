@@ -8,7 +8,7 @@ import { PRIORITIES } from "@/config/priorities";
 import { STATUSES } from "@/config/statuses";
 import { db, schema } from "@/db";
 import { requireMember } from "@/lib/auth";
-import { READY_STATUS, fabBatchName, machinesOf } from "@/lib/fab";
+import { IN_PROCESS_STATUS, fabBatchName, machinesOf } from "@/lib/fab";
 import { analyseMissing } from "@/lib/groups/missing";
 import { applyPartChanges } from "@/lib/parts/apply";
 import { deleteObjects, fileKeysForGroup } from "@/lib/storage/cleanup";
@@ -99,6 +99,7 @@ const groupDetails = z.object({
     .nullable()
     .optional(),
   priority: z.enum(PRIORITIES).optional(),
+  madeBy: z.string().trim().min(1).max(200).nullable().optional(),
 });
 
 export async function updateGroup(groupId: string, details: unknown): Promise<ActionResult> {
@@ -194,7 +195,7 @@ export async function recoverMembers(groupId: string): Promise<ActionResult> {
 
 // To Fab's Fab button: the selected parts become a batch on one machine, named after the machine
 // and the day ("Laser 21/10"). Every part must go through that machine and share one material.
-// The parts move to Ready to Fab.
+// The parts move to In process, and the batch is marked as made by whoever created it.
 export async function createFabBatch(robotId: string, partIds: string[], machineId: string): Promise<ActionResult> {
   const member = await requireMember();
   if (!isUuid(robotId)) return { error: "Unknown robot." };
@@ -218,12 +219,12 @@ export async function createFabBatch(robotId: string, partIds: string[], machine
   for (let n = 2; names.has(name); n++) name = `${base} (${n})`;
 
   await db.transaction(async (tx) => {
-    const [group] = await tx.insert(partGroups).values({ robotId, name, machine: machine.id }).returning({ id: partGroups.id });
+    const [group] = await tx.insert(partGroups).values({ robotId, name, machine: machine.id, madeBy: member.name }).returning({ id: partGroups.id });
     await tx.insert(groupMembers).values(rows.map(({ part }) => ({ groupId: group.id, partId: part.id, keySnapshot: snapshot(part) })));
   });
   await applyPartChanges(
     rows.map(({ part }) => part.id),
-    { status: READY_STATUS },
+    { status: IN_PROCESS_STATUS },
     { memberId: member.id, via: "ui" },
   );
   refresh();
