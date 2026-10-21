@@ -16,7 +16,7 @@ import {
 import { Checkbox } from "@/components/ui/Checkbox";
 import { FilesField } from "./FilesField";
 import { Thumb } from "./Thumb";
-import { partTitle, type CardPart } from "./types";
+import { partIds, partTitle, type CardPart } from "./types";
 
 // FRCBOM's table (ref §3): the same popover editors in the cells. Order-mode columns are off.
 export function TableView({
@@ -67,7 +67,7 @@ export function TableView({
             const save = saveFor(p.id);
             const done = isDone(p);
             return (
-              <tr key={p.id} id={`part-${p.id}`} className={`scroll-mt-20 target:bg-accent/10 ${done ? "bg-emerald-50" : ""}`}>
+              <tr key={p.id} id={`part-${p.id}`} data-part={partIds(p)} className={`scroll-mt-20 target:bg-accent/10 ${done ? "bg-emerald-50" : ""}`}>
                 {selection && (
                   <td className="px-2 py-1.5">
                     <Checkbox

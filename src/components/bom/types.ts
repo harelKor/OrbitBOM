@@ -17,6 +17,9 @@ export type CardPart = PartRow & {
 };
 
 // The real part behind a row: a merged row's files and exports belong to its first member.
+// The real parts behind a row, space-separated, for [data-part~=id] (Recent actions links).
+export const partIds = (p: Pick<CardPart, "id" | "memberIds">) => (p.memberIds ?? [p.id]).join(" ");
+
 export const ownerPartId = (p: Pick<CardPart, "id" | "memberIds">) => p.memberIds?.[0] ?? p.id;
 
 export function partTitle(p: Pick<CardPart, "partNumber" | "displayName" | "onshapeName">): string {
