@@ -56,3 +56,15 @@ it("turns tessellated faces into meshes that survive the binary file", () => {
   expect([...back[1].positions]).toEqual([0, 0, 0, 2, 0, 0, 0, 2, 0]);
   expect([...back[0].indices]).toEqual([...meshes[0].indices]);
 });
+
+it("keeps Onshape's appearance, opacity included", () => {
+  const facets = [{ vertices: [[0, 0, 0], [1, 0, 0], [0, 1, 0]] }];
+  const meshes = meshesFromTessellation([
+    { id: "A", faces: [{ facets }], appearance: { color: [255, 0, 51], opacity: 128 } },
+    { id: "B", faces: [{ facets }] },
+  ]);
+  const back = decodeMeshes(encodeMeshes(meshes).slice().buffer);
+  expect(back[0].appearance?.color).toEqual([1, 0, 0.2]);
+  expect(back[0].appearance?.opacity).toBeCloseTo(0.5, 2);
+  expect(back[1].appearance).toBeUndefined();
+});

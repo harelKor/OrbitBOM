@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { decodeMeshes, type Mesh } from "@/lib/model/mesh";
+import { decodeMeshes, type Appearance, type Mesh } from "@/lib/model/mesh";
 
 export type ViewerModel = {
   studios: (string | null)[];
@@ -11,7 +11,7 @@ export type ViewerModel = {
   groups?: { systemIds: string[]; name: string }[]; // subsystems, by placement g
 };
 
-const PLAIN = "#9aa1ad";
+const PLAIN = "#9aa1ad"; // a part with no Onshape appearance in its file
 const UNKNOWN = "#b8bec9"; // placed in CAD but not on the BOM
 const LOCATED = "#22ff5e"; // the located part: bright green, through a see-through robot
 
@@ -22,7 +22,8 @@ async function loadStudio(url: string): Promise<Mesh[]> {
   return decodeMeshes(buf);
 }
 
-// The three.js stage: one instanced mesh per part shape, coloured by status (or plain). While
+// The three.js stage: one instanced mesh per part shape, coloured by status (or plain: Onshape's
+// own appearance, see-through parts included). While
 // locating, the robot turns see-through and the located part is drawn solid in bright green.
 // Like Onshape: right drag rotates, middle drag moves, the wheel zooms (left drag also rotates,
 // for touchpads).
@@ -115,7 +116,17 @@ export function ModelCanvas({
     const ghost = new THREE.MeshStandardMaterial({ roughness: 0.6, transparent: true, opacity: 0.14, depthWrite: false });
     const glow = new THREE.MeshStandardMaterial({ color: LOCATED, emissive: LOCATED, emissiveIntensity: 0.55, roughness: 0.4 });
     const geometries: THREE.BufferGeometry[] = [];
-    const meshes: { mesh: THREE.InstancedMesh; keys: string[]; g: number }[] = [];
+    const meshes: { mesh: THREE.InstancedMesh; keys: string[]; g: number; look?: Appearance }[] = [];
+    // Onshape's see-through appearances, one material per opacity.
+    const clear = new Map<number, THREE.MeshStandardMaterial>();
+    const seeThrough = (opacity: number) => {
+      let m = clear.get(opacity);
+      if (!m) {
+        m = new THREE.MeshStandardMaterial({ roughness: 0.55, metalness: 0.15, transparent: true, opacity, depthWrite: false });
+        clear.set(opacity, m);
+      }
+      return m;
+    };
     const highlights = new THREE.Group();
     const picks = new THREE.Group();
     root.add(highlights, picks);
@@ -124,10 +135,12 @@ export function ModelCanvas({
       const plain = new THREE.Color(PLAIN);
       const box = new THREE.Box3();
       const piece = new THREE.Box3();
-      for (const { mesh, keys } of meshes) {
-        mesh.material = locateKey ? ghost : material;
+      for (const { mesh, keys, look } of meshes) {
+        const own = mode === "plain" && look;
+        mesh.material = locateKey ? ghost : own && look.opacity < 1 ? seeThrough(look.opacity) : material;
+        const onshape = own ? new THREE.Color(...look.color) : plain;
         keys.forEach((k, i) => {
-          mesh.setColorAt(i, locateKey ? plain : new THREE.Color(mode === "status" ? (colors.get(k) ?? UNKNOWN) : PLAIN));
+          mesh.setColorAt(i, locateKey ? plain : mode === "status" ? new THREE.Color(colors.get(k) ?? UNKNOWN) : onshape);
           if (k !== locateKey) return;
           // The located part, drawn solid on top of its see-through instance.
           const lit = new THREE.Mesh(mesh.geometry, glow);
@@ -190,12 +203,12 @@ export function ModelCanvas({
     renderer.domElement.addEventListener("pointerup", onUp);
 
     (async () => {
-      const shapes: Map<string, THREE.BufferGeometry>[] = [];
+      const shapes: Map<string, { geometry: THREE.BufferGeometry; look?: Appearance }>[] = [];
       let done = 0;
       const queue = model.studios.map((url, i) => ({ url, i }));
       const worker = async () => {
         for (let job = queue.shift(); job; job = queue.shift()) {
-          const byPart = new Map<string, THREE.BufferGeometry>();
+          const byPart = new Map<string, { geometry: THREE.BufferGeometry; look?: Appearance }>();
           if (job.url) {
             for (const m of await loadStudio(job.url)) {
               const g = new THREE.BufferGeometry();
@@ -203,7 +216,7 @@ export function ModelCanvas({
               g.setIndex(new THREE.BufferAttribute(m.indices, 1));
               g.computeVertexNormals();
               geometries.push(g);
-              byPart.set(m.partId, g);
+              byPart.set(m.partId, { geometry: g, look: m.appearance });
             }
           }
           shapes[job.i] = byPart;
@@ -214,18 +227,18 @@ export function ModelCanvas({
       if (disposed) return;
 
       // One instanced mesh per (subsystem, Part Studio, part).
-      const groups = new Map<string, { geometry: THREE.BufferGeometry; items: typeof model.placements; g: number }>();
+      const groups = new Map<string, { geometry: THREE.BufferGeometry; look?: Appearance; items: typeof model.placements; g: number }>();
       for (const p of model.placements) {
         const partId = p.k.slice(p.k.lastIndexOf(":") + 1);
-        const geometry = shapes[p.s]?.get(partId);
-        if (!geometry) continue;
+        const shape = shapes[p.s]?.get(partId);
+        if (!shape) continue;
         const id = `${p.g ?? 0}|${p.s}|${partId}`;
-        const group = groups.get(id) ?? { geometry, items: [], g: p.g ?? 0 };
+        const group = groups.get(id) ?? { ...shape, items: [], g: p.g ?? 0 };
         group.items.push(p);
         groups.set(id, group);
       }
       const m = new THREE.Matrix4();
-      for (const { geometry, items, g } of groups.values()) {
+      for (const { geometry, look, items, g } of groups.values()) {
         const mesh = new THREE.InstancedMesh(geometry, material, items.length);
         items.forEach((p, i) => {
           const t = p.t;
@@ -235,7 +248,7 @@ export function ModelCanvas({
         });
         mesh.computeBoundingSphere();
         root.add(mesh);
-        meshes.push({ mesh, keys: items.map((p) => p.k), g });
+        meshes.push({ mesh, keys: items.map((p) => p.k), g, look });
       }
       root.updateMatrixWorld(true);
       // Frame what's shown: a subsystem page starts with only its own subsystem.
@@ -258,6 +271,7 @@ export function ModelCanvas({
       geometries.forEach((g) => g.dispose());
       meshes.forEach(({ mesh }) => mesh.dispose());
       material.dispose();
+      clear.forEach((m) => m.dispose());
       ghost.dispose();
       glow.dispose();
       renderer.dispose();
