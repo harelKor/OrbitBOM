@@ -22,8 +22,9 @@ type ExportFormat = (typeof EXPORTABLE)[number] | (typeof FLAT)[number];
 
 const pill = "rounded-full border border-line-strong bg-raised px-2 py-0.5 text-[11px] font-medium text-fg-2 max-w-full truncate";
 
-// The part card: the Onshape thumbnail is the hero (click it for the part's 3D preview), with
-// quantity and type on its top-left and Download / Locate on its top-right; below it the name,
+// The part card: the Onshape thumbnail is the hero (click it for the part's 3D preview, where
+// Locate in robot lives), with quantity and type on its top-left and Download on its top-right;
+// below it the name,
 // the status, a notes button and the material → process pills. Properties only open their
 // editors in Edit mode.
 export function PartCard({
@@ -135,12 +136,6 @@ export function PartCard({
                 style={{ background: materialColor(part.material, materialColors, onshapeMaterial) }}
               />
               <Tip>{tinted ? "Onshape appearance" : "Material colour"}</Tip>
-            </button>
-          )}
-          {robotId && part.modelKey && (
-            <button type="button" onClick={() => setStage("locate")} className="overlay-btn group/tip relative" aria-label="Locate in robot">
-              <Icon name="locate" />
-              <Tip>Locate in robot</Tip>
             </button>
           )}
         </div>
