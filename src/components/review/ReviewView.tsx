@@ -237,7 +237,7 @@ function BatchSection({
         </div>
       </div>
       {visible.length ? (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(260px,100%),1fr))] gap-3">
+        <div className="card-grid [--card-min:260px]">
           {visible.map((item) => (
             <ReviewCard key={item.part.id} item={item} disabled={pending} onDecide={(approve) => onDecide([item.part.id], approve)} />
           ))}

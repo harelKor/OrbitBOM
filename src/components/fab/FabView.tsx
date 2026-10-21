@@ -299,7 +299,7 @@ function Section({
       {count === 0 && empty ? (
         <p className={`text-sm text-subtle ${onDropParts ? "rounded-lg border border-dashed border-line py-6 text-center" : ""}`}>{empty}</p>
       ) : (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3">{children}</div>
+        <div className="card-grid [--card-min:200px]">{children}</div>
       )}
     </section>
   );
@@ -431,7 +431,7 @@ function BatchCard({
         </div>
       </div>
       {open && (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3 border-t border-line p-3">
+        <div className="card-grid [--card-min:200px] border-t border-line p-3">
           {members.map((p) => (
             <div key={p.id} className="flex flex-col gap-1">
               {card(p)}
