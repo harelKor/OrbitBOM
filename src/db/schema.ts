@@ -2,6 +2,7 @@
 // name is in parts.overridden_fields.
 
 import { sql } from "drizzle-orm";
+import type { Part as DrawingPart } from "../lib/drawing/read";
 import {
   boolean,
   date,
@@ -187,6 +188,27 @@ export const parts = pgTable(
     index("parts_identity_idx").on(t.sourceDid, t.sourceEid, t.onshapePartId),
   ],
 );
+
+// A part's fabrication drawing (plan/auto-drawings.md): the views and sizes read from Onshape's
+// exact geometry, and the member's edits to its notes. Laid out with the current BOM row when
+// shown, so the BOM block is never stale.
+export type DrawingEdits = {
+  hidden?: string[]; // note ids
+  text?: Record<string, string>;
+  moved?: Record<string, [number, number]>;
+  added?: { id: string; text: string; at: [number, number]; leader?: [number, number] }[];
+};
+
+export const partDrawings = pgTable("part_drawings", {
+  partId: uuid("part_id")
+    .primaryKey()
+    .references(() => parts.id, { onDelete: "cascade" }),
+  rev: text("rev"), // the part's thumbnailRev (Onshape microversion) it was read from
+  part: jsonb("part").$type<DrawingPart>().notNull(),
+  edits: jsonb("edits").$type<DrawingEdits>().notNull().default({}),
+  updatedBy: uuid("updated_by").references(() => members.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const partFileType = pgEnum("part_file_type", ["drawing", "gcode", "image", "flattened"]);
 

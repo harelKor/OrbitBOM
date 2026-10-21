@@ -2,6 +2,7 @@
 // fits and the sizes Harel's standards ask for are noted; holes get centre marks only.
 
 import { BEARINGS, DEFAULT_FIT, HOLE_MATCH_MM, TAPS } from "@/config/drawings";
+import type { DrawingEdits } from "@/db/schema";
 import type { Hole, Part, View } from "./read";
 import type { Dim, Drawing, Line, Note, Pt, TitleBlock } from "./types";
 
@@ -183,4 +184,15 @@ export function partDrawing(part: Part, title: TitleBlock, image?: string): Draw
     stock,
     ...(image ? { image: { href: image, x: MARGIN + 4, y: MARGIN + 4, w: 50, h: 38 } } : {}),
   };
+}
+
+// The member's edits on top of the automatic notes: hidden, retyped or moved notes, and notes
+// they added.
+export function applyEdits(d: Drawing, e: DrawingEdits): Drawing {
+  const hidden = new Set(e.hidden ?? []);
+  const notes: Note[] = d.notes
+    .filter((n) => !hidden.has(n.id))
+    .map((n) => ({ ...n, ...(e.text?.[n.id] != null ? { text: e.text[n.id] } : {}), ...(e.moved?.[n.id] ? { at: e.moved[n.id] } : {}) }));
+  for (const a of e.added ?? []) notes.push({ id: a.id, kind: "custom", text: a.text, at: a.at, ...(a.leader ? { leader: a.leader } : {}) });
+  return { ...d, notes };
 }

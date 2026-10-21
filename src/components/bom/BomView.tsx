@@ -9,6 +9,7 @@ import { updatePart, updateParts } from "@/app/(app)/parts-actions";
 import { BulkEditBar } from "./BulkEditBar";
 import { useFilters } from "@/components/shell/FilterContext";
 import { useEditMode } from "@/components/shell/ModeContext";
+import { DrawingsBar } from "./DrawingsBar";
 import { MergeBar, type MergeInfo } from "./MergeBar";
 import { MERGE_PREFIX, fanOutChanges, isMergeId, mergedRow } from "@/lib/merges/merge";
 import { BomProvider, type InventoryName } from "./BomContext";
@@ -122,7 +123,7 @@ export function BomView({
   const { filters } = useFilters();
   const [chip, setChip] = useState<Chip>("all");
   const [status, setStatus] = useState("");
-  const [chosenMode, setMode] = useState<"bulk" | "merge" | null>(null);
+  const [chosenMode, setMode] = useState<"bulk" | "merge" | "drawings" | null>(null);
   const mode = edit ? chosenMode : null; // leaving Edit mode ends Bulk edit and Merge
   const selecting = mode !== null;
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -211,6 +212,11 @@ export function BomView({
               Merge parts
             </button>
           )}
+          {edit && mergeSystemId && view !== "kanban" && (
+            <button className={mode === "drawings" ? "btn-primary" : "btn"} onClick={() => setMode((m) => (m === "drawings" ? null : "drawings"))}>
+              Drawings
+            </button>
+          )}
           {edit && toolbar}
       </div>
 
@@ -257,6 +263,18 @@ export function BomView({
         <MergeBar
           systemId={mergeSystemId}
           selected={optimistic.filter((p) => selected.has(p.id))}
+          onDone={() => {
+            setMode(null);
+            setSelected(new Set());
+          }}
+        />
+      )}
+      {mode === "drawings" && mergeSystemId && (
+        <DrawingsBar
+          systemId={mergeSystemId}
+          selected={shown.filter((p) => selected.has(p.id))}
+          total={shown.length}
+          onSelectAll={() => setSelected(new Set(shown.map((p) => p.id)))}
           onDone={() => {
             setMode(null);
             setSelected(new Set());
