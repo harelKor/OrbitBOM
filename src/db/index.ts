@@ -1,33 +1,38 @@
 import "server-only";
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
 import * as schema from "./schema";
 
 // Supabase's transaction pooler (port 6543) does not support prepared statements. Supabase's
-// "Connect" panel adds ?pgbouncer=true (a Prisma flag); postgres-js would send it to the server
-// as a setting, so it is dropped here.
-function connectionUrl(raw: string) {
+// "Connect" panel adds ?pgbouncer=true (a Prisma flag), which is dropped here. An sslmode in the
+// URL is turned into TLS without checking the certificate chain, as postgres-js did; pg would
+// otherwise verify it against the system roots, which don't include Supabase's CA.
+function connectionConfig(raw: string): { connectionString: string; ssl?: { rejectUnauthorized: false } } {
   try {
     const url = new URL(raw);
     url.searchParams.delete("pgbouncer");
-    return url.toString();
+    const mode = url.searchParams.get("sslmode");
+    url.searchParams.delete("sslmode");
+    return { connectionString: url.toString(), ...(mode && mode !== "disable" ? { ssl: { rejectUnauthorized: false } } : {}) };
   } catch {
-    return raw;
+    return { connectionString: raw };
   }
 }
 
-const globalForDb = globalThis as unknown as { pg?: ReturnType<typeof postgres> };
-// Each warm serverless instance keeps its own pool, and Supabase's free pooler has few server
-// connections to share, so keep the pool small. Connections that stall (a frozen function leaves
-// them mid-query) are dropped after a timeout instead of holding the pool for every page.
+// node-postgres, not postgres-js: postgres-js sends the next query before the previous one has
+// answered (pipelining), and through Supabase's transaction pooler that mixed up results in
+// production ("toISOString is not a function", ".map of undefined" while mapping rows) and left
+// queries that never finished. pg runs one query at a time per connection. Each warm serverless
+// instance keeps its own pool, so it stays small and drops connections that stall.
+const globalForDb = globalThis as unknown as { pg?: Pool };
 const client =
   globalForDb.pg ??
-  postgres(connectionUrl(process.env.DATABASE_URL!), {
-    prepare: false,
-    max: 3,
-    connect_timeout: 10,
-    idle_timeout: 20,
-    max_lifetime: 60 * 10,
+  new Pool({
+    ...connectionConfig(process.env.DATABASE_URL!),
+    max: 5,
+    connectionTimeoutMillis: 10_000,
+    idleTimeoutMillis: 20_000,
+    maxLifetimeSeconds: 600,
   });
 if (process.env.NODE_ENV !== "production") globalForDb.pg = client;
 
