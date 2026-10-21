@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { RecentActions } from "@/components/actions/RecentActions";
 import { BomView } from "@/components/bom/BomView";
+import { partTitle } from "@/components/bom/types";
 import { CompletionRing } from "@/components/dashboard/CompletionRing";
 import { RobotViewer } from "@/components/dashboard/RobotViewer";
 import { Icon } from "@/components/ui/Icon";
 import { requireMember } from "@/lib/auth";
+import { listRecentActions } from "@/lib/data/actions";
 import { listInventoryNames, robotInventory } from "@/lib/data/inventory";
 import { listRobotParts } from "@/lib/data/parts";
 import { STATUSES } from "@/config/statuses";
@@ -25,13 +28,14 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
   const data = await getRobot(robotId);
   if (!data) notFound();
   const { robot, breakdown } = data;
-  const [parts, inventoryNames, inventory, edit, modelBuiltAt, reviews] = await Promise.all([
+  const [parts, inventoryNames, inventory, edit, modelBuiltAt, reviews, actions] = await Promise.all([
     listRobotParts(robot.id),
     listInventoryNames(),
     robotInventory(robot.id),
     isEditMode(),
     robotModelBuiltAt(robot.id),
     listRobotReviews(robot.id),
+    listRecentActions(robot.id),
   ]);
   const aiReviews = reviews.filter((r) => r.source === "ai").length;
 
@@ -41,7 +45,11 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
   const activeStatuses = breakdown.statuses.filter((s) => s.count > 0);
   // BOM parts by their key in the 3D model, with their status colour.
   const statusColor = new Map<string, string>(STATUSES.map((s) => [s.name, s.color]));
-  const viewerParts = parts.flatMap((p) => (p.modelKey ? [{ key: p.modelKey, color: statusColor.get(p.status) ?? "#cbd5e1" }] : []));
+  const viewerParts = parts.flatMap((p) =>
+    p.modelKey
+      ? [{ key: p.modelKey, color: statusColor.get(p.status) ?? "#cbd5e1", id: p.id, systemId: p.systemId, name: partTitle(p), fab: fabStage(p) !== null, material: p.material }]
+      : [],
+  );
 
   return (
     <div className="space-y-5">
@@ -122,6 +130,8 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
           edit={edit}
         />
       </div>
+
+      <RecentActions actions={actions} max={8} />
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">All parts</h2>

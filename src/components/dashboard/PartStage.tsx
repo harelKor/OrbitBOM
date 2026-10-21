@@ -1,8 +1,11 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMaterialColors } from "@/components/shell/MaterialColors";
 import { Icon } from "@/components/ui/Icon";
+import { Segmented } from "@/components/ui/Segmented";
+import { materialColor } from "@/config/materialColors";
 import type { ViewerModel } from "./ModelCanvas";
 
 const ModelCanvas = dynamic(() => import("./ModelCanvas").then((m) => m.ModelCanvas), { ssr: false });
@@ -12,12 +15,13 @@ export type StageView = "part" | "locate";
 
 // A part's 3D window in the middle of the screen, opened from its card without leaving the
 // page: the part on its own ("part"), or where it sits in the see-through robot ("locate").
-// The corner button switches between the two.
+// The corner button switches between the two; on its own the part can show its material colour.
 export function PartStage({
   partId,
   robotId,
   modelKey,
   name,
+  material,
   view,
   onView,
   onClose,
@@ -26,6 +30,7 @@ export function PartStage({
   robotId: string | null;
   modelKey: string | null;
   name: string;
+  material: string | null;
   view: StageView;
   onView: (view: StageView) => void;
   onClose: () => void;
@@ -37,6 +42,13 @@ export function PartStage({
   const onLocated = useCallback((f: boolean) => setFound(f), []);
   const model = models[view];
   const error = errors[view];
+  const [colors, setColors] = useState<"plain" | "material">("plain");
+  const materialOverrides = useMaterialColors();
+  const partColors = useMemo(() => {
+    if (view !== "part" || colors !== "material" || !model) return NO_COLORS;
+    const color = materialColor(material, materialOverrides);
+    return new Map(model.placements.map((p) => [p.k, color]));
+  }, [view, colors, model, material, materialOverrides]);
 
   useEffect(() => {
     dialog.current?.showModal();
@@ -85,10 +97,23 @@ export function PartStage({
           </button>
         </div>
         <div className="relative flex-1 bg-[radial-gradient(ellipse_at_50%_35%,var(--color-surface)_0%,var(--color-raised)_75%)]">
-          {model && <ModelCanvas key={view} model={model} colors={NO_COLORS} mode="plain" locateKey={view === "locate" ? modelKey : null} onLocated={onLocated} />}
+          {model && <ModelCanvas key={view} model={model} colors={partColors} mode={partColors === NO_COLORS ? "plain" : "status"} locateKey={view === "locate" ? modelKey : null} onLocated={onLocated} />}
           {(error || !model || missing) && (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">
               {error ?? (missing ? "This part isn't in the robot's linked Onshape assemblies." : view === "part" ? "Loading the part…" : "")}
+            </div>
+          )}
+          {view === "part" && model && (
+            <div className="absolute top-3 left-3">
+              <Segmented
+                label="Part colour"
+                value={colors}
+                onChange={setColors}
+                options={[
+                  { value: "plain", label: "Plain" },
+                  { value: "material", label: "Material" },
+                ]}
+              />
             </div>
           )}
           {robotId && modelKey && (

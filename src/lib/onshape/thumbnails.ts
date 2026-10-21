@@ -2,12 +2,12 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { onshapeClient } from "@/lib/onshape/client";
-import { parseOnshapeUrl } from "@/lib/onshape/url";
+import { onshapeClient, type OnshapeClient } from "@/lib/onshape/client";
+import { apiPath, parseOnshapeUrl } from "@/lib/onshape/url";
 import { deleteObject, putObject, storageConfigured } from "@/lib/storage/r2";
 import { studioPath, thumbnailHref, type PartMetadata } from "./parts";
 
-const { parts, systems } = schema;
+const { parts, robots, systems } = schema;
 
 export const thumbKey = (partId: string, rev: string) => `thumbs/parts/${partId}/${rev}.png`;
 
@@ -105,6 +105,38 @@ export async function refreshThumbnails(systemId: string, memberId: string, dead
     }
   };
   await Promise.all(Array.from({ length: 4 }, worker));
+
+  // The picture of the whole subsystem, and of the whole robot, for the sidebar tiles.
+  if (Date.now() < deadline) {
+    const path = await assemblyThumbnail(client, system.assemblyUrl!, `thumbs/systems/${systemId}`, system.thumbnailPath);
+    if (path !== system.thumbnailPath) await db.update(systems).set({ thumbnailPath: path }).where(eq(systems.id, systemId));
+    const [robot] = await db.select().from(robots).where(eq(robots.id, system.robotId));
+    const main = robot?.mainAssemblyUrl ? parseOnshapeUrl(robot.mainAssemblyUrl) : null;
+    if (robot && main?.baseUrl === ref.baseUrl) {
+      const robotPath = await assemblyThumbnail(client, robot.mainAssemblyUrl!, `thumbs/robots/${robot.id}`, robot.thumbnailPath);
+      if (robotPath !== robot.thumbnailPath) await db.update(robots).set({ thumbnailPath: robotPath }).where(eq(robots.id, robot.id));
+    }
+  }
   summary.calls = client.calls;
   return summary;
+}
+
+// An assembly's own Onshape thumbnail, kept in R2 under `prefix` and named by its content, so
+// an unchanged picture is never stored twice. Returns the path to keep (the current one when
+// the assembly has no thumbnail or Onshape refuses).
+async function assemblyThumbnail(client: OnshapeClient, url: string, prefix: string, current: string | null): Promise<string | null> {
+  const ref = parseOnshapeUrl(url);
+  if (!ref?.eid || ref.wvm === "m") return current;
+  try {
+    const res = await client.raw(`thumbnails/${apiPath(ref)}/s/300x300`, { headers: { Accept: "image/*" } });
+    const body = await res.arrayBuffer();
+    const path = `${prefix}/${createHash("sha1").update(new Uint8Array(body)).digest("hex").slice(0, 16)}.png`;
+    if (path === current) return current;
+    await putObject(path, body, res.headers.get("content-type") ?? "image/png");
+    if (current) await deleteObject(current);
+    return path;
+  } catch (err) {
+    console.warn("Assembly thumbnail skipped", err instanceof Error ? err.message : err);
+    return current;
+  }
 }

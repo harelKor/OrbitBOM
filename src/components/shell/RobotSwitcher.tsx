@@ -4,6 +4,8 @@ import Link from "next/link";
 import { RobotSettings } from "@/app/(app)/robots/[robotId]/RobotSettings";
 import { SystemSettings } from "@/app/(app)/robots/[robotId]/systems/[systemId]/SystemSettings";
 import type { ShellRobot, ShellSystem } from "@/lib/data/shell";
+import { MaterialColorsPanel } from "./MaterialColors";
+import { AppearanceControls } from "./Appearance";
 import { EditOnly } from "./ModeContext";
 import { useRobotContext } from "./useRobotContext";
 
@@ -49,8 +51,10 @@ export function RobotSwitcher({ robots, lastRobotId, isAdmin }: { robots: ShellR
         </div>
       )}
 
+      <MaterialColorsPanel />
+
       {archived.length > 0 && (
-        <details className="mt-auto border-t border-line p-2 text-sm">
+        <details className="border-t border-line p-2 text-sm">
           <summary className="cursor-pointer px-2 py-1 text-xs text-subtle">Archived ({archived.length})</summary>
           <div className="mt-2 space-y-2">
             {archived.map((r) => (
@@ -59,6 +63,9 @@ export function RobotSwitcher({ robots, lastRobotId, isAdmin }: { robots: ShellR
           </div>
         </details>
       )}
+      <div className="mt-auto">
+        <AppearanceControls />
+      </div>
     </div>
   );
 }

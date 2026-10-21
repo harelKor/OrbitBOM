@@ -9,6 +9,7 @@ import { decodeMeshes } from "@/lib/model/mesh";
 import { applyEachPartChanges } from "@/lib/parts/apply";
 import type { PartChanges } from "@/lib/parts/changes";
 import { getObject, storageConfigured } from "@/lib/storage/r2";
+import { currentVisit } from "@/lib/visits";
 import { sizeOf, suggestSetup, type Learned } from "./rules";
 
 const { parts, systems, partReviews, partHistory, members, aiLogs } = schema;
@@ -286,6 +287,7 @@ export async function approveReviews(partIds: string[]) {
 export async function rejectReviews(partIds: string[], memberId: string) {
   if (!partIds.length) return { rejected: 0, keptEdits: 0 };
   const batchId = randomUUID();
+  const visit = await currentVisit();
   return db.transaction(async (tx) => {
     const rows = await tx
       .select({ review: partReviews, part: parts })
@@ -314,7 +316,7 @@ export async function rejectReviews(partIds: string[], memberId: string) {
           .where(eq(parts.id, part.id));
         await tx
           .insert(partHistory)
-          .values(reverted.map(([field, c]) => ({ partId: part.id, field, oldValue: c.to, newValue: c.from, memberId, via: "ui" as const, batchId })));
+          .values(reverted.map(([field, c]) => ({ partId: part.id, field, oldValue: c.to, newValue: c.from, memberId, via: "ui" as const, batchId, visitId: visit?.id, page: visit?.page })));
       }
       await tx.delete(partReviews).where(eq(partReviews.partId, part.id));
     }

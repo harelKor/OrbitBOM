@@ -233,6 +233,7 @@ export const partGroups = pgTable("part_groups", {
   color: text("color"),
   description: text("description"),
   priority: priority("priority").notNull().default("normal"),
+  machine: text("machine"), // set on a To Fab batch: the machine (config id) its parts are made on
   createdAt: createdAt(),
 });
 
@@ -313,10 +314,27 @@ export const partHistory = pgTable(
     memberId: uuid("member_id").references(() => members.id, { onDelete: "set null" }),
     via: changeVia("via").notNull(),
     batchId: uuid("batch_id").notNull(),
+    // The page visit a UI change was made in, and that page's path: a visit's changes are one
+    // "recent action" on the robot dashboard.
+    visitId: uuid("visit_id"),
+    page: text("page"),
     at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("part_history_part_idx").on(t.partId), index("part_history_batch_idx").on(t.batchId)],
+  (t) => [
+    index("part_history_part_idx").on(t.partId),
+    index("part_history_batch_idx").on(t.batchId),
+    index("part_history_visit_idx").on(t.visitId),
+  ],
 );
+
+// The team's 3D colour for a material category, where it differs from the default in
+// src/config/materialColors.ts.
+export const materialColors = pgTable("material_colors", {
+  category: text("category").primaryKey(),
+  color: text("color").notNull(),
+  updatedBy: uuid("updated_by").references(() => members.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 // ---------- Inventory ----------
 

@@ -7,7 +7,7 @@ import { STATUSES } from "@/config/statuses";
 import { computeStatus } from "@/lib/status";
 import { StatusPill, TypeField, type SaveFn } from "./fields";
 import { Thumb } from "./Thumb";
-import { partTitle, type CardPart } from "./types";
+import { partIds, partTitle, type CardPart } from "./types";
 
 // FRCBOM's Kanban (ref §3): one column per status; dragging a card to a column sets its status.
 export function KanbanView({
@@ -71,8 +71,10 @@ function KanbanCard({ part, save, showSystem }: { part: CardPart; save: SaveFn; 
   return (
     <div
       ref={setNodeRef}
+      data-part={partIds(part)}
       {...listeners}
       {...attributes}
+      id={`part-${part.id}`}
       style={transform ? { transform: `translate(${transform.x}px, ${transform.y}px)` } : undefined}
       className={`cursor-grab rounded-lg border border-line-strong bg-surface p-2 text-xs ${isDragging ? "z-50 opacity-80 shadow-xl" : ""}`}
     >

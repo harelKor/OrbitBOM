@@ -7,7 +7,10 @@ import { listInventoryNames } from "@/lib/data/inventory";
 import { listRobotParts } from "@/lib/data/parts";
 import { getRobot } from "@/lib/data/robots";
 
-// To Fab: the shop's queue per machine, with FAB batches (stored as the robot's part groups).
+// Fab batches are part groups with a machine; groups named "FAB n" come from before batches had one.
+const isFabBatch = (g: { name: string; machine: string | null }) => !!g.machine || /^FAB \d+$/.test(g.name);
+
+// To Fab: the shop's queue per machine, with fab batches (stored as the robot's part groups).
 export default async function FabPage({
   params,
   searchParams,
@@ -30,7 +33,7 @@ export default async function FabPage({
       </div>
       <FabView
         parts={parts}
-        batches={batches.map(({ id, name }) => ({ id, name }))}
+        batches={batches.filter(isFabBatch).map(({ id, name, machine }) => ({ id, name, machine }))}
         machine={machineName ? machine : undefined}
         robotId={data.robot.id}
         inventory={inventory}
