@@ -17,8 +17,18 @@ function connectionUrl(raw: string) {
 }
 
 const globalForDb = globalThis as unknown as { pg?: ReturnType<typeof postgres> };
+// Each warm serverless instance keeps its own pool, and Supabase's free pooler has few server
+// connections to share, so keep the pool small. Connections that stall (a frozen function leaves
+// them mid-query) are dropped after a timeout instead of holding the pool for every page.
 const client =
-  globalForDb.pg ?? postgres(connectionUrl(process.env.DATABASE_URL!), { prepare: false, max: 5 });
+  globalForDb.pg ??
+  postgres(connectionUrl(process.env.DATABASE_URL!), {
+    prepare: false,
+    max: 3,
+    connect_timeout: 10,
+    idle_timeout: 20,
+    max_lifetime: 60 * 10,
+  });
 if (process.env.NODE_ENV !== "production") globalForDb.pg = client;
 
 export const db = drizzle(client, { schema });
