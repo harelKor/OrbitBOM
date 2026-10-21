@@ -10,6 +10,8 @@ export const READY_STATUS: StatusName = "Ready to Fab";
 export const READY_STATUSES: StatusName[] = [READY_STATUS, "Reproduction"];
 // The status a part dropped into the In process section gets.
 export const IN_PROCESS_STATUS: StatusName = "In Process 1";
+// The status a part dropped into the Finished section gets.
+export const FINISHED_STATUS: StatusName = "Ready for QA";
 
 export type FabStage = "inProcess" | "ready" | null;
 
