@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { StatusCount } from "@/lib/stats";
 import { Segmented } from "@/components/ui/Segmented";
 import { Icon } from "@/components/ui/Icon";
+import { useMaterialColors } from "@/components/shell/MaterialColors";
+import { DEFAULT_MATERIAL_COLORS, MATERIAL_COLOR_GROUPS, materialColor, materialColorGroup } from "@/config/materialColors";
 import type { ViewerModel } from "./ModelCanvas";
 
 const ModelCanvas = dynamic(() => import("./ModelCanvas").then((m) => m.ModelCanvas), { ssr: false });
@@ -31,12 +33,12 @@ export function RobotViewer({
   robotId: string;
   systemId?: string;
   statuses: StatusCount[];
-  parts: { key: string; color: string }[]; // BOM parts by Onshape identity, with status colour
+  parts: { key: string; color: string; material: string | null }[]; // BOM parts by Onshape identity, with status colour
   builtAt: string | null;
   hasAssembly: boolean;
   edit: boolean;
 }) {
-  const [colors, setColors] = useState<"status" | "plain">("status");
+  const [colors, setColors] = useState<"status" | "material" | "plain">("status");
   const [large, setLarge] = useState(false);
   const [hiddenGroups, setHiddenGroups] = useState<Set<number>>(() => new Set());
   const [version, setVersion] = useState(builtAt);
@@ -44,7 +46,17 @@ export function RobotViewer({
   const [model, setModel] = useState<ViewerModel | null | undefined>(builtAt ? undefined : null);
   const [building, setBuilding] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
-  const colorMap = useMemo(() => new Map(parts.map((p) => [p.key, p.color])), [parts]);
+  const materialOverrides = useMaterialColors();
+  const colorMap = useMemo(
+    () => new Map(parts.map((p) => [p.key, colors === "material" ? materialColor(p.material, materialOverrides) : p.color])),
+    [parts, colors, materialOverrides],
+  );
+  // Material mode's legend: the categories this view's parts are in, in the panel's order.
+  const materials = useMemo(() => {
+    const present = new Set(parts.map((p) => materialColorGroup(p.material)));
+    return MATERIAL_COLOR_GROUPS.filter((m) => present.has(m)).map((name) => ({ name, color: materialOverrides[name] ?? DEFAULT_MATERIAL_COLORS[name] }));
+  }, [parts, materialOverrides]);
+  const legend = colors === "status" ? statuses : colors === "material" ? materials : [];
   const onLocated = useCallback(() => {}, []);
   const groups = useMemo(() => model?.groups ?? [], [model]);
   // A system page draws only the groups its system is in.
@@ -138,6 +150,7 @@ export function RobotViewer({
             onChange={setColors}
             options={[
               { value: "status", label: "Status" },
+              { value: "material", label: "Material" },
               { value: "plain", label: "Plain" },
             ]}
           />
@@ -153,7 +166,7 @@ export function RobotViewer({
       </div>
       <div className="relative min-h-72 flex-1 overflow-hidden bg-[radial-gradient(ellipse_at_50%_35%,var(--color-surface)_0%,var(--color-raised)_75%)]">
         {model ? (
-          <ModelCanvas model={model} colors={colorMap} mode={colors} locateKey={null} onLocated={onLocated} hidden={hidden} />
+          <ModelCanvas model={model} colors={colorMap} mode={colors === "plain" ? "plain" : "status"} locateKey={null} onLocated={onLocated} hidden={hidden} />
         ) : (
           <>
             {/* Grid floor in perspective. */}
@@ -224,9 +237,9 @@ export function RobotViewer({
             {message.text}
           </div>
         )}
-        {colors === "status" && statuses.length > 0 && (
+        {legend.length > 0 && (
           <div className={`pointer-events-none absolute right-3 bottom-3 ${large && !systemId && groups.length > 0 ? "left-62" : "left-3"} flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-fg-2`}>
-            {statuses.map((s) => (
+            {legend.map((s) => (
               <span key={s.name} className="inline-flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full" style={{ background: s.color }} />
                 {s.name}

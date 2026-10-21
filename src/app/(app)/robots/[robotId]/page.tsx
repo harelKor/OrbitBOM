@@ -39,9 +39,9 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
   const ready = parts.filter((p) => fabStage(p) === "ready").length;
   const processes = processBreakdown(parts);
   const activeStatuses = breakdown.statuses.filter((s) => s.count > 0);
-  // BOM parts by their key in the 3D model, with their status colour.
+  // BOM parts by their key in the 3D model, with their status colour and material.
   const statusColor = new Map<string, string>(STATUSES.map((s) => [s.name, s.color]));
-  const viewerParts = parts.flatMap((p) => (p.modelKey ? [{ key: p.modelKey, color: statusColor.get(p.status) ?? "#cbd5e1" }] : []));
+  const viewerParts = parts.flatMap((p) => (p.modelKey ? [{ key: p.modelKey, color: statusColor.get(p.status) ?? "#cbd5e1", material: p.material }] : []));
 
   return (
     <div className="space-y-5">

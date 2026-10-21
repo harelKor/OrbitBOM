@@ -318,6 +318,15 @@ export const partHistory = pgTable(
   (t) => [index("part_history_part_idx").on(t.partId), index("part_history_batch_idx").on(t.batchId)],
 );
 
+// The team's 3D colour for a material category, where it differs from the default in
+// src/config/materialColors.ts.
+export const materialColors = pgTable("material_colors", {
+  category: text("category").primaryKey(),
+  color: text("color").notNull(),
+  updatedBy: uuid("updated_by").references(() => members.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ---------- Inventory ----------
 
 export const inventoryLocations = pgTable("inventory_locations", {

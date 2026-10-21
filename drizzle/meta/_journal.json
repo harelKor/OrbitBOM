@@ -43,6 +43,13 @@
       "when": 1792573795837,
       "tag": "0005_ai_logs",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792586898579,
+      "tag": "0006_material_colors",
+      "breakpoints": true
     }
   ]
 }

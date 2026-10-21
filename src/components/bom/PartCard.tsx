@@ -116,6 +116,7 @@ export function PartCard({
           robotId={robotId ?? null}
           modelKey={part.modelKey}
           name={partTitle(part)}
+          material={part.material}
           view={stage}
           onView={setStage}
           onClose={() => setStage(null)}

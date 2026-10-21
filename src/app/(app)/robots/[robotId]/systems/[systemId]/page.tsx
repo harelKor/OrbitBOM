@@ -35,7 +35,7 @@ export default async function SystemPage({
     robotModelBuiltAt(robot.id),
   ]);
   const statusColor = new Map<string, string>(STATUSES.map((s) => [s.name, s.color]));
-  const viewerParts = parts.flatMap((p) => (p.modelKey ? [{ key: p.modelKey, color: statusColor.get(p.status) ?? "#cbd5e1" }] : []));
+  const viewerParts = parts.flatMap((p) => (p.modelKey ? [{ key: p.modelKey, color: statusColor.get(p.status) ?? "#cbd5e1", material: p.material }] : []));
 
   return (
     <div className="space-y-5">
