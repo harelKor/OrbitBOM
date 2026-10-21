@@ -11,8 +11,9 @@ import { isUuid } from "@/lib/uuid";
 
 export const maxDuration = 60;
 
-// Download a part as STEP, STL or Parasolid (?format=). Exports are cached in R2 per part
-// revision, so a second download of an unchanged part costs no Onshape calls.
+// Download a part as STEP, STL, Parasolid or, for sheet metal, its flat pattern (?format=). Exports
+// are cached in R2 per part revision, so a second download of an unchanged part costs no Onshape
+// calls.
 export async function GET(request: Request, { params }: { params: Promise<{ partId: string }> }) {
   const started = Date.now();
   const member = await getMember();
@@ -30,10 +31,16 @@ export async function GET(request: Request, { params }: { params: Promise<{ part
   const ref = row?.assemblyUrl ? parseOnshapeUrl(row.assemblyUrl) : null;
   if (!studio || !ref) return new NextResponse("This part isn't from Onshape.", { status: 400 });
 
+  const flat = format.endsWith("_FLAT");
+  const flatPartId = row.part.geometry?.sheetMetal?.flatPartId;
+  if (flat && !flatPartId) return new NextResponse("This part isn't Onshape sheet metal, so it has no flat pattern.", { status: 400 });
+
   const { ext, type } = EXPORT_FORMATS[format];
   const name = (row.part.displayName ?? row.part.onshapeName ?? "part").replace(/[^\w.\- ]+/g, "_");
-  const filename = `${row.part.partNumber ? `${row.part.partNumber} ` : ""}${name}.${ext}`;
-  const key = row.part.thumbnailRev ? `exports/${partId}/${row.part.thumbnailRev}.${ext}` : null;
+  const wall = row.part.geometry?.wallMm;
+  const suffix = flat ? ` (flat${wall ? ` ${wall}mm` : ""})` : "";
+  const filename = `${row.part.partNumber ? `${row.part.partNumber} ` : ""}${name}${suffix}.${ext}`;
+  const key = row.part.thumbnailRev ? `exports/${partId}/${row.part.thumbnailRev}${flat ? ".flat" : ""}.${ext}` : null;
 
   const cached = storageConfigured() && key && (await objectExists(key));
   if (!cached) {
@@ -42,7 +49,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ part
     }
     try {
       const client = onshapeClient(member.id, ref.baseUrl);
-      const body = await exportPart(client, studio, row.part.onshapePartId!, format, started + 50_000);
+      const body = await exportPart(client, studio, flat ? flatPartId! : row.part.onshapePartId!, format, started + 50_000);
       if (!storageConfigured() || !key) {
         return new NextResponse(body, {
           headers: { "content-type": type, "content-disposition": `attachment; filename="${filename}"` },

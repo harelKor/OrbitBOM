@@ -12,7 +12,7 @@ export type CardPart = PartRow & {
   files: { id: string; type: string; filename: string }[];
   thumbUrl: string | null;
   modelKey: string | null; // the part's key in the robot's 3D model
-  geometry?: { onshapeMaterial?: string } | null;
+  geometry?: { onshapeMaterial?: string; sheetMetal?: { flatPartId: string }; wallMm?: number } | null;
   groups: { id: string; name: string; color: string | null }[];
   memberIds?: string[]; // set on a merged row
 };

@@ -10,7 +10,7 @@ import { applyEachPartChanges } from "@/lib/parts/apply";
 import type { PartChanges } from "@/lib/parts/changes";
 import { getObject, storageConfigured } from "@/lib/storage/r2";
 import { currentVisit } from "@/lib/visits";
-import { sizeOf, suggestSetup, type Learned } from "./rules";
+import { sizeOf, suggestSetup, wallThickness, type Learned } from "./rules";
 
 const { parts, systems, partReviews, partHistory, members, aiLogs } = schema;
 
@@ -22,6 +22,11 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stri
 
 // ---------- part sizes ----------
 
+// Parts with finer meshes skip the wall check, to keep To Review quick.
+const MAX_WALL_TRIANGLES = 20_000;
+// Bumped when measuring learns something new, so parts measured before are measured again.
+const SIZED_VERSION = 2;
+
 // Measures parts from the robot's built 3D model (R2 files only, no Onshape calls) and stores
 // the size in parts.geometry. A part is measured again only when its Part Studio file changed.
 // Returns the parts with their geometry up to date.
@@ -32,7 +37,7 @@ export async function measureParts<P extends Part>(robotId: string, rows: P[]): 
   for (const p of rows) {
     if (!p.sourceDid || !p.sourceEid || !p.onshapePartId) continue;
     const file = studios.get(partKey(p.sourceDid, p.sourceEid, p.onshapePartId));
-    if (!file || p.geometry?.sizedFrom === file) continue;
+    if (!file || (p.geometry?.sizedFrom === file && p.geometry.sizedV === SIZED_VERSION)) continue;
     todo.set(file, [...(todo.get(file) ?? []), p]);
   }
   if (!todo.size) return rows;
@@ -49,16 +54,23 @@ export async function measureParts<P extends Part>(robotId: string, rows: P[]): 
       for (const p of waiting) {
         const mesh = meshes.get(p.onshapePartId!);
         const bbox = mesh && sizeOf(mesh.positions);
-        if (bbox) sized.set(p.id, { ...(p.geometry ?? {}), bbox, minDim: bbox[0], sizedFrom: file });
+        if (!bbox) continue;
+        // Only a part that isn't flat needs the slower wall check (bent sheet).
+        const flat = bbox[0] <= bbox[1] * 0.25;
+        const wallMm = !flat && mesh.indices.length <= MAX_WALL_TRIANGLES * 3 ? wallThickness(mesh.positions, mesh.indices) : undefined;
+        const geometry = { ...(p.geometry ?? {}), bbox, minDim: bbox[0], sizedFrom: file, sizedV: SIZED_VERSION };
+        if (wallMm === undefined) delete geometry.wallMm;
+        else geometry.wallMm = wallMm;
+        sized.set(p.id, geometry);
       }
     }
   };
   await Promise.all(Array.from({ length: 4 }, worker));
   if (!sized.size) return rows;
 
-  const values = [...sized].map(([id, g]) => sql`(${id}::uuid, ${JSON.stringify({ bbox: g!.bbox, minDim: g!.minDim, sizedFrom: g!.sizedFrom })}::jsonb)`);
+  const values = [...sized].map(([id, g]) => sql`(${id}::uuid, ${JSON.stringify({ bbox: g!.bbox, minDim: g!.minDim, sizedFrom: g!.sizedFrom, sizedV: g!.sizedV, wallMm: g!.wallMm ?? null })}::jsonb)`);
   await db.execute(
-    sql`update parts set geometry = coalesce(parts.geometry, '{}'::jsonb) || v.g from (values ${sql.join(values, sql`, `)}) as v(id, g) where parts.id = v.id`,
+    sql`update parts set geometry = jsonb_strip_nulls(coalesce(parts.geometry, '{}'::jsonb) || v.g) from (values ${sql.join(values, sql`, `)}) as v(id, g) where parts.id = v.id`,
   );
   return rows.map((p) => (sized.has(p.id) ? { ...p, geometry: sized.get(p.id)! } : p));
 }

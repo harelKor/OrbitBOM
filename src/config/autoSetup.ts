@@ -16,3 +16,6 @@ export const DEFAULT_PROCESSES: Record<string, ProcessSet> = {
 
 // How close a part's measured thickness must be to a plate's, in mm.
 export const PLATE_TOLERANCE_MM = 0.15;
+
+// The process a bent plate (Onshape sheet metal, or a bent thin wall) gets after it is cut.
+export const BENDING_MACHINE = "bending";

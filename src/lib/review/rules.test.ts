@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sizeOf, suggestSetup, type Learned, type SetupInput } from "./rules";
+import { sizeOf, suggestSetup, wallThickness, type Learned, type SetupInput } from "./rules";
 
 const part = (over: Partial<SetupInput> = {}): SetupInput => ({
   classification: "cots",
@@ -50,6 +50,54 @@ describe("suggestSetup", () => {
     });
     expect(suggestSetup(part({ material: "2mm Poly", process1: "cnc" }), none)).toBeNull();
     expect(suggestSetup(part({ classification: "external", geometry: { onshapeMaterial: "PLA" } }), none)).toBeNull();
+  });
+
+  it("treats bent sheet as a plate of its wall thickness, then bending", () => {
+    const s = suggestSetup(part({ geometry: { onshapeMaterial: "Aluminum - 6061", bbox: [19, 19, 200], wallMm: 2.01, sheetMetal: { flatPartId: "JFD" } } }), none);
+    expect(s?.changes).toMatchObject({ material: "2mm 6061-T6", process1: "cnc", process2: "bending" });
+    expect(s?.reason).toContain("bent sheet metal and 2 mm thick");
+  });
+
+  it("does not add bending twice or to a flat plate", () => {
+    const learned: Learned = new Map([["2mm 6061-T6", { process1: "laser", process2: "bending", count: 3 }]]);
+    const bent = suggestSetup(part({ geometry: { onshapeMaterial: "Aluminum - 6061", bbox: [19, 19, 200], wallMm: 2 } }), learned);
+    expect(bent?.changes).toMatchObject({ process1: "laser", process2: "bending" });
+    const flat = suggestSetup(part({ geometry: { onshapeMaterial: "Aluminum - 6061", bbox: [2, 60, 200] } }), none);
+    expect(flat?.changes).toMatchObject({ process1: "cnc", process2: null });
+  });
+});
+
+// A prism in metres: `rects` (mm, [x0, y0, x1, y1]) are the cross-section, extruded `len` mm
+// along z. Faces shared between rects are left out, so it is one closed solid.
+function prism(outline: [number, number][], rects: number[][], len: number) {
+  const pos: number[] = [];
+  const idx: number[] = [];
+  const quad = (a: number[], b: number[], c: number[], d: number[]) => {
+    const i = pos.length / 3;
+    pos.push(...[a, b, c, d].flat().map((x) => x / 1000));
+    idx.push(i, i + 1, i + 2, i, i + 2, i + 3);
+  };
+  outline.forEach(([x, y], k) => {
+    const [x2, y2] = outline[(k + 1) % outline.length];
+    quad([x, y, 0], [x2, y2, 0], [x2, y2, len], [x, y, len]);
+  });
+  for (const [x0, y0, x1, y1] of rects) {
+    for (const z of [0, len]) quad([x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]);
+  }
+  return { pos, idx };
+}
+
+describe("wallThickness", () => {
+  it("measures a bent angle's wall", () => {
+    const { pos, idx } = prism([[0, 0], [19, 0], [19, 2], [2, 2], [2, 19], [0, 19]], [[0, 0, 19, 2], [0, 2, 2, 19]], 200);
+    expect(wallThickness(pos, idx)).toBeCloseTo(2, 1);
+  });
+
+  it("measures a flat plate and ignores a block", () => {
+    const plate = prism([[0, 0], [100, 0], [100, 3], [0, 3]], [[0, 0, 100, 3]], 150);
+    expect(wallThickness(plate.pos, plate.idx)).toBeCloseTo(3, 1);
+    const block = prism([[0, 0], [20, 0], [20, 30], [0, 30]], [[0, 0, 20, 30]], 40);
+    expect(wallThickness(block.pos, block.idx)).toBeUndefined();
   });
 });
 
