@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { getMachine } from "@/config/machines";
-import { fabStage } from "@/lib/fab";
+import { IN_PROCESS_STATUS, READY_STATUS, fabStage, isFabFinished } from "@/lib/fab";
 import { deleteManualPart, unmergeParts } from "@/app/(app)/parts-actions";
 import { useEditMode } from "@/components/shell/ModeContext";
 import { PartStage, type StageView } from "@/components/dashboard/PartStage";
@@ -51,8 +51,15 @@ export function PartCard({
   // The process being worked on: the first slot whose done counter hasn't reached the quantity.
   const current = machines.find((s) => part[s.done] < Math.max(part.quantity, 1));
   const showCounter = !!current && part.classification !== "cots" && fabStage(part) !== null;
-  // On To Fab, − takes back the last one counted (also on a finished part), + counts one more.
+  // On To Fab, + counts one more and − takes back the last one counted. When − would leave nothing
+  // counted, the part goes back to In process if it was finished, else to Ready to Fab.
   const counted = machines.slice(0, current ? machines.indexOf(current) + 1 : machines.length).reverse().find((s) => part[s.done] > 0);
+  const finished = isFabFinished(part);
+  const takeBack = () => {
+    const left = part.donePreprocess + part.doneProcess1 + part.doneProcess2 - 1;
+    if (counted && left > 0) save({ [counted.done]: part[counted.done] - 1 });
+    else save({ status: finished ? IN_PROCESS_STATUS : READY_STATUS });
+  };
   const fabControls = fabCounter && part.classification !== "cots" && machines.length > 0;
   const format = cadFormat(part);
   const [stage, setStage] = useState<StageView | null>(null);
@@ -115,7 +122,7 @@ export function PartCard({
           ) : (
             (format || part.files.length > 0) && <DownloadMenu part={part} format={format} />
           )}
-          {part.thumbUrl && hasMaterial && (
+          {part.thumbUrl && hasMaterial && !fabCounter && (
             <button
               type="button"
               onClick={() => setTinted(!tinted)}
@@ -142,8 +149,8 @@ export function PartCard({
           <>
             <button
               type="button"
-              onClick={() => counted && save({ [counted.done]: part[counted.done] - 1 })}
-              disabled={!counted}
+              onClick={takeBack}
+              disabled={!counted && !finished}
               className="overlay-btn absolute bottom-2 left-2 text-lg font-bold disabled:opacity-30"
               aria-label="One less made"
             >

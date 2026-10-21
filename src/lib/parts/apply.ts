@@ -54,7 +54,8 @@ export async function applyEachPartChanges(
         .update(parts)
         .set({
           ...set,
-          ...(!row.fabFinishedAt && isFabFinished({ ...row, ...set }) && { fabFinishedAt: new Date() }),
+          // Made parts carry when they were finished; a part sent back to work loses it.
+          fabFinishedAt: isFabFinished({ ...row, ...set }) ? (row.fabFinishedAt ?? new Date()) : null,
           lastModifiedAt: new Date(),
           lastModifiedBy: ctx.memberId,
         })

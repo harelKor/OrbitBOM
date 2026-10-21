@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useOptimistic, useState, useTransition } from "react";
+import { useLayoutEffect, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
 import { MACHINES, getMachine } from "@/config/machines";
 import { DONE_STATUSES, getStatus, type StatusName } from "@/config/statuses";
 import { createFabBatch, deleteGroup, removeFromGroup, updateGroup } from "@/app/(app)/groups/actions";
@@ -28,6 +28,9 @@ const isDone = (p: CardPart) => (DONE_STATUSES as string[]).includes(computeStat
 const DRAG_TYPE = "application/x-orbit-parts";
 const SECTION_STATUS = { ready: READY_STATUS, inProcess: IN_PROCESS_STATUS, finished: FINISHED_STATUS } as const;
 type Stage = keyof typeof SECTION_STATUS;
+// What a drag carries: the parts and the section they come from (dropping back there does nothing).
+type DragLoad = { ids: string[]; from: Stage | null };
+const partStage = (p: CardPart): Stage | null => (isFabFinished(p) ? "finished" : fabStage(p));
 
 // A batch sits in Ready to fab while any part still waits there, then in In process, and in
 // Finished once every part is done.
@@ -38,13 +41,12 @@ const batchStage = (members: CardPart[]): Stage =>
       ? "ready"
       : "inProcess";
 
-// Cards take their status's colour; a batch takes it when all its parts share one status.
-export const statusTint = (status: string | null): React.CSSProperties | undefined => {
-  const color = status ? getStatus(status)?.color : undefined;
-  return color
-    ? { backgroundColor: `color-mix(in srgb, ${color} 14%, var(--color-surface))`, borderColor: `color-mix(in srgb, ${color} 60%, transparent)` }
-    : undefined;
-};
+// Cards take their status's colour; a batch takes it when all its parts share one status. On To
+// Fab, finished parts and batches are painted green whatever their status.
+const FINISHED_COLOR = "#16a34a";
+const tint = (color: string | undefined): React.CSSProperties | undefined =>
+  color ? { backgroundColor: `color-mix(in srgb, ${color} 14%, var(--color-surface))`, borderColor: `color-mix(in srgb, ${color} 60%, transparent)` } : undefined;
+export const statusTint = (status: string | null) => tint(status ? getStatus(status)?.color : undefined);
 
 const common = (lists: string[][]) => (lists.length ? lists.reduce((acc, l) => acc.filter((m) => l.includes(m))) : []);
 
@@ -118,19 +120,15 @@ export function FabView({
           b.members.some((p) => matchesTopBar(p, filters)),
       );
     const batched = new Set(shownBatches.flatMap((b) => b.members.map((p) => p.id)));
-    const shown = optimistic.filter((p) => onMachine(p) && matchesTopBar(p, filters));
-    const loose = shown.filter((p) => !batched.has(p.id));
+    const loose = optimistic.filter((p) => !batched.has(p.id) && onMachine(p) && matchesTopBar(p, filters));
     const batchesIn = (stage: Stage) => shownBatches.filter((b) => batchStage(b.members) === stage);
-    // Finished keeps every part that was ever made, also while it shows in another section (a
-    // Reproduction, or a batch still in process); a finished batch already shows its parts.
-    const inFinishedBatch = new Set(batchesIn("finished").flatMap((b) => b.members.map((p) => p.id)));
-    const finished = (p: CardPart) => !!p.fabFinishedAt || isFabFinished(p);
+    // Each part shows once: in its batch, or in the section of its status.
     return {
       batches: { ready: batchesIn("ready"), inProcess: batchesIn("inProcess"), finished: batchesIn("finished") },
-      ready: loose.filter((p) => fabStage(p) === "ready"),
-      inProcess: loose.filter((p) => fabStage(p) === "inProcess"),
-      finished: shown.filter((p) => finished(p) && !inFinishedBatch.has(p.id)),
-      other: machine ? loose.filter((p) => !fabStage(p) && !finished(p)) : [],
+      ready: loose.filter((p) => partStage(p) === "ready"),
+      inProcess: loose.filter((p) => partStage(p) === "inProcess"),
+      finished: loose.filter((p) => partStage(p) === "finished"),
+      other: machine ? loose.filter((p) => !partStage(p)) : [],
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onMachine only reads `machine`
   }, [optimistic, batches, filters, machine]);
@@ -153,7 +151,7 @@ export function FabView({
         draggable={!fab}
         onDragStart={(e) => {
           e.stopPropagation(); // a card inside an open batch moves alone
-          e.dataTransfer.setData(DRAG_TYPE, JSON.stringify([p.id]));
+          e.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ ids: [p.id], from: partStage(p) } satisfies DragLoad));
         }}
         className={fab && !pickable ? "opacity-40" : undefined}
       >
@@ -162,7 +160,7 @@ export function FabView({
           save={(c) => save([p.id], c)}
           showSystem
           fabCounter
-          style={statusTint(computeStatus(p))}
+          style={isFabFinished(p) ? tint(FINISHED_COLOR) : statusTint(computeStatus(p))}
           selected={selected.has(p.id)}
           onToggleSelect={pickable ? () => toggle(p.id) : undefined}
         />
@@ -172,7 +170,9 @@ export function FabView({
   const batchCard = (b: Batch & { members: CardPart[] }) => <BatchCard key={b.id} batch={b} members={b.members} save={save} card={card} draggable={!fab} memberNames={memberNames} />;
   const machinesWithParts = MACHINES.filter((m) => counts.byMachine.has(m.id));
   const base = `/robots/${robotId}/fab`;
-  const drop = (stage: Stage) => (ids: string[]) => save(ids, { status: SECTION_STATUS[stage] });
+  const drop = (stage: Stage) => (load: DragLoad) => {
+    if (load.from !== stage && load.ids.length) save(load.ids, { status: SECTION_STATUS[stage] });
+  };
 
   return (
     <BomProvider value={{ inventory, isAdmin, robotId }}>
@@ -226,7 +226,7 @@ export function FabView({
           {view.finished.map(card)}
         </Section>
         {machine && view.other.length > 0 && (
-          <Section title={`Other parts on ${getMachine(machine)?.name ?? "this machine"}`} count={view.other.length} small>
+          <Section title={`Other parts on ${getMachine(machine)?.name ?? "this machine"}`} count={view.other.length} small defaultOpen={false}>
             {view.other.map(card)}
           </Section>
         )}
@@ -304,17 +304,19 @@ function Section({
   empty,
   onDropParts,
   small = false,
+  defaultOpen = true,
   children,
 }: {
   title: string;
   count: number;
   empty?: string;
-  onDropParts?: (ids: string[]) => void;
+  onDropParts?: (load: DragLoad) => void;
   small?: boolean; // a quieter section at the bottom, with smaller cards
+  defaultOpen?: boolean;
   children: React.ReactNode;
 }) {
   const [over, setOver] = useState(false);
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(defaultOpen);
   const dropProps = onDropParts && {
     onDragOver: (e: React.DragEvent) => {
       if (!e.dataTransfer.types.includes(DRAG_TYPE)) return;
@@ -326,10 +328,10 @@ function Section({
     },
     onDrop: (e: React.DragEvent) => {
       setOver(false);
-      const ids = JSON.parse(e.dataTransfer.getData(DRAG_TYPE) || "[]") as string[];
-      if (ids.length) {
+      const raw = e.dataTransfer.getData(DRAG_TYPE);
+      if (raw) {
         e.preventDefault();
-        onDropParts(ids);
+        onDropParts(JSON.parse(raw) as DragLoad);
       }
     },
   };
@@ -384,6 +386,23 @@ function BatchCard({
     return f ? [`/api/parts/${p.id}/export?format=${f}`] : [];
   });
   const notDone = members.filter((p) => !isDone(p));
+  const stage = batchStage(members);
+
+  // Opened, the batch spans as many grid columns as it has parts (up to a full row).
+  const ref = useRef<HTMLDivElement>(null);
+  const [span, setSpan] = useState(1);
+  useLayoutEffect(() => {
+    const grid = ref.current?.parentElement;
+    if (!open || !grid) return;
+    const measure = () => {
+      const cols = getComputedStyle(grid).gridTemplateColumns.split(" ").filter(Boolean).length;
+      setSpan(Math.max(1, Math.min(cols, members.length)));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(grid);
+    return () => observer.disconnect();
+  }, [open, members.length]);
   const rename = (name: string) => {
     setRenaming(false);
     if (name.trim() && name.trim() !== batch.name) startTransition(() => void updateGroup(batch.id, { name }));
@@ -393,11 +412,14 @@ function BatchCard({
 
   return (
     <div
+      ref={ref}
       draggable={draggable && !renaming}
-      onDragStart={(e) => e.dataTransfer.setData(DRAG_TYPE, JSON.stringify((notDone.length ? notDone : members).map((p) => p.id)))}
+      onDragStart={(e) =>
+        e.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ ids: (notDone.length ? notDone : members).map((p) => p.id), from: stage } satisfies DragLoad))
+      }
       onClick={() => setOpen((o) => !o)}
-      style={statusTint(shared)}
-      className={`card-interactive flex cursor-pointer flex-col text-sm ${open ? "col-span-full" : ""}`}
+      style={{ ...(stage === "finished" ? tint(FINISHED_COLOR) : statusTint(shared)), ...(open && { gridColumn: `span ${span}` }) }}
+      className="card-interactive flex cursor-pointer flex-col text-sm"
     >
       <div className={open ? "flex flex-wrap gap-4 p-3" : "flex flex-col"}>
         <button
@@ -506,7 +528,7 @@ function BatchCard({
         </div>
       </div>
       {open && (
-        <div className="grid cursor-default grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3 border-t border-line p-3" onClick={stop}>
+        <div className="grid cursor-default gap-3 border-t border-line p-3" style={{ gridTemplateColumns: `repeat(${span}, minmax(0, 1fr))` }} onClick={stop}>
           {members.map((p) => (
             <div key={p.id} className="flex flex-col gap-1">
               {card(p)}
