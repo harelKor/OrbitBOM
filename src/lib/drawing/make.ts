@@ -6,7 +6,7 @@ import { onshapeClient } from "@/lib/onshape/client";
 import { studioPath } from "@/lib/onshape/parts";
 import { parseOnshapeUrl } from "@/lib/onshape/url";
 import { type BodyDetails, readBodies, type TessellatedEdges } from "./brep";
-import { readPart } from "./read";
+import { READER, readPart } from "./read";
 import type { TitleBlock } from "./types";
 
 const { parts, systems, partDrawings } = schema;
@@ -15,7 +15,7 @@ export type MakeSummary = { made: string[]; skipped: { id: string; reason: strin
 
 // Drawings for the chosen parts of one system (plan/auto-drawings.md): 2 Onshape calls per Part
 // Studio (its exact geometry), then each part is read and saved. A part whose drawing is
-// already from its current revision is skipped; its edits are kept when it's made again.
+// already from its current revision (and this reader) is skipped; its edits are kept when it's made again.
 // Runs until `deadline`; the browser calls again with what's left.
 export async function makeDrawings(systemId: string, partIds: string[], memberId: string, deadline: number): Promise<MakeSummary> {
   const summary: MakeSummary = { made: [], skipped: [], left: [] };
@@ -23,7 +23,7 @@ export async function makeDrawings(systemId: string, partIds: string[], memberId
   const [system] = await db.select({ assemblyUrl: systems.assemblyUrl }).from(systems).where(eq(systems.id, systemId));
   const ref = system?.assemblyUrl ? parseOnshapeUrl(system.assemblyUrl) : null;
   const rows = await db
-    .select({ part: parts, drawingRev: partDrawings.rev })
+    .select({ part: parts, drawingRev: partDrawings.rev, drawn: partDrawings.part })
     .from(parts)
     .leftJoin(partDrawings, eq(partDrawings.partId, parts.id))
     .where(and(eq(parts.systemId, systemId), inArray(parts.id, partIds)));
@@ -32,7 +32,7 @@ export async function makeDrawings(systemId: string, partIds: string[], memberId
   for (const r of rows) {
     const path = studioPath(r.part);
     if (!path || !ref) summary.skipped.push({ id: r.part.id, reason: "Not from Onshape" });
-    else if (r.drawingRev && r.drawingRev === r.part.thumbnailRev) summary.made.push(r.part.id);
+    else if (r.drawingRev && r.drawingRev === r.part.thumbnailRev && r.drawn?.reader === READER) summary.made.push(r.part.id);
     else byStudio.set(path, [...(byStudio.get(path) ?? []), r]);
   }
   if (!byStudio.size) return summary;

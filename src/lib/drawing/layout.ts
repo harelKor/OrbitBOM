@@ -63,32 +63,93 @@ function viewLines(p: Placed): Line[] {
   return lines;
 }
 
-// Notes sit above or below their view, nearest the hole, stacked when they would overlap; the
-// leader runs from the note to the hole's edge.
-function noter() {
-  const placed: { above: boolean; x0: number; x1: number; y: number }[] = [];
-  return (p: Placed, h: Hole, text: string): { leader: Pt; at: Pt } => {
+type Rect = { x0: number; y0: number; x1: number; y1: number };
+const CHAR = 1.9; // mm per character of 3.5 mm lettering
+const ROW = 3.5 * 1.3;
+const hits = (a: Rect, b: Rect, pad = 1.5) => a.x0 < b.x1 + pad && a.x1 + pad > b.x0 && a.y0 < b.y1 + pad && a.y1 + pad > b.y0;
+// Whether the segment p→q crosses the rectangle (sampled: the rectangles are text-sized).
+const crosses = (p: Pt, q: Pt, r: Rect) => {
+  for (let i = 1; i < 20; i++) {
+    const [x, y] = [p[0] + ((q[0] - p[0]) * i) / 20, p[1] + ((q[1] - p[1]) * i) / 20];
+    if (x > r.x0 && x < r.x1 && y > r.y0 && y < r.y1) return true;
+  }
+  return false;
+};
+// Where a note's text sits (its first baseline at `at`) and where its leader leaves it, as svg.ts
+// draws them.
+export function noteBox(text: string, at: Pt, leader?: Pt): { rect: Rect; end?: Pt } {
+  const rows = text.split("\n");
+  const width = Math.max(...rows.map((l) => l.length)) * CHAR;
+  const rect = { x0: at[0], y0: at[1] - 3.5, x1: at[0] + width, y1: at[1] + (rows.length - 1) * ROW + 1.2 };
+  if (!leader) return { rect };
+  const below = leader[1] < at[1];
+  return { rect, end: [at[0] + width / 2, below ? rect.y0 : rect.y1] };
+}
+// The text of a dimension, as svg.ts draws it.
+export function dimRect(d: Dim): Rect {
+  const v = d.dir === "v";
+  const [a, b] = v ? [d.a[1], d.b[1]] : [d.a[0], d.b[0]];
+  const [lo, hi] = a < b ? [a, b] : [b, a];
+  const w = d.text.length * CHAR;
+  const along = hi - lo < 10 ? (v ? [lo - 12 - w, lo - 12] : [hi + 12, hi + 12 + w]) : [(lo + hi) / 2 - w / 2, (lo + hi) / 2 + w / 2];
+  const off = hi - lo < 10 && !v ? [d.at + 1.2 - 3.5, d.at + 1.2] : [d.at - 4.5, d.at - 1];
+  return v ? { x0: off[0], x1: off[1], y0: along[0], y1: along[1] } : { x0: along[0], x1: along[1], y0: off[0], y1: off[1] };
+}
+// The dimension line itself, a thin strip.
+function dimLine(d: Dim): Rect {
+  const v = d.dir === "v";
+  const [a, b] = v ? [d.a[1], d.b[1]] : [d.a[0], d.b[0]];
+  const [lo, hi] = a < b ? [a, b] : [b, a];
+  return v ? { x0: d.at - 0.5, x1: d.at + 0.5, y0: lo, y1: hi } : { x0: lo, x1: hi, y0: d.at - 0.5, y1: d.at + 0.5 };
+}
+
+// Notes go above or below their view, nearest the hole, wherever they clear the views, the
+// dimensions, the BOM block and the other notes, and where their leader crosses no text.
+function noter(views: Placed[], dims: Dim[]) {
+  const solid: Rect[] = [
+    ...views.map(box),
+    ...dims.map(dimLine),
+    { x0: SHEET.w - MARGIN - TITLE.w, y0: SHEET.h - MARGIN - TITLE.h, x1: SHEET.w - MARGIN, y1: SHEET.h - MARGIN },
+    { x0: MARGIN, y0: SHEET.h - MARGIN - 12, x1: MARGIN + 150, y1: SHEET.h - MARGIN }, // the max tool note
+  ];
+  const text: Rect[] = dims.map(dimRect);
+  const inSheet = (r: Rect) => r.x0 >= MARGIN + 3 && r.x1 <= SHEET.w - MARGIN - 3 && r.y0 >= MARGIN + 3 && r.y1 <= SHEET.h - MARGIN - 3;
+  return (p: Placed, h: Hole, words: string): { leader: Pt; at: Pt } => {
     const c = toSheet(p, h.at);
     const r = (h.d / 2) * p.s;
     const b = box(p);
-    const above = c[1] <= (b.y0 + b.y1) / 2;
-    const rows = text.split("\n");
-    const width = Math.max(...rows.map((l) => l.length)) * 1.9;
-    const x0 = Math.min(Math.max(c[0] - width / 2 + 8, MARGIN + 4), SHEET.w - MARGIN - 4 - width);
-    const height = rows.length * 3.5 * 1.3;
-    let y = above ? b.y0 - 12 - height + 3.5 : b.y1 + 12;
-    for (const q of placed)
-      if (q.above === above && x0 < q.x1 + 3 && x0 + width > q.x0 - 3) y = above ? Math.min(y, q.y - height - 3) : Math.max(y, q.y + height + 3);
-    placed.push({ above, x0, x1: x0 + width, y });
-    const toward: Pt = [x0 + width / 2, above ? y + height - 3.5 : y - 3.5];
-    const [dx, dy] = [toward[0] - c[0], toward[1] - c[1]];
-    const l = Math.hypot(dx, dy) || 1;
-    return { leader: [c[0] + (dx / l) * r, c[1] + (dy / l) * r], at: [x0, y] };
+    const rows = words.split("\n");
+    const width = Math.max(...rows.map((l) => l.length)) * CHAR;
+    const height = rows.length * ROW;
+    const prefer = c[1] <= (b.y0 + b.y1) / 2 ? -1 : 1;
+    const leaderTo = (at: Pt, toward: Pt): Pt => {
+      const [dx, dy] = [toward[0] - c[0], toward[1] - c[1]];
+      const l = Math.hypot(dx, dy) || 1;
+      return [c[0] + (dx / l) * r, c[1] + (dy / l) * r];
+    };
+    let first: { leader: Pt; at: Pt } | undefined;
+    for (const side of [prefer, -prefer])
+      for (let step = 0; step < 12; step++)
+        for (const shift of [0, -12, 12, -24, 24, -40, 40, -60, 60]) {
+          const x = Math.min(Math.max(c[0] - width / 2 + 8 + shift, MARGIN + 4), SHEET.w - MARGIN - 4 - width);
+          const y = side < 0 ? b.y0 - 10 - height + 3.5 - step * 4 : b.y1 + 12 + step * 4;
+          const at: Pt = [x, y];
+          const guess = noteBox(words, at, side < 0 ? [c[0], b.y1] : [c[0], b.y0]);
+          const leader = leaderTo(at, guess.end!);
+          const { rect, end } = noteBox(words, at, leader);
+          const option = { leader, at };
+          first ??= option;
+          if (!inSheet(rect) || solid.some((o) => hits(rect, o)) || text.some((o) => hits(rect, o) || crosses(end!, leader, o))) continue;
+          text.push(rect);
+          return option;
+        }
+    text.push(noteBox(words, first!.at, first!.leader).rect);
+    return first!;
   };
 }
 
 // Tap and bearing fit notes for the holes seen in these views; every other hole gets none.
-function holeNotes(views: Placed[], place: ReturnType<typeof noter>): Note[] {
+function holeNotes(views: Placed[], place: ReturnType<typeof noter>, ends?: Placed): Note[] {
   const notes: Note[] = [];
   const seen = new Set<string>();
   for (const p of views) {
@@ -96,7 +157,8 @@ function holeNotes(views: Placed[], place: ReturnType<typeof noter>): Note[] {
       const holes = p.view.holes.filter((h) => near(h.d, tap.drillMm) && !seen.has(h.faceId));
       if (!holes.length) continue;
       holes.forEach((h) => seen.add(h.faceId));
-      const text = `${holes.length > 1 ? `${holes.length}× ` : ""}${tap.note}`;
+      const both = holes.every((h) => h.both) ? (p === ends ? ", both ends" : ", both sides") : "";
+      const text = `${holes.length > 1 ? `${holes.length}× ` : ""}${tap.note}${both}`;
       notes.push({ id: `tap:${tap.drillMm}:${holes[0].faceId}`, kind: "tap", text, ...place(p, holes[0], text) });
     }
     for (const h of p.view.holes) {
@@ -125,7 +187,6 @@ const down = (p: Placed, text: string): Dim => {
 };
 
 export function partDrawing(part: Part, title: TitleBlock, image?: string): Drawing {
-  const place = noter();
   let placed: Placed[];
   let dims: Dim[] = [];
   let notes: Note[] = [];
@@ -135,7 +196,7 @@ export function partDrawing(part: Part, title: TitleBlock, image?: string): Draw
     placed = arrange([part.front], part.side, true);
     const [front, side] = placed;
     dims = [across(side, fmt(part.thickness))];
-    notes = [...holeNotes([front], place), ...toolNote(part.minInnerRadius)];
+    notes = [...holeNotes([front], noter(placed, dims)), ...toolNote(part.minInnerRadius)];
     stock = `${fmt(part.thickness)} mm plate`;
   } else if (part.kind === "square-tube") {
     placed = arrange(part.long, part.end, false);
@@ -146,7 +207,7 @@ export function partDrawing(part: Part, title: TitleBlock, image?: string): Draw
       const b = box(end);
       dims.push({ a: [b.x0, b.y0], b: [b.x0 + part.wall * end.s, b.y0], at: b.y0 - 8, dir: "h", text: fmt(part.wall) });
     }
-    notes = [...holeNotes(placed.slice(0, -1), place), ...toolNote(part.minInnerRadius)];
+    notes = [...holeNotes(placed, noter(placed, dims), end), ...toolNote(part.minInnerRadius)];
     stock = `${fmt(x)}×${fmt(y)}${part.wall ? `×${fmt(part.wall)}` : ""} tube, ${fmt(part.length)} long`;
   } else if (part.kind === "hex-shaft") {
     placed = arrange([part.side], part.end, false);
@@ -156,7 +217,7 @@ export function partDrawing(part: Part, title: TitleBlock, image?: string): Draw
     if (bore) {
       const tap = TAPS.find((t) => near(bore.d, t.drillMm));
       const text = tap ? tap.note : `Ø${fmt(bore.d)}`;
-      notes = [{ id: `bore:${bore.faceId}`, kind: "bore", text, ...place(end, bore, text) }];
+      notes = [{ id: `bore:${bore.faceId}`, kind: "bore", text, ...noter(placed, dims)(end, bore, text) }];
     }
     stock = `${fmt(part.acrossFlats)} hex, ${fmt(part.length)} long`;
   } else {
@@ -196,4 +257,29 @@ export function applyEdits(d: Drawing, e: DrawingEdits): Drawing {
     .map((n) => ({ ...n, ...(e.text?.[n.id] != null ? { text: e.text[n.id] } : {}), ...(e.moved?.[n.id] ? { at: e.moved[n.id] } : {}) }));
   for (const a of e.added ?? []) notes.push({ id: a.id, kind: "custom", text: a.text, at: a.at, ...(a.leader ? { leader: a.leader } : {}) });
   return { ...d, notes };
+}
+
+// Where a note added in the editor to the hole at `c` (radius r on the sheet) goes: the nearest
+// spot around it that clears the drawing's other notes, dimensions and BOM block.
+export function freeSpot(d: Drawing, c: Pt, r: number, words: string): { at: Pt; leader: Pt } {
+  const taken: Rect[] = [
+    ...d.notes.map((n) => noteBox(n.text, n.at, n.leader).rect),
+    ...d.dims.flatMap((x) => [dimRect(x), dimLine(x)]),
+    { x0: SHEET.w - MARGIN - TITLE.w, y0: SHEET.h - MARGIN - TITLE.h, x1: SHEET.w - MARGIN, y1: SHEET.h - MARGIN },
+  ];
+  const width = Math.max(...words.split("\n").map((l) => l.length)) * CHAR;
+  let first: { at: Pt; leader: Pt } | undefined;
+  for (let dist = r + 12; dist < 160; dist += 6)
+    for (let k = 0; k < 16; k++) {
+      const a = -Math.PI / 4 + (k * Math.PI) / 8; // up and right first
+      const at: Pt = [c[0] + Math.cos(a) * dist - (Math.cos(a) < 0 ? width : 0), c[1] - Math.sin(a) * dist];
+      const toward: Pt = [c[0] + Math.cos(a) * dist, c[1] - Math.sin(a) * dist];
+      const l = Math.hypot(toward[0] - c[0], toward[1] - c[1]) || 1;
+      const leader: Pt = [c[0] + ((toward[0] - c[0]) / l) * r, c[1] + ((toward[1] - c[1]) / l) * r];
+      const { rect } = noteBox(words, at, leader);
+      first ??= { at, leader };
+      const inside = rect.x0 >= MARGIN + 3 && rect.x1 <= SHEET.w - MARGIN - 3 && rect.y0 >= MARGIN + 3 && rect.y1 <= SHEET.h - MARGIN - 3;
+      if (inside && !taken.some((t) => hits(rect, t))) return { at, leader };
+    }
+  return first!;
 }

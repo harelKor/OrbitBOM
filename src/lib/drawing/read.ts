@@ -4,15 +4,20 @@
 
 import { type Body, type Face, type V3, cross, dot, parallel, sub, unit } from "./brep";
 
-export type Hole = { faceId: string; at: [number, number]; d: number }; // view coordinates, mm
+// `both`: the same hole is on the far side too (through both walls, or at both ends).
+export type Hole = { faceId: string; at: [number, number]; d: number; both?: boolean }; // view coordinates, mm
 // One orthographic view in its own millimetres, origin bottom left, x right and y up.
 export type View = { w: number; h: number; lines: [number, number][][]; holes: Hole[]; axis?: boolean };
 
-export type Part =
+// Bumped when the reader changes, so drawings made by an older one are made again.
+export const READER = 2;
+
+export type Part = { reader?: number } & (
   | { kind: "plate"; thickness: number; front: View; side: View; minInnerRadius?: number }
   | { kind: "square-tube"; size: [number, number]; wall?: number; length: number; long: View[]; end: View; minInnerRadius?: number }
   | { kind: "hex-shaft"; acrossFlats: number; length: number; bore?: number; side: View; end: View }
-  | { kind: "round-tube"; od: number; id?: number; length: number; side: View; end: View };
+  | { kind: "round-tube"; od: number; id?: number; length: number; side: View; end: View }
+);
 
 const EPS = 0.01;
 const same = (a: V3, b: V3) => dot(unit(a), unit(b)) > 0.999;
@@ -33,20 +38,42 @@ function range(body: Body, a: V3): [number, number] {
 }
 
 // The view seen looking down -w with h to the right. "near" draws only the edges on the nearest
-// face (all a prismatic part needs: what's behind it is hidden); `box` adds the silhouette.
-function view(body: Body, w: V3, h: V3, opts: { near?: boolean; box?: boolean; holes?: Face[]; axis?: boolean }): View {
+// face (all a prismatic part needs: what's behind it is hidden); "flat" draws every edge that
+// lies flat in the view at any depth (a plate's outline even where it steps or thins); `box`
+// adds the silhouette. Holes on the near half are drawn, marked `both` when the far half has
+// one in the same place.
+function view(body: Body, w: V3, h: V3, opts: { near?: boolean; flat?: boolean; box?: boolean; holes?: Face[]; axis?: boolean }): View {
   const v = cross(w, h);
   const [h0, h1] = range(body, h);
   const [v0, v1] = range(body, v);
   const [d0, d1] = range(body, w);
   const at = (p: V3): [number, number] => [dot(p, h) - h0, dot(p, v) - v0];
   const lines: [number, number][][] = [];
-  if (opts.near) for (const e of body.edges) if (e.every((p) => Math.abs(dot(p, w) - d1) < EPS)) lines.push(e.map(at));
+  const drawn = new Set<string>();
+  for (const e of body.edges) {
+    const depth = dot(e[0], w);
+    const keep = opts.flat ? e.every((p) => Math.abs(dot(p, w) - depth) < EPS) : opts.near && e.every((p) => Math.abs(dot(p, w) - d1) < EPS);
+    if (!keep) continue;
+    const line = e.map(at);
+    // Edges at different depths often land on the same line (a plate's top and bottom outline).
+    const key = (pts: [number, number][]) => pts.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ");
+    const k = [key(line), key([...line].reverse())].sort()[0];
+    if (drawn.has(k)) continue;
+    drawn.add(k);
+    lines.push(line);
+  }
   const [W, H] = [h1 - h0, v1 - v0];
   if (opts.box) lines.push([[0, 0], [W, 0], [W, H], [0, H], [0, 0]]);
-  const holes = (opts.holes ?? [])
-    .filter((f) => parallel(f.dir!, w) && dot(f.center, w) >= (d0 + d1) / 2 - EPS)
-    .map((f) => ({ faceId: f.id, at: at(f.center), d: 2 * f.radius! }));
+  const mid = (d0 + d1) / 2;
+  const seen = (opts.holes ?? []).filter((f) => parallel(f.dir!, w));
+  const far = seen.filter((f) => dot(f.center, w) < mid - EPS);
+  const holes = seen
+    .filter((f) => dot(f.center, w) >= mid - EPS)
+    .map((f) => {
+      const p = at(f.center);
+      const both = far.some((g) => Math.abs(g.radius! - f.radius!) < EPS && Math.hypot(at(g.center)[0] - p[0], at(g.center)[1] - p[1]) < 0.05);
+      return { faceId: f.id, at: p, d: 2 * f.radius!, ...(both ? { both: true } : {}) };
+    });
   return { w: W, h: H, lines, holes, ...(opts.axis ? { axis: true } : {}) };
 }
 
@@ -86,7 +113,7 @@ function readPlate(body: Body): Part | null {
   return {
     kind: "plate",
     thickness,
-    front: view(body, n, u, { near: true, holes }),
+    front: view(body, n, u, { flat: true, holes }),
     side: view(body, u, n, { box: true }),
     ...(minInnerRadius ? { minInnerRadius } : {}),
   };
@@ -142,29 +169,46 @@ function readSquare(body: Body, axis: V3, sides: Face[]): Part {
     if (t > 0 && (wall === undefined || t < wall)) wall = t;
   }
   const { holes, minInnerRadius } = holesAndCorners(body, (f) => perp(f.dir!, axis));
-  // One long view per drilled face direction, looking at the face with the most holes first.
-  const dirs: V3[] = [];
+  // One long view per drilled face, the face with the most holes first. A face whose holes all
+  // go through to a face already shown needs no view of its own.
+  const faces: { w: V3; holes: Face[] }[] = [];
   for (const h of holes) {
     const w = unit(h.dir!);
     const outward: V3 = dot(sub(h.center, mid), w) < 0 ? [-w[0], -w[1], -w[2]] : w;
-    if (!dirs.some((d) => parallel(d, outward))) dirs.push(outward);
+    const face = faces.find((f) => same(f.w, outward)) ?? faces[faces.push({ w: outward, holes: [] }) - 1];
+    face.holes.push(h);
   }
-  const count = (d: V3) => holes.filter((h) => parallel(h.dir!, d)).length;
-  dirs.sort((a, b) => count(b) - count(a));
-  if (!dirs.length) dirs.push(d1);
-  const long = dirs.slice(0, 2).map((w) => view(body, w, axis, { near: true, box: true, holes }));
+  faces.sort((a, b) => b.holes.length - a.holes.length);
+  const long: View[] = [];
+  const shown: V3[] = [];
+  for (const f of faces) {
+    const opposite = shown.find((w) => same(w, [-f.w[0], -f.w[1], -f.w[2]]));
+    if (opposite && view(body, opposite, axis, { holes }).holes.filter((h) => h.both).length >= f.holes.length) continue;
+    shown.push(f.w);
+    long.push(view(body, f.w, axis, { near: true, box: true, holes }));
+  }
+  if (!long.length) long.push(view(body, d1, axis, { near: true, box: true, holes }));
+  // Holes along the axis (tapped ends) show on the end view, looking at the end that has them.
+  const ends = cylinders(body).filter((f) => f.concave && f.loops >= 2 && parallel(f.dir!, axis));
+  const atFar = ends.filter((f) => dot(f.center, axis) < (a0 + a1) / 2).length;
+  const endW: V3 = atFar > ends.length - atFar ? [-axis[0], -axis[1], -axis[2]] : axis;
   return {
     kind: "square-tube",
     size: [r1[1] - r1[0], r2[1] - r2[0]],
     ...(wall ? { wall } : {}),
     length: a1 - a0,
     long,
-    end: view(body, axis, d1, { near: true }),
+    end: view(body, endW, d1, { near: true, holes: ends }),
     ...(minInnerRadius ? { minInnerRadius } : {}),
   };
 }
 
 export function readPart(body: Body): Part | null {
+  const part = readKind(body);
+  return part && { ...part, reader: READER };
+}
+
+function readKind(body: Body): Part | null {
   const biggest = body.faces.reduce<Face | undefined>((a, b) => (!a || b.area > a.area ? b : a), undefined);
   if (!biggest) return null;
   if (biggest.type === "CYLINDER" && !biggest.concave) return readRound(body, unit(biggest.dir!));
