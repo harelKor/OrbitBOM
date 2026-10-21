@@ -327,6 +327,19 @@ export const partHistory = pgTable(
   ],
 );
 
+// Recent actions a member closed with X; they stay hidden for that member only.
+export const dismissedActions = pgTable(
+  "dismissed_actions",
+  {
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    visitId: uuid("visit_id").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.memberId, t.visitId] })],
+);
+
 // The team's 3D colour for a material category, where it differs from the default in
 // src/config/materialColors.ts.
 export const materialColors = pgTable("material_colors", {

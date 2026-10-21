@@ -35,7 +35,7 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
     isEditMode(),
     robotModelBuiltAt(robot.id),
     listRobotReviews(robot.id),
-    listRecentActions(robot.id),
+    listRecentActions({ robotId: robot.id, memberId: member.id }),
   ]);
   const aiReviews = reviews.filter((r) => r.source === "ai").length;
 

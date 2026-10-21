@@ -12,7 +12,7 @@ else
   describe("listRecentActions (database)", async () => {
     process.env.DATABASE_URL = url;
     const { db, schema } = await import("@/db");
-    const { eq } = await import("drizzle-orm");
+    const { eq, inArray } = await import("drizzle-orm");
     const { applyPartChanges } = await import("@/lib/parts/apply");
     const { listRecentActions } = await import("./actions");
 
@@ -42,7 +42,7 @@ else
       // Not from a page: no action.
       await applyPartChanges([a.id], { note: "x" }, { memberId: member.id, via: "mcp" });
 
-      const actions = await listRecentActions(robot.id);
+      const actions = await listRecentActions({ robotId: robot.id, memberId: member.id });
       expect(actions).toHaveLength(1);
       expect(actions[0]).toMatchObject({
         visitId: visit.id,
@@ -54,5 +54,33 @@ else
       });
       expect(actions[0].fields.sort()).toEqual(["Material", "Note"]);
       expect(actions[0].at).toBeInstanceOf(Date);
+    });
+
+    it("keeps To Fab status changes for the system page", async () => {
+      visit.id = randomUUID();
+      visit.page = `/robots/${robot.id}/fab?machine=laser`;
+      await applyPartChanges([a.id], { status: "Ready to Fab" }, { memberId: member.id, via: "ui" });
+      const fab = await listRecentActions({ robotId: robot.id, memberId: member.id, systemId: system.id, fabOnly: true });
+      expect(fab).toHaveLength(1);
+      expect(fab[0]).toMatchObject({ visitId: visit.id, pageName: "To Fab", statusTo: "Ready to Fab", partCount: 1 });
+    });
+
+    it("drops actions a member closed, and ones older than a week", async () => {
+      const fabVisit = visit.id;
+      await db.insert(schema.dismissedActions).values({ memberId: member.id, visitId: fabVisit });
+      let left = await listRecentActions({ robotId: robot.id, memberId: member.id });
+      expect(left.map((x) => x.visitId)).not.toContain(fabVisit);
+      expect(left).toHaveLength(1);
+      // Someone else still sees it.
+      left = await listRecentActions({ robotId: robot.id, memberId: randomUUID() });
+      expect(left).toHaveLength(2);
+
+      // The first visit's changes, a week and a day ago.
+      await db
+        .update(schema.partHistory)
+        .set({ at: new Date(Date.now() - 8 * 86_400_000) })
+        .where(inArray(schema.partHistory.partId, [a.id, b.id]));
+      left = await listRecentActions({ robotId: robot.id, memberId: member.id });
+      expect(left).toHaveLength(0);
     });
   });
