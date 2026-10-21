@@ -68,3 +68,10 @@ it("keeps Onshape's appearance, opacity included", () => {
   expect(back[0].appearance?.opacity).toBeCloseTo(0.5, 2);
   expect(back[1].appearance).toBeUndefined();
 });
+
+it("reads Onshape colours in any shape and never fails the export over one", () => {
+  const facets = [{ vertices: [[0, 0, 0], [1, 0, 0], [0, 1, 0]] }];
+  const looks = [{ color: { red: 255, green: 0, blue: 0 } }, { color: "#00ff00" }, { color: 0x0000ff, opacity: 255 }, { color: "nonsense" }];
+  const meshes = meshesFromTessellation(looks.map((appearance, i) => ({ id: `P${i}`, faces: [{ facets }], appearance })));
+  expect(meshes.map((m) => m.appearance?.color)).toEqual([[1, 0, 0], [0, 1, 0], [0, 0, 1], undefined]);
+});
