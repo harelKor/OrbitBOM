@@ -6,6 +6,7 @@ import { fabStage } from "@/lib/fab";
 import { deleteManualPart, unmergeParts } from "@/app/(app)/parts-actions";
 import { useEditMode } from "@/components/shell/ModeContext";
 import { PartStage, type StageView } from "@/components/dashboard/PartStage";
+import { materialTint } from "@/components/shell/MaterialColors";
 import { CheckBadge } from "@/components/ui/CheckBadge";
 import { Icon } from "@/components/ui/Icon";
 import { useBom } from "./BomContext";
@@ -67,7 +68,7 @@ export function PartCard({
           <button type="button" onClick={() => setStage("part")} className="flex h-full w-full cursor-zoom-in items-center justify-center" aria-label={`3D preview of ${partTitle(part)}`}>
             {part.thumbUrl ? (
               // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
-              <img src={part.thumbUrl} alt="" loading="lazy" className="h-full w-full object-contain p-3" />
+              <img src={part.thumbUrl} alt="" loading="lazy" className="h-full w-full object-contain p-3" style={{ filter: materialTint(part.material, part.geometry?.onshapeMaterial) }} />
             ) : (
               <span className="text-xs text-muted">No thumbnail yet, click for 3D</span>
             )}
@@ -102,6 +103,7 @@ export function PartCard({
           modelKey={part.modelKey}
           name={partTitle(part)}
           material={part.material}
+          onshapeMaterial={part.geometry?.onshapeMaterial ?? null}
           view={stage}
           onView={setStage}
           onClose={() => setStage(null)}

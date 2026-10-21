@@ -22,6 +22,7 @@ export function PartStage({
   modelKey,
   name,
   material,
+  onshapeMaterial,
   view,
   onView,
   onClose,
@@ -31,6 +32,7 @@ export function PartStage({
   modelKey: string | null;
   name: string;
   material: string | null;
+  onshapeMaterial: string | null;
   view: StageView;
   onView: (view: StageView) => void;
   onClose: () => void;
@@ -46,9 +48,9 @@ export function PartStage({
   const materialOverrides = useMaterialColors();
   const partColors = useMemo(() => {
     if (view !== "part" || colors !== "material" || !model) return NO_COLORS;
-    const color = materialColor(material, materialOverrides);
+    const color = materialColor(material, materialOverrides, onshapeMaterial);
     return new Map(model.placements.map((p) => [p.k, color]));
-  }, [view, colors, model, material, materialOverrides]);
+  }, [view, colors, model, material, onshapeMaterial, materialOverrides]);
 
   useEffect(() => {
     dialog.current?.showModal();
