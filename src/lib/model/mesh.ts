@@ -14,20 +14,38 @@ const MAGIC = 0x324d424f; // "OBM2"
 
 type Vec = number[] | { x: number; y: number; z: number };
 type Facet = { vertices?: Vec[]; indices?: number[] };
-type Look = { color?: number[]; opacity?: number };
+type Look = { color?: unknown; opacity?: unknown };
 type Body = { id?: string; facetPoints?: Vec[]; faces?: { facets?: Facet[]; appearance?: Look }[]; appearance?: Look };
 export type Tessellation = Body[] | { bodies?: Body[]; facetPoints?: Vec[] };
 
-// The part's appearance, else its first face's. Onshape sends colour channels and opacity as
-// 0-255 (older answers 0-1).
+// Onshape's colour, in whichever shape it comes: [r, g, b], { red, green, blue } or { r, g, b },
+// "#rrggbb", or a packed 0xrrggbb number. Channels 0-255 or 0-1.
+function rgb(c: unknown): [number, number, number] | undefined {
+  let v: unknown[] | undefined;
+  if (Array.isArray(c)) v = c;
+  else if (typeof c === "string" && /^#?[0-9a-f]{6}$/i.test(c)) v = [0, 2, 4].map((i) => parseInt(c.replace("#", "").slice(i, i + 2), 16));
+  else if (typeof c === "number" && Number.isFinite(c)) v = [(c >> 16) & 255, (c >> 8) & 255, c & 255];
+  else if (c && typeof c === "object") {
+    const o = c as Record<string, unknown>;
+    v = [o.red ?? o.r, o.green ?? o.g, o.blue ?? o.b];
+  }
+  const n = v?.slice(0, 3).map(Number);
+  if (!n || n.length < 3 || n.some((x) => !Number.isFinite(x))) return undefined;
+  const scale = n.some((x) => x > 1) ? 255 : 1;
+  return [n[0] / scale, n[1] / scale, n[2] / scale];
+}
+
+// The part's appearance, else its first face's. Opacity is 0-255 (older answers 0-1).
 function appearanceOf(body: Body): Appearance | undefined {
-  const look = body.appearance?.color ? body.appearance : body.faces?.find((f) => f.appearance?.color)?.appearance;
-  const c = look?.color;
-  if (!c || c.length < 3) return undefined;
-  const scale = c.some((v) => v > 1) ? 255 : 1;
-  const o = look.opacity;
-  const opacity = o === undefined ? 1 : o > 1 ? o / 255 : o;
-  return { color: [c[0] / scale, c[1] / scale, c[2] / scale], opacity: Math.min(1, Math.max(0, opacity)) };
+  const looks = [body.appearance, ...(body.faces ?? []).map((f) => f.appearance)];
+  for (const look of looks) {
+    const color = look && rgb(look.color);
+    if (!color) continue;
+    const o = Number(look.opacity ?? 1);
+    const opacity = !Number.isFinite(o) ? 1 : o > 1 ? o / 255 : o;
+    return { color, opacity: Math.min(1, Math.max(0, opacity)) };
+  }
+  return undefined;
 }
 
 const xyz = (v: Vec): [number, number, number] => (Array.isArray(v) ? [v[0], v[1], v[2]] : [v.x, v.y, v.z]);
