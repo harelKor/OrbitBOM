@@ -45,7 +45,7 @@ export function PartCard({
   const [stage, setStage] = useState<StageView | null>(null);
 
   return (
-    <div data-selected={!!selected} className="card-interactive group flex flex-col text-sm">
+    <div id={`part-${part.id}`} data-selected={!!selected} className="card-interactive group flex scroll-mt-20 flex-col text-sm target:border-accent target:ring-2 target:ring-accent">
       {onToggleSelect && (
         // While selecting, a click anywhere on the card toggles it.
         <button

@@ -4,6 +4,7 @@ import { AutoRefresh } from "@/components/bom/AutoRefresh";
 import { BomView } from "@/components/bom/BomView";
 import { ManualPartButton } from "@/components/bom/ManualPartButton";
 import { UpdateBomButton } from "@/components/bom/UpdateBomButton";
+import { partTitle } from "@/components/bom/types";
 import { RobotViewer } from "@/components/dashboard/RobotViewer";
 import { StatusBar } from "@/components/StatusBar";
 import { STATUSES } from "@/config/statuses";
@@ -11,6 +12,7 @@ import { requireMember } from "@/lib/auth";
 import { listInventoryNames } from "@/lib/data/inventory";
 import { listSystemMerges, listSystemParts } from "@/lib/data/parts";
 import { getSystem } from "@/lib/data/robots";
+import { fabStage } from "@/lib/fab";
 import { robotModelBuiltAt } from "@/lib/model/build";
 import { isEditMode } from "@/lib/mode";
 
@@ -35,7 +37,11 @@ export default async function SystemPage({
     robotModelBuiltAt(robot.id),
   ]);
   const statusColor = new Map<string, string>(STATUSES.map((s) => [s.name, s.color]));
-  const viewerParts = parts.flatMap((p) => (p.modelKey ? [{ key: p.modelKey, color: statusColor.get(p.status) ?? "#cbd5e1" }] : []));
+  const viewerParts = parts.flatMap((p) =>
+    p.modelKey
+      ? [{ key: p.modelKey, color: statusColor.get(p.status) ?? "#cbd5e1", id: p.id, systemId: p.systemId, name: partTitle(p), fab: fabStage(p) !== null }]
+      : [],
+  );
 
   return (
     <div className="space-y-5">
