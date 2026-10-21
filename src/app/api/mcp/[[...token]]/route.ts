@@ -13,6 +13,7 @@ const PROTOCOL = "2025-06-18";
 const INSTRUCTIONS =
   "OrbitMech is FRC team 1690's BOM and inventory. Use list_statuses, list_machines and list_materials for exact names. " +
   "Write tools always preview first: show the member the preview and apply with the confirm_token only after they agree. " +
+  "Every write tool needs ai_name: your own name (for example \"Claude Opus 5.5\"), which the team sees on To Review and AI logs. " +
   "Every applied change returns a batch_id that undo_batch can revert. " +
   "To set up parts' material and processes yourself, read parts_to_set_up and apply with set_up_parts: those parts wait in To Review for their designer.";
 
