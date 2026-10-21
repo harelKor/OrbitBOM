@@ -60,18 +60,36 @@ export function NameField({ part, save, bare = false }: Props & { bare?: boolean
   );
 }
 
-export function TypeField({ part, save }: Props) {
+// The bold COTS / In-house badge over a part card's thumbnail: gold for bought, Orbit blue for made.
+export function TypeBadge({ type }: { type: CardPart["classification"] }) {
+  return (
+    <span
+      className={`rounded-full px-2.5 py-1 text-[11px] leading-none font-bold tracking-wide shadow-sm ${
+        type === "cots" ? "bg-amber-400 text-amber-950" : "bg-accent text-white"
+      }`}
+    >
+      {TYPE_LABELS[type]}
+    </span>
+  );
+}
+
+export function TypeField({ part, save, badge = false }: Props & { badge?: boolean }) {
   const locked = !useEditMode();
   return (
     <Popover locked={locked}
+      hideCaret={badge}
       trigger={
-        <span
-          className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${
-            part.classification === "cots" ? "border-amber-300 text-amber-700" : "border-emerald-300 text-emerald-700"
-          }`}
-        >
-          {TYPE_LABELS[part.classification]}
-        </span>
+        badge ? (
+          <TypeBadge type={part.classification} />
+        ) : (
+          <span
+            className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${
+              part.classification === "cots" ? "border-amber-300 text-amber-700" : "border-emerald-300 text-emerald-700"
+            }`}
+          >
+            {TYPE_LABELS[part.classification]}
+          </span>
+        )
       }
     >
       {(close) => (

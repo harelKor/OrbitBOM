@@ -52,6 +52,7 @@ else
           })),
         );
       }
+      if (u.pathname.startsWith("/api/v10/thumbnails/")) return new Response("png:assembly", { headers: { "content-type": "image/png" } });
       if (u.pathname.startsWith("/thumb/")) return new Response(`png:${u.pathname}`, { headers: { "content-type": "image/png" } });
       if (u.pathname.endsWith("/stl")) return new Response("solid stl");
       if (u.pathname.endsWith("/translations")) return json({ id: "t1", requestState: "ACTIVE", documentId: DID });
@@ -97,11 +98,15 @@ else
 
     it("fetches thumbnails once, and again only for changed parts", async () => {
       let s = await refreshThumbnails(system.id, member.id, Date.now() + 30_000);
-      expect(s).toEqual({ fetched: 2, pending: 0, calls: 3 });
+      // The parts list, two part images and the assembly's own picture.
+      expect(s).toEqual({ fetched: 2, pending: 0, calls: 4 });
       expect(bucket.get(thumbKey(plate.id, "mvA1"))).toBe("png:/thumb/A/mvA1");
+      const [sys] = await db.select().from(schema.systems).where(eq(schema.systems.id, system.id));
+      expect(sys.thumbnailPath).toMatch(new RegExp(`^thumbs/systems/${system.id}/`));
+      expect(bucket.get(sys.thumbnailPath!)).toBe("png:assembly");
 
       s = await refreshThumbnails(system.id, member.id, Date.now() + 30_000);
-      expect(s).toEqual({ fetched: 0, pending: 0, calls: 1 });
+      expect(s).toEqual({ fetched: 0, pending: 0, calls: 2 });
 
       microversions = { ...microversions, B: "mvB2" };
       s = await refreshThumbnails(system.id, member.id, Date.now() + 30_000);

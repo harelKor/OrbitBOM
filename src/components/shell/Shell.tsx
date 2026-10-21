@@ -90,7 +90,7 @@ export function Shell({
   );
 }
 
-// The wide-screen collapse handle: a round arrow half over the column's inner edge, at the
+// The wide-screen collapse handle: a bright accent tab with a big arrow, half over the column's inner edge, at the
 // middle of the screen. It points the way the column will move.
 function EdgeArrow({ side, collapsed, onClick }: { side: "left" | "right"; collapsed: boolean; onClick: () => void }) {
   const pointsLeft = side === "left" ? !collapsed : collapsed;
@@ -99,13 +99,13 @@ function EdgeArrow({ side, collapsed, onClick }: { side: "left" | "right"; colla
       onClick={onClick}
       aria-label={`${collapsed ? "Show" : "Hide"} ${side === "left" ? "pages" : "robots and systems"}`}
       title={`${collapsed ? "Show" : "Hide"} ${side === "left" ? "pages" : "robots and systems"}`}
-      className={`press fixed top-1/2 z-50 hidden h-12 w-5 -translate-y-1/2 items-center justify-center border border-line-strong bg-surface text-muted shadow-sm hover:text-fg ${
+      className={`press fixed top-1/2 z-50 hidden h-20 w-8 -translate-y-1/2 items-center justify-center bg-accent text-white shadow-[0_6px_18px_-4px_var(--color-accent)] hover:bg-accent-hover ${
         side === "left"
-          ? "left-[calc(var(--shell-left)-1px)] rounded-r-md border-l-0 lg:flex"
-          : "right-[calc(var(--shell-right)-1px)] rounded-l-md border-r-0 xl:flex"
+          ? "left-[calc(var(--shell-left)-1px)] rounded-r-xl lg:flex"
+          : "right-[calc(var(--shell-right)-1px)] rounded-l-xl xl:flex"
       }`}
     >
-      <Icon name="chevron" className={`h-3.5 w-3.5 transition-transform duration-150 ${pointsLeft ? "rotate-180" : ""}`} />
+      <Icon name="chevron" className={`h-6 w-6 stroke-[2.5] transition-transform duration-150 ${pointsLeft ? "rotate-180" : ""}`} />
     </button>
   );
 }
