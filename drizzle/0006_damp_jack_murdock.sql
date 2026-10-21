@@ -1,0 +1,1 @@
+ALTER TABLE "part_groups" ADD COLUMN "machine" text;
