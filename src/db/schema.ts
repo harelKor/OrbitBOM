@@ -150,6 +150,9 @@ export const parts = pgTable(
     doneProcess1: integer("done_process1").notNull().default(0),
     doneProcess2: integer("done_process2").notNull().default(0),
     designState: text("design_state"),
+    // When the part was first made (reached a done status with a machine); it stays in To Fab's
+    // Finished section from then on.
+    fabFinishedAt: timestamp("fab_finished_at", { withTimezone: true }),
 
     priority: priority("priority").notNull().default("normal"),
     deadline: date("deadline"),

@@ -2,6 +2,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { eq, inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { isFabFinished } from "@/lib/fab";
 import { currentVisit } from "@/lib/visits";
 import { planPartUpdate, type PartChanges, type Plan } from "./changes";
 
@@ -51,7 +52,12 @@ export async function applyEachPartChanges(
       changed++;
       await tx
         .update(parts)
-        .set({ ...set, lastModifiedAt: new Date(), lastModifiedBy: ctx.memberId })
+        .set({
+          ...set,
+          ...(!row.fabFinishedAt && isFabFinished({ ...row, ...set }) && { fabFinishedAt: new Date() }),
+          lastModifiedAt: new Date(),
+          lastModifiedBy: ctx.memberId,
+        })
         .where(eq(parts.id, row.id));
       await tx.insert(partHistory).values(
         history.map((h) => ({

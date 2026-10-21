@@ -3,7 +3,7 @@
 // "In Process" covers every status between Ready to Fab and the done statuses (plan conflict 5).
 
 import type { StatusName } from "@/config/statuses";
-import { computeStatus, type StatusInput } from "@/lib/status";
+import { computeStatus, isDone, type StatusInput } from "@/lib/status";
 
 export const IN_PROCESS_STATUSES: StatusName[] = ["Build In Queue", "In Process 1", "Ready for Process 2", "Post Processing"];
 export const READY_STATUS: StatusName = "Ready to Fab";
@@ -25,6 +25,10 @@ export function fabStage(part: StatusInput): FabStage {
 // The machines a part goes through, in order.
 export const machinesOf = (part: Pick<StatusInput, "preProcess" | "process1" | "process2">) =>
   [part.preProcess, part.process1, part.process2].filter((m): m is string => !!m);
+
+// A made part: an in-house part with a machine that reached a done status. To Fab keeps it in
+// Finished for good (parts.fab_finished_at), even when its status moves on.
+export const isFabFinished = (part: StatusInput) => part.classification !== "cots" && machinesOf(part).length > 0 && isDone(part);
 
 // A batch made under a machine is named after it and the day it was made: "Laser 21/10".
 export function fabBatchName(machineName: string, date = new Date()) {
