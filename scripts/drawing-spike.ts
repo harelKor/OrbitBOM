@@ -59,8 +59,8 @@ async function json(baseUrl: string, path: string): Promise<any> {
 const mm = (m: unknown) => Math.round(Number(m) * 1e5) / 100; // metres → mm, 2 decimals
 const near = (a: number, b: number) => Math.abs(a - b) <= HOLE_MATCH_MM;
 
-// What the engine needs from one body, read defensively: the answer's exact shape is what
-// this spike is checking.
+// What the engine needs from one body. Units are metres; surface and curve types are upper case
+// (PLANE, CYLINDER, LINE, CIRCLE), lowered here.
 function summarize(body: any) {
   const faces: any[] = body.faces ?? [];
   const edges: any[] = body.edges ?? [];
@@ -71,10 +71,9 @@ function summarize(body: any) {
     const type = String(s.type ?? "unknown").toLowerCase();
     faceTypes[type] = (faceTypes[type] ?? 0) + 1;
     if (type === "cylinder" && s.radius != null) {
-      // A hole's wall is one full cylinder; an inner corner is a part of one. Onshape may split a
-      // full hole into two half faces, so "full" is a guess from the face's loops.
-      const loops: any[] = f.loops ?? [];
-      cylinders.push({ d: mm(2 * s.radius), full: loops.length >= 2 });
+      // Confirmed on real parts (2026-10-21): orientation false = concave (holes, inner walls,
+      // inner corners); a full hole has two loops, an inner corner one.
+      if (f.orientation === false) cylinders.push({ d: mm(2 * s.radius), full: (f.loops ?? []).length >= 2 });
     }
   }
   const circles = edges.filter((e) => String(e.curve?.type ?? "").toLowerCase() === "circle").map((e) => mm(2 * e.curve.radius));
