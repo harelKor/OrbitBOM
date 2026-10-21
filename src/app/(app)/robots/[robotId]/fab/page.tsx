@@ -4,7 +4,7 @@ import { FabView } from "@/components/fab/FabView";
 import { requireMember } from "@/lib/auth";
 import { listRobotGroups } from "@/lib/data/groups";
 import { listInventoryNames } from "@/lib/data/inventory";
-import { listRobotParts } from "@/lib/data/parts";
+import { listMemberNames, listRobotParts } from "@/lib/data/parts";
 import { getRobot } from "@/lib/data/robots";
 
 // Fab batches are part groups with a machine; groups named "FAB n" come from before batches had one.
@@ -22,7 +22,12 @@ export default async function FabPage({
   const [{ robotId }, { machine }] = await Promise.all([params, searchParams]);
   const data = await getRobot(robotId);
   if (!data) notFound();
-  const [parts, batches, inventory] = await Promise.all([listRobotParts(data.robot.id), listRobotGroups(data.robot.id), listInventoryNames()]);
+  const [parts, batches, inventory, memberNames] = await Promise.all([
+    listRobotParts(data.robot.id),
+    listRobotGroups(data.robot.id),
+    listInventoryNames(),
+    listMemberNames(),
+  ]);
   const machineName = machine ? getMachine(machine)?.name : undefined;
 
   return (
@@ -33,7 +38,8 @@ export default async function FabPage({
       </div>
       <FabView
         parts={parts}
-        batches={batches.filter(isFabBatch).map(({ id, name, machine }) => ({ id, name, machine }))}
+        batches={batches.filter(isFabBatch).map(({ id, name, machine, madeBy }) => ({ id, name, machine, madeBy }))}
+        memberNames={memberNames}
         machine={machineName ? machine : undefined}
         robotId={data.robot.id}
         inventory={inventory}

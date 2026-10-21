@@ -1,10 +1,10 @@
 import "server-only";
-import { and, desc, eq, inArray, isNotNull, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, like, ne, notExists, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { thumbKey } from "@/lib/onshape/thumbnails";
 import { imageUrl } from "@/lib/storage/r2";
 
-const { parts, partHistory, systems, members } = schema;
+const { parts, partHistory, systems, members, dismissedActions } = schema;
 
 export type RecentAction = {
   visitId: string;
@@ -13,6 +13,7 @@ export type RecentAction = {
   memberName: string | null;
   at: Date; // the visit's last change
   fields: string[];
+  statusTo: string | null; // the last status set by hand in the visit
   partCount: number;
   firstPartId: string;
   thumbs: { id: string; name: string; url: string | null }[];
@@ -48,8 +49,23 @@ const fieldName = (f: string) => FIELD_NAMES[f] ?? f.replace(/([A-Z])/g, " $1").
 
 const THUMBS = 6;
 
-// The robot's recent actions: each page visit in which someone changed its parts, newest first.
-export async function listRecentActions(robotId: string, limit = 9): Promise<RecentAction[]> {
+// Status is stored as these fields (see applyStatus and applyCounters).
+const STATUS_FIELDS = ["designState", "donePreprocess", "doneProcess1", "doneProcess2"];
+
+// An action drops off a week after it happened, or when the member closes it.
+const KEEP_DAYS = 7;
+
+export type ActionScope = {
+  robotId: string;
+  memberId: string; // whose dismissed actions to leave out
+  systemId?: string; // only this system's parts
+  fabOnly?: boolean; // only status changes made on To Fab
+};
+
+// Recent actions: each page visit in which someone changed the scope's parts, newest first.
+export async function listRecentActions(scope: ActionScope, limit = 9): Promise<RecentAction[]> {
+  const { robotId } = scope;
+  const since = new Date(Date.now() - KEEP_DAYS * 86_400_000);
   const at = sql<Date>`max(${partHistory.at})`.mapWith((v: string | Date) => new Date(v));
   const visits = await db
     .select({
@@ -58,6 +74,7 @@ export async function listRecentActions(robotId: string, limit = 9): Promise<Rec
       memberId: sql<string | null>`(array_agg(${partHistory.memberId} order by ${partHistory.at} desc))[1]`,
       at,
       fields: sql<string[]>`array_agg(distinct ${partHistory.field})`,
+      statusTo: sql<string | null>`(array_remove(array_agg(case when ${partHistory.field} = 'designState' then ${partHistory.newValue} #>> '{}' end order by ${partHistory.at} desc), null))[1]`,
       partIds: sql<string[]>`array_agg(${partHistory.partId} order by ${partHistory.at} desc)`,
     })
     .from(partHistory)
@@ -66,8 +83,18 @@ export async function listRecentActions(robotId: string, limit = 9): Promise<Rec
     .where(
       and(
         eq(systems.robotId, robotId),
+        scope.systemId ? eq(parts.systemId, scope.systemId) : undefined,
         isNotNull(partHistory.visitId),
-        ne(partHistory.field, "overriddenFields"),
+        gte(partHistory.at, since),
+        scope.fabOnly
+          ? and(like(partHistory.page, "/robots/%/fab%"), inArray(partHistory.field, STATUS_FIELDS))
+          : ne(partHistory.field, "overriddenFields"),
+        notExists(
+          db
+            .select({ one: sql`1` })
+            .from(dismissedActions)
+            .where(and(eq(dismissedActions.memberId, scope.memberId), eq(dismissedActions.visitId, partHistory.visitId))),
+        ),
       ),
     )
     .groupBy(partHistory.visitId)
@@ -102,6 +129,7 @@ export async function listRecentActions(robotId: string, limit = 9): Promise<Rec
       memberName: v.memberId ? (memberName.get(v.memberId) ?? null) : null,
       at: v.at,
       fields: [...new Set(v.fields.map(fieldName))],
+      statusTo: v.statusTo,
       partCount: ids.length,
       firstPartId: ids[0],
       thumbs: ids.slice(0, THUMBS).map((id) => {

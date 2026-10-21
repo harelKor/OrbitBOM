@@ -19,7 +19,7 @@ type BuildAnswer =
   | { error: string };
 
 // A BOM part as the viewer knows it: its key in the model, status colour, and where its card is.
-export type ViewerPart = { key: string; color: string; id: string; systemId: string; name: string; fab: boolean; material: string | null };
+export type ViewerPart = { key: string; color: string; id: string; systemId: string; name: string; fab: boolean; material: string | null; onshapeMaterial: string | null };
 
 // The 3D robot stage. The model is built from the systems' Onshape assemblies on demand
 // (Edit mode's Update 3D model) and kept in R2; viewing it costs no Onshape calls. The expand
@@ -59,12 +59,12 @@ export function RobotViewer({
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
   const materialOverrides = useMaterialColors();
   const colorMap = useMemo(
-    () => new Map(parts.map((p) => [p.key, colors === "material" ? materialColor(p.material, materialOverrides) : p.color])),
+    () => new Map(parts.map((p) => [p.key, colors === "material" ? materialColor(p.material, materialOverrides, p.onshapeMaterial) : p.color])),
     [parts, colors, materialOverrides],
   );
   // Material mode's legend: the categories this view's parts are in, in the panel's order.
   const materials = useMemo(() => {
-    const present = new Set(parts.map((p) => materialColorGroup(p.material)));
+    const present = new Set(parts.map((p) => materialColorGroup(p.material, p.onshapeMaterial)));
     return MATERIAL_COLOR_GROUPS.filter((m) => present.has(m)).map((name) => ({ name, color: materialOverrides[name] ?? DEFAULT_MATERIAL_COLORS[name] }));
   }, [parts, materialOverrides]);
   const legend = colors === "status" ? statuses : colors === "material" ? materials : [];

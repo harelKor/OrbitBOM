@@ -1,14 +1,17 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { RecentActions } from "@/components/actions/RecentActions";
 import { AutoRefresh } from "@/components/bom/AutoRefresh";
 import { BomView } from "@/components/bom/BomView";
 import { ManualPartButton } from "@/components/bom/ManualPartButton";
 import { UpdateBomButton } from "@/components/bom/UpdateBomButton";
 import { partTitle } from "@/components/bom/types";
 import { RobotViewer } from "@/components/dashboard/RobotViewer";
+import { QaSection } from "@/components/qa/QaSection";
 import { StatusBar } from "@/components/StatusBar";
 import { STATUSES } from "@/config/statuses";
 import { requireMember } from "@/lib/auth";
+import { listRecentActions } from "@/lib/data/actions";
 import { listInventoryNames } from "@/lib/data/inventory";
 import { listSystemMerges, listSystemParts } from "@/lib/data/parts";
 import { getSystem } from "@/lib/data/robots";
@@ -29,17 +32,18 @@ export default async function SystemPage({
   const data = await getSystem(robotId, systemId);
   if (!data) notFound();
   const { system, robot, breakdown } = data;
-  const [parts, merges, inventory, edit, modelBuiltAt] = await Promise.all([
+  const [parts, merges, inventory, edit, modelBuiltAt, fabActions] = await Promise.all([
     listSystemParts(system.id),
     listSystemMerges(system.id),
     listInventoryNames(),
     isEditMode(),
     robotModelBuiltAt(robot.id),
+    listRecentActions({ robotId: robot.id, memberId: member.id, systemId: system.id, fabOnly: true }, 30),
   ]);
   const statusColor = new Map<string, string>(STATUSES.map((s) => [s.name, s.color]));
   const viewerParts = parts.flatMap((p) =>
     p.modelKey
-      ? [{ key: p.modelKey, color: statusColor.get(p.status) ?? "#cbd5e1", id: p.id, systemId: p.systemId, name: partTitle(p), fab: fabStage(p) !== null, material: p.material }]
+      ? [{ key: p.modelKey, color: statusColor.get(p.status) ?? "#cbd5e1", id: p.id, systemId: p.systemId, name: partTitle(p), fab: fabStage(p) !== null, material: p.material, onshapeMaterial: p.geometry?.onshapeMaterial ?? null }]
       : [],
   );
 
@@ -68,6 +72,8 @@ export default async function SystemPage({
         </div>
       </div>
 
+      <QaSection parts={parts.filter((p) => p.status === "Ready for QA")} inventory={inventory} isAdmin={member.isAdmin} robotId={robot.id} />
+
       {system.assemblyUrl && (
         <>
           {edit && <UpdateBomButton systemId={system.id} lastSyncedAt={system.lastSyncedAt} />}
@@ -75,19 +81,26 @@ export default async function SystemPage({
         </>
       )}
 
-      {system.assemblyUrl && (
-        <div className="flex h-[26rem] flex-col">
-          <RobotViewer
-            robotId={robot.id}
-            systemId={system.id}
-            statuses={breakdown.statuses.filter((s) => s.count > 0)}
-            parts={viewerParts}
-            builtAt={modelBuiltAt}
-            hasAssembly
-            edit={edit}
-          />
-        </div>
-      )}
+      <div className={`grid gap-3 ${system.assemblyUrl ? "lg:h-[26rem] lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]" : ""}`}>
+        {(system.assemblyUrl || fabActions.length > 0) && (
+          <div className="flex max-h-80 min-h-0 flex-col lg:max-h-none">
+            <RecentActions actions={fabActions} max={30} variant="list" />
+          </div>
+        )}
+        {system.assemblyUrl && (
+          <div className="flex h-[26rem] min-w-0 flex-col">
+            <RobotViewer
+              robotId={robot.id}
+              systemId={system.id}
+              statuses={breakdown.statuses.filter((s) => s.count > 0)}
+              parts={viewerParts}
+              builtAt={modelBuiltAt}
+              hasAssembly
+              edit={edit}
+            />
+          </div>
+        )}
+      </div>
 
       <BomView parts={parts} inventory={inventory} isAdmin={member.isAdmin} merges={merges} mergeSystemId={system.id} robotId={robot.id} toolbar={<ManualPartButton key="manual-part" systemId={system.id} />} />
       {parts.length === 0 && (

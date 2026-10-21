@@ -234,6 +234,7 @@ export const partGroups = pgTable("part_groups", {
   description: text("description"),
   priority: priority("priority").notNull().default("normal"),
   machine: text("machine"), // set on a To Fab batch: the machine (config id) its parts are made on
+  madeBy: text("made_by"), // a To Fab batch's member, by name (who created it, changeable)
   createdAt: createdAt(),
 });
 
@@ -325,6 +326,19 @@ export const partHistory = pgTable(
     index("part_history_batch_idx").on(t.batchId),
     index("part_history_visit_idx").on(t.visitId),
   ],
+);
+
+// Recent actions a member closed with X; they stay hidden for that member only.
+export const dismissedActions = pgTable(
+  "dismissed_actions",
+  {
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    visitId: uuid("visit_id").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.memberId, t.visitId] })],
 );
 
 // The team's 3D colour for a material category, where it differs from the default in

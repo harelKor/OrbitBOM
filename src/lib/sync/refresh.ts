@@ -3,7 +3,7 @@ import { and, eq, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { refreshIntervalMinutes } from "@/config/refresh";
 import { OnshapeError } from "@/lib/onshape/client";
-import { refreshThumbnails } from "@/lib/onshape/thumbnails";
+import { missingAssemblyThumbnails, refreshThumbnails } from "@/lib/onshape/thumbnails";
 import { updateBomFromOnshape, type SyncSummary } from "./updateBom";
 
 const { robots, syncJobs, systems } = schema;
@@ -40,7 +40,9 @@ export async function refreshSystem(
   try {
     const s: SyncSummary = await updateBomFromOnshape(systemId, memberId, { force: false });
     let calls = s.calls;
-    if (!s.skipped) calls += (await refreshThumbnails(systemId, memberId, deadline)).calls;
+    calls += s.skipped
+      ? await missingAssemblyThumbnails(systemId, memberId)
+      : (await refreshThumbnails(systemId, memberId, deadline)).calls;
     return { systemId, changed: !s.skipped, calls };
   } catch (err) {
     if (err instanceof OnshapeError) return { systemId, changed: false, calls: 0, error: err.message };

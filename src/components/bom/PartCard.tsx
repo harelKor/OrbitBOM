@@ -6,11 +6,12 @@ import { fabStage } from "@/lib/fab";
 import { deleteManualPart, unmergeParts } from "@/app/(app)/parts-actions";
 import { useEditMode } from "@/components/shell/ModeContext";
 import { PartStage, type StageView } from "@/components/dashboard/PartStage";
-import { CheckBadge } from "@/components/ui/CheckBadge";
+import { materialTint } from "@/components/shell/MaterialColors";
+import { CheckBadge, CheckIcon } from "@/components/ui/CheckBadge";
 import { Icon } from "@/components/ui/Icon";
 import { useBom } from "./BomContext";
 import { PART_FILE_TYPES } from "@/config/fileTypes";
-import { MachineField, MaterialField, NameField, QuantityField, SLOTS, StatusField, TextField, TypeBadge, TypeField, type SaveFn } from "./fields";
+import { MachineField, MaterialField, NameField, QuantityField, SLOTS, StatusField, TypeBadge, TypeField, type SaveFn } from "./fields";
 import { InputEditor, Popover } from "./Popover";
 import { ownerPartId, partIds, partTitle, type CardPart } from "./types";
 
@@ -29,12 +30,18 @@ export function PartCard({
   showSystem = false,
   selected,
   onToggleSelect,
+  fabCounter = false,
+  style,
+  onCheck,
 }: {
   part: CardPart;
   save: SaveFn;
   showSystem?: boolean;
   selected?: boolean;
   onToggleSelect?: () => void; // set while a selection mode (Bulk edit, Merge) is on
+  fabCounter?: boolean; // To Fab: − / + on the thumbnail's bottom corners count parts made
+  style?: React.CSSProperties;
+  onCheck?: () => void; // Ready for QA: a big check mark replaces Download and moves the part to In Stock
 }) {
   const edit = useEditMode();
   const { robotId } = useBom();
@@ -42,11 +49,14 @@ export function PartCard({
   // The process being worked on: the first slot whose done counter hasn't reached the quantity.
   const current = machines.find((s) => part[s.done] < Math.max(part.quantity, 1));
   const showCounter = !!current && part.classification !== "cots" && fabStage(part) !== null;
+  // On To Fab, − takes back the last one counted (also on a finished part), + counts one more.
+  const counted = machines.slice(0, current ? machines.indexOf(current) + 1 : machines.length).reverse().find((s) => part[s.done] > 0);
+  const fabControls = fabCounter && part.classification !== "cots" && machines.length > 0;
   const format = cadFormat(part);
   const [stage, setStage] = useState<StageView | null>(null);
 
   return (
-    <div id={`part-${part.id}`} data-selected={!!selected} data-part={partIds(part)} className="card-interactive group flex scroll-mt-20 flex-col text-sm target:border-accent target:ring-2 target:ring-accent">
+    <div id={`part-${part.id}`} data-selected={!!selected} data-part={partIds(part)} style={style} className="card-interactive group flex scroll-mt-20 flex-col text-sm target:border-accent target:ring-2 target:ring-accent">
       {onToggleSelect && (
         // While selecting, a click anywhere on the card toggles it.
         <button
@@ -67,7 +77,7 @@ export function PartCard({
           <button type="button" onClick={() => setStage("part")} className="flex h-full w-full cursor-zoom-in items-center justify-center" aria-label={`3D preview of ${partTitle(part)}`}>
             {part.thumbUrl ? (
               // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
-              <img src={part.thumbUrl} alt="" loading="lazy" className="h-full w-full object-contain p-3" />
+              <img src={part.thumbUrl} alt="" loading="lazy" className="h-full w-full object-contain p-3" style={{ filter: materialTint(part.material, part.geometry?.onshapeMaterial) }} />
             ) : (
               <span className="text-xs text-muted">No thumbnail yet, click for 3D</span>
             )}
@@ -85,7 +95,19 @@ export function PartCard({
           )}
         </div>
         <div className="absolute top-2 right-2 flex gap-1.5">
-          {(format || part.files.length > 0) && <DownloadMenu part={part} format={format} />}
+          {onCheck ? (
+            <button
+              type="button"
+              onClick={onCheck}
+              className="press flex h-14 w-14 items-center justify-center rounded-full border-2 border-emerald-400 bg-emerald-500/90 text-white shadow-lg backdrop-blur-md hover:bg-emerald-400"
+              aria-label={`Checked: move ${partTitle(part)} to In Stock`}
+              title="Checked: move to In Stock"
+            >
+              <CheckIcon className="h-8 w-8" />
+            </button>
+          ) : (
+            (format || part.files.length > 0) && <DownloadMenu part={part} format={format} />
+          )}
           {robotId && part.modelKey && (
             <button type="button" onClick={() => setStage("locate")} className="overlay-btn group/tip relative" aria-label="Locate in robot">
               <Icon name="locate" />
@@ -93,7 +115,29 @@ export function PartCard({
             </button>
           )}
         </div>
-        {part.note && <NoteCloud note={part.note} />}
+        {part.note && <NoteCloud note={part.note} raised={fabControls} />}
+        {fabControls && (
+          <>
+            <button
+              type="button"
+              onClick={() => counted && save({ [counted.done]: part[counted.done] - 1 })}
+              disabled={!counted}
+              className="overlay-btn absolute bottom-2 left-2 text-lg font-bold disabled:opacity-30"
+              aria-label="One less made"
+            >
+              −
+            </button>
+            <button
+              type="button"
+              onClick={() => current && save({ [current.done]: part[current.done] + 1 })}
+              disabled={!current}
+              className="overlay-btn absolute right-2 bottom-2 text-lg font-bold disabled:opacity-30"
+              aria-label="One more made"
+            >
+              +
+            </button>
+          </>
+        )}
       </div>
       {stage && (
         <PartStage
@@ -102,6 +146,7 @@ export function PartCard({
           modelKey={part.modelKey}
           name={partTitle(part)}
           material={part.material}
+          onshapeMaterial={part.geometry?.onshapeMaterial ?? null}
           view={stage}
           onView={setStage}
           onClose={() => setStage(null)}
@@ -113,11 +158,6 @@ export function PartCard({
           <div className="min-w-0 flex-1 truncate font-semibold text-fg" title={part.displayName ?? part.onshapeName ?? undefined}>
             {edit ? <NameField part={part} save={save} bare /> : (part.displayName ?? part.onshapeName ?? "Unnamed part")}
           </div>
-          {(part.partNumber || edit) && (
-            <span className="shrink-0 font-mono text-[11px] text-subtle">
-              {edit ? <TextField part={part} save={save} field="partNumber" empty="P/N" /> : part.partNumber}
-            </span>
-          )}
           {edit && <EditMenu part={part} />}
         </div>
         {showSystem && <div className="-mt-1.5 truncate text-xs text-subtle">{part.systemName}</div>}
@@ -141,7 +181,13 @@ export function PartCard({
             SLOTS.filter((s) => !part[s.key] && s.stage === "Process")
               .slice(0, 1)
               .map((slot) => <MachineField key={slot.key} part={part} save={save} slot={slot} placeholder={`+ ${slot.label}`} className={`${pill} border-dashed text-subtle`} />)}
-          {showCounter && <DoneCounter part={part} save={save} slot={current!} />}
+          {fabControls ? (
+            <span className="ml-auto font-mono text-[11px] font-semibold text-fg tabular-nums" title={current ? `Made at ${getMachine(part[current.key]!)?.name}` : "All made"}>
+              {current ? part[current.done] : part.quantity}/{part.quantity}
+            </span>
+          ) : (
+            showCounter && <DoneCounter part={part} save={save} slot={current!} />
+          )}
         </div>
       </div>
     </div>
@@ -200,9 +246,9 @@ function DownloadMenu({ part, format }: { part: CardPart; format: ExportFormat |
 }
 
 // The part's note as a comic-book thought cloud over the thumbnail; the notes button edits it.
-function NoteCloud({ note }: { note: string }) {
+function NoteCloud({ note, raised = false }: { note: string; raised?: boolean }) {
   return (
-    <div className="pointer-events-none absolute bottom-3 left-3 max-w-[70%]">
+    <div className={`pointer-events-none absolute left-3 max-w-[70%] ${raised ? "bottom-14" : "bottom-3"}`}>
       <div className="relative rounded-[1.4rem] border-2 border-[#111318] bg-white px-3 py-1.5 text-xs leading-snug font-semibold text-[#111318] shadow-[2px_3px_0_0_rgba(17,19,24,0.85)]">
         <span className="line-clamp-3 break-words whitespace-pre-line">{note}</span>
       </div>
