@@ -68,14 +68,15 @@ export async function disconnect(memberId: string) {
   await db.update(schema.members).set({ onshapeConnected: false }).where(eq(schema.members.id, memberId));
 }
 
-async function accessToken(memberId: string): Promise<string> {
+// `fresh` skips the stored access token (Onshape rejected it before it expired).
+async function accessToken(memberId: string, fresh = false): Promise<string> {
   const [row] = await db
     .select()
     .from(schema.onshapeTokens)
     .where(eq(schema.onshapeTokens.memberId, memberId))
     .limit(1);
   if (!row) throw new NotConnectedError();
-  if (row.expiresAt.getTime() - Date.now() > 60_000) return decrypt(row.accessTokenEnc);
+  if (!fresh && row.expiresAt.getTime() - Date.now() > 60_000) return decrypt(row.accessTokenEnc);
   try {
     const t = await requestToken({ grant_type: "refresh_token", refresh_token: decrypt(row.refreshTokenEnc) });
     await saveTokens(memberId, t);
@@ -119,22 +120,29 @@ export function onshapeClient(memberId: string, baseUrl: string): OnshapeClient 
     if (new URL(url).origin !== new URL(baseUrl).origin) throw new OnshapeError("Unexpected Onshape link.");
     await countCall(memberId);
     client.calls++;
-    const headers = {
-      Accept: accept,
-      ...(init.body ? { "Content-Type": "application/json" } : {}),
-      Authorization: `Bearer ${await accessToken(memberId)}`,
-      ...init.headers,
-    };
-    // Exports and thumbnails answer with a redirect, sometimes to another Onshape host. fetch drops
-    // the token when following a redirect to another host, so follow Onshape redirects by hand.
-    let res = await fetch(url, { ...init, headers, redirect: "manual" });
-    for (let hops = 0; hops < 3 && res.status >= 300 && res.status < 400; hops++) {
-      const next = new URL(res.headers.get("location") ?? "", url);
-      if (next.protocol !== "https:" || !/(^|\.)onshape\.com$/i.test(next.hostname)) {
-        throw new OnshapeError("Unexpected Onshape link.");
+    const send = async (fresh: boolean) => {
+      const headers = {
+        Accept: accept,
+        ...(init.body ? { "Content-Type": "application/json" } : {}),
+        Authorization: `Bearer ${await accessToken(memberId, fresh)}`,
+        ...init.headers,
+      };
+      // Exports and thumbnails answer with a redirect, sometimes to another Onshape host. fetch drops
+      // the token when following a redirect to another host, so follow Onshape redirects by hand.
+      let res = await fetch(url, { ...init, headers, redirect: "manual" });
+      for (let hops = 0; hops < 3 && res.status >= 300 && res.status < 400; hops++) {
+        const next = new URL(res.headers.get("location") ?? "", url);
+        if (next.protocol !== "https:" || !/(^|\.)onshape\.com$/i.test(next.hostname)) {
+          throw new OnshapeError("Unexpected Onshape link.");
+        }
+        res = await fetch(next, { headers, redirect: "manual" });
       }
-      res = await fetch(next, { headers, redirect: "manual" });
-    }
+      return res;
+    };
+    let res = await send(false);
+    // Onshape can drop an access token before its expiry (a new sign-in, a revoked grant):
+    // refresh it once and try again.
+    if (res.status === 401) res = await send(true);
     const name = url.replace(/^https:\/\/[^/]+/, "").split("?")[0];
     // A rejected request is not a lost connection: only a failed token refresh disconnects.
     if (res.status === 401) throw new OnshapeError(`Onshape rejected ${name} (401). Try again, or reconnect Onshape on your profile.`, 401);
