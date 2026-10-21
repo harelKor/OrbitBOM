@@ -51,7 +51,7 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
   const statusColor = new Map<string, string>(STATUSES.map((s) => [s.name, s.color]));
   const viewerParts = parts.flatMap((p) =>
     p.modelKey
-      ? [{ key: p.modelKey, color: statusColor.get(p.status) ?? "#cbd5e1", id: p.id, systemId: p.systemId, name: partTitle(p), fab: fabStage(p) !== null, material: p.material }]
+      ? [{ key: p.modelKey, color: statusColor.get(p.status) ?? "#cbd5e1", id: p.id, systemId: p.systemId, name: partTitle(p), fab: fabStage(p) !== null, material: p.material, onshapeMaterial: p.geometry?.onshapeMaterial ?? null }]
       : [],
   );
 
