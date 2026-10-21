@@ -25,6 +25,7 @@ const Edits = z.object({
   hidden: z.array(z.string().max(100)).max(200).optional(),
   text: z.record(z.string().max(100), z.string().max(300)).optional(),
   moved: z.record(z.string().max(100), Pt).optional(),
+  arrows: z.record(z.string().max(100), Pt).optional(),
   added: z.array(z.object({ id: z.string().max(100), text: z.string().max(300), at: Pt, leader: Pt.optional() })).max(100).optional(),
 });
 

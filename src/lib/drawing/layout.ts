@@ -248,38 +248,18 @@ export function partDrawing(part: Part, title: TitleBlock, image?: string): Draw
   };
 }
 
-// The member's edits on top of the automatic notes: hidden, retyped or moved notes, and notes
+// The member's edits on top of the automatic notes: hidden, retyped or moved notes (text and arrow apart), and notes
 // they added.
 export function applyEdits(d: Drawing, e: DrawingEdits): Drawing {
   const hidden = new Set(e.hidden ?? []);
   const notes: Note[] = d.notes
     .filter((n) => !hidden.has(n.id))
-    .map((n) => ({ ...n, ...(e.text?.[n.id] != null ? { text: e.text[n.id] } : {}), ...(e.moved?.[n.id] ? { at: e.moved[n.id] } : {}) }));
+    .map((n) => ({
+      ...n,
+      ...(e.text?.[n.id] != null ? { text: e.text[n.id] } : {}),
+      ...(e.moved?.[n.id] ? { at: e.moved[n.id] } : {}),
+      ...(e.arrows?.[n.id] ? { leader: e.arrows[n.id] } : {}),
+    }));
   for (const a of e.added ?? []) notes.push({ id: a.id, kind: "custom", text: a.text, at: a.at, ...(a.leader ? { leader: a.leader } : {}) });
   return { ...d, notes };
-}
-
-// Where a note added in the editor to the hole at `c` (radius r on the sheet) goes: the nearest
-// spot around it that clears the drawing's other notes, dimensions and BOM block.
-export function freeSpot(d: Drawing, c: Pt, r: number, words: string): { at: Pt; leader: Pt } {
-  const taken: Rect[] = [
-    ...d.notes.map((n) => noteBox(n.text, n.at, n.leader).rect),
-    ...d.dims.flatMap((x) => [dimRect(x), dimLine(x)]),
-    { x0: SHEET.w - MARGIN - TITLE.w, y0: SHEET.h - MARGIN - TITLE.h, x1: SHEET.w - MARGIN, y1: SHEET.h - MARGIN },
-  ];
-  const width = Math.max(...words.split("\n").map((l) => l.length)) * CHAR;
-  let first: { at: Pt; leader: Pt } | undefined;
-  for (let dist = r + 12; dist < 160; dist += 6)
-    for (let k = 0; k < 16; k++) {
-      const a = -Math.PI / 4 + (k * Math.PI) / 8; // up and right first
-      const at: Pt = [c[0] + Math.cos(a) * dist - (Math.cos(a) < 0 ? width : 0), c[1] - Math.sin(a) * dist];
-      const toward: Pt = [c[0] + Math.cos(a) * dist, c[1] - Math.sin(a) * dist];
-      const l = Math.hypot(toward[0] - c[0], toward[1] - c[1]) || 1;
-      const leader: Pt = [c[0] + ((toward[0] - c[0]) / l) * r, c[1] + ((toward[1] - c[1]) / l) * r];
-      const { rect } = noteBox(words, at, leader);
-      first ??= { at, leader };
-      const inside = rect.x0 >= MARGIN + 3 && rect.x1 <= SHEET.w - MARGIN - 3 && rect.y0 >= MARGIN + 3 && rect.y1 <= SHEET.h - MARGIN - 3;
-      if (inside && !taken.some((t) => hits(rect, t))) return { at, leader };
-    }
-  return first!;
 }

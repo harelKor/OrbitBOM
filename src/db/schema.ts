@@ -195,7 +195,8 @@ export const parts = pgTable(
 export type DrawingEdits = {
   hidden?: string[]; // note ids
   text?: Record<string, string>;
-  moved?: Record<string, [number, number]>;
+  moved?: Record<string, [number, number]>; // where a note's text moved to
+  arrows?: Record<string, [number, number]>; // where a note's arrow points instead
   added?: { id: string; text: string; at: [number, number]; leader?: [number, number] }[];
 };
 
