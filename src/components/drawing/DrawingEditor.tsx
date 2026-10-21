@@ -2,24 +2,57 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { BEARINGS, DEFAULT_FIT, FITS, type Fit } from "@/config/drawings";
+import { BEARINGS, DEFAULT_FIT, FITS, SCREWS, type Fit } from "@/config/drawings";
 import type { DrawingEdits } from "@/db/schema";
 import { downloadDrawing, fetchDrawing, type DrawingResponse } from "@/lib/drawing/download";
-import { applyEdits, fmt, freeSpot, partDrawing } from "@/lib/drawing/layout";
+import { applyEdits, fmt, noteBox, partDrawing } from "@/lib/drawing/layout";
 import { drawingSvg } from "@/lib/drawing/svg";
 import type { Drawing, Pt } from "@/lib/drawing/types";
 import { Icon } from "@/components/ui/Icon";
 
 type Hole = Drawing["holes"][number];
-type Mode = { kind: "idle" } | { kind: "place" } | { kind: "move"; id: string };
+// Adding a note takes two clicks: where its arrow points, then where its text goes. Moving one
+// moves its text or its arrow.
+type Mode =
+  | { kind: "idle" }
+  | { kind: "arrow" }
+  | { kind: "text"; leader?: Pt; hole?: Hole }
+  | { kind: "moveText"; id: string }
+  | { kind: "moveArrow"; id: string };
 
-// The drawing editor (plan/auto-drawings.md): deliberately small. Change, hide or move any note,
-// click a hole to add a fit or a note to it, or click anywhere to add a free note. Nothing else.
+type Draft = { kind: "fit" | "screw" | "none"; fit: Fit; to: "bearing" | "part"; bearing: string; part: string | null; screw: string; extra: string };
+const NEW_DRAFT: Draft = { kind: "fit", fit: DEFAULT_FIT, to: "bearing", bearing: BEARINGS[0].name, part: null, screw: "M5", extra: "" };
+
+// The note's words: the fit or the tapped screw, then whatever the member typed.
+function draftText(d: Draft, hole?: Hole) {
+  const target = d.to === "bearing" ? d.bearing : d.part;
+  const head =
+    d.kind === "fit" && target ? `${d.fit} fit for\n${target}${hole ? `\nØ${fmt(hole.d)}` : ""}` : d.kind === "screw" ? `${d.screw} tapped` : "";
+  return [head, d.extra.trim()].filter(Boolean).join("\n");
+}
+
+// The point on a hole's edge facing `toward`, or the clicked point itself.
+const onEdge = (hole: Hole, toward: Pt): Pt => {
+  const [dx, dy] = [toward[0] - hole.at[0], toward[1] - hole.at[1]];
+  const l = Math.hypot(dx, dy) || 1;
+  return [hole.at[0] + (dx / l) * hole.r, hole.at[1] + (dy / l) * hole.r];
+};
+
+const HINTS: Record<Mode["kind"], string | null> = {
+  idle: null,
+  arrow: "Click where the arrow points (a hole, or anywhere)",
+  text: "Click where the text goes",
+  moveText: "Click the text's new place",
+  moveArrow: "Click where the arrow points now",
+};
+
+// The drawing editor (plan/auto-drawings.md): deliberately small. Change, hide or move any note
+// (text and arrow apart), and add notes: a fit, a tapped screw, or plain words. Nothing else.
 export function DrawingEditor({ partId, onClose }: { partId: string; onClose: () => void }) {
   const [data, setData] = useState<DrawingResponse | null>(null);
   const [edits, setEdits] = useState<DrawingEdits>({});
   const [mode, setMode] = useState<Mode>({ kind: "idle" });
-  const [hole, setHole] = useState<Hole | null>(null);
+  const [draft, setDraft] = useState<Draft>(NEW_DRAFT);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -44,33 +77,48 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
   };
   const added = edits.added ?? [];
   const hidden = new Set(edits.hidden ?? []);
+  const canAdd = !!draftText(draft).trim();
 
   function sheetPoint(e: React.MouseEvent): Pt | null {
     const box = sheet.current?.getBoundingClientRect();
     if (!box || !drawing) return null;
     return [((e.clientX - box.left) / box.width) * drawing.sheet.w, ((e.clientY - box.top) / box.height) * drawing.sheet.h];
   }
+  const holeAt = (p: Pt) => drawing?.holes.find((h) => Math.hypot(h.at[0] - p[0], h.at[1] - p[1]) <= h.r + 3);
+  // Where a note's text is, to aim an arrow from it.
+  const textCentre = (id: string): Pt | undefined => {
+    const n = drawing?.notes.find((x) => x.id === id);
+    if (!n) return undefined;
+    const { rect } = noteBox(n.text, n.at);
+    return [(rect.x0 + rect.x1) / 2, (rect.y0 + rect.y1) / 2];
+  };
 
   function onSheetClick(e: React.MouseEvent) {
     const at = sheetPoint(e);
     if (!at || !drawing) return;
-    if (mode.kind === "place") {
-      change({ ...edits, added: [...added, { id: `note:${Date.now()}`, text: "Note", at }] });
+    const hole = holeAt(at);
+    if (mode.kind === "idle") {
+      // A click on a hole starts a note pointing at it.
+      if (hole && canAdd) setMode({ kind: "text", hole });
+    } else if (mode.kind === "arrow") {
+      setMode(hole ? { kind: "text", hole } : { kind: "text", leader: at });
+    } else if (mode.kind === "text") {
+      const text = draftText(draft, mode.hole);
+      const leader = mode.hole ? onEdge(mode.hole, at) : mode.leader;
+      change({ ...edits, added: [...added, { id: `note:${Date.now()}`, text, at, ...(leader ? { leader } : {}) }] });
+      setDraft({ ...draft, extra: "" });
       setMode({ kind: "idle" });
-    } else if (mode.kind === "move") {
+    } else if (mode.kind === "moveText") {
       if (added.some((a) => a.id === mode.id)) change({ ...edits, added: added.map((a) => (a.id === mode.id ? { ...a, at } : a)) });
       else change({ ...edits, moved: { ...edits.moved, [mode.id]: at } });
       setMode({ kind: "idle" });
     } else {
-      const hit = drawing.holes.find((h) => Math.hypot(h.at[0] - at[0], h.at[1] - at[1]) <= h.r + 3);
-      setHole(hit ?? null);
+      const from = textCentre(mode.id);
+      const leader = hole && from ? onEdge(hole, from) : at;
+      if (added.some((a) => a.id === mode.id)) change({ ...edits, added: added.map((a) => (a.id === mode.id ? { ...a, leader } : a)) });
+      else change({ ...edits, arrows: { ...edits.arrows, [mode.id]: leader } });
+      setMode({ kind: "idle" });
     }
-  }
-
-  function addHoleNote(h: Hole, text: string) {
-    const { at, leader } = freeSpot(drawing!, h.at, h.r, text);
-    change({ ...edits, added: [...added, { id: `hole:${h.id}:${Date.now()}`, text, at, leader }] });
-    setHole(null);
   }
 
   async function save() {
@@ -85,6 +133,8 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
   const close = () => {
     if (!dirty || confirm("Close without saving your changes?")) onClose();
   };
+  const hint = HINTS[mode.kind];
+  const hasArrow = (id: string) => !!drawing?.notes.find((n) => n.id === id)?.leader;
 
   // On document.body: inside the part card, pressing the sheet would scale the card (:active) and
   // pull the fixed editor into it. Clicks still bubble through React, so they stop here.
@@ -92,10 +142,19 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
     <div className="fixed inset-0 z-50 flex flex-col bg-[#07090E]/95 p-3 backdrop-blur sm:p-5" role="dialog" aria-label="Drawing editor" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <h2 className="min-w-0 flex-1 truncate text-lg font-semibold text-white">{data?.title.name ?? "Drawing"}</h2>
-        {mode.kind !== "idle" && <span className="text-sm text-sky-300">{mode.kind === "place" ? "Click where the note goes" : "Click the note's new place"}</span>}
-        <button className="btn" onClick={() => setMode(mode.kind === "place" ? { kind: "idle" } : { kind: "place" })} disabled={!drawing}>
-          Add note
-        </button>
+        {hint && (
+          <span className="flex items-center gap-2 text-sm text-sky-300">
+            {hint}
+            {mode.kind === "arrow" && (
+              <button className="btn py-0.5 text-xs" onClick={() => setMode({ kind: "text" })} title="Text only, no arrow">
+                No arrow
+              </button>
+            )}
+            <button className="btn py-0.5 text-xs" onClick={() => setMode({ kind: "idle" })}>
+              Cancel
+            </button>
+          </span>
+        )}
         <button className="btn" onClick={() => downloadDrawing(partId, "pdf").catch((e: Error) => setError(e.message))} disabled={!drawing || dirty} title={dirty ? "Save first" : undefined}>
           PDF
         </button>
@@ -125,11 +184,13 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
         </div>
 
         <aside className="w-full shrink-0 space-y-3 overflow-auto rounded-lg border border-white/10 bg-[#0D111A] p-3 text-sm text-white lg:w-80">
-          {hole ? (
-            <HoleForm key={hole.id} hole={hole} others={data?.others ?? []} onAdd={(t) => addHoleNote(hole, t)} onCancel={() => setHole(null)} />
-          ) : (
-            <p className="text-xs text-white/50">Click a hole to add a fit or a note to it.</p>
-          )}
+          <NoteForm
+            draft={draft}
+            others={data?.others ?? []}
+            onChange={setDraft}
+            onPlace={() => setMode({ kind: "arrow" })}
+            disabled={!drawing || !canAdd}
+          />
           <div className="space-y-2">
             {base?.notes.map((n) => (
               <NoteRow
@@ -137,7 +198,8 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
                 text={edits.text?.[n.id] ?? n.text}
                 hidden={hidden.has(n.id)}
                 onText={(t) => change({ ...edits, text: { ...edits.text, [n.id]: t } })}
-                onMove={() => setMode({ kind: "move", id: n.id })}
+                onMoveText={() => setMode({ kind: "moveText", id: n.id })}
+                onMoveArrow={hasArrow(n.id) ? () => setMode({ kind: "moveArrow", id: n.id }) : undefined}
                 onToggle={() =>
                   change({ ...edits, hidden: hidden.has(n.id) ? [...hidden].filter((x) => x !== n.id) : [...hidden, n.id] })
                 }
@@ -148,7 +210,8 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
                 key={a.id}
                 text={a.text}
                 onText={(t) => change({ ...edits, added: added.map((x) => (x.id === a.id ? { ...x, text: t } : x)) })}
-                onMove={() => setMode({ kind: "move", id: a.id })}
+                onMoveText={() => setMode({ kind: "moveText", id: a.id })}
+                onMoveArrow={() => setMode({ kind: "moveArrow", id: a.id })}
                 onDelete={() => change({ ...edits, added: added.filter((x) => x.id !== a.id) })}
               />
             ))}
@@ -160,14 +223,27 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
   );
 }
 
-function NoteRow(props: { text: string; hidden?: boolean; onText: (t: string) => void; onMove: () => void; onToggle?: () => void; onDelete?: () => void }) {
+function NoteRow(props: {
+  text: string;
+  hidden?: boolean;
+  onText: (t: string) => void;
+  onMoveText: () => void;
+  onMoveArrow?: () => void;
+  onToggle?: () => void;
+  onDelete?: () => void;
+}) {
   return (
     <div className={`space-y-1 rounded-md border border-white/10 p-2 ${props.hidden ? "opacity-50" : ""}`}>
       <textarea value={props.text} onChange={(e) => props.onText(e.target.value)} rows={Math.max(1, props.text.split("\n").length)} className="input w-full resize-none text-sm" />
-      <div className="flex gap-1.5 text-xs">
-        <button className="btn py-0.5 text-xs" onClick={props.onMove} disabled={props.hidden}>
-          Move
+      <div className="flex flex-wrap gap-1.5 text-xs">
+        <button className="btn py-0.5 text-xs" onClick={props.onMoveText} disabled={props.hidden}>
+          Move text
         </button>
+        {props.onMoveArrow && (
+          <button className="btn py-0.5 text-xs" onClick={props.onMoveArrow} disabled={props.hidden}>
+            Move arrow
+          </button>
+        )}
         {props.onToggle && (
           <button className="btn py-0.5 text-xs" onClick={props.onToggle}>
             {props.hidden ? "Show" : "Hide"}
@@ -183,49 +259,47 @@ function NoteRow(props: { text: string; hidden?: boolean; onText: (t: string) =>
   );
 }
 
-// A fit (to a stored bearing or another part of the system) or a plain note.
-function HoleForm({ hole, others, onAdd, onCancel }: { hole: Hole; others: string[]; onAdd: (text: string) => void; onCancel: () => void }) {
-  const [kind, setKind] = useState<"fit" | "note">("fit");
-  const [fit, setFit] = useState<Fit>(DEFAULT_FIT);
-  const [to, setTo] = useState<"bearing" | "part">("bearing");
-  const [bearing, setBearing] = useState(BEARINGS[0].name);
+// A new note: a fit (to a stored bearing or another part of the system), a tapped screw, or
+// nothing, plus any words typed after it.
+function NoteForm({ draft, others, onChange, onPlace, disabled }: { draft: Draft; others: string[]; onChange: (d: Draft) => void; onPlace: () => void; disabled: boolean }) {
   const [search, setSearch] = useState("");
-  const [part, setPart] = useState<string | null>(null);
-  const [note, setNote] = useState("");
-  const target = to === "bearing" ? bearing : part;
-  const text = kind === "fit" ? (target ? `${fit} fit for\n${target}\nØ${fmt(hole.d)}` : "") : note;
+  const set = (patch: Partial<Draft>) => onChange({ ...draft, ...patch });
   const found = others.filter((o) => o.toLowerCase().includes(search.trim().toLowerCase())).slice(0, 30);
   const tab = (on: boolean) => (on ? "btn-primary py-0.5 text-xs" : "btn py-0.5 text-xs");
+  const preview = draftText(draft);
   return (
-    <div className="space-y-2">
-      <div className="font-semibold tabular-nums">Hole Ø{fmt(hole.d)}</div>
+    <div className="space-y-2 rounded-md border border-white/10 p-2">
+      <div className="font-semibold">Add a note</div>
       <div className="flex gap-1.5">
-        {(["fit", "note"] as const).map((k) => (
-          <button key={k} className={tab(kind === k)} onClick={() => setKind(k)}>
-            {k === "fit" ? "Fit" : "Note"}
+        {(
+          [
+            ["fit", "Fit"],
+            ["screw", "Tapped screw"],
+            ["none", "Text only"],
+          ] as const
+        ).map(([k, label]) => (
+          <button key={k} className={tab(draft.kind === k)} onClick={() => set({ kind: k })}>
+            {label}
           </button>
         ))}
       </div>
-      {kind === "fit" ? (
+      {draft.kind === "fit" && (
         <>
-          <label className="block text-xs text-white/60">
-            Fit
-            <select value={fit} onChange={(e) => setFit(e.target.value as Fit)} className="input mt-1 w-full text-sm">
-              {FITS.map((f) => (
-                <option key={f}>{f}</option>
-              ))}
-            </select>
-          </label>
+          <select value={draft.fit} onChange={(e) => set({ fit: e.target.value as Fit })} className="input w-full text-sm" aria-label="Fit">
+            {FITS.map((f) => (
+              <option key={f}>{f}</option>
+            ))}
+          </select>
           <div className="flex gap-1.5">
-            <button className={tab(to === "bearing")} onClick={() => setTo("bearing")}>
+            <button className={tab(draft.to === "bearing")} onClick={() => set({ to: "bearing" })}>
               Bearing
             </button>
-            <button className={tab(to === "part")} onClick={() => setTo("part")}>
+            <button className={tab(draft.to === "part")} onClick={() => set({ to: "part" })}>
               Part
             </button>
           </div>
-          {to === "bearing" ? (
-            <select value={bearing} onChange={(e) => setBearing(e.target.value)} className="input w-full text-sm" aria-label="Bearing">
+          {draft.to === "bearing" ? (
+            <select value={draft.bearing} onChange={(e) => set({ bearing: e.target.value })} className="input w-full text-sm" aria-label="Bearing">
               {BEARINGS.map((b) => (
                 <option key={b.name} value={b.name}>
                   {b.name} (Ø{fmt(b.boreMm)})
@@ -235,10 +309,10 @@ function HoleForm({ hole, others, onAdd, onCancel }: { hole: Hole; others: strin
           ) : (
             <div className="space-y-1">
               <input value={search} onChange={(e) => setSearch(e.target.value)} className="input w-full text-sm" placeholder="Search parts" aria-label="Search parts" />
-              <div className="max-h-48 overflow-auto rounded-md border border-white/10">
+              <div className="max-h-40 overflow-auto rounded-md border border-white/10">
                 {found.length ? (
                   found.map((o) => (
-                    <button key={o} onClick={() => setPart(o)} className={`block w-full truncate px-2 py-1 text-left text-xs hover:bg-white/10 ${part === o ? "bg-sky-500/30" : ""}`}>
+                    <button key={o} onClick={() => set({ part: o })} className={`block w-full truncate px-2 py-1 text-left text-xs hover:bg-white/10 ${draft.part === o ? "bg-sky-500/30" : ""}`}>
                       {o}
                     </button>
                   ))
@@ -249,18 +323,22 @@ function HoleForm({ hole, others, onAdd, onCancel }: { hole: Hole; others: strin
             </div>
           )}
         </>
-      ) : (
-        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} className="input w-full text-sm" placeholder="Note" />
       )}
-      {text && <pre className="whitespace-pre-wrap rounded-md bg-white/5 p-2 font-sans text-xs text-white/80">{text}</pre>}
-      <div className="flex gap-1.5">
-        <button className="btn-primary py-0.5 text-xs" disabled={!text.trim()} onClick={() => onAdd(text)}>
-          Add
-        </button>
-        <button className="btn py-0.5 text-xs" onClick={onCancel}>
-          Cancel
-        </button>
-      </div>
+      {draft.kind === "screw" && (
+        <select value={draft.screw} onChange={(e) => set({ screw: e.target.value })} className="input w-full text-sm" aria-label="Screw">
+          {SCREWS.map((s) => (
+            <option key={s} value={s}>
+              {s} tapped
+            </option>
+          ))}
+        </select>
+      )}
+      <textarea value={draft.extra} onChange={(e) => set({ extra: e.target.value })} rows={2} className="input w-full text-sm" placeholder={draft.kind === "none" ? "Note" : "More text (optional)"} />
+      {preview && <pre className="whitespace-pre-wrap rounded-md bg-white/5 p-2 font-sans text-xs text-white/80">{preview}</pre>}
+      <button className="btn-primary w-full py-1 text-xs" disabled={disabled} onClick={onPlace}>
+        Place on the drawing
+      </button>
+      <p className="text-xs text-white/50">Then click where the arrow points (or a hole), then where the text goes.</p>
     </div>
   );
 }

@@ -6,6 +6,9 @@ export const HOLE_MATCH_MM = 0.05;
 // Tap drill diameters noted as a tap.
 export const TAPS = [{ drillMm: 4.2, note: "M5 tapped" }];
 
+// Screws a hole can be noted as tapped for in the drawing editor.
+export const SCREWS = ["M4", "M5", "M6"] as const;
+
 // Bearing bores that get a fit note.
 export const BEARINGS = [
   { boreMm: 28.7, name: "1/2IN HEX Bearing" },
