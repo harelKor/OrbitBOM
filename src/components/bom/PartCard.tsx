@@ -16,6 +16,7 @@ import { MachineField, MaterialField, NameField, QuantityField, SLOTS, StatusFie
 import { InputEditor, Popover } from "./Popover";
 import { ownerPartId, partIds, partTitle, type CardPart } from "./types";
 import { downloadDrawing } from "@/lib/drawing/download";
+import { DrawingEditor } from "@/components/drawing/DrawingEditor";
 
 const EXPORTABLE = ["STEP", "STL", "PARASOLID"] as const;
 const FLAT = ["DXF_FLAT", "STEP_FLAT"] as const; // only for Onshape sheet metal parts
@@ -191,6 +192,7 @@ export function PartCard({
           <div className="min-w-0 flex-1">
             <StatusField part={part} save={save} />
           </div>
+          {part.hasDrawing && <DrawingButton partId={ownerPartId(part)} />}
           <NotesButton part={part} save={save} />
         </div>
 
@@ -301,6 +303,25 @@ function NoteCloud({ note, raised = false }: { note: string; raised?: boolean })
       <span className="absolute -bottom-2 left-4 h-2.5 w-2.5 rounded-full border-2 border-[#111318] bg-white" />
       <span className="absolute -bottom-3.5 left-1.5 h-1.5 w-1.5 rounded-full border-2 border-[#111318] bg-white" />
     </div>
+  );
+}
+
+// Opens the part's drawing in the drawing editor.
+function DrawingButton({ partId }: { partId: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="press flex h-8 w-8 items-center justify-center rounded-md border border-line-strong text-muted hover:border-accent/50 hover:text-fg"
+        aria-label="Drawing"
+        title="Drawing"
+      >
+        <Icon name="drawing" />
+      </button>
+      {open && <DrawingEditor partId={partId} onClose={() => setOpen(false)} />}
+    </>
   );
 }
 

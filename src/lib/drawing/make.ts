@@ -1,11 +1,13 @@
 import "server-only";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne } from "drizzle-orm";
+import { getMachine } from "@/config/machines";
 import { db, schema } from "@/db";
 import { onshapeClient } from "@/lib/onshape/client";
 import { studioPath } from "@/lib/onshape/parts";
 import { parseOnshapeUrl } from "@/lib/onshape/url";
 import { type BodyDetails, readBodies, type TessellatedEdges } from "./brep";
 import { readPart } from "./read";
+import type { TitleBlock } from "./types";
 
 const { parts, systems, partDrawings } = schema;
 
@@ -62,4 +64,43 @@ export async function makeDrawings(systemId: string, partIds: string[], memberId
     }
   }
   return summary;
+}
+
+// A part's saved drawing with its BOM block filled from the part as it is now, and the system's
+// other part names (for "fit for <part>" notes). A database read only.
+export async function loadDrawing(partId: string) {
+  const [row] = await db
+    .select({ drawing: schema.partDrawings, part: schema.parts, system: schema.systems.name, robot: schema.robots.name })
+    .from(schema.partDrawings)
+    .innerJoin(schema.parts, eq(schema.parts.id, schema.partDrawings.partId))
+    .innerJoin(schema.systems, eq(schema.systems.id, schema.parts.systemId))
+    .innerJoin(schema.robots, eq(schema.robots.id, schema.systems.robotId))
+    .where(eq(schema.partDrawings.partId, partId));
+  if (!row) return null;
+  const { part, drawing } = row;
+  const processes = [part.preProcess, part.process1, part.process2, ...part.extraProcesses]
+    .filter((p): p is string => !!p)
+    .map((p) => getMachine(p)?.name ?? p);
+  // The system's other parts, for "fit for <part>" notes in the editor.
+  const others = await db
+    .select({ displayName: schema.parts.displayName, onshapeName: schema.parts.onshapeName })
+    .from(schema.parts)
+    .where(and(eq(schema.parts.systemId, part.systemId), ne(schema.parts.id, part.id), isNull(schema.parts.removedFromCadAt)));
+  const title: TitleBlock = {
+    name: part.displayName ?? part.onshapeName ?? "Unnamed part",
+    ...(part.material ? { material: part.material } : {}),
+    processes,
+    quantity: part.quantity,
+    system: row.system,
+    robot: row.robot,
+    ...(drawing.rev ? { revision: drawing.rev.slice(0, 8) } : {}),
+    date: drawing.updatedAt.toISOString().slice(0, 10),
+  };
+  return {
+    drawing,
+    part,
+    title,
+    outdated: !!part.thumbnailRev && drawing.rev !== part.thumbnailRev,
+    others: [...new Set(others.map((o) => o.displayName ?? o.onshapeName).filter((n): n is string => !!n))].sort(),
+  };
 }

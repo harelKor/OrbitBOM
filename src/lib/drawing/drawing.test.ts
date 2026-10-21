@@ -5,6 +5,7 @@ import { readBodies } from "./brep";
 import { partDrawing } from "./layout";
 import { readPart } from "./read";
 import { drawingSvg } from "./svg";
+import { drawingSummary } from "./summary";
 
 // Real Onshape answers from Harel's test document (2026-10-21), btType keys removed.
 const fixture = (name: string, kind: string) =>
@@ -60,4 +61,13 @@ it("reads the round tube's OD, ID and length", () => {
   const d = partDrawing(p, { name: "Round" });
   expect(d.dims.map((x) => x.text)).toEqual(["100", "Ø20", "Ø17"]);
   expect(d.notes.map((n) => n.text)).toEqual(["Wall 1.5"]);
+});
+
+it("sums a drawing up for the AI tools, edits included", () => {
+  const s = drawingSummary(part("plate")!, { hidden: ["tool"], added: [{ id: "a1", text: "Deburr", at: [20, 20] }] }, { name: "Plate" });
+  expect(s).toMatchObject({ kind: "plate", thickness_mm: 6.7, max_tool_mm: 7 });
+  expect(s.holes.find((h) => h.diameter_mm === 4.2)?.tap).toBe("M5 tapped");
+  expect(s.holes.find((h) => h.diameter_mm === 28.7)?.bearing).toBe("1/2IN HEX Bearing");
+  expect(s.notes.find((n) => n.id === "tool")).toMatchObject({ hidden: true });
+  expect(s.notes.at(-1)).toEqual({ id: "a1", text: "Deburr", added: true });
 });

@@ -178,6 +178,7 @@ export function partDrawing(part: Part, title: TitleBlock, image?: string): Draw
     kind: part.kind,
     sheet: SHEET,
     lines: placed.flatMap(viewLines),
+    holes: placed.flatMap((p) => p.view.holes.map((h) => ({ id: h.faceId, at: toSheet(p, h.at), r: (h.d / 2) * p.s, d: h.d }))),
     dims,
     notes,
     title,

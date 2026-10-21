@@ -32,5 +32,6 @@ export type Drawing = {
   notes: Note[];
   title: TitleBlock;
   stock: string; // e.g. "6.7 mm plate"
+  holes: { id: string; at: Pt; r: number; d: number }[]; // every hole drawn, sheet mm, for the editor
   image?: { href: string; x: number; y: number; w: number; h: number }; // the part's 3D thumbnail
 };
