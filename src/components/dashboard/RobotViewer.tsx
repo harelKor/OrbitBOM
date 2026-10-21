@@ -7,6 +7,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { StatusCount } from "@/lib/stats";
 import { Segmented } from "@/components/ui/Segmented";
 import { Icon } from "@/components/ui/Icon";
+import { useMaterialColors } from "@/components/shell/MaterialColors";
+import { DEFAULT_MATERIAL_COLORS, MATERIAL_COLOR_GROUPS, materialColor, materialColorGroup } from "@/config/materialColors";
 import type { ViewerModel } from "./ModelCanvas";
 
 const ModelCanvas = dynamic(() => import("./ModelCanvas").then((m) => m.ModelCanvas), { ssr: false });
@@ -17,7 +19,7 @@ type BuildAnswer =
   | { error: string };
 
 // A BOM part as the viewer knows it: its key in the model, status colour, and where its card is.
-export type ViewerPart = { key: string; color: string; id: string; systemId: string; name: string; fab: boolean };
+export type ViewerPart = { key: string; color: string; id: string; systemId: string; name: string; fab: boolean; material: string | null };
 
 // The 3D robot stage. The model is built from the systems' Onshape assemblies on demand
 // (Edit mode's Update 3D model) and kept in R2; viewing it costs no Onshape calls. The expand
@@ -43,7 +45,7 @@ export function RobotViewer({
   hasAssembly: boolean;
   edit: boolean;
 }) {
-  const [colors, setColors] = useState<"status" | "plain">("status");
+  const [colors, setColors] = useState<"status" | "material" | "plain">("status");
   const router = useRouter();
   const [large, setLarge] = useState(false);
   const [bar, setBar] = useState(false);
@@ -55,7 +57,17 @@ export function RobotViewer({
   const [model, setModel] = useState<ViewerModel | null | undefined>(builtAt ? undefined : null);
   const [building, setBuilding] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
-  const colorMap = useMemo(() => new Map(parts.map((p) => [p.key, p.color])), [parts]);
+  const materialOverrides = useMaterialColors();
+  const colorMap = useMemo(
+    () => new Map(parts.map((p) => [p.key, colors === "material" ? materialColor(p.material, materialOverrides) : p.color])),
+    [parts, colors, materialOverrides],
+  );
+  // Material mode's legend: the categories this view's parts are in, in the panel's order.
+  const materials = useMemo(() => {
+    const present = new Set(parts.map((p) => materialColorGroup(p.material)));
+    return MATERIAL_COLOR_GROUPS.filter((m) => present.has(m)).map((name) => ({ name, color: materialOverrides[name] ?? DEFAULT_MATERIAL_COLORS[name] }));
+  }, [parts, materialOverrides]);
+  const legend = colors === "status" ? statuses : colors === "material" ? materials : [];
   const onLocated = useCallback(() => {}, []);
   const partByKey = useMemo(() => new Map(parts.map((p) => [p.key, p])), [parts]);
   const picked = selected ? partByKey.get(selected) : undefined;
@@ -177,6 +189,7 @@ export function RobotViewer({
               onChange={setColors}
               options={[
                 { value: "status", label: "Status" },
+                { value: "material", label: "Material" },
                 { value: "plain", label: "Plain" },
               ]}
             />
@@ -203,7 +216,7 @@ export function RobotViewer({
             <ModelCanvas
               model={model}
               colors={colorMap}
-              mode={colors}
+              mode={colors === "plain" ? "plain" : "status"}
               locateKey={null}
               onLocated={onLocated}
               hidden={hidden}
@@ -305,11 +318,11 @@ export function RobotViewer({
               {message.text}
             </div>
           )}
-          {colors === "status" && statuses.length > 0 && (
+          {legend.length > 0 && (
             <div
               className={`pointer-events-none absolute right-3 bottom-3 ${bar && !systemId && groups.length > 0 ? "left-62" : "left-3"} flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-fg-2`}
             >
-              {statuses.map((s) => (
+              {legend.map((s) => (
                 <span key={s.name} className="inline-flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full" style={{ background: s.color }} />
                   {s.name}
