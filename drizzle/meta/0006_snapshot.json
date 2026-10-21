@@ -1,5 +1,5 @@
 {
-  "id": "7db7dbbc-07c6-4964-a50e-8196627da335",
+  "id": "b0b7e40b-298d-4f93-a549-ab02a9404680",
   "prevId": "66236e06-967b-4c4e-a297-a4a36234b434",
   "version": "7",
   "dialect": "postgresql",
@@ -631,58 +631,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.material_colors": {
-      "name": "material_colors",
-      "schema": "",
-      "columns": {
-        "category": {
-          "name": "category",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "color": {
-          "name": "color",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_by": {
-          "name": "updated_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "material_colors_updated_by_members_id_fk": {
-          "name": "material_colors_updated_by_members_id_fk",
-          "tableFrom": "material_colors",
-          "tableTo": "members",
-          "columnsFrom": [
-            "updated_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.mcp_tokens": {
       "name": "mcp_tokens",
       "schema": "",
@@ -1269,6 +1217,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'normal'"
+        },
+        "machine": {
+          "name": "machine",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",
