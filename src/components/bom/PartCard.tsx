@@ -17,7 +17,8 @@ import { InputEditor, Popover } from "./Popover";
 import { ownerPartId, partIds, partTitle, type CardPart } from "./types";
 
 const EXPORTABLE = ["STEP", "STL", "PARASOLID"] as const;
-type ExportFormat = (typeof EXPORTABLE)[number];
+const FLAT = ["DXF_FLAT", "STEP_FLAT"] as const; // only for Onshape sheet metal parts
+type ExportFormat = (typeof EXPORTABLE)[number] | (typeof FLAT)[number];
 
 const pill = "rounded-full border border-line-strong bg-raised px-2 py-0.5 text-[11px] font-medium text-fg-2 max-w-full truncate";
 
@@ -215,17 +216,21 @@ export function PartCard({
   );
 }
 
-// The CAD file for the part's first machine that takes one, else STEP.
+// The CAD file for the part's first machine that takes one (a sheet metal part's flat pattern
+// for a cutting machine), else STEP.
 export function cadFormat(part: CardPart): ExportFormat | null {
   if (part.isManual) return null;
   for (const slot of SLOTS) {
-    const f = part[slot.key] ? getMachine(part[slot.key]!)?.cadFormat : undefined;
+    const machine = part[slot.key] ? getMachine(part[slot.key]!) : undefined;
+    if (machine?.sheetFormat && part.geometry?.sheetMetal) return machine.sheetFormat;
+    const f = machine?.cadFormat;
     if (f && (EXPORTABLE as readonly string[]).includes(f)) return f as ExportFormat;
   }
   return "STEP";
 }
 
-export const label = (f: ExportFormat) => (f === "PARASOLID" ? "Parasolid" : f);
+const LABELS: Partial<Record<ExportFormat, string>> = { PARASOLID: "Parasolid", DXF_FLAT: "Flat DXF", STEP_FLAT: "Flat STEP" };
+export const label = (f: ExportFormat) => LABELS[f] ?? f;
 
 function Tip({ children }: { children: React.ReactNode }) {
   return (
@@ -238,7 +243,8 @@ function Tip({ children }: { children: React.ReactNode }) {
 // Every way to download the part: the CAD exports (the first machine's format on top) and any
 // files attached to it.
 function DownloadMenu({ part, format }: { part: CardPart; format: ExportFormat | null }) {
-  const exports = format ? [format, ...EXPORTABLE.filter((f) => f !== format)] : [];
+  const all: ExportFormat[] = part.geometry?.sheetMetal ? [...FLAT, ...EXPORTABLE] : [...EXPORTABLE];
+  const exports = format ? [format, ...all.filter((f) => f !== format)] : [];
   const item = "flex items-center justify-between gap-3 rounded px-2 py-1.5 hover:bg-raised";
   return (
     <Popover align="right" hideCaret triggerClassName="overlay-btn" trigger={<><Icon name="download" /><span className="sr-only">Download</span></>}>

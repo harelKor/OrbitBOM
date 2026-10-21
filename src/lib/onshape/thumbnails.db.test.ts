@@ -43,14 +43,15 @@ else
       onshape.push(`${req.method} ${u.pathname}`);
       const json = (b: unknown) => new Response(JSON.stringify(b));
       if (u.pathname.startsWith("/api/v10/parts/") && u.searchParams.has("withThumbnails")) {
-        return json(
-          Object.entries(microversions).map(([partId, mv]) => ({
-            partId,
-            bodyType: "solid",
-            microversionId: mv,
-            thumbnailInfo: { sizes: [{ size: "300x300", href: `https://cad.onshape.com/thumb/${partId}/${mv}` }] },
-          })),
-        );
+        const listed = Object.entries(microversions).map(([partId, mv]) => ({
+          partId,
+          bodyType: "solid",
+          microversionId: mv,
+          thumbnailInfo: { sizes: [{ size: "300x300", href: `https://cad.onshape.com/thumb/${partId}/${mv}` }] },
+        }));
+        // Part A is sheet metal: with includeFlatParts its flat pattern is listed too.
+        const flat = u.searchParams.get("includeFlatParts") === "true" ? [{ partId: "AF", bodyType: "solid", isFlattenedBody: true, unflattenedPartId: "A" }] : [];
+        return json([...listed, ...flat]);
       }
       if (u.pathname.startsWith("/api/v10/thumbnails/")) {
         return json({ sizes: [{ size: "300x300", href: "https://cad.onshape.com/thumb/assembly/1" }] });
@@ -118,6 +119,9 @@ else
       const [row] = await db.select().from(schema.parts).where(eq(schema.parts.id, tube.id));
       expect(row.thumbnailRev).toBe("mvB2");
       expect(row.geometry?.bodyType).toBe("solid");
+      expect(row.geometry?.sheetMetal).toBeUndefined();
+      const [sheet] = await db.select().from(schema.parts).where(eq(schema.parts.id, plate.id));
+      expect(sheet.geometry?.sheetMetal).toEqual({ flatPartId: "AF" });
     });
 
     it("exports STL directly and STEP through a translation", async () => {

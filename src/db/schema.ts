@@ -106,10 +106,13 @@ export type PartGeometry = {
   bbox?: [number, number, number]; // sorted extents, mm (smallest first)
   minDim?: number;
   sizedFrom?: string; // the 3D model file the bbox was measured from
+  sizedV?: number; // how it was measured (see SIZED_VERSION in src/lib/review/review.ts)
   bodyType?: string;
   volume?: number;
   mass?: number;
   onshapeMaterial?: string; // Onshape's own material, e.g. "Aluminum - 6061"
+  sheetMetal?: { flatPartId: string }; // an Onshape sheet metal part and its flat pattern body
+  wallMm?: number; // wall thickness measured from the mesh when the part is a thin wall (flat or bent sheet)
 };
 
 export const parts = pgTable(

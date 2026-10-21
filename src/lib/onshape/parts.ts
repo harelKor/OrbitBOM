@@ -20,6 +20,8 @@ export type PartMetadata = {
   name?: string;
   bodyType?: string;
   microversionId?: string;
+  isFlattenedBody?: boolean; // a sheet metal part's flat pattern (listed with includeFlatParts)
+  unflattenedPartId?: string; // the folded part a flat pattern belongs to
   thumbnailInfo?: { sizes?: { size: string; href: string; mediaType?: string }[] };
 };
 
