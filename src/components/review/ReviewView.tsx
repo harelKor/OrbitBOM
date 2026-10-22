@@ -23,7 +23,7 @@ export type ReviewItem = {
   aiName: string | null;
 };
 
-const TYPES: Record<string, string> = { inhouse: "In-house", cots: "COTS", external: "External" };
+const TYPES: Record<string, string> = { inhouse: "In-house", cots: "COTS", external: "External", undefined: "Undefined" };
 const ORDER = ["classification", "material", "preProcess", "process1", "process2"];
 
 function shown(field: string, value: unknown): string | null {

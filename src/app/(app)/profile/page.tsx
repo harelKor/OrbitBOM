@@ -5,6 +5,7 @@ import { requireMember } from "@/lib/auth";
 import { DAILY_CALL_BUDGET } from "@/lib/onshape/client";
 import { disconnectOnshape } from "./actions";
 import { McpTokens } from "./McpTokens";
+import { NameForm } from "./NameForm";
 
 const MESSAGES: Record<string, string> = {
   connected: "Onshape is connected.",
@@ -44,7 +45,7 @@ export default async function ProfilePage({
   return (
     <div className="max-w-2xl space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">{member.name}</h1>
+        <NameForm name={member.name} />
         <p className="text-sm text-muted">
           {member.email}
           {member.isAdmin && " · Admin"}

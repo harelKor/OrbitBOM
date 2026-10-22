@@ -107,8 +107,8 @@ export async function updateBomFromOnshape(
             preProcess: r.preProcess,
             process1: r.process1,
             process2: r.process2,
-            // FRCBOM infers the type from the processes: no process means bought (COTS).
-            classification: r.preProcess || r.process1 || r.process2 ? ("inhouse" as const) : ("cots" as const),
+            // A part with a process is made in-house; without one nobody has said yet (Undefined).
+            classification: r.preProcess || r.process1 || r.process2 ? ("inhouse" as const) : ("undefined" as const),
             geometry: r.onshapeMaterial ? { onshapeMaterial: r.onshapeMaterial } : null,
             lastModifiedBy: memberId,
           })),

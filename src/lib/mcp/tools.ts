@@ -205,7 +205,7 @@ read(
     system_id: uuid.optional(),
     text: z.string().optional().describe("Matches name, part number or description."),
     status: z.string().optional(),
-    type: z.enum(["inhouse", "cots", "external"]).optional(),
+    type: z.enum(["inhouse", "cots", "external", "undefined"]).optional(),
     machine: z.string().optional().describe("Machine name or id in any process slot."),
     material: z.string().optional().describe("Substring of the BOM material."),
     onshape_material: z.string().optional().describe("Substring of Onshape's own material, e.g. 'aluminum'."),
@@ -320,7 +320,7 @@ read(
 
 const changesInput = z
   .object({
-    classification: z.enum(["inhouse", "cots", "external"]).optional(),
+    classification: z.enum(["inhouse", "cots", "external", "undefined"]).optional(),
     material: z.string().nullable().optional(),
     description: z.string().nullable().optional(),
     preProcess: z.string().nullable().optional().describe("Machine name or id, or null."),
@@ -386,7 +386,7 @@ read(
 
 const setupInput = z.object({
   part_id: uuid,
-  type: z.enum(["inhouse", "cots", "external"]).optional(),
+  type: z.enum(["inhouse", "cots", "external", "undefined"]).optional(),
   material: z.string().optional().describe("An exact name from list_materials."),
   pre_process: z.string().nullable().optional().describe("Machine name or id, or null."),
   process_1: z.string().nullable().optional().describe("Machine name or id, or null."),

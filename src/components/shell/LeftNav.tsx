@@ -57,14 +57,14 @@ export function LeftNav({
             </Item>
             {base && (
               <>
-                {robot!.fab.total > 0 && <Count n={robot!.fab.total} className="pointer-events-none absolute right-8" />}
+                {robot!.fab.total > 0 && <Count n={robot!.fab.total} className="pointer-events-none absolute right-9" />}
                 <button
                   onClick={() => setToggled(!fabOpen)}
                   aria-expanded={fabOpen}
                   aria-label={fabOpen ? "Hide processes" : "Show processes"}
-                  className="press absolute right-1 rounded p-1 text-subtle hover:bg-line hover:text-fg"
+                  className="press absolute right-0 flex h-8 w-8 items-center justify-center rounded-md text-subtle hover:bg-line hover:text-fg"
                 >
-                  <Icon name="chevron" className={`h-3.5 w-3.5 transition-transform duration-150 ${fabOpen ? "rotate-90" : ""}`} />
+                  <Icon name="chevron" className={`h-4.5 w-4.5 transition-transform duration-150 ${fabOpen ? "rotate-90" : ""}`} />
                 </button>
               </>
             )}
@@ -105,9 +105,9 @@ export function LeftNav({
               onClick={() => setCotsToggled(!cotsOpen)}
               aria-expanded={cotsOpen}
               aria-label={cotsOpen ? "Hide COTS lists" : "Show COTS lists"}
-              className="press absolute right-1 rounded p-1 text-subtle hover:bg-line hover:text-fg"
+              className="press absolute right-0 flex h-8 w-8 items-center justify-center rounded-md text-subtle hover:bg-line hover:text-fg"
             >
-              <Icon name="chevron" className={`h-3.5 w-3.5 transition-transform duration-150 ${cotsOpen ? "rotate-90" : ""}`} />
+              <Icon name="chevron" className={`h-4.5 w-4.5 transition-transform duration-150 ${cotsOpen ? "rotate-90" : ""}`} />
             </button>
           </div>
           {cotsOpen && (
