@@ -32,7 +32,7 @@ type Stage = keyof typeof SECTION_STATUS;
 type DragLoad = { ids: string[]; from: Stage | null };
 const partStage = (p: CardPart): Stage | null => (isFabFinished(p) ? "finished" : fabStage(p));
 
-// A batch sits in Ready to fab while any part still waits there, then in In process, and in
+// A batch sits in Released while any part still waits there, then in In process, and in
 // Finished once every part is done.
 const batchStage = (members: CardPart[]): Stage =>
   members.every(isDone)
@@ -50,7 +50,7 @@ export const statusTint = (status: string | null) => tint(status ? getStatus(sta
 
 const common = (lists: string[][]) => (lists.length ? lists.reduce((acc, l) => acc.filter((m) => l.includes(m))) : []);
 
-// To Fab: machine boxes, then Ready to fab, In process and Finished, each with its fab batches
+// To Fab: machine boxes, then Released, In process and Finished, each with its fab batches
 // first (and, for one machine, its other parts). The Fab button picks cards of one material on one machine
 // and turns them into a batch.
 export function FabView({
@@ -199,7 +199,7 @@ export function FabView({
         {error && <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">Couldn&apos;t save: {error}</p>}
 
         <Section
-          title="Ready to fab"
+          title="Released"
           count={view.batches.ready.length + view.ready.length}
           empty="No parts are waiting to be made."
           onDropParts={fab ? undefined : drop("ready")}

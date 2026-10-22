@@ -11,6 +11,7 @@ import {
   DONE_STATUSES,
   getStatus,
   isStatusName,
+  statusLabel,
   type StatusName,
 } from "@/config/statuses";
 
@@ -51,6 +52,18 @@ export function computeStatus(part: StatusInput): StatusName {
     if (part[slot.done] < needed) return slot.status;
   }
   return DERIVED_STATUS.done;
+}
+
+// The machine a part's status is at: the first process it hasn't finished, else its first one.
+export function statusMachine(part: StatusInput): string | null {
+  const needed = Math.max(part.quantity, 1);
+  const slot = SLOTS.find((s) => part[s.machine] && part[s.done] < needed);
+  return (slot && part[slot.machine]) ?? part.process1 ?? part.preProcess ?? part.process2;
+}
+
+// The part's status as its machine calls it ("Printing" on a 3D printer).
+export function partStatusLabel(part: StatusInput): string {
+  return statusLabel(computeStatus(part), part.classification === "cots" ? null : statusMachine(part));
 }
 
 export function isDone(part: StatusInput): boolean {

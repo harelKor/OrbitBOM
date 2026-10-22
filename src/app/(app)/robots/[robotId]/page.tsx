@@ -75,7 +75,7 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
           icon="fab"
           title="To Fab"
           count={inProcess + ready}
-          detail={`${inProcess} in process, ${ready} ready to fab`}
+          detail={`${inProcess} in process, ${ready} released`}
         />
         <LaunchCard
           href={`/robots/${robot.id}/review`}

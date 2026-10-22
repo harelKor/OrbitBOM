@@ -66,6 +66,13 @@ describe("planPartUpdate", () => {
     });
   });
 
+  it("makes a COTS part In-house when it gets a machine", () => {
+    const cots = { ...part, classification: "cots" as const };
+    expect(planPartUpdate(cots, { process1: "cnc" }, "ui").set.classification).toBe("inhouse");
+    expect(planPartUpdate(cots, { process1: null }, "ui").set.classification).toBeUndefined();
+    expect(planPartUpdate(cots, { process1: "cnc" }, "sync").set.classification).toBeUndefined();
+  });
+
   it("merges fabricators by slot", () => {
     const plan = planPartUpdate({ ...part, fabricators: { process1: "Noa" } }, { fabricators: { process2: "Ido" } }, "ui");
     expect(plan.set.fabricators).toEqual({ process1: "Noa", process2: "Ido" });
