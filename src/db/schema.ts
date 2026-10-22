@@ -99,7 +99,7 @@ export const systems = pgTable(
 
 // ---------- Parts (one BOM row) ----------
 
-export const classification = pgEnum("classification", ["inhouse", "cots", "external"]);
+export const classification = pgEnum("classification", ["inhouse", "cots", "external", "undefined"]);
 export const priority = pgEnum("priority", ["critical", "high", "normal", "low"]);
 export const classSource = pgEnum("class_source", ["rule", "ai", "manual"]);
 

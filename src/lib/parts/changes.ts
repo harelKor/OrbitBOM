@@ -2,7 +2,7 @@
 // sync and the MCP server all go through it, so they share the same rules (plan §3, §6):
 // - choosing a status stores it and resets the counters; moving a counter clears the status;
 // - editing a field that comes from Onshape marks it overridden, so later syncs keep the edit;
-// - giving a COTS part a machine in the app makes it In-house (In factory when the machine is a factory's).
+// - giving a COTS or Undefined part a machine in the app makes it In-house (In factory when the machine is a factory's).
 
 import { z } from "zod";
 import { MACHINES } from "@/config/machines";
@@ -28,7 +28,7 @@ export const partChangesSchema = z
   .object({
     displayName: text,
     partNumber: text,
-    classification: z.enum(["inhouse", "cots", "external"]),
+    classification: z.enum(["inhouse", "cots", "external", "undefined"]),
     description: text,
     material: text,
     quantity: count,
@@ -85,7 +85,7 @@ export const ONSHAPE_FIELDS = [
 export type PartRow = {
   displayName: string | null;
   partNumber: string | null;
-  classification: "inhouse" | "cots" | "external";
+  classification: "inhouse" | "cots" | "external" | "undefined";
   description: string | null;
   material: string | null;
   quantity: number;
@@ -132,7 +132,7 @@ export function planPartUpdate(
   if (Object.keys(counters).length) Object.assign(next, applyCounters(counters));
   if (fabricators) next.fabricators = { ...part.fabricators, ...fabricators };
   const setsMachine = [rest.preProcess, rest.process1, rest.process2].some((m) => m);
-  if (via !== "sync" && setsMachine && rest.classification === undefined && part.classification === "cots") next.classification = "inhouse";
+  if (via !== "sync" && setsMachine && rest.classification === undefined && (part.classification === "cots" || part.classification === "undefined")) next.classification = "inhouse";
 
   const set: Partial<PartRow> = {};
   const history: HistoryEntry[] = [];

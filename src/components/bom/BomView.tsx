@@ -244,7 +244,9 @@ export function BomView({
           {bySystem(shown).map(([name, group]) => (
             <details key={name} open className="group/sys">
               <summary className="press flex cursor-pointer list-none items-center gap-2 py-1 text-sm font-semibold text-fg-2 hover:text-fg">
-                <Icon name="chevron" className="h-3.5 w-3.5 transition-transform group-open/sys:rotate-90" />
+                <span className="-m-1 inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-raised">
+                  <Icon name="chevron" className="h-4.5 w-4.5 transition-transform group-open/sys:rotate-90" />
+                </span>
                 {name}
                 <span className="text-xs font-normal text-subtle tabular-nums">{group.length}</span>
               </summary>

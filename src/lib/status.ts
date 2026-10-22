@@ -20,7 +20,7 @@ import { cotsStatusOf, isCotsStatusName, type CotsStatusName } from "@/config/co
 export type PartStatus = StatusName | CotsStatusName;
 
 export type StatusInput = {
-  classification: "inhouse" | "cots" | "external";
+  classification: "inhouse" | "cots" | "external" | "undefined";
   quantity: number;
   designState: string | null;
   preProcess: string | null;

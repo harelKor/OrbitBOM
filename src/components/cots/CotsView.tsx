@@ -7,7 +7,7 @@ import { BomProvider } from "@/components/bom/BomContext";
 import { StatusField } from "@/components/bom/fields";
 import { Thumb } from "@/components/bom/Thumb";
 import { partTitle, type CardPart } from "@/components/bom/types";
-import { Icon } from "@/components/ui/Icon";
+import { Chevron } from "@/components/ui/Chevron";
 import { Segmented } from "@/components/ui/Segmented";
 import { cotsCategoryOf, cotsTotal, groupSameCots, siteOf, spreadCotsChanges } from "@/lib/cots";
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
@@ -262,7 +262,7 @@ function Section({ title, count, small = false, defaultOpen = true, children }: 
   return (
     <section className="space-y-3">
       <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="press flex w-full items-center gap-3 text-left">
-        <Icon name="chevron" className={`shrink-0 text-subtle transition-transform ${open ? "rotate-90" : ""} ${small ? "h-4 w-4" : "h-5 w-5"}`} />
+        <Chevron open={open} small={small} />
         <h2 className={small ? "text-base font-semibold text-fg-2" : "display text-2xl font-bold"}>{title}</h2>
         {count !== undefined && <span className="rounded-full bg-raised px-2.5 py-0.5 font-mono text-sm font-bold text-fg-2 tabular-nums">{count}</span>}
         <div className={`flex-1 ${small ? "h-px bg-line" : "h-0.5 bg-line-strong"}`} />

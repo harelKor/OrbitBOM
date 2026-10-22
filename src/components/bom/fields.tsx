@@ -68,6 +68,7 @@ const TAG_BADGE: Record<PartTag, string> = {
   cots: "bg-amber-400 text-amber-950",
   factory: "bg-emerald-600 text-white",
   inhouse: "bg-accent text-white",
+  undefined: "bg-slate-500 text-white",
 };
 export function TypeBadge({ part }: { part: CardPart }) {
   const tag = partTag(part);
@@ -102,7 +103,7 @@ export function TypeField({ part, save, badge = false }: Props & { badge?: boole
           options={TYPE_OPTIONS}
           value={part.classification}
           onPick={(v) => {
-            save({ classification: v as "inhouse" | "cots" });
+            save({ classification: v as "inhouse" | "cots" | "undefined" });
             close();
           }}
         />
