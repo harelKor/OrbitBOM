@@ -195,6 +195,13 @@ body {
   .thumb-well {
     @apply overflow-hidden bg-gradient-to-b from-well to-well-2 shadow-[inset_0_-1px_0_0_var(--color-line)];
   }
+  /* Bought parts sit on light green, made parts on a dim Orbit blue, so the two read apart at a glance. */
+  .thumb-cots {
+    @apply bg-gradient-to-b from-[#effcf4] to-[#d3f2df];
+  }
+  .thumb-made {
+    @apply bg-gradient-to-b from-[#eef2fb] to-[#d6dff3];
+  }
   .thumb-well img {
     transition: transform 200ms var(--ease-snap);
   }

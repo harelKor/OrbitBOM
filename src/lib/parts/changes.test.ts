@@ -28,6 +28,7 @@ const part: PartRow = {
   unitPrice: null,
   cotsCategory: null,
   stockCount: 0,
+  cotsSentBack: null,
   overriddenFields: [],
 };
 

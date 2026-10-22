@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { ORDER_STATUSES, getCotsStatus } from "@/config/cots";
+import { COTS_IN_STOCK, COTS_ORDERED, COTS_RELEASED, ORDER_STATUSES, getCotsStatus } from "@/config/cots";
+import { Dialog } from "@/components/Dialog";
+import { statusTint } from "@/components/ui/statusTint";
 import { useBom } from "@/components/bom/BomContext";
 import { EditMenu, NoteCloud, NotesButton } from "@/components/bom/PartCard";
-import { NameField, QuantityField, StatusField, TypeBadge, TypeField, type SaveFn } from "@/components/bom/fields";
+import { QuantityField, StatusField, TypeBadge, TypeField, type SaveFn } from "@/components/bom/fields";
 import { textOn } from "@/components/bom/options";
 import { Popover } from "@/components/bom/Popover";
 import { ownerPartId, partIds, partTitle, type CardPart } from "@/components/bom/types";
@@ -17,16 +19,18 @@ import type { PartChanges } from "@/lib/parts/changes";
 import { computeStatus } from "@/lib/status";
 import { formatPrice, setCurrency, useCurrency } from "./currency";
 
-// A COTS part's card, on every page: the name links to the product page (a dropdown when there
-// are several), a small button edits the links and price, the thumbnail opens the part's place in
-// the robot, − / + count how many are in stock, and the price sits at the bottom with a $ / ₪
-// switch. No download, material or process: the part is bought, not made.
+// A COTS part's card, on every page, washed in its status colour: the light-blue name links to the
+// product page (a dropdown when there are several), a small pencil edits the name, links and
+// price, the thumbnail (light green: bought) opens the part's place in the robot, red − / green +
+// count how many are in stock (reaching the quantity sets In Stock), and the price sits at the
+// bottom with a $ / ₪ switch. No download, material or process: the part is bought, not made.
 // On the Order List (`variant="order"`) the card is pared down to the name, the quantity, the price
-// and a big status button.
+// and a big status button. A part the Order List sent back carries a red tag with the reason.
 export function CotsCard({
   part,
   save,
   showSystem = false,
+  highlightSystem = false,
   selected,
   onToggleSelect,
   style,
@@ -37,12 +41,13 @@ export function CotsCard({
   part: CardPart;
   save: SaveFn;
   showSystem?: boolean;
+  highlightSystem?: boolean; // one system's part inside an opened group: its system stands out
   selected?: boolean;
   onToggleSelect?: () => void;
   style?: React.CSSProperties;
   variant?: "default" | "order";
   struck?: boolean; // marked In Stock on this visit: crossed out until the page is left
-  group?: { systems: number; open: boolean; onToggle: () => void }; // the same part from several systems
+  group?: { systems: number; onOpen: () => void }; // the same part from several systems: a click opens it
   fabCounter?: boolean;
   onCheck?: () => void;
 }) {
@@ -53,15 +58,35 @@ export function CotsCard({
   const links = part.cotsLinks ?? [];
   const title = partTitle(part);
   const stock = part.stockCount ?? 0;
+  const status = computeStatus(part);
+  const sentBack = status === COTS_RELEASED && part.cotsSentBack;
+  const addStock = (d: number) => {
+    const next = Math.max(0, stock + d);
+    // Enough on the shelf: the part is in stock.
+    save(next >= Math.max(part.quantity, 1) && status !== COTS_IN_STOCK ? { stockCount: next, status: COTS_IN_STOCK } : { stockCount: next });
+  };
+  // A grouped card opens on a click anywhere but its own controls (and their popovers).
+  const onCardClick = group
+    ? (e: React.MouseEvent) => {
+        if (!(e.target as HTMLElement).closest("a, button, input, select, textarea, [role=dialog], dialog")) group.onOpen();
+      }
+    : undefined;
+  const thumb = part.thumbUrl ? (
+    // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
+    <img src={part.thumbUrl} alt="" loading="lazy" className="h-full w-full object-contain p-3" />
+  ) : (
+    <span className="text-xs text-muted">{group ? "No thumbnail yet" : "No thumbnail yet, click for 3D"}</span>
+  );
 
   return (
     <div
       id={`part-${part.id}`}
       data-selected={!!selected}
       data-part={partIds(part)}
-      style={style}
+      style={style ?? statusTint(status)}
+      onClick={onCardClick}
       className={`card-interactive group flex scroll-mt-20 flex-col text-sm target:border-accent target:ring-2 target:ring-accent ${
-        group ? "ring-2 ring-amber-400/70 ring-offset-2 ring-offset-ink" : ""
+        group ? "cursor-pointer ring-2 ring-amber-400/70 ring-offset-2 ring-offset-ink" : ""
       } ${struck ? "opacity-60" : ""}`}
     >
       {onToggleSelect && (
@@ -76,9 +101,11 @@ export function CotsCard({
         </button>
       )}
 
-      <div className="thumb-well relative flex aspect-[4/3] items-center justify-center">
+      <div className="thumb-well thumb-cots relative flex aspect-[4/3] items-center justify-center">
         {part.isManual ? (
           <span className="text-xs text-muted">Manual part</span>
+        ) : group ? (
+          <div className="flex h-full w-full items-center justify-center">{thumb}</div>
         ) : (
           <button
             type="button"
@@ -86,12 +113,7 @@ export function CotsCard({
             className="flex h-full w-full cursor-zoom-in items-center justify-center"
             aria-label={`Locate ${title} in the robot`}
           >
-            {part.thumbUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
-              <img src={part.thumbUrl} alt="" loading="lazy" className="h-full w-full object-contain p-3" />
-            ) : (
-              <span className="text-xs text-muted">No thumbnail yet, click for 3D</span>
-            )}
+            {thumb}
           </button>
         )}
         <div className="absolute top-2 left-2 flex items-center gap-1">
@@ -100,39 +122,40 @@ export function CotsCard({
           </span>
           {!order && (edit ? <TypeField part={part} save={save} badge /> : <TypeBadge part={part} />)}
         </div>
-        {group && (
-          <button
-            type="button"
-            onClick={group.onToggle}
-            className="press overlay-btn absolute top-2 right-2 w-auto gap-1 px-2 text-[11px] font-semibold"
-            aria-expanded={group.open}
-            title={group.open ? "Show as one card" : "Show each system's part"}
-          >
-            ⧉ {group.systems} systems
-          </button>
-        )}
+        <div className="absolute top-2 right-2 flex max-w-[55%] flex-col items-end gap-1">
+          {group && (
+            <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[11px] font-bold text-amber-950 shadow-sm" title="Click to see each system's part">
+              ⧉ {group.systems} systems
+            </span>
+          )}
+          {sentBack && (
+            <span className="max-w-full truncate rounded-md bg-rose-600 px-2 py-0.5 text-[11px] font-bold text-white shadow-md" title={`Sent back: ${part.cotsSentBack}`}>
+              ↩ {part.cotsSentBack}
+            </span>
+          )}
+        </div>
         {part.note && <NoteCloud note={part.note} raised={!order} />}
         {!order && (
           <>
             <button
               type="button"
-              onClick={() => save({ stockCount: Math.max(0, stock - 1) })}
+              onClick={() => addStock(-1)}
               disabled={stock === 0}
-              className="overlay-btn absolute bottom-2 left-2 text-lg font-bold disabled:opacity-30"
+              className="press absolute bottom-2 left-2 flex h-9 w-9 items-center justify-center rounded-md bg-rose-500 text-lg font-bold text-white shadow-sm hover:bg-rose-400 disabled:opacity-30"
               aria-label="One less in stock"
             >
               −
             </button>
             <span
-              className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-[#111318]/80 px-2 py-0.5 font-mono text-[11px] font-semibold text-white tabular-nums"
+              className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-[#111318]/80 px-2 py-0.5 font-mono text-[11px] font-semibold whitespace-nowrap text-white tabular-nums"
               title="In stock"
             >
               {stock}/{part.quantity} in stock
             </span>
             <button
               type="button"
-              onClick={() => save({ stockCount: stock + 1 })}
-              className="overlay-btn absolute right-2 bottom-2 text-lg font-bold"
+              onClick={() => addStock(1)}
+              className="press absolute right-2 bottom-2 flex h-9 w-9 items-center justify-center rounded-md bg-emerald-500 text-lg font-bold text-white shadow-sm hover:bg-emerald-400"
               aria-label="One more in stock"
             >
               +
@@ -156,27 +179,31 @@ export function CotsCard({
 
       <div className={`flex min-w-0 flex-col p-3 ${order ? "gap-3" : "gap-2"}`}>
         <div className="flex min-w-0 items-center gap-1">
-          <div className={`min-w-0 flex-1 truncate font-semibold text-fg ${order ? "text-base" : ""} ${struck ? "line-through decoration-2" : ""}`} title={title}>
-            {edit && !order ? (
-              <NameField part={part} save={save} bare />
-            ) : links[0] ? (
-              <a href={links[0].url} target="_blank" rel="noreferrer" className="hover:text-accent hover:underline" title={`Open on ${siteOf(links[0])}`}>
+          <div className={`min-w-0 flex-1 truncate font-semibold ${order ? "text-base" : ""} ${struck ? "line-through decoration-2" : ""}`} title={title}>
+            {links[0] ? (
+              <a
+                href={links[0].url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-sky-500 underline-offset-2 hover:underline dark:text-sky-400"
+                title={`Open on ${siteOf(links[0])}`}
+              >
                 {title}
               </a>
             ) : (
-              title
+              <span className="text-fg">{title}</span>
             )}
           </div>
           {links.length > 1 && <LinksMenu links={links} />}
-          {edit && !order && links[0] && (
-            <a href={links[0].url} target="_blank" rel="noreferrer" className="press rounded p-0.5 text-subtle hover:text-accent" aria-label={`Open on ${siteOf(links[0])}`}>
-              <Icon name="arrow" className="h-3.5 w-3.5 -rotate-45" />
-            </a>
-          )}
           <LinksEditor part={part} save={save} />
           {edit && !order && !group && <EditMenu part={part} />}
         </div>
-        {showSystem && <div className="-mt-1.5 truncate text-xs text-subtle">{part.systemName}</div>}
+        {showSystem &&
+          (highlightSystem ? (
+            <div className="-mt-1 self-start truncate rounded-full bg-amber-400 px-2 py-0.5 text-xs font-bold text-amber-950">{part.systemName}</div>
+          ) : (
+            <div className="-mt-1.5 truncate text-xs text-subtle">{part.systemName}</div>
+          ))}
 
         {order ? (
           <OrderStatusButton part={part} save={save} />
@@ -243,6 +270,8 @@ function LinksEditor({ part, save }: { part: CardPart; save: SaveFn }) {
 }
 
 function LinksForm({ part, onSave, onCancel }: { part: CardPart; onSave: (changes: PartChanges) => void; onCancel: () => void }) {
+  const canRename = useEditMode();
+  const [name, setName] = useState(partTitle(part));
   const [rows, setRows] = useState(() => (part.cotsLinks?.length ? part.cotsLinks.map((l) => ({ url: l.url, site: l.site ?? "", priceUsd: l.priceUsd })) : [{ url: "", site: "", priceUsd: undefined }]));
   const [price, setPrice] = useState(part.unitPrice == null ? "" : String(part.unitPrice));
   const [error, setError] = useState<string | null>(null);
@@ -256,11 +285,18 @@ function LinksForm({ part, onSave, onCancel }: { part: CardPart; onSave: (change
     if (links.some((l) => !/^https?:\/\/\S+$/.test(l.url))) return setError("Links start with https://");
     const unit = price.trim() === "" ? null : Number(price);
     if (unit !== null && (!Number.isFinite(unit) || unit < 0)) return setError("The price is a number of dollars.");
-    onSave({ cotsLinks: links, unitPrice: unit });
+    const renamed = canRename && name.trim() && name.trim() !== partTitle(part) ? { displayName: name.trim() } : {};
+    onSave({ cotsLinks: links, unitPrice: unit, ...renamed });
   }
 
   return (
     <form onSubmit={submit} className="space-y-2 text-sm">
+      {canRename && (
+        <label className="block space-y-1">
+          <span className="text-[11px] font-semibold text-subtle">Name</span>
+          <input value={name} onChange={(e) => setName(e.target.value)} className="input py-1.5" aria-label="Part name" />
+        </label>
+      )}
       <div className="text-[11px] font-semibold text-subtle">Product links (the first is the name&apos;s link)</div>
       {rows.map((r, i) => (
         <div key={i} className="flex gap-1">
@@ -320,42 +356,98 @@ function Price({ part, big }: { part: CardPart; big: boolean }) {
   );
 }
 
-// The Order List's big status button: In Order List, Seen, In Route, In Stock.
-function OrderStatusButton({ part, save }: { part: CardPart; save: SaveFn }) {
+// What the Order List calls each status: there, "In Order List" reads "To order".
+const ORDER_LABELS: Partial<Record<string, string>> = { [COTS_ORDERED]: "To order" };
+export const orderLabel = (status: string) => ORDER_LABELS[status] ?? status;
+const SEND_BACK_COLOR = "#9ca3af";
+
+// The Order List's big status button: To order, Seen, In Route, In Stock, and a grey Send back that
+// asks why and returns the part to Released. `compact` is the table's smaller version.
+export function OrderStatusButton({ part, save, compact = false }: { part: CardPart; save: SaveFn; compact?: boolean }) {
   const status = computeStatus(part);
   const color = getCotsStatus(status)?.color ?? "#cbd5e1";
+  const [sendingBack, setSendingBack] = useState(false);
+  const [reason, setReason] = useState("");
+  const option = "press flex w-full items-center justify-center rounded-xl border-2 border-black/25 py-3 text-base font-bold shadow-sm";
   return (
-    <Popover
-      hideCaret
-      triggerClassName="w-full"
-      trigger={
-        <span className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-base font-bold shadow-sm" style={{ background: color, color: textOn(color) }}>
-          {status}
-          <span className="text-xs opacity-70">▾</span>
-        </span>
-      }
-    >
-      {(close) => (
-        <div className="space-y-1.5 p-1">
-          {ORDER_STATUSES.map((s) => {
-            const c = getCotsStatus(s)!.color;
-            return (
-              <button
-                key={s}
-                type="button"
-                onClick={() => {
-                  if (s !== status) save({ status: s });
-                  close();
-                }}
-                className={`press flex w-full items-center justify-center rounded-xl py-3 text-base font-bold ${s === status ? "ring-2 ring-fg/40" : ""}`}
-                style={{ background: c, color: textOn(c) }}
-              >
-                {s}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </Popover>
+    <>
+      <Popover
+        hideCaret
+        triggerClassName={compact ? "" : "w-full"}
+        trigger={
+          <span
+            className={`flex items-center justify-center gap-2 border-2 border-black/20 font-bold shadow-sm ${compact ? "rounded-full px-3 py-1 text-xs" : "w-full rounded-xl py-3 text-base"}`}
+            style={{ background: color, color: textOn(color) }}
+          >
+            {orderLabel(status)}
+            <span className="text-xs opacity-70">▾</span>
+          </span>
+        }
+      >
+        {(close) => (
+          <div className="space-y-1.5 p-1">
+            {ORDER_STATUSES.map((s) => {
+              const c = getCotsStatus(s)!.color;
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => {
+                    if (s !== status) save({ status: s });
+                    close();
+                  }}
+                  className={`${option} ${s === status ? "ring-2 ring-fg/50 ring-offset-1" : ""}`}
+                  style={{ background: c, color: textOn(c) }}
+                >
+                  {orderLabel(s)}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => {
+                close();
+                setReason("");
+                setSendingBack(true);
+              }}
+              className={option}
+              style={{ background: SEND_BACK_COLOR, color: textOn(SEND_BACK_COLOR) }}
+            >
+              ↩ Send back
+            </button>
+          </div>
+        )}
+      </Popover>
+      <Dialog open={sendingBack} onClose={() => setSendingBack(false)} title={`Send back ${partTitle(part)}`}>
+        <form
+          className="space-y-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!reason.trim()) return;
+            save({ status: COTS_RELEASED, cotsSentBack: reason.trim() });
+            setSendingBack(false);
+          }}
+        >
+          <p className="text-sm text-muted">It goes back to Released with this note on it.</p>
+          <textarea
+            autoFocus
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={3}
+            placeholder="Why? e.g. wrong size, find a cheaper shop…"
+            className="input"
+            aria-label="Why it is sent back"
+          />
+          <div className="flex justify-end gap-2">
+            <button type="button" className="btn" onClick={() => setSendingBack(false)}>
+              Cancel
+            </button>
+            <button className="btn-primary" disabled={!reason.trim()}>
+              Send back
+            </button>
+          </div>
+        </form>
+      </Dialog>
+    </>
   );
 }

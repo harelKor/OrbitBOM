@@ -275,7 +275,7 @@ function ReviewCard({ item, disabled, onDecide }: { item: ReviewItem; disabled: 
   const fields = ORDER.filter((f) => f in item.changes);
   return (
     <div className="card-interactive group flex flex-col text-sm" style={statusTint(computeStatus(part))}>
-      <div className="thumb-well relative flex aspect-[4/3] items-center justify-center">
+      <div className={`thumb-well ${part.classification === "cots" ? "thumb-cots" : "thumb-made"} relative flex aspect-[4/3] items-center justify-center`}>
         {part.thumbUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
           <img src={part.thumbUrl} alt="" loading="lazy" className="h-full w-full object-contain p-3" />
