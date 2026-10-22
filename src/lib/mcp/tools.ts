@@ -12,7 +12,7 @@ import { listInventory } from "@/lib/data/inventory";
 import { listRobots } from "@/lib/data/robots";
 import { OnshapeError } from "@/lib/onshape/client";
 import { refreshThumbnails } from "@/lib/onshape/thumbnails";
-import { applyEachPartChanges, applyPartChanges } from "@/lib/parts/apply";
+import { applyPartChanges } from "@/lib/parts/apply";
 import { cotsCategoryOf, groupSameCots } from "@/lib/cots";
 import { partChangesSchema, planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { applyUndo, planUndo } from "@/lib/parts/undo";
@@ -345,7 +345,7 @@ write(
   "update_parts",
   "Change fields on one or more parts, the same as the BOM's editors and Bulk edit.",
   z.object({ part_ids: z.array(uuid).min(1).max(1000), changes: changesInput }),
-  async ({ part_ids, changes }, { member }) => {
+  async ({ part_ids, changes }, { member, aiName }) => {
     const normal = normaliseChanges(changes);
     const rows = await db.select().from(parts).where(inArray(parts.id, part_ids));
     if (rows.length !== new Set(part_ids).size) throw new ToolError("Some part ids don't exist.");
@@ -358,8 +358,12 @@ write(
       summary: `Changed ${fields.join(", ") || "nothing"} on ${diffs.length} ${diffs.length === 1 ? "part" : "parts"}`,
       preview: diffs.map((d) => ({ id: d.id, part: d.part, changes: d.changes.map(readable) })),
       apply: async () => {
-        const { batchId, changed } = await applyPartChanges(part_ids, normal, { memberId: member.id, via: "mcp" });
-        return { changed, batch_id: batchId, undo: `undo_batch with batch_id ${batchId}` };
+        // Changed fields wait in To Review for the designer, like set_up_parts.
+        const { batchId, changed } = await applySuggestions(
+          part_ids.map((id) => ({ id, changes: normal, reason: null })),
+          { memberId: member.id, source: "ai", via: "mcp", aiName },
+        );
+        return { changed, batch_id: batchId, undo: `undo_batch with batch_id ${batchId}`, next: "The changed parts also wait in To Review for their designer." };
       },
     };
   },
@@ -798,7 +802,7 @@ write(
   "set_cots_info",
   `Set COTS parts' official name, product links, average price and filter box, found online. The parts change at once (undo_batch reverts it). ${COTS_WORKFLOW}`,
   z.object({ items: z.array(cotsInfoInput).min(1).max(200) }),
-  async ({ items }, { member }) => {
+  async ({ items }, { member, aiName }) => {
     const edits = items.flatMap((item) => {
       const changes = normaliseChanges({
         ...(item.official_name !== undefined ? { displayName: item.official_name } : {}),
@@ -806,7 +810,7 @@ write(
         ...(item.unit_price_usd !== undefined ? { unitPrice: item.unit_price_usd } : {}),
         ...(item.category !== undefined ? { cotsCategory: item.category } : {}),
       });
-      return item.part_ids.map((id) => ({ id, changes }));
+      return item.part_ids.map((id) => ({ id, changes, reason: null }));
     });
     const ids = edits.map((e) => e.id);
     if (new Set(ids).size !== ids.length) throw new ToolError("Each part may appear once.");
@@ -823,8 +827,8 @@ write(
       summary: `Looked up ${diffs.length} COTS ${diffs.length === 1 ? "part" : "parts"}: ${[...new Set(items.map((i) => i.official_name).filter(Boolean))].slice(0, 3).join(", ")}`,
       preview: diffs.map((d) => ({ id: d.id, part: d.part, changes: d.changes.map(readable) })),
       apply: async () => {
-        const { batchId, changed } = await applyEachPartChanges(edits, { memberId: member.id, via: "mcp" });
-        return { changed, batch_id: batchId, undo: `undo_batch with batch_id ${batchId}` };
+        const { batchId, changed } = await applySuggestions(edits, { memberId: member.id, source: "ai", via: "mcp", aiName });
+        return { changed, batch_id: batchId, undo: `undo_batch with batch_id ${batchId}`, next: "The parts also wait in To Review for their designer." };
       },
     };
   },
