@@ -108,7 +108,7 @@ function MadePartCard({
           <span className="rounded-full bg-[#111318]/85 px-2 py-0.5 text-[11px] font-bold text-white tabular-nums">
             {edit ? <QuantityField part={part} save={save} /> : `×${part.quantity}`}
           </span>
-          {edit ? <TypeField part={part} save={save} badge /> : <TypeBadge part={part} />}
+          {!fabCounter && (edit ? <TypeField part={part} save={save} badge /> : <TypeBadge part={part} />)}
           {part.memberIds && (
             <span className="rounded-full bg-surface/90 px-1.5 py-0.5 text-[10px] font-semibold text-fg-2 shadow-sm" title="Merged parts">
               ⧉ {part.memberIds.length}
