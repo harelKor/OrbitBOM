@@ -38,7 +38,8 @@ export default async function FabPage({
       </div>
       <FabView
         parts={parts}
-        batches={batches.filter(isFabBatch).map(({ id, name, machine, madeBy }) => ({ id, name, machine, madeBy }))}
+        batches={batches.filter(isFabBatch).map(({ id, name, machine, madeBy, priority }) => ({ id, name, machine, madeBy, priority }))}
+        me={member.name}
         memberNames={memberNames}
         machine={machineName ? machine : undefined}
         robotId={data.robot.id}

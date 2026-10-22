@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useLayoutEffect, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
 import { MACHINES, getMachine } from "@/config/machines";
-import { DONE_STATUSES, getStatus, type StatusName } from "@/config/statuses";
+import type { Priority } from "@/config/priorities";
+import { DONE_STATUSES, STATUSES, getStatus, type StatusName } from "@/config/statuses";
 import { createFabBatch, deleteGroup, removeFromGroup, updateGroup } from "@/app/(app)/groups/actions";
 import { updatePart, updateParts } from "@/app/(app)/parts-actions";
 import { BomProvider, type InventoryName } from "@/components/bom/BomContext";
@@ -20,7 +21,20 @@ import { FINISHED_STATUS, IN_PROCESS_STATUS, READY_STATUS, fabStage, isFabFinish
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { computeStatus } from "@/lib/status";
 
-export type Batch = { id: string; name: string; machine: string | null; madeBy: string | null };
+export type Batch = { id: string; name: string; machine: string | null; madeBy: string | null; priority: Priority };
+
+// A batch's priority colours all its text. "normal" (the default) is no priority; the shop's three
+// levels use the stored critical / high / low.
+const BATCH_PRIORITIES = [
+  { value: "critical", label: "High", color: "#dc2626" },
+  { value: "high", label: "Mid", color: "#ea580c" },
+  { value: "low", label: "Low", color: "#ca8a04" },
+] as const satisfies readonly { value: Priority; label: string; color: string }[];
+const priorityColor = (p: Priority) => BATCH_PRIORITIES.find((x) => x.value === p)?.color;
+
+// A batch with mixed statuses takes the colour of its least advanced part (finished parts last).
+const STATUS_RANK = new Map<string, number>(STATUSES.map((s, i) => [s.name, i]));
+const rank = (p: CardPart) => (isFabFinished(p) ? Infinity : (STATUS_RANK.get(computeStatus(p)) ?? 0));
 
 const isDone = (p: CardPart) => (DONE_STATUSES as string[]).includes(computeStatus(p));
 
@@ -61,6 +75,7 @@ export function FabView({
   inventory,
   isAdmin,
   memberNames,
+  me,
 }: {
   parts: CardPart[];
   batches: Batch[];
@@ -69,6 +84,7 @@ export function FabView({
   inventory: InventoryName[];
   isAdmin: boolean;
   memberNames: string[];
+  me: string;
 }) {
   const [optimistic, addOptimistic] = useOptimistic(parts, (state, { ids, changes }: { ids: string[]; changes: PartChanges }) =>
     state.map((p) => (ids.includes(p.id) ? { ...p, ...planPartUpdate(p, changes, "ui").set } : p)),
@@ -86,6 +102,7 @@ export function FabView({
 
   const { filters } = useFilters();
   const [fab, setFab] = useState(false);
+  const [mine, setMine] = useState(false); // only the batches made by the signed-in member
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pickedMachine, setPickedMachine] = useState("");
   const toggle = (id: string) =>
@@ -116,6 +133,7 @@ export function FabView({
       .filter(
         (b) =>
           b.members.length > 0 &&
+          (!mine || b.madeBy === me) &&
           (machine ? (b.machine ? b.machine === machine : b.members.some(onMachine)) : true) &&
           b.members.some((p) => matchesTopBar(p, filters)),
       );
@@ -125,13 +143,13 @@ export function FabView({
     // Each part shows once: in its batch, or in the section of its status.
     return {
       batches: { ready: batchesIn("ready"), inProcess: batchesIn("inProcess"), finished: batchesIn("finished") },
-      ready: loose.filter((p) => partStage(p) === "ready"),
-      inProcess: loose.filter((p) => partStage(p) === "inProcess"),
-      finished: loose.filter((p) => partStage(p) === "finished"),
-      other: machine ? loose.filter((p) => !partStage(p)) : [],
+      ready: mine ? [] : loose.filter((p) => partStage(p) === "ready"),
+      inProcess: mine ? [] : loose.filter((p) => partStage(p) === "inProcess"),
+      finished: mine ? [] : loose.filter((p) => partStage(p) === "finished"),
+      other: machine && !mine ? loose.filter((p) => !partStage(p)) : [],
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onMachine only reads `machine`
-  }, [optimistic, batches, filters, machine]);
+  }, [optimistic, batches, filters, machine, mine, me]);
 
   // While picking a fab: the material of the first pick and the machines every pick goes through.
   const picked = optimistic.filter((p) => selected.has(p.id));
@@ -183,12 +201,19 @@ export function FabView({
             <MachineBox key={m.id} href={`${base}?machine=${m.id}`} name={m.name} count={counts.byMachine.get(m.id)!} active={machine === m.id} />
           ))}
           <button
+            onClick={() => setMine((m) => !m)}
+            aria-pressed={mine}
+            className={`press ml-auto self-center ${mine ? "btn-primary" : "btn"}`}
+          >
+            My batches
+          </button>
+          <button
             onClick={() => {
               setFab((f) => !f);
               setSelected(new Set());
             }}
             aria-pressed={fab}
-            className={`press ml-auto self-center rounded-xl px-7 py-3 text-lg font-bold shadow-lg transition-colors ${
+            className={`press self-center rounded-xl px-7 py-3 text-lg font-bold shadow-lg transition-colors ${
               fab ? "border border-line-strong bg-surface text-fg" : "bg-amber-400 text-slate-950 shadow-amber-400/40 hover:bg-amber-300"
             }`}
           >
@@ -377,6 +402,9 @@ function BatchCard({
   const [, startTransition] = useTransition();
   const statuses = [...new Set(members.map((p) => computeStatus(p)))];
   const shared = statuses.length === 1 ? statuses[0] : null;
+  const lowest = members.reduce((a, p) => (rank(p) < rank(a) ? p : a), members[0]);
+  const [priority, setPriority] = useState(batch.priority);
+  const textColor = priorityColor(priority);
   const qty = members.reduce((n, p) => n + p.quantity, 0);
   const materials = [...new Set(members.map((p) => p.material ?? ""))];
   const material = materials.length === 1 ? materials[0] || "No material" : "Mixed materials";
@@ -418,7 +446,10 @@ function BatchCard({
         e.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ ids: (notDone.length ? notDone : members).map((p) => p.id), from: stage } satisfies DragLoad))
       }
       onClick={() => setOpen((o) => !o)}
-      style={{ ...(stage === "finished" ? tint(FINISHED_COLOR) : statusTint(shared)), ...(open && { gridColumn: `span ${span}` }) }}
+      style={{
+        ...(stage === "finished" || isFabFinished(lowest) ? tint(FINISHED_COLOR) : statusTint(computeStatus(lowest))),
+        ...(open && { gridColumn: `span ${span}` }),
+      }}
       className="card-interactive flex cursor-pointer flex-col text-sm"
     >
       <div className={open ? "flex flex-wrap gap-4 p-3" : "flex flex-col"}>
@@ -439,7 +470,7 @@ function BatchCard({
           ))}
         </button>
         <div className="flex min-w-0 flex-1 flex-col gap-2 p-3">
-          <div className="min-w-0">
+          <div className="min-w-0" style={textColor ? { color: textColor } : undefined}>
             {renaming ? (
               <input
                 autoFocus
@@ -455,8 +486,10 @@ function BatchCard({
               />
             ) : (
               <div className="flex items-baseline gap-2">
-                <span className="display truncate text-xl text-accent">{batch.name}</span>
-                {edit && (
+                <span className="display truncate text-xl text-accent" style={textColor ? { color: textColor } : undefined}>
+                  {batch.name}
+                </span>
+                {open && edit && (
                   <button
                     className="press shrink-0 text-xs text-subtle hover:text-accent"
                     onClick={(e) => {
@@ -469,11 +502,11 @@ function BatchCard({
                 )}
               </div>
             )}
-            <div className="truncate text-xs font-medium text-fg-2">
+            <div className={`truncate text-xs font-medium ${textColor ? "" : "text-fg-2"}`}>
               {material}
               {machineName && ` · ${machineName}`}
             </div>
-            <div className="text-xs text-subtle tabular-nums">
+            <div className={`text-xs tabular-nums ${textColor ? "" : "text-subtle"}`}>
               {members.length} parts, {qty} pcs
             </div>
           </div>
@@ -491,6 +524,26 @@ function BatchCard({
                 />
               )}
             </Popover>
+            {open && (
+              <select
+                value={priority}
+                onChange={(e) => {
+                  const next = e.target.value as Priority;
+                  setPriority(next);
+                  startTransition(() => void updateGroup(batch.id, { priority: next }));
+                }}
+                aria-label={`Priority of ${batch.name}`}
+                className="cursor-pointer rounded-full border border-line-strong bg-surface px-2 py-1 text-xs font-bold"
+                style={textColor ? { color: textColor } : undefined}
+              >
+                <option value="normal">No priority</option>
+                {BATCH_PRIORITIES.map((p) => (
+                  <option key={p.value} value={p.value}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            )}
             {downloads.length > 0 && (
               <button className="overlay-btn" onClick={() => downloadAll(downloads)} aria-label={`Download ${downloads.length} files`} title={`Download ${downloads.length} files`}>
                 <Icon name="download" />
@@ -505,7 +558,8 @@ function BatchCard({
                 startTransition(() => void updateGroup(batch.id, { madeBy: e.target.value || null }));
               }}
               aria-label={`Who makes ${batch.name}`}
-              className="min-w-0 cursor-pointer truncate rounded bg-transparent py-0.5 text-sm font-bold text-fg hover:bg-raised focus:outline-none"
+              className={`min-w-0 cursor-pointer truncate rounded bg-transparent py-0.5 text-sm font-bold hover:bg-raised focus:outline-none ${textColor ? "" : "text-fg"}`}
+              style={textColor ? { color: textColor } : undefined}
             >
               <option value="">Nobody yet</option>
               {[...new Set([...(batch.madeBy ? [batch.madeBy] : []), ...memberNames])].map((n) => (
@@ -514,7 +568,7 @@ function BatchCard({
                 </option>
               ))}
             </select>
-            {edit && (
+            {open && edit && (
               <button
                 className="press ml-auto shrink-0 text-xs text-subtle hover:text-rose-700"
                 onClick={() => {
