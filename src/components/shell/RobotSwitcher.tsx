@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { FastLink } from "@/components/ui/FastLink";
 import { RobotSettings } from "@/app/(app)/robots/[robotId]/RobotSettings";
 import { SystemSettings } from "@/app/(app)/robots/[robotId]/systems/[systemId]/SystemSettings";
 import type { ShellRobot, ShellSystem } from "@/lib/data/shell";
@@ -70,7 +71,7 @@ export function RobotSwitcher({ robots, lastRobotId, isAdmin }: { robots: ShellR
 function RobotCard({ robot, current, overview, isAdmin }: { robot: ShellRobot; current: boolean; overview: boolean; isAdmin: boolean }) {
   return (
     <div className="relative">
-      <Link
+      <FastLink
         href={`/robots/${robot.id}`}
         aria-current={overview ? "page" : undefined}
         data-selected={overview}
@@ -83,7 +84,7 @@ function RobotCard({ robot, current, overview, isAdmin }: { robot: ShellRobot; c
             {robot.year}, {robot.percent}% done
           </div>
         </div>
-      </Link>
+      </FastLink>
       <EditOnly>
         <span className="absolute top-1.5 right-1.5">
           <RobotSettings robot={robot} isAdmin={isAdmin} small />
@@ -96,7 +97,7 @@ function RobotCard({ robot, current, overview, isAdmin }: { robot: ShellRobot; c
 function SystemTile({ robotId, system, active, isAdmin }: { robotId: string; system: ShellSystem; active: boolean; isAdmin: boolean }) {
   return (
     <div className="relative">
-      <Link
+      <FastLink
         href={`/robots/${robotId}/systems/${system.id}`}
         aria-current={active ? "page" : undefined}
         data-selected={active}
@@ -114,7 +115,7 @@ function SystemTile({ robotId, system, active, isAdmin }: { robotId: string; sys
           </span>
         </span>
         <span className={`block truncate px-2 py-1.5 text-xs font-medium ${active ? "text-accent" : "text-fg-2"}`}>{system.name}</span>
-      </Link>
+      </FastLink>
       <EditOnly>
         <span className="absolute top-1.5 right-1.5">
           <SystemSettings robotId={robotId} system={system} isAdmin={isAdmin} small />

@@ -1,6 +1,6 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useMemo, useOptimistic, useState, useTransition } from "react";
 import { STATUSES } from "@/config/statuses";
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
@@ -59,7 +59,6 @@ export function BomView({
   groupBySystem?: boolean; // card view: one collapsible section per system
   allowRelease?: boolean; // a system page: the Release button (View and Edit mode)
 }) {
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const edit = useEditMode();
@@ -69,7 +68,9 @@ export function BomView({
     const params = new URLSearchParams(searchParams);
     if (v === "card") params.delete("view");
     else params.set("view", v);
-    router.replace(`${pathname}${params.size ? `?${params}` : ""}`, { scroll: false });
+    // Only the URL changes: the views are drawn here from the same parts, so there is nothing to
+    // ask the server for.
+    window.history.replaceState(null, "", `${pathname}${params.size ? `?${params}` : ""}`);
   };
 
   const [optimisticParts, addOptimistic] = useOptimistic(
