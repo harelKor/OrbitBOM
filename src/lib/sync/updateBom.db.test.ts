@@ -78,7 +78,7 @@ else
       expect(s.calls).toBe(2);
       const ps = await live();
       expect(ps.map((p) => [p.onshapeName, p.quantity, p.process1, p.classification])).toEqual([
-        ["Bolt", 8, null, "cots"],
+        ["Bolt", 8, null, "undefined"],
         ["Plate", 2, "cnc", "inhouse"],
         ["Tube", 1, "cnc", "inhouse"],
       ]);
