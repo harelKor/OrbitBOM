@@ -6,8 +6,8 @@ import { IN_PROCESS_STATUS, READY_STATUS, fabStage, isFabFinished } from "@/lib/
 import { deleteManualPart, unmergeParts } from "@/app/(app)/parts-actions";
 import { useEditMode } from "@/components/shell/ModeContext";
 import { PartStage, type StageView } from "@/components/dashboard/PartStage";
-import { materialTint, useMaterialColors } from "@/components/shell/MaterialColors";
-import { NO_MATERIAL, materialColor, materialColorGroup } from "@/config/materialColors";
+import { computeStatus } from "@/lib/status";
+import { statusTint } from "@/components/ui/statusTint";
 import { CheckBadge, CheckIcon } from "@/components/ui/CheckBadge";
 import { Icon } from "@/components/ui/Icon";
 import { useBom } from "./BomContext";
@@ -66,14 +66,10 @@ export function PartCard({
   const fabControls = fabCounter && part.classification !== "cots" && machines.length > 0;
   const format = cadFormat(part);
   const [stage, setStage] = useState<StageView | null>(null);
-  // The thumbnail shows Onshape's appearance; the material button repaints it in the material's colour.
-  const [tinted, setTinted] = useState(false);
-  const materialColors = useMaterialColors();
   const onshapeMaterial = part.geometry?.onshapeMaterial ?? null;
-  const hasMaterial = materialColorGroup(part.material, onshapeMaterial) !== NO_MATERIAL;
 
   return (
-    <div id={`part-${part.id}`} data-selected={!!selected} data-part={partIds(part)} style={style} className="card-interactive group flex scroll-mt-20 flex-col text-sm target:border-accent target:ring-2 target:ring-accent">
+    <div id={`part-${part.id}`} data-selected={!!selected} data-part={partIds(part)} style={style ?? statusTint(computeStatus(part))} className="card-interactive group flex scroll-mt-20 flex-col text-sm target:border-accent target:ring-2 target:ring-accent">
       {onToggleSelect && (
         // While selecting, a click anywhere on the card toggles it.
         <button
@@ -94,7 +90,7 @@ export function PartCard({
           <button type="button" onClick={() => setStage("part")} className="flex h-full w-full cursor-zoom-in items-center justify-center" aria-label={`3D preview of ${partTitle(part)}`}>
             {part.thumbUrl ? (
               // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
-              <img src={part.thumbUrl} alt="" loading="lazy" className="h-full w-full object-contain p-3" style={tinted ? { filter: materialTint(part.material, onshapeMaterial) } : undefined} />
+              <img src={part.thumbUrl} alt="" loading="lazy" className="h-full w-full object-contain p-3" />
             ) : (
               <span className="text-xs text-muted">No thumbnail yet, click for 3D</span>
             )}
@@ -124,21 +120,6 @@ export function PartCard({
             </button>
           ) : (
             (format || part.files.length > 0 || part.hasDrawing) && <DownloadMenu part={part} format={format} />
-          )}
-          {part.thumbUrl && hasMaterial && !fabCounter && (
-            <button
-              type="button"
-              onClick={() => setTinted(!tinted)}
-              aria-pressed={tinted}
-              className="overlay-btn group/tip relative"
-              aria-label={tinted ? "Show Onshape's appearance" : "Show in material colour"}
-            >
-              <span
-                className={`h-3.5 w-3.5 rounded-full border-2 ${tinted ? "border-accent" : "border-white"} shadow-[0_0_0_1px_rgba(0,0,0,0.25)]`}
-                style={{ background: materialColor(part.material, materialColors, onshapeMaterial) }}
-              />
-              <Tip>{tinted ? "Onshape appearance" : "Material colour"}</Tip>
-            </button>
           )}
         </div>
         {part.note && <NoteCloud note={part.note} raised={fabControls} />}
@@ -237,14 +218,6 @@ export function cadFormat(part: CardPart): ExportFormat | null {
 const LABELS: Partial<Record<ExportFormat, string>> = { PARASOLID: "Parasolid", DXF_FLAT: "Flat DXF", STEP_FLAT: "Flat STEP" };
 export const label = (f: ExportFormat) => LABELS[f] ?? f;
 
-function Tip({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="pointer-events-none absolute top-full right-0 mt-1 rounded bg-fg px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap text-white opacity-0 group-hover/tip:opacity-100">
-      {children}
-    </span>
-  );
-}
-
 // Every way to download the part: the CAD exports (the first machine's format on top) and any
 // files attached to it.
 function DownloadMenu({ part, format }: { part: CardPart; format: ExportFormat | null }) {
@@ -292,16 +265,17 @@ function DownloadMenu({ part, format }: { part: CardPart; format: ExportFormat |
   );
 }
 
-// The part's note as a comic-book thought cloud over the thumbnail; the notes button edits it.
+// The part's note as a comic-book thought cloud over the thumbnail, in bold on yellow so it is hard
+// to miss; the notes button edits it.
 function NoteCloud({ note, raised = false }: { note: string; raised?: boolean }) {
   return (
-    <div className={`pointer-events-none absolute left-3 max-w-[70%] ${raised ? "bottom-14" : "bottom-3"}`}>
-      <div className="relative rounded-[1.4rem] border-2 border-[#111318] bg-white px-3 py-1.5 text-xs leading-snug font-semibold text-[#111318] shadow-[2px_3px_0_0_rgba(17,19,24,0.85)]">
-        <span className="line-clamp-3 break-words whitespace-pre-line">{note}</span>
+    <div className={`pointer-events-none absolute left-3 max-w-[80%] ${raised ? "bottom-14" : "bottom-4"}`}>
+      <div className="relative rounded-[1.6rem] border-[3px] border-[#111318] bg-[#fff59d] px-3.5 py-2 text-sm leading-snug font-bold text-[#111318] shadow-[3px_4px_0_0_rgba(17,19,24,0.9)]">
+        <span className="line-clamp-4 break-words whitespace-pre-line">{note}</span>
       </div>
       {/* The cloud's trailing puffs. */}
-      <span className="absolute -bottom-2 left-4 h-2.5 w-2.5 rounded-full border-2 border-[#111318] bg-white" />
-      <span className="absolute -bottom-3.5 left-1.5 h-1.5 w-1.5 rounded-full border-2 border-[#111318] bg-white" />
+      <span className="absolute -bottom-2.5 left-5 h-3 w-3 rounded-full border-[3px] border-[#111318] bg-[#fff59d]" />
+      <span className="absolute -bottom-4 left-2 h-2 w-2 rounded-full border-2 border-[#111318] bg-[#fff59d]" />
     </div>
   );
 }
