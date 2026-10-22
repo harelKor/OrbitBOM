@@ -7,6 +7,8 @@ import { isUuid } from "@/lib/uuid";
 
 export type ActionResult = { error?: string; message?: string };
 
+// Approve and Reject don't revalidate: the page hides decided parts at once and refreshes itself
+// in the background, so the click isn't held up by re-rendering the whole layout.
 function refresh() {
   revalidatePath("/robots", "layout");
 }
@@ -15,7 +17,6 @@ export async function approveParts(partIds: string[]): Promise<ActionResult> {
   await requireMember();
   if (partIds.some((id) => !isUuid(id))) return { error: "Unknown part." };
   await approveReviews(partIds);
-  refresh();
   return {};
 }
 
@@ -23,7 +24,6 @@ export async function rejectParts(partIds: string[]): Promise<ActionResult> {
   const member = await requireMember();
   if (partIds.some((id) => !isUuid(id))) return { error: "Unknown part." };
   const { keptEdits } = await rejectReviews(partIds, member.id);
-  refresh();
   return keptEdits ? { message: `Put back the suggestion. ${keptEdits} field${keptEdits === 1 ? " was" : "s were"} edited since and kept as edited.` } : {};
 }
 
