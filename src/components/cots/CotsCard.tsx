@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useOptimistic, useState, useTransition } from "react";
 import { COTS_IN_STOCK, COTS_ORDERED, COTS_RELEASED, ORDER_STATUSES, getCotsStatus } from "@/config/cots";
 import { Dialog } from "@/components/Dialog";
 import { statusTint } from "@/components/ui/statusTint";
@@ -17,6 +17,8 @@ import { Icon } from "@/components/ui/Icon";
 import { cotsTotal, siteOf } from "@/lib/cots";
 import type { PartChanges } from "@/lib/parts/changes";
 import { computeStatus } from "@/lib/status";
+import { stepShelfStock } from "@/app/(app)/inventory/actions";
+import { ShelfCoversPrompt, ShelfPill } from "./ShelfPill";
 import { formatPrice, setCurrency, useCurrency } from "./currency";
 
 // A COTS part's card, on every page, washed in its status colour: the light-blue name links to the
@@ -57,10 +59,24 @@ export function CotsCard({
   const order = variant === "order";
   const links = part.cotsLinks ?? [];
   const title = partTitle(part);
-  const stock = part.stockCount ?? 0;
   const status = computeStatus(part);
   const sentBack = status === COTS_RELEASED && part.cotsSentBack;
+  // A part linked to an inventory item counts on the item's shelf: − / + move the item's stock
+  // and the count shows how much of the part the shelf covers. Otherwise the part keeps its own.
+  const [shelf, stepShelf] = useOptimistic(part.shelf ?? null, (s, d: number) =>
+    s && { ...s, inStock: Math.max(0, s.inStock + d), covered: Math.min(part.quantity, Math.max(0, s.covered + d)) },
+  );
+  const [, startShelf] = useTransition();
+  const onShelf = !!shelf && !shelf.sheet;
+  const stock = onShelf ? shelf.covered : (part.stockCount ?? 0);
   const addStock = (d: number) => {
+    if (onShelf) {
+      startShelf(async () => {
+        stepShelf(d);
+        await stepShelfStock(part.memberIds ?? [part.id], d);
+      });
+      return;
+    }
     const next = Math.max(0, stock + d);
     // Enough on the shelf: the part is in stock.
     save(next >= Math.max(part.quantity, 1) && status !== COTS_IN_STOCK ? { stockCount: next, status: COTS_IN_STOCK } : { stockCount: next });
@@ -140,7 +156,7 @@ export function CotsCard({
             <button
               type="button"
               onClick={() => addStock(-1)}
-              disabled={stock === 0}
+              disabled={onShelf ? shelf.inStock === 0 : stock === 0}
               className="press absolute bottom-2 left-2 flex h-9 w-9 items-center justify-center rounded-md bg-rose-500 text-lg font-bold text-white shadow-sm hover:bg-rose-400 disabled:opacity-30"
               aria-label="One less in stock"
             >
@@ -148,9 +164,9 @@ export function CotsCard({
             </button>
             <span
               className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-[#111318]/80 px-2 py-0.5 font-mono text-[11px] font-semibold whitespace-nowrap text-white tabular-nums"
-              title="In stock"
+              title={onShelf ? `Covered by ${shelf.itemName} on the shelf` : "In stock"}
             >
-              {stock}/{part.quantity} in stock
+              {stock}/{part.quantity} {onShelf ? "on shelf" : "in stock"}
             </span>
             <button
               type="button"
@@ -215,6 +231,13 @@ export function CotsCard({
             <NotesButton part={part} save={save} />
           </div>
         )}
+
+        {(shelf || part.shelfSuggestion || edit) && (
+          <div className="flex min-w-0">
+            <ShelfPill part={part} shelf={shelf} save={save} />
+          </div>
+        )}
+        {!struck && <ShelfCoversPrompt part={part} shelf={shelf} save={save} />}
 
         <Price part={part} big={order} />
       </div>

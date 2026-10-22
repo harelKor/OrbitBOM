@@ -1,5 +1,7 @@
-// Inventory part-type templates, copied from FRCBOM (ref §5). Edit here; there is no settings UI.
+// Inventory part types, built into the app (Harel: no user-made types, so each type can get its
+// own UI and Claude knows every type's fields). Copied from FRCBOM (ref §5); edit here.
 // A field with `options` is a dropdown; otherwise free text. `namePattern` builds the item name.
+// `sheet` items are counted in whole sheets and pieces of one (¼ ⅓ ½ ⅔ ¾).
 
 export type PartTypeField = { id: string; label: string; options?: string[] };
 export type NameToken = { field: string } | { text: string } | { material: true };
@@ -10,6 +12,7 @@ export type PartTypeDef = {
   fields: PartTypeField[];
   materialSource?: string; // a category in materials.ts
   namePattern?: NameToken[];
+  sheet?: boolean;
 };
 
 const BORES = ["1/2In HEX", "3/8In HEX", "SplineXS", "SplineXL"];
@@ -74,6 +77,7 @@ export const PART_TYPES: PartTypeDef[] = [
   {
     id: "aluminum-plates",
     name: "Aluminum Plates",
+    sheet: true,
     fields: [
       { id: "x", label: "(X)mm" },
       { id: "y", label: "(Y)mm" },
@@ -109,6 +113,7 @@ export const PART_TYPES: PartTypeDef[] = [
   {
     id: "polycarbonate-plates",
     name: "Polycarbonate Plates",
+    sheet: true,
     fields: [
       { id: "sizeX", label: "Size X" },
       { id: "sizeY", label: "Size Y" },
@@ -173,3 +178,5 @@ export function buildItemName(
     .replace(/\s+/g, " ")
     .trim();
 }
+
+export const isSheetType = (id: string | null | undefined) => !!id && !!getPartType(id)?.sheet;

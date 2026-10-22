@@ -1,4 +1,5 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 import { and, asc, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { findMachineByName, getMachine, MACHINES } from "@/config/machines";
@@ -8,11 +9,17 @@ import { STATUSES } from "@/config/statuses";
 import { PRIORITIES } from "@/config/priorities";
 import { db, schema } from "@/db";
 import type { Member } from "@/lib/auth";
+import { INVENTORY_CATEGORIES, getInventoryCategory } from "@/config/inventory";
+import { PART_TYPES, getPartType } from "@/config/partTypes";
 import { listInventory } from "@/lib/data/inventory";
+import { suggestItem } from "@/lib/inventory/match";
+import { checkSpecs } from "@/lib/inventory/specs";
+import { moveStock, undoMoves } from "@/lib/inventory/moves";
+import { formatStock } from "@/lib/inventory/stock";
 import { listRobots } from "@/lib/data/robots";
 import { OnshapeError } from "@/lib/onshape/client";
 import { refreshThumbnails } from "@/lib/onshape/thumbnails";
-import { applyPartChanges } from "@/lib/parts/apply";
+import { applyEachPartChanges, applyPartChanges } from "@/lib/parts/apply";
 import { cotsCategoryOf, groupSameCots } from "@/lib/cots";
 import { partChangesSchema, planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { applyUndo, planUndo } from "@/lib/parts/undo";
@@ -30,7 +37,7 @@ import { drawingSummary } from "@/lib/drawing/summary";
 // history as the UI (via = "mcp"). Every write previews first and applies only with the
 // confirm_token from its preview; changes to more than 50 parts also need confirm_large.
 
-const { parts, systems, partFiles, partGroups, groupMembers, inventoryItems } = schema;
+const { parts, systems, robots, partFiles, partGroups, groupMembers, inventoryItems, inventoryMoves, inventoryLocations } = schema;
 
 const LARGE = 50;
 const uuid = z.guid(); // any UUID shape, like isUuid
@@ -299,7 +306,7 @@ read("system_stats", "A system's completion and count per status.", z.object({ s
 
 read(
   "search_inventory",
-  "Inventory items with stock and how many each robot uses.",
+  "Inventory items with stock. All active robots share one shelf: need is what every robot's linked parts need together, short what the stock doesn't cover, free what no part needs. Sheet items (plates) count sheets and pieces (2.75 = 2 ¾ sheets) and have no need.",
   z.object({ text: z.string().optional() }),
   async ({ text }) => {
     const { items } = await listInventory();
@@ -309,9 +316,13 @@ read(
         id: i.id,
         name: i.name,
         in_stock: i.inStock,
-        used: i.usage?.used ?? 0,
+        in_stock_text: formatStock(i.inStock, i.sheet),
+        sheet: i.sheet,
+        need: i.usage?.need ?? 0,
+        short: i.usage?.short ?? 0,
+        free: i.usage?.free ?? i.inStock,
         material: i.material,
-        per_robot: i.usage?.robots.map((r) => ({ robot: r.robotName, needed: r.needed, allocated: r.allocated })) ?? [],
+        per_robot: i.usage?.robots.map((r) => ({ robot: r.robotName, needed: r.needed, covered: r.allocated })) ?? [],
       }));
   },
 );
@@ -441,15 +452,24 @@ write(
   "Revert every change in a batch (from update_parts, set_group_status or the UI). Fields edited again since are left alone.",
   z.object({ batch_id: uuid }),
   async ({ batch_id }, { member }) => {
-    const plan = await planUndo(batch_id);
-    if (!plan) throw new ToolError("No changes with that batch id.");
+    const [plan, moves] = await Promise.all([
+      planUndo(batch_id),
+      db.select({ itemId: inventoryMoves.itemId, delta: inventoryMoves.delta }).from(inventoryMoves).where(eq(inventoryMoves.batchId, batch_id)),
+    ]);
+    if (!plan && !moves.length) throw new ToolError("No changes with that batch id.");
+    const reverts = plan?.reverts ?? [];
     return {
-      count: new Set(plan.reverts.map((r) => r.partId)).size,
+      count: new Set(reverts.map((r) => r.partId)).size + moves.length,
       preview: {
-        revert: plan.reverts.map((r) => ({ part_id: r.partId, field: r.field, from: r.from, to: r.to })),
-        left_alone_because_edited_since: plan.skipped.map((r) => ({ part_id: r.partId, field: r.field })),
+        revert: reverts.map((r) => ({ part_id: r.partId, field: r.field, from: r.from, to: r.to })),
+        left_alone_because_edited_since: (plan?.skipped ?? []).map((r) => ({ part_id: r.partId, field: r.field })),
+        stock: moves.map((m) => ({ item_id: m.itemId, take_back: m.delta })),
       },
-      apply: async () => ({ batch_id: await applyUndo(plan.reverts, member.id, "mcp"), reverted: plan.reverts.length }),
+      apply: async () => {
+        const undoBatch = reverts.length ? await applyUndo(reverts, member.id, "mcp") : randomUUID();
+        const stock = moves.length ? await db.transaction((tx) => undoMoves(tx, batch_id, { memberId: member.id, via: "mcp", batchId: undoBatch })) : 0;
+        return { batch_id: undoBatch, reverted: reverts.length, stock_moves_reverted: stock };
+      },
     };
   },
 );
@@ -570,9 +590,9 @@ write(
 
 write(
   "adjust_stock",
-  "Add to or take from an inventory item's stock (delta can be negative).",
-  z.object({ item_id: uuid, delta: z.number().int() }),
-  async ({ item_id, delta }) => {
+  "Add to or take from an inventory item's stock (delta can be negative; sheet items take pieces such as 0.25, 1/3 = 0.3333). Say why: received (an order came), used, broke, counted (a recount), returned.",
+  z.object({ item_id: uuid, delta: z.number(), reason: z.enum(["received", "used", "broke", "counted", "returned"]).optional() }),
+  async ({ item_id, delta, reason }, { member, aiName }) => {
     const [item] = await db.select().from(inventoryItems).where(eq(inventoryItems.id, item_id));
     if (!item) throw new ToolError("No such inventory item.");
     const to = Math.max(0, item.inStock + delta);
@@ -580,11 +600,11 @@ write(
       count: to === item.inStock ? 0 : 1,
       preview: { item: item.name, in_stock: { from: item.inStock, to } },
       apply: async () => {
-        await db
-          .update(inventoryItems)
-          .set({ inStock: sql`greatest(${inventoryItems.inStock} + ${delta}, 0)` })
-          .where(eq(inventoryItems.id, item_id));
-        return { item: item.name, in_stock: to };
+        const batchId = randomUUID();
+        const moved = await db.transaction((tx) =>
+          moveStock(tx, { itemId: item_id, delta, reason: reason ?? (delta > 0 ? "received" : "used") }, { memberId: member.id, via: "mcp", aiName, batchId }),
+        );
+        return { item: item.name, in_stock: moved?.to, batch_id: batchId };
       },
     };
   },
@@ -599,17 +619,240 @@ write(
     material: z.string().optional(),
     vendor_url: z.url().optional(),
   }),
-  async (a) => ({
+  async (a, { member, aiName }) => ({
     count: 1,
     preview: a,
     apply: async () => {
-      const [item] = await db
-        .insert(inventoryItems)
-        .values({ name: a.name, inStock: a.in_stock, material: a.material ?? null, vendorUrl: a.vendor_url ?? null })
-        .returning({ id: inventoryItems.id });
-      return { item_id: item.id };
+      const batchId = randomUUID();
+      const id = await db.transaction(async (tx) => {
+        const [item] = await tx
+          .insert(inventoryItems)
+          .values({ name: a.name, material: a.material ?? null, vendorUrl: a.vendor_url ?? null })
+          .returning({ id: inventoryItems.id });
+        await moveStock(tx, { itemId: item.id, delta: a.in_stock, reason: "counted" }, { memberId: member.id, via: "mcp", aiName, batchId });
+        return item.id;
+      });
+      return { item_id: id };
     },
   }),
+);
+
+read(
+  "list_part_types",
+  "The inventory's built-in part types (each with its detail fields and, for some, the allowed options) and categories. Use the ids with add_inventory_items and set_inventory_info. Sheet types count sheets and pieces of a sheet.",
+  z.object({}),
+  async () => ({
+    part_types: PART_TYPES.map((t) => ({ id: t.id, name: t.name, sheet: !!t.sheet, fields: t.fields.map((f) => ({ id: f.id, label: f.label, options: f.options })) })),
+    categories: INVENTORY_CATEGORIES.map((c) => ({ id: c.id, label: c.label, part_types: c.types })),
+    not_tracked: "Screws, nuts and other small fasteners.",
+  }),
+);
+
+read(
+  "inventory_to_link",
+  "COTS parts on active robots that aren't linked to an inventory item yet, with the item the site thinks each one is (same Onshape part, product page or name) and a compact list of every item, so you can match the rest. Link them with link_inventory.",
+  z.object({ robot_id: uuid.optional(), limit: z.number().int().min(1).max(500).optional() }),
+  async ({ robot_id, limit = 200 }) => {
+    const [rows, items] = await Promise.all([
+      db
+        .select({ part: parts, systemName: systems.name, robotId: robots.id, robotName: robots.name })
+        .from(parts)
+        .innerJoin(systems, eq(systems.id, parts.systemId))
+        .innerJoin(robots, eq(robots.id, systems.robotId))
+        .where(and(isNull(parts.inventoryItemId), isNull(parts.removedFromCadAt), eq(parts.classification, "cots"), eq(robots.archived, false), robot_id ? eq(robots.id, robot_id) : undefined)),
+      listInventory().then((r) => r.items),
+    ]);
+    return {
+      total: rows.length,
+      parts: rows.slice(0, limit).map((r) => {
+        const hit = suggestItem(r.part, items);
+        return {
+          part_id: r.part.id,
+          name: nameOf(r.part),
+          robot: r.robotName,
+          system: r.systemName,
+          quantity: r.part.quantity,
+          product_link: r.part.cotsLinks[0]?.url ?? null,
+          suggestion: hit ? { item_id: hit.itemId, item: items.find((i) => i.id === hit.itemId)?.name, reason: hit.reason } : null,
+        };
+      }),
+      items: items.map((i) => ({ id: i.id, name: i.name, category: i.category, spec: i.templateValues, in_stock: i.inStock })),
+      truncated: rows.length > limit,
+    };
+  },
+);
+
+write(
+  "link_inventory",
+  "Link COTS parts to inventory items (item_id null unlinks). A linked part draws on the item's stock, shared by every active robot.",
+  z.object({ links: z.array(z.object({ part_id: uuid, item_id: uuid.nullable() })).min(1).max(1000) }),
+  async ({ links }, { member }) => {
+    const [rows, items] = await Promise.all([
+      db.select().from(parts).where(inArray(parts.id, links.map((l) => l.part_id))),
+      db.select({ id: inventoryItems.id, name: inventoryItems.name }).from(inventoryItems),
+    ]);
+    const changes = links.flatMap((l) => {
+      const part = rows.find((p) => p.id === l.part_id);
+      return part && part.inventoryItemId !== l.item_id ? [{ part, itemId: l.item_id }] : [];
+    });
+    const bad = links.find((l) => l.item_id && !items.some((i) => i.id === l.item_id));
+    if (bad) throw new ToolError(`No inventory item ${bad.item_id}.`);
+    return {
+      count: changes.length,
+      summary: `Linked ${changes.length} ${changes.length === 1 ? "part" : "parts"} to inventory`,
+      preview: changes.map((c) => ({ part_id: c.part.id, part: nameOf(c.part), item: c.itemId ? items.find((i) => i.id === c.itemId)?.name : null })),
+      apply: async () => {
+        const { batchId, changed } = await applyEachPartChanges(
+          changes.map((c) => ({ id: c.part.id, changes: { inventoryItemId: c.itemId } })),
+          { memberId: member.id, via: "mcp" },
+        );
+        return { changed, batch_id: batchId };
+      },
+    };
+  },
+);
+
+read(
+  "inventory_shortages",
+  "Items the active robots need more of than the shelf has (all robots share one shelf), with the parts the stock doesn't cover and how many each is missing.",
+  z.object({ robot_id: uuid.optional() }),
+  async ({ robot_id }) => {
+    const { items } = await listInventory();
+    return items
+      .filter((i) => (i.usage?.short ?? 0) > 0)
+      .map((i) => {
+        const u = i.usage!;
+        return {
+          item_id: i.id,
+          item: i.name,
+          in_stock: i.inStock,
+          need: u.need,
+          short: u.short,
+          parts: u.parts
+            .filter((p) => !robot_id || p.robotId === robot_id)
+            .map((p) => ({ part_id: p.partId, name: p.partName, robot: p.robotName, system: p.systemName, status: p.status, missing: p.quantity - (u.coveredOf.get(p.partId) ?? 0) }))
+            .filter((p) => p.missing > 0),
+        };
+      })
+      .filter((i) => i.parts.length);
+  },
+);
+
+const itemInfo = z.object({
+  category: z.string().optional().describe("A category id from list_part_types."),
+  part_type: z.string().optional().describe("A part type id from list_part_types."),
+  specs: z.record(z.string(), z.string()).optional().describe("The part type's fields by id, e.g. { teeth: '24', bore: '1/2In HEX' }."),
+  material: z.string().optional(),
+  vendor_url: z.url().optional(),
+  vendor_name: z.string().optional(),
+  price: z.number().min(0).optional().describe("US dollars for one."),
+});
+
+// Category, part type and specs checked against the built-in lists.
+function checkItemInfo(info: z.infer<typeof itemInfo>, currentType: string | null) {
+  if (info.category && !getInventoryCategory(info.category)) throw new ToolError(`Unknown category "${info.category}". See list_part_types.`);
+  const typeId = info.part_type ?? currentType;
+  if (info.part_type && !getPartType(info.part_type)) throw new ToolError(`Unknown part type "${info.part_type}". See list_part_types.`);
+  let templateValues: Record<string, string> | undefined;
+  if (info.specs) {
+    if (!typeId) throw new ToolError("Specs need a part_type.");
+    const checked = checkSpecs(typeId, info.specs);
+    if ("error" in checked) throw new ToolError(checked.error);
+    templateValues = checked.values;
+  }
+  return {
+    ...(info.category ? { category: info.category } : {}),
+    ...(info.part_type ? { templateId: info.part_type } : {}),
+    ...(templateValues ? { templateValues } : {}),
+    ...(info.material ? { material: info.material } : {}),
+    ...(info.vendor_url ? { vendorUrl: info.vendor_url } : {}),
+    ...(info.vendor_name ? { vendorName: info.vendor_name } : {}),
+    ...(info.price != null ? { price: info.price } : {}),
+  };
+}
+
+write(
+  "add_inventory_items",
+  "Add several items to the team inventory at once, e.g. from a spreadsheet, an order email or a photo of a shelf the member shares with you. Screws and small fasteners aren't tracked. in_stock for sheet types can have pieces (2.75 = 2 ¾ sheets). location is a shelf or bin name; a new name is created.",
+  z.object({ items: z.array(itemInfo.extend({ name: z.string().trim().min(1).max(200), in_stock: z.number().min(0).default(0), location: z.string().trim().max(100).optional() })).min(1).max(500) }),
+  async ({ items }, { member, aiName }) => {
+    const planned = items.map((i) => ({ input: i, values: checkItemInfo(i, null) }));
+    return {
+      count: planned.length,
+      summary: `Added ${planned.length} inventory ${planned.length === 1 ? "item" : "items"}`,
+      preview: planned.map((p) => ({ name: p.input.name, in_stock: p.input.in_stock, location: p.input.location, ...p.values })),
+      apply: async () => {
+        const batchId = randomUUID();
+        const ids = await db.transaction(async (tx) => {
+          const locations = new Map((await tx.select().from(inventoryLocations)).map((l) => [l.name.toLowerCase(), l.id]));
+          const out: string[] = [];
+          for (const p of planned) {
+            let locationId: string | null = null;
+            if (p.input.location) {
+              locationId = locations.get(p.input.location.toLowerCase()) ?? null;
+              if (!locationId) {
+                [{ id: locationId }] = await tx.insert(inventoryLocations).values({ name: p.input.location }).returning({ id: inventoryLocations.id });
+                locations.set(p.input.location.toLowerCase(), locationId);
+              }
+            }
+            const [item] = await tx.insert(inventoryItems).values({ name: p.input.name, locationId, ...p.values }).returning({ id: inventoryItems.id });
+            await moveStock(tx, { itemId: item.id, delta: p.input.in_stock, reason: "counted" }, { memberId: member.id, via: "mcp", aiName, batchId });
+            out.push(item.id);
+          }
+          return out;
+        });
+        return { item_ids: ids, batch_id: batchId };
+      },
+    };
+  },
+);
+
+read(
+  "inventory_to_look_up",
+  "Inventory items missing a category, part type, specs, product link or price. Look them up (FRCDesign.org, the vendors' sites) and fill them in with set_inventory_info.",
+  z.object({ limit: z.number().int().min(1).max(500).optional() }),
+  async ({ limit = 200 }) => {
+    const { items } = await listInventory();
+    const missing = items
+      .map((i) => {
+        const gaps = [
+          !i.categorySet && "category",
+          !i.templateId && "part_type",
+          i.templateId && !Object.keys(i.templateValues).length && "specs",
+          !i.vendorUrl && "vendor_url",
+          i.price == null && "price",
+        ].filter(Boolean);
+        return { item_id: i.id, name: i.name, guessed_category: i.category, part_type: i.templateId, specs: i.templateValues, material: i.material, vendor_url: i.vendorUrl, missing: gaps };
+      })
+      .filter((i) => i.missing.length);
+    return { total: missing.length, items: missing.slice(0, limit), truncated: missing.length > limit };
+  },
+);
+
+write(
+  "set_inventory_info",
+  "Fill in inventory items' category, part type, specs, material, product link and price (each item can differ). Specs must use the part type's fields and options from list_part_types.",
+  z.object({ items: z.array(itemInfo.extend({ item_id: uuid })).min(1).max(500) }),
+  async ({ items }) => {
+    const rows = await db.select().from(inventoryItems).where(inArray(inventoryItems.id, items.map((i) => i.item_id)));
+    const planned = items.map((i) => {
+      const row = rows.find((r) => r.id === i.item_id);
+      if (!row) throw new ToolError(`No inventory item ${i.item_id}.`);
+      return { row, values: checkItemInfo(i, row.templateId) };
+    });
+    const changed = planned.filter((p) => Object.keys(p.values).length);
+    return {
+      count: changed.length,
+      summary: `Filled in ${changed.length} inventory ${changed.length === 1 ? "item" : "items"}`,
+      preview: changed.map((p) => ({ item_id: p.row.id, item: p.row.name, set: p.values })),
+      apply: async () => {
+        await db.transaction(async (tx) => {
+          for (const p of changed) await tx.update(inventoryItems).set(p.values).where(eq(inventoryItems.id, p.row.id));
+        });
+        return { changed: changed.length };
+      },
+    };
+  },
 );
 
 write(

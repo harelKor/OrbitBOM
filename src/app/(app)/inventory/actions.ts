@@ -1,21 +1,28 @@
 "use server";
 
-import { eq, sql } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { getPartType } from "@/config/partTypes";
+import { COTS_DEFAULT_STATUS, COTS_IN_STOCK, COTS_ORDERED, COTS_RELEASED, cotsStatusOf } from "@/config/cots";
+import { INVENTORY_CATEGORIES, getInventoryCategory, inventoryCategoryOf } from "@/config/inventory";
+import { getPartType, isSheetType } from "@/config/partTypes";
 import { db, schema } from "@/db";
 import { requireMember } from "@/lib/auth";
+import { robotInventory, usageOf } from "@/lib/data/inventory";
 import type { ImportRow } from "@/lib/inventory/import";
+import { moveStock, setStock } from "@/lib/inventory/moves";
+import { parseStock } from "@/lib/inventory/stock";
+import { applyEachPartChanges } from "@/lib/parts/apply";
 import { isUuid } from "@/lib/uuid";
 
-const { inventoryItems, inventoryGroups, inventoryConditions, inventoryLocations } = schema;
+const { inventoryItems, inventoryGroups, inventoryConditions, inventoryLocations, inventoryMoves, parts } = schema;
 
 export type ActionResult = { error?: string; message?: string };
 
 const refresh = () => {
   revalidatePath("/inventory");
   revalidatePath("/robots", "layout");
+  revalidatePath("/cots", "layout");
 };
 
 const text = z
@@ -29,9 +36,9 @@ const ref = z
 
 const itemForm = z.object({
   name: z.string().trim().min(1, "Part name is required."),
-  inStock: z.coerce.number().int().min(0, "In stock can't be negative."),
+  inStock: z.string().default("0"),
   conditionId: ref,
-  groupId: ref,
+  category: text.refine((v) => v === null || !!getInventoryCategory(v), "Unknown category."),
   locationId: ref,
   templateId: text.refine((v) => v === null || !!getPartType(v), "Unknown part type."),
   material: text,
@@ -46,7 +53,7 @@ export async function saveItem(
   _: ActionResult | undefined,
   formData: FormData,
 ): Promise<ActionResult> {
-  await requireMember();
+  const member = await requireMember();
   const parsed = itemForm.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const type = parsed.data.templateId ? getPartType(parsed.data.templateId) : undefined;
@@ -55,13 +62,18 @@ export async function saveItem(
     const v = String(formData.get(`tv.${field.id}`) ?? "").trim();
     if (v) templateValues[field.id] = v;
   }
-  const values = { ...parsed.data, templateValues };
-  if (itemId) {
-    if (!isUuid(itemId)) return { error: "Unknown item." };
-    await db.update(inventoryItems).set(values).where(eq(inventoryItems.id, itemId));
-  } else {
-    await db.insert(inventoryItems).values(values);
-  }
+  // Sheets take pieces ("2 3/4"); everything else whole units. The stock changes as a counted move.
+  const { inStock: stockText, ...rest } = parsed.data;
+  const inStock = parseStock(stockText, isSheetType(rest.templateId));
+  if (inStock === null) return { error: isSheetType(rest.templateId) ? 'In stock is sheets, like "2" or "1 3/4".' : "In stock is a whole number." };
+  const values = { ...rest, templateValues };
+  if (itemId && !isUuid(itemId)) return { error: "Unknown item." };
+  await db.transaction(async (tx) => {
+    let id = itemId;
+    if (id) await tx.update(inventoryItems).set(values).where(eq(inventoryItems.id, id));
+    else [{ id }] = await tx.insert(inventoryItems).values(values).returning({ id: inventoryItems.id });
+    await setStock(tx, id!, inStock, { memberId: member.id, via: "ui" });
+  });
   refresh();
   return {};
 }
@@ -73,16 +85,69 @@ export async function deleteItem(itemId: string) {
   refresh();
 }
 
-// The − / + stepper.
+// The − / + stepper (a sheet item also steps by pieces of a sheet).
 export async function adjustStock(itemId: string, delta: number): Promise<ActionResult> {
-  await requireMember();
-  if (!isUuid(itemId) || !Number.isInteger(delta)) return { error: "Unknown item." };
-  await db
-    .update(inventoryItems)
-    .set({ inStock: sql`greatest(${inventoryItems.inStock} + ${delta}, 0)` })
-    .where(eq(inventoryItems.id, itemId));
+  const member = await requireMember();
+  if (!isUuid(itemId) || !Number.isFinite(delta) || !delta) return { error: "Unknown item." };
+  await db.transaction((tx) => moveStock(tx, { itemId, delta, reason: delta > 0 ? "received" : "used" }, { memberId: member.id, via: "ui" }));
   refresh();
   return {};
+}
+
+// A linked COTS card's − / +: the units go on or come off its item's shelf. Like the card's own
+// count, reaching the quantity sets the part In Stock (parts the new unit now fully covers).
+export async function stepShelfStock(partIds: string[], delta: number): Promise<ActionResult> {
+  const member = await requireMember();
+  if (!partIds.length || partIds.some((id) => !isUuid(id)) || (delta !== 1 && delta !== -1)) return { error: "Unknown part." };
+  const rows = await db.select().from(parts).where(inArray(parts.id, partIds));
+  const itemId = rows.find((p) => p.inventoryItemId)?.inventoryItemId;
+  if (!itemId) return { error: "This part isn't linked to an inventory item." };
+  await db.transaction((tx) => moveStock(tx, { itemId, delta, reason: delta > 0 ? "received" : "used", partId: rows[0].id }, { memberId: member.id, via: "ui" }));
+  if (delta > 0) {
+    const { usage } = await usageOf([itemId]);
+    const covered = usage.get(itemId)?.coveredOf;
+    const done = rows.filter(
+      (p) => p.inventoryItemId === itemId && p.classification === "cots" && cotsStatusOf(p.designState) !== COTS_IN_STOCK && (covered?.get(p.id) ?? 0) >= Math.max(p.quantity, 1),
+    );
+    await applyEachPartChanges(done.map((p) => ({ id: p.id, changes: { status: COTS_IN_STOCK } })), { memberId: member.id, via: "ui", receive: false });
+  }
+  refresh();
+  return {};
+}
+
+// "Add to inventory" on a COTS card with no item: a new item named after the part, with its
+// product link and price, and the part (or every part the card stands for) linked to it.
+export async function createItemFromPart(partIds: string[]): Promise<ActionResult> {
+  const member = await requireMember();
+  if (!partIds.length || partIds.some((id) => !isUuid(id))) return { error: "Unknown part." };
+  const rows = await db.select().from(parts).where(inArray(parts.id, partIds));
+  const [first] = rows;
+  if (!first) return { error: "Unknown part." };
+  const name = first.displayName ?? first.onshapeName ?? "Unnamed part";
+  const link = first.cotsLinks[0];
+  const [item] = await db
+    .insert(inventoryItems)
+    .values({ name, material: first.classification === "cots" ? null : first.material, vendorUrl: link?.url ?? null, vendorName: link?.site ?? null, price: first.unitPrice })
+    .returning({ id: inventoryItems.id });
+  await applyEachPartChanges(rows.map((p) => ({ id: p.id, changes: { inventoryItemId: item.id } })), { memberId: member.id, via: "ui" });
+  refresh();
+  return { message: `Added ${name} to the inventory.` };
+}
+
+// The robot inventory page's button: this robot's COTS parts the shelf can't cover, still in
+// Not Started or Released, go to the Order List.
+export async function sendShortagesToOrder(robotId: string): Promise<ActionResult> {
+  const member = await requireMember();
+  if (!isUuid(robotId)) return { error: "Unknown robot." };
+  const items = await robotInventory(robotId);
+  const short = items.flatMap((i) => (i.sheet ? [] : i.parts.filter((p) => p.covered < p.quantity && (p.status === COTS_DEFAULT_STATUS || p.status === COTS_RELEASED))));
+  if (!short.length) return { message: "Nothing to order: the shelf covers every part or it's already on the Order List." };
+  const { changed } = await applyEachPartChanges(
+    short.map((p) => ({ id: p.partId, changes: { status: COTS_ORDERED, cotsSentBack: null } })),
+    { memberId: member.id, via: "ui" },
+  );
+  refresh();
+  return { message: `Sent ${changed} part${changed === 1 ? "" : "s"} to the Order List.` };
 }
 
 // "Add to a BOM": the item becomes an ordinary COTS part tied to the item.
@@ -107,47 +172,7 @@ export async function addItemToBom(itemId: string, systemId: string, quantity: n
   return { message: `Added ${quantity} × ${item.name} to the BOM.` };
 }
 
-// ---------- Groups, conditions, locations (editable from the toolbar, like FRCBOM) ----------
-
-const groupForm = z.object({
-  name: z.string().trim().min(1, "Group name is required."),
-  parentId: ref,
-  templateId: text.refine((v) => v === null || !!getPartType(v), "Unknown part type."),
-  locationId: ref,
-});
-
-export async function saveGroup(groupId: string | null, formData: FormData): Promise<ActionResult> {
-  await requireMember();
-  const parsed = groupForm.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return { error: parsed.error.issues[0].message };
-  if (groupId) {
-    if (!isUuid(groupId)) return { error: "Unknown group." };
-    // A group can't sit under itself or one of its own sub-groups.
-    const all = await db.select({ id: inventoryGroups.id, parentId: inventoryGroups.parentId }).from(inventoryGroups);
-    for (let p = parsed.data.parentId; p; p = all.find((g) => g.id === p)?.parentId ?? null) {
-      if (p === groupId) return { error: "A group can't go inside itself." };
-    }
-    await db.update(inventoryGroups).set(parsed.data).where(eq(inventoryGroups.id, groupId));
-  } else {
-    await db.insert(inventoryGroups).values(parsed.data);
-  }
-  refresh();
-  return {};
-}
-
-// Sub-groups and items move up to the deleted group's parent.
-export async function deleteGroup(groupId: string) {
-  await requireMember();
-  if (!isUuid(groupId)) return;
-  await db.transaction(async (tx) => {
-    const [group] = await tx.select().from(inventoryGroups).where(eq(inventoryGroups.id, groupId));
-    if (!group) return;
-    await tx.update(inventoryGroups).set({ parentId: group.parentId }).where(eq(inventoryGroups.parentId, groupId));
-    await tx.update(inventoryItems).set({ groupId: group.parentId }).where(eq(inventoryItems.groupId, groupId));
-    await tx.delete(inventoryGroups).where(eq(inventoryGroups.id, groupId));
-  });
-  refresh();
-}
+// ---------- Conditions and locations (editable from the toolbar, like FRCBOM) ----------
 
 export async function addCondition(label: string, color: string): Promise<ActionResult> {
   await requireMember();
@@ -196,7 +221,7 @@ const importRows = z
   .max(5000, "Import at most 5000 rows at a time.");
 
 export async function importItems(rows: ImportRow[]): Promise<ActionResult> {
-  await requireMember();
+  const member = await requireMember();
   const parsed = importRows.safeParse(rows);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const key = (s: string) => s.toLowerCase();
@@ -249,14 +274,16 @@ export async function importItems(rows: ImportRow[]): Promise<ActionResult> {
     };
 
     for (const row of parsed.data) {
-      await tx.insert(inventoryItems).values({
+      const [item] = await tx.insert(inventoryItems).values({
         name: row.name,
         inStock: row.inStock,
         material: row.material || null,
         locationId: await locationId(row.location),
         conditionId: await conditionId(row.condition),
         groupId: await groupId(row.groupPath),
-      });
+        category: guessCategory(row),
+      }).returning({ id: inventoryItems.id });
+      if (row.inStock) await tx.insert(inventoryMoves).values({ itemId: item.id, delta: row.inStock, reason: "counted", memberId: member.id, via: "ui" });
     }
     return counts;
   });
@@ -270,4 +297,22 @@ export async function importItems(rows: ImportRow[]): Promise<ActionResult> {
   return {
     message: `Imported ${parsed.data.length} items${extra.length ? `; created ${extra.join(", ")}` : ""}.`,
   };
+}
+
+// An imported row's category: a spreadsheet group named like a category, else a guess from the
+// group names and the item's name. Left unset when nothing fits, so it keeps being guessed.
+function guessCategory(row: { name: string; groupPath: string[] }) {
+  const named = INVENTORY_CATEGORIES.find((c) => row.groupPath.some((g) => g.toLowerCase() === c.label.toLowerCase()));
+  if (named) return named.id;
+  const guess = inventoryCategoryOf({ category: null, templateId: null, name: [...row.groupPath, row.name].join(" ") });
+  return guess === "other" ? null : guess;
+}
+
+// The item page's Possible matches: link COTS parts to this item.
+export async function linkPartsToItem(itemId: string, partIds: string[]): Promise<ActionResult> {
+  const member = await requireMember();
+  if (!isUuid(itemId) || !partIds.length || partIds.some((id) => !isUuid(id))) return { error: "Unknown part." };
+  const { changed } = await applyEachPartChanges(partIds.map((id) => ({ id, changes: { inventoryItemId: itemId } })), { memberId: member.id, via: "ui" });
+  refresh();
+  return { message: `Linked ${changed} part${changed === 1 ? "" : "s"}.` };
 }

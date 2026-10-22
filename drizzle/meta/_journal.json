@@ -127,6 +127,20 @@
       "when": 1792656226133,
       "tag": "0017_cots_sent_back",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1792661352086,
+      "tag": "0018_inventory_stock",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1792663274185,
+      "tag": "0019_inventory_category",
+      "breakpoints": true
     }
   ]
 }

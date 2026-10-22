@@ -3,124 +3,13 @@
 import { useState, useTransition } from "react";
 import { Dialog } from "@/components/Dialog";
 import { PART_TYPES } from "@/config/partTypes";
-import { flattenTree, groupPath } from "@/lib/inventory/groups";
-import {
-  addCondition,
-  addLocation,
-  deleteCondition,
-  deleteGroup,
-  deleteLocation,
-  saveGroup,
-} from "@/app/(app)/inventory/actions";
-import type { Condition, Group, Location, Lookups } from "./types";
+import { addCondition, addLocation, deleteCondition, deleteLocation } from "@/app/(app)/inventory/actions";
+import type { Condition, Location } from "./types";
 
 type DialogProps = { open: boolean; onClose: () => void };
 
-// The toolbar's Groups, Part types, Conditions and Locations editors (ref §5).
-
-export function GroupsDialog({ open, onClose, lookups: { groups, locations } }: DialogProps & { lookups: Lookups }) {
-  const [editing, setEditing] = useState<Group | null>(null);
-  const [formKey, setFormKey] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
-  const reset = () => {
-    setEditing(null);
-    setFormKey((k) => k + 1);
-    setError(null);
-  };
-
-  return (
-    <Dialog open={open} onClose={onClose} title="Groups" wide>
-      <ul className="mb-4 max-h-72 divide-y divide-line overflow-y-auto text-sm">
-        {flattenTree(groups).map(({ group, depth }) => (
-          <li key={group.id} className="flex items-center gap-2 py-1.5" style={{ paddingLeft: `${depth}rem` }}>
-            <span className="flex-1 truncate">{group.name}</span>
-            {group.templateId && (
-              <span className="text-xs text-subtle">{PART_TYPES.find((t) => t.id === group.templateId)?.name}</span>
-            )}
-            {group.locationId && (
-              <span className="text-xs text-subtle">📍 {locations.find((l) => l.id === group.locationId)?.name}</span>
-            )}
-            <button
-              className="text-xs text-accent-soft hover:text-accent-soft"
-              onClick={() => {
-                setEditing(group);
-                setFormKey((k) => k + 1);
-              }}
-            >
-              Edit
-            </button>
-            <button
-              className="text-xs text-rose-700 hover:text-rose-700"
-              onClick={() => {
-                if (confirm(`Delete the group "${group.name}"? Its items and sub-groups move up a level.`))
-                  startTransition(() => deleteGroup(group.id));
-              }}
-            >
-              Delete
-            </button>
-          </li>
-        ))}
-        {groups.length === 0 && <li className="py-2 text-subtle">No groups yet.</li>}
-      </ul>
-
-      <form
-        key={formKey}
-        className="space-y-3 rounded-lg border border-line p-3"
-        action={(formData) =>
-          startTransition(async () => {
-            const result = await saveGroup(editing?.id ?? null, formData);
-            if (result.error) setError(result.error);
-            else reset();
-          })
-        }
-      >
-        <div className="text-sm font-medium">{editing ? `Edit "${editing.name}"` : "New group"}</div>
-        <input name="name" required defaultValue={editing?.name ?? ""} placeholder="Group name *" className="input" />
-        <div className="grid grid-cols-3 gap-2">
-          <select name="parentId" defaultValue={editing?.parentId ?? ""} className="input" aria-label="Parent group">
-            <option value="">Top level</option>
-            {groups
-              .filter((g) => g.id !== editing?.id)
-              .map((g) => (
-                <option key={g.id} value={g.id}>
-                  {groupPath(groups, g.id)}
-                </option>
-              ))}
-          </select>
-          <select name="templateId" defaultValue={editing?.templateId ?? ""} className="input" aria-label="Default part type">
-            <option value="">No part type</option>
-            {PART_TYPES.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-          <select name="locationId" defaultValue={editing?.locationId ?? ""} className="input" aria-label="Location">
-            <option value="">No location</option>
-            {locations.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <p className="text-xs text-subtle">Items in a group take its location unless they have their own.</p>
-        {error && <p className="text-sm text-rose-700">{error}</p>}
-        <div className="flex justify-end gap-2">
-          {editing && (
-            <button type="button" className="btn" onClick={reset}>
-              Cancel edit
-            </button>
-          )}
-          <button className="btn-primary" disabled={pending}>
-            {editing ? "Save group" : "Add group"}
-          </button>
-        </div>
-      </form>
-    </Dialog>
-  );
-}
+// The toolbar's Part types (read-only: they're built into the app), Conditions and Locations
+// editors (ref §5).
 
 export function PartTypesDialog({ open, onClose }: DialogProps) {
   return (

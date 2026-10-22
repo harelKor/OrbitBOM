@@ -20,7 +20,6 @@ import { isUuid } from "@/lib/uuid";
 import { listRobotReviews } from "@/lib/review/review";
 import { processBreakdown } from "@/lib/stats";
 import { NewSystemButton } from "./NewSystemButton";
-import { RobotInventory } from "./RobotInventory";
 
 // The robot dashboard: launch cards for To Fab and To Review, status and process completion,
 // the 3D stage, and every part of the robot (searched and filtered from the top bar).
@@ -42,6 +41,10 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
   if (!data) notFound();
   const { robot, breakdown } = data;
   const aiReviews = reviews.filter((r) => r.source === "ai").length;
+  const counted = inventory.filter((i) => !i.sheet);
+  const shortItems = counted.filter((i) => i.covered < i.needed).length;
+  const neededUnits = counted.reduce((n, i) => n + i.needed, 0);
+  const coveredUnits = counted.reduce((n, i) => n + i.covered, 0);
 
   const inProcess = parts.filter((p) => fabStage(p) === "inProcess").length;
   const ready = parts.filter((p) => fabStage(p) === "ready").length;
@@ -72,7 +75,7 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
         {edit && <NewSystemButton robotId={robot.id} />}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <LaunchCard
           href={`/robots/${robot.id}/fab`}
           icon="fab"
@@ -86,6 +89,14 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
           title="To Review"
           count={reviews.length}
           detail={reviews.length ? `${aiReviews} set up by Claude, ${reviews.length - aiReviews} by Suggest setup` : "Parts set up automatically wait here"}
+        />
+        <LaunchCard
+          href={`/robots/${robot.id}/inventory`}
+          icon="box"
+          title="Inventory"
+          count={shortItems}
+          unit={shortItems === 1 ? "item short" : "items short"}
+          detail={inventory.length ? `${coveredUnits}/${neededUnits} units covered by the shelf` : "No parts linked to inventory yet"}
         />
       </div>
 
@@ -146,22 +157,11 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
         <BomView parts={parts} inventory={inventoryNames} isAdmin={member.isAdmin} showSystem allowBulkEdit={false} robotId={robot.id} groupBySystem />
       </section>
 
-      <details className="group">
-        <summary className="press flex cursor-pointer list-none items-center gap-2 text-sm text-muted hover:text-fg">
-          <span className="-m-1 inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-raised">
-            <Icon name="chevron" className="h-4.5 w-4.5 transition-transform group-open:rotate-90" />
-          </span>
-          Inventory used by this robot
-        </summary>
-        <div className="mt-3">
-          <RobotInventory items={inventory} />
-        </div>
-      </details>
     </div>
   );
 }
 
-function LaunchCard({ href, icon, title, count, detail }: { href: string; icon: "fab" | "review"; title: string; count: number; detail: string }) {
+function LaunchCard({ href, icon, title, count, unit, detail }: { href: string; icon: "fab" | "review" | "box"; title: string; count: number; unit?: string; detail: string }) {
   return (
     <Link href={href} className="card-interactive group flex items-center gap-6 p-8">
       <span className="flex h-20 w-20 items-center justify-center rounded-xl border border-line-strong bg-raised text-accent-hover group-hover:border-accent/60">
@@ -170,7 +170,7 @@ function LaunchCard({ href, icon, title, count, detail }: { href: string; icon: 
       <div className="min-w-0 flex-1">
         <div className="text-lg font-medium text-muted">{title}</div>
         <div className="display text-6xl text-accent tabular-nums">
-          {count} <span className="text-2xl font-medium text-muted">{count === 1 ? "part" : "parts"}</span>
+          {count} <span className="text-2xl font-medium text-muted">{unit ?? (count === 1 ? "part" : "parts")}</span>
         </div>
         <div className="truncate text-sm text-subtle">{detail}</div>
       </div>
