@@ -1,6 +1,7 @@
 "use client";
 
-import { useOptimistic, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
 import { getMachine } from "@/config/machines";
 import { approveParts, rejectParts, suggestSetup } from "@/app/(app)/robots/[robotId]/review/actions";
 import { matchesTopBar } from "@/components/bom/filter";
@@ -76,8 +77,12 @@ const machinesOf = (p: CardPart) => [p.preProcess, p.process1, p.process2].filte
 export function ReviewView({ robotId, items }: { robotId: string; items: ReviewItem[] }) {
   const edit = useEditMode();
   const { filters } = useFilters();
-  const [optimistic, removeOptimistic] = useOptimistic(items, (state, ids: string[]) => state.filter((i) => !ids.includes(i.part.id)));
+  const router = useRouter();
+  // Decided parts disappear the moment they are clicked; the server catches up in the background.
+  const [gone, setGone] = useState<ReadonlySet<string>>(new Set());
+  const optimistic = items.filter((i) => !gone.has(i.part.id));
   const [pending, startTransition] = useTransition();
+  const [, startDecide] = useTransition(); // decisions don't lock the other buttons
   const [note, setNote] = useState<{ error?: string; message?: string } | null>(null);
 
   const matching = optimistic.filter((i) => matchesTopBar(i.part, filters));
@@ -85,10 +90,17 @@ export function ReviewView({ robotId, items }: { robotId: string; items: ReviewI
 
   const decide = (ids: string[], approve: boolean) => {
     setNote(null);
-    startTransition(async () => {
-      removeOptimistic(ids);
-      const r = approve ? await approveParts(ids) : await rejectParts(ids);
-      if (r.error || r.message) setNote(r);
+    setGone((g) => new Set([...g, ...ids]));
+    startDecide(async () => {
+      try {
+        const r = approve ? await approveParts(ids) : await rejectParts(ids);
+        if (r.error) setGone((g) => new Set([...g].filter((id) => !ids.includes(id))));
+        if (r.error || r.message) setNote(r);
+      } catch {
+        setGone((g) => new Set([...g].filter((id) => !ids.includes(id))));
+        setNote({ error: "That didn't go through. Try again." });
+      }
+      router.refresh();
     });
   };
   const suggest = () => {
