@@ -5,6 +5,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { dismissAction } from "@/app/(app)/actions-actions";
 import { useOpenVisit } from "@/components/shell/VisitTracker";
+import { Popover } from "@/components/bom/Popover";
 import { Icon } from "@/components/ui/Icon";
 import type { RecentAction } from "@/lib/data/actions";
 import { focusPart } from "./focusPart";
@@ -14,8 +15,21 @@ const TILE_REM = 6; // one thumbnail on a dashboard action box
 // Each page visit in which someone changed parts, with the changed parts' thumbnails and how
 // long ago it was. A box opens that page at the first part changed; X hides it for this member.
 // "cards" (the dashboard, above All parts) sizes each box to its thumbnails; "list" (the
-// system page, beside the 3D view) is a compact column of To Fab status changes.
-export function RecentActions({ actions: all, max, variant = "cards" }: { actions: RecentAction[]; max: number; variant?: "cards" | "list" }) {
+// system page, beside the 3D view) is a compact column of To Fab status changes, or, picked from
+// the title's arrow when systemActions is given, of every change to the system's parts.
+export function RecentActions({
+  actions: fabActions,
+  systemActions,
+  max,
+  variant = "cards",
+}: {
+  actions: RecentAction[];
+  systemActions?: RecentAction[];
+  max: number;
+  variant?: "cards" | "list";
+}) {
+  const [scope, setScope] = useState<"fab" | "system">("fab");
+  const all = scope === "system" && systemActions ? systemActions : fabActions;
   const now = useNow();
   // The visit still open on this page becomes an action once the member leaves.
   const open = useOpenVisit();
@@ -41,8 +55,39 @@ export function RecentActions({ actions: all, max, variant = "cards" }: { action
     return (
       <section className="panel flex min-h-0 flex-1 flex-col">
         <h2 className="flex items-center gap-2 border-b border-line px-4 py-3 text-sm font-semibold">
-          <Icon name="fab" className="h-4 w-4 text-accent" />
-          Recent actions in fab
+          <Icon name={scope === "fab" ? "fab" : "box"} className="h-4 w-4 text-accent" />
+          {systemActions ? (
+            <Popover
+              hideCaret
+              triggerClassName="press flex items-center gap-1 rounded hover:text-accent"
+              trigger={
+                <>
+                  Recent actions {scope === "fab" ? "in fab" : "in system"}
+                  <Icon name="chevron" className="h-3.5 w-3.5 rotate-90 text-subtle" />
+                </>
+              }
+            >
+              {(close) => (
+                <div className="space-y-0.5 text-sm">
+                  {(["fab", "system"] as const).map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => {
+                        setScope(s);
+                        close();
+                      }}
+                      className={`flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-raised ${scope === s ? "font-semibold text-accent" : "text-fg"}`}
+                    >
+                      {s === "fab" ? "In fab" : "In system"}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </Popover>
+          ) : (
+            "Recent actions in fab"
+          )}
         </h2>
         {actions.length ? (
           <ul className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2">
@@ -62,7 +107,7 @@ export function RecentActions({ actions: all, max, variant = "cards" }: { action
                   <span className="min-w-0 flex-1 text-sm">
                     <span className="block truncate">
                       <span className="font-bold">{a.memberName ?? "Someone"}</span>
-                      {a.statusTo && <span className="text-muted"> → {a.statusTo}</span>}
+                      {a.statusTo ? <span className="text-muted"> → {a.statusTo}</span> : scope === "system" && <span className="text-muted"> · {a.fields.join(", ")}</span>}
                     </span>
                     <span className="block truncate text-xs text-subtle">
                       <span className="font-mono tabular-nums">{a.partCount}</span> {a.partCount === 1 ? "part" : "parts"}
@@ -75,7 +120,7 @@ export function RecentActions({ actions: all, max, variant = "cards" }: { action
             ))}
           </ul>
         ) : (
-          <p className="flex flex-1 items-center justify-center p-4 text-center text-sm text-subtle">No status changes in To Fab this week.</p>
+          <p className="flex flex-1 items-center justify-center p-4 text-center text-sm text-subtle">{scope === "fab" ? "No status changes in To Fab this week." : "No changes in this system this week."}</p>
         )}
       </section>
     );

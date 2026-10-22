@@ -32,13 +32,14 @@ export default async function SystemPage({
   const data = await getSystem(robotId, systemId);
   if (!data) notFound();
   const { system, robot, breakdown } = data;
-  const [parts, merges, inventory, edit, modelBuiltAt, fabActions] = await Promise.all([
+  const [parts, merges, inventory, edit, modelBuiltAt, fabActions, systemActions] = await Promise.all([
     listSystemParts(system.id),
     listSystemMerges(system.id),
     listInventoryNames(),
     isEditMode(),
     robotModelBuiltAt(robot.id),
     listRecentActions({ robotId: robot.id, memberId: member.id, systemId: system.id, fabOnly: true }, 30),
+    listRecentActions({ robotId: robot.id, memberId: member.id, systemId: system.id }, 30),
   ]);
   const statusColor = new Map<string, string>(STATUSES.map((s) => [s.name, s.color]));
   const viewerParts = parts.flatMap((p) =>
@@ -82,9 +83,9 @@ export default async function SystemPage({
       )}
 
       <div className={`grid gap-3 ${system.assemblyUrl ? "lg:h-[26rem] lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]" : ""}`}>
-        {(system.assemblyUrl || fabActions.length > 0) && (
+        {(system.assemblyUrl || systemActions.length > 0) && (
           <div className="flex max-h-80 min-h-0 flex-col lg:max-h-none">
-            <RecentActions actions={fabActions} max={30} variant="list" />
+            <RecentActions actions={fabActions} systemActions={systemActions} max={30} variant="list" />
           </div>
         )}
         {system.assemblyUrl && (
@@ -102,7 +103,7 @@ export default async function SystemPage({
         )}
       </div>
 
-      <BomView parts={parts} inventory={inventory} isAdmin={member.isAdmin} merges={merges} mergeSystemId={system.id} robotId={robot.id} toolbar={<ManualPartButton key="manual-part" systemId={system.id} />} />
+      <BomView parts={parts} inventory={inventory} isAdmin={member.isAdmin} merges={merges} mergeSystemId={system.id} robotId={robot.id} allowRelease toolbar={<ManualPartButton key="manual-part" systemId={system.id} />} />
       {parts.length === 0 && (
         <p className="rounded-lg border border-dashed border-line-strong p-8 text-center text-sm text-muted">
           {system.assemblyUrl

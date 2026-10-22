@@ -38,6 +38,7 @@ export function PartCard({
   fabCounter = false,
   style,
   onCheck,
+  checked = false,
 }: {
   part: CardPart;
   save: SaveFn;
@@ -47,6 +48,7 @@ export function PartCard({
   fabCounter?: boolean; // To Fab: − / + on the thumbnail's bottom corners count parts made
   style?: React.CSSProperties;
   onCheck?: () => void; // Ready for QA: a big check mark replaces Download and moves the part to In Stock
+  checked?: boolean; // Ready for QA: checked off this visit (struck through; a second click undoes it)
 }) {
   const edit = useEditMode();
   const { robotId } = useBom();
@@ -73,7 +75,8 @@ export function PartCard({
   const hasMaterial = materialColorGroup(part.material, onshapeMaterial) !== NO_MATERIAL;
 
   return (
-    <div id={`part-${part.id}`} data-selected={!!selected} data-part={partIds(part)} style={style} className="card-interactive group flex scroll-mt-20 flex-col text-sm target:border-accent target:ring-2 target:ring-accent">
+    <div id={`part-${part.id}`} data-selected={!!selected} data-part={partIds(part)} style={style} className={`card-interactive group flex scroll-mt-20 flex-col text-sm target:border-accent target:ring-2 target:ring-accent ${checked ? "opacity-60" : ""}`}>
+      {checked && <span aria-hidden className="pointer-events-none absolute inset-x-3 top-1/2 z-10 h-0.5 -rotate-6 rounded-full bg-emerald-500" />}
       {onToggleSelect && (
         // While selecting, a click anywhere on the card toggles it.
         <button
@@ -116,9 +119,12 @@ export function PartCard({
             <button
               type="button"
               onClick={onCheck}
-              className="press flex h-14 w-14 items-center justify-center rounded-full border-2 border-emerald-400 bg-emerald-500/90 text-white shadow-lg backdrop-blur-md hover:bg-emerald-400"
-              aria-label={`Checked: move ${partTitle(part)} to In Stock`}
-              title="Checked: move to In Stock"
+              aria-pressed={checked}
+              className={`press flex h-14 w-14 items-center justify-center rounded-full border-2 shadow-lg backdrop-blur-md ${
+                checked ? "border-emerald-400 bg-surface/90 text-emerald-500 hover:bg-raised" : "border-emerald-400 bg-emerald-500/90 text-white hover:bg-emerald-400"
+              }`}
+              aria-label={checked ? `Undo: put ${partTitle(part)} back in Ready for QA` : `Checked: move ${partTitle(part)} to In Stock`}
+              title={checked ? "Undo: back to Ready for QA" : "Checked: move to In Stock"}
             >
               <CheckIcon className="h-8 w-8" />
             </button>
@@ -181,7 +187,7 @@ export function PartCard({
 
       <div className="flex min-w-0 flex-col gap-2 p-3">
         <div className="flex min-w-0 items-baseline gap-2">
-          <div className="min-w-0 flex-1 truncate font-semibold text-fg" title={part.displayName ?? part.onshapeName ?? undefined}>
+          <div className={`min-w-0 flex-1 truncate font-semibold text-fg ${checked ? "line-through" : ""}`} title={part.displayName ?? part.onshapeName ?? undefined}>
             {edit ? <NameField part={part} save={save} bare /> : (part.displayName ?? part.onshapeName ?? "Unnamed part")}
           </div>
           {edit && <EditMenu part={part} />}
