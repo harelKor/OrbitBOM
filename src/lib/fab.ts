@@ -16,7 +16,9 @@ export const FINISHED_STATUS: StatusName = "Ready for QA";
 export type FabStage = "inProcess" | "ready" | null;
 
 export function fabStage(part: StatusInput): FabStage {
-  const status = computeStatus(part);
+  // COTS parts are bought, not made: once released they go to the COTS page, never To Fab.
+  if (part.classification === "cots") return null;
+  const status = computeStatus(part) as StatusName;
   if (IN_PROCESS_STATUSES.includes(status)) return "inProcess";
   if (READY_STATUSES.includes(status)) return "ready";
   return null;

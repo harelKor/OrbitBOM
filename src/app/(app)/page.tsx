@@ -18,6 +18,7 @@ export default async function HomePage() {
       text: robot ? `${robot.name} · ${robot.breakdown.percent}% complete` : "Create the first robot",
     },
     { href: "/inventory", title: "Inventory", text: "Stock, locations and what each robot uses" },
+    { href: "/cots", title: "COTS", text: "Released parts and the order list" },
   ];
 
   return (

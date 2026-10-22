@@ -24,6 +24,10 @@ const part: PartRow = {
   actualMinutes: null,
   drawingUrl: null,
   inventoryItemId: null,
+  cotsLinks: [],
+  unitPrice: null,
+  cotsCategory: null,
+  stockCount: 0,
   overriddenFields: [],
 };
 

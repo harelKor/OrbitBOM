@@ -1,10 +1,12 @@
 import { MACHINES, type MachineStage } from "@/config/machines";
 import { MATERIALS } from "@/config/materials";
 import { PRIORITIES } from "@/config/priorities";
+import { COTS_STATUSES } from "@/config/cots";
 import { STATUSES } from "@/config/statuses";
 import type { Option } from "./Popover";
 
 export const STATUS_OPTIONS: Option[] = STATUSES.map((s) => ({ value: s.name, label: s.name, color: s.color }));
+export const COTS_STATUS_OPTIONS: Option[] = COTS_STATUSES.map((s) => ({ value: s.name, label: s.name, color: s.color }));
 
 export const MATERIAL_OPTIONS: Option[] = [
   { value: null, label: "— None —" },

@@ -8,7 +8,7 @@ import type { PartChanges, PartRow } from "@/lib/parts/changes";
 export const MERGE_PREFIX = "merge:";
 export const isMergeId = (id: string) => id.startsWith(MERGE_PREFIX);
 
-const COUNTERS = ["donePreprocess", "doneProcess1", "doneProcess2"] as const;
+const COUNTERS = ["donePreprocess", "doneProcess1", "doneProcess2", "stockCount"] as const;
 
 type Member = PartRow & { id: string };
 
@@ -26,6 +26,7 @@ export function mergedRow<T extends Member>(merge: { id: string; name: string },
     donePreprocess: sum("donePreprocess"),
     doneProcess1: sum("doneProcess1"),
     doneProcess2: sum("doneProcess2"),
+    stockCount: sum("stockCount"),
     memberIds: members.map((m) => m.id),
   };
 }

@@ -130,3 +130,42 @@ export async function listSystemMerges(systemId: string) {
   }
   return [...out.values()];
 }
+
+export type CotsPart = BomPart & { robotId: string; robotName: string };
+
+// The COTS page: live COTS parts on active robots, each with its robot; robots newest first.
+export async function listCotsParts(): Promise<{ robots: { id: string; name: string }[]; parts: CotsPart[] }> {
+  const systemRows = await db
+    .select({ id: systems.id, robotId: robots.id, robotName: robots.name })
+    .from(systems)
+    .innerJoin(robots, eq(robots.id, systems.robotId))
+    .where(eq(robots.archived, false))
+    .orderBy(sql`${robots.year} desc`, asc(robots.name));
+  const robotList = [...new Map(systemRows.map((s) => [s.robotId, { id: s.robotId, name: s.robotName }])).values()];
+  if (!systemRows.length) return { robots: robotList, parts: [] };
+  const robotOf = new Map(systemRows.map((s) => [s.id, s]));
+  const rows = await load(
+    and(
+      inArray(
+        parts.systemId,
+        systemRows.map((s) => s.id),
+      ),
+      isNull(parts.removedFromCadAt),
+      eq(parts.classification, "cots"),
+    ),
+  );
+  return { robots: robotList, parts: rows.map((p) => ({ ...p, robotId: robotOf.get(p.systemId)!.robotId, robotName: robotOf.get(p.systemId)!.robotName })) };
+}
+
+// How many COTS parts of active robots are in each status, for the COTS home page.
+export async function countCotsStatuses(): Promise<Map<string, number>> {
+  const rows = await db
+    .select({ classification: parts.classification, designState: parts.designState, quantity: parts.quantity, preProcess: parts.preProcess, process1: parts.process1, process2: parts.process2, donePreprocess: parts.donePreprocess, doneProcess1: parts.doneProcess1, doneProcess2: parts.doneProcess2 })
+    .from(parts)
+    .innerJoin(systems, eq(systems.id, parts.systemId))
+    .innerJoin(robots, eq(robots.id, systems.robotId))
+    .where(and(eq(robots.archived, false), isNull(parts.removedFromCadAt), eq(parts.classification, "cots")));
+  const counts = new Map<string, number>();
+  for (const r of rows) counts.set(computeStatus(r), (counts.get(computeStatus(r)) ?? 0) + 1);
+  return counts;
+}

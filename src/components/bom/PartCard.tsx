@@ -17,6 +17,7 @@ import { InputEditor, Popover } from "./Popover";
 import { ownerPartId, partIds, partTitle, type CardPart } from "./types";
 import { downloadDrawing } from "@/lib/drawing/download";
 import { DrawingEditor } from "@/components/drawing/DrawingEditor";
+import { CotsCard } from "@/components/cots/CotsCard";
 
 const EXPORTABLE = ["STEP", "STL", "PARASOLID"] as const;
 const FLAT = ["DXF_FLAT", "STEP_FLAT"] as const; // only for Onshape sheet metal parts
@@ -28,8 +29,12 @@ const pill = "rounded-full border border-line-strong bg-raised px-2 py-0.5 text-
 // Locate in robot lives), with quantity and type on its top-left and Download on its top-right;
 // below it the name,
 // the status, a notes button and the material → process pills. Properties only open their
-// editors in Edit mode.
-export function PartCard({
+// editors in Edit mode. COTS parts get their own card (CotsCard): bought, not made.
+export function PartCard(props: React.ComponentProps<typeof MadePartCard>) {
+  return props.part.classification === "cots" ? <CotsCard {...props} /> : <MadePartCard {...props} />;
+}
+
+function MadePartCard({
   part,
   save,
   showSystem = false,
@@ -267,7 +272,7 @@ function DownloadMenu({ part, format }: { part: CardPart; format: ExportFormat |
 
 // The part's note as a comic-book thought cloud over the thumbnail, in bold on yellow so it is hard
 // to miss; the notes button edits it.
-function NoteCloud({ note, raised = false }: { note: string; raised?: boolean }) {
+export function NoteCloud({ note, raised = false }: { note: string; raised?: boolean }) {
   return (
     <div className={`pointer-events-none absolute left-3 max-w-[80%] ${raised ? "bottom-14" : "bottom-4"}`}>
       <div className="relative rounded-[1.6rem] border-[3px] border-[#111318] bg-[#fff59d] px-3.5 py-2 text-sm leading-snug font-bold text-[#111318] shadow-[3px_4px_0_0_rgba(17,19,24,0.9)]">
@@ -299,7 +304,7 @@ function DrawingButton({ partId }: { partId: string }) {
   );
 }
 
-function NotesButton({ part, save }: { part: CardPart; save: SaveFn }) {
+export function NotesButton({ part, save }: { part: CardPart; save: SaveFn }) {
   return (
     <Popover
       align="right"
@@ -347,7 +352,7 @@ function DoneCounter({ part, save, slot }: { part: CardPart; save: SaveFn; slot:
   );
 }
 
-function EditMenu({ part }: { part: CardPart }) {
+export function EditMenu({ part }: { part: CardPart }) {
   const [, startTransition] = useTransition();
   if (!part.memberIds && !part.isManual) return null;
   return (
