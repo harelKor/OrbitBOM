@@ -66,6 +66,7 @@ export const partChangesSchema = z
     unitPrice: z.number().min(0).max(1_000_000).nullable(),
     cotsCategory: z.string().refine(isCotsCategory, "Unknown COTS category.").nullable(),
     stockCount: count,
+    cotsSentBack: text,
   })
   .partial();
 
@@ -109,6 +110,7 @@ export type PartRow = {
   unitPrice: number | null;
   cotsCategory: string | null;
   stockCount: number;
+  cotsSentBack: string | null;
   overriddenFields: string[];
 };
 
