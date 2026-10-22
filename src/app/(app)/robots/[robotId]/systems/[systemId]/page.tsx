@@ -18,6 +18,7 @@ import { getSystem } from "@/lib/data/robots";
 import { fabStage } from "@/lib/fab";
 import { robotModelBuiltAt } from "@/lib/model/build";
 import { isEditMode } from "@/lib/mode";
+import { isUuid } from "@/lib/uuid";
 
 // Update BOM pulls the BOM in this request; thumbnails follow from /api/systems/[id]/thumbnails.
 export const maxDuration = 60;
@@ -27,20 +28,22 @@ export default async function SystemPage({
 }: {
   params: Promise<{ robotId: string; systemId: string }>;
 }) {
-  const member = await requireMember();
   const { robotId, systemId } = await params;
-  const data = await getSystem(robotId, systemId);
-  if (!data) notFound();
-  const { system, robot, breakdown } = data;
-  const [parts, merges, inventory, edit, modelBuiltAt, fabActions, systemActions] = await Promise.all([
-    listSystemParts(system.id),
-    listSystemMerges(system.id),
+  if (!isUuid(robotId) || !isUuid(systemId)) notFound();
+  // Everything in one parallel round: the page waits for the slowest query, not their sum.
+  const member = await requireMember();
+  const [data, parts, merges, inventory, edit, modelBuiltAt, fabActions, systemActions] = await Promise.all([
+    getSystem(robotId, systemId),
+    listSystemParts(systemId),
+    listSystemMerges(systemId),
     listInventoryNames(),
     isEditMode(),
-    robotModelBuiltAt(robot.id),
-    listRecentActions({ robotId: robot.id, memberId: member.id, systemId: system.id, fabOnly: true }, 30),
-    listRecentActions({ robotId: robot.id, memberId: member.id, systemId: system.id }, 30),
+    robotModelBuiltAt(robotId),
+    listRecentActions({ robotId, memberId: member.id, systemId, fabOnly: true }, 30),
+    listRecentActions({ robotId, memberId: member.id, systemId }, 30),
   ]);
+  if (!data) notFound();
+  const { system, robot, breakdown } = data;
   const statusColor = new Map<string, string>(STATUSES.map((s) => [s.name, s.color]));
   const viewerParts = parts.flatMap((p) =>
     p.modelKey

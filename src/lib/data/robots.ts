@@ -44,14 +44,17 @@ export async function listRobots(): Promise<RobotSummary[]> {
 
 export async function getRobot(robotId: string) {
   if (!isUuid(robotId)) return null;
-  const [robot] = await db.select().from(robots).where(eq(robots.id, robotId)).limit(1);
+  // The robot, its systems and their parts' statuses in one parallel round.
+  const [[robot], robotSystems, rows] = await Promise.all([
+    db.select().from(robots).where(eq(robots.id, robotId)).limit(1),
+    db.select().from(systems).where(eq(systems.robotId, robotId)).orderBy(asc(systems.name)),
+    db
+      .select(statusColumns)
+      .from(parts)
+      .innerJoin(systems, eq(systems.id, parts.systemId))
+      .where(and(eq(systems.robotId, robotId), isNull(parts.removedFromCadAt))),
+  ]);
   if (!robot) return null;
-  const robotSystems = await db
-    .select()
-    .from(systems)
-    .where(eq(systems.robotId, robotId))
-    .orderBy(asc(systems.name));
-  const rows = await statusRows(robotSystems.map((s) => s.id));
   return {
     robot,
     breakdown: statusBreakdown(rows),
@@ -64,14 +67,17 @@ export async function getRobot(robotId: string) {
 
 export async function getSystem(robotId: string, systemId: string) {
   if (!isUuid(robotId) || !isUuid(systemId)) return null;
-  const [row] = await db
-    .select({ system: systems, robot: robots })
-    .from(systems)
-    .innerJoin(robots, eq(robots.id, systems.robotId))
-    .where(and(eq(systems.id, systemId), eq(systems.robotId, robotId)))
-    .limit(1);
+  const [[row], rows] = await Promise.all([
+    db
+      .select({ system: systems, robot: robots })
+      .from(systems)
+      .innerJoin(robots, eq(robots.id, systems.robotId))
+      .where(and(eq(systems.id, systemId), eq(systems.robotId, robotId)))
+      .limit(1),
+    statusRows([systemId]),
+  ]);
   if (!row) return null;
-  return { ...row, breakdown: statusBreakdown(await statusRows([systemId])) };
+  return { ...row, breakdown: statusBreakdown(rows) };
 }
 
 // Robot → systems for pickers such as Inventory's "To BOM". Archived robots are left out.
