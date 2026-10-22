@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useLayoutEffect, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
 import { MACHINES, getMachine } from "@/config/machines";
 import type { Priority } from "@/config/priorities";
@@ -15,7 +15,9 @@ import { PartCard, cadFormat } from "@/components/bom/PartCard";
 import { partTitle, type CardPart } from "@/components/bom/types";
 import { useFilters } from "@/components/shell/FilterContext";
 import { useEditMode } from "@/components/shell/ModeContext";
+import { Chevron } from "@/components/ui/Chevron";
 import { Icon } from "@/components/ui/Icon";
+import { ShallowLink } from "@/components/ui/FastLink";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { FINISHED_STATUS, IN_PROCESS_STATUS, READY_STATUS, fabStage, isFabFinished, machinesOf } from "@/lib/fab";
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
@@ -70,7 +72,6 @@ const common = (lists: string[][]) => (lists.length ? lists.reduce((acc, l) => a
 export function FabView({
   parts,
   batches,
-  machine,
   robotId,
   inventory,
   isAdmin,
@@ -79,7 +80,6 @@ export function FabView({
 }: {
   parts: CardPart[];
   batches: Batch[];
-  machine?: string;
   robotId: string;
   inventory: InventoryName[];
   isAdmin: boolean;
@@ -100,6 +100,7 @@ export function FabView({
     });
   };
 
+  const machine = useFabMachine();
   const { filters } = useFilters();
   const [fab, setFab] = useState(false);
   const [mine, setMine] = useState(false); // only the batches made by the signed-in member
@@ -310,16 +311,33 @@ export function FabView({
   );
 }
 
+// The machine picked in the URL (?machine=). Read on the client so switching machines doesn't
+// reload the page: the boxes and the sidebar change only the URL (ShallowLink).
+function useFabMachine() {
+  const id = useSearchParams().get("machine");
+  return id && getMachine(id) ? id : undefined;
+}
+
+export function FabHeading({ robotName }: { robotName: string }) {
+  const machine = useFabMachine();
+  return (
+    <div>
+      <div className="text-xs font-semibold tracking-wide text-subtle uppercase">{robotName}</div>
+      <h1 className="display text-3xl text-accent">To Fab{machine && ` · ${getMachine(machine)!.name}`}</h1>
+    </div>
+  );
+}
+
 function MachineBox({ href, name, count, active }: { href: string; name: string; count: number; active: boolean }) {
   return (
-    <Link
+    <ShallowLink
       href={href}
       data-selected={active}
       className="card-interactive flex min-w-32 flex-col px-4 py-2.5"
     >
       <span className="display text-2xl text-accent tabular-nums">{count}</span>
       <span className="truncate text-xs font-medium text-fg-2">{name}</span>
-    </Link>
+    </ShallowLink>
   );
 }
 
@@ -363,7 +381,7 @@ function Section({
   return (
     <section {...dropProps} className={`-m-2 space-y-3 rounded-xl p-2 transition-colors ${over ? "bg-accent/5 ring-2 ring-accent/40" : ""}`}>
       <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="press flex w-full items-center gap-3 text-left">
-        <Icon name="chevron" className={`shrink-0 text-subtle transition-transform ${open ? "rotate-90" : ""} ${small ? "h-4 w-4" : "h-5 w-5"}`} />
+        <Chevron open={open} small={small} />
         <h2 className={small ? "text-base font-semibold text-fg-2" : "display text-2xl font-bold"}>{title}</h2>
         <span className={`rounded-full bg-raised font-bold text-fg-2 tabular-nums ${small ? "px-2 py-0.5 text-xs" : "px-2.5 py-0.5 text-sm"}`}>{count}</span>
         <div className={`flex-1 ${small ? "h-px bg-line" : "h-0.5 bg-line-strong"}`} />
@@ -371,7 +389,7 @@ function Section({
       {!open ? null : count === 0 && empty ? (
         <p className={`text-sm text-subtle ${onDropParts ? "rounded-lg border border-dashed border-line py-6 text-center" : ""}`}>{empty}</p>
       ) : (
-        <div className={`grid gap-3 ${small ? "grid-cols-[repeat(auto-fill,minmax(150px,1fr))]" : "grid-cols-[repeat(auto-fill,minmax(200px,1fr))]"}`}>{children}</div>
+        <div className="card-grid" style={{ "--card-min": small ? "150px" : "200px" } as React.CSSProperties}>{children}</div>
       )}
     </section>
   );

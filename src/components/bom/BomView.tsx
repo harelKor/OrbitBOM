@@ -1,6 +1,6 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useMemo, useOptimistic, useState, useTransition } from "react";
 import { STATUSES } from "@/config/statuses";
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
@@ -46,6 +46,7 @@ export function BomView({
   toolbar,
   groupBySystem = false,
   allowRelease = false,
+  stickyToolbar = false,
 }: {
   parts: CardPart[];
   inventory?: InventoryName[];
@@ -57,9 +58,9 @@ export function BomView({
   robotId?: string; // enables Locate on the cards
   toolbar?: React.ReactNode;
   groupBySystem?: boolean; // card view: one collapsible section per system
+  stickyToolbar?: boolean; // a system page: the toolbar stays under the top bar while scrolling
   allowRelease?: boolean; // a system page: the Release button (View and Edit mode)
 }) {
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const edit = useEditMode();
@@ -69,7 +70,9 @@ export function BomView({
     const params = new URLSearchParams(searchParams);
     if (v === "card") params.delete("view");
     else params.set("view", v);
-    router.replace(`${pathname}${params.size ? `?${params}` : ""}`, { scroll: false });
+    // Only the URL changes: the views are drawn here from the same parts, so there is nothing to
+    // ask the server for.
+    window.history.replaceState(null, "", `${pathname}${params.size ? `?${params}` : ""}`);
   };
 
   const [optimisticParts, addOptimistic] = useOptimistic(
@@ -174,8 +177,14 @@ export function BomView({
 
   return (
     <BomProvider value={{ inventory, isAdmin, robotId }}>
-    <div className={`space-y-4 ${selecting ? "pb-20" : ""}`}>
-      <div className="flex flex-wrap items-center gap-3">
+    {/* With the sticky toolbar, a card jumped to (#part-…) lands below both bars. */}
+    <div className={`space-y-4 ${selecting ? "pb-20" : ""} ${stickyToolbar ? "md:[&_[id^=part-]]:scroll-mt-36" : ""}`}>
+      <div
+        className={`flex flex-wrap items-center gap-3 ${
+          // From md the top bar is one row (3.5rem); the strip bleeds into main's padding so cards scroll under it cleanly.
+          stickyToolbar ? "md:sticky md:top-14 md:z-10 md:-mx-6 md:border-b md:border-line md:bg-ink/95 md:px-6 md:py-2.5 md:backdrop-blur lg:-ml-11 lg:pl-11 xl:-mr-11 xl:pr-11" : ""
+        }`}
+      >
         <div className="flex flex-wrap gap-1.5">
           {chips.map((c) => (
             <button
@@ -244,7 +253,9 @@ export function BomView({
           {bySystem(shown).map(([name, group]) => (
             <details key={name} open className="group/sys">
               <summary className="press flex cursor-pointer list-none items-center gap-2 py-1 text-sm font-semibold text-fg-2 hover:text-fg">
-                <Icon name="chevron" className="h-3.5 w-3.5 transition-transform group-open/sys:rotate-90" />
+                <span className="-m-1 inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-raised">
+                  <Icon name="chevron" className="h-4.5 w-4.5 transition-transform group-open/sys:rotate-90" />
+                </span>
                 {name}
                 <span className="text-xs font-normal text-subtle tabular-nums">{group.length}</span>
               </summary>

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist_Mono, Jost } from "next/font/google";
 import { APPEARANCE_SCRIPT } from "@/components/shell/Appearance";
-import { THEME_SCRIPT } from "@/components/shell/ThemeToggle";
+import { SHADE_SCRIPT } from "@/components/shell/ShadeSlider";
 import "./globals.css";
 
 // Jost is a Futura-style geometric face, close to the type on 1690orbit.com.
@@ -31,7 +31,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       suppressHydrationWarning
     >
       <head>
-        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT + APPEARANCE_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: SHADE_SCRIPT + APPEARANCE_SCRIPT }} />
       </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>

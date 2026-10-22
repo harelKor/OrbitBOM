@@ -99,7 +99,7 @@ export const systems = pgTable(
 
 // ---------- Parts (one BOM row) ----------
 
-export const classification = pgEnum("classification", ["inhouse", "cots", "external"]);
+export const classification = pgEnum("classification", ["inhouse", "cots", "external", "undefined"]);
 export const priority = pgEnum("priority", ["critical", "high", "normal", "low"]);
 export const classSource = pgEnum("class_source", ["rule", "ai", "manual"]);
 
@@ -179,6 +179,8 @@ export const parts = pgTable(
     unitPrice: real("unit_price"),
     cotsCategory: text("cots_category"),
     stockCount: integer("stock_count").notNull().default(0),
+    // Why the Order List sent the part back to Released; cleared when it is sent to order again.
+    cotsSentBack: text("cots_sent_back"),
 
     overriddenFields: text("overridden_fields").array().notNull().default(sql`'{}'::text[]`),
 

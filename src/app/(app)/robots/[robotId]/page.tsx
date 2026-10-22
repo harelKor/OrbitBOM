@@ -16,6 +16,7 @@ import { robotModelBuiltAt } from "@/lib/model/build";
 import { getRobot } from "@/lib/data/robots";
 import { fabStage } from "@/lib/fab";
 import { isEditMode } from "@/lib/mode";
+import { isUuid } from "@/lib/uuid";
 import { listRobotReviews } from "@/lib/review/review";
 import { processBreakdown } from "@/lib/stats";
 import { NewSystemButton } from "./NewSystemButton";
@@ -24,20 +25,22 @@ import { RobotInventory } from "./RobotInventory";
 // The robot dashboard: launch cards for To Fab and To Review, status and process completion,
 // the 3D stage, and every part of the robot (searched and filtered from the top bar).
 export default async function RobotPage({ params }: { params: Promise<{ robotId: string }> }) {
-  const member = await requireMember();
   const { robotId } = await params;
-  const data = await getRobot(robotId);
+  if (!isUuid(robotId)) notFound();
+  // Everything in one parallel round: the page waits for the slowest query, not their sum.
+  const member = await requireMember();
+  const [data, parts, inventoryNames, inventory, edit, modelBuiltAt, reviews, actions] = await Promise.all([
+    getRobot(robotId),
+    listRobotParts(robotId),
+    listInventoryNames(),
+    robotInventory(robotId),
+    isEditMode(),
+    robotModelBuiltAt(robotId),
+    listRobotReviews(robotId),
+    listRecentActions({ robotId, memberId: member.id }),
+  ]);
   if (!data) notFound();
   const { robot, breakdown } = data;
-  const [parts, inventoryNames, inventory, edit, modelBuiltAt, reviews, actions] = await Promise.all([
-    listRobotParts(robot.id),
-    listInventoryNames(),
-    robotInventory(robot.id),
-    isEditMode(),
-    robotModelBuiltAt(robot.id),
-    listRobotReviews(robot.id),
-    listRecentActions({ robotId: robot.id, memberId: member.id }),
-  ]);
   const aiReviews = reviews.filter((r) => r.source === "ai").length;
 
   const inProcess = parts.filter((p) => fabStage(p) === "inProcess").length;
@@ -145,7 +148,9 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
 
       <details className="group">
         <summary className="press flex cursor-pointer list-none items-center gap-2 text-sm text-muted hover:text-fg">
-          <Icon name="chevron" className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
+          <span className="-m-1 inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-raised">
+            <Icon name="chevron" className="h-4.5 w-4.5 transition-transform group-open:rotate-90" />
+          </span>
           Inventory used by this robot
         </summary>
         <div className="mt-3">

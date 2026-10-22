@@ -9,7 +9,7 @@ import { MATERIALS, materialCategory, plateThicknessMm } from "@/config/material
 import type { PartGeometry } from "@/db/schema";
 
 export type SetupInput = {
-  classification: "inhouse" | "cots" | "external";
+  classification: "inhouse" | "cots" | "external" | "undefined";
   material: string | null;
   preProcess: string | null;
   process1: string | null;
@@ -119,8 +119,8 @@ export function suggestSetup(part: SetupInput, learned: Learned): { changes: Set
       const set = isBent(part.geometry) ? withBending(p.set) : p.set;
       Object.assign(changes, { preProcess: set.preProcess ?? null, process1: set.process1 ?? null, process2: set.process2 ?? null });
       why.push(`${names(set)}, ${p.why}${set !== p.set ? ", then bent" : ""}`);
-      // Sync marks a part without processes as bought; a part we make is in-house.
-      if (part.classification === "cots") changes.classification = "inhouse";
+      // Sync leaves a part without processes Undefined; a part we make is in-house.
+      if (part.classification === "cots" || part.classification === "undefined") changes.classification = "inhouse";
     }
   }
 

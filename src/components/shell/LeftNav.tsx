@@ -8,6 +8,7 @@ import { MACHINES } from "@/config/machines";
 import type { ShellRobot } from "@/lib/data/shell";
 import { SignOutButton } from "@/components/SignOutButton";
 import { Icon, type IconName } from "@/components/ui/Icon";
+import { FastLink, ShallowLink } from "@/components/ui/FastLink";
 import { useRobotContext } from "./useRobotContext";
 
 export function LeftNav({
@@ -57,14 +58,14 @@ export function LeftNav({
             </Item>
             {base && (
               <>
-                {robot!.fab.total > 0 && <Count n={robot!.fab.total} className="pointer-events-none absolute right-8" />}
+                {robot!.fab.total > 0 && <Count n={robot!.fab.total} className="pointer-events-none absolute right-9" />}
                 <button
                   onClick={() => setToggled(!fabOpen)}
                   aria-expanded={fabOpen}
                   aria-label={fabOpen ? "Hide processes" : "Show processes"}
-                  className="press absolute right-1 rounded p-1 text-subtle hover:bg-line hover:text-fg"
+                  className="press absolute right-0 flex h-8 w-8 items-center justify-center rounded-md text-subtle hover:bg-line hover:text-fg"
                 >
-                  <Icon name="chevron" className={`h-3.5 w-3.5 transition-transform duration-150 ${fabOpen ? "rotate-90" : ""}`} />
+                  <Icon name="chevron" className={`h-4.5 w-4.5 transition-transform duration-150 ${fabOpen ? "rotate-90" : ""}`} />
                 </button>
               </>
             )}
@@ -75,7 +76,7 @@ export function LeftNav({
                 const n = robot!.fab.byMachine[m.id] ?? 0;
                 const active = onFab && machine === m.id;
                 return (
-                  <Link
+                  <ShallowLink
                     key={m.id}
                     href={`${base}/fab?machine=${m.id}`}
                     className={`press flex items-center gap-2 rounded-md px-2 py-1 text-xs ${
@@ -84,7 +85,7 @@ export function LeftNav({
                   >
                     <span className="truncate">{m.name}</span>
                     {n > 0 && <Count n={n} className="ml-auto" />}
-                  </Link>
+                  </ShallowLink>
                 );
               })}
             </div>
@@ -105,9 +106,9 @@ export function LeftNav({
               onClick={() => setCotsToggled(!cotsOpen)}
               aria-expanded={cotsOpen}
               aria-label={cotsOpen ? "Hide COTS lists" : "Show COTS lists"}
-              className="press absolute right-1 rounded p-1 text-subtle hover:bg-line hover:text-fg"
+              className="press absolute right-0 flex h-8 w-8 items-center justify-center rounded-md text-subtle hover:bg-line hover:text-fg"
             >
-              <Icon name="chevron" className={`h-3.5 w-3.5 transition-transform duration-150 ${cotsOpen ? "rotate-90" : ""}`} />
+              <Icon name="chevron" className={`h-4.5 w-4.5 transition-transform duration-150 ${cotsOpen ? "rotate-90" : ""}`} />
             </button>
           </div>
           {cotsOpen && (
@@ -116,7 +117,7 @@ export function LeftNav({
                 { href: "/cots/released", name: "Released" },
                 { href: "/cots/order-list", name: "Order List" },
               ].map((l) => (
-                <Link
+                <FastLink
                   key={l.href}
                   href={l.href}
                   className={`press flex items-center gap-2 rounded-md px-2 py-1 text-xs ${
@@ -124,7 +125,7 @@ export function LeftNav({
                   }`}
                 >
                   {l.name}
-                </Link>
+                </FastLink>
               ))}
             </div>
           )}
@@ -184,7 +185,7 @@ function Item({
       </span>
     );
   return (
-    <Link
+    <FastLink
       href={href}
       aria-current={active ? "page" : undefined}
       className={`${cls} ${active ? "bg-accent/10 font-semibold text-accent" : "text-muted hover:bg-raised hover:text-fg"}`}
@@ -192,6 +193,6 @@ function Item({
       {active && <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-accent" />}
       <Icon name={icon} className={`h-4 w-4 ${active ? "text-accent-hover" : ""}`} />
       {children}
-    </Link>
+    </FastLink>
   );
 }

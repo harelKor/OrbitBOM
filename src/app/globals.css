@@ -45,7 +45,7 @@
   color-scheme: light;
 }
 
-/* Dark mode: follows the device unless the theme button picked one (data-theme on <html>). */
+/* Dark mode: follows the device unless the greyscale slider picked a shade (data-theme on <html>). */
 @layer base {
 :root[data-theme="dark"] {
   --color-accent: #4d6bff;
@@ -88,6 +88,16 @@
   --color-faint: #5d6476;
   color-scheme: dark;
   }
+}
+
+/* The greyscale slider (top bar): data-shade on <html> greys the page, cards and lines between the
+   light theme (0%) and the dark one (100%); data-theme, set with it, picks text and accents. */
+:root[data-shade] {
+  --color-ink: color-mix(in oklab, #0b0d14 var(--shade), #f2f2f2);
+  --color-surface: color-mix(in oklab, #151925 var(--shade), #ffffff);
+  --color-raised: color-mix(in oklab, #1d2230 var(--shade), #eceef3);
+  --color-line: color-mix(in oklab, #272d3d var(--shade), #dcdfe6);
+  --color-line-strong: color-mix(in oklab, #353c50 var(--shade), #c3c8d2);
 }
 
 /* The colour slider (right panel): data-hue on <html> turns the accents to --hue, keeping the
@@ -185,6 +195,13 @@ body {
   .thumb-well {
     @apply overflow-hidden bg-gradient-to-b from-well to-well-2 shadow-[inset_0_-1px_0_0_var(--color-line)];
   }
+  /* Bought parts sit on light green, made parts on a dim Orbit blue, so the two read apart at a glance. */
+  .thumb-cots {
+    @apply bg-gradient-to-b from-[#effcf4] to-[#d3f2df];
+  }
+  .thumb-made {
+    @apply bg-gradient-to-b from-[#eef2fb] to-[#d6dff3];
+  }
   .thumb-well img {
     transition: transform 200ms var(--ease-snap);
   }
@@ -203,6 +220,17 @@ body {
     grid-template-columns: repeat(auto-fill, minmax(min(calc(var(--card-min, 400px) * var(--card-scale, 1)), 100%), 1fr));
   }
   /* The colour slider's track shows every colour it can pick. */
+  /* The greyscale slider's track runs from the light theme's page to the dark one's. */
+  .shade-slider {
+    @apply h-2 cursor-pointer appearance-none rounded-full border border-white/40;
+    background: linear-gradient(to right, #ffffff, #0b0d14);
+  }
+  .shade-slider::-webkit-slider-thumb {
+    @apply h-4 w-4 appearance-none rounded-full border-2 border-white bg-accent shadow;
+  }
+  .shade-slider::-moz-range-thumb {
+    @apply h-4 w-4 rounded-full border-2 border-white bg-accent shadow;
+  }
   .hue-slider {
     @apply h-2 cursor-pointer appearance-none rounded-full;
     background: linear-gradient(to right in oklch longer hue, oklch(0.6 0.2 0), oklch(0.6 0.2 359));

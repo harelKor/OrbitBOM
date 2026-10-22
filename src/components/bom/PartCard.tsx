@@ -91,7 +91,7 @@ function MadePartCard({
         </button>
       )}
 
-      <div className="thumb-well relative flex aspect-[4/3] items-center justify-center">
+      <div className="thumb-well thumb-made relative flex aspect-[4/3] items-center justify-center">
         {part.isManual ? (
           <span className="text-xs text-muted">Manual part</span>
         ) : (

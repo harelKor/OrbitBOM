@@ -37,6 +37,7 @@ export const PRIORITY_OPTIONS: Option[] = PRIORITIES.map((p) => ({
 export const TYPE_OPTIONS: Option[] = [
   { value: "inhouse", label: "IN-HOUSE" },
   { value: "cots", label: "COTS" },
+  { value: "undefined", label: "UNDEFINED" },
 ];
 
 // Black or white text, whichever reads better on a status color.

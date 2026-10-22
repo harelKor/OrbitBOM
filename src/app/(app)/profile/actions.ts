@@ -29,3 +29,13 @@ export async function revokeMcpToken(tokenId: string) {
     .where(and(eq(schema.mcpTokens.id, tokenId), eq(schema.mcpTokens.memberId, member.id)));
   revalidatePath("/profile");
 }
+
+// The member's own display name, shown across the app (Google's name until they change it).
+export async function renameSelf(name: string): Promise<{ error?: string }> {
+  const member = await requireMember();
+  const clean = name.trim().replace(/\s+/g, " ").slice(0, 60);
+  if (!clean) return { error: "Enter a name." };
+  await db.update(schema.members).set({ name: clean }).where(eq(schema.members.id, member.id));
+  revalidatePath("/", "layout");
+  return {};
+}
