@@ -13,6 +13,7 @@ export type UsagePart = {
   quantity: number;
   robotId: string;
   robotName: string;
+  systemId?: string;
   systemName: string;
   partName: string;
   status?: string;

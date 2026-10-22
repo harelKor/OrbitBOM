@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
+import { INVENTORY_CATEGORIES } from "@/config/inventory";
 import { MACHINES } from "@/config/machines";
 import type { ShellRobot } from "@/lib/data/shell";
 import { SignOutButton } from "@/components/SignOutButton";
@@ -29,6 +30,9 @@ export function LeftNav({
   const onCots = pathname.startsWith("/cots");
   const [cotsToggled, setCotsToggled] = useState<boolean | null>(null);
   const cotsOpen = cotsToggled ?? onCots;
+  const onInventory = pathname.startsWith("/inventory");
+  const [inventoryToggled, setInventoryToggled] = useState<boolean | null>(null);
+  const inventoryOpen = inventoryToggled ?? onInventory;
 
   return (
     <div className="flex h-full flex-col">
@@ -130,9 +134,36 @@ export function LeftNav({
             </div>
           )}
         </div>
-        <Item href="/inventory" icon="box" active={pathname.startsWith("/inventory")}>
-          Inventory
-        </Item>
+        <div>
+          <div className="relative flex items-center">
+            <Item href="/inventory" icon="box" active={pathname === "/inventory"} className="flex-1 pr-8">
+              Inventory
+            </Item>
+            <button
+              onClick={() => setInventoryToggled(!inventoryOpen)}
+              aria-expanded={inventoryOpen}
+              aria-label={inventoryOpen ? "Hide inventory categories" : "Show inventory categories"}
+              className="press absolute right-0 flex h-8 w-8 items-center justify-center rounded-md text-subtle hover:bg-line hover:text-fg"
+            >
+              <Icon name="chevron" className={`h-4.5 w-4.5 transition-transform duration-150 ${inventoryOpen ? "rotate-90" : ""}`} />
+            </button>
+          </div>
+          {inventoryOpen && (
+            <div className="mt-0.5 mb-1 ml-5 space-y-px border-l border-line pl-2">
+              {[{ href: "/inventory/short", name: "Short for robots" }, ...INVENTORY_CATEGORIES.map((c) => ({ href: `/inventory/c/${c.id}`, name: c.label }))].map((l) => (
+                <FastLink
+                  key={l.href}
+                  href={l.href}
+                  className={`press flex items-center gap-2 rounded-md px-2 py-1 text-xs ${
+                    pathname === l.href ? "bg-accent/15 text-white" : "text-fg-2 hover:bg-raised hover:text-fg"
+                  }`}
+                >
+                  {l.name}
+                </FastLink>
+              ))}
+            </div>
+          )}
+        </div>
         <Item href="/ai-logs" icon="spark" active={pathname.startsWith("/ai-logs")}>
           AI logs
         </Item>

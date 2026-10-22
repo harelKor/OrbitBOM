@@ -4,6 +4,7 @@ import { eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { COTS_DEFAULT_STATUS, COTS_IN_STOCK, COTS_ORDERED, COTS_RELEASED, cotsStatusOf } from "@/config/cots";
+import { INVENTORY_CATEGORIES, getInventoryCategory, inventoryCategoryOf } from "@/config/inventory";
 import { getPartType, isSheetType } from "@/config/partTypes";
 import { db, schema } from "@/db";
 import { requireMember } from "@/lib/auth";
@@ -37,7 +38,7 @@ const itemForm = z.object({
   name: z.string().trim().min(1, "Part name is required."),
   inStock: z.string().default("0"),
   conditionId: ref,
-  groupId: ref,
+  category: text.refine((v) => v === null || !!getInventoryCategory(v), "Unknown category."),
   locationId: ref,
   templateId: text.refine((v) => v === null || !!getPartType(v), "Unknown part type."),
   material: text,
@@ -171,47 +172,7 @@ export async function addItemToBom(itemId: string, systemId: string, quantity: n
   return { message: `Added ${quantity} × ${item.name} to the BOM.` };
 }
 
-// ---------- Groups, conditions, locations (editable from the toolbar, like FRCBOM) ----------
-
-const groupForm = z.object({
-  name: z.string().trim().min(1, "Group name is required."),
-  parentId: ref,
-  templateId: text.refine((v) => v === null || !!getPartType(v), "Unknown part type."),
-  locationId: ref,
-});
-
-export async function saveGroup(groupId: string | null, formData: FormData): Promise<ActionResult> {
-  await requireMember();
-  const parsed = groupForm.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return { error: parsed.error.issues[0].message };
-  if (groupId) {
-    if (!isUuid(groupId)) return { error: "Unknown group." };
-    // A group can't sit under itself or one of its own sub-groups.
-    const all = await db.select({ id: inventoryGroups.id, parentId: inventoryGroups.parentId }).from(inventoryGroups);
-    for (let p = parsed.data.parentId; p; p = all.find((g) => g.id === p)?.parentId ?? null) {
-      if (p === groupId) return { error: "A group can't go inside itself." };
-    }
-    await db.update(inventoryGroups).set(parsed.data).where(eq(inventoryGroups.id, groupId));
-  } else {
-    await db.insert(inventoryGroups).values(parsed.data);
-  }
-  refresh();
-  return {};
-}
-
-// Sub-groups and items move up to the deleted group's parent.
-export async function deleteGroup(groupId: string) {
-  await requireMember();
-  if (!isUuid(groupId)) return;
-  await db.transaction(async (tx) => {
-    const [group] = await tx.select().from(inventoryGroups).where(eq(inventoryGroups.id, groupId));
-    if (!group) return;
-    await tx.update(inventoryGroups).set({ parentId: group.parentId }).where(eq(inventoryGroups.parentId, groupId));
-    await tx.update(inventoryItems).set({ groupId: group.parentId }).where(eq(inventoryItems.groupId, groupId));
-    await tx.delete(inventoryGroups).where(eq(inventoryGroups.id, groupId));
-  });
-  refresh();
-}
+// ---------- Conditions and locations (editable from the toolbar, like FRCBOM) ----------
 
 export async function addCondition(label: string, color: string): Promise<ActionResult> {
   await requireMember();
@@ -320,6 +281,7 @@ export async function importItems(rows: ImportRow[]): Promise<ActionResult> {
         locationId: await locationId(row.location),
         conditionId: await conditionId(row.condition),
         groupId: await groupId(row.groupPath),
+        category: guessCategory(row),
       }).returning({ id: inventoryItems.id });
       if (row.inStock) await tx.insert(inventoryMoves).values({ itemId: item.id, delta: row.inStock, reason: "counted", memberId: member.id, via: "ui" });
     }
@@ -335,4 +297,22 @@ export async function importItems(rows: ImportRow[]): Promise<ActionResult> {
   return {
     message: `Imported ${parsed.data.length} items${extra.length ? `; created ${extra.join(", ")}` : ""}.`,
   };
+}
+
+// An imported row's category: a spreadsheet group named like a category, else a guess from the
+// group names and the item's name. Left unset when nothing fits, so it keeps being guessed.
+function guessCategory(row: { name: string; groupPath: string[] }) {
+  const named = INVENTORY_CATEGORIES.find((c) => row.groupPath.some((g) => g.toLowerCase() === c.label.toLowerCase()));
+  if (named) return named.id;
+  const guess = inventoryCategoryOf({ category: null, templateId: null, name: [...row.groupPath, row.name].join(" ") });
+  return guess === "other" ? null : guess;
+}
+
+// The item page's Possible matches: link COTS parts to this item.
+export async function linkPartsToItem(itemId: string, partIds: string[]): Promise<ActionResult> {
+  const member = await requireMember();
+  if (!isUuid(itemId) || !partIds.length || partIds.some((id) => !isUuid(id))) return { error: "Unknown part." };
+  const { changed } = await applyEachPartChanges(partIds.map((id) => ({ id, changes: { inventoryItemId: itemId } })), { memberId: member.id, via: "ui" });
+  refresh();
+  return { message: `Linked ${changed} part${changed === 1 ? "" : "s"}.` };
 }

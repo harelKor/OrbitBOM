@@ -5,6 +5,8 @@ export type Item = {
   id: string;
   name: string;
   groupId: string | null;
+  category: string; // resolved: set, from the part type, or guessed
+  categorySet: string | null;
   templateId: string | null;
   templateValues: Record<string, string>;
   conditionId: string | null;
@@ -16,6 +18,7 @@ export type Item = {
   price: number | null;
   usage: ItemUsage | null;
   sheet: boolean;
+  thumbUrl: string | null;
 };
 export type Group = { id: string; name: string; parentId: string | null; templateId: string | null; locationId: string | null };
 export type Condition = { id: string; label: string; color: string };

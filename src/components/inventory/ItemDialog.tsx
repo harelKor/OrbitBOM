@@ -5,30 +5,29 @@ import { formatStock } from "@/lib/inventory/stock";
 import { Dialog } from "@/components/Dialog";
 import { MATERIALS } from "@/config/materials";
 import { PART_TYPES, buildItemName, getPartType } from "@/config/partTypes";
-import { flattenTree } from "@/lib/inventory/groups";
+import { INVENTORY_CATEGORIES, inventoryCategoryOf } from "@/config/inventory";
 import { saveItem, type ActionResult } from "@/app/(app)/inventory/actions";
 import type { Item, Lookups } from "./types";
 
 // "Add / Edit inventory item" (ref §5, screenshot 11). Choosing a part type adds its detail
-// fields; types with a name pattern build the item name until the member types their own.
+// fields and picks the category; types with a name pattern build the item name until the member
+// types their own.
 export function ItemDialog({
   open,
   item,
-  defaultGroupId,
-  lookups: { groups, conditions, locations },
+  defaultCategory,
+  lookups: { conditions, locations },
   onClose,
 }: {
   open: boolean;
   item: Item | null;
-  defaultGroupId: string | null;
+  defaultCategory: string | null;
   lookups: Lookups;
   onClose: () => void;
 }) {
-  const initialGroup = item ? item.groupId : defaultGroupId;
-  const [groupId, setGroupId] = useState(initialGroup ?? "");
-  const [templateId, setTemplateId] = useState(
-    item?.templateId ?? groups.find((g) => g.id === initialGroup)?.templateId ?? "",
-  );
+  const [templateId, setTemplateId] = useState(item?.templateId ?? "");
+  // The category follows the part type until someone picks one.
+  const [category, setCategory] = useState(item ? (item.categorySet ?? "") : (defaultCategory ?? ""));
   const [values, setValues] = useState<Record<string, string>>(item?.templateValues ?? {});
   const [material, setMaterial] = useState(item?.material ?? "");
   const [name, setName] = useState(item?.name ?? "");
@@ -100,25 +99,14 @@ export function ItemDialog({
             </select>
           </div>
           <div>
-            <label className="label" htmlFor="inv-group">
-              Group
+            <label className="label" htmlFor="inv-category">
+              Category
             </label>
-            <select
-              id="inv-group"
-              name="groupId"
-              value={groupId}
-              onChange={(e) => {
-                setGroupId(e.target.value);
-                const groupType = groups.find((g) => g.id === e.target.value)?.templateId;
-                if (groupType && !templateId) setTemplateId(groupType);
-              }}
-              className="input"
-            >
-              <option value="">No group</option>
-              {flattenTree(groups).map(({ group, depth }) => (
-                <option key={group.id} value={group.id}>
-                  {"  ".repeat(depth)}
-                  {group.name}
+            <select id="inv-category" name="category" value={category} onChange={(e) => setCategory(e.target.value)} className="input">
+              <option value="">Guess from the type or name</option>
+              {INVENTORY_CATEGORIES.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
                 </option>
               ))}
             </select>
@@ -144,7 +132,10 @@ export function ItemDialog({
               id="inv-type"
               name="templateId"
               value={templateId}
-              onChange={(e) => setTemplateId(e.target.value)}
+              onChange={(e) => {
+                setTemplateId(e.target.value);
+                if (!category && e.target.value) setCategory(inventoryCategoryOf({ category: null, templateId: e.target.value, name: "" }));
+              }}
               className="input"
             >
               <option value="">None</option>

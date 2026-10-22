@@ -420,6 +420,7 @@ export const inventoryItems = pgTable("inventory_items", {
   id: id(),
   name: text("name").notNull(),
   groupId: uuid("group_id").references(() => inventoryGroups.id, { onDelete: "set null" }),
+  category: text("category"), // config/inventory.ts id; guessed from the part type or name while null
   templateId: text("template_id"),
   templateValues: jsonb("template_values").$type<Record<string, string>>().notNull().default({}),
   conditionId: uuid("condition_id").references(() => inventoryConditions.id, { onDelete: "set null" }),
