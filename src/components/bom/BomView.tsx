@@ -46,6 +46,7 @@ export function BomView({
   toolbar,
   groupBySystem = false,
   allowRelease = false,
+  stickyToolbar = false,
 }: {
   parts: CardPart[];
   inventory?: InventoryName[];
@@ -57,6 +58,7 @@ export function BomView({
   robotId?: string; // enables Locate on the cards
   toolbar?: React.ReactNode;
   groupBySystem?: boolean; // card view: one collapsible section per system
+  stickyToolbar?: boolean; // a system page: the toolbar stays under the top bar while scrolling
   allowRelease?: boolean; // a system page: the Release button (View and Edit mode)
 }) {
   const router = useRouter();
@@ -174,8 +176,14 @@ export function BomView({
 
   return (
     <BomProvider value={{ inventory, isAdmin, robotId }}>
-    <div className={`space-y-4 ${selecting ? "pb-20" : ""}`}>
-      <div className="flex flex-wrap items-center gap-3">
+    {/* With the sticky toolbar, a card jumped to (#part-…) lands below both bars. */}
+    <div className={`space-y-4 ${selecting ? "pb-20" : ""} ${stickyToolbar ? "md:[&_[id^=part-]]:scroll-mt-36" : ""}`}>
+      <div
+        className={`flex flex-wrap items-center gap-3 ${
+          // From md the top bar is one row (3.5rem); the strip bleeds into main's padding so cards scroll under it cleanly.
+          stickyToolbar ? "md:sticky md:top-14 md:z-10 md:-mx-6 md:border-b md:border-line md:bg-ink/95 md:px-6 md:py-2.5 md:backdrop-blur lg:-ml-11 lg:pl-11 xl:-mr-11 xl:pr-11" : ""
+        }`}
+      >
         <div className="flex flex-wrap gap-1.5">
           {chips.map((c) => (
             <button

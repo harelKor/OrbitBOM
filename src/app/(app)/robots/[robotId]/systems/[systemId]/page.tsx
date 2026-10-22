@@ -103,7 +103,7 @@ export default async function SystemPage({
         )}
       </div>
 
-      <BomView parts={parts} inventory={inventory} isAdmin={member.isAdmin} merges={merges} mergeSystemId={system.id} robotId={robot.id} allowRelease toolbar={<ManualPartButton key="manual-part" systemId={system.id} />} />
+      <BomView parts={parts} inventory={inventory} isAdmin={member.isAdmin} merges={merges} mergeSystemId={system.id} robotId={robot.id} allowRelease stickyToolbar toolbar={<ManualPartButton key="manual-part" systemId={system.id} />} />
       {parts.length === 0 && (
         <p className="rounded-lg border border-dashed border-line-strong p-8 text-center text-sm text-muted">
           {system.assemblyUrl
