@@ -12,9 +12,9 @@ export default async function InventoryPage() {
         <div className="text-xs font-semibold tracking-wide text-subtle uppercase">Shop</div>
         <h1 className="display text-3xl text-accent">Inventory</h1>
         <p className="mt-1 max-w-3xl text-sm text-muted">
-          Track how many of each COTS part you physically have on hand. Stock is allocated to matching parts in every
-          robot&apos;s BOM. Each unit can only be used once per robot, but the same units are available again to
-          another robot.
+          What the team owns. Every active robot shares the same shelf: the parts linked to an item draw on its
+          stock together, and the COTS cards show what&apos;s covered and what to order. Plates count in sheets and
+          pieces of a sheet.
         </p>
       </div>
       <InventoryView {...inventory} targets={targets} />

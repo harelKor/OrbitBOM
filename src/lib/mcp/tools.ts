@@ -1,4 +1,5 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 import { and, asc, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { findMachineByName, getMachine, MACHINES } from "@/config/machines";
@@ -9,6 +10,8 @@ import { PRIORITIES } from "@/config/priorities";
 import { db, schema } from "@/db";
 import type { Member } from "@/lib/auth";
 import { listInventory } from "@/lib/data/inventory";
+import { moveStock, undoMoves } from "@/lib/inventory/moves";
+import { formatStock } from "@/lib/inventory/stock";
 import { listRobots } from "@/lib/data/robots";
 import { OnshapeError } from "@/lib/onshape/client";
 import { refreshThumbnails } from "@/lib/onshape/thumbnails";
@@ -30,7 +33,7 @@ import { drawingSummary } from "@/lib/drawing/summary";
 // history as the UI (via = "mcp"). Every write previews first and applies only with the
 // confirm_token from its preview; changes to more than 50 parts also need confirm_large.
 
-const { parts, systems, partFiles, partGroups, groupMembers, inventoryItems } = schema;
+const { parts, systems, partFiles, partGroups, groupMembers, inventoryItems, inventoryMoves } = schema;
 
 const LARGE = 50;
 const uuid = z.guid(); // any UUID shape, like isUuid
@@ -299,7 +302,7 @@ read("system_stats", "A system's completion and count per status.", z.object({ s
 
 read(
   "search_inventory",
-  "Inventory items with stock and how many each robot uses.",
+  "Inventory items with stock. All active robots share one shelf: need is what every robot's linked parts need together, short what the stock doesn't cover, free what no part needs. Sheet items (plates) count sheets and pieces (2.75 = 2 ¾ sheets) and have no need.",
   z.object({ text: z.string().optional() }),
   async ({ text }) => {
     const { items } = await listInventory();
@@ -309,9 +312,13 @@ read(
         id: i.id,
         name: i.name,
         in_stock: i.inStock,
-        used: i.usage?.used ?? 0,
+        in_stock_text: formatStock(i.inStock, i.sheet),
+        sheet: i.sheet,
+        need: i.usage?.need ?? 0,
+        short: i.usage?.short ?? 0,
+        free: i.usage?.free ?? i.inStock,
         material: i.material,
-        per_robot: i.usage?.robots.map((r) => ({ robot: r.robotName, needed: r.needed, allocated: r.allocated })) ?? [],
+        per_robot: i.usage?.robots.map((r) => ({ robot: r.robotName, needed: r.needed, covered: r.allocated })) ?? [],
       }));
   },
 );
@@ -441,15 +448,24 @@ write(
   "Revert every change in a batch (from update_parts, set_group_status or the UI). Fields edited again since are left alone.",
   z.object({ batch_id: uuid }),
   async ({ batch_id }, { member }) => {
-    const plan = await planUndo(batch_id);
-    if (!plan) throw new ToolError("No changes with that batch id.");
+    const [plan, moves] = await Promise.all([
+      planUndo(batch_id),
+      db.select({ itemId: inventoryMoves.itemId, delta: inventoryMoves.delta }).from(inventoryMoves).where(eq(inventoryMoves.batchId, batch_id)),
+    ]);
+    if (!plan && !moves.length) throw new ToolError("No changes with that batch id.");
+    const reverts = plan?.reverts ?? [];
     return {
-      count: new Set(plan.reverts.map((r) => r.partId)).size,
+      count: new Set(reverts.map((r) => r.partId)).size + moves.length,
       preview: {
-        revert: plan.reverts.map((r) => ({ part_id: r.partId, field: r.field, from: r.from, to: r.to })),
-        left_alone_because_edited_since: plan.skipped.map((r) => ({ part_id: r.partId, field: r.field })),
+        revert: reverts.map((r) => ({ part_id: r.partId, field: r.field, from: r.from, to: r.to })),
+        left_alone_because_edited_since: (plan?.skipped ?? []).map((r) => ({ part_id: r.partId, field: r.field })),
+        stock: moves.map((m) => ({ item_id: m.itemId, take_back: m.delta })),
       },
-      apply: async () => ({ batch_id: await applyUndo(plan.reverts, member.id, "mcp"), reverted: plan.reverts.length }),
+      apply: async () => {
+        const undoBatch = reverts.length ? await applyUndo(reverts, member.id, "mcp") : randomUUID();
+        const stock = moves.length ? await db.transaction((tx) => undoMoves(tx, batch_id, { memberId: member.id, via: "mcp", batchId: undoBatch })) : 0;
+        return { batch_id: undoBatch, reverted: reverts.length, stock_moves_reverted: stock };
+      },
     };
   },
 );
@@ -570,9 +586,9 @@ write(
 
 write(
   "adjust_stock",
-  "Add to or take from an inventory item's stock (delta can be negative).",
-  z.object({ item_id: uuid, delta: z.number().int() }),
-  async ({ item_id, delta }) => {
+  "Add to or take from an inventory item's stock (delta can be negative; sheet items take pieces such as 0.25, 1/3 = 0.3333). Say why: received (an order came), used, broke, counted (a recount), returned.",
+  z.object({ item_id: uuid, delta: z.number(), reason: z.enum(["received", "used", "broke", "counted", "returned"]).optional() }),
+  async ({ item_id, delta, reason }, { member, aiName }) => {
     const [item] = await db.select().from(inventoryItems).where(eq(inventoryItems.id, item_id));
     if (!item) throw new ToolError("No such inventory item.");
     const to = Math.max(0, item.inStock + delta);
@@ -580,11 +596,11 @@ write(
       count: to === item.inStock ? 0 : 1,
       preview: { item: item.name, in_stock: { from: item.inStock, to } },
       apply: async () => {
-        await db
-          .update(inventoryItems)
-          .set({ inStock: sql`greatest(${inventoryItems.inStock} + ${delta}, 0)` })
-          .where(eq(inventoryItems.id, item_id));
-        return { item: item.name, in_stock: to };
+        const batchId = randomUUID();
+        const moved = await db.transaction((tx) =>
+          moveStock(tx, { itemId: item_id, delta, reason: reason ?? (delta > 0 ? "received" : "used") }, { memberId: member.id, via: "mcp", aiName, batchId }),
+        );
+        return { item: item.name, in_stock: moved?.to, batch_id: batchId };
       },
     };
   },
@@ -599,15 +615,20 @@ write(
     material: z.string().optional(),
     vendor_url: z.url().optional(),
   }),
-  async (a) => ({
+  async (a, { member, aiName }) => ({
     count: 1,
     preview: a,
     apply: async () => {
-      const [item] = await db
-        .insert(inventoryItems)
-        .values({ name: a.name, inStock: a.in_stock, material: a.material ?? null, vendorUrl: a.vendor_url ?? null })
-        .returning({ id: inventoryItems.id });
-      return { item_id: item.id };
+      const batchId = randomUUID();
+      const id = await db.transaction(async (tx) => {
+        const [item] = await tx
+          .insert(inventoryItems)
+          .values({ name: a.name, material: a.material ?? null, vendorUrl: a.vendor_url ?? null })
+          .returning({ id: inventoryItems.id });
+        await moveStock(tx, { itemId: item.id, delta: a.in_stock, reason: "counted" }, { memberId: member.id, via: "mcp", aiName, batchId });
+        return item.id;
+      });
+      return { item_id: id };
     },
   }),
 );

@@ -6,6 +6,7 @@ import type { Part as DrawingPart } from "../lib/drawing/read";
 import {
   boolean,
   date,
+  doublePrecision,
   index,
   integer,
   jsonb,
@@ -423,14 +424,42 @@ export const inventoryItems = pgTable("inventory_items", {
   templateValues: jsonb("template_values").$type<Record<string, string>>().notNull().default({}),
   conditionId: uuid("condition_id").references(() => inventoryConditions.id, { onDelete: "set null" }),
   locationId: uuid("location_id").references(() => inventoryLocations.id, { onDelete: "set null" }),
-  inStock: integer("in_stock").notNull().default(0),
+  // Whole units; a sheet item (config/partTypes.ts `sheet`) also holds pieces, in twelfths of a sheet.
+  inStock: doublePrecision("in_stock").notNull().default(0),
   material: text("material"),
   imagePath: text("image_path"),
   vendorUrl: text("vendor_url"),
   vendorName: text("vendor_name"),
   price: real("price"),
+  // The Onshape library part (did:eid:partId) it was first linked to: new BOM parts with the same
+  // key are linked on sync. Other names the item was linked under, for match suggestions.
+  onshapeKey: text("onshape_key"),
+  aliases: text("aliases").array().notNull().default(sql`'{}'::text[]`),
   createdAt: createdAt(),
 });
+
+export const stockReason = pgEnum("stock_reason", ["received", "used", "broke", "counted", "returned"]);
+
+// Every change to an item's stock: who, why, and for which part. in_stock is their running total,
+// updated in the same transaction; batch_id lets undo_batch reverse an MCP change.
+export const inventoryMoves = pgTable(
+  "inventory_moves",
+  {
+    id: id(),
+    itemId: uuid("item_id")
+      .notNull()
+      .references(() => inventoryItems.id, { onDelete: "cascade" }),
+    delta: doublePrecision("delta").notNull(),
+    reason: stockReason("reason").notNull(),
+    partId: uuid("part_id").references(() => parts.id, { onDelete: "set null" }),
+    memberId: uuid("member_id").references(() => members.id, { onDelete: "set null" }),
+    via: changeVia("via").notNull(),
+    aiName: text("ai_name"),
+    batchId: uuid("batch_id"),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("inventory_moves_item_idx").on(t.itemId, t.at), index("inventory_moves_batch_idx").on(t.batchId)],
+);
 
 // ---------- Onshape ----------
 

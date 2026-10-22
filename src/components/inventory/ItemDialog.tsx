@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import { formatStock } from "@/lib/inventory/stock";
 import { Dialog } from "@/components/Dialog";
 import { MATERIALS } from "@/config/materials";
 import { PART_TYPES, buildItemName, getPartType } from "@/config/partTypes";
@@ -74,9 +75,16 @@ export function ItemDialog({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="label" htmlFor="inv-stock">
-              In stock
+              In stock{type?.sheet && " (sheets)"}
             </label>
-            <input id="inv-stock" name="inStock" type="number" min={0} defaultValue={item?.inStock ?? 0} className="input" />
+            <input
+              id="inv-stock"
+              name="inStock"
+              inputMode={type?.sheet ? "text" : "numeric"}
+              defaultValue={formatStock(item?.inStock ?? 0, !!type?.sheet)}
+              placeholder={type?.sheet ? "2 3/4" : "0"}
+              className="input font-mono tabular-nums"
+            />
           </div>
           <div>
             <label className="label" htmlFor="inv-condition">

@@ -1,7 +1,9 @@
 import "server-only";
 import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
+import type { Shelf, ShelfSuggestion } from "@/components/bom/types";
 import { groupsOfParts } from "@/lib/data/groups";
+import { shelfOfParts } from "@/lib/data/inventory";
 import { partKey } from "@/lib/model/assembly";
 import { thumbKey } from "@/lib/onshape/thumbnails";
 import { computeStatus } from "@/lib/status";
@@ -20,6 +22,8 @@ export type BomPart = typeof parts.$inferSelect & {
   modelKey: string | null; // the part's key in the robot's 3D model
   groups: { id: string; name: string; color: string | null }[];
   hasDrawing: boolean;
+  shelf: Shelf | null;
+  shelfSuggestion: ShelfSuggestion | null;
 };
 
 async function load(where: ReturnType<typeof and>): Promise<BomPart[]> {
@@ -31,9 +35,9 @@ async function load(where: ReturnType<typeof and>): Promise<BomPart[]> {
     .leftJoin(partDrawings, eq(partDrawings.partId, parts.id))
     .where(where)
     .orderBy(asc(parts.partNumber), asc(parts.displayName), asc(parts.onshapeName));
-  // Files, thumbnail links and groups don't depend on each other: one round trip, not three.
+  // Files, thumbnail links, groups and the shelf don't depend on each other: one round trip.
   const ids = rows.map((r) => r.part.id);
-  const [files, thumbs, groups] = await Promise.all([
+  const [files, thumbs, groups, shelf] = await Promise.all([
     ids.length
       ? db
           .select({ id: partFiles.id, partId: partFiles.partId, type: partFiles.type, filename: partFiles.filename })
@@ -46,6 +50,7 @@ async function load(where: ReturnType<typeof and>): Promise<BomPart[]> {
         .map(async (r) => [r.part.id, await imageUrl(thumbKey(r.part.id, r.part.thumbnailRev!))] as const),
     ).then((entries) => new Map(entries)),
     groupsOfParts(ids),
+    shelfOfParts(rows.map((r) => r.part)),
   ]);
   const filesOf = new Map<string, PartFileRef[]>();
   for (const { partId, ...f } of files) filesOf.set(partId, [...(filesOf.get(partId) ?? []), f]);
@@ -60,6 +65,8 @@ async function load(where: ReturnType<typeof and>): Promise<BomPart[]> {
     lastModifiedByName: r.lastModifiedByName,
     hasDrawing: r.drawingOf !== null,
     files: filesOf.get(r.part.id) ?? [],
+    shelf: shelf.shelf.get(r.part.id) ?? null,
+    shelfSuggestion: shelf.suggestion.get(r.part.id) ?? null,
   }));
 }
 

@@ -1,4 +1,11 @@
+import type { MatchReason } from "@/lib/inventory/match";
 import type { PartRow } from "@/lib/parts/changes";
+
+// The shelf behind a part linked to an inventory item: the item's stock, what every active robot
+// needs of it, how much of this part it covers, and what's left over. A COTS part with no item
+// gets the item it most likely is instead.
+export type Shelf = { itemId: string; itemName: string; sheet: boolean; inStock: number; need: number; covered: number; free: number };
+export type ShelfSuggestion = { itemId: string; itemName: string; inStock: number; sheet: boolean; reason: MatchReason };
 
 // What the BOM views get for each part.
 export type CardPart = PartRow & {
@@ -17,6 +24,8 @@ export type CardPart = PartRow & {
   memberIds?: string[]; // set on a merged row
   fabFinishedAt?: Date | null; // first made (To Fab's Finished section)
   hasDrawing?: boolean; // a fabrication drawing was made for it (system page → Drawings)
+  shelf?: Shelf | null;
+  shelfSuggestion?: ShelfSuggestion | null;
 };
 
 // The real part behind a row: a merged row's files and exports belong to its first member.

@@ -1,14 +1,15 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { onshapeKeyOf } from "@/lib/inventory/match";
 import { parseBom, type OnshapeBom } from "@/lib/onshape/bom";
 import { onshapeClient, OnshapeError } from "@/lib/onshape/client";
 import { apiPath, parseOnshapeUrl } from "@/lib/onshape/url";
 import { planPartUpdate } from "@/lib/parts/changes";
 import { planMerge } from "./merge";
 
-const { parts, partHistory, systems, syncJobs } = schema;
+const { parts, partHistory, systems, syncJobs, inventoryItems } = schema;
 
 export type SyncSummary = {
   skipped?: "unchanged";
@@ -91,6 +92,13 @@ export async function updateBomFromOnshape(
       };
 
       if (plan.insert.length) {
+        // A new part that is an Onshape library part the inventory already knows is linked to it.
+        const keys = [...new Set(plan.insert.flatMap((r) => onshapeKeyOf(r) ?? []))];
+        const itemOf = new Map(
+          keys.length
+            ? (await tx.select({ id: inventoryItems.id, key: inventoryItems.onshapeKey }).from(inventoryItems).where(inArray(inventoryItems.onshapeKey, keys))).map((i) => [i.key!, i.id])
+            : [],
+        );
         await tx.insert(parts).values(
           plan.insert.map((r) => ({
             systemId,
@@ -110,6 +118,7 @@ export async function updateBomFromOnshape(
             // A part with a process is made in-house; without one nobody has said yet (Undefined).
             classification: r.preProcess || r.process1 || r.process2 ? ("inhouse" as const) : ("undefined" as const),
             geometry: r.onshapeMaterial ? { onshapeMaterial: r.onshapeMaterial } : null,
+            inventoryItemId: itemOf.get(onshapeKeyOf(r) ?? "") ?? null,
             lastModifiedBy: memberId,
           })),
         );

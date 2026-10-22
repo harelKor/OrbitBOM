@@ -5,7 +5,9 @@ import { getPartType } from "@/config/partTypes";
 import { flattenTree, groupPath, subtreeIds } from "@/lib/inventory/groups";
 import { adjustStock, deleteItem } from "@/app/(app)/inventory/actions";
 import { textOn } from "@/components/bom/options";
+import { Popover } from "@/components/bom/Popover";
 import { EditOnly } from "@/components/shell/ModeContext";
+import { SHEET_PIECES, formatStock, snapStock } from "@/lib/inventory/stock";
 import { ConditionsDialog, GroupsDialog, LocationsDialog, PartTypesDialog } from "./ListDialogs";
 import { ImportDialog } from "./ImportDialog";
 import { ItemDialog } from "./ItemDialog";
@@ -29,7 +31,7 @@ export function InventoryView({ items, targets, ...lookups }: Lookups & { items:
   const [error, setError] = useState<string | null>(null);
 
   const [optimistic, addOptimistic] = useOptimistic(items, (state, { id, delta }: { id: string; delta: number }) =>
-    state.map((i) => (i.id === id ? { ...i, inStock: Math.max(0, i.inStock + delta) } : i)),
+    state.map((i) => (i.id === id ? { ...i, inStock: snapStock(i.inStock + delta, i.sheet) } : i)),
   );
   const [, startTransition] = useTransition();
   const step = (id: string, delta: number) =>
@@ -209,11 +211,12 @@ function ItemCard({
     .map((f) => `${f.label} ${item.templateValues[f.id]}`)
     .join(" · ");
   const usedBy = item.usage?.parts.length ?? 0;
-  const used = item.usage?.used ?? 0;
-  const short = item.usage?.robots.some((r) => r.needed > item.inStock);
+  const need = item.usage?.need ?? 0;
+  const short = item.usage?.short ?? 0;
 
   return (
-    <div className="panel flex flex-col gap-2 p-3">
+    // The item's condition marks the card's left edge.
+    <div className="panel flex flex-col gap-2 border-l-4 p-3" style={condition ? { borderLeftColor: condition.color } : undefined}>
       <div className="min-w-0">
         <div className="font-semibold break-words">{item.name}</div>
         <div className="mt-1 flex flex-wrap gap-1.5 text-[11px]">
@@ -244,7 +247,7 @@ function ItemCard({
           <details className="mt-1 text-xs">
             <summary className={`cursor-pointer ${short ? "text-amber-700" : "text-accent"}`}>
               Used by {usedBy} robot part{usedBy === 1 ? "" : "s"}
-              {short && " · not enough in stock"}
+              {short > 0 && ` · ${short} short`}
             </summary>
             <ul className="mt-1 space-y-0.5 text-muted">
               {item.usage!.parts.map((p) => (
@@ -259,16 +262,20 @@ function ItemCard({
 
       <div className="mt-auto flex flex-wrap items-center gap-3 border-t border-line pt-2 text-sm">
         <span className="text-muted">
-          In stock <span className="font-semibold text-fg">{item.inStock}</span>
+          In stock <span className="font-mono font-semibold text-fg tabular-nums">{formatStock(item.inStock, item.sheet)}</span>
+          {item.sheet && " sheets"}
         </span>
-        <span className="text-muted">
-          Used <span className="font-semibold text-fg">{used}</span>
-        </span>
+        {!item.sheet && need > 0 && (
+          <span className={short ? "text-amber-700" : "text-muted"}>
+            Need <span className="font-mono font-semibold tabular-nums">{need}</span>
+          </span>
+        )}
         <div className="ml-auto flex items-center gap-1">
-          <button className="btn px-2 py-0.5" onClick={() => onStep(-1)} disabled={item.inStock === 0} aria-label="One less">
+          {item.sheet && <PieceStepper onStep={onStep} max={item.inStock} />}
+          <button className="btn px-2 py-0.5" onClick={() => onStep(-1)} disabled={item.inStock < 1} aria-label={item.sheet ? "One sheet less" : "One less"}>
             −
           </button>
-          <button className="btn px-2 py-0.5" onClick={() => onStep(1)} aria-label="One more">
+          <button className="btn px-2 py-0.5" onClick={() => onStep(1)} aria-label={item.sheet ? "One sheet more" : "One more"}>
             +
           </button>
         </div>
@@ -296,6 +303,42 @@ function ItemCard({
       </div>
       </EditOnly>
     </div>
+  );
+}
+
+// A sheet item's pieces: add or take ¼ ⅓ ½ ⅔ ¾ of a sheet.
+function PieceStepper({ onStep, max }: { onStep: (delta: number) => void; max: number }) {
+  return (
+    <Popover
+      hideCaret
+      align="right"
+      triggerClassName="btn px-2 py-0.5 text-xs"
+      trigger={<span>Piece ▾</span>}
+    >
+      {(close) => (
+        <div className="space-y-1.5 p-1 text-sm">
+          {(["add", "take"] as const).map((way) => (
+            <div key={way} className="flex items-center gap-1">
+              <span className="w-10 text-[11px] font-semibold text-subtle">{way === "add" ? "Add" : "Take"}</span>
+              {SHEET_PIECES.map((p) => (
+                <button
+                  key={p.label}
+                  type="button"
+                  disabled={way === "take" && p.value > max + 1e-9}
+                  onClick={() => {
+                    onStep(way === "add" ? p.value : -p.value);
+                    close();
+                  }}
+                  className={`press rounded-md px-2 py-1 font-semibold text-white disabled:opacity-30 ${way === "add" ? "bg-emerald-500 hover:bg-emerald-400" : "bg-rose-500 hover:bg-rose-400"}`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </Popover>
   );
 }
 

@@ -15,6 +15,7 @@ export type Item = {
   vendorName: string | null;
   price: number | null;
   usage: ItemUsage | null;
+  sheet: boolean;
 };
 export type Group = { id: string; name: string; parentId: string | null; templateId: string | null; locationId: string | null };
 export type Condition = { id: string; label: string; color: string };

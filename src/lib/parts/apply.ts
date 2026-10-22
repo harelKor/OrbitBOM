@@ -2,17 +2,24 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { eq, inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { COTS_IN_STOCK, ORDER_STATUSES, cotsStatusOf } from "@/config/cots";
+import { usageOf } from "@/lib/data/inventory";
 import { isFabFinished } from "@/lib/fab";
+import { normName, onshapeKeyOf } from "@/lib/inventory/match";
+import { moveStock } from "@/lib/inventory/moves";
 import { currentVisit } from "@/lib/visits";
 import { planPartUpdate, type PartChanges, type Plan } from "./changes";
 
-const { parts, partHistory } = schema;
+const { parts, partHistory, inventoryItems } = schema;
+const ORDERING = ORDER_STATUSES.filter((s) => s !== COTS_IN_STOCK) as string[];
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Ctx = {
   memberId: string | null;
   via: "ui" | "sync" | "mcp";
   batchId?: string; // to know the batch before it runs; a new one by default
+  // false when the caller already moved the stock itself (the COTS card's − / +).
+  receive?: boolean;
   // Runs in the same transaction for each part that changed (To Review records its rows here).
   afterEach?: (tx: Tx, row: typeof parts.$inferSelect, plan: Plan) => Promise<void>;
 };
@@ -50,6 +57,20 @@ export async function applyEachPartChanges(
       const { set, history } = plan;
       if (!history.length) continue;
       changed++;
+      // An order arrived: a linked COTS part going from the Order List to In Stock adds what the
+      // shelf was missing for it to its item's stock.
+      const after = { ...row, ...set };
+      let received = 0;
+      if (
+        ctx.receive !== false &&
+        after.classification === "cots" &&
+        after.inventoryItemId &&
+        set.designState === COTS_IN_STOCK &&
+        ORDERING.includes(cotsStatusOf(row.designState))
+      ) {
+        const { usage } = await usageOf([after.inventoryItemId], tx);
+        received = Math.max(0, after.quantity - (usage.get(after.inventoryItemId)?.coveredOf.get(row.id) ?? 0));
+      }
       await tx
         .update(parts)
         .set({
@@ -73,8 +94,23 @@ export async function applyEachPartChanges(
           page: visit?.page,
         })),
       );
+      if (received) await moveStock(tx, { itemId: after.inventoryItemId!, delta: received, reason: "received", partId: row.id }, { memberId: ctx.memberId, via: ctx.via, batchId });
+      if (set.inventoryItemId) await rememberLink(tx, set.inventoryItemId, row);
       await ctx.afterEach?.(tx, row, plan);
     }
     return { batchId, changed };
   });
+}
+
+// A part was linked to an item: the item remembers the part's Onshape library part (new BOM parts
+// with it are linked on sync) and its name, for later match suggestions.
+async function rememberLink(tx: Tx, itemId: string, part: typeof parts.$inferSelect) {
+  const [item] = await tx.select().from(inventoryItems).where(eq(inventoryItems.id, itemId));
+  if (!item) return;
+  const key = onshapeKeyOf(part);
+  const name = part.displayName ?? part.onshapeName;
+  const known = [item.name, ...item.aliases].map(normName);
+  const aliases = name && !known.includes(normName(name)) ? [...item.aliases, name].slice(-20) : item.aliases;
+  if ((item.onshapeKey || !key) && aliases === item.aliases) return;
+  await tx.update(inventoryItems).set({ onshapeKey: item.onshapeKey ?? key, aliases }).where(eq(inventoryItems.id, itemId));
 }

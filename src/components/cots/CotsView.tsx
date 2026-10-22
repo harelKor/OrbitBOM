@@ -27,6 +27,13 @@ type DragLoad = { ids: string[]; from: "list" | "ordered" };
 
 const ORDERING = ORDER_STATUSES.filter((s) => s !== COTS_IN_STOCK) as string[];
 
+function shelfOf(members: CardPart[]) {
+  const first = members.find((m) => m.shelf)?.shelf;
+  if (!first) return null;
+  const same = members.filter((m) => m.shelf?.itemId === first.itemId);
+  return { ...first, covered: same.reduce((n, m) => n + (m.shelf?.covered ?? 0), 0) };
+}
+
 // The COTS page's Released and Order List: filter boxes on top, then a General section (parts that
 // belong to no robot) and one section per robot, as cards or a table. Released has Send to order;
 // on the Order List a part set In Stock is crossed out and moves down to In stock once the page
@@ -96,6 +103,9 @@ export function CotsView({ list, parts, robots }: { list: "released" | "order"; 
           id: `cots:${first.id}`,
           quantity: sum("quantity"),
           stockCount: sum("stockCount"),
+          // The shelf of the first member with an item, covering every member on that item.
+          shelf: shelfOf(members),
+          shelfSuggestion: members.find((m) => m.shelfSuggestion)?.shelfSuggestion ?? null,
           memberIds: members.map((m) => m.id),
           systemName: [...new Set(members.map((m) => m.systemName))].join(", "),
         },
@@ -400,6 +410,7 @@ function CotsTable({ rows, saveRow, struck, orderList }: { rows: Row[]; saveRow:
             <th className={th}>Systems</th>
             <th className={`${th} text-right`}>Qty</th>
             <th className={`${th} text-right`}>In stock</th>
+            <th className={`${th} text-right`}>To order</th>
             <th className={`${th} text-right`}>Each</th>
             <th className={`${th} text-right`}>Total</th>
             <th className={th}>Where to buy</th>
@@ -428,7 +439,10 @@ function CotsTable({ rows, saveRow, struck, orderList }: { rows: Row[]; saveRow:
                 </td>
                 <td className={`${td} text-muted`}>{p.systemName}</td>
                 <td className={`${td} text-right font-mono tabular-nums`}>{p.quantity}</td>
-                <td className={`${td} text-right font-mono tabular-nums`}>{p.stockCount}</td>
+                <td className={`${td} text-right font-mono tabular-nums`} title={p.shelf && !p.shelf.sheet ? `Covered by ${p.shelf.itemName} on the shelf` : undefined}>
+                  {p.shelf && !p.shelf.sheet ? p.shelf.covered : p.stockCount}
+                </td>
+                <td className={`${td} text-right font-mono tabular-nums`}>{Math.max(0, p.quantity - (p.shelf && !p.shelf.sheet ? p.shelf.covered : p.stockCount)) || "—"}</td>
                 <td className={`${td} text-right font-mono text-emerald-500 tabular-nums`}>{p.unitPrice == null ? "—" : formatPrice(p.unitPrice, currency)}</td>
                 <td className={`${td} text-right font-mono font-semibold text-emerald-500 tabular-nums`}>{total == null ? "—" : formatPrice(total, currency)}</td>
                 <td className={`${td} text-xs`}>
