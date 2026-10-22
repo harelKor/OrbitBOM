@@ -15,7 +15,8 @@ const INSTRUCTIONS =
   "Write tools always preview first: show the member the preview and apply with the confirm_token only after they agree. " +
   "Every write tool needs ai_name: your own name (for example \"Claude Opus 5.5\"), which the team sees on To Review and AI logs. " +
   "Every applied change returns a batch_id that undo_batch can revert. " +
-  "To set up parts' material and processes yourself, read parts_to_set_up and apply with set_up_parts: those parts wait in To Review for their designer.";
+  "To set up parts' material and processes yourself, read parts_to_set_up and apply with set_up_parts: those parts wait in To Review for their designer. " +
+  "To fill in COTS parts' official names, product links and prices, read cots_parts_to_look_up, search FRCDesign.org and the vendors' sites, and apply with set_cots_info.";
 
 type Rpc = { jsonrpc: "2.0"; id?: string | number | null; method: string; params?: Record<string, unknown> };
 

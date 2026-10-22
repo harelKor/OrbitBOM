@@ -45,7 +45,7 @@ describe("computeStatus", () => {
   it("ignores counters on COTS parts", () => {
     expect(
       computeStatus({ ...base, classification: "cots", designState: "Ordered", doneProcess1: 5 }),
-    ).toBe("Ordered");
+    ).toBe("In Order List");
   });
 
   it("counts a part parked in a done status as done", () => {

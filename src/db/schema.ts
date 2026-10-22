@@ -116,6 +116,9 @@ export type PartGeometry = {
   wallMm?: number; // wall thickness measured from the mesh when the part is a thin wall (flat or bent sheet)
 };
 
+// A COTS part's product page; the first is the one its name links to.
+export type CotsLink = { url: string; site?: string; priceUsd?: number };
+
 export const parts = pgTable(
   "parts",
   {
@@ -169,6 +172,13 @@ export const parts = pgTable(
     drawingUrl: text("drawing_url"),
     dxfFace: text("dxf_face"),
     boxQty: integer("box_qty"),
+
+    // COTS: product pages, the average price of one at the quantity needed (US dollars), the COTS
+    // page's filter box (config/cots.ts; guessed from the name while null) and how many are in stock.
+    cotsLinks: jsonb("cots_links").$type<CotsLink[]>().notNull().default([]),
+    unitPrice: real("unit_price"),
+    cotsCategory: text("cots_category"),
+    stockCount: integer("stock_count").notNull().default(0),
 
     overriddenFields: text("overridden_fields").array().notNull().default(sql`'{}'::text[]`),
 

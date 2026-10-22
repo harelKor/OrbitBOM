@@ -25,6 +25,9 @@ export function LeftNav({
   const onFab = !!base && pathname.startsWith(`${base}/fab`);
   const [toggled, setToggled] = useState<boolean | null>(null);
   const fabOpen = toggled ?? onFab;
+  const onCots = pathname.startsWith("/cots");
+  const [cotsToggled, setCotsToggled] = useState<boolean | null>(null);
+  const cotsOpen = cotsToggled ?? onCots;
 
   return (
     <div className="flex h-full flex-col">
@@ -92,6 +95,39 @@ export function LeftNav({
             To Review
           </Item>
           {base && robot!.review > 0 && <Count n={robot!.review} className="pointer-events-none absolute right-8" />}
+        </div>
+        <div>
+          <div className="relative flex items-center">
+            <Item href="/cots" icon="cart" active={pathname === "/cots"} className="flex-1 pr-8">
+              COTS
+            </Item>
+            <button
+              onClick={() => setCotsToggled(!cotsOpen)}
+              aria-expanded={cotsOpen}
+              aria-label={cotsOpen ? "Hide COTS lists" : "Show COTS lists"}
+              className="press absolute right-1 rounded p-1 text-subtle hover:bg-line hover:text-fg"
+            >
+              <Icon name="chevron" className={`h-3.5 w-3.5 transition-transform duration-150 ${cotsOpen ? "rotate-90" : ""}`} />
+            </button>
+          </div>
+          {cotsOpen && (
+            <div className="mt-0.5 mb-1 ml-5 space-y-px border-l border-line pl-2">
+              {[
+                { href: "/cots/released", name: "Released" },
+                { href: "/cots/order-list", name: "Order List" },
+              ].map((l) => (
+                <Link
+                  key={l.href}
+                  href={l.href}
+                  className={`press flex items-center gap-2 rounded-md px-2 py-1 text-xs ${
+                    pathname === l.href ? "bg-accent/15 text-white" : "text-fg-2 hover:bg-raised hover:text-fg"
+                  }`}
+                >
+                  {l.name}
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
         <Item href="/inventory" icon="box" active={pathname.startsWith("/inventory")}>
           Inventory

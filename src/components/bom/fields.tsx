@@ -9,6 +9,7 @@ import { PART_TAG_LABELS, partTag, type PartTag } from "@/lib/partTag";
 import { computeStatus, partStatusLabel, statusMachine } from "@/lib/status";
 import { STATUSES, statusLabel } from "@/config/statuses";
 import {
+  COTS_STATUS_OPTIONS,
   MATERIAL_OPTIONS,
   PRIORITY_COLORS,
   PRIORITY_OPTIONS,
@@ -194,7 +195,12 @@ export function QuantityField({ part, save }: Props) {
 export function StatusField({ part, save }: Props) {
   const status = computeStatus(part);
   const machine = part.classification === "cots" ? null : statusMachine(part);
-  const options = machine ? STATUSES.map((s) => ({ value: s.name, label: statusLabel(s.name, machine), color: s.color })) : STATUS_OPTIONS;
+  const options =
+    part.classification === "cots"
+      ? COTS_STATUS_OPTIONS
+      : machine
+        ? STATUSES.map((s) => ({ value: s.name, label: statusLabel(s.name, machine), color: s.color }))
+        : STATUS_OPTIONS;
   return (
     <Popover trigger={<StatusPill status={status} label={partStatusLabel(part)} size="md" />}>
       {(close) => (
