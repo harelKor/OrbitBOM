@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { applyCounters, applyStatus, computeStatus, isDone, type StatusInput } from "./status";
+import { applyCounters, applyStatus, computeStatus, isDone, partStatusLabel, type StatusInput } from "./status";
+import { partTag } from "./partTag";
 
 const base: StatusInput = {
   classification: "inhouse",
@@ -67,5 +68,23 @@ describe("status writes", () => {
   it("moving a counter clears the design state", () => {
     expect(applyCounters({ doneProcess1: 1 })).toEqual({ doneProcess1: 1, designState: null });
     expect(applyCounters({ doneProcess1: 0 })).toEqual({ doneProcess1: 0 });
+  });
+});
+
+describe("partStatusLabel", () => {
+  it("names the status as the current machine calls it", () => {
+    expect(partStatusLabel({ ...base, designState: "In Process 1" })).toBe("Machining");
+    expect(partStatusLabel({ ...base, process1: "3d-bambu", designState: "In Process 1" })).toBe("Printing");
+    // CNC done, now at bending.
+    expect(partStatusLabel({ ...base, doneProcess1: 2, doneProcess2: 1 })).toBe("Ready for Process 2");
+    expect(partStatusLabel({ ...base, designState: "Released" })).toBe("Released");
+  });
+});
+
+describe("partTag", () => {
+  it("tags factory processes In factory", () => {
+    expect(partTag(base)).toBe("inhouse");
+    expect(partTag({ ...base, process2: "zivudim" })).toBe("factory");
+    expect(partTag({ ...base, classification: "cots", process1: "beth-el" })).toBe("cots");
   });
 });

@@ -8,6 +8,7 @@ import { computeStatus } from "@/lib/status";
 import { StatusPill, TypeField, type SaveFn } from "./fields";
 import { Thumb } from "./Thumb";
 import { partIds, partTitle, type CardPart } from "./types";
+import { statusTint } from "@/components/ui/statusTint";
 
 // FRCBOM's Kanban (ref §3): one column per status; dragging a card to a column sets its status.
 export function KanbanView({
@@ -75,7 +76,7 @@ function KanbanCard({ part, save, showSystem }: { part: CardPart; save: SaveFn; 
       {...listeners}
       {...attributes}
       id={`part-${part.id}`}
-      style={transform ? { transform: `translate(${transform.x}px, ${transform.y}px)` } : undefined}
+      style={{ ...statusTint(computeStatus(part)), ...(transform && { transform: `translate(${transform.x}px, ${transform.y}px)` }) }}
       className={`cursor-grab rounded-lg border border-line-strong bg-surface p-2 text-xs ${isDragging ? "z-50 opacity-80 shadow-xl" : ""}`}
     >
       <div className="flex items-start justify-between gap-1">

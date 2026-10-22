@@ -31,8 +31,6 @@ export const PRIORITY_OPTIONS: Option[] = PRIORITIES.map((p) => ({
   color: PRIORITY_COLORS[p],
 }));
 
-export const TYPE_LABELS = { inhouse: "IN-HOUSE", cots: "COTS", external: "EXTERNAL" } as const;
-
 // External is off for 1690 (plan §2).
 export const TYPE_OPTIONS: Option[] = [
   { value: "inhouse", label: "IN-HOUSE" },

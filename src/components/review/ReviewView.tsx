@@ -8,6 +8,8 @@ import { partTitle, type CardPart } from "@/components/bom/types";
 import { useFilters } from "@/components/shell/FilterContext";
 import { useEditMode } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
+import { statusTint } from "@/components/ui/statusTint";
+import { computeStatus } from "@/lib/status";
 
 export type ReviewItem = {
   part: CardPart;
@@ -121,7 +123,7 @@ export function ReviewView({ robotId, items }: { robotId: string; items: ReviewI
             <details key={sys.id} aria-label={sys.name} className="group rounded-xl border border-line bg-surface p-4 shadow-sm">
               <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 [&::-webkit-details-marker]:hidden">
                 <h2 className="mr-auto flex items-center gap-2 text-lg font-bold text-fg">
-                  <span aria-hidden className="text-sm text-muted transition-transform group-open:rotate-90">
+                  <span aria-hidden className="inline-block text-sm text-muted transition-transform group-open:rotate-90">
                     ▸
                   </span>
                   {sys.name}
@@ -260,7 +262,7 @@ function ReviewCard({ item, disabled, onDecide }: { item: ReviewItem; disabled: 
   const { part } = item;
   const fields = ORDER.filter((f) => f in item.changes);
   return (
-    <div className="card-interactive group flex flex-col text-sm">
+    <div className="card-interactive group flex flex-col text-sm" style={statusTint(computeStatus(part))}>
       <div className="thumb-well relative flex aspect-[4/3] items-center justify-center">
         {part.thumbUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
