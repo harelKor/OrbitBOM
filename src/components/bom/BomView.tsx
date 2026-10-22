@@ -11,6 +11,7 @@ import { useFilters } from "@/components/shell/FilterContext";
 import { useEditMode } from "@/components/shell/ModeContext";
 import { DrawingsBar } from "./DrawingsBar";
 import { MergeBar, type MergeInfo } from "./MergeBar";
+import { RELEASED_STATUS, ReleaseBar } from "./ReleaseBar";
 import { MERGE_PREFIX, fanOutChanges, isMergeId, mergedRow } from "@/lib/merges/merge";
 import { BomProvider, type InventoryName } from "./BomContext";
 import { matchesTopBar } from "./filter";
@@ -44,6 +45,7 @@ export function BomView({
   robotId,
   toolbar,
   groupBySystem = false,
+  allowRelease = false,
 }: {
   parts: CardPart[];
   inventory?: InventoryName[];
@@ -55,6 +57,7 @@ export function BomView({
   robotId?: string; // enables Locate on the cards
   toolbar?: React.ReactNode;
   groupBySystem?: boolean; // card view: one collapsible section per system
+  allowRelease?: boolean; // a system page: the Release button (View and Edit mode)
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -123,8 +126,9 @@ export function BomView({
   const { filters } = useFilters();
   const [chip, setChip] = useState<Chip>("all");
   const [status, setStatus] = useState("");
-  const [chosenMode, setMode] = useState<"bulk" | "merge" | "drawings" | null>(null);
-  const mode = edit ? chosenMode : null; // leaving Edit mode ends Bulk edit and Merge
+  const [chosenMode, setMode] = useState<"bulk" | "merge" | "drawings" | "release" | null>(null);
+  // Leaving Edit mode ends Bulk edit and Merge; Release works in both modes.
+  const mode = edit || chosenMode === "release" ? chosenMode : null;
   const selecting = mode !== null;
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -202,6 +206,11 @@ export function BomView({
               <option key={s.name}>{s.name}</option>
             ))}
           </select>
+          {allowRelease && view !== "kanban" && (
+            <button className={mode === "release" ? "btn-primary" : "btn"} onClick={() => setMode((m) => (m === "release" ? null : "release"))}>
+              Release
+            </button>
+          )}
           {edit && allowBulkEdit && view !== "kanban" && (
             <button className={mode === "bulk" ? "btn-primary" : "btn"} onClick={() => setMode((m) => (m === "bulk" ? null : "bulk"))}>
               Bulk edit
@@ -252,6 +261,22 @@ export function BomView({
           count={selected.size}
           total={shown.length}
           onApply={(changes) => save([...selected], changes)}
+          onSelectAll={() => setSelected(new Set(shown.map((p) => p.id)))}
+          onDone={() => {
+            setMode(null);
+            setSelected(new Set());
+          }}
+        />
+      )}
+      {mode === "release" && (
+        <ReleaseBar
+          count={selected.size}
+          total={shown.length}
+          onRelease={() => {
+            save([...selected], { status: RELEASED_STATUS });
+            setMode(null);
+            setSelected(new Set());
+          }}
           onSelectAll={() => setSelected(new Set(shown.map((p) => p.id)))}
           onDone={() => {
             setMode(null);

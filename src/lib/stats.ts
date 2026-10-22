@@ -1,15 +1,22 @@
 // Completion and status breakdown for a robot, a system or a part group (ref §1:
 // FRCBOM's status_breakdown). "Done" means a part is in one of the done statuses.
 
-import { DONE_STATUSES, STATUSES, type StatusName } from "@/config/statuses";
+import { DONE_STATUSES, STATUSES } from "@/config/statuses";
 import { getMachine } from "@/config/machines";
-import { computeStatus, isDone, type StatusInput } from "@/lib/status";
+import { COTS_STATUSES } from "@/config/cots";
+import { computeStatus, isDone, type PartStatus, type StatusInput } from "@/lib/status";
 
-export type StatusCount = { name: StatusName; color: string; count: number; percent: number };
+// Every status a part can show: the made-part statuses, then the COTS-only ones.
+const ALL_STATUSES: { name: PartStatus; color: string }[] = [
+  ...STATUSES,
+  ...COTS_STATUSES.filter((c) => !STATUSES.some((s) => s.name === c.name)),
+];
+
+export type StatusCount = { name: PartStatus; color: string; count: number; percent: number };
 export type Breakdown = { total: number; done: number; percent: number; statuses: StatusCount[] };
 
 export function statusBreakdown(parts: StatusInput[]): Breakdown {
-  const counts = new Map<StatusName, number>();
+  const counts = new Map<PartStatus, number>();
   for (const part of parts) {
     const status = computeStatus(part);
     counts.set(status, (counts.get(status) ?? 0) + 1);
@@ -21,7 +28,7 @@ export function statusBreakdown(parts: StatusInput[]): Breakdown {
     total,
     done,
     percent: pct(done),
-    statuses: STATUSES.map((s) => ({
+    statuses: ALL_STATUSES.map((s) => ({
       name: s.name,
       color: s.color,
       count: counts.get(s.name) ?? 0,

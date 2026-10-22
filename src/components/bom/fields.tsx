@@ -5,13 +5,15 @@
 
 import { getMachine } from "@/config/machines";
 import type { PartChanges } from "@/lib/parts/changes";
-import { computeStatus } from "@/lib/status";
+import { PART_TAG_LABELS, partTag, type PartTag } from "@/lib/partTag";
+import { computeStatus, partStatusLabel, statusMachine } from "@/lib/status";
+import { STATUSES, statusLabel } from "@/config/statuses";
 import {
+  COTS_STATUS_OPTIONS,
   MATERIAL_OPTIONS,
   PRIORITY_COLORS,
   PRIORITY_OPTIONS,
   STATUS_OPTIONS,
-  TYPE_LABELS,
   TYPE_OPTIONS,
   machineOptions,
 } from "./options";
@@ -60,15 +62,18 @@ export function NameField({ part, save, bare = false }: Props & { bare?: boolean
   );
 }
 
-// The bold COTS / In-house badge over a part card's thumbnail: gold for bought, Orbit blue for made.
-export function TypeBadge({ type }: { type: CardPart["classification"] }) {
+// The bold tag over a part card's thumbnail: gold for bought (COTS), green for made by a partner
+// factory (In factory), Orbit blue for made by the team (In-house).
+const TAG_BADGE: Record<PartTag, string> = {
+  cots: "bg-amber-400 text-amber-950",
+  factory: "bg-emerald-600 text-white",
+  inhouse: "bg-accent text-white",
+};
+export function TypeBadge({ part }: { part: CardPart }) {
+  const tag = partTag(part);
   return (
-    <span
-      className={`rounded-full px-2.5 py-1 text-[11px] leading-none font-bold tracking-wide shadow-sm ${
-        type === "cots" ? "bg-amber-400 text-amber-950" : "bg-accent text-white"
-      }`}
-    >
-      {TYPE_LABELS[type]}
+    <span className={`rounded-full px-2.5 py-1 text-[11px] leading-none font-bold tracking-wide shadow-sm ${TAG_BADGE[tag]}`}>
+      {PART_TAG_LABELS[tag]}
     </span>
   );
 }
@@ -80,14 +85,14 @@ export function TypeField({ part, save, badge = false }: Props & { badge?: boole
       hideCaret={badge}
       trigger={
         badge ? (
-          <TypeBadge type={part.classification} />
+          <TypeBadge part={part} />
         ) : (
           <span
             className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${
               part.classification === "cots" ? "border-amber-300 text-amber-700" : "border-emerald-300 text-emerald-700"
             }`}
           >
-            {TYPE_LABELS[part.classification]}
+            {PART_TAG_LABELS[partTag(part)]}
           </span>
         )
       }
@@ -186,13 +191,21 @@ export function QuantityField({ part, save }: Props) {
   );
 }
 
+// The status menu names each status as the part's machine calls it ("Printing" on a 3D printer).
 export function StatusField({ part, save }: Props) {
   const status = computeStatus(part);
+  const machine = part.classification === "cots" ? null : statusMachine(part);
+  const options =
+    part.classification === "cots"
+      ? COTS_STATUS_OPTIONS
+      : machine
+        ? STATUSES.map((s) => ({ value: s.name, label: statusLabel(s.name, machine), color: s.color }))
+        : STATUS_OPTIONS;
   return (
-    <Popover trigger={<StatusPill status={status} size="md" />}>
+    <Popover trigger={<StatusPill status={status} label={partStatusLabel(part)} size="md" />}>
       {(close) => (
         <OptionList
-          options={STATUS_OPTIONS}
+          options={options}
           value={status}
           placeholder="Search status…"
           onPick={(v) => {

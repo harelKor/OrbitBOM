@@ -24,6 +24,10 @@ const part: PartRow = {
   actualMinutes: null,
   drawingUrl: null,
   inventoryItemId: null,
+  cotsLinks: [],
+  unitPrice: null,
+  cotsCategory: null,
+  stockCount: 0,
   overriddenFields: [],
 };
 
@@ -64,6 +68,13 @@ describe("planPartUpdate", () => {
       doneProcess1: 1,
       designState: null,
     });
+  });
+
+  it("makes a COTS part In-house when it gets a machine", () => {
+    const cots = { ...part, classification: "cots" as const };
+    expect(planPartUpdate(cots, { process1: "cnc" }, "ui").set.classification).toBe("inhouse");
+    expect(planPartUpdate(cots, { process1: null }, "ui").set.classification).toBeUndefined();
+    expect(planPartUpdate(cots, { process1: "cnc" }, "sync").set.classification).toBeUndefined();
   });
 
   it("merges fabricators by slot", () => {

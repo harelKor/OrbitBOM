@@ -81,7 +81,7 @@ export async function listGroups(): Promise<GroupSummary[]> {
 // For the BOM's Group parts bar and To Fab's batches: the robot's groups.
 export async function listRobotGroups(robotId: string) {
   return db
-    .select({ id: partGroups.id, name: partGroups.name, color: partGroups.color, machine: partGroups.machine, madeBy: partGroups.madeBy })
+    .select({ id: partGroups.id, name: partGroups.name, color: partGroups.color, machine: partGroups.machine, madeBy: partGroups.madeBy, priority: partGroups.priority })
     .from(partGroups)
     .where(eq(partGroups.robotId, robotId))
     .orderBy(asc(partGroups.name));

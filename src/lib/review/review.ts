@@ -313,6 +313,7 @@ export async function rejectReviews(partIds: string[], memberId: string) {
       .where(inArray(partReviews.partId, partIds))
       .for("update");
     let keptEdits = 0;
+    const history: (typeof partHistory.$inferInsert)[] = [];
     for (const { review, part } of rows) {
       const current = part as unknown as Record<string, unknown>;
       const reverted = Object.entries(review.changes).filter(([field, c]) => {
@@ -331,12 +332,12 @@ export async function rejectReviews(partIds: string[], memberId: string) {
             lastModifiedBy: memberId,
           })
           .where(eq(parts.id, part.id));
-        await tx
-          .insert(partHistory)
-          .values(reverted.map(([field, c]) => ({ partId: part.id, field, oldValue: c.to, newValue: c.from, memberId, via: "ui" as const, batchId, visitId: visit?.id, page: visit?.page })));
+        history.push(...reverted.map(([field, c]) => ({ partId: part.id, field, oldValue: c.to, newValue: c.from, memberId, via: "ui" as const, batchId, visitId: visit?.id, page: visit?.page })));
       }
-      await tx.delete(partReviews).where(eq(partReviews.partId, part.id));
     }
+    // One insert and one delete for the whole group instead of a pair per part.
+    if (history.length) await tx.insert(partHistory).values(history);
+    if (rows.length) await tx.delete(partReviews).where(inArray(partReviews.partId, rows.map((r) => r.part.id)));
     return { rejected: rows.length, keptEdits };
   });
 }

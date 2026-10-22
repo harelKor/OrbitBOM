@@ -22,6 +22,8 @@ const PATHS = {
   spark: "M10 2.5 11.8 8.2 17.5 10 11.8 11.8 10 17.5 8.2 11.8 2.5 10 8.2 8.2z",
   drawing: "M3 4.5h14v11H3zM10 7.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M10 6v8M6 10h8",
   cube: "M10 2.5 16.5 6v8L10 17.5 3.5 14V6zM3.5 6 10 9.5 16.5 6M10 9.5v8",
+  pencil: "M13.5 3.5l3 3-9 9H4.5v-3zM11.5 5.5l3 3",
+  cart: "M2.5 3.5h2l2 9h8.5l1.5-6.5H5.5M8 16.5h.01M14 16.5h.01",
 } as const;
 
 export type IconName = keyof typeof PATHS;

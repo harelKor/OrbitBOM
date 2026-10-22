@@ -59,10 +59,10 @@ else
     it("keeps To Fab status changes for the system page", async () => {
       visit.id = randomUUID();
       visit.page = `/robots/${robot.id}/fab?machine=laser`;
-      await applyPartChanges([a.id], { status: "Ready to Fab" }, { memberId: member.id, via: "ui" });
+      await applyPartChanges([a.id], { status: "Released" }, { memberId: member.id, via: "ui" });
       const fab = await listRecentActions({ robotId: robot.id, memberId: member.id, systemId: system.id, fabOnly: true });
       expect(fab).toHaveLength(1);
-      expect(fab[0]).toMatchObject({ visitId: visit.id, pageName: "To Fab", statusTo: "Ready to Fab", partCount: 1 });
+      expect(fab[0]).toMatchObject({ visitId: visit.id, pageName: "To Fab", statusTo: "Released", partCount: 1 });
     });
 
     it("drops actions a member closed, and ones older than a week", async () => {

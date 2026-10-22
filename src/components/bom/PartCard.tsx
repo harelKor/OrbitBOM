@@ -6,8 +6,8 @@ import { IN_PROCESS_STATUS, READY_STATUS, fabStage, isFabFinished } from "@/lib/
 import { deleteManualPart, unmergeParts } from "@/app/(app)/parts-actions";
 import { useEditMode } from "@/components/shell/ModeContext";
 import { PartStage, type StageView } from "@/components/dashboard/PartStage";
-import { materialTint, useMaterialColors } from "@/components/shell/MaterialColors";
-import { NO_MATERIAL, materialColor, materialColorGroup } from "@/config/materialColors";
+import { computeStatus } from "@/lib/status";
+import { statusTint } from "@/components/ui/statusTint";
 import { CheckBadge, CheckIcon } from "@/components/ui/CheckBadge";
 import { Icon } from "@/components/ui/Icon";
 import { useBom } from "./BomContext";
@@ -17,6 +17,7 @@ import { InputEditor, Popover } from "./Popover";
 import { ownerPartId, partIds, partTitle, type CardPart } from "./types";
 import { downloadDrawing } from "@/lib/drawing/download";
 import { DrawingEditor } from "@/components/drawing/DrawingEditor";
+import { CotsCard } from "@/components/cots/CotsCard";
 
 const EXPORTABLE = ["STEP", "STL", "PARASOLID"] as const;
 const FLAT = ["DXF_FLAT", "STEP_FLAT"] as const; // only for Onshape sheet metal parts
@@ -28,8 +29,12 @@ const pill = "rounded-full border border-line-strong bg-raised px-2 py-0.5 text-
 // Locate in robot lives), with quantity and type on its top-left and Download on its top-right;
 // below it the name,
 // the status, a notes button and the material → process pills. Properties only open their
-// editors in Edit mode.
-export function PartCard({
+// editors in Edit mode. COTS parts get their own card (CotsCard): bought, not made.
+export function PartCard(props: React.ComponentProps<typeof MadePartCard>) {
+  return props.part.classification === "cots" ? <CotsCard {...props} /> : <MadePartCard {...props} />;
+}
+
+function MadePartCard({
   part,
   save,
   showSystem = false,
@@ -38,6 +43,7 @@ export function PartCard({
   fabCounter = false,
   style,
   onCheck,
+  checked = false,
 }: {
   part: CardPart;
   save: SaveFn;
@@ -47,6 +53,7 @@ export function PartCard({
   fabCounter?: boolean; // To Fab: − / + on the thumbnail's bottom corners count parts made
   style?: React.CSSProperties;
   onCheck?: () => void; // Ready for QA: a big check mark replaces Download and moves the part to In Stock
+  checked?: boolean; // Ready for QA: checked off this visit (struck through; a second click undoes it)
 }) {
   const edit = useEditMode();
   const { robotId } = useBom();
@@ -55,7 +62,7 @@ export function PartCard({
   const current = machines.find((s) => part[s.done] < Math.max(part.quantity, 1));
   const showCounter = !!current && part.classification !== "cots" && fabStage(part) !== null;
   // On To Fab, + counts one more and − takes back the last one counted. When − would leave nothing
-  // counted, the part goes back to In process if it was finished, else to Ready to Fab.
+  // counted, the part goes back to In process if it was finished, else to Released.
   const counted = machines.slice(0, current ? machines.indexOf(current) + 1 : machines.length).reverse().find((s) => part[s.done] > 0);
   const finished = isFabFinished(part);
   const takeBack = () => {
@@ -66,14 +73,11 @@ export function PartCard({
   const fabControls = fabCounter && part.classification !== "cots" && machines.length > 0;
   const format = cadFormat(part);
   const [stage, setStage] = useState<StageView | null>(null);
-  // The thumbnail shows Onshape's appearance; the material button repaints it in the material's colour.
-  const [tinted, setTinted] = useState(false);
-  const materialColors = useMaterialColors();
   const onshapeMaterial = part.geometry?.onshapeMaterial ?? null;
-  const hasMaterial = materialColorGroup(part.material, onshapeMaterial) !== NO_MATERIAL;
 
   return (
-    <div id={`part-${part.id}`} data-selected={!!selected} data-part={partIds(part)} style={style} className="card-interactive group flex scroll-mt-20 flex-col text-sm target:border-accent target:ring-2 target:ring-accent">
+    <div id={`part-${part.id}`} data-selected={!!selected} data-part={partIds(part)} style={style ?? statusTint(computeStatus(part))} className={`card-interactive group flex scroll-mt-20 flex-col text-sm target:border-accent target:ring-2 target:ring-accent ${checked ? "opacity-60" : ""}`}>
+      {checked && <span aria-hidden className="pointer-events-none absolute inset-x-3 top-1/2 z-10 h-0.5 -rotate-6 rounded-full bg-emerald-500" />}
       {onToggleSelect && (
         // While selecting, a click anywhere on the card toggles it.
         <button
@@ -94,7 +98,7 @@ export function PartCard({
           <button type="button" onClick={() => setStage("part")} className="flex h-full w-full cursor-zoom-in items-center justify-center" aria-label={`3D preview of ${partTitle(part)}`}>
             {part.thumbUrl ? (
               // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
-              <img src={part.thumbUrl} alt="" loading="lazy" className="h-full w-full object-contain p-3" style={tinted ? { filter: materialTint(part.material, onshapeMaterial) } : undefined} />
+              <img src={part.thumbUrl} alt="" loading="lazy" className="h-full w-full object-contain p-3" />
             ) : (
               <span className="text-xs text-muted">No thumbnail yet, click for 3D</span>
             )}
@@ -104,7 +108,7 @@ export function PartCard({
           <span className="rounded-full bg-[#111318]/85 px-2 py-0.5 text-[11px] font-bold text-white tabular-nums">
             {edit ? <QuantityField part={part} save={save} /> : `×${part.quantity}`}
           </span>
-          {edit ? <TypeField part={part} save={save} badge /> : <TypeBadge type={part.classification} />}
+          {!fabCounter && (edit ? <TypeField part={part} save={save} badge /> : <TypeBadge part={part} />)}
           {part.memberIds && (
             <span className="rounded-full bg-surface/90 px-1.5 py-0.5 text-[10px] font-semibold text-fg-2 shadow-sm" title="Merged parts">
               ⧉ {part.memberIds.length}
@@ -116,29 +120,17 @@ export function PartCard({
             <button
               type="button"
               onClick={onCheck}
-              className="press flex h-14 w-14 items-center justify-center rounded-full border-2 border-emerald-400 bg-emerald-500/90 text-white shadow-lg backdrop-blur-md hover:bg-emerald-400"
-              aria-label={`Checked: move ${partTitle(part)} to In Stock`}
-              title="Checked: move to In Stock"
+              aria-pressed={checked}
+              className={`press flex h-14 w-14 items-center justify-center rounded-full border-2 shadow-lg backdrop-blur-md ${
+                checked ? "border-emerald-400 bg-surface/90 text-emerald-500 hover:bg-raised" : "border-emerald-400 bg-emerald-500/90 text-white hover:bg-emerald-400"
+              }`}
+              aria-label={checked ? `Undo: put ${partTitle(part)} back in Ready for QA` : `Checked: move ${partTitle(part)} to In Stock`}
+              title={checked ? "Undo: back to Ready for QA" : "Checked: move to In Stock"}
             >
               <CheckIcon className="h-8 w-8" />
             </button>
           ) : (
             (format || part.files.length > 0 || part.hasDrawing) && <DownloadMenu part={part} format={format} />
-          )}
-          {part.thumbUrl && hasMaterial && !fabCounter && (
-            <button
-              type="button"
-              onClick={() => setTinted(!tinted)}
-              aria-pressed={tinted}
-              className="overlay-btn group/tip relative"
-              aria-label={tinted ? "Show Onshape's appearance" : "Show in material colour"}
-            >
-              <span
-                className={`h-3.5 w-3.5 rounded-full border-2 ${tinted ? "border-accent" : "border-white"} shadow-[0_0_0_1px_rgba(0,0,0,0.25)]`}
-                style={{ background: materialColor(part.material, materialColors, onshapeMaterial) }}
-              />
-              <Tip>{tinted ? "Onshape appearance" : "Material colour"}</Tip>
-            </button>
           )}
         </div>
         {part.note && <NoteCloud note={part.note} raised={fabControls} />}
@@ -181,7 +173,7 @@ export function PartCard({
 
       <div className="flex min-w-0 flex-col gap-2 p-3">
         <div className="flex min-w-0 items-baseline gap-2">
-          <div className="min-w-0 flex-1 truncate font-semibold text-fg" title={part.displayName ?? part.onshapeName ?? undefined}>
+          <div className={`min-w-0 flex-1 truncate font-semibold text-fg ${checked ? "line-through" : ""}`} title={part.displayName ?? part.onshapeName ?? undefined}>
             {edit ? <NameField part={part} save={save} bare /> : (part.displayName ?? part.onshapeName ?? "Unnamed part")}
           </div>
           {edit && <EditMenu part={part} />}
@@ -237,14 +229,6 @@ export function cadFormat(part: CardPart): ExportFormat | null {
 const LABELS: Partial<Record<ExportFormat, string>> = { PARASOLID: "Parasolid", DXF_FLAT: "Flat DXF", STEP_FLAT: "Flat STEP" };
 export const label = (f: ExportFormat) => LABELS[f] ?? f;
 
-function Tip({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="pointer-events-none absolute top-full right-0 mt-1 rounded bg-fg px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap text-white opacity-0 group-hover/tip:opacity-100">
-      {children}
-    </span>
-  );
-}
-
 // Every way to download the part: the CAD exports (the first machine's format on top) and any
 // files attached to it.
 function DownloadMenu({ part, format }: { part: CardPart; format: ExportFormat | null }) {
@@ -292,16 +276,17 @@ function DownloadMenu({ part, format }: { part: CardPart; format: ExportFormat |
   );
 }
 
-// The part's note as a comic-book thought cloud over the thumbnail; the notes button edits it.
-function NoteCloud({ note, raised = false }: { note: string; raised?: boolean }) {
+// The part's note as a comic-book thought cloud over the thumbnail, in bold on yellow so it is hard
+// to miss; the notes button edits it.
+export function NoteCloud({ note, raised = false }: { note: string; raised?: boolean }) {
   return (
-    <div className={`pointer-events-none absolute left-3 max-w-[70%] ${raised ? "bottom-14" : "bottom-3"}`}>
-      <div className="relative rounded-[1.4rem] border-2 border-[#111318] bg-white px-3 py-1.5 text-xs leading-snug font-semibold text-[#111318] shadow-[2px_3px_0_0_rgba(17,19,24,0.85)]">
-        <span className="line-clamp-3 break-words whitespace-pre-line">{note}</span>
+    <div className={`pointer-events-none absolute left-3 max-w-[80%] ${raised ? "bottom-14" : "bottom-4"}`}>
+      <div className="relative rounded-[1.6rem] border-[3px] border-[#111318] bg-[#fff59d] px-3.5 py-2 text-sm leading-snug font-bold text-[#111318] shadow-[3px_4px_0_0_rgba(17,19,24,0.9)]">
+        <span className="line-clamp-4 break-words whitespace-pre-line">{note}</span>
       </div>
       {/* The cloud's trailing puffs. */}
-      <span className="absolute -bottom-2 left-4 h-2.5 w-2.5 rounded-full border-2 border-[#111318] bg-white" />
-      <span className="absolute -bottom-3.5 left-1.5 h-1.5 w-1.5 rounded-full border-2 border-[#111318] bg-white" />
+      <span className="absolute -bottom-2.5 left-5 h-3 w-3 rounded-full border-[3px] border-[#111318] bg-[#fff59d]" />
+      <span className="absolute -bottom-4 left-2 h-2 w-2 rounded-full border-2 border-[#111318] bg-[#fff59d]" />
     </div>
   );
 }
@@ -325,7 +310,7 @@ function DrawingButton({ partId }: { partId: string }) {
   );
 }
 
-function NotesButton({ part, save }: { part: CardPart; save: SaveFn }) {
+export function NotesButton({ part, save }: { part: CardPart; save: SaveFn }) {
   return (
     <Popover
       align="right"
@@ -373,7 +358,7 @@ function DoneCounter({ part, save, slot }: { part: CardPart; save: SaveFn; slot:
   );
 }
 
-function EditMenu({ part }: { part: CardPart }) {
+export function EditMenu({ part }: { part: CardPart }) {
   const [, startTransition] = useTransition();
   if (!part.memberIds && !part.isManual) return null;
   return (

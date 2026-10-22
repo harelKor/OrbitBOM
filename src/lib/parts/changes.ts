@@ -1,16 +1,18 @@
 // The one place part edits are validated and turned into column updates. The card, Bulk edit,
 // sync and the MCP server all go through it, so they share the same rules (plan §3, §6):
 // - choosing a status stores it and resets the counters; moving a counter clears the status;
-// - editing a field that comes from Onshape marks it overridden, so later syncs keep the edit.
+// - editing a field that comes from Onshape marks it overridden, so later syncs keep the edit;
+// - giving a COTS part a machine in the app makes it In-house (In factory when the machine is a factory's).
 
 import { z } from "zod";
 import { MACHINES } from "@/config/machines";
 import { PRIORITIES } from "@/config/priorities";
+import { COTS_STATUSES, isCotsCategory } from "@/config/cots";
 import { STATUSES } from "@/config/statuses";
 import { applyCounters, applyStatus } from "@/lib/status";
 
 const machineIds = MACHINES.map((m) => m.id) as [string, ...string[]];
-const statusNames = STATUSES.map((s) => s.name) as [string, ...string[]];
+const statusNames = [...new Set([...STATUSES, ...COTS_STATUSES].map((s) => s.name))] as [string, ...string[]];
 
 const text = z
   .string()
@@ -52,6 +54,18 @@ export const partChangesSchema = z
     actualMinutes: minutes,
     drawingUrl: z.url().nullable(),
     inventoryItemId: z.uuid().nullable(),
+    cotsLinks: z
+      .array(
+        z.object({
+          url: z.url({ protocol: /^https?$/ }),
+          site: z.string().trim().max(100).optional(),
+          priceUsd: z.number().min(0).max(1_000_000).optional(),
+        }),
+      )
+      .max(20),
+    unitPrice: z.number().min(0).max(1_000_000).nullable(),
+    cotsCategory: z.string().refine(isCotsCategory, "Unknown COTS category.").nullable(),
+    stockCount: count,
   })
   .partial();
 
@@ -91,6 +105,10 @@ export type PartRow = {
   actualMinutes: number | null;
   drawingUrl: string | null;
   inventoryItemId: string | null;
+  cotsLinks: { url: string; site?: string; priceUsd?: number }[];
+  unitPrice: number | null;
+  cotsCategory: string | null;
+  stockCount: number;
   overriddenFields: string[];
 };
 
@@ -113,6 +131,8 @@ export function planPartUpdate(
   );
   if (Object.keys(counters).length) Object.assign(next, applyCounters(counters));
   if (fabricators) next.fabricators = { ...part.fabricators, ...fabricators };
+  const setsMachine = [rest.preProcess, rest.process1, rest.process2].some((m) => m);
+  if (via !== "sync" && setsMachine && rest.classification === undefined && part.classification === "cots") next.classification = "inhouse";
 
   const set: Partial<PartRow> = {};
   const history: HistoryEntry[] = [];

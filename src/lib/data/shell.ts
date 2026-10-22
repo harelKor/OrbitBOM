@@ -19,7 +19,7 @@ export type ShellRobot = {
   percent: number;
   thumbUrl: string | null;
   systems: ShellSystem[];
-  // Parts in process or ready to fab, in total and per machine (To Fab badges).
+  // Parts in process or released, in total and per machine (To Fab badges).
   fab: { total: number; byMachine: Record<string, number> };
   review: number; // parts waiting in To Review
 };

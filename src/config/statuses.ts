@@ -1,3 +1,5 @@
+import { getMachine, type MachineKind } from "./machines";
+
 // Team 1690's part statuses, copied from FRCBOM (ref §4). Edit here; there is no settings UI.
 // Order matters: it is the Kanban column order and the status-bar order.
 
@@ -12,7 +14,7 @@ export type StatusDef = {
 
 export const STATUSES = [
   { name: "Not Started", color: "#cbd5e1", kind: "not_started" },
-  { name: "Ready to Fab", color: "#00aaff", kind: "design" },
+  { name: "Released", color: "#00aaff", kind: "design" },
   { name: "Ordered", color: "#00aaff", kind: "design" },
   { name: "Gcoded", color: "#8c00ff", kind: "design" },
   { name: "Build In Queue", color: "#0040ff", kind: "design" },
@@ -53,4 +55,21 @@ export function getStatus(name: string): StatusDef | undefined {
 
 export function isStatusName(name: string): name is StatusName {
   return byName.has(name);
+}
+
+// What a status is called at the machine doing the work: a part printing on the Bambu is
+// "Printing", not "In Process 1". Only the name changes; the status, its colour and its place in
+// the order stay the same, so stats, filters and To Fab work as before.
+export const MACHINE_STATUS_LABELS: Record<MachineKind, Partial<Record<StatusName, string>>> = {
+  print: { Gcoded: "Sliced", "Build In Queue": "In Queue", "In Process 1": "Printing" },
+  laser: { "Build In Queue": "In Queue", "In Process 1": "Cutting" },
+  machining: { "Build In Queue": "In Queue", "In Process 1": "Machining" },
+  bending: { "Build In Queue": "In Queue", "In Process 1": "Bending" },
+  countersink: { "Build In Queue": "In Queue", "In Process 1": "Countersinking" },
+  factory: { "Build In Queue": "Sent to Factory", "In Process 1": "At Factory" },
+};
+
+export function statusLabel(status: string, machineId?: string | null): string {
+  const kind = machineId ? getMachine(machineId)?.kind : undefined;
+  return (kind && MACHINE_STATUS_LABELS[kind][status as StatusName]) || status;
 }

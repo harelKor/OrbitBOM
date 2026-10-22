@@ -1,6 +1,7 @@
 "use client";
 
-import { useOptimistic, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
 import { getMachine } from "@/config/machines";
 import { approveParts, rejectParts, suggestSetup } from "@/app/(app)/robots/[robotId]/review/actions";
 import { matchesTopBar } from "@/components/bom/filter";
@@ -8,6 +9,8 @@ import { partTitle, type CardPart } from "@/components/bom/types";
 import { useFilters } from "@/components/shell/FilterContext";
 import { useEditMode } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
+import { statusTint } from "@/components/ui/statusTint";
+import { computeStatus } from "@/lib/status";
 
 export type ReviewItem = {
   part: CardPart;
@@ -74,8 +77,12 @@ const machinesOf = (p: CardPart) => [p.preProcess, p.process1, p.process2].filte
 export function ReviewView({ robotId, items }: { robotId: string; items: ReviewItem[] }) {
   const edit = useEditMode();
   const { filters } = useFilters();
-  const [optimistic, removeOptimistic] = useOptimistic(items, (state, ids: string[]) => state.filter((i) => !ids.includes(i.part.id)));
+  const router = useRouter();
+  // Decided parts disappear the moment they are clicked; the server catches up in the background.
+  const [gone, setGone] = useState<ReadonlySet<string>>(new Set());
+  const optimistic = items.filter((i) => !gone.has(i.part.id));
   const [pending, startTransition] = useTransition();
+  const [, startDecide] = useTransition(); // decisions don't lock the other buttons
   const [note, setNote] = useState<{ error?: string; message?: string } | null>(null);
 
   const matching = optimistic.filter((i) => matchesTopBar(i.part, filters));
@@ -83,10 +90,17 @@ export function ReviewView({ robotId, items }: { robotId: string; items: ReviewI
 
   const decide = (ids: string[], approve: boolean) => {
     setNote(null);
-    startTransition(async () => {
-      removeOptimistic(ids);
-      const r = approve ? await approveParts(ids) : await rejectParts(ids);
-      if (r.error || r.message) setNote(r);
+    setGone((g) => new Set([...g, ...ids]));
+    startDecide(async () => {
+      try {
+        const r = approve ? await approveParts(ids) : await rejectParts(ids);
+        if (r.error) setGone((g) => new Set([...g].filter((id) => !ids.includes(id))));
+        if (r.error || r.message) setNote(r);
+      } catch {
+        setGone((g) => new Set([...g].filter((id) => !ids.includes(id))));
+        setNote({ error: "That didn't go through. Try again." });
+      }
+      router.refresh();
     });
   };
   const suggest = () => {
@@ -121,7 +135,7 @@ export function ReviewView({ robotId, items }: { robotId: string; items: ReviewI
             <details key={sys.id} aria-label={sys.name} className="group rounded-xl border border-line bg-surface p-4 shadow-sm">
               <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 [&::-webkit-details-marker]:hidden">
                 <h2 className="mr-auto flex items-center gap-2 text-lg font-bold text-fg">
-                  <span aria-hidden className="text-sm text-muted transition-transform group-open:rotate-90">
+                  <span aria-hidden className="inline-block text-sm text-muted transition-transform group-open:rotate-90">
                     ▸
                   </span>
                   {sys.name}
@@ -260,7 +274,7 @@ function ReviewCard({ item, disabled, onDecide }: { item: ReviewItem; disabled: 
   const { part } = item;
   const fields = ORDER.filter((f) => f in item.changes);
   return (
-    <div className="card-interactive group flex flex-col text-sm">
+    <div className="card-interactive group flex flex-col text-sm" style={statusTint(computeStatus(part))}>
       <div className="thumb-well relative flex aspect-[4/3] items-center justify-center">
         {part.thumbUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
