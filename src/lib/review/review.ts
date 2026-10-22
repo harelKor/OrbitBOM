@@ -79,11 +79,24 @@ export async function measureParts<P extends Part>(robotId: string, rows: P[]): 
 
 // The fields a suggestion may set.
 export const SETUP_FIELDS = ["classification", "material", "preProcess", "process1", "process2"] as const;
+// Everything an AI may configure on a part that waits in To Review (Reject puts these back).
+export const REVIEW_FIELDS = [
+  ...SETUP_FIELDS,
+  "displayName",
+  "description",
+  "cotsLinks",
+  "unitPrice",
+  "cotsCategory",
+  "priority",
+  "deadline",
+  "designerName",
+  "note",
+] as const;
 
 // Applies suggested setups as one batch, and puts each changed part in To Review. A part that
 // is already waiting keeps its original "before" values, so Reject still restores them.
 export async function applySuggestions(
-  edits: { id: string; changes: Pick<PartChanges, (typeof SETUP_FIELDS)[number]>; reason: string }[],
+  edits: { id: string; changes: PartChanges; reason: string | null }[],
   ctx: { memberId: string | null; source: ReviewSource; via: "ui" | "mcp"; aiName?: string },
 ) {
   const reasons = new Map(edits.map((e) => [e.id, e.reason]));
@@ -98,7 +111,7 @@ export async function applySuggestions(
         const [existing] = await tx.select().from(partReviews).where(eq(partReviews.partId, row.id)).for("update");
         const changes = { ...(existing?.changes ?? {}) };
         for (const h of plan.history) {
-          if (!(SETUP_FIELDS as readonly string[]).includes(h.field)) continue;
+          if (!(REVIEW_FIELDS as readonly string[]).includes(h.field)) continue;
           const from = h.field in changes ? changes[h.field].from : h.oldValue;
           if (same(from, h.newValue)) delete changes[h.field];
           else changes[h.field] = { from, to: h.newValue };

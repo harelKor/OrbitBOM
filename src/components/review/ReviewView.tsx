@@ -24,12 +24,25 @@ export type ReviewItem = {
 };
 
 const TYPES: Record<string, string> = { inhouse: "In-house", cots: "COTS", external: "External" };
-const ORDER = ["classification", "material", "preProcess", "process1", "process2"];
+const ORDER = ["classification", "material", "preProcess", "process1", "process2", "displayName", "cotsLinks", "unitPrice", "cotsCategory", "description", "priority", "deadline", "designerName", "note"];
+const LABELS: Record<string, string> = {
+  displayName: "Name",
+  cotsLinks: "Links",
+  unitPrice: "Price",
+  cotsCategory: "Category",
+  description: "Description",
+  priority: "Priority",
+  deadline: "Deadline",
+  designerName: "Designer",
+  note: "Note",
+};
 
 function shown(field: string, value: unknown): string | null {
   if (value == null || value === "") return null;
   if (field === "classification") return TYPES[value as string] ?? String(value);
   if (field.startsWith("pre") || field.startsWith("process")) return getMachine(value as string)?.name ?? String(value);
+  if (field === "cotsLinks") return Array.isArray(value) && value.length ? `${value.length} ${value.length === 1 ? "link" : "links"}` : null;
+  if (field === "unitPrice") return `$${value}`;
   return String(value);
 }
 
@@ -309,6 +322,7 @@ function ReviewCard({ item, disabled, onDecide }: { item: ReviewItem; disabled: 
             const to = shown(f, item.changes[f].to);
             return (
               <li key={f} className="flex min-w-0 items-center gap-1">
+                {LABELS[f] && <span className="shrink-0 text-[10px] font-semibold text-subtle uppercase">{LABELS[f]}</span>}
                 {from && <span className={`${pill} border-line text-faint line-through`}>{from}</span>}
                 {from && <span className="text-[10px] text-faint">→</span>}
                 <span className={`${pill} ${to ? "border-accent/60 bg-accent/5 text-accent" : "border-dashed border-line-strong text-subtle"}`}>{to ?? "none"}</span>
