@@ -91,6 +91,7 @@ export const REVIEW_FIELDS = [
   "deadline",
   "designerName",
   "note",
+  "inventoryItemId",
 ] as const;
 
 // Applies suggested setups as one batch, and puts each changed part in To Review. A part that
@@ -117,14 +118,17 @@ export async function applySuggestions(
           else changes[h.field] = { from, to: h.newValue };
         }
         const added = (plan.set.overriddenFields ?? []).filter((f) => !row.overriddenFields.includes(f));
+        // A site rule (auto-link) adding to a part an AI just changed keeps the AI's run and name.
+        const keep = existing && existing.source === "ai" && ctx.source === "rule";
+        const reason = reasons.get(row.id) ?? null;
         const values = {
-          source: ctx.source,
-          reason: reasons.get(row.id) ?? null,
+          source: keep ? existing.source : ctx.source,
+          reason: keep ? [existing.reason, reason].filter(Boolean).join(" · ") || null : reason,
           changes,
           addedOverrides: [...new Set([...(existing?.addedOverrides ?? []), ...added])],
-          memberId: ctx.memberId,
-          batchId,
-          aiName: ctx.aiName ?? null,
+          memberId: keep ? existing.memberId : ctx.memberId,
+          batchId: keep ? existing.batchId : batchId,
+          aiName: keep ? existing.aiName : (ctx.aiName ?? null),
           createdAt: new Date(),
         };
         if (!Object.keys(changes).length) await tx.delete(partReviews).where(eq(partReviews.partId, row.id));

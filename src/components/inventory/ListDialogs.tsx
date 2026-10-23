@@ -2,50 +2,12 @@
 
 import { useState, useTransition } from "react";
 import { Dialog } from "@/components/Dialog";
-import { PART_TYPES } from "@/config/partTypes";
 import { addCondition, addLocation, deleteCondition, deleteLocation } from "@/app/(app)/inventory/actions";
 import type { Condition, Location } from "./types";
 
 type DialogProps = { open: boolean; onClose: () => void };
 
-// The toolbar's Part types (read-only: they're built into the app), Conditions and Locations
-// editors (ref §5).
-
-export function PartTypesDialog({ open, onClose }: DialogProps) {
-  return (
-    <Dialog open={open} onClose={onClose} title="Part types" wide>
-      <p className="mb-3 text-sm text-muted">
-        Part types add detail fields to an item and can build its name. They live in the code
-        (<code className="text-xs">src/config/partTypes.ts</code>); ask Claude to change them.
-      </p>
-      <ul className="max-h-[60vh] divide-y divide-line overflow-y-auto text-sm">
-        {PART_TYPES.map((t) => (
-          <li key={t.id} className="py-2">
-            <div className="font-medium">{t.name}</div>
-            <div className="text-xs text-muted">
-              {t.fields.map((f) => f.label + (f.options ? ` ▾` : "")).join(" · ")}
-              {t.materialSource && <span className="text-subtle"> · material from {t.materialSource}</span>}
-            </div>
-            {t.namePattern && (
-              <div className="text-xs text-subtle">
-                Name:{" "}
-                {t.namePattern
-                  .map((n) =>
-                    "field" in n
-                      ? `{${t.fields.find((f) => f.id === n.field)?.label}}`
-                      : "text" in n
-                        ? n.text
-                        : "{Material}",
-                  )
-                  .join("")}
-              </div>
-            )}
-          </li>
-        ))}
-      </ul>
-    </Dialog>
-  );
-}
+// The toolbar's Conditions and Locations editors (ref §5).
 
 export function ConditionsDialog({ open, onClose, conditions }: DialogProps & { conditions: Condition[] }) {
   const [label, setLabel] = useState("");

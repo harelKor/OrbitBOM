@@ -1,53 +1,81 @@
 "use client";
 
-import Link from "next/link";
-import { getInventoryCategory } from "@/config/inventory";
-import { getPartType } from "@/config/partTypes";
 import { textOn } from "@/components/bom/options";
 import { Popover } from "@/components/bom/Popover";
 import { Icon } from "@/components/ui/Icon";
+import { getCategory, specLine } from "@/lib/inventory/categories";
 import { SHEET_PIECES, formatStock } from "@/lib/inventory/stock";
-import type { Item } from "./types";
+import { useInventoryPopup } from "./InventoryPopup";
+import type { InvCategory, Item } from "./types";
 
 // Seeded conditions carry a colour name (FRCBOM's); ones added since carry a hex colour.
 const NAMED: Record<string, string> = { emerald: "#10b981", amber: "#f59e0b", rose: "#f43f5e", sky: "#0ea5e9", slate: "#64748b", violet: "#8b5cf6" };
 export const conditionColor = (color: string) => NAMED[color] ?? color;
 
-// The part type's details in one short mono line: "22T · 1/2In HEX".
-export function specLine(item: Pick<Item, "templateId" | "templateValues">) {
-  const type = item.templateId ? getPartType(item.templateId) : undefined;
-  return (type?.fields ?? [])
-    .filter((f) => item.templateValues[f.id])
-    .map((f) => (f.id === "teeth" ? `${item.templateValues[f.id]}T` : item.templateValues[f.id]))
-    .join(" · ");
+// An item's name: like a COTS part, it opens the product's page when the item has a link
+// (light blue, a ▾ to pick when there are several); otherwise it opens the item's window.
+export function ProductName({ item, className = "" }: { item: Pick<Item, "id" | "name" | "cotsLinks">; className?: string }) {
+  const { openItem } = useInventoryPopup();
+  const [first, ...more] = item.cotsLinks;
+  if (!first)
+    return (
+      <button type="button" onClick={() => openItem(item.id)} className={`min-w-0 truncate text-left text-fg hover:text-accent ${className}`} title={item.name}>
+        {item.name}
+      </button>
+    );
+  return (
+    <span className={`flex min-w-0 items-center gap-1 ${className}`}>
+      <a href={first.url} target="_blank" rel="noreferrer" className="min-w-0 truncate text-sky-600 underline-offset-2 hover:underline dark:text-sky-400" title={`${item.name} · ${first.site || hostOf(first.url)}`}>
+        {item.name}
+      </a>
+      {more.length > 0 && (
+        <Popover hideCaret triggerClassName="shrink-0 text-xs text-sky-600" trigger={<span aria-label="Other product links">▾</span>}>
+          {() => (
+            <ul className="space-y-1 p-1 text-sm">
+              {item.cotsLinks.map((l) => (
+                <li key={l.url}>
+                  <a href={l.url} target="_blank" rel="noreferrer" className="block truncate rounded-md px-2 py-1.5 text-sky-600 hover:bg-raised">
+                    {l.site || hostOf(l.url)}
+                    {l.priceUsd != null && <span className="ml-2 font-mono text-xs text-emerald-600 tabular-nums">${l.priceUsd.toFixed(2)}</span>}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Popover>
+      )}
+    </span>
+  );
 }
 
-// An inventory item as a compact 4:3 card, like the part cards: the picture (a linked part's
-// Onshape thumbnail until the team adds photos) with the category, condition and location on
-// it, big red − / green + under it, then the name, the spec line and how the robots use it.
-// The left edge takes the condition's colour. The name opens the item page.
+// An inventory item as a compact 4:3 card, like the part cards: the picture (its product photo,
+// else a linked part's Onshape thumbnail) with the category, condition and location on it, big
+// red − / green + under it, then the name, the spec line and how the robots use it. The left edge
+// takes the condition's colour. The picture opens the item's window; the name opens the product.
 export function ItemCard({
   item,
+  categories,
   condition,
   location,
   onStep,
 }: {
   item: Item;
+  categories: InvCategory[];
   condition?: { label: string; color: string };
   location?: string;
   onStep: (delta: number) => void;
 }) {
-  const category = getInventoryCategory(item.category);
-  const spec = specLine(item);
+  const { openItem } = useInventoryPopup();
+  const category = getCategory(categories, item.category);
+  const spec = specLine(category, item.specs);
   const need = item.usage?.need ?? 0;
   const short = item.usage?.short ?? 0;
   const usedBy = item.usage?.parts.length ?? 0;
   const color = condition ? conditionColor(condition.color) : undefined;
-  const href = `/inventory/item/${item.id}`;
 
   return (
     <div className="card-interactive group flex flex-col border-l-4 text-sm" style={color ? { borderLeftColor: color } : undefined}>
-      <Link href={href} className="thumb-well relative flex aspect-[4/3] items-center justify-center" aria-label={`Open ${item.name}`}>
+      <button type="button" onClick={() => openItem(item.id)} className="thumb-well relative flex aspect-[4/3] items-center justify-center" aria-label={`Open ${item.name}`}>
         {item.thumbUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
           <img src={item.thumbUrl} alt="" loading="lazy" className="h-full w-full object-contain p-3" />
@@ -57,7 +85,7 @@ export function ItemCard({
             <span className="text-[11px]">{category?.label}</span>
           </span>
         )}
-      </Link>
+      </button>
       <div className="pointer-events-none absolute top-2 left-2 flex max-w-[60%] flex-wrap gap-1">
         {category && <span className="truncate rounded-full bg-[#111318]/85 px-2 py-0.5 text-[11px] font-semibold text-white">{category.label}</span>}
         {condition && (
@@ -77,7 +105,7 @@ export function ItemCard({
           type="button"
           onClick={() => onStep(-1)}
           disabled={item.inStock < 1}
-          className="press z-10 flex h-10 w-10 items-center justify-center rounded-md bg-rose-500 text-xl font-bold text-white shadow-sm hover:bg-rose-400 disabled:opacity-30"
+          className="press z-10 flex h-11 w-11 items-center justify-center rounded-md bg-rose-500 text-xl font-bold text-white shadow-sm hover:bg-rose-400 disabled:opacity-30"
           aria-label={item.sheet ? "One sheet less" : "One less"}
         >
           −
@@ -90,7 +118,7 @@ export function ItemCard({
         <button
           type="button"
           onClick={() => onStep(1)}
-          className="press z-10 flex h-10 w-10 items-center justify-center rounded-md bg-emerald-500 text-xl font-bold text-white shadow-sm hover:bg-emerald-400"
+          className="press z-10 flex h-11 w-11 items-center justify-center rounded-md bg-emerald-500 text-xl font-bold text-white shadow-sm hover:bg-emerald-400"
           aria-label={item.sheet ? "One sheet more" : "One more"}
         >
           +
@@ -99,9 +127,7 @@ export function ItemCard({
 
       <div className="flex min-w-0 flex-col gap-1.5 p-3 pt-2">
         <div className="flex min-w-0 items-baseline gap-2">
-          <Link href={href} className="min-w-0 flex-1 truncate font-semibold text-fg hover:text-accent" title={item.name}>
-            {item.name}
-          </Link>
+          <ProductName item={item} className="flex-1 font-semibold" />
           {spec && <span className="shrink-0 truncate font-mono text-[11px] text-muted tabular-nums">{spec}</span>}
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-[11px]">
@@ -115,12 +141,8 @@ export function ItemCard({
               {!item.sheet && (short ? ` · ${short} short` : " · covered")}
             </span>
           )}
-          {item.material && <span className="truncate rounded-full bg-raised px-2 py-0.5 text-fg-2">{item.material}</span>}
-          {item.vendorUrl && (
-            <a href={item.vendorUrl} target="_blank" rel="noreferrer" className="truncate rounded-full bg-raised px-2 py-0.5 text-sky-600 hover:underline dark:text-sky-400">
-              {item.vendorName || hostOf(item.vendorUrl)} ↗
-            </a>
-          )}
+          {item.cotsLinks[0] && <span className="truncate rounded-full bg-raised px-2 py-0.5 text-fg-2">{item.cotsLinks[0].site || hostOf(item.cotsLinks[0].url)}</span>}
+          {item.price != null && <span className="font-mono text-emerald-600 tabular-nums">${item.price.toFixed(2)}</span>}
         </div>
       </div>
     </div>

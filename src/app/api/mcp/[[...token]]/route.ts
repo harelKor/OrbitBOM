@@ -17,7 +17,7 @@ const INSTRUCTIONS =
   "Every applied change returns a batch_id that undo_batch can revert. " +
   "To set up parts' material and processes yourself, read parts_to_set_up and apply with set_up_parts: those parts wait in To Review for their designer, as do parts changed with update_parts or set_cots_info. " +
   "To fill in COTS parts' official names, product links and prices, read cots_parts_to_look_up, search FRCDesign.org and the vendors' sites, and apply with set_cots_info. " +
-  "Inventory: every active robot shares one shelf. Link COTS parts to items with inventory_to_link and link_inventory, see what to buy with inventory_shortages, add items in bulk with add_inventory_items, and fill in specs with inventory_to_look_up and set_inventory_info (part types and their fields come from list_part_types).";
+  "Inventory: every active robot shares one shelf. Link COTS parts to items with inventory_to_link and link_inventory, see what to buy with inventory_shortages, add items in bulk with add_inventory_items, and fill in specs with inventory_to_look_up and set_inventory_info (categories and their fields come from list_inventory_categories). BOM parts with the same product link or Onshape part as an item are linked to it automatically and wait in To Review.";
 
 type Rpc = { jsonrpc: "2.0"; id?: string | number | null; method: string; params?: Record<string, unknown> };
 

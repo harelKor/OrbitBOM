@@ -412,25 +412,51 @@ export const inventoryGroups = pgTable("inventory_groups", {
   id: id(),
   name: text("name").notNull(),
   parentId: uuid("parent_id"),
-  templateId: text("template_id"), // config/partTypes.ts id
+  templateId: text("template_id"), // FRCBOM part type; unused since categories have fields
   locationId: uuid("location_id").references(() => inventoryLocations.id, { onDelete: "set null" }),
+});
+
+// An inventory category's detail field (Harel, 2026-10-23: categories replace part types and
+// material). `options` is a chip row (up to 6) or a type-to-filter dropdown; `material` picks from
+// the BOM's materials (config/materials.ts groups in `materials`). `name` says how the value goes
+// into the item's built name, "{}" standing for the value ("{}T" → "36T"); "" leaves it out.
+export type CategoryField = {
+  id: string;
+  label: string;
+  kind: "number" | "text" | "options" | "material";
+  options?: string[];
+  materials?: string[];
+  name?: string;
+  hidden?: boolean;
+};
+
+// Inventory categories with their own fields, edited on the Inventory settings panel (the one
+// exception to "no settings UI"). Seeded from config/inventory.ts the first time they're read.
+export const inventoryCategories = pgTable("inventory_categories", {
+  id: text("id").primaryKey(),
+  label: text("label").notNull(),
+  noun: text("noun").notNull().default(""), // ends the built name: "36T HTD 5mm Pulley"
+  position: integer("position").notNull().default(0),
+  // Counted in whole sheets and pieces of one (¼ ⅓ ½ ⅔ ¾).
+  sheet: boolean("sheet").notNull().default(false),
+  defaultLocationId: uuid("default_location_id").references(() => inventoryLocations.id, { onDelete: "set null" }),
+  fields: jsonb("fields").$type<CategoryField[]>().notNull().default([]),
 });
 
 export const inventoryItems = pgTable("inventory_items", {
   id: id(),
   name: text("name").notNull(),
   groupId: uuid("group_id").references(() => inventoryGroups.id, { onDelete: "set null" }),
-  category: text("category"), // config/inventory.ts id; guessed from the part type or name while null
-  templateId: text("template_id"),
-  templateValues: jsonb("template_values").$type<Record<string, string>>().notNull().default({}),
+  category: text("category"), // inventory_categories id; guessed from the name while null
+  // The category's field values by field id.
+  specs: jsonb("specs").$type<Record<string, string>>().notNull().default({}),
+  // Product pages, like a COTS part's; the first is the one the name opens.
+  cotsLinks: jsonb("cots_links").$type<CotsLink[]>().notNull().default([]),
   conditionId: uuid("condition_id").references(() => inventoryConditions.id, { onDelete: "set null" }),
   locationId: uuid("location_id").references(() => inventoryLocations.id, { onDelete: "set null" }),
-  // Whole units; a sheet item (config/partTypes.ts `sheet`) also holds pieces, in twelfths of a sheet.
+  // Whole units; an item in a sheet category also holds pieces, in twelfths of a sheet.
   inStock: doublePrecision("in_stock").notNull().default(0),
-  material: text("material"),
   imagePath: text("image_path"),
-  vendorUrl: text("vendor_url"),
-  vendorName: text("vendor_name"),
   price: real("price"),
   // The Onshape library part (did:eid:partId) it was first linked to: new BOM parts with the same
   // key are linked on sync. Other names the item was linked under, for match suggestions.

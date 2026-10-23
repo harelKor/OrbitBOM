@@ -3,16 +3,17 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useOptimistic, useState, useTransition } from "react";
-import { getInventoryCategory } from "@/config/inventory";
 import { adjustStock, deleteItem, linkPartsToItem } from "@/app/(app)/inventory/actions";
 import { textOn } from "@/components/bom/options";
 import { EditOnly } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
+import { Dialog } from "@/components/Dialog";
+import { getCategory, specLine } from "@/lib/inventory/categories";
 import { formatStock, snapStock } from "@/lib/inventory/stock";
-import { PieceStepper, conditionColor, hostOf, specLine } from "./ItemCard";
-import { ItemDialog } from "./ItemDialog";
+import { PieceStepper, ProductName, conditionColor, hostOf } from "./ItemCard";
+import { ItemForm, draftOf } from "./ItemForm";
 import { ToBomDialog } from "./ToBomDialog";
-import type { BomTarget, Condition, Group, Item, Location } from "./types";
+import type { BomTarget, Condition, Group, InvCategory, Item, Location } from "./types";
 
 type Match = { partId: string; name: string; quantity: number; robotName: string; systemName: string; reason: "onshape" | "link" | "name" };
 type Move = { id: string; delta: number; reason: string; at: Date; via: string; memberName: string | null; aiName: string | null; partName: string | null };
@@ -28,6 +29,7 @@ export function ItemPage({
   conditions,
   locations,
   groups,
+  categories,
   matches,
   moves,
   targets,
@@ -36,6 +38,7 @@ export function ItemPage({
   conditions: Condition[];
   locations: Location[];
   groups: Group[];
+  categories: InvCategory[];
   matches: Match[];
   moves: Move[];
   targets: BomTarget[];
@@ -59,11 +62,12 @@ export function ItemPage({
       setPicked(new Set());
     });
 
-  const category = getInventoryCategory(item.category);
+  const category = getCategory(categories, item.category);
   const condition = conditions.find((c) => c.id === item.conditionId);
   const color = condition ? conditionColor(condition.color) : undefined;
   const location = locations.find((l) => l.id === (item.locationId ?? groups.find((g) => g.id === item.groupId)?.locationId))?.name;
-  const spec = specLine(item);
+  const spec = specLine(category, item.specs);
+  const [draft, setDraft] = useState(() => draftOf(initial));
   const usage = item.usage;
   const byRobot = new Map<string, NonNullable<typeof usage>["parts"]>();
   for (const p of usage?.parts ?? []) byRobot.set(p.robotName, [...(byRobot.get(p.robotName) ?? []), p]);
@@ -90,7 +94,9 @@ export function ItemPage({
         </div>
         <div className="space-y-4 p-4">
           <div>
-            <h1 className="display text-3xl break-words text-accent">{item.name}</h1>
+            <h1 className="display text-3xl break-words text-accent">
+              <ProductName item={item} />
+            </h1>
             {spec && <div className="font-mono text-sm text-muted tabular-nums">{spec}</div>}
           </div>
           <div className="flex items-center gap-3">
@@ -127,19 +133,23 @@ export function ItemPage({
             </div>
           )}
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-            {item.material && (
-              <>
-                <dt className="text-muted">Material</dt>
-                <dd>{item.material}</dd>
-              </>
-            )}
-            {item.vendorUrl && (
+            {(category?.fields ?? [])
+              .filter((f) => item.specs[f.id])
+              .map((f) => (
+                <div key={f.id} className="contents">
+                  <dt className="text-muted">{f.label}</dt>
+                  <dd>{item.specs[f.id]}</dd>
+                </div>
+              ))}
+            {item.cotsLinks.length > 0 && (
               <>
                 <dt className="text-muted">Buy at</dt>
-                <dd>
-                  <a href={item.vendorUrl} target="_blank" rel="noreferrer" className="text-sky-600 hover:underline dark:text-sky-400">
-                    {item.vendorName || hostOf(item.vendorUrl)} ↗
-                  </a>
+                <dd className="flex flex-wrap gap-x-3">
+                  {item.cotsLinks.map((l) => (
+                    <a key={l.url} href={l.url} target="_blank" rel="noreferrer" className="text-sky-600 hover:underline dark:text-sky-400">
+                      {l.site || hostOf(l.url)} ↗
+                    </a>
+                  ))}
                 </dd>
               </>
             )}
@@ -152,7 +162,13 @@ export function ItemPage({
           </dl>
           <EditOnly>
             <div className="flex flex-wrap gap-2 border-t border-line pt-3">
-              <button className="btn" onClick={() => setOpen("edit")}>
+              <button
+                className="btn"
+                onClick={() => {
+                  setDraft(draftOf(initial));
+                  setOpen("edit");
+                }}
+              >
                 <Icon name="pencil" className="h-4 w-4" /> Edit
               </button>
               <button className="btn" onClick={() => setOpen("toBom")}>
@@ -283,14 +299,25 @@ export function ItemPage({
         </section>
       </div>
 
-      <ItemDialog
-        key={open === "edit" ? "edit" : "closed"}
-        open={open === "edit"}
-        item={initial}
-        defaultCategory={null}
-        lookups={{ groups, conditions, locations }}
-        onClose={() => setOpen(null)}
-      />
+      <Dialog open={open === "edit"} onClose={() => setOpen(null)} title="Edit inventory item" wide>
+        {open === "edit" && (
+          <ItemForm
+            itemId={item.id}
+            draft={draft}
+            setDraft={setDraft}
+            categories={categories}
+            locations={locations}
+            conditions={conditions}
+            items={[]}
+            onCancel={() => setOpen(null)}
+            onSaved={(_, message) => {
+              setOpen(null);
+              if (message) setResult({ message });
+              router.refresh();
+            }}
+          />
+        )}
+      </Dialog>
       <ToBomDialog key={open === "toBom" ? "bom" : "closed-bom"} item={open === "toBom" ? initial : null} targets={targets} onClose={() => setOpen(null)} />
     </div>
   );

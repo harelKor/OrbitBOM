@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { sendShortagesToOrder } from "@/app/(app)/inventory/actions";
+import { useInventoryPopup } from "@/components/inventory/InventoryPopup";
 import type { RobotShelfItem } from "@/lib/data/inventory";
 import { formatStock } from "@/lib/inventory/stock";
 
@@ -10,6 +11,7 @@ import { formatStock } from "@/lib/inventory/stock";
 // the shelf covers and what is short, and one button that sends the short COTS parts to the
 // Order List.
 export function RobotInventory({ robotId, items }: { robotId: string; items: RobotShelfItem[] }) {
+  const { openItem } = useInventoryPopup();
   const [filter, setFilter] = useState<"all" | "short">("all");
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<{ error?: string; message?: string } | null>(null);
@@ -69,9 +71,9 @@ export function RobotInventory({ robotId, items }: { robotId: string; items: Rob
             <div key={item.id} className="panel flex flex-col gap-2 p-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="truncate font-semibold" title={item.name}>
+                  <button type="button" onClick={() => openItem(item.id)} className="block max-w-full truncate text-left font-semibold hover:text-accent" title={item.name}>
                     {item.name}
-                  </div>
+                  </button>
                   {item.group && <div className="truncate text-[11px] text-muted">{item.group}</div>}
                 </div>
                 <div className={`shrink-0 text-right ${tone}`}>

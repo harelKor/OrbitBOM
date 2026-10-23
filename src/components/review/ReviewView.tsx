@@ -24,7 +24,7 @@ export type ReviewItem = {
 };
 
 const TYPES: Record<string, string> = { inhouse: "In-house", cots: "COTS", external: "External", undefined: "Undefined" };
-const ORDER = ["classification", "material", "preProcess", "process1", "process2", "displayName", "cotsLinks", "unitPrice", "cotsCategory", "description", "priority", "deadline", "designerName", "note"];
+const ORDER = ["classification", "material", "preProcess", "process1", "process2", "displayName", "cotsLinks", "unitPrice", "cotsCategory", "description", "priority", "deadline", "designerName", "note", "inventoryItemId"];
 const LABELS: Record<string, string> = {
   displayName: "Name",
   cotsLinks: "Links",
@@ -35,6 +35,7 @@ const LABELS: Record<string, string> = {
   deadline: "Deadline",
   designerName: "Designer",
   note: "Note",
+  inventoryItemId: "Inventory",
 };
 
 function shown(field: string, value: unknown): string | null {
@@ -45,6 +46,9 @@ function shown(field: string, value: unknown): string | null {
   if (field === "unitPrice") return `$${value}`;
   return String(value);
 }
+
+// The site linked the part to an inventory item with the same product or Onshape part.
+const autoLinked = (item: Pick<ReviewItem, "source" | "changes">) => item.source === "rule" && Object.keys(item.changes).every((f) => f === "inventoryItemId");
 
 const when = (iso: string) =>
   new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jerusalem", hour12: false }).format(new Date(iso));
@@ -68,7 +72,7 @@ function groupItems(items: ReviewItem[]): SystemGroup[] {
     if (!batch) {
       batch = {
         key,
-        label: item.batchId ? (item.source === "ai" ? (item.aiName ?? "Claude") : "Suggest setup") : "Earlier",
+        label: item.batchId ? (item.source === "ai" ? (item.aiName ?? "Claude") : autoLinked(item) ? "Auto-link" : "Suggest setup") : "Earlier",
         detail: item.batchId ? `${when(item.at)}${item.memberName ? `, ${item.memberName}` : ""}` : "",
         items: [],
       };
@@ -303,9 +307,9 @@ function ReviewCard({ item, disabled, onDecide }: { item: ReviewItem; disabled: 
         </div>
         <span
           className={`absolute top-2 right-2 max-w-[60%] truncate rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide ${item.source === "ai" ? "bg-accent text-white" : "bg-surface/90 text-fg-2 shadow-sm"}`}
-          title={item.source === "ai" ? `Set by ${item.aiName ?? "a member's Claude"}` : "Set by Suggest setup"}
+          title={item.source === "ai" ? `Set by ${item.aiName ?? "a member's Claude"}` : autoLinked(item) ? "Linked to inventory automatically" : "Set by Suggest setup"}
         >
-          {item.source === "ai" ? (item.aiName ?? "AI") : "RULE"}
+          {item.source === "ai" ? (item.aiName ?? "AI") : autoLinked(item) ? "AUTO-LINK" : "RULE"}
         </span>
       </div>
 

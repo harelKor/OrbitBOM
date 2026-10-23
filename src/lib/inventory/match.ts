@@ -1,7 +1,7 @@
 // Which inventory item a BOM part probably is, most certain first: the same Onshape library part,
 // the same product page, then the same name (or a name the item was linked under before).
 
-export type MatchItem = { id: string; name: string; onshapeKey: string | null; aliases: string[]; vendorUrl: string | null };
+export type MatchItem = { id: string; name: string; onshapeKey: string | null; aliases: string[]; cotsLinks: { url: string }[] };
 export type MatchPart = {
   displayName: string | null;
   onshapeName: string | null;
@@ -17,7 +17,7 @@ export const onshapeKeyOf = (p: Pick<MatchPart, "sourceDid" | "sourceEid" | "ons
 
 export const normName = (s: string | null | undefined) => (s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
-function normUrl(url: string) {
+export function normUrl(url: string) {
   try {
     const u = new URL(url);
     return `${u.hostname.replace(/^www\./, "")}${u.pathname.replace(/\/+$/, "")}${u.search}`.toLowerCase();
@@ -34,7 +34,7 @@ export function suggestItem(part: MatchPart, items: MatchItem[]): { itemId: stri
   }
   const urls = new Set((part.cotsLinks ?? []).map((l) => normUrl(l.url)));
   if (urls.size) {
-    const hit = items.find((i) => i.vendorUrl && urls.has(normUrl(i.vendorUrl)));
+    const hit = items.find((i) => i.cotsLinks.some((l) => urls.has(normUrl(l.url))));
     if (hit) return { itemId: hit.id, reason: "link" };
   }
   const names = new Set([normName(part.displayName), normName(part.onshapeName)].filter(Boolean));

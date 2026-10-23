@@ -9,11 +9,12 @@ import { STATUSES } from "@/config/statuses";
 import { PRIORITIES } from "@/config/priorities";
 import { db, schema } from "@/db";
 import type { Member } from "@/lib/auth";
-import { INVENTORY_CATEGORIES, getInventoryCategory } from "@/config/inventory";
-import { PART_TYPES, getPartType } from "@/config/partTypes";
+import { vendorOfUrl } from "@/config/vendors";
 import { listInventory } from "@/lib/data/inventory";
 import { suggestItem } from "@/lib/inventory/match";
-import { checkSpecs } from "@/lib/inventory/specs";
+import { autoLink } from "@/lib/inventory/autolink";
+import { checkSpecs, fieldChoices, getCategory, type InvCategory } from "@/lib/inventory/categories";
+import { listCategories } from "@/lib/data/categories";
 import { moveStock, undoMoves } from "@/lib/inventory/moves";
 import { formatStock } from "@/lib/inventory/stock";
 import { listRobots } from "@/lib/data/robots";
@@ -321,7 +322,9 @@ read(
         need: i.usage?.need ?? 0,
         short: i.usage?.short ?? 0,
         free: i.usage?.free ?? i.inStock,
-        material: i.material,
+        category: i.category,
+        specs: i.specs,
+        product_link: i.cotsLinks[0]?.url ?? null,
         per_robot: i.usage?.robots.map((r) => ({ robot: r.robotName, needed: r.needed, covered: r.allocated })) ?? [],
       }));
   },
@@ -616,8 +619,7 @@ write(
   z.object({
     name: z.string().min(1),
     in_stock: z.number().int().min(0).default(0),
-    material: z.string().optional(),
-    vendor_url: z.url().optional(),
+    product_url: z.url().optional(),
   }),
   async (a, { member, aiName }) => ({
     count: 1,
@@ -627,23 +629,28 @@ write(
       const id = await db.transaction(async (tx) => {
         const [item] = await tx
           .insert(inventoryItems)
-          .values({ name: a.name, material: a.material ?? null, vendorUrl: a.vendor_url ?? null })
+          .values({ name: a.name, cotsLinks: a.product_url ? [{ url: a.product_url, site: vendorOfUrl(a.product_url) }] : [] })
           .returning({ id: inventoryItems.id });
         await moveStock(tx, { itemId: item.id, delta: a.in_stock, reason: "counted" }, { memberId: member.id, via: "mcp", aiName, batchId });
         return item.id;
       });
-      return { item_id: id };
+      const auto_linked = await autoLink({ itemIds: [id] }, { memberId: member.id, via: "mcp" });
+      return { item_id: id, auto_linked };
     },
   }),
 );
 
 read(
-  "list_part_types",
-  "The inventory's built-in part types (each with its detail fields and, for some, the allowed options) and categories. Use the ids with add_inventory_items and set_inventory_info. Sheet types count sheets and pieces of a sheet.",
+  "list_inventory_categories",
+  "The inventory's categories and each one's fields (number, text, options, or a BOM material), with the allowed choices. Use the ids with add_inventory_items and set_inventory_info. Sheet categories count sheets and pieces of a sheet. The team edits these on the Inventory settings panel.",
   z.object({}),
   async () => ({
-    part_types: PART_TYPES.map((t) => ({ id: t.id, name: t.name, sheet: !!t.sheet, fields: t.fields.map((f) => ({ id: f.id, label: f.label, options: f.options })) })),
-    categories: INVENTORY_CATEGORIES.map((c) => ({ id: c.id, label: c.label, part_types: c.types })),
+    categories: (await listCategories()).map((c) => ({
+      id: c.id,
+      label: c.label,
+      sheet: c.sheet,
+      fields: c.fields.filter((f) => !f.hidden).map((f) => ({ id: f.id, label: f.label, kind: f.kind, choices: fieldChoices(f).length ? fieldChoices(f) : undefined })),
+    })),
     not_tracked: "Screws, nuts and other small fasteners.",
   }),
 );
@@ -676,7 +683,7 @@ read(
           suggestion: hit ? { item_id: hit.itemId, item: items.find((i) => i.id === hit.itemId)?.name, reason: hit.reason } : null,
         };
       }),
-      items: items.map((i) => ({ id: i.id, name: i.name, category: i.category, spec: i.templateValues, in_stock: i.inStock })),
+      items: items.map((i) => ({ id: i.id, name: i.name, category: i.category, specs: i.specs, in_stock: i.inStock })),
       truncated: rows.length > limit,
     };
   },
@@ -739,44 +746,39 @@ read(
 );
 
 const itemInfo = z.object({
-  category: z.string().optional().describe("A category id from list_part_types."),
-  part_type: z.string().optional().describe("A part type id from list_part_types."),
-  specs: z.record(z.string(), z.string()).optional().describe("The part type's fields by id, e.g. { teeth: '24', bore: '1/2In HEX' }."),
-  material: z.string().optional(),
-  vendor_url: z.url().optional(),
-  vendor_name: z.string().optional(),
+  category: z.string().optional().describe("A category id from list_inventory_categories."),
+  specs: z.record(z.string(), z.string()).optional().describe("The category's fields by id, e.g. { teeth: '24', bore: '1/2\" Hex' }."),
+  product_url: z.url().optional().describe("The product's page."),
   price: z.number().min(0).optional().describe("US dollars for one."),
 });
 
-// Category, part type and specs checked against the built-in lists.
-function checkItemInfo(info: z.infer<typeof itemInfo>, currentType: string | null) {
-  if (info.category && !getInventoryCategory(info.category)) throw new ToolError(`Unknown category "${info.category}". See list_part_types.`);
-  const typeId = info.part_type ?? currentType;
-  if (info.part_type && !getPartType(info.part_type)) throw new ToolError(`Unknown part type "${info.part_type}". See list_part_types.`);
-  let templateValues: Record<string, string> | undefined;
+// Category and specs checked against the team's categories.
+function checkItemInfo(info: z.infer<typeof itemInfo>, current: { category: string | null; cotsLinks: { url: string }[] } | null, cats: InvCategory[]) {
+  if (info.category && !getCategory(cats, info.category)) throw new ToolError(`Unknown category "${info.category}". See list_inventory_categories.`);
+  const cat = getCategory(cats, info.category ?? current?.category);
+  let specs: Record<string, string> | undefined;
   if (info.specs) {
-    if (!typeId) throw new ToolError("Specs need a part_type.");
-    const checked = checkSpecs(typeId, info.specs);
+    if (!cat) throw new ToolError("Specs need a category.");
+    const checked = checkSpecs(cat, info.specs);
     if ("error" in checked) throw new ToolError(checked.error);
-    templateValues = checked.values;
+    specs = checked.values;
   }
+  const links = current?.cotsLinks ?? [];
   return {
     ...(info.category ? { category: info.category } : {}),
-    ...(info.part_type ? { templateId: info.part_type } : {}),
-    ...(templateValues ? { templateValues } : {}),
-    ...(info.material ? { material: info.material } : {}),
-    ...(info.vendor_url ? { vendorUrl: info.vendor_url } : {}),
-    ...(info.vendor_name ? { vendorName: info.vendor_name } : {}),
+    ...(specs ? { specs } : {}),
+    ...(info.product_url && !links.some((l) => l.url === info.product_url) ? { cotsLinks: [{ url: info.product_url, site: vendorOfUrl(info.product_url) }, ...links] } : {}),
     ...(info.price != null ? { price: info.price } : {}),
   };
 }
 
 write(
   "add_inventory_items",
-  "Add several items to the team inventory at once, e.g. from a spreadsheet, an order email or a photo of a shelf the member shares with you. Screws and small fasteners aren't tracked. in_stock for sheet types can have pieces (2.75 = 2 ¾ sheets). location is a shelf or bin name; a new name is created.",
+  "Add several items to the team inventory at once, e.g. from a spreadsheet, an order email or a photo of a shelf the member shares with you. Screws and small fasteners aren't tracked. in_stock for sheet categories can have pieces (2.75 = 2 ¾ sheets). location is a shelf or bin name; a new name is created. BOM parts with the same product link or Onshape part are linked to the new items and wait in To Review.",
   z.object({ items: z.array(itemInfo.extend({ name: z.string().trim().min(1).max(200), in_stock: z.number().min(0).default(0), location: z.string().trim().max(100).optional() })).min(1).max(500) }),
   async ({ items }, { member, aiName }) => {
-    const planned = items.map((i) => ({ input: i, values: checkItemInfo(i, null) }));
+    const cats = await listCategories();
+    const planned = items.map((i) => ({ input: i, values: checkItemInfo(i, null, cats) }));
     return {
       count: planned.length,
       summary: `Added ${planned.length} inventory ${planned.length === 1 ? "item" : "items"}`,
@@ -801,7 +803,8 @@ write(
           }
           return out;
         });
-        return { item_ids: ids, batch_id: batchId };
+        const auto_linked = await autoLink({ itemIds: ids }, { memberId: member.id, via: "mcp" });
+        return { item_ids: ids, batch_id: batchId, auto_linked };
       },
     };
   },
@@ -809,20 +812,20 @@ write(
 
 read(
   "inventory_to_look_up",
-  "Inventory items missing a category, part type, specs, product link or price. Look them up (FRCDesign.org, the vendors' sites) and fill them in with set_inventory_info.",
+  "Inventory items missing a category, specs, product link or price. Look them up (FRCDesign.org, the vendors' sites) and fill them in with set_inventory_info.",
   z.object({ limit: z.number().int().min(1).max(500).optional() }),
   async ({ limit = 200 }) => {
-    const { items } = await listInventory();
+    const { items, categories } = await listInventory();
     const missing = items
       .map((i) => {
+        const fields = getCategory(categories, i.category)?.fields.filter((f) => !f.hidden) ?? [];
         const gaps = [
           !i.categorySet && "category",
-          !i.templateId && "part_type",
-          i.templateId && !Object.keys(i.templateValues).length && "specs",
-          !i.vendorUrl && "vendor_url",
+          fields.some((f) => !i.specs[f.id]) && "specs",
+          !i.cotsLinks.length && "product_url",
           i.price == null && "price",
         ].filter(Boolean);
-        return { item_id: i.id, name: i.name, guessed_category: i.category, part_type: i.templateId, specs: i.templateValues, material: i.material, vendor_url: i.vendorUrl, missing: gaps };
+        return { item_id: i.id, name: i.name, guessed_category: i.category, specs: i.specs, product_url: i.cotsLinks[0]?.url ?? null, missing: gaps };
       })
       .filter((i) => i.missing.length);
     return { total: missing.length, items: missing.slice(0, limit), truncated: missing.length > limit };
@@ -831,14 +834,14 @@ read(
 
 write(
   "set_inventory_info",
-  "Fill in inventory items' category, part type, specs, material, product link and price (each item can differ). Specs must use the part type's fields and options from list_part_types.",
+  "Fill in inventory items' category, specs, product link and price (each item can differ). Specs must use the category's fields and choices from list_inventory_categories. BOM parts with the same product link are then linked to the item and wait in To Review.",
   z.object({ items: z.array(itemInfo.extend({ item_id: uuid })).min(1).max(500) }),
-  async ({ items }) => {
-    const rows = await db.select().from(inventoryItems).where(inArray(inventoryItems.id, items.map((i) => i.item_id)));
+  async ({ items }, { member }) => {
+    const [rows, cats] = await Promise.all([db.select().from(inventoryItems).where(inArray(inventoryItems.id, items.map((i) => i.item_id))), listCategories()]);
     const planned = items.map((i) => {
       const row = rows.find((r) => r.id === i.item_id);
       if (!row) throw new ToolError(`No inventory item ${i.item_id}.`);
-      return { row, values: checkItemInfo(i, row.templateId) };
+      return { row, values: checkItemInfo(i, row, cats) };
     });
     const changed = planned.filter((p) => Object.keys(p.values).length);
     return {
@@ -849,7 +852,9 @@ write(
         await db.transaction(async (tx) => {
           for (const p of changed) await tx.update(inventoryItems).set(p.values).where(eq(inventoryItems.id, p.row.id));
         });
-        return { changed: changed.length };
+        const linked = changed.filter((p) => "cotsLinks" in p.values).map((p) => p.row.id);
+        const auto_linked = await autoLink({ itemIds: linked }, { memberId: member.id, via: "mcp" });
+        return { changed: changed.length, auto_linked };
       },
     };
   },
@@ -1071,7 +1076,9 @@ write(
       preview: diffs.map((d) => ({ id: d.id, part: d.part, changes: d.changes.map(readable) })),
       apply: async () => {
         const { batchId, changed } = await applySuggestions(edits, { memberId: member.id, source: "ai", via: "mcp", aiName });
-        return { changed, batch_id: batchId, undo: `undo_batch with batch_id ${batchId}`, next: "The parts also wait in To Review for their designer." };
+        // A product link an inventory item already has links the part to it (into To Review).
+        const auto_linked = await autoLink({ partIds: edits.map((e) => e.id) }, { memberId: member.id, via: "mcp" });
+        return { changed, batch_id: batchId, auto_linked, undo: `undo_batch with batch_id ${batchId}`, next: "The parts also wait in To Review for their designer." };
       },
     };
   },

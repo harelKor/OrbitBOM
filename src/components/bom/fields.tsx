@@ -17,7 +17,9 @@ import {
   TYPE_OPTIONS,
   machineOptions,
 } from "./options";
+import { useInventoryPopup } from "@/components/inventory/InventoryPopup";
 import { useEditMode } from "@/components/shell/ModeContext";
+import { Icon } from "@/components/ui/Icon";
 import { StatusPill } from "@/components/ui/StatusPill";
 export { StatusPill };
 import { useBom } from "./BomContext";
@@ -141,35 +143,50 @@ export function TextField({
 export function MaterialField({ part, save, className }: Props & { className?: string }) {
   const locked = !useEditMode();
   const { inventory } = useBom();
+  const { openItem, openMaterial } = useInventoryPopup();
   const linked = part.inventoryItemId ? inventory.find((i) => i.id === part.inventoryItemId) : undefined;
   const options = [
     ...MATERIAL_OPTIONS,
     ...inventory.map((i) => ({ value: `inv:${i.id}`, label: i.name, group: "Inventory" })),
   ];
+  const label = linked ? (
+    <span className="text-emerald-700" title="Drawn from the team inventory">
+      {linked.name}
+    </span>
+  ) : (
+    (part.material ?? <Empty />)
+  );
+  // The material's stock opens in a window over the page (View: tap the material; Edit: the box).
+  const openStock = linked ? () => openItem(linked.id) : part.material ? () => openMaterial(part.material!) : null;
+  if (locked)
+    return openStock ? (
+      <button type="button" onClick={openStock} className={`press inline-flex items-center gap-1 rounded text-left hover:text-accent ${className ?? ""}`} title="See it in the inventory">
+        {label}
+      </button>
+    ) : (
+      <span className={`inline-flex items-center gap-1 ${className ?? ""}`}>{label}</span>
+    );
   return (
-    <Popover locked={locked} triggerClassName={className}
-      trigger={
-        linked ? (
-          <span className="text-emerald-700" title="Drawn from the team inventory">
-            {linked.name}
-          </span>
-        ) : (
-          (part.material ?? <Empty />)
-        )
-      }
-    >
-      {(close) => (
-        <OptionList
-          options={options}
-          value={linked ? `inv:${linked.id}` : part.material}
-          onPick={(v) => {
-            if (v?.startsWith("inv:")) save({ inventoryItemId: v.slice(4) });
-            else save({ material: v, ...(part.inventoryItemId ? { inventoryItemId: null } : {}) });
-            close();
-          }}
-        />
+    <span className="inline-flex min-w-0 items-center gap-1">
+      <Popover triggerClassName={className} trigger={label}>
+        {(close) => (
+          <OptionList
+            options={options}
+            value={linked ? `inv:${linked.id}` : part.material}
+            onPick={(v) => {
+              if (v?.startsWith("inv:")) save({ inventoryItemId: v.slice(4) });
+              else save({ material: v, ...(part.inventoryItemId ? { inventoryItemId: null } : {}) });
+              close();
+            }}
+          />
+        )}
+      </Popover>
+      {openStock && (
+        <button type="button" onClick={openStock} className="press flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-line text-subtle hover:border-accent hover:text-accent" aria-label="See it in the inventory" title="See it in the inventory">
+          <Icon name="box" className="h-3.5 w-3.5" />
+        </button>
       )}
-    </Popover>
+    </span>
   );
 }
 

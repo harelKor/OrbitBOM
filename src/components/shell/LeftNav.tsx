@@ -4,7 +4,6 @@ import Link from "next/link";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { INVENTORY_CATEGORIES } from "@/config/inventory";
 import { MACHINES } from "@/config/machines";
 import type { ShellRobot } from "@/lib/data/shell";
 import { SignOutButton } from "@/components/SignOutButton";
@@ -16,8 +15,10 @@ export function LeftNav({
   robots,
   lastRobotId,
   member,
+  inventoryCategories,
 }: {
   robots: ShellRobot[];
+  inventoryCategories: { id: string; label: string }[];
   lastRobotId: string | null;
   member: { name: string; email: string; isAdmin: boolean };
 }) {
@@ -150,7 +151,7 @@ export function LeftNav({
           </div>
           {inventoryOpen && (
             <div className="mt-0.5 mb-1 ml-5 space-y-px border-l border-line pl-2">
-              {[{ href: "/inventory/short", name: "Short for robots" }, ...INVENTORY_CATEGORIES.map((c) => ({ href: `/inventory/c/${c.id}`, name: c.label }))].map((l) => (
+              {[{ href: "/inventory/short", name: "Short for robots" }, ...inventoryCategories.map((c) => ({ href: `/inventory/c/${c.id}`, name: c.label }))].map((l) => (
                 <FastLink
                   key={l.href}
                   href={l.href}
