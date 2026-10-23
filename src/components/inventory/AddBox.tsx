@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { findProducts, readProductLink } from "@/app/(app)/inventory/actions";
+import { findProducts, readProductLink, saveItem } from "@/app/(app)/inventory/actions";
 import { useEditMode } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
 import { guessCategory } from "@/config/inventory";
@@ -20,8 +20,9 @@ const isLink = (s: string) => /^https?:\/\/\S+\.\S+/i.test(s.trim());
 // The one box at the top of Inventory. In View mode it filters the shelf ("Do we have it?"). In
 // Edit mode it also adds: as you type, items already on the shelf, products from the team's
 // stores (the same product from several stores is one row, pick the store), smart typing
-// ("36t htd 1/2 hex pulley"), and a chip per category for a custom item. A pasted product link is
-// read from the page. The add form opens under the box and stays put for the next item.
+// ("36t htd 1/2 hex pulley"; when every word was understood, Enter saves it straight away), and a
+// chip per category for a custom item. A pasted product link is read from the page. The add form
+// opens under the box and stays put for the next item.
 export function AddBox({
   q,
   setQ,
@@ -30,6 +31,7 @@ export function AddBox({
   locations,
   conditions,
   defaultCategory,
+  defaultLocationId = null,
   placeholder,
 }: {
   q: string;
@@ -39,6 +41,7 @@ export function AddBox({
   locations: Location[];
   conditions: Condition[];
   defaultCategory: string | null;
+  defaultLocationId?: string | null;
   placeholder: string;
 }) {
   const edit = useEditMode();
@@ -49,7 +52,8 @@ export function AddBox({
   const [reading, startRead] = useTransition();
   const [readError, setReadError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [saved, setSaved] = useState<{ name: string; draft: Draft; message?: string } | null>(null);
+  const [saved, setSaved] = useState<{ id: string; name: string; draft: Draft; message?: string } | null>(null);
+  const [quickSaving, startQuickSave] = useTransition();
   const box = useRef<HTMLInputElement>(null);
 
   const query = q.trim();
@@ -57,6 +61,7 @@ export function AddBox({
   const quick = !link && query ? parseQuick(query, categories) : null;
   const quickCat = getCategory(categories, quick?.categoryId);
   const quickName = quickCat && quick && Object.keys(quick.specs).length ? buildName(quickCat, quick.specs) : "";
+  const quickWhole = !!quickName && quick!.left.length === 0;
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   const onShelf = query && !link ? items.filter((i) => words.every((w) => `${i.name} ${Object.values(i.specs).join(" ")}`.toLowerCase().includes(w))).slice(0, 4) : [];
 
@@ -70,7 +75,7 @@ export function AddBox({
 
   const start = (over: Partial<Draft>) => {
     const cat = getCategory(categories, over.category ?? null);
-    setDraft(emptyDraft({ locationId: categoryLocation(cat, items), ...over }));
+    setDraft(emptyDraft({ locationId: defaultLocationId ?? categoryLocation(cat, items), locationTouched: !!defaultLocationId, ...over }));
     setSaved(null);
     setFocus(false);
   };
@@ -90,6 +95,15 @@ export function AddBox({
         setReadError(r.error ?? null);
         start({ category: defaultCategory, links: [{ url: query }] });
       }
+    });
+  // The whole line was understood: save it as it is, 1 in stock, on the category's shelf.
+  const quickSave = () =>
+    startQuickSave(async () => {
+      const draft = emptyDraft({ category: quickCat!.id, specs: quick!.specs, locationId: defaultLocationId ?? categoryLocation(quickCat, items) });
+      const r = await saveItem(null, { name: quickName, category: draft.category, specs: draft.specs, inStock: "1", conditionId: null, locationId: draft.locationId, links: [], price: null, imageUrl: null });
+      if (r.error || !r.id) return setReadError(r.error ?? "Couldn't save.");
+      setSaved({ id: r.id, name: quickName, draft, message: r.message });
+      setQ("");
     });
   const custom = (categoryId: string) =>
     start(quick?.categoryId === categoryId ? { category: categoryId, specs: quick.specs } : { category: categoryId, name: query, nameTouched: !!query });
@@ -112,6 +126,7 @@ export function AddBox({
             if (e.key !== "Enter" || !edit || !query) return;
             e.preventDefault();
             if (link) readLink();
+            else if (quickWhole) quickSave();
             else if (quick) custom(quick.categoryId);
           }}
           placeholder={edit ? "Add an item: type a name or paste a link" : placeholder}
@@ -135,7 +150,14 @@ export function AddBox({
           {link && (
             <Row onClick={readLink} icon="download" title={reading ? "Reading the page…" : "Read this product link"} detail="Name, price and photo from the store's page" />
           )}
-          {quickName && <Row onClick={() => custom(quick!.categoryId)} icon="spark" title={`Add “${quickName}”`} detail={`${quickCat!.label} · Enter`} />}
+          {quickName && (
+            <Row
+              onClick={() => (quickWhole ? quickSave() : custom(quick!.categoryId))}
+              icon="spark"
+              title={quickSaving ? "Adding…" : `Add “${quickName}”`}
+              detail={quickWhole ? `${quickCat!.label} · Enter adds it, 1 in stock` : `${quickCat!.label} · Enter to finish the details`}
+            />
+          )}
 
           {onShelf.length > 0 && (
             <Section title="Already on the shelf">
@@ -149,7 +171,15 @@ export function AddBox({
             <Section title={searching && !products ? "Products · searching the stores…" : "Products"}>
               {products?.groups.length === 0 && <p className="px-2 text-xs text-muted">No store result for that. Try other words, or paste a product link.</p>}
               {products?.groups.map((g) => (
-                <div key={g.offers[0].url} className="flex gap-3 rounded-xl p-2 hover:bg-raised">
+                // The whole row picks the product (the cheapest store with a price); a store button picks that store.
+                <div
+                  key={g.offers[0].url}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => fromOffer(g, bestOffer(g))}
+                  onKeyDown={(e) => e.key === "Enter" && fromOffer(g, bestOffer(g))}
+                  className="press flex cursor-pointer gap-3 rounded-xl p-2 hover:bg-raised"
+                >
                   <div className="thumb-well flex h-14 w-14 shrink-0 items-center justify-center rounded-lg">
                     {g.image ? (
                       // eslint-disable-next-line @next/next/no-img-element -- the store's own picture
@@ -164,7 +194,13 @@ export function AddBox({
                     </div>
                     <div className="mt-1 flex flex-wrap gap-1.5">
                       {g.offers.map((o) => (
-                        <button key={o.url} type="button" onClick={() => fromOffer(g, o)} className="press min-h-9 rounded-full border border-line-strong px-3 text-xs font-semibold text-fg-2 hover:border-accent hover:text-accent" title={o.title}>
+                        <button
+                          key={o.url}
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            fromOffer(g, o);
+                          }} className="press min-h-9 rounded-full border border-line-strong px-3 text-xs font-semibold text-fg-2 hover:border-accent hover:text-accent" title={o.title}>
                           {o.vendor}
                           {o.price != null && <span className="ml-1.5 font-mono text-emerald-600 tabular-nums">${o.price.toFixed(2)}</span>}
                         </button>
@@ -215,6 +251,9 @@ export function AddBox({
           <span className="min-w-0 flex-1">
             Added <span className="font-semibold">{saved.name}</span>.{saved.message && ` ${saved.message}`}
           </span>
+          <button type="button" className="btn min-h-10" onClick={() => openItem(saved.id)}>
+            Edit
+          </button>
           <button type="button" className="btn min-h-10" onClick={() => setDraft({ ...saved.draft, inStock: "1", links: [], imageUrl: null, price: null })}>
             Add another like this
           </button>
@@ -234,10 +273,10 @@ export function AddBox({
             conditions={conditions}
             items={items}
             onCancel={() => setDraft(null)}
-            onSaved={(_, message) => {
+            onSaved={(id, message) => {
               const cat = getCategory(categories, draft.category);
               const name = draft.nameTouched || !cat ? draft.name : buildName(cat, draft.specs) || draft.name;
-              setSaved({ name, draft, message });
+              setSaved({ id, name, draft, message });
               setDraft(null);
               setQ("");
             }}
@@ -247,6 +286,8 @@ export function AddBox({
     </div>
   );
 }
+
+const bestOffer = (g: ProductGroup) => g.offers.filter((o) => o.price != null).sort((a, b) => a.price! - b.price!)[0] ?? g.offers[0];
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (

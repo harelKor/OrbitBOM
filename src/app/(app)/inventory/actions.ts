@@ -95,6 +95,15 @@ export async function adjustStock(itemId: string, delta: number): Promise<Action
   return {};
 }
 
+// The count typed on a card or in the item window: a "Counted" move of the difference.
+export async function countStock(itemId: string, amount: number): Promise<ActionResult> {
+  const member = await requireMember();
+  if (!isUuid(itemId) || !Number.isFinite(amount) || amount < 0) return { error: "Type a count of 0 or more." };
+  await db.transaction((tx) => setStock(tx, itemId, amount, { memberId: member.id, via: "ui" }));
+  refresh();
+  return {};
+}
+
 // A linked COTS card's − / +: the units go on or come off its item's shelf. Like the card's own
 // count, reaching the quantity sets the part In Stock (parts the new unit now fully covers).
 export async function stepShelfStock(partIds: string[], delta: number): Promise<ActionResult> {
