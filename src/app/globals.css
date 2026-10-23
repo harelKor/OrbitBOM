@@ -164,6 +164,64 @@ body {
   animation: var(--animate-pulse);
 }
 
+/* Every window (dialogs, 3D previews, drawings): one Orbit frame. A blue-tinted outline with a soft
+   accent halo, a thin accent strip along the top edge, and a short pop-up entrance. */
+/* Use it on a modal <dialog> or a fixed panel: the strip needs a positioned box. */
+@utility modal {
+  border-radius: 1rem;
+  border: 1px solid color-mix(in oklab, var(--color-accent) 38%, var(--color-line-strong));
+  background: var(--color-surface);
+  color: var(--color-fg);
+  box-shadow:
+    0 0 0 4px color-mix(in oklab, var(--color-accent) 10%, transparent),
+    inset 0 1px 0 0 rgb(255 255 255 / 0.06),
+    0 28px 70px -18px rgb(5 8 20 / 0.55);
+  animation: modal-pop 220ms var(--ease-snap) both;
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    z-index: 1;
+    height: 3px;
+    pointer-events: none;
+    background: linear-gradient(90deg, var(--color-accent), var(--color-accent-hover) 55%, transparent);
+  }
+  &::backdrop {
+    background: rgb(5 8 20 / 0.6);
+    backdrop-filter: blur(3px);
+    animation: modal-fade 200ms ease-out both;
+  }
+}
+
+/* The dimmed layer behind a window that isn't a <dialog>. */
+@utility modal-backdrop {
+  background: rgb(5 8 20 / 0.6);
+  backdrop-filter: blur(3px);
+  animation: modal-fade 200ms ease-out both;
+}
+
+/* Just the entrance, for full-screen windows that keep their own look. */
+@utility modal-enter {
+  animation: modal-pop 220ms var(--ease-snap) both;
+}
+
+@keyframes modal-pop {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes modal-fade {
+  from {
+    opacity: 0;
+  }
+}
+
 /* The display face for big numbers and headings, like the site's "1690". */
 @utility display {
   font-family: var(--font-display);

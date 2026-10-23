@@ -163,14 +163,14 @@ export function RobotViewer({
         <button
           aria-label="Back to the dashboard"
           onClick={() => setLarge(false)}
-          className="fixed inset-y-0 right-[var(--shell-right)] left-[var(--shell-left)] z-[29] cursor-default bg-black/30"
+          className="fixed inset-y-0 right-[var(--shell-right)] left-[var(--shell-left)] z-[29] cursor-default modal-backdrop"
         />
       )}
       <section
         id="viewer"
         className={
           large
-            ? "fixed inset-y-6 right-[calc(var(--shell-right)+1.5rem)] left-[calc(var(--shell-left)+1.5rem)] z-30 flex flex-col overflow-hidden rounded-xl border border-line-strong bg-surface shadow-2xl"
+            ? "fixed inset-y-6 right-[calc(var(--shell-right)+1.5rem)] left-[calc(var(--shell-left)+1.5rem)] z-30 modal flex flex-col overflow-hidden"
             : "panel flex min-h-80 flex-1 flex-col overflow-hidden"
         }
       >

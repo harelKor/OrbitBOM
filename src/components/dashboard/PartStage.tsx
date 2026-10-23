@@ -88,7 +88,7 @@ export function PartStage({
     <dialog
       ref={dialog}
       onClose={onClose}
-      className="m-auto h-[min(max(50vh,26rem),calc(100vh-2rem))] w-[min(max(50vw,36rem),calc(100vw-2rem))] max-w-none overflow-hidden rounded-xl border border-line-strong bg-surface p-0 text-fg backdrop:bg-black/60"
+      className="m-auto h-[min(max(50vh,26rem),calc(100vh-2rem))] w-[min(max(50vw,36rem),calc(100vw-2rem))] modal max-w-none overflow-hidden p-0"
     >
       <div className="flex h-full flex-col">
         <div className="flex items-center gap-3 border-b border-line px-4 py-2.5">
