@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { dismissAction } from "@/app/(app)/actions-actions";
 import { useOpenVisit } from "@/components/shell/VisitTracker";
 import { Popover } from "@/components/bom/Popover";
+import { Chevron } from "@/components/ui/Chevron";
 import { Icon } from "@/components/ui/Icon";
 import type { RecentAction } from "@/lib/data/actions";
 import { focusPart } from "./focusPart";
@@ -35,6 +36,7 @@ export function RecentActions({
   itemNoun?: [string, string];
 }) {
   const [scope, setScope] = useState<"fab" | "system">("fab");
+  const [shown, setShown] = useShown(variant);
   const all = scope === "system" && systemActions ? systemActions : fabActions;
   const now = useNow();
   // The visit still open on this page becomes an action once the member leaves.
@@ -59,7 +61,7 @@ export function RecentActions({
 
   if (variant === "list")
     return (
-      <section className="panel flex min-h-0 flex-1 flex-col">
+      <section className={`panel flex min-h-0 flex-col ${shown ? "flex-1" : ""}`}>
         <h2 className="flex items-center gap-2 border-b border-line px-4 py-3 text-sm font-semibold">
           <Icon name={scope === "fab" ? "fab" : "box"} className="h-4 w-4 text-accent" />
           {systemActions ? (
@@ -94,8 +96,17 @@ export function RecentActions({
           ) : (
             "Recent actions in fab"
           )}
+          <button
+            type="button"
+            onClick={() => setShown(!shown)}
+            aria-expanded={shown}
+            aria-label={shown ? "Hide recent actions" : "Show recent actions"}
+            className="press ml-auto"
+          >
+            <Chevron open={shown} small />
+          </button>
         </h2>
-        {actions.length ? (
+        {!shown ? null : actions.length ? (
           <ul className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2">
             {actions.map((a) => (
               <li key={a.visitId} className="relative">
@@ -144,50 +155,79 @@ export function RecentActions({
     );
   return (
     <section className="space-y-3">
-      {title && <h2 className="text-lg font-semibold">Recent actions</h2>}
-      <ul className="flex flex-wrap gap-3">
-        {actions.map((a) => {
-          const extra = a.partCount - a.thumbs.length;
-          // As wide as its thumbnails, but room for two so the text fits.
-          const tiles = Math.max(a.thumbs.length, 2);
-          return (
-            <li key={a.visitId} className="relative max-w-full" style={{ width: `${tiles * TILE_REM}rem` }}>
-              <Box a={a} className="card-interactive group flex h-full w-full flex-col text-left">
-                <div className="thumb-well relative grid h-24" style={{ gridTemplateColumns: `repeat(${tiles}, minmax(0, 1fr))` }}>
-                  {a.thumbs.map((t) => (
-                    <span key={t.id} className="flex items-center justify-center overflow-hidden" title={t.name}>
-                      {t.url ? (
-                        // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
-                        <img src={t.url} alt={t.name} loading="lazy" className="max-h-full max-w-full object-contain p-1" />
-                      ) : (
-                        <span className="truncate px-1 text-[10px] text-subtle">{t.name}</span>
-                      )}
-                    </span>
-                  ))}
-                  <TimePill at={a.at} now={now} className="absolute top-2 left-2" />
-                  {extra > 0 && (
-                    <span className="absolute right-2 bottom-2 rounded-full bg-surface/90 px-1.5 py-0.5 font-mono text-[11px] text-fg-2 tabular-nums shadow-sm">
-                      +{extra}
-                    </span>
-                  )}
-                </div>
-                <div className="min-w-0 space-y-0.5 p-3 text-sm">
-                  <div className="truncate font-semibold">
-                    {a.memberName ?? "Someone"} <span className="font-normal text-subtle">in</span> {a.pageName}
+      {title && (
+        <h2 className="text-lg font-semibold">
+          <button type="button" onClick={() => setShown(!shown)} aria-expanded={shown} className="press flex items-center gap-2 text-left">
+            <Chevron open={shown} small />
+            Recent actions
+            <span className="rounded-full bg-raised px-2 py-0.5 text-xs font-bold text-fg-2 tabular-nums">{actions.length}</span>
+          </button>
+        </h2>
+      )}
+      {(shown || !title) && (
+        <ul className="flex flex-wrap gap-3">
+          {actions.map((a) => {
+            const extra = a.partCount - a.thumbs.length;
+            // As wide as its thumbnails, but room for two so the text fits.
+            const tiles = Math.max(a.thumbs.length, 2);
+            return (
+              <li key={a.visitId} className="relative max-w-full" style={{ width: `${tiles * TILE_REM}rem` }}>
+                <Box a={a} className="card-interactive group flex h-full w-full flex-col text-left">
+                  <div className="thumb-well relative grid h-24" style={{ gridTemplateColumns: `repeat(${tiles}, minmax(0, 1fr))` }}>
+                    {a.thumbs.map((t) => (
+                      <span key={t.id} className="flex items-center justify-center overflow-hidden" title={t.name}>
+                        {t.url ? (
+                          // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
+                          <img src={t.url} alt={t.name} loading="lazy" className="max-h-full max-w-full object-contain p-1" />
+                        ) : (
+                          <span className="truncate px-1 text-[10px] text-subtle">{t.name}</span>
+                        )}
+                      </span>
+                    ))}
+                    <TimePill at={a.at} now={now} className="absolute top-2 left-2" />
+                    {extra > 0 && (
+                      <span className="absolute right-2 bottom-2 rounded-full bg-surface/90 px-1.5 py-0.5 font-mono text-[11px] text-fg-2 tabular-nums shadow-sm">
+                        +{extra}
+                      </span>
+                    )}
                   </div>
-                  <div className="truncate text-xs text-muted">
-                    {a.fields.join(", ")} <span className="text-subtle">·</span>{" "}
-                    <span className="font-mono tabular-nums">{a.partCount}</span> {a.partCount === 1 ? itemNoun[0] : itemNoun[1]}
+                  <div className="min-w-0 space-y-0.5 p-3 text-sm">
+                    <div className="truncate font-semibold">
+                      {a.memberName ?? "Someone"} <span className="font-normal text-subtle">in</span> {a.pageName}
+                    </div>
+                    <div className="truncate text-xs text-muted">
+                      {a.fields.join(", ")} <span className="text-subtle">·</span>{" "}
+                      <span className="font-mono tabular-nums">{a.partCount}</span> {a.partCount === 1 ? itemNoun[0] : itemNoun[1]}
+                    </div>
                   </div>
-                </div>
-              </Box>
-              <CloseButton onClick={() => close(a.visitId)} className="top-2 right-2" />
-            </li>
-          );
-        })}
-      </ul>
+                </Box>
+                <CloseButton onClick={() => close(a.visitId)} className="top-2 right-2" />
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </section>
   );
+}
+
+// Whether Recent actions is unfolded, remembered in this browser for each layout.
+function useShown(variant: string) {
+  const key = `orbit-recent-actions-${variant}`;
+  const [shown, set] = useState(true);
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- browser-only preference
+      if (localStorage.getItem(key) === "0") set(false);
+    } catch {}
+  }, [key]);
+  const setShown = (v: boolean) => {
+    set(v);
+    try {
+      localStorage.setItem(key, v ? "1" : "0");
+    } catch {}
+  };
+  return [shown, setShown] as const;
 }
 
 function TimePill({ at, now, className = "" }: { at: Date; now: number; className?: string }) {
