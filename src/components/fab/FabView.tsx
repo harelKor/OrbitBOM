@@ -434,15 +434,19 @@ function BatchCard({
   const notDone = members.filter((p) => !isDone(p));
   const stage = batchStage(members);
 
-  // Opened, the batch spans as many grid columns as it has parts (up to a full row).
+  // Opened, the batch takes a row of its own and lays its parts out at the grid's card width, as
+  // many across as it has parts. Spanning only some columns let the closed cards beside it stretch
+  // to its height, so they looked open too and jumped when it closed.
   const ref = useRef<HTMLDivElement>(null);
   const [span, setSpan] = useState(1);
+  const [colWidth, setColWidth] = useState(0);
   useLayoutEffect(() => {
     const grid = ref.current?.parentElement;
     if (!open || !grid) return;
     const measure = () => {
-      const cols = getComputedStyle(grid).gridTemplateColumns.split(" ").filter(Boolean).length;
-      setSpan(Math.max(1, Math.min(cols, members.length)));
+      const cols = getComputedStyle(grid).gridTemplateColumns.split(" ").filter(Boolean);
+      setSpan(Math.max(1, Math.min(cols.length, members.length)));
+      setColWidth(parseFloat(cols[0]) || 0);
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -466,7 +470,7 @@ function BatchCard({
       onClick={() => setOpen((o) => !o)}
       style={{
         ...(stage === "finished" || isFabFinished(lowest) ? tint(FINISHED_COLOR) : statusTint(computeStatus(lowest))),
-        ...(open && { gridColumn: `span ${span}` }),
+        ...(open && { gridColumn: "1 / -1" }),
       }}
       className="card-interactive flex cursor-pointer flex-col text-sm"
     >
@@ -600,7 +604,7 @@ function BatchCard({
         </div>
       </div>
       {open && (
-        <div className="grid cursor-default gap-3 border-t border-line p-3" style={{ gridTemplateColumns: `repeat(${span}, minmax(0, 1fr))` }} onClick={stop}>
+        <div className="grid cursor-default gap-3 border-t border-line p-3" style={{ gridTemplateColumns: `repeat(${span}, ${colWidth ? `minmax(0, ${colWidth}px)` : "minmax(0, 1fr)"})` }} onClick={stop}>
           {members.map((p) => (
             <div key={p.id} className="flex flex-col gap-1">
               {card(p)}

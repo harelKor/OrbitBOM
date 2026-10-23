@@ -19,7 +19,6 @@ import { isEditMode } from "@/lib/mode";
 import { isUuid } from "@/lib/uuid";
 import { listRobotReviews } from "@/lib/review/review";
 import { processBreakdown } from "@/lib/stats";
-import { NewSystemButton } from "./NewSystemButton";
 
 // The robot dashboard: launch cards for To Fab and To Review, status and process completion,
 // the 3D stage, and every part of the robot (searched and filtered from the top bar).
@@ -72,7 +71,6 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
             {robot.archived && ", archived"}
           </div>
         </div>
-        {edit && <NewSystemButton robotId={robot.id} />}
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
