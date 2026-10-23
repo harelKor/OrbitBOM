@@ -2,8 +2,8 @@ import { expect, it } from "vitest";
 import { suggestItem, type MatchItem } from "./match";
 
 const items: MatchItem[] = [
-  { id: "a", name: "608 Bearing", onshapeKey: null, aliases: ["608ZZ"], vendorUrl: null },
-  { id: "b", name: "Kraken X60", onshapeKey: "d:e:p", aliases: [], vendorUrl: "https://wcproducts.com/products/kraken/" },
+  { id: "a", name: "608 Bearing", onshapeKey: null, aliases: ["608ZZ"], cotsLinks: [] },
+  { id: "b", name: "Kraken X60", onshapeKey: "d:e:p", aliases: [], cotsLinks: [{ url: "https://wcproducts.com/products/kraken/" }] },
 ];
 
 it("prefers the same Onshape part, then the product page, then the name", () => {

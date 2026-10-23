@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getInventoryCategory } from "@/config/inventory";
 import { InventoryView } from "@/components/inventory/InventoryView";
 import { requireMember } from "@/lib/auth";
 import { listInventory } from "@/lib/data/inventory";
@@ -9,9 +8,9 @@ import { listInventory } from "@/lib/data/inventory";
 export default async function InventoryCategoryPage({ params }: { params: Promise<{ category: string }> }) {
   await requireMember();
   const { category } = await params;
-  const c = getInventoryCategory(category);
-  if (!c) notFound();
   const inventory = await listInventory();
+  const c = inventory.categories.find((x) => x.id === category);
+  if (!c) notFound();
   return (
     <div className="space-y-4">
       <div>

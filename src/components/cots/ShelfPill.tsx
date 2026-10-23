@@ -1,12 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useState, useSyncExternalStore, useTransition } from "react";
 import { COTS_IN_STOCK } from "@/config/cots";
 import { createItemFromPart } from "@/app/(app)/inventory/actions";
 import type { SaveFn } from "@/components/bom/fields";
 import { Popover } from "@/components/bom/Popover";
 import type { CardPart, Shelf } from "@/components/bom/types";
+import { useInventoryPopup } from "@/components/inventory/InventoryPopup";
 import { useEditMode } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
 import { formatStock } from "@/lib/inventory/stock";
@@ -19,6 +19,7 @@ const REASONS = { onshape: "the same Onshape part", link: "the same product page
 // order, or the item it most likely is, or (Edit mode) a button to add it to the inventory.
 export function ShelfPill({ part, shelf, save }: { part: CardPart; shelf: Shelf | null; save: SaveFn }) {
   const edit = useEditMode();
+  const { openItem } = useInventoryPopup();
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
   const ids = part.memberIds ?? [part.id];
@@ -60,9 +61,16 @@ export function ShelfPill({ part, shelf, save }: { part: CardPart; shelf: Shelf 
               )}
             </dl>
             <div className="flex items-center justify-between gap-2 pt-1">
-              <Link href="/inventory" onClick={close} className="text-xs font-medium text-accent hover:underline">
-                Open inventory →
-              </Link>
+              <button
+                type="button"
+                onClick={() => {
+                  close();
+                  openItem(shelf.itemId);
+                }}
+                className="press text-xs font-medium text-accent hover:underline"
+              >
+                Open item →
+              </button>
               {edit && (
                 <button
                   type="button"

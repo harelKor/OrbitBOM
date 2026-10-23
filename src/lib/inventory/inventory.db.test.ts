@@ -21,7 +21,7 @@ else
     const [r1, r2] = await db.insert(schema.robots).values([{ name: "Comp bot", year: 2027 }, { name: "Practice bot", year: 2027 }]).returning();
     const [s1, s2] = await db.insert(schema.systems).values([{ robotId: r1.id, name: "Drive" }, { robotId: r2.id, name: "Drive" }]).returning();
     const [item] = await db.insert(schema.inventoryItems).values({ name: "608 Bearing", inStock: 6 }).returning();
-    const [sheet] = await db.insert(schema.inventoryItems).values({ name: "3mm 6061 plate", templateId: "aluminum-plates", inStock: 1 }).returning();
+    const [sheet] = await db.insert(schema.inventoryItems).values({ name: "3mm 6061 plate", category: "aluminum-plates", inStock: 1 }).returning();
     const [a, b, loose] = await db
       .insert(schema.parts)
       .values([
@@ -77,5 +77,22 @@ else
       const [after] = await db.select().from(schema.inventoryItems).where(eq(schema.inventoryItems.id, item.id));
       expect(after.onshapeKey).toBe("d:e:p");
       expect(after.aliases).toEqual([]);
+    });
+
+    it("auto-links parts with the same product link into To Review, and Reject unlinks", async () => {
+      const { autoLink } = await import("./autolink");
+      const { listRobotReviews, rejectReviews } = await import("@/lib/review/review");
+      const [kraken] = await db.insert(schema.inventoryItems).values({ name: "Kraken", cotsLinks: [{ url: "https://wcproducts.com/products/kraken" }] }).returning();
+      const [motor] = await db
+        .insert(schema.parts)
+        .values({ systemId: s1.id, onshapeName: "Motor", classification: "cots" as const, cotsLinks: [{ url: "http://www.wcproducts.com/products/kraken/" }] })
+        .returning();
+      expect(await autoLink({ itemIds: [kraken.id] }, ctx)).toBe(1);
+      expect((await db.select().from(schema.parts).where(eq(schema.parts.id, motor.id)))[0].inventoryItemId).toBe(kraken.id);
+      const review = (await listRobotReviews(r1.id)).find((r) => r.partId === motor.id);
+      expect(review).toMatchObject({ source: "rule", changes: { inventoryItemId: { from: null, to: kraken.id } } });
+      await rejectReviews([motor.id], member.id);
+      expect((await db.select().from(schema.parts).where(eq(schema.parts.id, motor.id)))[0].inventoryItemId).toBeNull();
+      await db.delete(schema.inventoryItems).where(eq(schema.inventoryItems.id, kraken.id));
     });
   });

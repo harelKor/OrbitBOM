@@ -1,15 +1,15 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { onshapeKeyOf } from "@/lib/inventory/match";
+import { autoLink } from "@/lib/inventory/autolink";
 import { parseBom, type OnshapeBom } from "@/lib/onshape/bom";
 import { onshapeClient, OnshapeError } from "@/lib/onshape/client";
 import { apiPath, parseOnshapeUrl } from "@/lib/onshape/url";
 import { planPartUpdate } from "@/lib/parts/changes";
 import { planMerge } from "./merge";
 
-const { parts, partHistory, systems, syncJobs, inventoryItems } = schema;
+const { parts, partHistory, systems, syncJobs } = schema;
 
 export type SyncSummary = {
   skipped?: "unchanged";
@@ -75,12 +75,14 @@ export async function updateBomFromOnshape(
     const parsed = parseBom(bom);
 
     // 3. Merge into the system's parts in one transaction.
+    const newIds: string[] = [];
     const summary = await db.transaction(async (tx) => {
       const existing = await tx.select().from(parts).where(eq(parts.systemId, systemId)).for("update");
       const plan = planMerge(existing, parsed.rows);
       const byId = new Map(existing.map((p) => [p.id, p]));
       const batchId = randomUUID();
       const now = new Date();
+      newIds.length = 0;
       const result: SyncSummary = {
         added: plan.insert.map((r) => r.onshapeName),
         updated: 0,
@@ -92,36 +94,32 @@ export async function updateBomFromOnshape(
       };
 
       if (plan.insert.length) {
-        // A new part that is an Onshape library part the inventory already knows is linked to it.
-        const keys = [...new Set(plan.insert.flatMap((r) => onshapeKeyOf(r) ?? []))];
-        const itemOf = new Map(
-          keys.length
-            ? (await tx.select({ id: inventoryItems.id, key: inventoryItems.onshapeKey }).from(inventoryItems).where(inArray(inventoryItems.onshapeKey, keys))).map((i) => [i.key!, i.id])
-            : [],
-        );
-        await tx.insert(parts).values(
-          plan.insert.map((r) => ({
-            systemId,
-            sourceDid: r.sourceDid,
-            sourceWid: r.sourceWid,
-            sourceWvm: r.sourceWvm,
-            sourceEid: r.sourceEid,
-            onshapePartId: r.onshapePartId,
-            onshapeName: r.onshapeName,
-            partNumber: r.partNumber,
-            description: r.description,
-            material: r.material,
-            quantity: r.quantity,
-            preProcess: r.preProcess,
-            process1: r.process1,
-            process2: r.process2,
-            // A part with a process is made in-house; without one nobody has said yet (Undefined).
-            classification: r.preProcess || r.process1 || r.process2 ? ("inhouse" as const) : ("undefined" as const),
-            geometry: r.onshapeMaterial ? { onshapeMaterial: r.onshapeMaterial } : null,
-            inventoryItemId: itemOf.get(onshapeKeyOf(r) ?? "") ?? null,
-            lastModifiedBy: memberId,
-          })),
-        );
+        const inserted = await tx
+          .insert(parts)
+          .values(
+            plan.insert.map((r) => ({
+              systemId,
+              sourceDid: r.sourceDid,
+              sourceWid: r.sourceWid,
+              sourceWvm: r.sourceWvm,
+              sourceEid: r.sourceEid,
+              onshapePartId: r.onshapePartId,
+              onshapeName: r.onshapeName,
+              partNumber: r.partNumber,
+              description: r.description,
+              material: r.material,
+              quantity: r.quantity,
+              preProcess: r.preProcess,
+              process1: r.process1,
+              process2: r.process2,
+              // A part with a process is made in-house; without one nobody has said yet (Undefined).
+              classification: r.preProcess || r.process1 || r.process2 ? ("inhouse" as const) : ("undefined" as const),
+              geometry: r.onshapeMaterial ? { onshapeMaterial: r.onshapeMaterial } : null,
+              lastModifiedBy: memberId,
+            })),
+          )
+          .returning({ id: parts.id });
+        newIds.push(...inserted.map((p) => p.id));
       }
 
       for (const u of plan.update) {
@@ -168,6 +166,9 @@ export async function updateBomFromOnshape(
       return result;
     });
 
+    // A new part that is an Onshape library part (or product) the inventory knows is linked to
+    // its item, and waits in To Review.
+    await autoLink({ partIds: newIds }, { memberId, via: "sync" });
     await finishJob(job.id, "done", summary);
     return summary;
   } catch (err) {

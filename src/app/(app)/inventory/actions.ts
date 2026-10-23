@@ -4,18 +4,23 @@ import { eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { COTS_DEFAULT_STATUS, COTS_IN_STOCK, COTS_ORDERED, COTS_RELEASED, cotsStatusOf } from "@/config/cots";
-import { INVENTORY_CATEGORIES, getInventoryCategory, inventoryCategoryOf } from "@/config/inventory";
-import { getPartType, isSheetType } from "@/config/partTypes";
+import { guessCategory } from "@/config/inventory";
+import { vendorOfUrl } from "@/config/vendors";
 import { db, schema } from "@/db";
 import { requireMember } from "@/lib/auth";
-import { robotInventory, usageOf } from "@/lib/data/inventory";
+import { listCategories } from "@/lib/data/categories";
+import { inventoryItemDetail, listInventory, robotInventory, usageOf } from "@/lib/data/inventory";
+import { autoLink } from "@/lib/inventory/autolink";
+import { categoryOf, getCategory, slugify, type InvCategory } from "@/lib/inventory/categories";
 import type { ImportRow } from "@/lib/inventory/import";
 import { moveStock, setStock } from "@/lib/inventory/moves";
+import { readProduct, saveProductPhoto, toUsd } from "@/lib/inventory/product";
+import { searchProducts } from "@/lib/inventory/search";
 import { parseStock } from "@/lib/inventory/stock";
 import { applyEachPartChanges } from "@/lib/parts/apply";
 import { isUuid } from "@/lib/uuid";
 
-const { inventoryItems, inventoryGroups, inventoryConditions, inventoryLocations, inventoryMoves, parts } = schema;
+const { inventoryItems, inventoryGroups, inventoryConditions, inventoryLocations, inventoryMoves, inventoryCategories, parts } = schema;
 
 export type ActionResult = { error?: string; message?: string };
 
@@ -25,57 +30,53 @@ const refresh = () => {
   revalidatePath("/cots", "layout");
 };
 
-const text = z
-  .string()
-  .trim()
-  .transform((v) => v || null);
-const ref = z
-  .string()
-  .transform((v) => v || null)
-  .refine((v) => v === null || isUuid(v), "Unknown option.");
-
-const itemForm = z.object({
-  name: z.string().trim().min(1, "Part name is required."),
+const linkSchema = z.object({ url: z.url("A product link must be a web link."), site: z.string().trim().max(80).optional() });
+const itemInput = z.object({
+  name: z.string().trim().min(1, "Part name is required.").max(200),
+  category: z.string().nullable(),
+  specs: z.record(z.string(), z.string()).default({}),
   inStock: z.string().default("0"),
-  conditionId: ref,
-  category: text.refine((v) => v === null || !!getInventoryCategory(v), "Unknown category."),
-  locationId: ref,
-  templateId: text.refine((v) => v === null || !!getPartType(v), "Unknown part type."),
-  material: text,
-  vendorUrl: z.union([z.literal(""), z.url("The vendor link must be a URL.")]).transform((v) => v || null),
-  vendorName: text,
-  price: z.union([z.literal(""), z.coerce.number().min(0)]).transform((v) => (v === "" ? null : v)),
+  conditionId: z.string().nullable().refine((v) => v === null || isUuid(v), "Unknown condition."),
+  locationId: z.string().nullable().refine((v) => v === null || isUuid(v), "Unknown location."),
+  links: z.array(linkSchema).max(10).default([]),
+  price: z.number().min(0).nullable().default(null),
+  imageUrl: z.string().nullable().optional(), // a product's picture, copied to R2 on save
 });
+export type ItemInput = z.input<typeof itemInput>;
 
-// Add or edit an item. Part-type detail fields arrive as "tv.<fieldId>".
-export async function saveItem(
-  itemId: string | null,
-  _: ActionResult | undefined,
-  formData: FormData,
-): Promise<ActionResult> {
+// Add or edit an item. Only the category's own fields are kept; the stock changes as a counted
+// move. Returns the item's id. A product picture is saved once, then parts with the same product
+// link or Onshape part are auto-linked (into To Review).
+export async function saveItem(itemId: string | null, input: ItemInput): Promise<ActionResult & { id?: string }> {
   const member = await requireMember();
-  const parsed = itemForm.safeParse(Object.fromEntries(formData));
+  const parsed = itemInput.safeParse(input);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
-  const type = parsed.data.templateId ? getPartType(parsed.data.templateId) : undefined;
-  const templateValues: Record<string, string> = {};
-  for (const field of type?.fields ?? []) {
-    const v = String(formData.get(`tv.${field.id}`) ?? "").trim();
-    if (v) templateValues[field.id] = v;
-  }
-  // Sheets take pieces ("2 3/4"); everything else whole units. The stock changes as a counted move.
-  const { inStock: stockText, ...rest } = parsed.data;
-  const inStock = parseStock(stockText, isSheetType(rest.templateId));
-  if (inStock === null) return { error: isSheetType(rest.templateId) ? 'In stock is sheets, like "2" or "1 3/4".' : "In stock is a whole number." };
-  const values = { ...rest, templateValues };
   if (itemId && !isUuid(itemId)) return { error: "Unknown item." };
-  await db.transaction(async (tx) => {
+  const d = parsed.data;
+  const cats = await listCategories();
+  const cat = getCategory(cats, d.category);
+  if (d.category && !cat) return { error: "Unknown category." };
+  const ids = new Set(cat?.fields.map((f) => f.id) ?? []);
+  const specs = Object.fromEntries(Object.entries(d.specs).flatMap(([k, v]) => (ids.has(k) && v.trim() ? [[k, v.trim()]] : [])));
+  const sheet = !!getCategory(cats, categoryOf({ category: d.category, name: d.name }, cats))?.sheet;
+  const inStock = parseStock(d.inStock, sheet);
+  if (inStock === null) return { error: sheet ? 'In stock is sheets, like "2" or "1 3/4".' : "In stock is a whole number." };
+  const cotsLinks = d.links.map((l) => ({ url: l.url, site: l.site || vendorOfUrl(l.url) }));
+  const values = { name: d.name, category: d.category, specs, conditionId: d.conditionId, locationId: d.locationId, cotsLinks, price: d.price };
+  const id = await db.transaction(async (tx) => {
     let id = itemId;
     if (id) await tx.update(inventoryItems).set(values).where(eq(inventoryItems.id, id));
     else [{ id }] = await tx.insert(inventoryItems).values(values).returning({ id: inventoryItems.id });
     await setStock(tx, id!, inStock, { memberId: member.id, via: "ui" });
+    return id!;
   });
+  if (d.imageUrl) {
+    const key = await saveProductPhoto(id, d.imageUrl);
+    if (key) await db.update(inventoryItems).set({ imagePath: key }).where(eq(inventoryItems.id, id));
+  }
+  const linked = await autoLink({ itemIds: [id] }, { memberId: member.id, via: "ui" });
   refresh();
-  return {};
+  return { id, message: linked ? `Linked ${linked} BOM part${linked === 1 ? "" : "s"} with the same product; they wait in To Review.` : undefined };
 }
 
 export async function deleteItem(itemId: string) {
@@ -124,12 +125,13 @@ export async function createItemFromPart(partIds: string[]): Promise<ActionResul
   const [first] = rows;
   if (!first) return { error: "Unknown part." };
   const name = first.displayName ?? first.onshapeName ?? "Unnamed part";
-  const link = first.cotsLinks[0];
+  const cats = await listCategories();
   const [item] = await db
     .insert(inventoryItems)
-    .values({ name, material: first.classification === "cots" ? null : first.material, vendorUrl: link?.url ?? null, vendorName: link?.site ?? null, price: first.unitPrice })
+    .values({ name, category: guessCategory(name, cats.map((c) => c.id)), cotsLinks: first.cotsLinks, price: first.unitPrice })
     .returning({ id: inventoryItems.id });
   await applyEachPartChanges(rows.map((p) => ({ id: p.id, changes: { inventoryItemId: item.id } })), { memberId: member.id, via: "ui" });
+  await autoLink({ itemIds: [item.id] }, { memberId: member.id, via: "ui" });
   refresh();
   return { message: `Added ${name} to the inventory.` };
 }
@@ -164,7 +166,8 @@ export async function addItemToBom(itemId: string, systemId: string, quantity: n
     classification: "cots",
     classSource: "manual",
     inventoryItemId: item.id,
-    material: item.material,
+    cotsLinks: item.cotsLinks,
+    unitPrice: item.price,
     quantity,
     lastModifiedBy: member.id,
   });
@@ -226,6 +229,7 @@ export async function importItems(rows: ImportRow[]): Promise<ActionResult> {
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const key = (s: string) => s.toLowerCase();
 
+  const cats = await listCategories();
   const created = await db.transaction(async (tx) => {
     const locations = new Map(
       (await tx.select().from(inventoryLocations)).map((l) => [key(l.name), l.id] as const),
@@ -277,11 +281,11 @@ export async function importItems(rows: ImportRow[]): Promise<ActionResult> {
       const [item] = await tx.insert(inventoryItems).values({
         name: row.name,
         inStock: row.inStock,
-        material: row.material || null,
+        specs: row.material ? { material: row.material } : {},
         locationId: await locationId(row.location),
         conditionId: await conditionId(row.condition),
         groupId: await groupId(row.groupPath),
-        category: guessCategory(row),
+        category: importCategory(row, cats),
       }).returning({ id: inventoryItems.id });
       if (row.inStock) await tx.insert(inventoryMoves).values({ itemId: item.id, delta: row.inStock, reason: "counted", memberId: member.id, via: "ui" });
     }
@@ -301,11 +305,9 @@ export async function importItems(rows: ImportRow[]): Promise<ActionResult> {
 
 // An imported row's category: a spreadsheet group named like a category, else a guess from the
 // group names and the item's name. Left unset when nothing fits, so it keeps being guessed.
-function guessCategory(row: { name: string; groupPath: string[] }) {
-  const named = INVENTORY_CATEGORIES.find((c) => row.groupPath.some((g) => g.toLowerCase() === c.label.toLowerCase()));
-  if (named) return named.id;
-  const guess = inventoryCategoryOf({ category: null, templateId: null, name: [...row.groupPath, row.name].join(" ") });
-  return guess === "other" ? null : guess;
+function importCategory(row: { name: string; groupPath: string[] }, cats: InvCategory[]) {
+  const named = cats.find((c) => row.groupPath.some((g) => g.toLowerCase() === c.label.toLowerCase()));
+  return named?.id ?? guessCategory([...row.groupPath, row.name].join(" "), cats.map((c) => c.id));
 }
 
 // The item page's Possible matches: link COTS parts to this item.
@@ -315,4 +317,108 @@ export async function linkPartsToItem(itemId: string, partIds: string[]): Promis
   const { changed } = await applyEachPartChanges(partIds.map((id) => ({ id, changes: { inventoryItemId: itemId } })), { memberId: member.id, via: "ui" });
   refresh();
   return { message: `Linked ${changed} part${changed === 1 ? "" : "s"}.` };
+}
+
+// ---------- Category settings (the panel inside Inventory) ----------
+
+const fieldSchema = z.object({
+  id: z.string().trim().min(1).max(40),
+  label: z.string().trim().min(1, "A field needs a name.").max(60),
+  kind: z.enum(["number", "text", "options", "material"]),
+  options: z.array(z.string().trim().min(1).max(60)).max(100).optional(),
+  materials: z.array(z.string()).max(20).optional(),
+  name: z.string().max(40).optional(),
+  hidden: z.boolean().optional(),
+});
+const categorySchema = z.object({
+  id: z.string(),
+  label: z.string().trim().min(1, "A category needs a name.").max(60),
+  noun: z.string().trim().max(40),
+  sheet: z.boolean(),
+  defaultLocationId: z.string().nullable().refine((v) => v === null || isUuid(v), "Unknown location."),
+  fields: z.array(fieldSchema).max(20),
+});
+
+// Saves a category as edited in place. Field ids are kept, so values already on items stay theirs.
+export async function saveCategory(cat: InvCategory): Promise<ActionResult> {
+  await requireMember();
+  const parsed = categorySchema.safeParse(cat);
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const { id, ...values } = parsed.data;
+  const ids = values.fields.map((f) => f.id);
+  if (new Set(ids).size !== ids.length) return { error: "Two fields have the same id." };
+  await db.update(inventoryCategories).set(values).where(eq(inventoryCategories.id, id));
+  refresh();
+  return {};
+}
+
+export async function addCategory(label: string): Promise<ActionResult & { id?: string }> {
+  await requireMember();
+  label = label.trim();
+  if (!label) return { error: "A category needs a name." };
+  const cats = await listCategories();
+  let id = slugify(label);
+  for (let n = 2; cats.some((c) => c.id === id); n++) id = `${slugify(label)}-${n}`;
+  await db.insert(inventoryCategories).values({ id, label, noun: label.replace(/s$/i, ""), position: cats.length });
+  refresh();
+  return { id };
+}
+
+// A category with items can't go; its items would lose their fields.
+export async function deleteCategory(id: string): Promise<ActionResult> {
+  await requireMember();
+  const { items } = await listInventory();
+  const n = items.filter((i) => i.category === id).length;
+  if (n) return { error: `${n} item${n === 1 ? " is" : "s are"} in this category. Move ${n === 1 ? "it" : "them"} first.` };
+  await db.delete(inventoryCategories).where(eq(inventoryCategories.id, id));
+  refresh();
+  return {};
+}
+
+export async function moveCategory(id: string, by: -1 | 1): Promise<ActionResult> {
+  await requireMember();
+  const cats = await listCategories();
+  const from = cats.findIndex((c) => c.id === id);
+  const to = from + by;
+  if (from < 0 || to < 0 || to >= cats.length) return {};
+  const order = [...cats];
+  [order[from], order[to]] = [order[to], order[from]];
+  await db.transaction(async (tx) => {
+    for (const [i, c] of order.entries()) await tx.update(inventoryCategories).set({ position: i }).where(eq(inventoryCategories.id, c.id));
+  });
+  refresh();
+  return {};
+}
+
+// ---------- Products and popups ----------
+
+// The add box: products from the team's stores and the BOM's own COTS links.
+export async function findProducts(query: string) {
+  await requireMember();
+  return searchProducts(query);
+}
+
+// A pasted product link, read from the page's product tags.
+export async function readProductLink(url: string) {
+  await requireMember();
+  try {
+    const p = await readProduct(url);
+    return { product: { ...p, price: toUsd(p.price, p.currency) } };
+  } catch (e) {
+    return { error: `Couldn't read that page: ${(e as Error).message || "no answer"} You can still fill it in.` };
+  }
+}
+
+// The closable window anything inventory opens (an item, or a material's stock).
+export async function itemPopup(itemId: string) {
+  await requireMember();
+  if (!isUuid(itemId)) return null;
+  return inventoryItemDetail(itemId);
+}
+
+export async function materialPopup(material: string) {
+  await requireMember();
+  const { items, categories, locations, conditions } = await listInventory();
+  const key = material.trim().toLowerCase();
+  return { material, categories, locations, conditions, items: items.filter((i) => i.specs.material?.toLowerCase() === key || i.name.toLowerCase() === key) };
 }

@@ -1,0 +1,277 @@
+"use client";
+
+import { useEffect, useRef, useState, useTransition } from "react";
+import { findProducts, readProductLink } from "@/app/(app)/inventory/actions";
+import { useEditMode } from "@/components/shell/ModeContext";
+import { Icon } from "@/components/ui/Icon";
+import { guessCategory } from "@/config/inventory";
+import { buildName, getCategory } from "@/lib/inventory/categories";
+import type { Offer, ProductGroup } from "@/lib/inventory/productGroups";
+import { parseQuick } from "@/lib/inventory/quick";
+import { formatStock } from "@/lib/inventory/stock";
+import { useInventoryPopup } from "./InventoryPopup";
+import { ItemForm, categoryLocation, emptyDraft, type Draft } from "./ItemForm";
+import type { Condition, InvCategory, Item, Location } from "./types";
+
+type Found = { q: string; groups: ProductGroup[]; elsewhere: { name: string; url: string }[] };
+
+const isLink = (s: string) => /^https?:\/\/\S+\.\S+/i.test(s.trim());
+
+// The one box at the top of Inventory. In View mode it filters the shelf ("Do we have it?"). In
+// Edit mode it also adds: as you type, items already on the shelf, products from the team's
+// stores (the same product from several stores is one row, pick the store), smart typing
+// ("36t htd 1/2 hex pulley"), and a chip per category for a custom item. A pasted product link is
+// read from the page. The add form opens under the box and stays put for the next item.
+export function AddBox({
+  q,
+  setQ,
+  items,
+  categories,
+  locations,
+  conditions,
+  defaultCategory,
+  placeholder,
+}: {
+  q: string;
+  setQ: (q: string) => void;
+  items: Item[];
+  categories: InvCategory[];
+  locations: Location[];
+  conditions: Condition[];
+  defaultCategory: string | null;
+  placeholder: string;
+}) {
+  const edit = useEditMode();
+  const { openItem } = useInventoryPopup();
+  const [focus, setFocus] = useState(false);
+  const [found, setFound] = useState<Found | null>(null);
+  const [searching, startSearch] = useTransition();
+  const [reading, startRead] = useTransition();
+  const [readError, setReadError] = useState<string | null>(null);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [saved, setSaved] = useState<{ name: string; draft: Draft; message?: string } | null>(null);
+  const box = useRef<HTMLInputElement>(null);
+
+  const query = q.trim();
+  const link = isLink(query);
+  const quick = !link && query ? parseQuick(query, categories) : null;
+  const quickCat = getCategory(categories, quick?.categoryId);
+  const quickName = quickCat && quick && Object.keys(quick.specs).length ? buildName(quickCat, quick.specs) : "";
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const onShelf = query && !link ? items.filter((i) => words.every((w) => `${i.name} ${Object.values(i.specs).join(" ")}`.toLowerCase().includes(w))).slice(0, 4) : [];
+
+  // Stores are asked only after a pause in typing, never while the page renders.
+  useEffect(() => {
+    if (!edit || link || query.length < 3 || draft) return;
+    const t = setTimeout(() => startSearch(async () => setFound({ q: query, ...(await findProducts(query)) })), 450);
+    return () => clearTimeout(t);
+  }, [edit, link, query, draft]);
+  const products = found?.q === query ? found : null;
+
+  const start = (over: Partial<Draft>) => {
+    const cat = getCategory(categories, over.category ?? null);
+    setDraft(emptyDraft({ locationId: categoryLocation(cat, items), ...over }));
+    setSaved(null);
+    setFocus(false);
+  };
+  const fromOffer = (group: ProductGroup, offer: Offer) => {
+    const parsed = parseQuick(offer.title, categories);
+    const category = parsed?.categoryId ?? guessCategory(offer.title, categories.map((c) => c.id)) ?? defaultCategory;
+    start({ category, specs: parsed?.specs ?? {}, name: offer.title, nameTouched: true, links: [{ url: offer.url, site: offer.vendor }], price: offer.price, imageUrl: offer.image ?? group.image });
+  };
+  const readLink = () =>
+    startRead(async () => {
+      setReadError(null);
+      const r = await readProductLink(query);
+      if (r.product) {
+        const p = r.product;
+        fromOffer({ title: p.title, image: p.image, offers: [] }, { vendor: p.site, url: p.url, title: p.title, image: p.image, price: p.price });
+      } else {
+        setReadError(r.error ?? null);
+        start({ category: defaultCategory, links: [{ url: query }] });
+      }
+    });
+  const custom = (categoryId: string) =>
+    start(quick?.categoryId === categoryId ? { category: categoryId, specs: quick.specs } : { category: categoryId, name: query, nameTouched: !!query });
+
+  const open = edit && focus && !!query && !draft;
+  return (
+    <div className="relative min-w-0 flex-1 sm:max-w-2xl">
+      <label className="relative block">
+        <Icon name={edit ? "box" : "search"} className="pointer-events-none absolute top-1/2 left-3.5 h-5 w-5 -translate-y-1/2 text-subtle" />
+        <input
+          ref={box}
+          value={q}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setReadError(null);
+          }}
+          onFocus={() => setFocus(true)}
+          onBlur={() => setTimeout(() => setFocus(false), 150)}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter" || !edit || !query) return;
+            e.preventDefault();
+            if (link) readLink();
+            else if (quick) custom(quick.categoryId);
+          }}
+          placeholder={edit ? "Add an item: type a name or paste a link" : placeholder}
+          className="input min-h-12 py-3 pr-10 pl-11 text-base"
+          aria-label={edit ? "Add or find an item" : "Search the inventory"}
+        />
+        {q && (
+          <button type="button" onClick={() => setQ("")} className="press absolute top-1/2 right-2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-subtle hover:text-fg" aria-label="Clear">
+            <Icon name="close" className="h-4 w-4" />
+          </button>
+        )}
+      </label>
+      {edit && !query && !draft && !saved && (
+        <button type="button" onClick={() => start({ category: defaultCategory })} className="mt-2 text-sm font-medium text-accent hover:underline">
+          + Add without searching
+        </button>
+      )}
+
+      {open && (
+        <div className="absolute top-full right-0 left-0 z-40 mt-1.5 max-h-[70vh] space-y-3 overflow-y-auto rounded-2xl border border-line-strong bg-surface p-3 shadow-[0_16px_40px_-12px_rgba(17,19,24,0.35)]" onMouseDown={(e) => e.preventDefault()}>
+          {link && (
+            <Row onClick={readLink} icon="download" title={reading ? "Reading the page…" : "Read this product link"} detail="Name, price and photo from the store's page" />
+          )}
+          {quickName && <Row onClick={() => custom(quick!.categoryId)} icon="spark" title={`Add “${quickName}”`} detail={`${quickCat!.label} · Enter`} />}
+
+          {onShelf.length > 0 && (
+            <Section title="Already on the shelf">
+              {onShelf.map((i) => (
+                <Row key={i.id} onClick={() => openItem(i.id)} img={i.thumbUrl} icon="box" title={i.name} detail={`${formatStock(i.inStock, i.sheet)} ${i.sheet ? "sheets" : "in stock"}`} />
+              ))}
+            </Section>
+          )}
+
+          {!link && query.length >= 3 && (
+            <Section title={searching && !products ? "Products · searching the stores…" : "Products"}>
+              {products?.groups.length === 0 && <p className="px-2 text-xs text-muted">No store result for that. Try other words, or paste a product link.</p>}
+              {products?.groups.map((g) => (
+                <div key={g.offers[0].url} className="flex gap-3 rounded-xl p-2 hover:bg-raised">
+                  <div className="thumb-well flex h-14 w-14 shrink-0 items-center justify-center rounded-lg">
+                    {g.image ? (
+                      // eslint-disable-next-line @next/next/no-img-element -- the store's own picture
+                      <img src={g.image} alt="" className="h-full w-full rounded-lg bg-white object-contain" />
+                    ) : (
+                      <Icon name="cart" className="h-6 w-6 text-subtle" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-semibold text-fg" title={g.title}>
+                      {g.title}
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {g.offers.map((o) => (
+                        <button key={o.url} type="button" onClick={() => fromOffer(g, o)} className="press min-h-9 rounded-full border border-line-strong px-3 text-xs font-semibold text-fg-2 hover:border-accent hover:text-accent" title={o.title}>
+                          {o.vendor}
+                          {o.price != null && <span className="ml-1.5 font-mono text-emerald-600 tabular-nums">${o.price.toFixed(2)}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {products && (
+                <p className="px-2 pt-1 text-xs text-muted">
+                  Also look on{" "}
+                  {products.elsewhere.map((e, i) => (
+                    <span key={e.name}>
+                      {i > 0 && ", "}
+                      <a href={e.url} target="_blank" rel="noreferrer" className="text-sky-600 hover:underline">
+                        {e.name} ↗
+                      </a>
+                    </span>
+                  ))}{" "}
+                  and paste the product link here.
+                </p>
+              )}
+            </Section>
+          )}
+
+          {!link && (
+            <Section title="Make it custom">
+              <div className="flex flex-wrap gap-1.5 px-1">
+                {categories.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => custom(c.id)}
+                    className={`press min-h-10 rounded-full border px-3.5 text-sm font-semibold ${c.id === quick?.categoryId ? "border-accent bg-accent text-white" : "border-line-strong text-fg-2 hover:border-accent hover:text-accent"}`}
+                  >
+                    {c.noun || c.label}
+                  </button>
+                ))}
+              </div>
+            </Section>
+          )}
+        </div>
+      )}
+
+      {readError && <p className="mt-2 text-sm text-amber-700">{readError}</p>}
+      {saved && !draft && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-300">
+          <span className="min-w-0 flex-1">
+            Added <span className="font-semibold">{saved.name}</span>.{saved.message && ` ${saved.message}`}
+          </span>
+          <button type="button" className="btn min-h-10" onClick={() => setDraft({ ...saved.draft, inStock: "1", links: [], imageUrl: null, price: null })}>
+            Add another like this
+          </button>
+          <button type="button" className="press text-emerald-700" aria-label="Dismiss" onClick={() => setSaved(null)}>
+            <Icon name="close" className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+      {draft && (
+        <div className="panel mt-3 p-4">
+          <ItemForm
+            itemId={null}
+            draft={draft}
+            setDraft={setDraft}
+            categories={categories}
+            locations={locations}
+            conditions={conditions}
+            items={items}
+            onCancel={() => setDraft(null)}
+            onSaved={(_, message) => {
+              const cat = getCategory(categories, draft.category);
+              const name = draft.nameTouched || !cat ? draft.name : buildName(cat, draft.specs) || draft.name;
+              setSaved({ name, draft, message });
+              setDraft(null);
+              setQ("");
+            }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="px-2 pb-1 text-[11px] font-semibold tracking-wide text-subtle uppercase">{title}</div>
+      <div className="space-y-0.5">{children}</div>
+    </div>
+  );
+}
+
+function Row({ onClick, icon, img, title, detail }: { onClick: () => void; icon: "box" | "download" | "spark"; img?: string | null; title: string; detail: string }) {
+  return (
+    <button type="button" onClick={onClick} className="press flex min-h-12 w-full items-center gap-3 rounded-xl px-2 py-1.5 text-left hover:bg-raised">
+      <span className="thumb-well flex h-10 w-10 shrink-0 items-center justify-center rounded-lg">
+        {img ? (
+          // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
+          <img src={img} alt="" className="h-full w-full object-contain p-0.5" />
+        ) : (
+          <Icon name={icon} className="h-5 w-5 text-accent" />
+        )}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-semibold text-fg">{title}</span>
+        <span className="block truncate text-xs text-muted">{detail}</span>
+      </span>
+    </button>
+  );
+}

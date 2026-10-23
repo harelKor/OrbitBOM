@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { ReviewView } from "@/components/review/ReviewView";
 import { requireMember } from "@/lib/auth";
+import { listInventoryNames } from "@/lib/data/inventory";
 import { listRobotParts } from "@/lib/data/parts";
 import { getRobot } from "@/lib/data/robots";
 import { listRobotReviews } from "@/lib/review/review";
@@ -12,12 +13,20 @@ export default async function ReviewPage({ params }: { params: Promise<{ robotId
   const { robotId } = await params;
   const data = await getRobot(robotId);
   if (!data) notFound();
-  const [parts, reviews] = await Promise.all([listRobotParts(data.robot.id), listRobotReviews(data.robot.id)]);
+  const [parts, reviews, inventory] = await Promise.all([listRobotParts(data.robot.id), listRobotReviews(data.robot.id), listInventoryNames()]);
   const byPart = new Map(parts.map((p) => [p.id, p]));
+  // An inventory link shows the item's name, not its id.
+  const itemName = new Map(inventory.map((i) => [i.id, i.name]));
+  const named = (changes: (typeof reviews)[number]["changes"]) => {
+    const c = changes.inventoryItemId;
+    if (!c) return changes;
+    const name = (v: unknown) => (typeof v === "string" ? (itemName.get(v) ?? "removed item") : v);
+    return { ...changes, inventoryItemId: { from: name(c.from), to: name(c.to) } };
+  };
   const items = reviews.flatMap((r) => {
     const part = byPart.get(r.partId);
     return part
-      ? [{ part, source: r.source, reason: r.reason, changes: r.changes, at: r.createdAt.toISOString(), batchId: r.batchId, memberName: r.memberName, aiName: r.aiName }]
+      ? [{ part, source: r.source, reason: r.reason, changes: named(r.changes), at: r.createdAt.toISOString(), batchId: r.batchId, memberName: r.memberName, aiName: r.aiName }]
       : [];
   });
 

@@ -2,27 +2,27 @@
 
 import Link from "next/link";
 import { useMemo, useOptimistic, useState, useTransition } from "react";
-import { INVENTORY_CATEGORIES, getInventoryCategory } from "@/config/inventory";
-import { getPartType } from "@/config/partTypes";
 import { adjustStock } from "@/app/(app)/inventory/actions";
 import { EditOnly } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
+import { getCategory } from "@/lib/inventory/categories";
 import { snapStock } from "@/lib/inventory/stock";
+import { AddBox } from "./AddBox";
+import { CategorySettings } from "./CategorySettings";
 import { ImportDialog } from "./ImportDialog";
 import { ItemCard } from "./ItemCard";
-import { ItemDialog } from "./ItemDialog";
-import { ConditionsDialog, LocationsDialog, PartTypesDialog } from "./ListDialogs";
+import { ConditionsDialog, LocationsDialog } from "./ListDialogs";
 import type { Item, Lookups } from "./types";
 
 export type InventoryScope = { kind: "home" } | { kind: "short" } | { kind: "category"; id: string };
 
-type Open = { kind: "item" } | { kind: "types" | "conditions" | "locations" | "import" } | null;
+type Open = { kind: "settings" | "conditions" | "locations" | "import" } | null;
 
-// The Inventory pages' body. Home: a search over everything, then a box per category and a
-// Short for robots card. A category or Short: the item cards, filtered by the same search and by
-// condition and location. Edit mode adds the toolbar.
+// The Inventory pages' body. Home: the add / search box, then a box per category and a Short for
+// robots card. A category or Short: the item cards, filtered by the same box and by condition and
+// location. Edit mode adds the toolbar, the add flow and the category settings panel.
 export function InventoryView({ items, scope, ...lookups }: Lookups & { items: Item[]; scope: InventoryScope }) {
-  const { conditions, locations } = lookups;
+  const { conditions, locations, categories } = lookups;
   const [open, setOpen] = useState<Open>(null);
   const [q, setQ] = useState("");
   const [conditionId, setConditionId] = useState("");
@@ -45,8 +45,7 @@ export function InventoryView({ items, scope, ...lookups }: Lookups & { items: I
   const query = q.trim().toLowerCase();
   const matches = (i: Item) => {
     if (!query) return true;
-    const type = i.templateId ? getPartType(i.templateId) : undefined;
-    const text = [i.name, i.material, i.vendorName, type?.name, getInventoryCategory(i.category)?.label, ...Object.values(i.templateValues)].join(" ").toLowerCase();
+    const text = [i.name, getCategory(categories, i.category)?.label, ...i.cotsLinks.map((l) => l.site), ...Object.values(i.specs)].join(" ").toLowerCase();
     return query.split(/\s+/).every((word) => text.includes(word));
   };
   const inScope = (i: Item) => (scope.kind === "category" ? i.category === scope.id : scope.kind === "short" ? (i.usage?.short ?? 0) > 0 : true);
@@ -71,38 +70,35 @@ export function InventoryView({ items, scope, ...lookups }: Lookups & { items: I
     <div className="space-y-4">
       <EditOnly>
         <div className="panel flex flex-wrap items-center gap-2 p-3">
-          <button className="btn" onClick={() => setOpen({ kind: "types" })}>
-            Part types
+          <button className="btn min-h-11" onClick={() => setOpen({ kind: "settings" })}>
+            <Icon name="gear" className="h-4 w-4" /> Categories
           </button>
-          <button className="btn" onClick={() => setOpen({ kind: "conditions" })}>
+          <button className="btn min-h-11" onClick={() => setOpen({ kind: "conditions" })}>
             Conditions
           </button>
-          <button className="btn" onClick={() => setOpen({ kind: "locations" })}>
+          <button className="btn min-h-11" onClick={() => setOpen({ kind: "locations" })}>
             Locations
           </button>
-          <button className="btn" onClick={() => setOpen({ kind: "import" })}>
+          <button className="btn min-h-11" onClick={() => setOpen({ kind: "import" })}>
             Import spreadsheet
-          </button>
-          <button className="btn-primary ml-auto" onClick={() => setOpen({ kind: "item" })}>
-            + Add inventory item
           </button>
         </div>
       </EditOnly>
 
       <div className="flex flex-wrap gap-2">
-        <label className="relative min-w-0 flex-1 sm:max-w-md">
-          <Icon name="search" className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-subtle" />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder={scope.kind === "home" ? "Do we have it? Name, size, bore, vendor…" : "Filter by name, size, vendor…"}
-            className="input py-2.5 pl-9 text-base"
-            aria-label="Search the inventory"
-          />
-        </label>
+        <AddBox
+          q={q}
+          setQ={setQ}
+          items={items}
+          categories={categories}
+          locations={locations}
+          conditions={conditions}
+          defaultCategory={scope.kind === "category" ? scope.id : null}
+          placeholder={scope.kind === "home" ? "Do we have it? Name, size, bore, vendor…" : "Filter by name, size, vendor…"}
+        />
         {!boxes && (
           <>
-            <select value={conditionId} onChange={(e) => setConditionId(e.target.value)} className="input w-auto">
+            <select value={conditionId} onChange={(e) => setConditionId(e.target.value)} className="input min-h-12 w-auto self-start">
               <option value="">Any condition</option>
               {conditions.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -110,7 +106,7 @@ export function InventoryView({ items, scope, ...lookups }: Lookups & { items: I
                 </option>
               ))}
             </select>
-            <select value={locationId} onChange={(e) => setLocationId(e.target.value)} className="input w-auto">
+            <select value={locationId} onChange={(e) => setLocationId(e.target.value)} className="input min-h-12 w-auto self-start">
               <option value="">Any location</option>
               {locations.map((l) => (
                 <option key={l.id} value={l.id}>
@@ -135,7 +131,7 @@ export function InventoryView({ items, scope, ...lookups }: Lookups & { items: I
             <Icon name="arrow" className="h-6 w-6 text-subtle transition-transform group-hover:translate-x-1 group-hover:text-accent" />
           </Link>
           <div className="card-grid" style={{ "--card-min": "190px" } as React.CSSProperties}>
-            {INVENTORY_CATEGORIES.map((c) => {
+            {categories.map((c) => {
               const n = perCategory.get(c.id);
               return (
                 <Link key={c.id} href={`/inventory/c/${c.id}`} className="card-interactive group flex min-h-32 flex-col justify-between p-4">
@@ -167,6 +163,7 @@ export function InventoryView({ items, scope, ...lookups }: Lookups & { items: I
                 <ItemCard
                   key={item.id}
                   item={item}
+                  categories={categories}
                   condition={conditions.find((c) => c.id === item.conditionId)}
                   location={locations.find((l) => l.id === locationOf(item))?.name}
                   onStep={(d) => step(item.id, d)}
@@ -177,15 +174,7 @@ export function InventoryView({ items, scope, ...lookups }: Lookups & { items: I
         </div>
       )}
 
-      <ItemDialog
-        key={open?.kind === "item" ? "new" : "closed"}
-        open={open?.kind === "item"}
-        item={null}
-        defaultCategory={scope.kind === "category" ? scope.id : null}
-        lookups={lookups}
-        onClose={() => setOpen(null)}
-      />
-      <PartTypesDialog open={open?.kind === "types"} onClose={() => setOpen(null)} />
+      <CategorySettings open={open?.kind === "settings"} onClose={() => setOpen(null)} categories={categories} locations={locations} items={items} />
       <ConditionsDialog open={open?.kind === "conditions"} conditions={conditions} onClose={() => setOpen(null)} />
       <LocationsDialog open={open?.kind === "locations"} locations={locations} onClose={() => setOpen(null)} />
       <ImportDialog open={open?.kind === "import"} onClose={() => setOpen(null)} />

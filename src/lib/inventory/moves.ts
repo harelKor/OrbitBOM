@@ -1,7 +1,8 @@
 import "server-only";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { isSheetType } from "@/config/partTypes";
+import { categoryOf, getCategory } from "./categories";
+import { listCategories } from "@/lib/data/categories";
 import { snapStock } from "./stock";
 
 const { inventoryItems, inventoryMoves } = schema;
@@ -20,7 +21,8 @@ export async function moveStock(
 ): Promise<{ name: string; from: number; to: number } | null> {
   const [item] = await tx.select().from(inventoryItems).where(eq(inventoryItems.id, move.itemId)).for("update");
   if (!item) return null;
-  const to = snapStock(item.inStock + move.delta, isSheetType(item.templateId));
+  const cats = await listCategories(tx);
+  const to = snapStock(item.inStock + move.delta, !!getCategory(cats, categoryOf(item, cats))?.sheet);
   if (to !== item.inStock) {
     await tx.update(inventoryItems).set({ inStock: to }).where(eq(inventoryItems.id, item.id));
     await tx.insert(inventoryMoves).values({

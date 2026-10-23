@@ -2,8 +2,8 @@ import "server-only";
 import { and, asc, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { cotsStatusOf } from "@/config/cots";
-import { getInventoryCategory, inventoryCategoryOf } from "@/config/inventory";
-import { isSheetType } from "@/config/partTypes";
+import { categoryOf, getCategory, type InvCategory } from "@/lib/inventory/categories";
+import { listCategories } from "./categories";
 import type { Shelf, ShelfSuggestion } from "@/components/bom/types";
 import { suggestItem } from "@/lib/inventory/match";
 import { computeUsage, type ItemUsage, type UsagePart } from "@/lib/inventory/usage";
@@ -12,8 +12,8 @@ import { imageUrl } from "@/lib/storage/r2";
 
 const { inventoryItems, inventoryGroups, inventoryConditions, inventoryLocations, inventoryMoves, members, parts, systems, robots } = schema;
 
-// `category` is resolved (set, from the part type, or guessed); `thumbUrl` is the Onshape
-// thumbnail of a part linked to the item, until the team adds photos.
+// `category` is resolved (set, or guessed from the name); `thumbUrl` is the item's own photo
+// (a product's picture saved to R2), else the Onshape thumbnail of a part linked to it.
 export type InventoryItem = Omit<typeof inventoryItems.$inferSelect, "category"> & {
   category: string;
   categorySet: string | null; // the category someone picked, if any
@@ -70,33 +70,37 @@ async function usageParts(exec: Exec = db, filter: { robotId?: string; itemIds?:
   }));
 }
 
-const sheetSet = (items: { id: string; templateId: string | null }[]) => new Set(items.filter((i) => isSheetType(i.templateId)).map((i) => i.id));
+type Named = { id: string; category: string | null; name: string };
+const isSheet = (i: Omit<Named, "id">, cats: InvCategory[]) => !!getCategory(cats, categoryOf(i, cats))?.sheet;
+const sheetSet = (items: Named[], cats: InvCategory[]) => new Set(items.filter((i) => isSheet(i, cats)).map((i) => i.id));
 
 // Usage of some items across every active robot (the shared shelf).
 export async function usageOf(itemIds: string[], exec: Exec = db) {
-  if (!itemIds.length) return { items: [], usage: new Map<string, ItemUsage>() };
-  const [items, used] = await Promise.all([
+  if (!itemIds.length) return { items: [], cats: await listCategories(), usage: new Map<string, ItemUsage>() };
+  const [items, used, cats] = await Promise.all([
     exec.select().from(inventoryItems).where(inArray(inventoryItems.id, itemIds)),
     usageParts(exec, { itemIds }),
+    listCategories(),
   ]);
-  return { items, usage: computeUsage(new Map(items.map((i) => [i.id, i.inStock])), used, sheetSet(items)) };
+  return { items, cats, usage: computeUsage(new Map(items.map((i) => [i.id, i.inStock])), used, sheetSet(items, cats)) };
 }
 
 export async function listInventory() {
-  const [items, groups, conditions, locations, used] = await Promise.all([
+  const [items, groups, conditions, locations, used, categories] = await Promise.all([
     db.select().from(inventoryItems).orderBy(asc(inventoryItems.name)),
     db.select().from(inventoryGroups).orderBy(asc(inventoryGroups.name)),
     db.select().from(inventoryConditions).orderBy(asc(inventoryConditions.label)),
     db.select().from(inventoryLocations).orderBy(asc(inventoryLocations.name)),
     usageParts(),
+    listCategories(),
   ]);
-  const sheets = sheetSet(items);
+  const sheets = sheetSet(items, categories);
   const usage = computeUsage(new Map(items.map((i) => [i.id, i.inStock])), used, sheets);
-  const thumbs = await itemThumbs(items.map((i) => i.id));
+  const thumbs = await itemThumbs(items);
   return {
     items: items.map((i) => ({
       ...i,
-      category: inventoryCategoryOf(i),
+      category: categoryOf(i, categories),
       categorySet: i.category,
       usage: usage.get(i.id) ?? null,
       sheet: sheets.has(i.id),
@@ -105,25 +109,29 @@ export async function listInventory() {
     groups,
     conditions,
     locations,
+    categories,
   };
 }
 
-// One thumbnail per item: the newest Onshape thumbnail among the parts linked to it.
-async function itemThumbs(itemIds: string[]) {
-  if (!itemIds.length) return new Map<string, string>();
+// One picture per item: its own photo, else the newest Onshape thumbnail among the parts linked
+// to it.
+async function itemThumbs(items: { id: string; imagePath: string | null }[]) {
+  const own = await Promise.all(items.filter((i) => i.imagePath).map(async (i) => [i.id, await imageUrl(i.imagePath!)] as const));
+  const itemIds = items.filter((i) => !i.imagePath).map((i) => i.id);
+  if (!itemIds.length) return new Map(own.filter((u): u is readonly [string, string] => !!u[1]));
   const rows = await db
     .selectDistinctOn([parts.inventoryItemId], { itemId: parts.inventoryItemId, partId: parts.id, rev: parts.thumbnailRev })
     .from(parts)
     .where(and(inArray(parts.inventoryItemId, itemIds), isNotNull(parts.thumbnailRev)))
     .orderBy(parts.inventoryItemId, desc(parts.lastModifiedAt));
   const urls = await Promise.all(rows.map(async (r) => [r.itemId!, await imageUrl(thumbKey(r.partId, r.rev!))] as const));
-  return new Map(urls.filter((u): u is readonly [string, string] => !!u[1]));
+  return new Map([...own, ...urls].filter((u): u is readonly [string, string] => !!u[1]));
 }
 
 // The item page: the item, every part on it, unlinked COTS parts that look like it, and its
 // latest stock changes.
 export async function inventoryItemDetail(itemId: string) {
-  const { items, conditions, locations, groups } = await listInventory();
+  const { items, conditions, locations, groups, categories } = await listInventory();
   const item = items.find((i) => i.id === itemId);
   if (!item) return null;
   const [candidates, moves] = await Promise.all([
@@ -148,7 +156,7 @@ export async function inventoryItemDetail(itemId: string) {
       ? [{ partId: c.part.id, name: c.part.displayName ?? c.part.onshapeName ?? "Unnamed part", quantity: c.part.quantity, robotName: c.robotName, systemName: c.systemName, reason: hit.reason }]
       : [];
   });
-  return { item, conditions, locations, groups, matches, moves: moves.map((m) => ({ ...m, partName: m.partName ?? m.onshapeName })) };
+  return { item, conditions, locations, groups, categories, matches, moves: moves.map((m) => ({ ...m, partName: m.partName ?? m.onshapeName })) };
 }
 
 export type RobotShelfItem = {
@@ -168,7 +176,7 @@ export async function robotInventory(robotId: string): Promise<RobotShelfItem[]>
   const mine = await usageParts(db, { robotId });
   if (!mine.length) return [];
   const itemIds = [...new Set(mine.map((p) => p.inventoryItemId))];
-  const { items, usage } = await usageOf(itemIds);
+  const { items, usage, cats } = await usageOf(itemIds);
   return items
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((i) => {
@@ -177,8 +185,8 @@ export async function robotInventory(robotId: string): Promise<RobotShelfItem[]>
       return {
         id: i.id,
         name: i.name,
-        group: getInventoryCategory(inventoryCategoryOf(i))?.label ?? "",
-        sheet: isSheetType(i.templateId),
+        group: getCategory(cats, categoryOf(i, cats))?.label ?? "",
+        sheet: isSheet(i, cats),
         inStock: i.inStock,
         needed: robot?.needed ?? 0,
         covered: robot?.allocated ?? 0,
@@ -207,11 +215,11 @@ export async function shelfOfParts(rows: ShelfPart[]) {
   const linked = rows.filter((p) => p.inventoryItemId);
   const unlinked = rows.filter((p) => !p.inventoryItemId && p.classification === "cots");
   if (!linked.length && !unlinked.length) return { shelf, suggestion };
-  const [{ items, usage }, all] = await Promise.all([
+  const [{ items, usage, cats }, all] = await Promise.all([
     usageOf([...new Set(linked.map((p) => p.inventoryItemId!))]),
     unlinked.length
       ? db
-          .select({ id: inventoryItems.id, name: inventoryItems.name, onshapeKey: inventoryItems.onshapeKey, aliases: inventoryItems.aliases, vendorUrl: inventoryItems.vendorUrl, inStock: inventoryItems.inStock, templateId: inventoryItems.templateId })
+          .select({ id: inventoryItems.id, name: inventoryItems.name, onshapeKey: inventoryItems.onshapeKey, aliases: inventoryItems.aliases, cotsLinks: inventoryItems.cotsLinks, inStock: inventoryItems.inStock, category: inventoryItems.category })
           .from(inventoryItems)
       : [],
   ]);
@@ -222,7 +230,7 @@ export async function shelfOfParts(rows: ShelfPart[]) {
     shelf.set(p.id, {
       itemId: item.id,
       itemName: item.name,
-      sheet: isSheetType(item.templateId),
+      sheet: isSheet(item, cats),
       inStock: item.inStock,
       need: u?.need ?? 0,
       // A part on an archived robot isn't in the usage; it shows the stock but covers nothing.
@@ -233,7 +241,7 @@ export async function shelfOfParts(rows: ShelfPart[]) {
   for (const p of unlinked) {
     const hit = suggestItem(p, all);
     const item = hit && all.find((i) => i.id === hit.itemId);
-    if (item) suggestion.set(p.id, { itemId: item.id, itemName: item.name, inStock: item.inStock, sheet: isSheetType(item.templateId), reason: hit.reason });
+    if (item) suggestion.set(p.id, { itemId: item.id, itemName: item.name, inStock: item.inStock, sheet: isSheet(item, cats), reason: hit.reason });
   }
   return { shelf, suggestion };
 }
