@@ -210,7 +210,7 @@ export function QuantityField({ part, save }: Props) {
 }
 
 // The status menu names each status as the part's machine calls it ("Printing" on a 3D printer).
-export function StatusField({ part, save }: Props) {
+export function StatusField({ part, save, size = "md" }: Props & { size?: "sm" | "md" }) {
   const status = computeStatus(part);
   const machine = part.classification === "cots" ? null : statusMachine(part);
   const options =
@@ -220,7 +220,7 @@ export function StatusField({ part, save }: Props) {
         ? STATUSES.map((s) => ({ value: s.name, label: statusLabel(s.name, machine), color: s.color }))
         : STATUS_OPTIONS;
   return (
-    <Popover trigger={<StatusPill status={status} label={partStatusLabel(part)} size="md" />}>
+    <Popover trigger={<StatusPill status={status} label={partStatusLabel(part)} size={size} />}>
       {(close) => (
         <OptionList
           options={options}
