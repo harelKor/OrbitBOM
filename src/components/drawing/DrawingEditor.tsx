@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { BEARINGS, DEFAULT_FIT, FITS, SCREWS, type Fit } from "@/config/drawings";
@@ -56,16 +57,20 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [busy, setBusy] = useState<"regenerate" | "delete" | null>(null);
+  const [loads, setLoads] = useState(0); // bumped by Regenerate to fetch the new drawing
   const sheet = useRef<HTMLDivElement>(null);
+  const router = useRouter();
 
   useEffect(() => {
     fetchDrawing(partId)
       .then((r) => {
         setData(r);
         setEdits(r.edits ?? {});
+        setDirty(false);
       })
       .catch((e: Error) => setError(e.message));
-  }, [partId]);
+  }, [partId, loads]);
 
   const base = useMemo(() => (data ? partDrawing(data.part, data.title) : null), [data]);
   const drawing = useMemo(() => (base ? applyEdits(base, edits) : null), [base, edits]);
@@ -130,6 +135,29 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
     else setDirty(false);
   }
 
+  // Make the drawing again from Onshape. Saved edits are kept; unsaved ones are lost.
+  async function regenerate() {
+    if (dirty && !confirm("Regenerate without saving your changes?")) return;
+    setBusy("regenerate");
+    setError(null);
+    const res = await fetch(`/api/parts/${partId}/drawing`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ force: true }) });
+    setBusy(null);
+    if (!res.ok) return setError((await res.json().catch(() => ({}))).error ?? "Couldn't regenerate the drawing.");
+    setLoads((n) => n + 1);
+    router.refresh();
+  }
+
+  async function remove() {
+    if (!confirm("Delete this drawing and its notes?")) return;
+    setBusy("delete");
+    setError(null);
+    const res = await fetch(`/api/parts/${partId}/drawing`, { method: "DELETE" });
+    setBusy(null);
+    if (!res.ok) return setError((await res.json().catch(() => ({}))).error ?? "Couldn't delete the drawing.");
+    router.refresh();
+    onClose();
+  }
+
   const close = () => {
     if (!dirty || confirm("Close without saving your changes?")) onClose();
   };
@@ -155,6 +183,12 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
             </button>
           </span>
         )}
+        <button className="btn" onClick={regenerate} disabled={!data || !!busy} title="Make it again from Onshape (keeps saved notes)">
+          {busy === "regenerate" ? "Regenerating…" : "Regenerate"}
+        </button>
+        <button className="btn text-rose-600" onClick={remove} disabled={!data || !!busy}>
+          {busy === "delete" ? "Deleting…" : "Delete"}
+        </button>
         <button className="btn" onClick={() => downloadDrawing(partId, "pdf").catch((e: Error) => setError(e.message))} disabled={!drawing || dirty} title={dirty ? "Save first" : undefined}>
           PDF
         </button>
@@ -166,7 +200,7 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
         </button>
       </div>
       {error && <p className="mb-2 rounded-md bg-rose-50 p-2 text-sm text-rose-700">{error}</p>}
-      {data?.outdated && <p className="mb-2 rounded-md bg-amber-50 p-2 text-sm text-amber-800">The part changed in Onshape since this drawing was made. Make it again from the system page.</p>}
+      {data?.outdated && <p className="mb-2 rounded-md bg-amber-50 p-2 text-sm text-amber-800">The part changed in Onshape since this drawing was made. Regenerate it to update.</p>}
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
         <div className="min-h-0 flex-1 overflow-auto">
