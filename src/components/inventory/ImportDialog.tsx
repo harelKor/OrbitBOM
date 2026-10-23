@@ -110,26 +110,26 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
             )}
 
             <div className="max-h-56 overflow-auto rounded-lg border border-line">
-              <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-surface text-left text-muted">
+              <table className="data-table">
+                <thead className="sticky top-0 z-[1]">
                   <tr>
-                    <th className="px-2 py-1">Item</th>
-                    <th className="px-2 py-1">Qty</th>
-                    <th className="px-2 py-1">Location</th>
-                    <th className="px-2 py-1">Group</th>
-                    <th className="px-2 py-1">Condition</th>
-                    <th className="px-2 py-1">Material</th>
+                    <th>Item</th>
+                    <th>Qty</th>
+                    <th>Location</th>
+                    <th>Group</th>
+                    <th>Condition</th>
+                    <th>Material</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-line">
+                <tbody>
                   {parsed.slice(0, 50).map((r, i) => (
                     <tr key={i}>
-                      <td className="px-2 py-1">{r.name}</td>
-                      <td className="px-2 py-1">{r.inStock}</td>
-                      <td className="px-2 py-1">{r.location}</td>
-                      <td className="px-2 py-1">{r.groupPath.join(" › ")}</td>
-                      <td className="px-2 py-1">{r.condition}</td>
-                      <td className="px-2 py-1">{r.material}</td>
+                      <td>{r.name}</td>
+                      <td className="font-mono tabular-nums">{r.inStock}</td>
+                      <td>{r.location}</td>
+                      <td>{r.groupPath.join(" › ")}</td>
+                      <td>{r.condition}</td>
+                      <td>{r.material}</td>
                     </tr>
                   ))}
                 </tbody>

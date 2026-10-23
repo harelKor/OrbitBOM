@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 // Card size and site colour, set from the right panel and kept in this browser, so every page
 // opens the way the member left it. Both live on <html>: --card-scale sizes the part card
-// grids (.card-grid), and data-hue + --hue turn the accent colours (globals.css).
+// grids (.card-grid) and zooms the tables (.data-table), and data-hue + --hue turn the accent colours (globals.css).
 const KEY = "orbit-appearance";
 export const DEFAULT_HUE = 264; // Orbit blue, #0000cc
 
@@ -50,8 +50,8 @@ export function AppearanceControls() {
         </span>
         <input
           type="range"
-          min={0.5}
-          max={1.5}
+          min={0.3}
+          max={2.5}
           step={0.05}
           value={prefs.scale}
           onChange={(e) => update({ scale: Number(e.target.value) })}
