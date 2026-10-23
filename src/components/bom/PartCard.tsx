@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { getMachine } from "@/config/machines";
 import { IN_PROCESS_STATUS, READY_STATUS, fabStage, isFabFinished } from "@/lib/fab";
@@ -191,7 +192,7 @@ function MadePartCard({
               {showSystem && <span className="ml-1.5 text-[11px] font-normal text-subtle">{part.systemName}</span>}
             </div>
             {showCounter && <DoneCounter part={part} save={save} slot={current!} />}
-            {part.hasDrawing && <DrawingButton partId={ownerPartId(part)} />}
+            {!part.isManual && <DrawingButton partId={ownerPartId(part)} hasDrawing={!!part.hasDrawing} />}
             <NotesButton part={part} save={save} />
             {edit && <EditMenu part={part} />}
           </div>
@@ -336,17 +337,29 @@ export function NoteCloud({ note, raised = false }: { note: string; raised?: boo
   );
 }
 
-// Opens the part's drawing in the drawing editor.
-function DrawingButton({ partId }: { partId: string }) {
+// Opens the part's drawing in the drawing editor, making it from Onshape first when it has none.
+function DrawingButton({ partId, hasDrawing }: { partId: string; hasDrawing: boolean }) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [making, setMaking] = useState(false);
+  async function onClick() {
+    if (hasDrawing) return setOpen(true);
+    setMaking(true);
+    const res = await fetch(`/api/parts/${partId}/drawing`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+    setMaking(false);
+    if (!res.ok) return alert((await res.json().catch(() => ({}))).error ?? "Couldn't make the drawing.");
+    router.refresh();
+    setOpen(true);
+  }
   return (
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
-        className="press flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-line-strong text-muted hover:border-accent/50 hover:text-fg"
-        aria-label="Drawing"
-        title="Drawing"
+        onClick={onClick}
+        disabled={making}
+        className={`press flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-line-strong hover:border-accent/50 hover:text-fg ${hasDrawing ? "text-muted" : "border-dashed text-subtle"} ${making ? "animate-pulse" : ""}`}
+        aria-label={hasDrawing ? "Drawing" : "Make drawing"}
+        title={making ? "Making the drawing…" : hasDrawing ? "Drawing" : "Make drawing"}
       >
         <Icon name="drawing" />
       </button>

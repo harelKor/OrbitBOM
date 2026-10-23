@@ -15,9 +15,9 @@ export type MakeSummary = { made: string[]; skipped: { id: string; reason: strin
 
 // Drawings for the chosen parts of one system (plan/auto-drawings.md): 2 Onshape calls per Part
 // Studio (its exact geometry), then each part is read and saved. A part whose drawing is
-// already from its current revision (and this reader) is skipped; its edits are kept when it's made again.
-// Runs until `deadline`; the browser calls again with what's left.
-export async function makeDrawings(systemId: string, partIds: string[], memberId: string, deadline: number): Promise<MakeSummary> {
+// already from its current revision (and this reader) is skipped unless `force` (Regenerate); its
+// edits are kept when it's made again. Runs until `deadline`; the browser calls again with what's left.
+export async function makeDrawings(systemId: string, partIds: string[], memberId: string, deadline: number, force = false): Promise<MakeSummary> {
   const summary: MakeSummary = { made: [], skipped: [], left: [] };
   if (!partIds.length) return summary;
   const [system] = await db.select({ assemblyUrl: systems.assemblyUrl }).from(systems).where(eq(systems.id, systemId));
@@ -32,7 +32,7 @@ export async function makeDrawings(systemId: string, partIds: string[], memberId
   for (const r of rows) {
     const path = studioPath(r.part);
     if (!path || !ref) summary.skipped.push({ id: r.part.id, reason: "Not from Onshape" });
-    else if (r.drawingRev && r.drawingRev === r.part.thumbnailRev && r.drawn?.reader === READER) summary.made.push(r.part.id);
+    else if (!force && r.drawingRev && r.drawingRev === r.part.thumbnailRev && r.drawn?.reader === READER) summary.made.push(r.part.id);
     else byStudio.set(path, [...(byStudio.get(path) ?? []), r]);
   }
   if (!byStudio.size) return summary;
