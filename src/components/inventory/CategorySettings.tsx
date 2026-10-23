@@ -48,6 +48,16 @@ export function CategorySettings({ open, onClose, categories, locations, items }
     [fields[i], fields[i + by]] = [fields[i + by], fields[i]];
     change({ ...cat, fields });
   };
+  // Drag a field by its ⠿ handle onto another field to put it there.
+  const [drag, setDrag] = useState<{ from: number; armed: boolean; over: number | null } | null>(null);
+  const dropField = (to: number) => {
+    if (!cat || !drag || drag.from === to) return setDrag(null);
+    const fields = [...cat.fields];
+    const [moved] = fields.splice(drag.from, 1);
+    fields.splice(to, 0, moved);
+    change({ ...cat, fields });
+    setDrag(null);
+  };
   const run = (fn: () => Promise<{ error?: string; id?: string }>, then?: (id?: string) => void) =>
     startTransition(async () => {
       const r = await fn();
@@ -133,8 +143,32 @@ export function CategorySettings({ open, onClose, categories, locations, items }
               <div className="space-y-2">
                 <div className="text-[11px] font-semibold tracking-wide text-subtle uppercase">Fields</div>
                 {cat.fields.map((f, i) => (
-                  <div key={f.id} className={`space-y-2 rounded-xl border border-line bg-surface p-3 ${f.hidden ? "opacity-60" : ""}`}>
+                  <div
+                    key={f.id}
+                    draggable={drag?.from === i && drag.armed}
+                    onDragStart={(e) => (e.dataTransfer.effectAllowed = "move")}
+                    onDragOver={(e) => {
+                      if (!drag) return;
+                      e.preventDefault();
+                      if (drag.over !== i) setDrag({ ...drag, over: i });
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      dropField(i);
+                    }}
+                    onDragEnd={() => setDrag(null)}
+                    className={`space-y-2 rounded-xl border bg-surface p-3 ${f.hidden ? "opacity-60" : ""} ${drag?.over === i && drag.from !== i ? "border-accent" : "border-line"} ${drag?.from === i && drag.over !== null ? "opacity-50" : ""}`}
+                  >
                     <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        onPointerDown={() => setDrag({ from: i, armed: true, over: null })}
+                        onPointerUp={() => setDrag((d) => (d && d.over === null ? null : d))}
+                        className="cursor-grab px-1 text-lg leading-none text-subtle select-none hover:text-fg active:cursor-grabbing"
+                        title="Drag to reorder"
+                        aria-hidden
+                      >
+                        ⠿
+                      </span>
                       <input value={f.label} onChange={(e) => setField(i, { label: e.target.value })} aria-label="Field name" className="input min-h-10 w-40 flex-1 font-semibold" />
                       <select value={f.kind} onChange={(e) => setField(i, { kind: e.target.value as CategoryField["kind"] })} aria-label="Kind" className="input min-h-10 w-auto">
                         {KINDS.map((k) => (

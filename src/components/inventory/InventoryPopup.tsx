@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useState, useTransition } from "react";
-import { adjustStock, countStock, deleteItem, findBomParts, itemPopup, materialPopup } from "@/app/(app)/inventory/actions";
+import { adjustStock, countStock, deleteItem, findBomParts, itemPopup, materialPopup, setItemPhoto } from "@/app/(app)/inventory/actions";
 import { textOn } from "@/components/bom/options";
 import { Dialog } from "@/components/Dialog";
 import { EditOnly } from "@/components/shell/ModeContext";
@@ -14,6 +14,7 @@ import { formatStock, snapStock } from "@/lib/inventory/stock";
 import { CountBox, PieceStepper, conditionColor, hostOf } from "./ItemCard";
 import { ItemForm, draftOf } from "./ItemForm";
 import { ItemHistory } from "./ItemHistory";
+import { PhotoButtons } from "./photo";
 import { ToBomDialog } from "./ToBomDialog";
 import type { InvCategory, Item, Location } from "./types";
 
@@ -184,6 +185,8 @@ function ItemBody({
   const [message, setMessage] = useState<string | null>(null);
   const [deleting, startDelete] = useTransition();
   const [finding, startFind] = useTransition();
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [, startPhoto] = useTransition();
   const find = () =>
     startFind(async () => {
       const r = await findBomParts(item.id);
@@ -222,13 +225,28 @@ function ItemBody({
   return (
     <div className="space-y-4">
       <div className="flex gap-4">
-        <div className="thumb-well flex h-28 w-28 shrink-0 items-center justify-center rounded-xl sm:h-36 sm:w-36">
-          {picture ? (
-            // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
-            <img src={picture} alt="" className="h-full w-full object-contain p-2" />
-          ) : (
-            <Icon name="box" className="h-12 w-12 text-subtle" />
-          )}
+        <div className="shrink-0 space-y-1.5">
+          <div className="thumb-well flex h-28 w-28 items-center justify-center rounded-xl sm:h-36 sm:w-36">
+            {photo || picture ? (
+              // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
+              <img src={photo ?? picture!} alt="" className="h-full w-full object-contain p-2" />
+            ) : (
+              <Icon name="box" className="h-12 w-12 text-subtle" />
+            )}
+          </div>
+          <EditOnly>
+            <PhotoButtons
+              compact
+              onPhoto={(p) =>
+                startPhoto(async () => {
+                  setPhoto(p.preview);
+                  const r = await setItemPhoto(item.id, p.key);
+                  if (r.error) setMessage(r.error);
+                  else onSaved();
+                })
+              }
+            />
+          </EditOnly>
         </div>
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap gap-1">

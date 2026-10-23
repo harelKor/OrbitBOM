@@ -6,6 +6,7 @@ import { buildName, getCategory } from "@/lib/inventory/categories";
 import { formatStock, parseStock } from "@/lib/inventory/stock";
 import { Chips, FieldInput } from "./fields";
 import { hostOf } from "./ItemCard";
+import { PhotoButtons } from "./photo";
 import type { Condition, InvCategory, Item, Location } from "./types";
 
 export type Draft = {
@@ -20,6 +21,7 @@ export type Draft = {
   links: { url: string; site?: string }[];
   price: number | null;
   imageUrl: string | null;
+  photo?: { key: string; preview: string } | null; // a photo the member took or uploaded
 };
 
 export const emptyDraft = (over: Partial<Draft> = {}): Draft => ({
@@ -116,6 +118,7 @@ export function ItemForm({
         links,
         price: d.price,
         imageUrl: d.imageUrl,
+        photoKey: d.photo?.key ?? null,
       });
       if (r.error || !r.id) setError(r.error ?? "Couldn't save.");
       else onSaved(r.id, r.message);
@@ -214,10 +217,26 @@ export function ItemForm({
       </div>
 
       <div className="space-y-2">
+        <div className="label">Photo</div>
+        <div className="flex flex-wrap items-center gap-3">
+          {(d.photo || d.imageUrl) && (
+            // eslint-disable-next-line @next/next/no-img-element -- a local preview or the store's picture, saved to R2 on save
+            <img src={d.photo?.preview ?? d.imageUrl!} alt="" className="h-16 w-16 shrink-0 rounded-lg border border-line bg-white object-contain" />
+          )}
+          <PhotoButtons onPhoto={(photo) => setDraft({ ...d, photo })} />
+          {d.photo && (
+            <button type="button" className="text-xs text-subtle hover:text-rose-600" onClick={() => setDraft({ ...d, photo: null })}>
+              Remove
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-2">
         <div className="label">Product</div>
         {(d.links.length > 0 || d.imageUrl) && (
           <div className="flex items-center gap-3 rounded-xl border border-line bg-raised p-2">
-            {d.imageUrl && (
+            {d.imageUrl && !d.photo && (
               // eslint-disable-next-line @next/next/no-img-element -- the store's picture, saved to R2 on save
               <img src={d.imageUrl} alt="" className="h-14 w-14 shrink-0 rounded-lg bg-white object-contain" />
             )}

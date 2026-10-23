@@ -14,6 +14,7 @@ import { RecentActions } from "@/components/actions/RecentActions";
 import type { RecentAction } from "@/lib/data/actions";
 import { useInventoryPopup } from "./InventoryPopup";
 import { ItemCard } from "./ItemCard";
+import { ScanButton } from "./ScanButton";
 import { ConditionsDialog, LocationsDialog } from "./ListDialogs";
 import type { Item, Lookups } from "./types";
 
@@ -165,6 +166,7 @@ export function InventoryView({ items, scope, actions, ...lookups }: Lookups & {
           defaultLocationId={scope.kind === "location" ? scope.id : null}
           placeholder={scope.kind === "home" ? "Do we have it? Name, size, bore, vendor, location…" : "Filter by name, size, vendor, location…"}
         />
+        <ScanButton onCode={setQ} />
         {!boxes && filters}
       </div>
 

@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -20,6 +21,7 @@ import { readProduct, saveProductPhoto, toUsd } from "@/lib/inventory/product";
 import { searchProducts } from "@/lib/inventory/search";
 import { parseStock } from "@/lib/inventory/stock";
 import { applyEachPartChanges } from "@/lib/parts/apply";
+import { StorageNotConfiguredError, deleteObject, objectExists, presignUpload } from "@/lib/storage/r2";
 import { isUuid } from "@/lib/uuid";
 
 const { inventoryItems, inventoryGroups, inventoryConditions, inventoryLocations, inventoryMoves, inventoryCategories, parts } = schema;
@@ -32,6 +34,9 @@ const refresh = () => {
   revalidatePath("/cots", "layout");
 };
 
+// Photos members take or upload go straight from the browser to R2 under this prefix.
+const PHOTO_KEY = /^inventory\/photos\/[0-9a-f-]{36}\.jpg$/;
+
 const linkSchema = z.object({ url: z.url("A product link must be a web link."), site: z.string().trim().max(80).optional() });
 const itemInput = z.object({
   name: z.string().trim().min(1, "Part name is required.").max(200),
@@ -43,6 +48,7 @@ const itemInput = z.object({
   links: z.array(linkSchema).max(10).default([]),
   price: z.number().min(0).nullable().default(null),
   imageUrl: z.string().nullable().optional(), // a product's picture, copied to R2 on save
+  photoKey: z.string().regex(PHOTO_KEY, "Unknown photo.").nullable().optional(), // a photo the member uploaded (wins over imageUrl)
 });
 export type ItemInput = z.input<typeof itemInput>;
 
@@ -81,7 +87,10 @@ export async function saveItem(itemId: string | null, input: ItemInput): Promise
     return id!;
   });
   if (!id) return { error: "That item was deleted." };
-  if (d.imageUrl) {
+  if (d.photoKey) {
+    const error = await applyPhoto(id, d.photoKey, ctx);
+    if (error) return { id, error };
+  } else if (d.imageUrl) {
     const key = await saveProductPhoto(id, d.imageUrl);
     if (key) await db.update(inventoryItems).set({ imagePath: key }).where(eq(inventoryItems.id, id));
   }
@@ -99,6 +108,37 @@ export async function findBomParts(itemId: string): Promise<ActionResult> {
   const n = await autoLink({ itemIds: [itemId] }, { memberId: member.id, via: "ui" });
   refresh();
   return { message: n ? linkMessage(n) : "No new BOM part looks like this item. Parts already waiting in To Review, and links someone rejected, aren't suggested again." };
+}
+
+// Step 1 of a photo: a presigned PUT for the browser's shrunk JPEG.
+export async function startPhotoUpload(): Promise<{ url: string; key: string } | { error: string }> {
+  await requireMember();
+  try {
+    const key = `inventory/photos/${randomUUID()}.jpg`;
+    return { url: await presignUpload(key), key };
+  } catch (err) {
+    if (err instanceof StorageNotConfiguredError) return { error: err.message };
+    throw err;
+  }
+}
+
+// Step 2, from the item window: the uploaded photo becomes the item's picture.
+export async function setItemPhoto(itemId: string, key: string): Promise<ActionResult> {
+  const member = await requireMember();
+  if (!isUuid(itemId) || !PHOTO_KEY.test(key)) return { error: "Unknown photo." };
+  const error = await applyPhoto(itemId, key, { memberId: member.id, via: "ui" });
+  refresh();
+  return error ? { error } : {};
+}
+
+async function applyPhoto(itemId: string, key: string, ctx: { memberId: string; via: "ui" }) {
+  if (!(await objectExists(key))) return "The photo didn't reach file storage. Try again.";
+  const [before] = await db.select({ imagePath: inventoryItems.imagePath }).from(inventoryItems).where(eq(inventoryItems.id, itemId));
+  if (!before) return "That item was deleted.";
+  await db.update(inventoryItems).set({ imagePath: key }).where(eq(inventoryItems.id, itemId));
+  await recordItemChanges(db, itemId, before, { imagePath: key }, ctx);
+  if (before.imagePath && before.imagePath !== key) await deleteObject(before.imagePath).catch(() => {});
+  return null;
 }
 
 export async function deleteItem(itemId: string) {

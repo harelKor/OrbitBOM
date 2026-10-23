@@ -254,7 +254,7 @@ export function AddBox({
           <button type="button" className="btn min-h-10" onClick={() => openItem(saved.id)}>
             Edit
           </button>
-          <button type="button" className="btn min-h-10" onClick={() => setDraft({ ...saved.draft, inStock: "1", links: [], imageUrl: null, price: null })}>
+          <button type="button" className="btn min-h-10" onClick={() => setDraft({ ...saved.draft, inStock: "1", links: [], imageUrl: null, price: null, photo: null })}>
             Add another like this
           </button>
           <button type="button" className="press text-emerald-700" aria-label="Dismiss" onClick={() => setSaved(null)}>
