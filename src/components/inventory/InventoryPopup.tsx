@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useState, useTransition } from "react";
-import { adjustStock, countStock, deleteItem, itemPopup, materialPopup } from "@/app/(app)/inventory/actions";
+import { adjustStock, countStock, deleteItem, findBomParts, itemPopup, materialPopup } from "@/app/(app)/inventory/actions";
 import { textOn } from "@/components/bom/options";
 import { Dialog } from "@/components/Dialog";
 import { EditOnly } from "@/components/shell/ModeContext";
@@ -183,6 +183,12 @@ function ItemBody({
   const [draft, setDraft] = useState(() => draftOf(item));
   const [message, setMessage] = useState<string | null>(null);
   const [deleting, startDelete] = useTransition();
+  const [finding, startFind] = useTransition();
+  const find = () =>
+    startFind(async () => {
+      const r = await findBomParts(item.id);
+      setMessage(r.error ?? r.message ?? null);
+    });
   const categories = data?.categories ?? [];
   const locations = data?.locations ?? [];
   const conditions = data?.conditions ?? [];
@@ -314,8 +320,11 @@ function ItemBody({
       )}
 
       {message && <p className="text-sm text-emerald-700">{message}</p>}
-      <EditOnly>
-        <div className="flex flex-wrap gap-2 border-t border-line pt-3">
+      <div className="flex flex-wrap gap-2 border-t border-line pt-3">
+        <button className="btn min-h-11" disabled={finding} onClick={find} title="Look for BOM parts that are this item; each one waits in To Review for Approve">
+          <Icon name="search" className="h-4 w-4" /> {finding ? "Looking…" : "Find BOM parts"}
+        </button>
+        <EditOnly>
           <button
             className="btn min-h-11"
             disabled={!data}
@@ -344,8 +353,8 @@ function ItemBody({
           >
             Delete
           </button>
-        </div>
-      </EditOnly>
+        </EditOnly>
+      </div>
 
       <div>
         <div className="label">History</div>

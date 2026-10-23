@@ -190,6 +190,8 @@ export const parts = pgTable(
     classSource: classSource("class_source"),
 
     thumbnailRev: text("thumbnail_rev"),
+    // The thumbnail's fingerprint (src/lib/images/dhash.ts), so auto-link can spot the same part.
+    thumbHash: text("thumb_hash"),
     removedFromCadAt: timestamp("removed_from_cad_at", { withTimezone: true }),
 
     lastModifiedAt: timestamp("last_modified_at", { withTimezone: true }).notNull().defaultNow(),
@@ -316,6 +318,9 @@ export const partReviews = pgTable("part_reviews", {
   source: classSource("source").notNull(),
   reason: text("reason"),
   changes: jsonb("changes").$type<Record<string, { from: unknown; to: unknown }>>().notNull(),
+  // Suggested but not applied yet (an inventory link waits for Approve, Harel 2026-10-23):
+  // Approve applies them, Reject drops them.
+  pending: jsonb("pending").$type<Record<string, unknown>>().notNull().default({}),
   // Onshape fields the suggestion marked overridden; Reject un-marks them again.
   addedOverrides: text("added_overrides").array().notNull().default(sql`'{}'::text[]`),
   memberId: uuid("member_id").references(() => members.id, { onDelete: "set null" }),
@@ -490,6 +495,22 @@ export const inventoryMoves = pgTable(
     at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("inventory_moves_item_idx").on(t.itemId, t.at), index("inventory_moves_batch_idx").on(t.batchId), index("inventory_moves_visit_idx").on(t.visitId)],
+);
+
+// A suggested inventory link someone rejected: auto-link doesn't suggest that pair again.
+export const inventoryLinkRejections = pgTable(
+  "inventory_link_rejections",
+  {
+    partId: uuid("part_id")
+      .notNull()
+      .references(() => parts.id, { onDelete: "cascade" }),
+    itemId: uuid("item_id")
+      .notNull()
+      .references(() => inventoryItems.id, { onDelete: "cascade" }),
+    memberId: uuid("member_id").references(() => members.id, { onDelete: "set null" }),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.partId, t.itemId] })],
 );
 
 // Every change to an item other than its stock: created, and each edited field (name, category,

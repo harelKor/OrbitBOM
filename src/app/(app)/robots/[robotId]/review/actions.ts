@@ -14,9 +14,9 @@ function refresh() {
 }
 
 export async function approveParts(partIds: string[]): Promise<ActionResult> {
-  await requireMember();
+  const member = await requireMember();
   if (partIds.some((id) => !isUuid(id))) return { error: "Unknown part." };
-  await approveReviews(partIds);
+  await approveReviews(partIds, member.id);
   return {};
 }
 

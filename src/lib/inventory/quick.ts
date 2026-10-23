@@ -45,6 +45,15 @@ export function parseQuick(text: string, cats: InvCategory[]): QuickParse | null
   const cat = cats.find((c) => c.id === categoryId);
   if (!cat) return null;
 
+  const { specs, rest } = readSpecs(text, cat);
+  const own = new Set([cat.noun, cat.label].flatMap((w) => tokens(w ?? "")).flatMap((w) => [w, `${w}s`, w.replace(/s$/, "")]));
+  return { categoryId: cat.id, specs, left: tokens(rest).filter((w) => !own.has(w)) };
+}
+
+// The category's field values found in a piece of text (a BOM part's name, for auto-link).
+export const parseSpecs = (text: string, cat: InvCategory) => readSpecs(text, cat).specs;
+
+function readSpecs(text: string, cat: InvCategory) {
   let words = tokens(text);
   const specs: Record<string, string> = {};
   for (const f of cat.fields) {
@@ -63,6 +72,5 @@ export function parseQuick(text: string, cats: InvCategory[]): QuickParse | null
     specs[f.id] = m[1];
     rest = rest.replace(m[0], " ");
   }
-  const own = new Set([cat.noun, cat.label].flatMap((w) => tokens(w ?? "")).flatMap((w) => [w, `${w}s`, w.replace(/s$/, "")]));
-  return { categoryId: cat.id, specs, left: tokens(rest).filter((w) => !own.has(w)) };
+  return { specs, rest };
 }

@@ -87,7 +87,18 @@ export async function saveItem(itemId: string | null, input: ItemInput): Promise
   }
   const linked = await autoLink({ itemIds: [id] }, { memberId: member.id, via: "ui" });
   refresh();
-  return { id, message: linked ? `Linked ${linked} BOM part${linked === 1 ? "" : "s"} with the same product; they wait in To Review.` : undefined };
+  return { id, message: linked ? linkMessage(linked) : undefined };
+}
+
+const linkMessage = (n: number) => `${n} BOM part${n === 1 ? " looks" : "s look"} like this item; ${n === 1 ? "it waits" : "they wait"} in To Review for Approve.`;
+
+// The item window's "Find BOM parts": auto-link for this one item.
+export async function findBomParts(itemId: string): Promise<ActionResult> {
+  const member = await requireMember();
+  if (!isUuid(itemId)) return { error: "Unknown item." };
+  const n = await autoLink({ itemIds: [itemId] }, { memberId: member.id, via: "ui" });
+  refresh();
+  return { message: n ? linkMessage(n) : "No new BOM part looks like this item. Parts already waiting in To Review, and links someone rejected, aren't suggested again." };
 }
 
 export async function deleteItem(itemId: string) {

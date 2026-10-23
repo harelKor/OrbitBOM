@@ -11,8 +11,7 @@ import { db, schema } from "@/db";
 import type { Member } from "@/lib/auth";
 import { vendorOfUrl } from "@/config/vendors";
 import { listInventory } from "@/lib/data/inventory";
-import { suggestItem } from "@/lib/inventory/match";
-import { autoLink } from "@/lib/inventory/autolink";
+import { autoLink, findLinks, writePendingLinks } from "@/lib/inventory/autolink";
 import { checkSpecs, fieldChoices, getCategory, type InvCategory } from "@/lib/inventory/categories";
 import { listCategories } from "@/lib/data/categories";
 import { moveStock, undoMoves } from "@/lib/inventory/moves";
@@ -657,7 +656,7 @@ read(
 
 read(
   "inventory_to_link",
-  "COTS parts on active robots that aren't linked to an inventory item yet, with the item the site thinks each one is (same Onshape part, product page or name) and a compact list of every item, so you can match the rest. Link them with link_inventory.",
+  "COTS parts on active robots that aren't linked to an inventory item yet, with the item the site's auto-link thinks each one is (score 0-100 and why: same Onshape part or product link, sizes and words in the name, same picture as a linked part) and a compact list of every item, so you can match the rest. Suggest links with link_inventory; they wait in To Review.",
   z.object({ robot_id: uuid.optional(), limit: z.number().int().min(1).max(500).optional() }),
   async ({ robot_id, limit = 200 }) => {
     const [rows, items] = await Promise.all([
@@ -669,10 +668,12 @@ read(
         .where(and(isNull(parts.inventoryItemId), isNull(parts.removedFromCadAt), eq(parts.classification, "cots"), eq(robots.archived, false), robot_id ? eq(robots.id, robot_id) : undefined)),
       listInventory().then((r) => r.items),
     ]);
+    const { found } = await findLinks({ partIds: rows.slice(0, limit).map((r) => r.part.id) });
+    const guess = new Map(found.map((f) => [f.partId, f]));
     return {
       total: rows.length,
       parts: rows.slice(0, limit).map((r) => {
-        const hit = suggestItem(r.part, items);
+        const hit = guess.get(r.part.id);
         return {
           part_id: r.part.id,
           name: nameOf(r.part),
@@ -680,7 +681,7 @@ read(
           system: r.systemName,
           quantity: r.part.quantity,
           product_link: r.part.cotsLinks[0]?.url ?? null,
-          suggestion: hit ? { item_id: hit.itemId, item: items.find((i) => i.id === hit.itemId)?.name, reason: hit.reason } : null,
+          suggestion: hit ? { item_id: hit.itemId, item: items.find((i) => i.id === hit.itemId)?.name, score: hit.score, why: hit.why } : null,
         };
       }),
       items: items.map((i) => ({ id: i.id, name: i.name, category: i.category, specs: i.specs, in_stock: i.inStock })),
@@ -691,9 +692,9 @@ read(
 
 write(
   "link_inventory",
-  "Link COTS parts to inventory items (item_id null unlinks). A linked part draws on the item's stock, shared by every active robot.",
-  z.object({ links: z.array(z.object({ part_id: uuid, item_id: uuid.nullable() })).min(1).max(1000) }),
-  async ({ links }, { member }) => {
+  "Suggest links from BOM parts to inventory items (item_id null unlinks at once). A link waits in To Review with your name until the part's designer approves it; then the part draws on the item's stock, shared by every active robot. Rejected links are remembered.",
+  z.object({ links: z.array(z.object({ part_id: uuid, item_id: uuid.nullable(), reason: z.string().max(300).optional() })).min(1).max(1000) }),
+  async ({ links }, { member, aiName }) => {
     const [rows, items] = await Promise.all([
       db.select().from(parts).where(inArray(parts.id, links.map((l) => l.part_id))),
       db.select({ id: inventoryItems.id, name: inventoryItems.name }).from(inventoryItems),
@@ -706,14 +707,20 @@ write(
     if (bad) throw new ToolError(`No inventory item ${bad.item_id}.`);
     return {
       count: changes.length,
-      summary: `Linked ${changes.length} ${changes.length === 1 ? "part" : "parts"} to inventory`,
+      summary: `${changes.length} inventory ${changes.length === 1 ? "link" : "links"}: unlinks at once, links wait in To Review`,
       preview: changes.map((c) => ({ part_id: c.part.id, part: nameOf(c.part), item: c.itemId ? items.find((i) => i.id === c.itemId)?.name : null })),
       apply: async () => {
+        const reasons = new Map(links.map((l) => [l.part_id, l.reason ?? null]));
+        const unlink = changes.filter((c) => !c.itemId);
         const { batchId, changed } = await applyEachPartChanges(
-          changes.map((c) => ({ id: c.part.id, changes: { inventoryItemId: c.itemId } })),
+          unlink.map((c) => ({ id: c.part.id, changes: { inventoryItemId: null } })),
           { memberId: member.id, via: "mcp" },
         );
-        return { changed, batch_id: batchId };
+        const waiting = await writePendingLinks(
+          changes.filter((c) => c.itemId).map((c) => ({ partId: c.part.id, itemId: c.itemId!, reason: reasons.get(c.part.id) ?? null })),
+          { memberId: member.id, source: "ai", via: "mcp", aiName },
+        );
+        return { unlinked: changed, waiting_in_to_review: waiting, batch_id: batchId };
       },
     };
   },
