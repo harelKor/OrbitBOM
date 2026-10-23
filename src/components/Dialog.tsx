@@ -29,11 +29,11 @@ export function Dialog({
     <dialog
       ref={ref}
       onClose={onClose}
-      className={`m-auto ${width ?? (wide ? "w-[min(40rem,calc(100vw-2rem))]" : "w-[min(28rem,calc(100vw-2rem))]")} rounded-xl border border-line-strong bg-surface p-0 text-fg backdrop:bg-black/60`}
+      className={`m-auto ${width ?? (wide ? "w-[min(40rem,calc(100vw-2rem))]" : "w-[min(28rem,calc(100vw-2rem))]")} modal p-0`}
     >
       <div className="flex items-center justify-between border-b border-line px-5 py-3">
         <h2 className="font-semibold">{title}</h2>
-        <button onClick={onClose} className="text-muted hover:text-fg" aria-label="Close">
+        <button onClick={onClose} className="press rounded p-1 text-muted hover:text-fg" aria-label="Close">
           ✕
         </button>
       </div>

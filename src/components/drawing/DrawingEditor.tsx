@@ -139,7 +139,7 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
   // On document.body: inside the part card, pressing the sheet would scale the card (:active) and
   // pull the fixed editor into it. Clicks still bubble through React, so they stop here.
   return createPortal(
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#07090E]/95 p-3 backdrop-blur sm:p-5" role="dialog" aria-label="Drawing editor" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+    <div className="modal-enter fixed inset-0 z-50 flex flex-col bg-[#07090E]/95 p-3 backdrop-blur sm:p-5" role="dialog" aria-label="Drawing editor" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <h2 className="min-w-0 flex-1 truncate text-lg font-semibold text-white">{data?.title.name ?? "Drawing"}</h2>
         {hint && (
