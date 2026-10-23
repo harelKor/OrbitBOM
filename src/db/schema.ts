@@ -484,9 +484,35 @@ export const inventoryMoves = pgTable(
     via: changeVia("via").notNull(),
     aiName: text("ai_name"),
     batchId: uuid("batch_id"),
+    // The page visit a change on the site was made in, and its path (Inventory's Recent actions).
+    visitId: uuid("visit_id"),
+    page: text("page"),
     at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("inventory_moves_item_idx").on(t.itemId, t.at), index("inventory_moves_batch_idx").on(t.batchId)],
+  (t) => [index("inventory_moves_item_idx").on(t.itemId, t.at), index("inventory_moves_batch_idx").on(t.batchId), index("inventory_moves_visit_idx").on(t.visitId)],
+);
+
+// Every change to an item other than its stock: created, and each edited field (name, category,
+// specs, location, condition, links, price, photo) with its old and new value. The item window's
+// history shows these with the stock moves.
+export const inventoryItemHistory = pgTable(
+  "inventory_item_history",
+  {
+    id: id(),
+    itemId: uuid("item_id")
+      .notNull()
+      .references(() => inventoryItems.id, { onDelete: "cascade" }),
+    field: text("field").notNull(), // "created", or the column's name in camelCase
+    oldValue: jsonb("old_value"),
+    newValue: jsonb("new_value"),
+    memberId: uuid("member_id").references(() => members.id, { onDelete: "set null" }),
+    via: changeVia("via").notNull(),
+    aiName: text("ai_name"),
+    visitId: uuid("visit_id"),
+    page: text("page"),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("inventory_item_history_item_idx").on(t.itemId, t.at), index("inventory_item_history_visit_idx").on(t.visitId)],
 );
 
 // ---------- Onshape ----------

@@ -91,8 +91,8 @@ export function ItemCard({
     <div
       role="button"
       tabIndex={0}
-      onClick={() => openItem(item.id)}
-      onKeyDown={(e) => e.key === "Enter" && e.target === e.currentTarget && openItem(item.id)}
+      onClick={() => openItem(item.id, item)}
+      onKeyDown={(e) => e.key === "Enter" && e.target === e.currentTarget && openItem(item.id, item)}
       aria-label={`Open ${item.name}`}
       className="card-interactive group flex cursor-pointer flex-col border-l-4 text-sm"
       style={color ? { borderLeftColor: color } : undefined}

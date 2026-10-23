@@ -8,11 +8,13 @@ import { guessCategory } from "@/config/inventory";
 import { vendorOfUrl } from "@/config/vendors";
 import { db, schema } from "@/db";
 import { requireMember } from "@/lib/auth";
+import { listBomTargets } from "@/lib/data/robots";
 import { listCategories } from "@/lib/data/categories";
 import { inventoryItemDetail, listInventory, robotInventory, usageOf } from "@/lib/data/inventory";
 import { autoLink } from "@/lib/inventory/autolink";
 import { categoryOf, getCategory, slugify, type InvCategory } from "@/lib/inventory/categories";
 import type { ImportRow } from "@/lib/inventory/import";
+import { recordItemChanges } from "@/lib/inventory/history";
 import { moveStock, setStock } from "@/lib/inventory/moves";
 import { readProduct, saveProductPhoto, toUsd } from "@/lib/inventory/product";
 import { searchProducts } from "@/lib/inventory/search";
@@ -63,13 +65,22 @@ export async function saveItem(itemId: string | null, input: ItemInput): Promise
   if (inStock === null) return { error: sheet ? 'In stock is sheets, like "2" or "1 3/4".' : "In stock is a whole number." };
   const cotsLinks = d.links.map((l) => ({ url: l.url, site: l.site || vendorOfUrl(l.url) }));
   const values = { name: d.name, category: d.category, specs, conditionId: d.conditionId, locationId: d.locationId, cotsLinks, price: d.price };
+  const ctx = { memberId: member.id, via: "ui" as const };
   const id = await db.transaction(async (tx) => {
     let id = itemId;
-    if (id) await tx.update(inventoryItems).set(values).where(eq(inventoryItems.id, id));
-    else [{ id }] = await tx.insert(inventoryItems).values(values).returning({ id: inventoryItems.id });
-    await setStock(tx, id!, inStock, { memberId: member.id, via: "ui" });
+    if (id) {
+      const [before] = await tx.select().from(inventoryItems).where(eq(inventoryItems.id, id)).for("update");
+      if (!before) return null;
+      await tx.update(inventoryItems).set(values).where(eq(inventoryItems.id, id));
+      await recordItemChanges(tx, id, before, values, ctx);
+    } else {
+      [{ id }] = await tx.insert(inventoryItems).values(values).returning({ id: inventoryItems.id });
+      await recordItemChanges(tx, id!, null, values, ctx);
+    }
+    await setStock(tx, id!, inStock, ctx);
     return id!;
   });
+  if (!id) return { error: "That item was deleted." };
   if (d.imageUrl) {
     const key = await saveProductPhoto(id, d.imageUrl);
     if (key) await db.update(inventoryItems).set({ imagePath: key }).where(eq(inventoryItems.id, id));
@@ -422,7 +433,8 @@ export async function readProductLink(url: string) {
 export async function itemPopup(itemId: string) {
   await requireMember();
   if (!isUuid(itemId)) return null;
-  return inventoryItemDetail(itemId);
+  const [detail, targets] = await Promise.all([inventoryItemDetail(itemId), listBomTargets()]);
+  return detail && { ...detail, targets };
 }
 
 export async function materialPopup(material: string) {

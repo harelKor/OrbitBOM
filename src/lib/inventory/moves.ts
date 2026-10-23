@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { categoryOf, getCategory } from "./categories";
 import { listCategories } from "@/lib/data/categories";
+import { currentVisit } from "@/lib/visits";
 import { snapStock } from "./stock";
 
 const { inventoryItems, inventoryMoves } = schema;
@@ -25,6 +26,7 @@ export async function moveStock(
   const to = snapStock(item.inStock + move.delta, !!getCategory(cats, categoryOf(item, cats))?.sheet);
   if (to !== item.inStock) {
     await tx.update(inventoryItems).set({ inStock: to }).where(eq(inventoryItems.id, item.id));
+    const visit = ctx.via === "ui" ? await currentVisit() : null;
     await tx.insert(inventoryMoves).values({
       itemId: item.id,
       delta: to - item.inStock,
@@ -34,6 +36,8 @@ export async function moveStock(
       via: ctx.via,
       aiName: ctx.aiName ?? null,
       batchId: ctx.batchId ?? null,
+      visitId: visit?.id,
+      page: visit?.page,
     });
   }
   return { name: item.name, from: item.inStock, to };

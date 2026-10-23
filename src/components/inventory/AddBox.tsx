@@ -162,7 +162,7 @@ export function AddBox({
           {onShelf.length > 0 && (
             <Section title="Already on the shelf">
               {onShelf.map((i) => (
-                <Row key={i.id} onClick={() => openItem(i.id)} img={i.thumbUrl} icon="box" title={i.name} detail={`${formatStock(i.inStock, i.sheet)} ${i.sheet ? "sheets" : "in stock"}`} />
+                <Row key={i.id} onClick={() => openItem(i.id, i)} img={i.thumbUrl} icon="box" title={i.name} detail={`${formatStock(i.inStock, i.sheet)} ${i.sheet ? "sheets" : "in stock"}`} />
               ))}
             </Section>
           )}
