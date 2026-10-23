@@ -22,11 +22,17 @@ export function RecentActions({
   systemActions,
   max,
   variant = "cards",
+  onOpen,
+  title = true,
+  itemNoun = ["part", "parts"],
 }: {
   actions: RecentAction[];
   systemActions?: RecentAction[];
   max: number;
   variant?: "cards" | "list";
+  onOpen?: (a: RecentAction) => void; // a box opens this instead of its page (Inventory: the item's window)
+  title?: boolean;
+  itemNoun?: [string, string];
 }) {
   const [scope, setScope] = useState<"fab" | "system">("fab");
   const all = scope === "system" && systemActions ? systemActions : fabActions;
@@ -126,9 +132,19 @@ export function RecentActions({
     );
 
   if (!actions.length) return null;
+  const Box = ({ a, className, children }: { a: RecentAction; className: string; children: React.ReactNode }) =>
+    onOpen ? (
+      <button type="button" onClick={() => onOpen(a)} className={className}>
+        {children}
+      </button>
+    ) : (
+      <Link {...linkProps(a)} className={className}>
+        {children}
+      </Link>
+    );
   return (
     <section className="space-y-3">
-      <h2 className="text-lg font-semibold">Recent actions</h2>
+      {title && <h2 className="text-lg font-semibold">Recent actions</h2>}
       <ul className="flex flex-wrap gap-3">
         {actions.map((a) => {
           const extra = a.partCount - a.thumbs.length;
@@ -136,7 +152,7 @@ export function RecentActions({
           const tiles = Math.max(a.thumbs.length, 2);
           return (
             <li key={a.visitId} className="relative max-w-full" style={{ width: `${tiles * TILE_REM}rem` }}>
-              <Link {...linkProps(a)} className="card-interactive group flex h-full flex-col">
+              <Box a={a} className="card-interactive group flex h-full w-full flex-col text-left">
                 <div className="thumb-well relative grid h-24" style={{ gridTemplateColumns: `repeat(${tiles}, minmax(0, 1fr))` }}>
                   {a.thumbs.map((t) => (
                     <span key={t.id} className="flex items-center justify-center overflow-hidden" title={t.name}>
@@ -161,10 +177,10 @@ export function RecentActions({
                   </div>
                   <div className="truncate text-xs text-muted">
                     {a.fields.join(", ")} <span className="text-subtle">·</span>{" "}
-                    <span className="font-mono tabular-nums">{a.partCount}</span> {a.partCount === 1 ? "part" : "parts"}
+                    <span className="font-mono tabular-nums">{a.partCount}</span> {a.partCount === 1 ? itemNoun[0] : itemNoun[1]}
                   </div>
                 </div>
-              </Link>
+              </Box>
               <CloseButton onClick={() => close(a.visitId)} className="top-2 right-2" />
             </li>
           );

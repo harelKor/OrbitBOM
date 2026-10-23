@@ -1,11 +1,13 @@
 import { InventoryView } from "@/components/inventory/InventoryView";
 import { requireMember } from "@/lib/auth";
 import { listInventory } from "@/lib/data/inventory";
+import { listInventoryActions } from "@/lib/data/inventoryActions";
 
-// The Inventory home: search first, then a box per category and the Short for robots card.
+// The Inventory home: search first, then a box per category and the Short for robots card, then
+// Recent actions and All items.
 export default async function InventoryPage() {
-  await requireMember();
-  const inventory = await listInventory();
+  const member = await requireMember();
+  const [inventory, actions] = await Promise.all([listInventory(), listInventoryActions(member.id)]);
   return (
     <div className="space-y-4">
       <div>
@@ -17,7 +19,7 @@ export default async function InventoryPage() {
           sheet.
         </p>
       </div>
-      <InventoryView {...inventory} scope={{ kind: "home" }} />
+      <InventoryView {...inventory} actions={actions} scope={{ kind: "home" }} />
     </div>
   );
 }
