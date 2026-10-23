@@ -11,6 +11,8 @@ export type InvCategory = {
   label: string;
   noun: string;
   sheet: boolean;
+  image: string | null; // R2 key of its picture
+  imageUrl?: string | null; // a short-lived link to it, filled for pages
   defaultLocationId: string | null;
   fields: CategoryField[];
 };

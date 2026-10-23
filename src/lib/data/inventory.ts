@@ -96,7 +96,8 @@ export async function listInventory() {
   ]);
   const sheets = sheetSet(items, categories);
   const usage = computeUsage(new Map(items.map((i) => [i.id, i.inStock])), used, sheets);
-  const thumbs = await itemThumbs(items);
+  const [thumbs, catUrls] = await Promise.all([itemThumbs(items), Promise.all(categories.map((c) => (c.image ? imageUrl(c.image) : null)))]);
+  categories.forEach((c, i) => (c.imageUrl = catUrls[i]));
   return {
     items: items.map((i) => ({
       ...i,

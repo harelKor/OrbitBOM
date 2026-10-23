@@ -439,6 +439,7 @@ export const inventoryCategories = pgTable("inventory_categories", {
   position: integer("position").notNull().default(0),
   // Counted in whole sheets and pieces of one (¼ ⅓ ½ ⅔ ¾).
   sheet: boolean("sheet").notNull().default(false),
+  image: text("image"), // R2 key of the category's picture (the Inventory home box)
   defaultLocationId: uuid("default_location_id").references(() => inventoryLocations.id, { onDelete: "set null" }),
   fields: jsonb("fields").$type<CategoryField[]>().notNull().default([]),
 });

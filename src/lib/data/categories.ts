@@ -18,5 +18,5 @@ export async function listCategories(exec: Exec = db): Promise<InvCategory[]> {
       .onConflictDoNothing();
     rows = await exec.select().from(inventoryCategories).orderBy(asc(inventoryCategories.position), asc(inventoryCategories.label));
   }
-  return rows.map((r) => ({ id: r.id, label: r.label, noun: r.noun, sheet: r.sheet, defaultLocationId: r.defaultLocationId, fields: r.fields }));
+  return rows.map((r) => ({ id: r.id, label: r.label, noun: r.noun, sheet: r.sheet, image: r.image, defaultLocationId: r.defaultLocationId, fields: r.fields }));
 }
