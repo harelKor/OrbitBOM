@@ -79,20 +79,32 @@ else
       expect(after.aliases).toEqual([]);
     });
 
-    it("auto-links parts with the same product link into To Review, and Reject unlinks", async () => {
+    it("suggests links into To Review, links on Approve, and remembers a Reject", async () => {
       const { autoLink } = await import("./autolink");
-      const { listRobotReviews, rejectReviews } = await import("@/lib/review/review");
-      const [kraken] = await db.insert(schema.inventoryItems).values({ name: "Kraken", cotsLinks: [{ url: "https://wcproducts.com/products/kraken" }] }).returning();
+      const { listRobotReviews, approveReviews, rejectReviews } = await import("@/lib/review/review");
+      const [kraken] = await db.insert(schema.inventoryItems).values({ name: "Zorbex Q7 gearbox", cotsLinks: [{ url: "https://wcproducts.com/products/zorbex-q7" }] }).returning();
       const [motor] = await db
         .insert(schema.parts)
-        .values({ systemId: s1.id, onshapeName: "Motor", classification: "cots" as const, cotsLinks: [{ url: "http://www.wcproducts.com/products/kraken/" }] })
+        .values({ systemId: s1.id, onshapeName: "Motor", classification: "cots" as const, cotsLinks: [{ url: "http://www.wcproducts.com/products/zorbex-q7/" }] })
         .returning();
-      expect(await autoLink({ itemIds: [kraken.id] }, ctx)).toBe(1);
-      expect((await db.select().from(schema.parts).where(eq(schema.parts.id, motor.id)))[0].inventoryItemId).toBe(kraken.id);
+      // Not set up at all, only the name.
+      const [loose2] = await db.insert(schema.parts).values({ systemId: s1.id, onshapeName: "Zorbex Q7 gearbox v2", classification: "undefined" as const }).returning();
+      const itemOf = async (id: string) => (await db.select().from(schema.parts).where(eq(schema.parts.id, id)))[0].inventoryItemId;
+
+      expect(await autoLink({ itemIds: [kraken.id] }, ctx)).toBe(2);
+      expect(await itemOf(motor.id)).toBeNull();
       const review = (await listRobotReviews(r1.id)).find((r) => r.partId === motor.id);
-      expect(review).toMatchObject({ source: "rule", changes: { inventoryItemId: { from: null, to: kraken.id } } });
-      await rejectReviews([motor.id], member.id);
-      expect((await db.select().from(schema.parts).where(eq(schema.parts.id, motor.id)))[0].inventoryItemId).toBeNull();
+      expect(review).toMatchObject({ source: "rule", changes: {}, pending: { inventoryItemId: kraken.id } });
+      // Already waiting: not suggested twice.
+      expect(await autoLink({ itemIds: [kraken.id] }, ctx)).toBe(0);
+
+      await approveReviews([motor.id], member.id);
+      expect(await itemOf(motor.id)).toBe(kraken.id);
+
+      await rejectReviews([loose2.id], member.id);
+      expect(await itemOf(loose2.id)).toBeNull();
+      expect(await autoLink({ itemIds: [kraken.id] }, ctx)).toBe(0);
+      await db.delete(schema.parts).where(eq(schema.parts.id, loose2.id));
       await db.delete(schema.inventoryItems).where(eq(schema.inventoryItems.id, kraken.id));
     });
   });

@@ -10,7 +10,7 @@ import { computeUsage, type ItemUsage, type UsagePart } from "@/lib/inventory/us
 import { thumbKey } from "@/lib/onshape/thumbnails";
 import { imageUrl } from "@/lib/storage/r2";
 
-const { inventoryItems, inventoryGroups, inventoryConditions, inventoryLocations, inventoryMoves, members, parts, systems, robots } = schema;
+const { inventoryItems, inventoryGroups, inventoryConditions, inventoryLocations, inventoryMoves, inventoryItemHistory, members, parts, systems, robots } = schema;
 
 // `category` is resolved (set, or guessed from the name); `thumbUrl` is the item's own photo
 // (a product's picture saved to R2), else the Onshape thumbnail of a part linked to it.
@@ -96,7 +96,8 @@ export async function listInventory() {
   ]);
   const sheets = sheetSet(items, categories);
   const usage = computeUsage(new Map(items.map((i) => [i.id, i.inStock])), used, sheets);
-  const thumbs = await itemThumbs(items);
+  const [thumbs, catUrls] = await Promise.all([itemThumbs(items), Promise.all(categories.map((c) => (c.image ? imageUrl(c.image) : null)))]);
+  categories.forEach((c, i) => (c.imageUrl = catUrls[i]));
   return {
     items: items.map((i) => ({
       ...i,
@@ -134,7 +135,7 @@ export async function inventoryItemDetail(itemId: string) {
   const { items, conditions, locations, groups, categories } = await listInventory();
   const item = items.find((i) => i.id === itemId);
   if (!item) return null;
-  const [candidates, moves] = await Promise.all([
+  const [candidates, moves, edits] = await Promise.all([
     db
       .select({ part: parts, systemName: systems.name, robotId: robots.id, robotName: robots.name })
       .from(parts)
@@ -149,6 +150,13 @@ export async function inventoryItemDetail(itemId: string) {
       .where(eq(inventoryMoves.itemId, itemId))
       .orderBy(desc(inventoryMoves.at))
       .limit(30),
+    db
+      .select({ id: inventoryItemHistory.id, field: inventoryItemHistory.field, oldValue: inventoryItemHistory.oldValue, newValue: inventoryItemHistory.newValue, at: inventoryItemHistory.at, memberName: members.name, aiName: inventoryItemHistory.aiName })
+      .from(inventoryItemHistory)
+      .leftJoin(members, eq(members.id, inventoryItemHistory.memberId))
+      .where(eq(inventoryItemHistory.itemId, itemId))
+      .orderBy(desc(inventoryItemHistory.at))
+      .limit(30),
   ]);
   const matches = candidates.flatMap((c) => {
     const hit = suggestItem(c.part, [item]);
@@ -156,8 +164,23 @@ export async function inventoryItemDetail(itemId: string) {
       ? [{ partId: c.part.id, name: c.part.displayName ?? c.part.onshapeName ?? "Unnamed part", quantity: c.part.quantity, robotName: c.robotName, systemName: c.systemName, reason: hit.reason }]
       : [];
   });
-  return { item, conditions, locations, groups, categories, matches, moves: moves.map((m) => ({ ...m, partName: m.partName ?? m.onshapeName })) };
+  // Each move's count after it: today's stock less every newer move.
+  let after = item.inStock;
+  const stock = moves.map((m) => {
+    const row = { ...m, partName: m.partName ?? m.onshapeName, after };
+    after -= m.delta;
+    return row;
+  });
+  const history: ItemHistoryEntry[] = [
+    ...stock.map((m) => ({ kind: "move" as const, id: m.id, at: m.at, who: m.aiName ?? m.memberName, reason: m.reason, delta: m.delta, after: m.after, partName: m.partName })),
+    ...edits.map((e) => ({ kind: "edit" as const, id: e.id, at: e.at, who: e.aiName ?? e.memberName, field: e.field, from: e.oldValue, to: e.newValue })),
+  ].sort((a, b) => +new Date(b.at) - +new Date(a.at));
+  return { item, conditions, locations, groups, categories, matches, moves: stock, history };
 }
+
+export type ItemHistoryEntry =
+  | { kind: "move"; id: string; at: Date; who: string | null; reason: string; delta: number; after: number; partName: string | null }
+  | { kind: "edit"; id: string; at: Date; who: string | null; field: string; from: unknown; to: unknown };
 
 export type RobotShelfItem = {
   id: string;

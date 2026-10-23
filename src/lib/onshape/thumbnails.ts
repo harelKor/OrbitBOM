@@ -4,6 +4,7 @@ import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { onshapeClient, type OnshapeClient } from "@/lib/onshape/client";
 import { apiPath, parseOnshapeUrl } from "@/lib/onshape/url";
+import { imageHash } from "@/lib/images/dhash";
 import { deleteObject, putObject, storageConfigured } from "@/lib/storage/r2";
 import { studioPath, thumbnailHref, type PartMetadata } from "./parts";
 
@@ -99,8 +100,10 @@ export async function refreshThumbnails(systemId: string, memberId: string, dead
       }
       try {
         const res = await client.raw(job.href, { headers: { Accept: "image/*" } });
-        await putObject(thumbKey(job.part.id, job.rev), await res.arrayBuffer(), res.headers.get("content-type") ?? "image/png");
-        await db.update(parts).set({ thumbnailRev: job.rev }).where(eq(parts.id, job.part.id));
+        const image = await res.arrayBuffer();
+        await putObject(thumbKey(job.part.id, job.rev), image, res.headers.get("content-type") ?? "image/png");
+        // Its fingerprint, for auto-link's "same picture" ("-" when the image can't be read).
+        await db.update(parts).set({ thumbnailRev: job.rev, thumbHash: imageHash(new Uint8Array(image)) ?? "-" }).where(eq(parts.id, job.part.id));
         if (job.part.thumbnailRev) await deleteObject(thumbKey(job.part.id, job.part.thumbnailRev));
         summary.fetched++;
       } catch (err) {

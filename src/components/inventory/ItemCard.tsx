@@ -1,10 +1,12 @@
 "use client";
 
+import Link from "next/link";
+import { useState } from "react";
 import { textOn } from "@/components/bom/options";
 import { Popover } from "@/components/bom/Popover";
 import { Icon } from "@/components/ui/Icon";
-import { getCategory, specLine } from "@/lib/inventory/categories";
-import { SHEET_PIECES, formatStock } from "@/lib/inventory/stock";
+import { getCategory } from "@/lib/inventory/categories";
+import { SHEET_PIECES, formatStock, parseStock } from "@/lib/inventory/stock";
 import { useInventoryPopup } from "./InventoryPopup";
 import type { InvCategory, Item } from "./types";
 
@@ -14,18 +16,25 @@ export const conditionColor = (color: string) => NAMED[color] ?? color;
 
 // An item's name: like a COTS part, it opens the product's page when the item has a link
 // (light blue, a ▾ to pick when there are several); otherwise it opens the item's window.
-export function ProductName({ item, className = "" }: { item: Pick<Item, "id" | "name" | "cotsLinks">; className?: string }) {
+export function ProductName({ item, className = "", wrap = false }: { item: Pick<Item, "id" | "name" | "cotsLinks">; className?: string; wrap?: boolean }) {
   const { openItem } = useInventoryPopup();
   const [first, ...more] = item.cotsLinks;
+  const fit = wrap ? "line-clamp-2 break-words" : "truncate";
   if (!first)
     return (
-      <button type="button" onClick={() => openItem(item.id)} className={`min-w-0 truncate text-left text-fg hover:text-accent ${className}`} title={item.name}>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          openItem(item.id);
+        }}
+        className={`min-w-0 text-left text-fg hover:text-accent ${fit} ${className}`} title={item.name}>
         {item.name}
       </button>
     );
   return (
-    <span className={`flex min-w-0 items-center gap-1 ${className}`}>
-      <a href={first.url} target="_blank" rel="noreferrer" className="min-w-0 truncate text-sky-600 underline-offset-2 hover:underline dark:text-sky-400" title={`${item.name} · ${first.site || hostOf(first.url)}`}>
+    <span className={`flex min-w-0 items-center gap-1 ${className}`} onClick={(e) => e.stopPropagation()}>
+      <a href={first.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className={`min-w-0 ${fit} text-sky-600 underline-offset-2 hover:underline dark:text-sky-400`} title={`${item.name} · ${first.site || hostOf(first.url)}`}>
         {item.name}
       </a>
       {more.length > 0 && (
@@ -49,58 +58,84 @@ export function ProductName({ item, className = "" }: { item: Pick<Item, "id" | 
 }
 
 // An inventory item as a compact 4:3 card, like the part cards: the picture (its product photo,
-// else a linked part's Onshape thumbnail) with the category, condition and location on it, big
-// red − / green + under it, then the name, the spec line and how the robots use it. The left edge
-// takes the condition's colour. The picture opens the item's window; the name opens the product.
+// else a linked part's Onshape thumbnail, else the category's picture) with the category,
+// condition and location tags on it (each opens its page), big red − / green + and the count
+// (tap it to type the real count), then the name and how the robots use it. The left edge takes
+// the condition's colour. Anywhere else on the card opens the item's window; a linked name opens
+// the product.
 export function ItemCard({
   item,
   categories,
   condition,
   location,
   onStep,
+  onCount,
 }: {
   item: Item;
   categories: InvCategory[];
-  condition?: { label: string; color: string };
-  location?: string;
+  condition?: { id: string; label: string; color: string };
+  location?: { id: string; name: string };
   onStep: (delta: number) => void;
+  onCount: (amount: number) => void;
 }) {
   const { openItem } = useInventoryPopup();
   const category = getCategory(categories, item.category);
-  const spec = specLine(category, item.specs);
   const need = item.usage?.need ?? 0;
   const short = item.usage?.short ?? 0;
   const usedBy = item.usage?.parts.length ?? 0;
   const color = condition ? conditionColor(condition.color) : undefined;
+  const picture = item.thumbUrl ?? category?.imageUrl ?? null;
+  const stop = (e: React.SyntheticEvent) => e.stopPropagation();
 
   return (
-    <div className="card-interactive group flex flex-col border-l-4 text-sm" style={color ? { borderLeftColor: color } : undefined}>
-      <button type="button" onClick={() => openItem(item.id)} className="thumb-well relative flex aspect-[4/3] items-center justify-center" aria-label={`Open ${item.name}`}>
-        {item.thumbUrl ? (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => openItem(item.id, item)}
+      onKeyDown={(e) => e.key === "Enter" && e.target === e.currentTarget && openItem(item.id, item)}
+      aria-label={`Open ${item.name}`}
+      className="card-interactive group flex cursor-pointer flex-col border-l-4 text-sm"
+      style={color ? { borderLeftColor: color } : undefined}
+    >
+      <div className="thumb-well relative flex aspect-[4/3] items-center justify-center">
+        {picture ? (
           // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
-          <img src={item.thumbUrl} alt="" loading="lazy" className="h-full w-full object-contain p-3" />
+          <img src={picture} alt="" loading="lazy" className={`h-full w-full object-contain p-3 ${item.thumbUrl ? "" : "opacity-60"}`} />
         ) : (
           <span className="flex flex-col items-center gap-1 text-subtle">
             <Icon name="box" className="h-10 w-10" />
             <span className="text-[11px]">{category?.label}</span>
           </span>
         )}
-      </button>
-      <div className="pointer-events-none absolute top-2 left-2 flex max-w-[60%] flex-wrap gap-1">
-        {category && <span className="truncate rounded-full bg-[#111318]/85 px-2 py-0.5 text-[11px] font-semibold text-white">{category.label}</span>}
+      </div>
+      <div className="absolute top-2 left-2 flex max-w-[60%] flex-wrap gap-1">
+        {category && (
+          <Link href={`/inventory/c/${category.id}`} onClick={stop} className="truncate rounded-full bg-[#111318]/85 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-accent">
+            {category.label}
+          </Link>
+        )}
         {condition && (
-          <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: color, color: textOn(color!) }}>
+          <Link
+            href={`/inventory/condition/${condition.id}`}
+            onClick={stop}
+            className="rounded-full px-2 py-0.5 text-[11px] font-semibold hover:brightness-110"
+            style={{ background: color, color: textOn(color!) }}
+          >
             {condition.label}
-          </span>
+          </Link>
         )}
       </div>
       {location && (
-        <span className="pointer-events-none absolute top-2 right-2 rounded-full border border-line bg-surface/90 px-2 py-0.5 text-[11px] font-semibold text-fg-2 backdrop-blur-md">
-          📍 {location}
-        </span>
+        <Link
+          href={`/inventory/location/${location.id}`}
+          onClick={stop}
+          className="absolute top-2 right-2 max-w-[38%] truncate rounded-full border border-line bg-surface/90 px-2 py-0.5 text-[11px] font-semibold text-fg-2 backdrop-blur-md hover:border-accent hover:text-accent"
+        >
+          📍 {location.name}
+        </Link>
       )}
 
-      <div className="-mt-12 flex items-center justify-between gap-2 px-2 pb-2">
+      <div className="-mt-12 flex items-center justify-between gap-2 px-2 pb-2" onClick={stop}>
         <button
           type="button"
           onClick={() => onStep(-1)}
@@ -111,7 +146,7 @@ export function ItemCard({
           −
         </button>
         <span className="z-10 flex items-center gap-1 rounded-full bg-[#111318]/80 px-2.5 py-1 font-mono text-xs font-semibold whitespace-nowrap text-white tabular-nums">
-          {formatStock(item.inStock, item.sheet)}
+          <CountBox item={item} onCount={onCount} />
           {item.sheet ? " sheets" : need > 0 ? <span className="text-white/70">/ need {need}</span> : " in stock"}
           {item.sheet && <PieceStepper onStep={onStep} max={item.inStock} />}
         </span>
@@ -126,10 +161,7 @@ export function ItemCard({
       </div>
 
       <div className="flex min-w-0 flex-col gap-1.5 p-3 pt-2">
-        <div className="flex min-w-0 items-baseline gap-2">
-          <ProductName item={item} className="flex-1 font-semibold" />
-          {spec && <span className="shrink-0 truncate font-mono text-[11px] text-muted tabular-nums">{spec}</span>}
-        </div>
+        <ProductName item={item} wrap className="text-[17px] leading-snug font-semibold" />
         <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-[11px]">
           {usedBy > 0 && (
             <span
@@ -146,6 +178,49 @@ export function ItemCard({
         </div>
       </div>
     </div>
+  );
+}
+
+// The count on a card or in the item window: tap it to type the real count. Saving moves the
+// stock by the difference (a "Counted" move), so the history shows "Set to 12 (was 9)".
+export function CountBox({ item, onCount, big = false }: { item: Pick<Item, "inStock" | "sheet">; onCount: (amount: number) => void; big?: boolean }) {
+  const [text, setText] = useState<string | null>(null);
+  const done = () => {
+    const n = text === null ? null : parseStock(text, item.sheet);
+    if (n != null && n >= 0 && Math.abs(n - item.inStock) > 1e-9) onCount(n);
+    setText(null);
+  };
+  if (text === null)
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setText(formatStock(item.inStock, item.sheet));
+        }}
+        className={`rounded px-0.5 underline decoration-dotted decoration-white/40 underline-offset-4 hover:decoration-current ${big ? "text-2xl" : ""}`}
+        title="Type the real count"
+        aria-label="Type the real count"
+      >
+        {formatStock(item.inStock, item.sheet)}
+      </button>
+    );
+  return (
+    <input
+      autoFocus
+      value={text}
+      inputMode={item.sheet ? "text" : "decimal"}
+      onClick={(e) => e.stopPropagation()}
+      onFocus={(e) => e.currentTarget.select()}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={done}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") done();
+        if (e.key === "Escape") setText(null);
+      }}
+      aria-label="Real count"
+      className={`rounded bg-white px-1 text-center text-fg outline-none ${big ? "w-24 text-2xl" : "w-14"}`}
+    />
   );
 }
 

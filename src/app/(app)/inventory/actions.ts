@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -8,16 +9,19 @@ import { guessCategory } from "@/config/inventory";
 import { vendorOfUrl } from "@/config/vendors";
 import { db, schema } from "@/db";
 import { requireMember } from "@/lib/auth";
+import { listBomTargets } from "@/lib/data/robots";
 import { listCategories } from "@/lib/data/categories";
 import { inventoryItemDetail, listInventory, robotInventory, usageOf } from "@/lib/data/inventory";
 import { autoLink } from "@/lib/inventory/autolink";
 import { categoryOf, getCategory, slugify, type InvCategory } from "@/lib/inventory/categories";
 import type { ImportRow } from "@/lib/inventory/import";
+import { recordItemChanges } from "@/lib/inventory/history";
 import { moveStock, setStock } from "@/lib/inventory/moves";
 import { readProduct, saveProductPhoto, toUsd } from "@/lib/inventory/product";
 import { searchProducts } from "@/lib/inventory/search";
 import { parseStock } from "@/lib/inventory/stock";
 import { applyEachPartChanges } from "@/lib/parts/apply";
+import { StorageNotConfiguredError, deleteObject, objectExists, presignUpload } from "@/lib/storage/r2";
 import { isUuid } from "@/lib/uuid";
 
 const { inventoryItems, inventoryGroups, inventoryConditions, inventoryLocations, inventoryMoves, inventoryCategories, parts } = schema;
@@ -30,6 +34,9 @@ const refresh = () => {
   revalidatePath("/cots", "layout");
 };
 
+// Photos members take or upload go straight from the browser to R2 under this prefix.
+const PHOTO_KEY = /^inventory\/photos\/[0-9a-f-]{36}\.jpg$/;
+
 const linkSchema = z.object({ url: z.url("A product link must be a web link."), site: z.string().trim().max(80).optional() });
 const itemInput = z.object({
   name: z.string().trim().min(1, "Part name is required.").max(200),
@@ -41,6 +48,7 @@ const itemInput = z.object({
   links: z.array(linkSchema).max(10).default([]),
   price: z.number().min(0).nullable().default(null),
   imageUrl: z.string().nullable().optional(), // a product's picture, copied to R2 on save
+  photoKey: z.string().regex(PHOTO_KEY, "Unknown photo.").nullable().optional(), // a photo the member uploaded (wins over imageUrl)
 });
 export type ItemInput = z.input<typeof itemInput>;
 
@@ -63,20 +71,74 @@ export async function saveItem(itemId: string | null, input: ItemInput): Promise
   if (inStock === null) return { error: sheet ? 'In stock is sheets, like "2" or "1 3/4".' : "In stock is a whole number." };
   const cotsLinks = d.links.map((l) => ({ url: l.url, site: l.site || vendorOfUrl(l.url) }));
   const values = { name: d.name, category: d.category, specs, conditionId: d.conditionId, locationId: d.locationId, cotsLinks, price: d.price };
+  const ctx = { memberId: member.id, via: "ui" as const };
   const id = await db.transaction(async (tx) => {
     let id = itemId;
-    if (id) await tx.update(inventoryItems).set(values).where(eq(inventoryItems.id, id));
-    else [{ id }] = await tx.insert(inventoryItems).values(values).returning({ id: inventoryItems.id });
-    await setStock(tx, id!, inStock, { memberId: member.id, via: "ui" });
+    if (id) {
+      const [before] = await tx.select().from(inventoryItems).where(eq(inventoryItems.id, id)).for("update");
+      if (!before) return null;
+      await tx.update(inventoryItems).set(values).where(eq(inventoryItems.id, id));
+      await recordItemChanges(tx, id, before, values, ctx);
+    } else {
+      [{ id }] = await tx.insert(inventoryItems).values(values).returning({ id: inventoryItems.id });
+      await recordItemChanges(tx, id!, null, values, ctx);
+    }
+    await setStock(tx, id!, inStock, ctx);
     return id!;
   });
-  if (d.imageUrl) {
+  if (!id) return { error: "That item was deleted." };
+  if (d.photoKey) {
+    const error = await applyPhoto(id, d.photoKey, ctx);
+    if (error) return { id, error };
+  } else if (d.imageUrl) {
     const key = await saveProductPhoto(id, d.imageUrl);
     if (key) await db.update(inventoryItems).set({ imagePath: key }).where(eq(inventoryItems.id, id));
   }
   const linked = await autoLink({ itemIds: [id] }, { memberId: member.id, via: "ui" });
   refresh();
-  return { id, message: linked ? `Linked ${linked} BOM part${linked === 1 ? "" : "s"} with the same product; they wait in To Review.` : undefined };
+  return { id, message: linked ? linkMessage(linked) : undefined };
+}
+
+const linkMessage = (n: number) => `${n} BOM part${n === 1 ? " looks" : "s look"} like this item; ${n === 1 ? "it waits" : "they wait"} in To Review for Approve.`;
+
+// The item window's "Find BOM parts": auto-link for this one item.
+export async function findBomParts(itemId: string): Promise<ActionResult> {
+  const member = await requireMember();
+  if (!isUuid(itemId)) return { error: "Unknown item." };
+  const n = await autoLink({ itemIds: [itemId] }, { memberId: member.id, via: "ui" });
+  refresh();
+  return { message: n ? linkMessage(n) : "No new BOM part looks like this item. Parts already waiting in To Review, and links someone rejected, aren't suggested again." };
+}
+
+// Step 1 of a photo: a presigned PUT for the browser's shrunk JPEG.
+export async function startPhotoUpload(): Promise<{ url: string; key: string } | { error: string }> {
+  await requireMember();
+  try {
+    const key = `inventory/photos/${randomUUID()}.jpg`;
+    return { url: await presignUpload(key), key };
+  } catch (err) {
+    if (err instanceof StorageNotConfiguredError) return { error: err.message };
+    throw err;
+  }
+}
+
+// Step 2, from the item window: the uploaded photo becomes the item's picture.
+export async function setItemPhoto(itemId: string, key: string): Promise<ActionResult> {
+  const member = await requireMember();
+  if (!isUuid(itemId) || !PHOTO_KEY.test(key)) return { error: "Unknown photo." };
+  const error = await applyPhoto(itemId, key, { memberId: member.id, via: "ui" });
+  refresh();
+  return error ? { error } : {};
+}
+
+async function applyPhoto(itemId: string, key: string, ctx: { memberId: string; via: "ui" }) {
+  if (!(await objectExists(key))) return "The photo didn't reach file storage. Try again.";
+  const [before] = await db.select({ imagePath: inventoryItems.imagePath }).from(inventoryItems).where(eq(inventoryItems.id, itemId));
+  if (!before) return "That item was deleted.";
+  await db.update(inventoryItems).set({ imagePath: key }).where(eq(inventoryItems.id, itemId));
+  await recordItemChanges(db, itemId, before, { imagePath: key }, ctx);
+  if (before.imagePath && before.imagePath !== key) await deleteObject(before.imagePath).catch(() => {});
+  return null;
 }
 
 export async function deleteItem(itemId: string) {
@@ -91,6 +153,15 @@ export async function adjustStock(itemId: string, delta: number): Promise<Action
   const member = await requireMember();
   if (!isUuid(itemId) || !Number.isFinite(delta) || !delta) return { error: "Unknown item." };
   await db.transaction((tx) => moveStock(tx, { itemId, delta, reason: delta > 0 ? "received" : "used" }, { memberId: member.id, via: "ui" }));
+  refresh();
+  return {};
+}
+
+// The count typed on a card or in the item window: a "Counted" move of the difference.
+export async function countStock(itemId: string, amount: number): Promise<ActionResult> {
+  const member = await requireMember();
+  if (!isUuid(itemId) || !Number.isFinite(amount) || amount < 0) return { error: "Type a count of 0 or more." };
+  await db.transaction((tx) => setStock(tx, itemId, amount, { memberId: member.id, via: "ui" }));
   refresh();
   return {};
 }
@@ -413,7 +484,8 @@ export async function readProductLink(url: string) {
 export async function itemPopup(itemId: string) {
   await requireMember();
   if (!isUuid(itemId)) return null;
-  return inventoryItemDetail(itemId);
+  const [detail, targets] = await Promise.all([inventoryItemDetail(itemId), listBomTargets()]);
+  return detail && { ...detail, targets };
 }
 
 export async function materialPopup(material: string) {

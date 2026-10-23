@@ -42,14 +42,21 @@ export function useRecent(key: string) {
   return useSyncExternalStore(recentStore.subscribe, recentStore.get, recentStore.server)[key] ?? [];
 }
 
-export function Chips({ options, value, onPick, size = "md" }: { options: string[]; value: string; onPick: (v: string) => void; size?: "md" | "lg" }) {
+// Chips; with a recentKey, the values picked lately come first.
+export function Chips({ options, value, onPick, size = "md", recentKey }: { options: string[]; value: string; onPick: (v: string) => void; size?: "md" | "lg"; recentKey?: string }) {
+  // The order is fixed when the chips appear, so a chip doesn't jump away when it's tapped.
+  const [recent] = useState(useRecent(recentKey ?? ""));
+  const ordered = recentKey ? [...recent.filter((r) => options.includes(r)), ...options.filter((o) => !recent.includes(o))] : options;
   return (
     <div className="flex flex-wrap gap-1.5">
-      {options.map((o) => (
+      {ordered.map((o) => (
         <button
           key={o}
           type="button"
-          onClick={() => onPick(o === value ? "" : o)}
+          onClick={() => {
+            onPick(o === value ? "" : o);
+            if (recentKey && o !== value) rememberPick(recentKey, o);
+          }}
           aria-pressed={o === value}
           className={`press rounded-full border font-semibold transition-colors ${size === "lg" ? "min-h-11 px-4 text-sm" : "min-h-9 px-3 text-xs"} ${
             o === value ? "border-accent bg-accent text-white" : "border-line-strong bg-surface text-fg-2 hover:border-accent hover:text-accent"
@@ -166,7 +173,7 @@ export function Combo({
 // One category field, as chips, a dropdown or a small box.
 export function FieldInput({ field, categoryId, value, onChange, autoFocus }: { field: CategoryField; categoryId: string; value: string; onChange: (v: string) => void; autoFocus?: boolean }) {
   const choices = fieldChoices(field);
-  if (choices.length && choices.length <= CHIP_MAX && field.kind === "options") return <Chips options={choices} value={value} onPick={onChange} />;
+  if (choices.length && choices.length <= CHIP_MAX && field.kind === "options") return <Chips options={choices} value={value} onPick={onChange} recentKey={`${categoryId}:${field.id}`} />;
   if (choices.length) return <Combo options={choices} value={value} onPick={onChange} recentKey={`${categoryId}:${field.id}`} ariaLabel={field.label} autoFocus={autoFocus} />;
   return (
     <input

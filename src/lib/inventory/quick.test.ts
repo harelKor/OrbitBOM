@@ -4,12 +4,12 @@ import type { InvCategory } from "./categories";
 import { buildName } from "./categories";
 import { parseQuick } from "./quick";
 
-const cats: InvCategory[] = DEFAULT_CATEGORIES.map((c) => ({ id: c.id, label: c.label, noun: c.noun, sheet: !!c.sheet, defaultLocationId: null, fields: c.fields }));
+const cats: InvCategory[] = DEFAULT_CATEGORIES.map((c) => ({ id: c.id, label: c.label, noun: c.noun, sheet: !!c.sheet, image: null, defaultLocationId: null, fields: c.fields }));
 const pulleys = cats.find((c) => c.id === "pulleys")!;
 
 describe("parseQuick", () => {
   it("reads a pulley from plain typing", () => {
-    expect(parseQuick("36t htd 1/2 hex pulley", cats)).toEqual({ categoryId: "pulleys", specs: { teeth: "36", pitch: "HTD 5mm", bore: '1/2" Hex' } });
+    expect(parseQuick("36t htd 1/2 hex pulley", cats)).toEqual({ categoryId: "pulleys", specs: { teeth: "36", pitch: "HTD 5mm", bore: '1/2" Hex' }, left: [] });
   });
   it("reads widths, inch marks and fractions", () => {
     expect(parseQuick('24T GT2 9mm wide ½" hex pulley', cats)?.specs).toEqual({ teeth: "24", pitch: "GT2 3mm", width: "9", bore: '1/2" Hex' });
@@ -18,8 +18,11 @@ describe("parseQuick", () => {
     expect(parseQuick("pulley 5mm bore", cats)?.specs).toEqual({ bore: "5mm" });
   });
   it("picks BOM materials and lengths", () => {
-    expect(parseQuick("3mm 6061 plate", cats)).toEqual({ categoryId: "aluminum-plates", specs: { material: "3mm 6061-T6" } });
-    expect(parseQuick("1/2 hex shaft 300mm", cats)).toEqual({ categoryId: "shafts", specs: { profile: '1/2" Hex', length: "300" } });
+    expect(parseQuick("3mm 6061 plate", cats)).toEqual({ categoryId: "aluminum-plates", specs: { material: "3mm 6061-T6" }, left: [] });
+    expect(parseQuick("1/2 hex shaft 300mm", cats)).toEqual({ categoryId: "shafts", specs: { profile: '1/2" Hex', length: "300" }, left: [] });
+  });
+  it("keeps the words it couldn't place", () => {
+    expect(parseQuick("36t htd pulley blue anodized", cats)?.left).toEqual(["blue", "anodized"]);
   });
   it("knows nothing without a category", () => {
     expect(parseQuick("blue thing", cats)).toBeNull();

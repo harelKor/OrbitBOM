@@ -9,17 +9,17 @@ import { EditOnly } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
 import { Dialog } from "@/components/Dialog";
 import { getCategory, specLine } from "@/lib/inventory/categories";
+import type { ItemHistoryEntry } from "@/lib/data/inventory";
 import { formatStock, snapStock } from "@/lib/inventory/stock";
 import { PieceStepper, ProductName, conditionColor, hostOf } from "./ItemCard";
 import { ItemForm, draftOf } from "./ItemForm";
+import { ItemHistory } from "./ItemHistory";
 import { ToBomDialog } from "./ToBomDialog";
 import type { BomTarget, Condition, Group, InvCategory, Item, Location } from "./types";
 
 type Match = { partId: string; name: string; quantity: number; robotName: string; systemName: string; reason: "onshape" | "link" | "name" };
-type Move = { id: string; delta: number; reason: string; at: Date; via: string; memberName: string | null; aiName: string | null; partName: string | null };
 
 const REASONS = { onshape: "same Onshape part", link: "same product page", name: "same name" } as const;
-const MOVE_LABEL: Record<string, string> = { received: "Received", used: "Used", broke: "Broke", counted: "Counted", returned: "Returned" };
 
 // The item page: on the left the picture, the stock with its − / +, and the item's details; on
 // the right every part that draws on it (by robot), COTS parts that look like it with a Link
@@ -31,7 +31,7 @@ export function ItemPage({
   groups,
   categories,
   matches,
-  moves,
+  history,
   targets,
 }: {
   item: Item;
@@ -40,7 +40,7 @@ export function ItemPage({
   groups: Group[];
   categories: InvCategory[];
   matches: Match[];
-  moves: Move[];
+  history: ItemHistoryEntry[];
   targets: BomTarget[];
 }) {
   const router = useRouter();
@@ -275,27 +275,7 @@ export function ItemPage({
 
         <section className="panel p-4">
           <h2 className="mb-2 font-semibold">History</h2>
-          {moves.length === 0 ? (
-            <p className="text-sm text-muted">No stock changes yet.</p>
-          ) : (
-            <ul className="divide-y divide-line text-sm">
-              {moves.map((m) => (
-                <li key={m.id} className="flex items-center gap-3 py-1.5">
-                  <span className={`w-14 shrink-0 text-right font-mono font-semibold tabular-nums ${m.delta > 0 ? "text-emerald-600" : "text-rose-600"}`}>
-                    {m.delta > 0 ? "+" : "−"}
-                    {formatStock(Math.abs(m.delta), item.sheet)}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate">
-                    {MOVE_LABEL[m.reason] ?? m.reason}
-                    {m.partName && <span className="text-muted"> · {m.partName}</span>}
-                  </span>
-                  <span className="shrink-0 text-xs text-subtle">
-                    {m.aiName ?? m.memberName ?? "Someone"} · {new Date(m.at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
+          <ItemHistory history={history} sheet={item.sheet} categories={categories} locations={locations} conditions={conditions} />
         </section>
       </div>
 

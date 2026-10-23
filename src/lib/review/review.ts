@@ -131,7 +131,8 @@ export async function applySuggestions(
           aiName: keep ? existing.aiName : (ctx.aiName ?? null),
           createdAt: new Date(),
         };
-        if (!Object.keys(changes).length) await tx.delete(partReviews).where(eq(partReviews.partId, row.id));
+        // A review holding a link that waits for Approve stays.
+        if (!Object.keys(changes).length && !Object.keys(existing?.pending ?? {}).length) await tx.delete(partReviews).where(eq(partReviews.partId, row.id));
         else await tx.insert(partReviews).values({ partId: row.id, ...values }).onConflictDoUpdate({ target: partReviews.partId, set: values });
       },
     },
@@ -309,10 +310,13 @@ export async function listAiLogs(limit = 100): Promise<AiLog[]> {
   });
 }
 
-// Approve keeps the suggestion and takes the part off To Review.
-export async function approveReviews(partIds: string[]) {
+// Approve keeps the suggestion, makes the changes that were waiting (an inventory link), and
+// takes the part off To Review.
+export async function approveReviews(partIds: string[], memberId: string | null = null) {
   if (!partIds.length) return 0;
-  const rows = await db.delete(partReviews).where(inArray(partReviews.partId, partIds)).returning({ id: partReviews.partId });
+  const rows = await db.delete(partReviews).where(inArray(partReviews.partId, partIds)).returning({ id: partReviews.partId, pending: partReviews.pending });
+  const waiting = rows.filter((r) => Object.keys(r.pending).length);
+  if (waiting.length) await applyEachPartChanges(waiting.map((r) => ({ id: r.id, changes: r.pending as PartChanges })), { memberId, via: "ui" });
   return rows.length;
 }
 
@@ -331,6 +335,11 @@ export async function rejectReviews(partIds: string[], memberId: string) {
       .for("update");
     let keptEdits = 0;
     const history: (typeof partHistory.$inferInsert)[] = [];
+    // A rejected inventory link isn't suggested again.
+    const noLinks = rows.flatMap(({ review }) =>
+      [review.pending.inventoryItemId, review.changes.inventoryItemId?.to].flatMap((itemId) => (typeof itemId === "string" ? [{ partId: review.partId, itemId, memberId }] : [])),
+    );
+    if (noLinks.length) await tx.insert(schema.inventoryLinkRejections).values(noLinks).onConflictDoNothing();
     for (const { review, part } of rows) {
       const current = part as unknown as Record<string, unknown>;
       const reverted = Object.entries(review.changes).filter(([field, c]) => {

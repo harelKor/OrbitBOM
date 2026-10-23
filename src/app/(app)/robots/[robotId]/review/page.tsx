@@ -7,7 +7,8 @@ import { getRobot } from "@/lib/data/robots";
 import { listRobotReviews } from "@/lib/review/review";
 
 // To Review: parts whose material, processes or type were set automatically, by Suggest setup
-// or by a member's Claude, waiting for their designer to approve or reject.
+// or by a member's Claude, and suggested inventory links, waiting for their designer to approve
+// or reject.
 export default async function ReviewPage({ params }: { params: Promise<{ robotId: string }> }) {
   await requireMember();
   const { robotId } = await params;
@@ -25,9 +26,11 @@ export default async function ReviewPage({ params }: { params: Promise<{ robotId
   };
   const items = reviews.flatMap((r) => {
     const part = byPart.get(r.partId);
-    return part
-      ? [{ part, source: r.source, reason: r.reason, changes: named(r.changes), at: r.createdAt.toISOString(), batchId: r.batchId, memberName: r.memberName, aiName: r.aiName }]
-      : [];
+    if (!part) return [];
+    // A change waiting for Approve shows like an applied one, from the part's value now.
+    const waiting = Object.entries(r.pending).map(([f, to]) => [f, { from: (part as unknown as Record<string, unknown>)[f] ?? null, to }] as const);
+    const changes = { ...r.changes, ...Object.fromEntries(waiting) };
+    return [{ part, source: r.source, reason: r.reason, changes: named(changes), pending: Object.keys(r.pending), at: r.createdAt.toISOString(), batchId: r.batchId, memberName: r.memberName, aiName: r.aiName }];
   });
 
   return (

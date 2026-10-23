@@ -34,7 +34,9 @@ function pickOption(choices: string[], words: string[]): { value: string; used: 
   return best && { value: best.value, used: best.used };
 }
 
-export type QuickParse = { categoryId: string; specs: Record<string, string> };
+// left: the words it couldn't place (the category's own name doesn't count). None left means the
+// whole line was understood, so Enter can save it straight away.
+export type QuickParse = { categoryId: string; specs: Record<string, string>; left: string[] };
 
 export function parseQuick(text: string, cats: InvCategory[]): QuickParse | null {
   const lower = text.toLowerCase();
@@ -43,6 +45,15 @@ export function parseQuick(text: string, cats: InvCategory[]): QuickParse | null
   const cat = cats.find((c) => c.id === categoryId);
   if (!cat) return null;
 
+  const { specs, rest } = readSpecs(text, cat);
+  const own = new Set([cat.noun, cat.label].flatMap((w) => tokens(w ?? "")).flatMap((w) => [w, `${w}s`, w.replace(/s$/, "")]));
+  return { categoryId: cat.id, specs, left: tokens(rest).filter((w) => !own.has(w)) };
+}
+
+// The category's field values found in a piece of text (a BOM part's name, for auto-link).
+export const parseSpecs = (text: string, cat: InvCategory) => readSpecs(text, cat).specs;
+
+function readSpecs(text: string, cat: InvCategory) {
   let words = tokens(text);
   const specs: Record<string, string> = {};
   for (const f of cat.fields) {
@@ -61,5 +72,5 @@ export function parseQuick(text: string, cats: InvCategory[]): QuickParse | null
     specs[f.id] = m[1];
     rest = rest.replace(m[0], " ");
   }
-  return { categoryId: cat.id, specs };
+  return { specs, rest };
 }

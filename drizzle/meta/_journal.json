@@ -155,6 +155,27 @@
       "when": 1792753410387,
       "tag": "0021_inventory_drop_part_types",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1792755885806,
+      "tag": "0022_inventory_category_image",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1792765461050,
+      "tag": "0023_inventory_item_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1792765865564,
+      "tag": "0024_inventory_link_suggestions",
+      "breakpoints": true
     }
   ]
 }

@@ -17,6 +17,7 @@ export type ReviewItem = {
   source: "rule" | "ai" | "manual";
   reason: string | null;
   changes: Record<string, { from: unknown; to: unknown }>;
+  pending?: string[]; // fields in changes that aren't applied until Approve (an inventory link)
   at: string;
   batchId: string | null;
   memberName: string | null;
@@ -47,7 +48,7 @@ function shown(field: string, value: unknown): string | null {
   return String(value);
 }
 
-// The site linked the part to an inventory item with the same product or Onshape part.
+// The site suggested an inventory item for the part (auto-link).
 const autoLinked = (item: Pick<ReviewItem, "source" | "changes">) => item.source === "rule" && Object.keys(item.changes).every((f) => f === "inventoryItemId");
 
 const when = (iso: string) =>
@@ -307,7 +308,7 @@ function ReviewCard({ item, disabled, onDecide }: { item: ReviewItem; disabled: 
         </div>
         <span
           className={`absolute top-2 right-2 max-w-[60%] truncate rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide ${item.source === "ai" ? "bg-accent text-white" : "bg-surface/90 text-fg-2 shadow-sm"}`}
-          title={item.source === "ai" ? `Set by ${item.aiName ?? "a member's Claude"}` : autoLinked(item) ? "Linked to inventory automatically" : "Set by Suggest setup"}
+          title={item.source === "ai" ? `Set by ${item.aiName ?? "a member's Claude"}` : autoLinked(item) ? "Inventory link suggested by the site; Approve links it" : "Set by Suggest setup"}
         >
           {item.source === "ai" ? (item.aiName ?? "AI") : autoLinked(item) ? "AUTO-LINK" : "RULE"}
         </span>
@@ -330,6 +331,7 @@ function ReviewCard({ item, disabled, onDecide }: { item: ReviewItem; disabled: 
                 {from && <span className={`${pill} border-line text-faint line-through`}>{from}</span>}
                 {from && <span className="text-[10px] text-faint">→</span>}
                 <span className={`${pill} ${to ? "border-accent/60 bg-accent/5 text-accent" : "border-dashed border-line-strong text-subtle"}`}>{to ?? "none"}</span>
+                {item.pending?.includes(f) && <span className="shrink-0 text-[10px] text-subtle">· on Approve</span>}
               </li>
             );
           })}
