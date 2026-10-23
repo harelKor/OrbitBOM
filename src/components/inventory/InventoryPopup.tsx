@@ -37,7 +37,8 @@ function setUrlItem(id: string | null, push: boolean) {
   const url = new URL(window.location.href);
   if (id) url.searchParams.set(ITEM_PARAM, id);
   else url.searchParams.delete(ITEM_PARAM);
-  window.history[push ? "pushState" : "replaceState"](window.history.state, "", url);
+  // Plain history calls: Next picks the change up, so a refresh keeps ?item in the address.
+  window.history[push ? "pushState" : "replaceState"](null, "", url);
 }
 
 export function InventoryPopupProvider({ children }: { children: React.ReactNode }) {

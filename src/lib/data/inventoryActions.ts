@@ -22,7 +22,7 @@ export async function listInventoryActions(memberId: string, limit = 9): Promise
         page: sql<string>`max(${t.page})`,
         memberId: sql<string | null>`(array_agg(${t.memberId} order by ${t.at} desc))[1]`,
         at: sql<Date>`max(${t.at})`.mapWith((v: string | Date) => new Date(v)),
-        kinds: sql<string[]>`array_agg(distinct ${kind})`,
+        kinds: sql<string[]>`array_agg(distinct (${kind})::text)`,
         itemIds: sql<string[]>`array_agg(${t.itemId} order by ${t.at} desc)`,
       })
       .from(t)
