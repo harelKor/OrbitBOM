@@ -275,7 +275,35 @@ body {
      --card-min. */
   .card-grid {
     @apply grid gap-3;
-    grid-template-columns: repeat(auto-fill, minmax(min(calc(var(--card-min, 400px) * var(--card-scale, 1)), 100%), 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(max(calc(var(--card-min, 400px) * var(--card-scale, 1)), 110px), 100%), 1fr));
+  }
+  /* Part and COTS tables: roomy cells, lines between rows and columns, a banded body and a
+     highlighted row under the pointer. The card size slider zooms the whole table too, kept in a
+     readable range so the smallest card size doesn't shrink the text away. */
+  .data-table {
+    @apply w-full border-separate border-spacing-0 text-sm;
+    zoom: clamp(0.8, var(--card-scale, 1), 1.6);
+  }
+  .data-table th {
+    @apply border-b-2 border-line-strong bg-raised px-3 py-2.5 text-left text-[11px] font-semibold tracking-wide whitespace-nowrap text-muted uppercase;
+  }
+  .data-table td {
+    @apply border-b border-line px-3 py-2.5 align-middle;
+  }
+  .data-table :is(th, td) + :is(th, td) {
+    @apply border-l border-l-line/70;
+  }
+  .data-table tbody tr:nth-child(even):not([style]) {
+    @apply bg-raised/40;
+  }
+  .data-table tbody tr:hover > td:first-child {
+    box-shadow: inset 3px 0 0 var(--color-accent);
+  }
+  .data-table tbody tr:hover > td {
+    @apply bg-accent/5;
+  }
+  .data-table tbody tr:last-child > td {
+    @apply border-b-0;
   }
   /* The colour slider's track shows every colour it can pick. */
   /* The greyscale slider's track runs from the light theme's page to the dark one's. */
