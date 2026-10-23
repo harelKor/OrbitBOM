@@ -4,14 +4,18 @@ import { useActionState, useState } from "react";
 import { Dialog } from "@/components/Dialog";
 import { createSystem } from "../actions";
 
-export function NewSystemButton({ robotId }: { robotId: string }) {
+// small: the compact button beside the systems in the robots panel.
+export function NewSystemButton({ robotId, small = false }: { robotId: string; small?: boolean }) {
   const [open, setOpen] = useState(false);
   const [state, action, pending] = useActionState(createSystem.bind(null, robotId), undefined);
 
   return (
     <>
-      <button className="btn-primary" onClick={() => setOpen(true)}>
-        + New system
+      <button
+        className={small ? "press rounded-md border border-line-strong px-2 py-0.5 text-xs font-semibold text-fg-2 hover:border-accent hover:text-accent" : "btn-primary"}
+        onClick={() => setOpen(true)}
+      >
+        + {small ? "Add system" : "New system"}
       </button>
       <Dialog open={open} onClose={() => setOpen(false)} title="New system">
         <form action={action} className="space-y-4">

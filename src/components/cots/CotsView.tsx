@@ -398,26 +398,24 @@ function GroupBox({ row, onClose, children, ...drag }: { row: Row; onClose: () =
 // The table ("chart") view of the same cards.
 function CotsTable({ rows, saveRow, struck, orderList }: { rows: Row[]; saveRow: (row: Row) => (changes: PartChanges) => void; struck: Set<string>; orderList: boolean }) {
   const currency = useCurrency();
-  const th = "px-2 py-2 text-left text-[11px] font-semibold tracking-wide text-muted uppercase whitespace-nowrap";
-  const td = "px-2 py-1.5";
   return (
     <div className="panel overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead className="border-b border-line">
+      <table className="data-table">
+        <thead>
           <tr>
-            <th className={th} />
-            <th className={th}>Part</th>
-            <th className={th}>Systems</th>
-            <th className={`${th} text-right`}>Qty</th>
-            <th className={`${th} text-right`}>In stock</th>
-            <th className={`${th} text-right`}>To order</th>
-            <th className={`${th} text-right`}>Each</th>
-            <th className={`${th} text-right`}>Total</th>
-            <th className={th}>Where to buy</th>
-            <th className={th}>Status</th>
+            <th />
+            <th>Part</th>
+            <th>Systems</th>
+            <th className="text-right">Qty</th>
+            <th className="text-right">In stock</th>
+            <th className="text-right">To order</th>
+            <th className="text-right">Each</th>
+            <th className="text-right">Total</th>
+            <th>Where to buy</th>
+            <th>Status</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-line">
+        <tbody>
           {rows.map((row) => {
             const p = row.part;
             const link = p.cotsLinks?.[0];
@@ -425,10 +423,10 @@ function CotsTable({ rows, saveRow, struck, orderList }: { rows: Row[]; saveRow:
             const crossed = row.members.every((m) => struck.has(m.id));
             return (
               <tr key={row.key} className={crossed ? "opacity-60" : undefined} style={statusTint(computeStatus(p))}>
-                <td className="py-1 pl-2">
+                <td>
                   <ThumbLocate part={p} />
                 </td>
-                <td className={`${td} font-semibold ${crossed ? "line-through" : ""} ${row.members.length > 1 ? "text-amber-500" : ""}`}>
+                <td className={`font-semibold ${crossed ? "line-through" : ""} ${row.members.length > 1 ? "text-amber-500" : ""}`}>
                   {link ? (
                     <a href={link.url} target="_blank" rel="noreferrer" className="text-sky-500 underline-offset-2 hover:underline dark:text-sky-400">
                       {partTitle(p)}
@@ -437,15 +435,15 @@ function CotsTable({ rows, saveRow, struck, orderList }: { rows: Row[]; saveRow:
                     partTitle(p)
                   )}
                 </td>
-                <td className={`${td} text-muted`}>{p.systemName}</td>
-                <td className={`${td} text-right font-mono tabular-nums`}>{p.quantity}</td>
-                <td className={`${td} text-right font-mono tabular-nums`} title={p.shelf && !p.shelf.sheet ? `Covered by ${p.shelf.itemName} on the shelf` : undefined}>
+                <td className="text-muted">{p.systemName}</td>
+                <td className="text-right font-mono tabular-nums">{p.quantity}</td>
+                <td className="text-right font-mono tabular-nums" title={p.shelf && !p.shelf.sheet ? `Covered by ${p.shelf.itemName} on the shelf` : undefined}>
                   {p.shelf && !p.shelf.sheet ? p.shelf.covered : p.stockCount}
                 </td>
-                <td className={`${td} text-right font-mono tabular-nums`}>{Math.max(0, p.quantity - (p.shelf && !p.shelf.sheet ? p.shelf.covered : p.stockCount)) || "—"}</td>
-                <td className={`${td} text-right font-mono text-emerald-500 tabular-nums`}>{p.unitPrice == null ? "—" : formatPrice(p.unitPrice, currency)}</td>
-                <td className={`${td} text-right font-mono font-semibold text-emerald-500 tabular-nums`}>{total == null ? "—" : formatPrice(total, currency)}</td>
-                <td className={`${td} text-xs`}>
+                <td className="text-right font-mono tabular-nums">{Math.max(0, p.quantity - (p.shelf && !p.shelf.sheet ? p.shelf.covered : p.stockCount)) || "—"}</td>
+                <td className="text-right font-mono text-emerald-500 tabular-nums">{p.unitPrice == null ? "—" : formatPrice(p.unitPrice, currency)}</td>
+                <td className="text-right font-mono font-semibold text-emerald-500 tabular-nums">{total == null ? "—" : formatPrice(total, currency)}</td>
+                <td className="text-xs">
                   {(p.cotsLinks ?? []).map((l, i) => (
                     <a key={l.url} href={l.url} target="_blank" rel="noreferrer" className="text-accent hover:underline">
                       {i > 0 && ", "}
@@ -453,7 +451,7 @@ function CotsTable({ rows, saveRow, struck, orderList }: { rows: Row[]; saveRow:
                     </a>
                   ))}
                 </td>
-                <td className={td}>
+                <td>
                   {orderList ? <OrderStatusButton part={p} save={saveRow(row)} compact /> : <StatusField part={p} save={saveRow(row)} />}
                 </td>
               </tr>
@@ -472,7 +470,7 @@ function ThumbLocate({ part }: { part: CardPart }) {
   return (
     <>
       <button type="button" onClick={() => setStage(robotId ? "locate" : "part")} className="press block cursor-zoom-in" aria-label={`Locate ${partTitle(part)} in the robot`}>
-        <Thumb part={part} />
+        <Thumb part={part} size={44} />
       </button>
       {stage && (
         <PartStage

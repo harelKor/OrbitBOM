@@ -67,10 +67,10 @@ export function CategorySettings({ open, onClose, categories, locations, items }
 
   return (
     <>
-      {open && <button aria-label="Close settings" onClick={onClose} className="fixed inset-0 z-[65] bg-black/30" />}
+      {open && <button aria-label="Close settings" onClick={onClose} className="modal-backdrop fixed inset-0 z-[65]" />}
       <aside
         aria-hidden={!open}
-        className={`fixed inset-y-0 right-0 z-[70] flex w-[min(40rem,100vw)] flex-col border-l border-line bg-raised shadow-2xl transition-transform duration-200 ${open ? "translate-x-0" : "pointer-events-none translate-x-full"}`}
+        className={`fixed inset-y-0 right-0 z-[70] flex w-[min(40rem,100vw)] flex-col border-l border-[color-mix(in_oklab,var(--color-accent)_38%,var(--color-line-strong))] bg-raised shadow-2xl transition-transform duration-200 ${open ? "translate-x-0" : "pointer-events-none translate-x-full"}`}
       >
         <div className="flex items-center gap-3 border-b border-line bg-surface px-4 py-3">
           <Icon name="gear" className="h-5 w-5 text-accent" />

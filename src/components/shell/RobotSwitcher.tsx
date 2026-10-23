@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FastLink } from "@/components/ui/FastLink";
+import { NewSystemButton } from "@/app/(app)/robots/[robotId]/NewSystemButton";
 import { RobotSettings } from "@/app/(app)/robots/[robotId]/RobotSettings";
 import { SystemSettings } from "@/app/(app)/robots/[robotId]/systems/[systemId]/SystemSettings";
 import type { ShellRobot, ShellSystem } from "@/lib/data/shell";
@@ -41,7 +42,12 @@ export function RobotSwitcher({ robots, lastRobotId, isAdmin }: { robots: ShellR
 
       {current && (
         <div className="border-t border-line p-2">
-          <div className="px-1 pt-1 pb-2 text-xs font-semibold text-muted">{current.name} systems</div>
+          <div className="flex items-center justify-between gap-2 px-1 pt-1 pb-2">
+            <span className="truncate text-xs font-semibold text-muted">{current.name} systems</span>
+            <EditOnly>
+              <NewSystemButton robotId={current.id} small />
+            </EditOnly>
+          </div>
           <div className="grid grid-cols-2 gap-2">
             {current.systems.map((s) => (
               <SystemTile key={s.id} robotId={current.id} system={s} active={s.id === systemId} isAdmin={isAdmin} />

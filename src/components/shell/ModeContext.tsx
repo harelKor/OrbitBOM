@@ -24,6 +24,12 @@ export function ModeProvider({ initial, children }: { initial: Mode; children: R
 export const useMode = () => useContext(ModeContext);
 export const useEditMode = () => useContext(ModeContext).mode === "edit";
 
+// Its children edit as in Edit mode whatever the page's mode (the part details window).
+export function EditScope({ children }: { children: React.ReactNode }) {
+  const { setMode } = useMode();
+  return <ModeContext.Provider value={{ mode: "edit", setMode }}>{children}</ModeContext.Provider>;
+}
+
 // Renders its children only in Edit mode.
 export function EditOnly({ children }: { children: React.ReactNode }) {
   return useEditMode() ? children : null;

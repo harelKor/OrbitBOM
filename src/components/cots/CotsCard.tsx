@@ -5,7 +5,8 @@ import { COTS_IN_STOCK, COTS_ORDERED, COTS_RELEASED, ORDER_STATUSES, getCotsStat
 import { Dialog } from "@/components/Dialog";
 import { statusTint } from "@/components/ui/statusTint";
 import { useBom } from "@/components/bom/BomContext";
-import { EditMenu, NoteCloud, NotesButton } from "@/components/bom/PartCard";
+import { EditMenu, MergedBadge, NoteCloud, NotesButton, isCardBodyClick } from "@/components/bom/PartCard";
+import { PartDetails } from "@/components/bom/PartDetails";
 import { QuantityField, StatusField, TypeBadge, TypeField, type SaveFn } from "@/components/bom/fields";
 import { textOn } from "@/components/bom/options";
 import { Popover } from "@/components/bom/Popover";
@@ -56,6 +57,7 @@ export function CotsCard({
   const edit = useEditMode();
   const { robotId } = useBom();
   const [stage, setStage] = useState<StageView | null>(null);
+  const [details, setDetails] = useState(false);
   const order = variant === "order";
   const links = part.cotsLinks ?? [];
   const title = partTitle(part);
@@ -84,9 +86,11 @@ export function CotsCard({
   // A grouped card opens on a click anywhere but its own controls (and their popovers).
   const onCardClick = group
     ? (e: React.MouseEvent) => {
-        if (!(e.target as HTMLElement).closest("a, button, input, select, textarea, [role=dialog], dialog")) group.onOpen();
+        if (isCardBodyClick(e)) group.onOpen();
       }
     : undefined;
+  // Otherwise a click below the thumbnail, off its controls, opens the part's details.
+  const onBodyClick = group ? undefined : (e: React.MouseEvent) => isCardBodyClick(e) && setDetails(true);
   const thumb = part.thumbUrl ? (
     // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
     <img src={part.thumbUrl} alt="" loading="lazy" className="h-full w-full object-contain p-3" />
@@ -137,6 +141,7 @@ export function CotsCard({
             {edit && !order ? <QuantityField part={part} save={save} /> : `×${part.quantity}`}
           </span>
           {!order && (edit ? <TypeField part={part} save={save} badge /> : <TypeBadge part={part} />)}
+          {!group && <MergedBadge part={part} />}
         </div>
         <div className="absolute top-2 right-2 flex max-w-[55%] flex-col items-end gap-1">
           {group && (
@@ -193,7 +198,9 @@ export function CotsCard({
         />
       )}
 
-      <div className={`flex min-w-0 flex-col p-3 ${order ? "gap-3" : "gap-2"}`}>
+      {details && <PartDetails part={part} save={save} onClose={() => setDetails(false)} />}
+
+      <div className={`flex min-w-0 flex-col ${order ? "gap-3 p-3" : "gap-1.5 px-2.5 py-2"} ${group ? "" : "cursor-pointer"}`} onClick={onBodyClick}>
         <div className="flex min-w-0 items-center gap-1">
           <div className={`min-w-0 flex-1 truncate font-semibold ${order ? "text-base" : ""} ${struck ? "line-through decoration-2" : ""}`} title={title}>
             {links[0] ? (
