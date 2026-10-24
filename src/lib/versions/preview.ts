@@ -16,7 +16,9 @@ import { frozenStudio } from "./studio";
 const { parts, partVersions, systems, systemVersions } = schema;
 const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 
-export type PreviewRequest = { side: "before" | "after"; draftId?: string; key?: string; partId?: string };
+// After from a draft (draftId + key) or a committed state (rowId: its version's After, the part's
+// state before it as Before); Before alone (partId) is the part's committed state.
+export type PreviewRequest = { side: "before" | "after"; draftId?: string; key?: string; partId?: string; rowId?: string };
 
 // One side of a change's Before → After 3D preview (plan/system-versioning.md §7). After: the
 // part as the system's draft found it in Onshape. Before: the part's committed state. Each is
@@ -29,7 +31,12 @@ export async function previewModel(systemId: string, member: { id: string; onsha
 
   let studio: string | null = null;
   let partId: string | null = null;
-  if (req.side === "after") {
+  if (req.rowId) {
+    const found = await committedState(systemId, req.rowId, req.side);
+    if (!found) return null;
+    studio = found.studio ?? frozenStudio(found, {});
+    partId = found.onshapePartId;
+  } else if (req.side === "after") {
     if (!req.draftId || !req.key) return null;
     const [draft] = await db
       .select()
@@ -66,4 +73,20 @@ export async function previewModel(systemId: string, member: { id: string; onsha
     await putObject(key, gzipSync(encodeMeshes(meshes)), "application/gzip");
   }
   return { studios: [await imageUrl(key)], placements: [{ s: 0, k: `${did}:${eid}:${partId}`, t: IDENTITY }] };
+}
+
+// A committed part state (After), or the part's state in the version before it (Before).
+async function committedState(systemId: string, rowId: string, side: "before" | "after") {
+  const rows = await db
+    .select({ id: partVersions.id, partId: partVersions.partId, seq: systemVersions.seq, snapshot: partVersions.snapshot, change: partVersions.change })
+    .from(partVersions)
+    .innerJoin(systemVersions, eq(systemVersions.id, partVersions.versionId))
+    .where(and(eq(systemVersions.systemId, systemId), eq(systemVersions.state, "committed")));
+  const row = rows.find((r) => r.id === rowId);
+  if (!row) return null;
+  if (side === "after") return row.snapshot;
+  const before = rows
+    .filter((r) => r.partId === row.partId && (r.seq ?? 0) < (row.seq ?? 0) && r.change !== "removed")
+    .sort((a, b) => (b.seq ?? 0) - (a.seq ?? 0))[0];
+  return before?.snapshot ?? null;
 }

@@ -122,6 +122,19 @@ function SystemTile({ robotId, system, active, isAdmin }: { robotId: string; sys
         </span>
         <span className={`block truncate px-2 py-1.5 text-xs font-medium ${active ? "text-accent" : "text-fg-2"}`}>{system.name}</span>
       </FastLink>
+      {system.sync.outdated && (
+        <FastLink
+          href={`/robots/${robotId}/systems/${system.id}?versions=1`}
+          className="press absolute top-1.5 left-1.5 rounded-full bg-rose-500 px-1.5 py-px text-[10px] font-bold text-white shadow-sm hover:bg-rose-600"
+          title={
+            system.sync.outdated === "reverted"
+              ? "Reverted to an older version: some parts are behind the latest one. Open Versions."
+              : "Some parts of the last update weren't committed yet. Open Versions."
+          }
+        >
+          Outdated
+        </FastLink>
+      )}
       <EditOnly>
         <span className="absolute top-1.5 right-1.5">
           <SystemSettings robotId={robotId} system={system} isAdmin={isAdmin} small />

@@ -29,7 +29,8 @@ export const sigKey = (p: { sourceDid: string | null; sourceEid: string | null; 
 // transaction: inserts new parts, refreshes Onshape fields and identity, hides parts missing
 // from the BOM. `sigs` gives each part's shape fingerprint (by sigKey) to keep as committed;
 // `partSigs` the committed shape (by part id) of parts that had none stored yet. With `only`
-// (partKeys), just those parts are inserted, updated or hidden.
+// (partKeys), just those parts are inserted, updated or hidden; parts in `skip` (ids) are left
+// as they are.
 export async function applyBomRows(
   tx: Tx,
   systemId: string,
@@ -40,7 +41,15 @@ export async function applyBomRows(
     sigs = {},
     partSigs = {},
     only,
-  }: { memberId: string; batchId: string; sigs?: Record<string, string>; partSigs?: Record<string, string>; only?: Set<string> },
+    skip,
+  }: {
+    memberId: string;
+    batchId: string;
+    sigs?: Record<string, string>;
+    partSigs?: Record<string, string>;
+    only?: Set<string>;
+    skip?: Set<string>;
+  },
 ): Promise<BomApplied> {
   const rowsNow = await tx.select().from(parts).where(eq(parts.systemId, systemId)).for("update");
   const existing = rowsNow.map((p) => ({ ...p, shapeSig: p.shapeSig ?? partSigs[p.id] ?? null }));
@@ -50,6 +59,10 @@ export async function applyBomRows(
     plan.insert = plan.insert.filter((r) => only.has(partKey(r)));
     plan.update = plan.update.filter((u) => only.has(partKey(u.identity)));
     plan.remove = plan.remove.filter((id) => only.has(partKey(byId.get(id)!)));
+  }
+  if (skip?.size) {
+    plan.update = plan.update.filter((u) => !skip.has(u.id));
+    plan.remove = plan.remove.filter((id) => !skip.has(id));
   }
   const now = new Date();
   const result: BomApplied = {

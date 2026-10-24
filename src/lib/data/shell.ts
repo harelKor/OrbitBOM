@@ -5,10 +5,11 @@ import { thumbKey } from "@/lib/onshape/thumbnails";
 import { imageUrl } from "@/lib/storage/r2";
 import { fabStage, machinesOf } from "@/lib/fab";
 import { statusBreakdown } from "@/lib/stats";
+import { listSystemSync, type SystemSync } from "@/lib/versions/sync";
 
 const { robots, systems, parts, partReviews } = schema;
 
-export type ShellSystem = { id: string; name: string; assemblyUrl: string | null; percent: number; total: number; thumbUrl: string | null };
+export type ShellSystem = { id: string; name: string; assemblyUrl: string | null; percent: number; total: number; thumbUrl: string | null; sync: SystemSync };
 export type ShellRobot = {
   id: string;
   name: string;
@@ -28,7 +29,7 @@ export type ShellRobot = {
 // picture is its stored thumbnail or, until one exists, one of its part thumbnails, so this
 // never calls Onshape.
 export async function listShellRobots(): Promise<ShellRobot[]> {
-  const [robotRows, systemRows, statusRows, partThumbs, reviewRows] = await Promise.all([
+  const [robotRows, systemRows, statusRows, partThumbs, reviewRows, sync] = await Promise.all([
     db.select().from(robots).orderBy(desc(robots.year), asc(robots.name)),
     db.select().from(systems).orderBy(asc(systems.name)),
     db
@@ -56,6 +57,7 @@ export async function listShellRobots(): Promise<ShellRobot[]> {
       .from(partReviews)
       .innerJoin(parts, eq(parts.id, partReviews.partId))
       .where(isNull(parts.removedFromCadAt)),
+    listSystemSync(),
   ]);
   const partThumb = new Map(partThumbs.map((t) => [t.systemId, thumbKey(t.id, t.rev!)]));
 
@@ -71,6 +73,7 @@ export async function listShellRobots(): Promise<ShellRobot[]> {
         percent: b.percent,
         total: b.total,
         thumbUrl: key ? await imageUrl(key) : null,
+        sync: sync.get(s.id) ?? { outdated: null, waiting: 0 },
       };
     }),
   );
@@ -96,7 +99,7 @@ export async function listShellRobots(): Promise<ShellRobot[]> {
         archived: r.archived,
         percent: statusBreakdown(statusRows.filter((x) => ids.has(x.systemId))).percent,
         thumbUrl: r.thumbnailPath ? await imageUrl(r.thumbnailPath) : (own.find((s) => s.thumbUrl)?.thumbUrl ?? null),
-        systems: own.map((s) => ({ id: s.id, name: s.name, assemblyUrl: s.assemblyUrl, percent: s.percent, total: s.total, thumbUrl: s.thumbUrl })),
+        systems: own.map((s) => ({ id: s.id, name: s.name, assemblyUrl: s.assemblyUrl, percent: s.percent, total: s.total, thumbUrl: s.thumbUrl, sync: s.sync })),
       };
     }),
   );

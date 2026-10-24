@@ -10,6 +10,7 @@ import { RobotViewer } from "@/components/dashboard/RobotViewer";
 import { QaSection } from "@/components/qa/QaSection";
 import { StatusBar } from "@/components/StatusBar";
 import { UpdateSystem } from "@/components/versions/UpdateSystem";
+import { VersionsWindow } from "@/components/versions/VersionsWindow";
 import { STATUSES } from "@/config/statuses";
 import { requireMember } from "@/lib/auth";
 import { listRecentActions } from "@/lib/data/actions";
@@ -21,6 +22,7 @@ import { robotModelBuiltAt } from "@/lib/model/build";
 import { isEditMode } from "@/lib/mode";
 import { isUuid } from "@/lib/uuid";
 import { loadDraft } from "@/lib/versions/detect";
+import { listVersions } from "@/lib/versions/history";
 import { loadVersionTags } from "@/lib/versions/tags";
 
 // Update System checks Onshape in a server action; thumbnails follow from /api/systems/[id]/thumbnails.
@@ -35,7 +37,7 @@ export default async function SystemPage({
   if (!isUuid(robotId) || !isUuid(systemId)) notFound();
   // Everything in one parallel round: the page waits for the slowest query, not their sum.
   const member = await requireMember();
-  const [data, parts, merges, inventory, edit, modelBuiltAt, fabActions, systemActions, draft, versions] = await Promise.all([
+  const [data, parts, merges, inventory, edit, modelBuiltAt, fabActions, systemActions, draft, versions, versionList] = await Promise.all([
     getSystem(robotId, systemId),
     listSystemParts(systemId),
     listSystemMerges(systemId),
@@ -46,9 +48,11 @@ export default async function SystemPage({
     listRecentActions({ robotId, memberId: member.id, systemId }, 30),
     loadDraft(systemId),
     loadVersionTags(systemId),
+    listVersions(systemId),
   ]);
   if (!data) notFound();
   const { system, robot, breakdown } = data;
+  const thumbs = Object.fromEntries(parts.map((p) => [p.id, p.thumbUrl]));
   const statusColor = new Map<string, string>(STATUSES.map((s) => [s.name, s.color]));
   const viewerParts = parts.flatMap((p) =>
     p.modelKey
@@ -85,14 +89,12 @@ export default async function SystemPage({
 
       {system.assemblyUrl && (
         <>
-          <Suspense>
-            <UpdateSystem
-              systemId={system.id}
-              draft={draft}
-              lastSyncedAt={system.lastSyncedAt}
-              thumbs={Object.fromEntries(parts.map((p) => [p.id, p.thumbUrl]))}
-            />
-          </Suspense>
+          <div className="flex flex-wrap items-center gap-3">
+            <Suspense>
+              <VersionsWindow systemId={system.id} list={versionList} thumbs={thumbs} />
+              <UpdateSystem systemId={system.id} draft={draft} lastSyncedAt={system.lastSyncedAt} thumbs={thumbs} />
+            </Suspense>
+          </div>
           <AutoRefresh systemId={system.id} />
         </>
       )}

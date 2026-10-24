@@ -1,57 +1,17 @@
 import "server-only";
 import { and, eq, inArray, isNull, max, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
-import type { PartSnapshot, VersionChange } from "@/db/schema";
+import type { VersionChange } from "@/db/schema";
 import { autoLink } from "@/lib/inventory/autolink";
-import { partKey, type BomRow } from "@/lib/onshape/bom";
+import { partKey } from "@/lib/onshape/bom";
 import { applyBomRows, sigKey } from "@/lib/sync/applyBom";
 import type { DraftRows } from "./detect";
 import { versionLabel } from "./label";
-import { frozenStudio } from "./studio";
+import { snapshotOfPart, snapshotOfRow } from "./snapshot";
 
 const { parts, partVersions, systems, systemVersions } = schema;
 
 export class VersionError extends Error {}
-
-type PartLike = Omit<PartSnapshot, "onshapeMaterial" | "sig"> & { geometry: { onshapeMaterial?: string } | null; shapeSig: string | null };
-
-const snapshotOfPart = (p: PartLike, docMvs: Record<string, string>): PartSnapshot => ({
-  sourceDid: p.sourceDid,
-  sourceWid: p.sourceWid,
-  sourceWvm: p.sourceWvm,
-  sourceEid: p.sourceEid,
-  onshapePartId: p.onshapePartId,
-  onshapeName: p.onshapeName,
-  partNumber: p.partNumber,
-  description: p.description,
-  material: p.material,
-  onshapeMaterial: p.geometry?.onshapeMaterial ?? null,
-  quantity: p.quantity,
-  preProcess: p.preProcess,
-  process1: p.process1,
-  process2: p.process2,
-  sig: p.shapeSig,
-  studio: frozenStudio(p, docMvs),
-});
-
-const snapshotOfRow = (r: BomRow, sig: string | null, docMvs: Record<string, string>): PartSnapshot => ({
-  sourceDid: r.sourceDid,
-  sourceWid: r.sourceWid,
-  sourceWvm: r.sourceWvm,
-  sourceEid: r.sourceEid,
-  onshapePartId: r.onshapePartId,
-  onshapeName: r.onshapeName,
-  partNumber: r.partNumber,
-  description: r.description,
-  material: r.material,
-  onshapeMaterial: r.onshapeMaterial,
-  quantity: r.quantity,
-  preProcess: r.preProcess,
-  process1: r.process1,
-  process2: r.process2,
-  sig,
-  studio: frozenStudio(r, docMvs),
-});
 
 export type CommitResult = {
   versionId: string;
@@ -141,6 +101,7 @@ export async function commitDraft(
       sigs: rows.sigs,
       partSigs: rows.partSigs,
       only: only ? new Set([only]) : undefined,
+      skip: new Set(rows.held ?? []),
     });
 
     // Each committed part's new state, and the part pointing at it.

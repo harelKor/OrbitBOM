@@ -10,12 +10,15 @@ import { apiPath, parseOnshapeUrl } from "@/lib/onshape/url";
 import { applyBomRows, sigKey } from "@/lib/sync/applyBom";
 import { planMerge } from "@/lib/sync/merge";
 import { onshapeName } from "./label";
+import { heldParts } from "./history";
 import { shapeFingerprints } from "./shape";
+import { sameState, snapshotOfRow } from "./snapshot";
 
 const { onshapeCache, parts, systems, systemVersions } = schema;
 
 // What a draft keeps to be applied as it is on commit.
-export type DraftRows = { bom: BomRow[]; sigs: Record<string, string>; partSigs: Record<string, string>; unknownMachines: string[] };
+// `held`: parts a Revert holds behind the latest version (history.ts), left alone unless listed.
+export type DraftRows = { bom: BomRow[]; sigs: Record<string, string>; partSigs: Record<string, string>; unknownMachines: string[]; held?: string[] };
 
 export type Draft = {
   id: string;
@@ -108,6 +111,16 @@ export async function checkSystem(systemId: string, memberId: string, { force = 
     parsed.rows,
     (r) => sigs[sigKey(r)],
   );
+  // A part a Revert holds back isn't new when Onshape still has its newest committed state.
+  const held = await heldParts(db, systemId);
+  const rowByKey = new Map(parsed.rows.map((r) => [partKey(r), r]));
+  const isHeldAsIs = (partId: string, row: BomRow | undefined) => {
+    const newest = held.get(partId);
+    if (!newest) return false;
+    if (!row) return newest.change === "removed";
+    return newest.change !== "removed" && sameState(newest.snapshot, snapshotOfRow(row, sigs[sigKey(row)] ?? null, {}));
+  };
+
   const changes: VersionChange[] = [];
   for (const r of plan.insert) {
     changes.push({ key: partKey(r), partId: null, change: "added", name: r.onshapeName, partNumber: r.partNumber, fields: {}, geometry: false });
@@ -115,6 +128,7 @@ export async function checkSystem(systemId: string, memberId: string, { force = 
   let moved = false;
   for (const u of plan.update) {
     const part = byId.get(u.id)!;
+    if (isHeldAsIs(u.id, rowByKey.get(partKey(u.identity)))) continue;
     const fields: VersionChange["fields"] = {};
     for (const [field, to] of Object.entries(u.changes)) fields[field] = { from: part[field as keyof typeof part], to };
     if (part.onshapeName !== u.identity.onshapeName) fields.onshapeName = { from: part.onshapeName, to: u.identity.onshapeName };
@@ -130,6 +144,7 @@ export async function checkSystem(systemId: string, memberId: string, { force = 
   }
   for (const id of plan.remove) {
     const part = byId.get(id)!;
+    if (isHeldAsIs(id, undefined)) continue;
     changes.push({ key: partKey(part), partId: id, change: "removed", name: part.onshapeName ?? "Part", partNumber: part.partNumber, fields: {}, geometry: false });
   }
 
@@ -137,14 +152,16 @@ export async function checkSystem(systemId: string, memberId: string, { force = 
   changes.sort((x, y) => order[x.change] - order[y.change] || x.name.localeCompare(y.name, undefined, { numeric: true }));
 
   const now = new Date();
-  const rows: DraftRows = { bom: parsed.rows, sigs, partSigs, unknownMachines: parsed.unknownMachines };
+  const listed = new Set(changes.map((c) => c.partId));
+  const keep = [...held.keys()].filter((id) => !listed.has(id));
+  const rows: DraftRows = { bom: parsed.rows, sigs, partSigs, unknownMachines: parsed.unknownMachines, held: keep };
   const seenMv = microversion ? { docMicroversions: { ...system.docMicroversions, [ref.did]: microversion } } : {};
   const account = force ? { refreshMemberId: memberId } : {};
 
   if (!changes.length) {
     // Up to date. Same parts in a newer reference (or a first microversion) are taken as they are.
     await db.transaction(async (tx) => {
-      if (moved) await applyBomRows(tx, systemId, parsed.rows, { memberId, batchId: randomUUID(), sigs, partSigs });
+      if (moved) await applyBomRows(tx, systemId, parsed.rows, { memberId, batchId: randomUUID(), sigs, partSigs, skip: new Set(keep) });
       if (current) await tx.delete(systemVersions).where(eq(systemVersions.id, current.id));
       await tx.update(systems).set({ lastCheckedAt: now, ...seenMv, ...account }).where(eq(systems.id, systemId));
     });

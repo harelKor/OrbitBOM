@@ -13,6 +13,7 @@ const body = z.object({
   side: z.enum(["before", "after"]),
   draftId: z.uuid().optional(),
   key: z.string().max(500).optional(),
+  rowId: z.uuid().optional(),
   partId: z.uuid().optional(),
 });
 

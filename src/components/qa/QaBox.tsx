@@ -15,15 +15,17 @@ export function QaBox({ robotId, systems }: { robotId: string; systems: QaSystem
   const total = systems.reduce((n, s) => n + s.count, 0);
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className="card-interactive group flex min-h-40 flex-col items-center justify-center gap-3 p-5 text-center">
-        <span className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-amber-500/60 bg-amber-500/10 text-amber-500">
-          <CheckIcon className="h-7 w-7" />
+      <button type="button" onClick={() => setOpen(true)} className="card-interactive group flex items-center gap-4 p-4 text-left">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 border-amber-500/60 bg-amber-500/10 text-amber-500">
+          <CheckIcon className="h-6 w-6" />
         </span>
-        <span className="text-sm font-medium text-muted">Ready for QA</span>
-        <span className="display font-mono text-5xl text-accent tabular-nums">{total}</span>
-        <span className="text-xs text-subtle tabular-nums">
-          {total === 0 ? "Nothing to check" : `in ${systems.length} ${systems.length === 1 ? "system" : "systems"}`}
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-medium text-muted">Ready for QA</span>
+          <span className="block text-xs text-subtle tabular-nums">
+            {total === 0 ? "Nothing to check" : `in ${systems.length} ${systems.length === 1 ? "system" : "systems"}`}
+          </span>
         </span>
+        <span className="display font-mono text-4xl text-accent tabular-nums">{total}</span>
       </button>
       <Dialog open={open} onClose={() => setOpen(false)} title="Ready for QA" wide>
         {systems.length === 0 ? (

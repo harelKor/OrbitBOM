@@ -109,7 +109,8 @@ export function CommitWindow({
             <ChangeBox
               key={`${c.change}:${c.key}`}
               systemId={systemId}
-              draftId={draft.id}
+              before={c.partId && c.change !== "added" ? { side: "before", partId: c.partId } : null}
+              after={c.change !== "removed" ? { side: "after", draftId: draft.id, key: c.key } : null}
               change={c}
               thumb={c.partId ? (thumbs[c.partId] ?? null) : null}
               open={expanded === c.key}
@@ -124,9 +125,10 @@ export function CommitWindow({
   );
 }
 
-function ChangeBox({
+export function ChangeBox({
   systemId,
-  draftId,
+  before,
+  after,
   change: c,
   thumb,
   open,
@@ -135,7 +137,8 @@ function ChangeBox({
   committing,
 }: {
   systemId: string;
-  draftId: string;
+  before: PreviewReq | null;
+  after: PreviewReq | null;
   change: VersionChange;
   thumb: string | null;
   open: boolean;
@@ -175,7 +178,7 @@ function ChangeBox({
               ))}
             </div>
           )}
-          <Previews systemId={systemId} draftId={draftId} change={c} />
+          <Previews systemId={systemId} before={before} after={after} change={c} />
           {onCommit && (
             <div className="flex justify-end">
               <button type="button" className="btn" disabled={committing} onClick={onCommit}>
@@ -191,26 +194,30 @@ function ChangeBox({
 
 // Before → After for a changed shape; one view for an added or removed part, or when only its
 // properties changed.
-function Previews({ systemId, draftId, change: c }: { systemId: string; draftId: string; change: VersionChange }) {
-  const before = c.partId && c.change !== "added" ? { side: "before" as const, partId: c.partId } : null;
-  const after = c.change !== "removed" ? { side: "after" as const, draftId, key: c.key } : null;
+function Previews({ systemId, before, after, change: c }: { systemId: string; before: PreviewReq | null; after: PreviewReq | null; change: VersionChange }) {
   if (c.change === "modified" && !c.geometry)
     return (
       <div className="grid grid-cols-1">
-        <Preview systemId={systemId} req={before ?? after!} label="Shape unchanged" />
+        {(before ?? after) && <Preview systemId={systemId} req={(before ?? after)!} label="Shape unchanged" />}
+      </div>
+    );
+  if (!before || !after)
+    return (
+      <div className="grid grid-cols-1">
+        {before && <Preview systemId={systemId} req={before} label="Removed" />}
+        {after && <Preview systemId={systemId} req={after} label="Added" />}
       </div>
     );
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
-      {before && <Preview systemId={systemId} req={before} label="Before" />}
-      {before && after && <Icon name="arrow" className="h-5 w-5 text-accent" />}
-      {after && <Preview systemId={systemId} req={after} label={before ? "After" : "Added"} />}
-      {!after && <span className="col-span-2 text-xs text-subtle">Removed from the assembly</span>}
+      <Preview systemId={systemId} req={before} label="Before" />
+      <Icon name="arrow" className="h-5 w-5 text-accent" />
+      <Preview systemId={systemId} req={after} label="After" />
     </div>
   );
 }
 
-type PreviewReq = { side: "before" | "after"; partId?: string; draftId?: string; key?: string };
+export type PreviewReq = { side: "before" | "after"; partId?: string; draftId?: string; key?: string; rowId?: string };
 
 function Preview({ systemId, req, label }: { systemId: string; req: PreviewReq; label: string }) {
   const [model, setModel] = useState<ViewerModel | null>(null);

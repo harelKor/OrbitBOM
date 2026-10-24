@@ -21,6 +21,8 @@ else
     const { checkSystem } = await import("./detect");
     const { commitDraft, VersionError } = await import("./commit");
     const { loadVersionTags } = await import("./tags");
+    const { listVersions, revertSystem, updatePartToLatest } = await import("./history");
+    const { listSystemSync } = await import("./sync");
 
     const headers = [
       { id: "n", name: "Name" },
@@ -172,9 +174,9 @@ else
       let tags = await loadVersionTags(system.id);
       expect(tags.parts[a.id]).toMatchObject({ seq: 2, name: "Arm plate" });
       expect(Object.keys(tags.outdated)).toEqual([b.id]);
-      expect(tags.missed).toMatchObject({ seq: 2 });
+      expect(tags.outdated[b.id].missed).toMatchObject({ seq: 2 });
 
-      await commitDraft(system.id, member.id, { draftId: draft!.id, only: tags.outdated[b.id] });
+      await commitDraft(system.id, member.id, { draftId: draft!.id, only: tags.outdated[b.id].key });
       expect((await live())[1].quantity).toBe(7);
       tags = await loadVersionTags(system.id);
       expect(tags.outdated).toEqual({});
@@ -182,5 +184,43 @@ else
       expect(tags.parts[b.id]).toMatchObject({ seq: 2 });
       const v2 = (await versions()).find((v) => v.seq === 2)!;
       expect(v2.changes.map((c) => c.name)).toEqual(["Part A", "Part B"]);
+    });
+
+    it("reverts to an older version, holds the parts there and brings them back one at a time", async () => {
+      const list = await listVersions(system.id);
+      expect(list.versions.map((v) => [v.seq, v.label])).toEqual([
+        [2, "V4"],
+        [1, "V2"],
+        [0, "V1"],
+      ]);
+      const v1 = list.versions[1];
+      const r = await revertSystem(system.id, v1.id, member.id);
+      expect(r).toEqual({ label: "V2", moved: 2 });
+      const [a, b] = await live();
+      expect([a.shapeSig?.slice(0, 7), a.sourceWid, b.quantity, a.designState]).toEqual(["1.50000", "v2", 6, "Gcoded"]);
+
+      const after = await listVersions(system.id);
+      expect([after.currentId, after.latestId]).toEqual([v1.id, list.versions[0].id]);
+      expect((await listSystemSync()).get(system.id)).toEqual({ outdated: "reverted", waiting: 0 });
+      let tags = await loadVersionTags(system.id);
+      expect(Object.keys(tags.outdated).sort()).toEqual([a.id, b.id].sort());
+      expect(tags.outdated[a.id].missed).toMatchObject({ seq: 2 });
+
+      // Onshape still has the newest state: a check doesn't list the held parts as changes.
+      microversion = "mv4";
+      const check = await checkSystem(system.id, member.id);
+      expect(check.draft).toBeNull();
+      expect((await live())[1].quantity).toBe(6);
+
+      await updatePartToLatest(system.id, b.id, member.id);
+      expect((await live())[1].quantity).toBe(7);
+      expect((await listVersions(system.id)).currentId).toBe(v1.id);
+      await updatePartToLatest(system.id, a.id, member.id);
+      expect((await live())[0].shapeSig?.slice(0, 7)).toBe("1.70000");
+      expect((await listVersions(system.id)).currentId).toBe(list.versions[0].id);
+      tags = await loadVersionTags(system.id);
+      expect(tags.outdated).toEqual({});
+      expect((await listSystemSync()).get(system.id)).toEqual({ outdated: null, waiting: 0 });
+      await expect(updatePartToLatest(system.id, a.id, member.id)).rejects.toBeInstanceOf(VersionError);
     });
   });

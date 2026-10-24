@@ -2,27 +2,28 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { commitChanges } from "@/app/(app)/versions-actions";
+import { commitChanges, updateToLatest } from "@/app/(app)/versions-actions";
 import { Popover } from "@/components/bom/Popover";
 import { Dialog } from "@/components/Dialog";
 import { useEditMode } from "@/components/shell/ModeContext";
 import { CheckIcon } from "@/components/ui/CheckBadge";
 import { Icon } from "@/components/ui/Icon";
-import type { PartVersionTag, VersionTags } from "@/lib/versions/tags";
+import type { OutdatedTag as OutdatedInfo, PartVersionTag, VersionTags } from "@/lib/versions/tags";
 import { afterPartsUpdate } from "./afterUpdate";
-import { OPEN_COMMIT_EVENT } from "./events";
+import { OPEN_COMMIT_EVENT, OPEN_VERSIONS_EVENT } from "./events";
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—");
 const versionLabel = (t: PartVersionTag) => `${t.label}${t.name && t.name !== t.label ? ` · ${t.name}` : ""}`;
 
 // A part card's version tag (plan/system-versioning.md §7): a quiet "Up to date" pill with when
 // and by whom the part was last committed, or a red "Outdated" one when other parts of its
-// change were committed without it. Outdated opens a window with the update it missed (which
-// opens the Commit window on top) and Update, which commits just this part.
+// change were committed without it, or a Revert held it behind the latest version. Outdated
+// opens a window with the update it missed (which opens the Commit or Versions window on top)
+// and Update, which brings just this part up to date.
 export function VersionTag({ partId, tags }: { partId: string; tags: VersionTags }) {
   const tag = tags.parts[partId];
-  const outdatedKey = tags.outdated[partId];
-  if (outdatedKey) return <OutdatedTag tag={tag} tags={tags} changeKey={outdatedKey} />;
+  const outdated = tags.outdated[partId];
+  if (outdated) return <OutdatedTag partId={partId} tag={tag} tags={tags} outdated={outdated} />;
   if (!tag) return null;
   return (
     <span onClick={(e) => e.stopPropagation()} className="contents">
@@ -51,7 +52,7 @@ export function VersionTag({ partId, tags }: { partId: string; tags: VersionTags
   );
 }
 
-function OutdatedTag({ tag, tags, changeKey }: { tag: PartVersionTag | undefined; tags: VersionTags; changeKey: string }) {
+function OutdatedTag({ partId, tag, tags, outdated }: { partId: string; tag: PartVersionTag | undefined; tags: VersionTags; outdated: OutdatedInfo }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -59,9 +60,12 @@ function OutdatedTag({ tag, tags, changeKey }: { tag: PartVersionTag | undefined
   const router = useRouter();
   const update = () =>
     start(async () => {
-      if (!tags.draft) return;
       setError(null);
-      const r = await commitChanges(tags.systemId, tags.draft.id, tags.draft.detectedAt, "", changeKey);
+      const r = outdated.key
+        ? tags.draft
+          ? await commitChanges(tags.systemId, tags.draft.id, tags.draft.detectedAt, "", outdated.key)
+          : { error: "These changes were already committed. Reload the page." }
+        : await updateToLatest(tags.systemId, partId);
       if (r.error) return setError(r.error);
       setOpen(false);
       afterPartsUpdate(tags.systemId, router);
@@ -94,10 +98,10 @@ function OutdatedTag({ tag, tags, changeKey }: { tag: PartVersionTag | undefined
             <p className="label">Missed update</p>
             <button
               type="button"
-              onClick={() => window.dispatchEvent(new Event(OPEN_COMMIT_EVENT))}
+              onClick={() => window.dispatchEvent(new Event(outdated.key ? OPEN_COMMIT_EVENT : OPEN_VERSIONS_EVENT))}
               className="card-interactive flex w-full items-center gap-2 px-3 py-2 text-left"
             >
-              <span className="min-w-0 flex-1 truncate tabular-nums">{tags.missed ? `${when(tags.missed.at)} · ${versionLabel(tags.missed)}` : "Changes in Onshape"}</span>
+              <span className="min-w-0 flex-1 truncate tabular-nums">{outdated.missed ? `${when(outdated.missed.at)} · ${versionLabel(outdated.missed)}` : "Changes in Onshape"}</span>
               <Icon name="arrow" className="h-4 w-4 text-subtle" />
             </button>
           </div>

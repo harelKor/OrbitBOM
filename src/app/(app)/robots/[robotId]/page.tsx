@@ -6,6 +6,7 @@ import { partTitle } from "@/components/bom/types";
 import { CompletionRing } from "@/components/dashboard/CompletionRing";
 import { RobotViewer } from "@/components/dashboard/RobotViewer";
 import { QaBox } from "@/components/qa/QaBox";
+import { SyncBox } from "@/components/versions/SyncBox";
 import { Icon } from "@/components/ui/Icon";
 import { requireMember } from "@/lib/auth";
 import { listRecentActions } from "@/lib/data/actions";
@@ -19,6 +20,7 @@ import { isEditMode } from "@/lib/mode";
 import { isUuid } from "@/lib/uuid";
 import { listRobotReviews } from "@/lib/review/review";
 import { processBreakdown } from "@/lib/stats";
+import { listSystemSync } from "@/lib/versions/sync";
 
 // The robot dashboard: launch cards for To Fab and To Review, status and process completion,
 // the 3D stage, and every part of the robot (searched and filtered from the top bar).
@@ -27,7 +29,7 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
   if (!isUuid(robotId)) notFound();
   // Everything in one parallel round: the page waits for the slowest query, not their sum.
   const member = await requireMember();
-  const [data, parts, inventoryNames, inventory, edit, modelBuiltAt, reviews, actions] = await Promise.all([
+  const [data, parts, inventoryNames, inventory, edit, modelBuiltAt, reviews, actions, sync] = await Promise.all([
     getRobot(robotId),
     listRobotParts(robotId),
     listInventoryNames(),
@@ -36,6 +38,7 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
     robotModelBuiltAt(robotId),
     listRobotReviews(robotId),
     listRecentActions({ robotId, memberId: member.id }),
+    listSystemSync(),
   ]);
   if (!data) notFound();
   const { robot, breakdown } = data;
@@ -51,6 +54,7 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
   const qaCount = new Map<string, number>();
   for (const p of parts) if (p.status === "Ready for QA") qaCount.set(p.systemId, (qaCount.get(p.systemId) ?? 0) + 1);
   const qaSystems = data.systems.flatMap((s) => (qaCount.has(s.id) ? [{ id: s.id, name: s.name, count: qaCount.get(s.id)! }] : []));
+  const syncSystems = data.systems.flatMap((s) => (s.assemblyUrl ? [{ id: s.id, name: s.name, ...(sync.get(s.id) ?? { outdated: null, waiting: 0 }) }] : []));
   const activeStatuses = breakdown.statuses.filter((s) => s.count > 0);
   // BOM parts by their key in the 3D model, with their status colour.
   const statusColor = new Map<string, string>(STATUSES.map((s) => [s.name, s.color]));
@@ -137,7 +141,10 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
             </div>
           )}
         </section>
-        <QaBox robotId={robot.id} systems={qaSystems} />
+        <div className="grid grid-rows-2 gap-3">
+          <QaBox robotId={robot.id} systems={qaSystems} />
+          <SyncBox robotId={robot.id} systems={syncSystems} />
+        </div>
         <RobotViewer
           robotId={robot.id}
           statuses={activeStatuses}

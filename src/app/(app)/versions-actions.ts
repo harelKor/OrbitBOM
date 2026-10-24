@@ -6,6 +6,7 @@ import { OnshapeError } from "@/lib/onshape/client";
 import { isUuid } from "@/lib/uuid";
 import { commitDraft, VersionError } from "@/lib/versions/commit";
 import { checkSystem, type Draft } from "@/lib/versions/detect";
+import { revertSystem, updatePartToLatest } from "@/lib/versions/history";
 
 export type CheckResult = { draft?: Draft | null; error?: string; calls?: number; applied?: boolean };
 
@@ -39,6 +40,34 @@ export async function commitChanges(systemId: string, draftId: string, seen: str
     const warning = c.unknownMachines.length ? ` Unknown machines in Onshape: ${c.unknownMachines.join(", ")}.` : "";
     if (only) return { message: `Committed to ${c.label}.` };
     return { message: `Committed as ${c.label}: ${c.added.length} added, ${c.updated} updated, ${c.removed.length} removed.${warning}` };
+  } catch (err) {
+    if (err instanceof VersionError) return { error: err.message };
+    throw err;
+  }
+}
+
+// Revert: the system's parts go back to their state in a version (Onshape isn't touched).
+export async function revertToVersion(systemId: string, versionId: string): Promise<CommitResult> {
+  const member = await requireMember();
+  if (!isUuid(systemId) || !isUuid(versionId)) return { error: "Unknown version." };
+  try {
+    const r = await revertSystem(systemId, versionId, member.id);
+    revalidatePath("/robots", "layout");
+    return { message: `Reverted to ${r.label}: ${r.moved} ${r.moved === 1 ? "part" : "parts"} changed.` };
+  } catch (err) {
+    if (err instanceof VersionError) return { error: err.message };
+    throw err;
+  }
+}
+
+// An Outdated part's Update after a Revert: it takes its newest committed state.
+export async function updateToLatest(systemId: string, partId: string): Promise<CommitResult> {
+  const member = await requireMember();
+  if (!isUuid(systemId) || !isUuid(partId)) return { error: "Unknown part." };
+  try {
+    await updatePartToLatest(systemId, partId, member.id);
+    revalidatePath("/robots", "layout");
+    return { message: "Updated." };
   } catch (err) {
     if (err instanceof VersionError) return { error: err.message };
     throw err;
