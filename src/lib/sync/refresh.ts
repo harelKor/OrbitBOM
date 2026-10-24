@@ -4,7 +4,7 @@ import { db, schema } from "@/db";
 import { refreshIntervalMinutes } from "@/config/refresh";
 import { OnshapeError } from "@/lib/onshape/client";
 import { missingAssemblyThumbnails, refreshThumbnails } from "@/lib/onshape/thumbnails";
-import { updateBomFromOnshape, type SyncSummary } from "./updateBom";
+import { checkSystem } from "@/lib/versions/detect";
 
 const { robots, syncJobs, systems } = schema;
 
@@ -28,8 +28,10 @@ async function claim(systemId: string, intervalMinutes: number): Promise<boolean
   return rows.length > 0;
 }
 
-// Checks one system if it is due, and pulls its BOM (and new thumbnails) only when the Onshape
-// document changed. Returns null when the system wasn't due.
+// Checks one system if it is due (plan/system-versioning.md §4): one call when the Onshape
+// document didn't change; otherwise what changed is kept in the system's draft for a member to
+// commit. Nothing reaches the BOM here. `changed` says a check found new changes. Returns null
+// when the system wasn't due.
 export async function refreshSystem(
   systemId: string,
   memberId: string,
@@ -38,12 +40,11 @@ export async function refreshSystem(
 ): Promise<RefreshResult | null> {
   if (!(await claim(systemId, intervalMinutes))) return null;
   try {
-    const s: SyncSummary = await updateBomFromOnshape(systemId, memberId, { force: false });
-    let calls = s.calls;
-    calls += s.skipped
-      ? await missingAssemblyThumbnails(systemId, memberId)
-      : (await refreshThumbnails(systemId, memberId, deadline)).calls;
-    return { systemId, changed: !s.skipped, calls };
+    const c = await checkSystem(systemId, memberId, { force: false });
+    let calls = c.calls;
+    if (c.unchanged) calls += await missingAssemblyThumbnails(systemId, memberId);
+    else if (!c.draft) calls += (await refreshThumbnails(systemId, memberId, deadline)).calls;
+    return { systemId, changed: !c.unchanged, calls };
   } catch (err) {
     if (err instanceof OnshapeError) return { systemId, changed: false, calls: 0, error: err.message };
     throw err;

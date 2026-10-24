@@ -25,7 +25,7 @@ export async function linkAssembly(assemblyUrl: string, _: { error?: string } | 
     .insert(schema.systems)
     .values({ robotId: parsed.data.robotId, name: parsed.data.name, assemblyUrl: onshapeUrl(ref) })
     .returning({ id: schema.systems.id });
-  // A failed first sync still links; the system page shows Update BOM to retry.
+  // A failed first sync still links; the system page shows Update System to retry.
   if (member.onshapeConnected) await syncSystem(system.id);
   redirect(`/robots/${parsed.data.robotId}/systems/${system.id}`);
 }

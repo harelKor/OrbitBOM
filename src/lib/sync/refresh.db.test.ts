@@ -15,7 +15,7 @@ else
     process.env.DATABASE_URL = url;
     process.env.ONSHAPE_TOKEN_KEY = randomBytes(32).toString("base64");
     const { db, schema } = await import("@/db");
-    const { eq } = await import("drizzle-orm");
+    const { and, eq } = await import("drizzle-orm");
     const { encrypt } = await import("@/lib/crypto");
     const { updateBomFromOnshape } = await import("./updateBom");
     const { refreshSystem, refreshDueSystems } = await import("./refresh");
@@ -31,7 +31,9 @@ else
       calls.push(input);
       const body = input.includes("currentmicroversion")
         ? { microversion }
-        : {
+        : input.includes("/parts/d/")
+          ? []
+          : {
             headers,
             rows: names.map((n, i) => ({
               itemSource: { documentId: DID, elementId: "studio", partId: `P${i}`, wvmType: "w", wvmId: WID },
@@ -74,7 +76,7 @@ else
       expect(results.find((r) => r.systemId === system.id)).toBeUndefined();
     });
 
-    it("makes the member who runs Update BOM the refresh account", async () => {
+    it("makes the member who updates the system the refresh account", async () => {
       await updateBomFromOnshape(system.id, member.id);
       const s = await getSystem();
       expect(s.refreshMemberId).toBe(member.id);
@@ -91,7 +93,7 @@ else
       expect(calls).toHaveLength(1);
     });
 
-    it("pulls the BOM when the document changed", async () => {
+    it("keeps what changed in the system's draft, not in the BOM", async () => {
       await db
         .update(schema.systems)
         .set({ lastCheckedAt: new Date(Date.now() - 3600_000) })
@@ -101,7 +103,9 @@ else
       const results = await refreshDueSystems(later);
       expect(results.find((r) => r.systemId === system.id)).toMatchObject({ changed: true });
       const parts = await db.select().from(schema.parts).where(eq(schema.parts.systemId, system.id));
-      expect(parts.map((p) => p.onshapeName).sort()).toEqual(["Plate", "Spacer"]);
+      expect(parts.map((p) => p.onshapeName)).toEqual(["Plate"]);
+      const [draft] = await db.select().from(schema.systemVersions).where(and(eq(schema.systemVersions.systemId, system.id), eq(schema.systemVersions.state, "draft")));
+      expect(draft.changes.map((c) => [c.change, c.name])).toEqual([["added", "Spacer"]]);
     });
 
     it("skips archived robots", async () => {

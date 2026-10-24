@@ -93,17 +93,12 @@ export async function syncSystem(systemId: string): Promise<SyncResult> {
     // Thumbnails come next, from the button (POST /api/systems/[id]/thumbnails), which has
     // more time than this action.
     revalidatePath("/robots", "layout");
-    const parts = [
-      `${s.added.length} added`,
-      `${s.updated} updated`,
-      `${s.removed.length} removed from CAD`,
-      s.relinked.length ? `${s.relinked.length} re-linked` : null,
-      s.restored.length ? `${s.restored.length} back in CAD` : null,
-    ].filter(Boolean);
+    const parts = [`${s.added.length} added`, `${s.updated} updated`, `${s.removed.length} removed from CAD`];
     const warning = s.unknownMachines.length
       ? ` Unknown machines in Onshape: ${s.unknownMachines.join(", ")}.`
       : "";
-    return { message: `BOM updated: ${parts.join(", ")} (${s.calls} Onshape calls).${warning}` };
+    if (s.skipped) return { message: `BOM is up to date (${s.calls} Onshape calls).` };
+    return { message: `BOM updated as version ${s.version}: ${parts.join(", ")} (${s.calls} Onshape calls).${warning}` };
   } catch (err) {
     if (err instanceof OnshapeError) return { error: err.message };
     throw err;
@@ -111,7 +106,8 @@ export async function syncSystem(systemId: string): Promise<SyncResult> {
 }
 
 // Called by an open system page every few minutes: checks Onshape for changes if the system
-// is due (one call), on the viewer's account or else the system's refresh account.
+// is due (one call), on the viewer's account or else the system's refresh account. New changes
+// wait in the system's draft; `changed` tells the page to show them.
 export async function refreshIfDue(systemId: string): Promise<{ changed: boolean }> {
   const member = await requireMember();
   if (!isUuid(systemId)) return { changed: false };

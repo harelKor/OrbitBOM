@@ -36,7 +36,7 @@ else
     const calls: string[] = [];
     vi.stubGlobal("fetch", async (input: string) => {
       calls.push(input);
-      const body = input.includes("currentmicroversion") ? { microversion } : { headers, rows: bomRows };
+      const body = input.includes("currentmicroversion") ? { microversion } : input.includes("/parts/d/") ? [] : { headers, rows: bomRows };
       return new Response(JSON.stringify(body), { status: 200 });
     });
 
@@ -75,7 +75,8 @@ else
       bomRows = [row("A", "Plate", 2), row("B", "Bolt", 8, null), row("C", "Tube", 1)];
       const s = await updateBomFromOnshape(system.id, member.id);
       expect(s.added.sort()).toEqual(["Bolt", "Plate", "Tube"]);
-      expect(s.calls).toBe(2);
+      expect(s.calls).toBe(3); // change check, BOM, the Part Studio's parts list
+      expect(s.version).toBe(1);
       const ps = await live();
       expect(ps.map((p) => [p.onshapeName, p.quantity, p.process1, p.classification])).toEqual([
         ["Bolt", 8, null, "undefined"],
@@ -94,7 +95,6 @@ else
       bomRows = [row("A", "Plate", 3), row("Z", "Tube", 1)];
       const s = await updateBomFromOnshape(system.id, member.id, { force: false });
       expect(s.removed).toEqual(["Bolt"]);
-      expect(s.relinked).toEqual(["Tube"]);
       expect(s.added).toEqual([]);
 
       const [bolt, plate2, tube2] = await live();
@@ -114,7 +114,7 @@ else
       microversion = "mv3";
       bomRows = [row("A", "Plate", 3), row("Z", "Tube", 1), row("B", "Bolt", 8, null)];
       const s = await updateBomFromOnshape(system.id, member.id);
-      expect(s.restored).toEqual(["Bolt"]);
+      expect(s.version).toBe(3);
       expect((await live()).every((p) => p.removedFromCadAt === null)).toBe(true);
     });
   });

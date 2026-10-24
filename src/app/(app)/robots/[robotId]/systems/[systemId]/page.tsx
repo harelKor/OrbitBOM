@@ -1,14 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 import { RecentActions } from "@/components/actions/RecentActions";
 import { AutoRefresh } from "@/components/bom/AutoRefresh";
 import { BomView } from "@/components/bom/BomView";
 import { ManualPartButton } from "@/components/bom/ManualPartButton";
-import { UpdateBomButton } from "@/components/bom/UpdateBomButton";
 import { partTitle } from "@/components/bom/types";
 import { RobotViewer } from "@/components/dashboard/RobotViewer";
 import { QaSection } from "@/components/qa/QaSection";
 import { StatusBar } from "@/components/StatusBar";
+import { UpdateSystem } from "@/components/versions/UpdateSystem";
 import { STATUSES } from "@/config/statuses";
 import { requireMember } from "@/lib/auth";
 import { listRecentActions } from "@/lib/data/actions";
@@ -19,8 +20,9 @@ import { fabStage } from "@/lib/fab";
 import { robotModelBuiltAt } from "@/lib/model/build";
 import { isEditMode } from "@/lib/mode";
 import { isUuid } from "@/lib/uuid";
+import { loadDraft } from "@/lib/versions/detect";
 
-// Update BOM pulls the BOM in this request; thumbnails follow from /api/systems/[id]/thumbnails.
+// Update System checks Onshape in a server action; thumbnails follow from /api/systems/[id]/thumbnails.
 export const maxDuration = 60;
 
 export default async function SystemPage({
@@ -32,7 +34,7 @@ export default async function SystemPage({
   if (!isUuid(robotId) || !isUuid(systemId)) notFound();
   // Everything in one parallel round: the page waits for the slowest query, not their sum.
   const member = await requireMember();
-  const [data, parts, merges, inventory, edit, modelBuiltAt, fabActions, systemActions] = await Promise.all([
+  const [data, parts, merges, inventory, edit, modelBuiltAt, fabActions, systemActions, draft] = await Promise.all([
     getSystem(robotId, systemId),
     listSystemParts(systemId),
     listSystemMerges(systemId),
@@ -41,6 +43,7 @@ export default async function SystemPage({
     robotModelBuiltAt(robotId),
     listRecentActions({ robotId, memberId: member.id, systemId, fabOnly: true }, 30),
     listRecentActions({ robotId, memberId: member.id, systemId }, 30),
+    loadDraft(systemId),
   ]);
   if (!data) notFound();
   const { system, robot, breakdown } = data;
@@ -80,7 +83,14 @@ export default async function SystemPage({
 
       {system.assemblyUrl && (
         <>
-          {edit && <UpdateBomButton systemId={system.id} lastSyncedAt={system.lastSyncedAt} />}
+          <Suspense>
+            <UpdateSystem
+              systemId={system.id}
+              draft={draft}
+              lastSyncedAt={system.lastSyncedAt}
+              thumbs={Object.fromEntries(parts.map((p) => [p.id, p.thumbUrl]))}
+            />
+          </Suspense>
           <AutoRefresh systemId={system.id} />
         </>
       )}
@@ -111,8 +121,8 @@ export default async function SystemPage({
         <p className="rounded-lg border border-dashed border-line-strong p-8 text-center text-sm text-muted">
           {system.assemblyUrl
             ? edit
-              ? "No parts yet. Click Update BOM from Onshape to pull this system\u2019s parts."
-              : "No parts yet. Switch to Edit and click Update BOM from Onshape to pull this system\u2019s parts."
+              ? "No parts yet. Click Update System to pull this system\u2019s parts from Onshape."
+              : "No parts yet. Switch to Edit and click Update System to pull this system\u2019s parts from Onshape."
             : "No parts yet. Add manual parts in Edit mode, or give this system an Onshape assembly."}
         </p>
       )}

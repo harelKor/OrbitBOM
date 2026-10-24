@@ -11,7 +11,8 @@ export const maxDuration = 60;
 
 // The right panel of an Onshape assembly (plan §4). Onshape opens it as
 // /onshape/panel?server={$server}&documentId={$documentId}&workspaceId={$workspaceId}&elementId={$elementId}
-// A linked assembly goes straight to its system page; otherwise the member links it to a robot.
+// A linked assembly goes straight to its system page, which checks it for changes to commit
+// (?check=1); otherwise the member links it to a robot.
 export default async function OnshapePanelPage({
   searchParams,
 }: {
@@ -39,7 +40,7 @@ async function panelBody(ref: ReturnType<typeof parseOnshapeUrl>) {
     const r = parseOnshapeUrl(s.assemblyUrl!);
     return r?.did === ref.did && r.eid === ref.eid;
   });
-  if (system) redirect(`/robots/${system.robotId}/systems/${system.id}`);
+  if (system) redirect(`/robots/${system.robotId}/systems/${system.id}?check=1`);
 
   // A robot's main assembly opens that robot's dashboard and its 3D view.
   const mains = await db

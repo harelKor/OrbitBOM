@@ -869,7 +869,7 @@ write(
 
 write(
   "update_bom_from_onshape",
-  "Pull a system's BOM from Onshape with the member's Onshape account (the same as the Update BOM button).",
+  "Pull a system's BOM from Onshape with the member's Onshape account and commit every change as the system's next version (in the app, Update System shows the changes to commit first).",
   z.object({ system_id: uuid }),
   async ({ system_id }, { member }) => {
     const [system] = await db.select().from(systems).where(eq(systems.id, system_id));

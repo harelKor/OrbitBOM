@@ -93,6 +93,8 @@ export const systems = pgTable(
     // { [documentId]: microversionId } seen at the last sync; the change check compares to this.
     docMicroversions: jsonb("doc_microversions").$type<Record<string, string>>().notNull().default({}),
     thumbnailPath: text("thumbnail_path"),
+    // Version control (plan/system-versioning.md): the committed version the system is on.
+    currentVersionId: uuid("current_version_id"),
     createdAt: createdAt(),
   },
   (t) => [index("systems_robot_idx").on(t.robotId)],
@@ -192,6 +194,10 @@ export const parts = pgTable(
     thumbnailRev: text("thumbnail_rev"),
     // The thumbnail's fingerprint (src/lib/images/dhash.ts), so auto-link can spot the same part.
     thumbHash: text("thumb_hash"),
+    // The Onshape part microversion as of the part's last commit, and the version row (its
+    // committed state) the part points at; see system_versions below.
+    onshapeMv: text("onshape_mv"),
+    versionRowId: uuid("version_row_id"),
     removedFromCadAt: timestamp("removed_from_cad_at", { withTimezone: true }),
 
     lastModifiedAt: timestamp("last_modified_at", { withTimezone: true }).notNull().defaultNow(),
@@ -399,6 +405,90 @@ export const materialColors = pgTable("material_colors", {
   updatedBy: uuid("updated_by").references(() => members.id, { onDelete: "set null" }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ---------- System versions (plan/system-versioning.md) ----------
+
+// Changes from Onshape reach a system's BOM only when a member commits them. Each check keeps
+// what it found in the system's one draft; a commit turns the draft into the next version.
+export const versionState = pgEnum("version_state", ["draft", "committed"]);
+export const partChange = pgEnum("part_change", ["baseline", "added", "modified", "removed"]);
+
+// One part's state in a version: its Onshape reference and the fields Onshape fills in.
+export type PartSnapshot = {
+  sourceDid: string | null;
+  sourceWid: string | null;
+  sourceWvm: string | null;
+  sourceEid: string | null;
+  onshapePartId: string | null;
+  onshapeName: string | null;
+  partNumber: string | null;
+  description: string | null;
+  material: string | null;
+  onshapeMaterial: string | null;
+  quantity: number;
+  preProcess: string | null;
+  process1: string | null;
+  process2: string | null;
+  mv: string | null; // Onshape part microversion
+};
+
+// A change a check found (or a commit made): what the Commit and Versions windows list.
+export type VersionChange = {
+  key: string; // did:eid:partId:name of the new state (the old one for a removed part)
+  partId: string | null; // null for a part Onshape added
+  change: "added" | "modified" | "removed";
+  name: string;
+  partNumber: string | null;
+  fields: Record<string, { from: unknown; to: unknown }>; // Onshape fields that changed
+  geometry: boolean; // the part's shape changed in Onshape
+  note?: string; // "Back in CAD", "Re-linked by name"
+};
+
+export type VersionRef = { mv: string | null; did: string; sources?: Record<string, { versionId: string; name: string }> };
+
+export const systemVersions = pgTable(
+  "system_versions",
+  {
+    id: id(),
+    systemId: uuid("system_id")
+      .notNull()
+      .references(() => systems.id, { onDelete: "cascade" }),
+    state: versionState("state").notNull(),
+    seq: integer("seq"), // 0 = baseline, then 1, 2, 3…; null while a draft
+    name: text("name"),
+    onshapeRef: jsonb("onshape_ref").$type<VersionRef>(),
+    changes: jsonb("changes").$type<VersionChange[]>().notNull().default([]),
+    // A draft's BOM rows and part microversions, applied as they are on commit.
+    rows: jsonb("rows"),
+    detectedAt: timestamp("detected_at", { withTimezone: true }).notNull().defaultNow(),
+    detectedBy: uuid("detected_by").references(() => members.id, { onDelete: "set null" }),
+    committedAt: timestamp("committed_at", { withTimezone: true }),
+    committedBy: uuid("committed_by").references(() => members.id, { onDelete: "set null" }),
+  },
+  (t) => [
+    uniqueIndex("system_versions_seq_uq").on(t.systemId, t.seq),
+    uniqueIndex("system_versions_draft_uq").on(t.systemId).where(sql`${t.state} = 'draft'`),
+  ],
+);
+
+// A part's state in each version that changed it (sparse); parts.version_row_id points at the
+// state the part is on.
+export const partVersions = pgTable(
+  "part_versions",
+  {
+    id: id(),
+    versionId: uuid("version_id")
+      .notNull()
+      .references(() => systemVersions.id, { onDelete: "cascade" }),
+    partId: uuid("part_id")
+      .notNull()
+      .references(() => parts.id, { onDelete: "cascade" }),
+    change: partChange("change").notNull(),
+    snapshot: jsonb("snapshot").$type<PartSnapshot>().notNull(),
+    meshKey: text("mesh_key"), // the R2 file with this state's 3D preview
+  },
+  (t) => [index("part_versions_part_idx").on(t.partId, t.versionId), index("part_versions_version_idx").on(t.versionId)],
+);
 
 // ---------- Inventory ----------
 
