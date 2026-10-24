@@ -26,7 +26,8 @@ import { listSystemSync } from "@/lib/versions/sync";
 import { storageTotal } from "@/lib/storage/usage";
 
 // The robot dashboard: launch cards for To Fab and To Review, status and process completion,
-// the 3D stage, and every part of the robot (searched and filtered from the top bar).
+// the 3D stage, a compact Inventory box above Recent actions, and every part of the robot
+// (searched and filtered from the top bar).
 export default async function RobotPage({ params }: { params: Promise<{ robotId: string }> }) {
   const { robotId } = await params;
   if (!isUuid(robotId)) notFound();
@@ -81,7 +82,7 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <LaunchCard
           href={`/robots/${robot.id}/fab`}
           icon="fab"
@@ -95,14 +96,6 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
           title="To Review"
           count={reviews.length}
           detail={reviews.length ? `${aiReviews} set up by Claude, ${reviews.length - aiReviews} by Suggest setup` : "Parts set up automatically wait here"}
-        />
-        <LaunchCard
-          href={`/robots/${robot.id}/inventory`}
-          icon="box"
-          title="Inventory"
-          count={shortItems}
-          unit={shortItems === 1 ? "item short" : "items short"}
-          detail={inventory.length ? `${coveredUnits}/${neededUnits} units covered by the shelf` : "No parts linked to inventory yet"}
         />
       </div>
 
@@ -163,6 +156,19 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
         <StorageBox total={stored} />
       </Suspense>
 
+      <Link href={`/robots/${robot.id}/inventory`} className="card-interactive group flex items-center gap-3 px-4 py-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line-strong bg-raised text-accent-hover group-hover:border-accent/60">
+          <Icon name="box" className="h-5 w-5" />
+        </span>
+        <span className="font-medium text-fg-2">Inventory</span>
+        <span className="font-mono font-semibold text-accent tabular-nums">{shortItems}</span>
+        <span className="text-sm text-muted">{shortItems === 1 ? "item short" : "items short"}</span>
+        <span className="min-w-0 flex-1 truncate text-right text-sm text-subtle">
+          {inventory.length ? `${coveredUnits}/${neededUnits} units covered by the shelf` : "No parts linked to inventory yet"}
+        </span>
+        <Icon name="arrow" className="h-5 w-5 shrink-0 text-subtle transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-fg" />
+      </Link>
+
       <RecentActions actions={actions} max={8} />
 
       <section className="space-y-3">
@@ -174,7 +180,7 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
   );
 }
 
-function LaunchCard({ href, icon, title, count, unit, detail }: { href: string; icon: "fab" | "review" | "box"; title: string; count: number; unit?: string; detail: string }) {
+function LaunchCard({ href, icon, title, count, detail }: { href: string; icon: "fab" | "review"; title: string; count: number; detail: string }) {
   return (
     <Link href={href} className="card-interactive group flex items-center gap-6 p-8">
       <span className="flex h-20 w-20 items-center justify-center rounded-xl border border-line-strong bg-raised text-accent-hover group-hover:border-accent/60">
@@ -183,7 +189,7 @@ function LaunchCard({ href, icon, title, count, unit, detail }: { href: string; 
       <div className="min-w-0 flex-1">
         <div className="text-lg font-medium text-muted">{title}</div>
         <div className="display text-6xl text-accent tabular-nums">
-          {count} <span className="text-2xl font-medium text-muted">{unit ?? (count === 1 ? "part" : "parts")}</span>
+          {count} <span className="text-2xl font-medium text-muted">{count === 1 ? "part" : "parts"}</span>
         </div>
         <div className="truncate text-sm text-subtle">{detail}</div>
       </div>

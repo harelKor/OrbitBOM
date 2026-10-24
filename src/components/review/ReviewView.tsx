@@ -8,6 +8,7 @@ import { matchesTopBar } from "@/components/bom/filter";
 import { partTitle, type CardPart } from "@/components/bom/types";
 import { useFilters } from "@/components/shell/FilterContext";
 import { useEditMode } from "@/components/shell/ModeContext";
+import { Chevron } from "@/components/ui/Chevron";
 import { Icon } from "@/components/ui/Icon";
 import { statusTint } from "@/components/ui/statusTint";
 import { computeStatus } from "@/lib/status";
@@ -88,10 +89,10 @@ function groupItems(items: ReviewItem[]): SystemGroup[] {
 const machinesOf = (p: CardPart) => [p.preProcess, p.process1, p.process2].filter((m): m is string => !!m);
 
 // To Review: compact cards for parts that were set up automatically, with what changed and why.
-// Each subsystem is a big box, split into batches (one per suggestion run); inside a batch the
-// cards filter by material and machine. Approve keeps the change, Reject puts the old values
-// back (also for a whole batch or subsystem). Both work in View mode too, since reviewing is
-// what the page is for; Suggest setup (the site's rules) is Edit mode only.
+// Each subsystem is a big box, split into batches (one per suggestion run) that fold from their
+// title; inside a batch the cards filter by material and machine. Approve keeps the change, Reject
+// puts the old values back (also for a whole batch or subsystem). Both work in View mode too,
+// since reviewing is what the page is for; Suggest setup (the site's rules) is Edit mode only.
 export function ReviewView({ robotId, items }: { robotId: string; items: ReviewItem[] }) {
   const edit = useEditMode();
   const { filters } = useFilters();
@@ -240,6 +241,7 @@ function BatchSection({
   pending: boolean;
   onDecide: (ids: string[], approve: boolean) => void;
 }) {
+  const [open, setOpen] = useState(true);
   const [material, setMaterial] = useState("");
   const [machine, setMachine] = useState("");
   const materials = [...new Set(batch.items.flatMap((i) => (i.part.material ? [i.part.material] : [])))].sort();
@@ -250,30 +252,36 @@ function BatchSection({
 
   return (
     <div className="rounded-lg border border-line bg-bg/40 p-3">
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div className="mr-2 min-w-0">
+      <div className={`flex flex-wrap items-center gap-2 ${open ? "mb-3" : ""}`}>
+        <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="mr-2 flex min-w-0 items-center gap-2 text-left">
+          <Chevron open={open} small />
           <span className="font-semibold text-fg">{batch.label}</span>
-          {batch.detail && <span className="ml-2 text-xs text-subtle tabular-nums">{batch.detail}</span>}
-        </div>
-        <select value={material} onChange={(e) => setMaterial(e.target.value)} aria-label="Material" className="input w-auto">
-          <option value="">All materials</option>
-          {materials.map((m) => (
-            <option key={m}>{m}</option>
-          ))}
-        </select>
-        <select value={machine} onChange={(e) => setMachine(e.target.value)} aria-label="Machine" className="input w-auto">
-          <option value="">All machines</option>
-          {machines.map((m) => (
-            <option key={m} value={m}>
-              {getMachine(m)?.name ?? m}
-            </option>
-          ))}
-        </select>
+          {batch.detail && <span className="text-xs text-subtle tabular-nums">{batch.detail}</span>}
+          {!open && <span className="rounded-full bg-raised px-2 py-0.5 font-mono text-xs font-semibold text-fg-2 tabular-nums">{batch.items.length}</span>}
+        </button>
+        {open && (
+          <>
+            <select value={material} onChange={(e) => setMaterial(e.target.value)} aria-label="Material" className="input w-auto">
+              <option value="">All materials</option>
+              {materials.map((m) => (
+                <option key={m}>{m}</option>
+              ))}
+            </select>
+            <select value={machine} onChange={(e) => setMachine(e.target.value)} aria-label="Machine" className="input w-auto">
+              <option value="">All machines</option>
+              {machines.map((m) => (
+                <option key={m} value={m}>
+                  {getMachine(m)?.name ?? m}
+                </option>
+              ))}
+            </select>
+          </>
+        )}
         <div className="ml-auto">
           <BulkButtons ids={visible.map((i) => i.part.id)} count={visible.length} what={what} disabled={pending} onDecide={onDecide} filtered={filtered} />
         </div>
       </div>
-      {visible.length ? (
+      {!open ? null : visible.length ? (
         <div className="card-grid [--card-min:260px]">
           {visible.map((item) => (
             <ReviewCard key={item.part.id} item={item} disabled={pending} onDecide={(approve) => onDecide([item.part.id], approve)} />
