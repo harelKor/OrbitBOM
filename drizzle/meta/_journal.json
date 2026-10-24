@@ -197,6 +197,13 @@
       "when": 1792827276342,
       "tag": "0027_partial_commits",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1792831550841,
+      "tag": "0028_stored_files",
+      "breakpoints": true
     }
   ]
 }

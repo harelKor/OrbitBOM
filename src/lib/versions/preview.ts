@@ -31,11 +31,13 @@ export async function previewModel(systemId: string, member: { id: string; onsha
 
   let studio: string | null = null;
   let partId: string | null = null;
+  let owner: string | null = null; // the version the preview is counted under (storage window)
   if (req.rowId) {
     const found = await committedState(systemId, req.rowId, req.side);
     if (!found) return null;
-    studio = found.studio ?? frozenStudio(found, {});
-    partId = found.onshapePartId;
+    studio = found.snapshot.studio ?? frozenStudio(found.snapshot, {});
+    partId = found.snapshot.onshapePartId;
+    owner = found.versionId;
   } else if (req.side === "after") {
     if (!req.draftId || !req.key) return null;
     const [draft] = await db
@@ -46,10 +48,11 @@ export async function previewModel(systemId: string, member: { id: string; onsha
     if (!draft || !row) return null;
     studio = frozenStudio(row, draft.onshapeRef?.mv ? { [draft.onshapeRef.did]: draft.onshapeRef.mv } : {});
     partId = row.onshapePartId;
+    owner = draft.id;
   } else {
     if (!req.partId) return null;
     const [row] = await db
-      .select({ part: parts, snapshot: partVersions.snapshot })
+      .select({ part: parts, snapshot: partVersions.snapshot, versionId: partVersions.versionId })
       .from(parts)
       .leftJoin(partVersions, eq(partVersions.id, parts.versionRowId))
       .where(and(eq(parts.id, req.partId), eq(parts.systemId, systemId)));
@@ -57,6 +60,7 @@ export async function previewModel(systemId: string, member: { id: string; onsha
     const committed = row.snapshot ?? row.part;
     studio = row.snapshot?.studio ?? frozenStudio(committed, system.docMicroversions);
     partId = committed.onshapePartId;
+    owner = row.versionId;
   }
   if (!studio || !partId) return null;
 
@@ -70,7 +74,7 @@ export async function previewModel(systemId: string, member: { id: string; onsha
     const tess = await client.json<Tessellation>(`partstudios/${studio}/tessellatedfaces?${TESS_QUERY}&partId=${encodeURIComponent(partId)}`);
     const meshes = meshesFromTessellation(tess).filter((m) => m.partId === partId);
     if (!meshes.length) throw new OnshapeError("Onshape sent no shape for this part.");
-    await putObject(key, gzipSync(encodeMeshes(meshes)), "application/gzip");
+    await putObject(key, gzipSync(encodeMeshes(meshes)), "application/gzip", owner);
   }
   return { studios: [await imageUrl(key)], placements: [{ s: 0, k: `${did}:${eid}:${partId}`, t: IDENTITY }] };
 }
@@ -78,15 +82,15 @@ export async function previewModel(systemId: string, member: { id: string; onsha
 // A committed part state (After), or the part's state in the version before it (Before).
 async function committedState(systemId: string, rowId: string, side: "before" | "after") {
   const rows = await db
-    .select({ id: partVersions.id, partId: partVersions.partId, seq: systemVersions.seq, snapshot: partVersions.snapshot, change: partVersions.change })
+    .select({ id: partVersions.id, partId: partVersions.partId, versionId: partVersions.versionId, seq: systemVersions.seq, snapshot: partVersions.snapshot, change: partVersions.change })
     .from(partVersions)
     .innerJoin(systemVersions, eq(systemVersions.id, partVersions.versionId))
     .where(and(eq(systemVersions.systemId, systemId), eq(systemVersions.state, "committed")));
   const row = rows.find((r) => r.id === rowId);
   if (!row) return null;
-  if (side === "after") return row.snapshot;
+  if (side === "after") return { snapshot: row.snapshot, versionId: row.versionId };
   const before = rows
     .filter((r) => r.partId === row.partId && (r.seq ?? 0) < (row.seq ?? 0) && r.change !== "removed")
     .sort((a, b) => (b.seq ?? 0) - (a.seq ?? 0))[0];
-  return before?.snapshot ?? null;
+  return before ? { snapshot: before.snapshot, versionId: row.versionId } : null;
 }

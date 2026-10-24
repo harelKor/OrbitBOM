@@ -34,9 +34,7 @@ export async function partModel(partId: string, member: { id: string; onshapeCon
   const built = await builtStudioFor(row.robotId, key);
   if (built) return model(built);
 
-  const file = part.thumbnailRev
-    ? `models/parts/${part.id}/${createHash("sha1").update(`${TESS_VERSION}|${part.thumbnailRev}`).digest("hex").slice(0, 20)}.bin.gz`
-    : `models/parts/${part.id}/latest.bin.gz`;
+  const file = partModelFile(part);
   if (part.thumbnailRev && (await objectExists(file))) return model(file);
 
   const ref = row.assemblyUrl ? parseOnshapeUrl(row.assemblyUrl) : null;
@@ -51,3 +49,9 @@ export async function partModel(partId: string, member: { id: string; onshapeCon
   await putObject(file, gzipSync(encodeMeshes(meshes)), "application/gzip");
   return model(file);
 }
+
+// A part's own mesh file, named by its thumbnail revision (storage clean-up keeps only this one).
+export const partModelFile = (part: { id: string; thumbnailRev: string | null }) =>
+  part.thumbnailRev
+    ? `models/parts/${part.id}/${createHash("sha1").update(`${TESS_VERSION}|${part.thumbnailRev}`).digest("hex").slice(0, 20)}.bin.gz`
+    : `models/parts/${part.id}/latest.bin.gz`;

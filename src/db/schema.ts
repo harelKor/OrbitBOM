@@ -4,6 +4,7 @@
 import { sql } from "drizzle-orm";
 import type { Part as DrawingPart } from "../lib/drawing/read";
 import {
+  bigint,
   boolean,
   date,
   doublePrecision,
@@ -495,6 +496,22 @@ export const partVersions = pgTable(
     meshKey: text("mesh_key"), // the R2 file with this state's 3D preview
   },
   (t) => [index("part_versions_part_idx").on(t.partId, t.versionId), index("part_versions_version_idx").on(t.versionId)],
+);
+
+// What is stored in R2, key by key (plan/system-versioning.md §5): putObject and deleteObject
+// keep it current and the nightly recount fills in what the browser uploaded directly. The
+// storage window reads its sums, so it costs no R2 calls.
+export const storedFiles = pgTable(
+  "stored_files",
+  {
+    key: text("key").primaryKey(),
+    bytes: bigint("bytes", { mode: "number" }).notNull(),
+    kind: text("kind").notNull(), // studio | part | preview | thumb | file | image | other
+    // A 3D preview's version, so the storage window can count and free a version's previews.
+    versionId: uuid("version_id").references(() => systemVersions.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("stored_files_version_idx").on(t.versionId)],
 );
 
 // ---------- Inventory ----------

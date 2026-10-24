@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { RecentActions } from "@/components/actions/RecentActions";
 import { BomView } from "@/components/bom/BomView";
@@ -7,6 +8,7 @@ import { CompletionRing } from "@/components/dashboard/CompletionRing";
 import { RobotViewer } from "@/components/dashboard/RobotViewer";
 import { QaBox } from "@/components/qa/QaBox";
 import { SyncBox } from "@/components/versions/SyncBox";
+import { StorageBox } from "@/components/storage/StorageBox";
 import { Icon } from "@/components/ui/Icon";
 import { requireMember } from "@/lib/auth";
 import { listRecentActions } from "@/lib/data/actions";
@@ -21,6 +23,7 @@ import { isUuid } from "@/lib/uuid";
 import { listRobotReviews } from "@/lib/review/review";
 import { processBreakdown } from "@/lib/stats";
 import { listSystemSync } from "@/lib/versions/sync";
+import { storageTotal } from "@/lib/storage/usage";
 
 // The robot dashboard: launch cards for To Fab and To Review, status and process completion,
 // the 3D stage, and every part of the robot (searched and filtered from the top bar).
@@ -29,7 +32,7 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
   if (!isUuid(robotId)) notFound();
   // Everything in one parallel round: the page waits for the slowest query, not their sum.
   const member = await requireMember();
-  const [data, parts, inventoryNames, inventory, edit, modelBuiltAt, reviews, actions, sync] = await Promise.all([
+  const [data, parts, inventoryNames, inventory, edit, modelBuiltAt, reviews, actions, sync, stored] = await Promise.all([
     getRobot(robotId),
     listRobotParts(robotId),
     listInventoryNames(),
@@ -39,6 +42,7 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
     listRobotReviews(robotId),
     listRecentActions({ robotId, memberId: member.id }),
     listSystemSync(),
+    storageTotal(),
   ]);
   if (!data) notFound();
   const { robot, breakdown } = data;
@@ -154,6 +158,10 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
           edit={edit}
         />
       </div>
+
+      <Suspense>
+        <StorageBox total={stored} />
+      </Suspense>
 
       <RecentActions actions={actions} max={8} />
 
