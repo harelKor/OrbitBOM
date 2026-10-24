@@ -12,9 +12,7 @@ type Stacks = { exclude: string[]; redo: string[] };
 
 function load(): Stacks {
   try {
-    const s = JSON.parse(
-      sessionStorage.getItem(KEY) ?? "null",
-    ) as Stacks | null;
+    const s = JSON.parse(sessionStorage.getItem(KEY) ?? "null") as Stacks | null;
     if (s && Array.isArray(s.exclude) && Array.isArray(s.redo)) return s;
   } catch {}
   return { exclude: [], redo: [] };
@@ -89,12 +87,7 @@ export function UndoRedo() {
       const key = e.key.toLowerCase();
       if (key !== "z" && key !== "y") return;
       const t = e.target as HTMLElement | null;
-      if (
-        t &&
-        (t.isContentEditable ||
-          ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName))
-      )
-        return;
+      if (t && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName))) return;
       e.preventDefault();
       void runRef.current(key === "y" || e.shiftKey ? "redo" : "undo");
     };
@@ -103,28 +96,13 @@ export function UndoRedo() {
   }, [edit]);
 
   if (!edit) return null;
-  const btn =
-    "press flex h-8 w-8 items-center justify-center rounded-md border border-white/30 hover:bg-white/10 disabled:opacity-40";
+  const btn = "press flex h-8 w-8 items-center justify-center rounded-md border border-white/30 hover:bg-white/10 disabled:opacity-40";
   return (
     <div className="flex items-center gap-1">
-      <button
-        type="button"
-        className={btn}
-        disabled={busy}
-        onClick={() => run("undo")}
-        aria-label="Undo"
-        title="Undo my last change (Ctrl+Z)"
-      >
+      <button type="button" className={btn} disabled={busy} onClick={() => run("undo")} aria-label="Undo" title="Undo my last change (Ctrl+Z)">
         <Icon name="undo" className="h-4 w-4" />
       </button>
-      <button
-        type="button"
-        className={btn}
-        disabled={busy || !canRedo}
-        onClick={() => run("redo")}
-        aria-label="Redo"
-        title="Redo (Ctrl+Shift+Z)"
-      >
+      <button type="button" className={btn} disabled={busy || !canRedo} onClick={() => run("redo")} aria-label="Redo" title="Redo (Ctrl+Shift+Z)">
         <Icon name="redo" className="h-4 w-4" />
       </button>
     </div>

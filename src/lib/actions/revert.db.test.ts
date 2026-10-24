@@ -8,15 +8,13 @@ vi.mock("next/headers", () => ({
 }));
 const url = process.env.TEST_DATABASE_URL;
 
-if (!url)
-  describe.skip("action revert, undo and redo (database): set TEST_DATABASE_URL", () => {});
+if (!url) describe.skip("action revert, undo and redo (database): set TEST_DATABASE_URL", () => {});
 else
   describe("action revert, undo and redo (database)", async () => {
     process.env.DATABASE_URL = url;
     const { db, schema } = await import("@/db");
     const { eq } = await import("drizzle-orm");
-    const { redoBatch, revertSystemUpdate, revertVisit, undoLatest } =
-      await import("./revert");
+    const { redoBatch, revertSystemUpdate, revertVisit, undoLatest } = await import("./revert");
     const { listRecentActions } = await import("@/lib/data/actions");
 
     const userId = randomUUID();
@@ -24,14 +22,8 @@ else
       .insert(schema.members)
       .values({ userId, email: `${userId}@t.org`, name: "Undo Tester" })
       .returning();
-    const [robot] = await db
-      .insert(schema.robots)
-      .values({ name: "Undo bot", year: 2027 })
-      .returning();
-    const [system] = await db
-      .insert(schema.systems)
-      .values({ robotId: robot.id, name: "Climber" })
-      .returning();
+    const [robot] = await db.insert(schema.robots).values({ name: "Undo bot", year: 2027 }).returning();
+    const [system] = await db.insert(schema.systems).values({ robotId: robot.id, name: "Climber" }).returning();
     const [a, b] = await db
       .insert(schema.parts)
       .values([
@@ -54,34 +46,25 @@ else
       await db.delete(schema.members).where(eq(schema.members.id, member.id));
     });
 
-    const part = async (id: string) =>
-      (await db.select().from(schema.parts).where(eq(schema.parts.id, id)))[0];
+    const part = async (id: string) => (await db.select().from(schema.parts).where(eq(schema.parts.id, id)))[0];
     // A change as the app records it: the part and its history row.
-    const edit = async (
-      id: string,
-      field: "material" | "quantity",
-      from: unknown,
-      to: unknown,
-      ctx: { batchId: string; visitId?: string; at: Date },
-    ) => {
+    const edit = async (id: string, field: "material" | "quantity", from: unknown, to: unknown, ctx: { batchId: string; visitId?: string; at: Date }) => {
       await db
         .update(schema.parts)
         .set({ [field]: to })
         .where(eq(schema.parts.id, id));
-      await db
-        .insert(schema.partHistory)
-        .values({
-          partId: id,
-          field,
-          oldValue: from,
-          newValue: to,
-          memberId: member.id,
-          via: "ui",
-          batchId: ctx.batchId,
-          visitId: ctx.visitId,
-          page: `/robots/${robot.id}/systems/${system.id}`,
-          at: ctx.at,
-        });
+      await db.insert(schema.partHistory).values({
+        partId: id,
+        field,
+        oldValue: from,
+        newValue: to,
+        memberId: member.id,
+        via: "ui",
+        batchId: ctx.batchId,
+        visitId: ctx.visitId,
+        page: `/robots/${robot.id}/systems/${system.id}`,
+        at: ctx.at,
+      });
     };
     const t = (min: number) => new Date(Date.now() - (60 - min) * 60_000);
 
@@ -195,14 +178,8 @@ else
           },
         ])
         .returning();
-      await db
-        .update(schema.parts)
-        .set({ quantity: 6, versionRowId: rows[1].id })
-        .where(eq(schema.parts.id, a.id));
-      await db
-        .update(schema.systems)
-        .set({ currentVersionId: v2.id })
-        .where(eq(schema.systems.id, system.id));
+      await db.update(schema.parts).set({ quantity: 6, versionRowId: rows[1].id }).where(eq(schema.parts.id, a.id));
+      await db.update(schema.systems).set({ currentVersionId: v2.id }).where(eq(schema.systems.id, system.id));
 
       const actions = await listRecentActions({
         robotId: robot.id,
@@ -220,8 +197,6 @@ else
       const r = await revertSystemUpdate(v2.id, member.id);
       expect(r.message).toMatch(/^Reverted to #1/);
       expect((await part(a.id)).quantity).toBe(2);
-      await expect(revertSystemUpdate(v1.id, member.id)).rejects.toThrow(
-        /first version/,
-      );
+      await expect(revertSystemUpdate(v1.id, member.id)).rejects.toThrow(/first version/);
     });
   });

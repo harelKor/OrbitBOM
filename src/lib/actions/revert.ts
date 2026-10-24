@@ -29,13 +29,8 @@ function describe(plan: NonNullable<Plan>) {
   return { what, left };
 }
 
-async function apply(
-  plan: Plan,
-  memberId: string,
-  verb: string,
-): Promise<RevertResult> {
-  if (!plan || (!plan.reverts.length && !plan.skipped.length))
-    return { message: "Nothing to undo there.", batchId: null, skipped: 0 };
+async function apply(plan: Plan, memberId: string, verb: string): Promise<RevertResult> {
+  if (!plan || (!plan.reverts.length && !plan.skipped.length)) return { message: "Nothing to undo there.", batchId: null, skipped: 0 };
   const { what, left } = describe(plan);
   if (!plan.reverts.length)
     return {
@@ -62,29 +57,15 @@ export async function revertSystemUpdate(versionId: string, memberId: string) {
   const [version] = await db
     .select()
     .from(systemVersions)
-    .where(
-      and(
-        eq(systemVersions.id, versionId),
-        eq(systemVersions.state, "committed"),
-      ),
-    );
+    .where(and(eq(systemVersions.id, versionId), eq(systemVersions.state, "committed")));
   if (!version) throw new VersionError("That version is gone.");
   const [before] = await db
     .select()
     .from(systemVersions)
-    .where(
-      and(
-        eq(systemVersions.systemId, version.systemId),
-        eq(systemVersions.state, "committed"),
-        lt(systemVersions.seq, version.seq ?? 0),
-      ),
-    )
+    .where(and(eq(systemVersions.systemId, version.systemId), eq(systemVersions.state, "committed"), lt(systemVersions.seq, version.seq ?? 0)))
     .orderBy(desc(systemVersions.seq))
     .limit(1);
-  if (!before)
-    throw new VersionError(
-      "This is the system's first version; there is nothing before it.",
-    );
+  if (!before) throw new VersionError("This is the system's first version; there is nothing before it.");
   const r = await revertSystem(version.systemId, before.id, memberId);
   return {
     systemId: version.systemId,
