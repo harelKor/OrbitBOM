@@ -39,7 +39,12 @@ describe("computeStatus", () => {
   });
 
   it("puts an unfinished pre-process first", () => {
-    expect(computeStatus({ ...base, preProcess: "laser", doneProcess1: 1 })).toBe("Build In Queue");
+    expect(computeStatus({ ...base, preProcess: "laser", doneProcess1: 1 })).toBe("In Process 1");
+  });
+
+  it("reads dropped shop statuses as Released", () => {
+    expect(computeStatus({ ...base, designState: "Ordered" })).toBe("Released");
+    expect(computeStatus({ ...base, designState: "Build In Queue" })).toBe("Released");
   });
 
   it("ignores counters on COTS parts", () => {
@@ -56,8 +61,8 @@ describe("computeStatus", () => {
 
 describe("status writes", () => {
   it("choosing a status resets the counters", () => {
-    expect(applyStatus("Ordered")).toEqual({
-      designState: "Ordered",
+    expect(applyStatus("Gcoded")).toEqual({
+      designState: "Gcoded",
       donePreprocess: 0,
       doneProcess1: 0,
       doneProcess2: 0,

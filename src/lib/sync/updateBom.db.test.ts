@@ -88,7 +88,7 @@ else
     it("keeps team edits and handles removed and re-keyed parts", async () => {
       const [, plate, tube] = await live();
       await applyPartChanges([plate.id], { status: "Gcoded", material: "3mm 6061-T6", note: "x" }, { memberId: member.id, via: "ui" });
-      await applyPartChanges([tube.id], { status: "Ordered" }, { memberId: member.id, via: "ui" });
+      await applyPartChanges([tube.id], { status: "Gcoded" }, { memberId: member.id, via: "ui" });
 
       microversion = "mv2";
       // Plate qty changes; Bolt leaves CAD; Tube gets a new partId (re-keyed).
@@ -100,7 +100,7 @@ else
       const [bolt, plate2, tube2] = await live();
       expect(bolt.removedFromCadAt).not.toBeNull();
       expect(plate2).toMatchObject({ quantity: 3, material: "3mm 6061-T6", designState: "Gcoded", note: "x" });
-      expect(tube2).toMatchObject({ id: tube.id, onshapePartId: "Z", designState: "Ordered" });
+      expect(tube2).toMatchObject({ id: tube.id, onshapePartId: "Z", designState: "Gcoded" });
     });
 
     it("stops after the change check when nothing changed", async () => {

@@ -1,14 +1,17 @@
 "use server";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { PART_FILE_TYPES, type PartFileType } from "@/config/fileTypes";
 import { db, schema } from "@/db";
 import { requireAdmin, requireMember } from "@/lib/auth";
+import { READY_STATUSES } from "@/lib/fab";
+import { applyPartChanges } from "@/lib/parts/apply";
+import { computeStatus } from "@/lib/status";
 import { StorageNotConfiguredError, deleteObject, fileKey, objectExists, presignUpload } from "@/lib/storage/r2";
 import { isUuid } from "@/lib/uuid";
 
-const { partFiles, groupFiles, parts, partGroups } = schema;
+const { partFiles, groupFiles, groupMembers, parts, partGroups } = schema;
 const MAX_BYTES = 200 * 1024 * 1024;
 
 // Files hang off a part or a part group, one file per type each, as in FRCBOM.
@@ -80,6 +83,33 @@ export async function finishUpload(
     return previous;
   });
   await Promise.all(old.map((f) => deleteObject(f.r2Key)));
+  if (owner.kind === "group" && type === "gcode") await markGcoded(owner.id, member.id);
+  refresh();
+  return {};
+}
+
+// A fab batch's G-code is in: its parts that haven't started yet move to Gcoded ("Sliced" on a
+// printer); parts further along keep their status.
+const NOT_STARTED: string[] = ["Not Started", ...READY_STATUSES];
+async function markGcoded(groupId: string, memberId: string) {
+  const rows = await db
+    .select({ part: parts })
+    .from(groupMembers)
+    .innerJoin(parts, eq(parts.id, groupMembers.partId))
+    .where(and(eq(groupMembers.groupId, groupId), isNull(parts.removedFromCadAt)));
+  const ids = rows.filter(({ part }) => NOT_STARTED.includes(computeStatus(part))).map(({ part }) => part.id);
+  if (ids.length) await applyPartChanges(ids, { status: "Gcoded" }, { memberId, via: "ui" });
+}
+
+// Remove a fab batch's G-code (any member: it's the shop's working file, not a part's record).
+export async function removeBatchGcode(groupId: string): Promise<{ error?: string }> {
+  await requireMember();
+  if (!isUuid(groupId)) return { error: "Unknown fab." };
+  const removed = await db
+    .delete(groupFiles)
+    .where(and(eq(groupFiles.groupId, groupId), eq(groupFiles.type, "gcode")))
+    .returning({ r2Key: groupFiles.r2Key });
+  await Promise.all(removed.map((f) => deleteObject(f.r2Key)));
   refresh();
   return {};
 }

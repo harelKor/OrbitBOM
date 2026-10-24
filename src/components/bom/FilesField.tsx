@@ -16,7 +16,7 @@ const COLORS: Record<string, string> = {
 };
 
 // Upload a file straight to R2 with a presigned URL, then record it.
-async function upload(owner: FileOwner, type: string, file: File): Promise<string | null> {
+export async function upload(owner: FileOwner, type: string, file: File): Promise<string | null> {
   const start = await startUpload(owner, type, file.name, file.size);
   if ("error" in start) return start.error;
   const res = await fetch(start.url, { method: "PUT", body: file }).catch(() => null);

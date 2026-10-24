@@ -5,12 +5,13 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getMachine } from "@/config/machines";
 import { PRIORITIES } from "@/config/priorities";
-import { STATUSES } from "@/config/statuses";
+import { STATUSES, type StatusName } from "@/config/statuses";
 import { db, schema } from "@/db";
 import { requireMember } from "@/lib/auth";
-import { IN_PROCESS_STATUS, fabBatchName, machinesOf } from "@/lib/fab";
+import { READY_STATUS, READY_STATUSES, fabBatchName, machinesOf } from "@/lib/fab";
 import { analyseMissing } from "@/lib/groups/missing";
 import { applyPartChanges } from "@/lib/parts/apply";
+import { computeStatus } from "@/lib/status";
 import { deleteObjects, fileKeysForGroup } from "@/lib/storage/cleanup";
 import { isUuid } from "@/lib/uuid";
 
@@ -195,8 +196,10 @@ export async function recoverMembers(groupId: string): Promise<ActionResult> {
 
 // To Fab's Fab button: the selected parts become a batch on one machine, named after the machine
 // and the day ("Laser 21/10"). Every part must go through that machine and share one material.
-// The parts move to In process, and the batch is marked as made by whoever created it.
-export async function createFabBatch(robotId: string, partIds: string[], machineId: string): Promise<ActionResult> {
+// The batch waits in Ready to Fab (its parts in Released, or Reproduction) unless `status` puts it
+// elsewhere, and is marked as made by whoever created it.
+export async function createFabBatch(robotId: string, partIds: string[], machineId: string, status?: StatusName): Promise<ActionResult> {
+  if (status && !statusNames.includes(status)) return { error: "Unknown status." };
   const member = await requireMember();
   if (!isUuid(robotId)) return { error: "Unknown robot." };
   const machine = getMachine(machineId);
@@ -222,11 +225,39 @@ export async function createFabBatch(robotId: string, partIds: string[], machine
     const [group] = await tx.insert(partGroups).values({ robotId, name, machine: machine.id, madeBy: member.name }).returning({ id: partGroups.id });
     await tx.insert(groupMembers).values(rows.map(({ part }) => ({ groupId: group.id, partId: part.id, keySnapshot: snapshot(part) })));
   });
-  await applyPartChanges(
-    rows.map(({ part }) => part.id),
-    { status: IN_PROCESS_STATUS },
-    { memberId: member.id, via: "ui" },
-  );
+  const move = status ? rows : rows.filter(({ part }) => !(READY_STATUSES as string[]).includes(computeStatus(part)));
+  if (move.length) {
+    await applyPartChanges(
+      move.map(({ part }) => part.id),
+      { status: status ?? READY_STATUS },
+      { memberId: member.id, via: "ui" },
+    );
+  }
   refresh();
   return { message: `Created ${name} with ${rows.length} part${rows.length === 1 ? "" : "s"}.` };
+}
+
+// Dragging cards onto a fab batch on To Fab: they join it (leaving the batch they came from) and
+// take its status.
+export async function moveToFabBatch(groupId: string, partIds: string[], fromGroupId: string | null, status: StatusName | null): Promise<ActionResult> {
+  const member = await requireMember();
+  if (!isUuid(groupId) || (fromGroupId && !isUuid(fromGroupId))) return { error: "Unknown fab." };
+  if (status && !statusNames.includes(status)) return { error: "Unknown status." };
+  const [group] = await db.select().from(partGroups).where(eq(partGroups.id, groupId));
+  if (!group) return { error: "Unknown fab." };
+  const rows = await robotParts(group.robotId, partIds);
+  if (!rows.length) return { error: "Choose parts from this robot." };
+  const ids = rows.map((p) => p.id);
+  await db.transaction(async (tx) => {
+    if (fromGroupId && fromGroupId !== groupId) {
+      await tx.delete(groupMembers).where(and(eq(groupMembers.groupId, fromGroupId), inArray(groupMembers.partId, ids)));
+    }
+    await tx
+      .insert(groupMembers)
+      .values(rows.map((p) => ({ groupId, partId: p.id, keySnapshot: snapshot(p) })))
+      .onConflictDoNothing();
+  });
+  if (status) await applyPartChanges(ids, { status }, { memberId: member.id, via: "ui" });
+  refresh();
+  return { message: `Added ${rows.length} part${rows.length === 1 ? "" : "s"} to ${group.name}.` };
 }

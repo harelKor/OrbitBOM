@@ -9,6 +9,7 @@ import {
   DEFAULT_STATUS,
   DERIVED_STATUS,
   DONE_STATUSES,
+  LEGACY_STATUSES,
   getStatus,
   isStatusName,
   statusLabel,
@@ -39,6 +40,7 @@ const SLOTS = [
 
 function storedStatus(designState: string | null): StatusName {
   if (designState && isStatusName(designState)) return designState;
+  if (designState && designState in LEGACY_STATUSES) return LEGACY_STATUSES[designState];
   return DEFAULT_STATUS;
 }
 

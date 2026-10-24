@@ -80,11 +80,21 @@ export async function listGroups(): Promise<GroupSummary[]> {
 
 // For the BOM's Group parts bar and To Fab's batches: the robot's groups.
 export async function listRobotGroups(robotId: string) {
-  return db
-    .select({ id: partGroups.id, name: partGroups.name, color: partGroups.color, machine: partGroups.machine, madeBy: partGroups.madeBy, priority: partGroups.priority })
-    .from(partGroups)
-    .where(eq(partGroups.robotId, robotId))
-    .orderBy(asc(partGroups.name));
+  const [groups, gcodes] = await Promise.all([
+    db
+      .select({ id: partGroups.id, name: partGroups.name, color: partGroups.color, machine: partGroups.machine, madeBy: partGroups.madeBy, priority: partGroups.priority })
+      .from(partGroups)
+      .where(eq(partGroups.robotId, robotId))
+      .orderBy(asc(partGroups.name)),
+    // A fab batch's G-code file, if it has one.
+    db
+      .select({ groupId: groupFiles.groupId, id: groupFiles.id, filename: groupFiles.filename })
+      .from(groupFiles)
+      .innerJoin(partGroups, eq(partGroups.id, groupFiles.groupId))
+      .where(and(eq(partGroups.robotId, robotId), eq(groupFiles.type, "gcode"))),
+  ]);
+  const gcodeOf = new Map(gcodes.map(({ groupId, ...f }) => [groupId, f]));
+  return groups.map((g) => ({ ...g, gcode: gcodeOf.get(g.id) ?? null }));
 }
 
 // Group badges on BOM parts.

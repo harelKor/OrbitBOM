@@ -5,7 +5,7 @@
 import type { StatusName } from "@/config/statuses";
 import { computeStatus, isDone, type StatusInput } from "@/lib/status";
 
-export const IN_PROCESS_STATUSES: StatusName[] = ["Gcoded", "Build In Queue", "In Process 1", "Ready for Process 2", "Post Processing"];
+export const IN_PROCESS_STATUSES: StatusName[] = ["Gcoded", "In Process 1", "Ready for Process 2", "Post Processing"];
 export const READY_STATUS: StatusName = "Released";
 export const READY_STATUSES: StatusName[] = [READY_STATUS, "Reproduction"];
 // The status a part dropped into the In process section gets.

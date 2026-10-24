@@ -38,7 +38,7 @@ export const isCardBodyClick = (e: React.MouseEvent) => !(e.target as HTMLElemen
 // its top-right; below it two dense rows: the name with the drawing and notes buttons, then the
 // status and the material → process pills. Properties only open their editors in Edit mode, and a
 // click anywhere else below the thumbnail opens the part's details window. On To Fab the rows are
-// read-only: status, amount, material, machine and Open drawing. COTS parts get their own card
+// read-only: status, amount, material, machine and the drawing icon. COTS parts get their own card
 // (CotsCard): bought, not made.
 export function PartCard(props: React.ComponentProps<typeof MadePartCard>) {
   return props.part.classification === "cots" ? <CotsCard {...props} /> : <MadePartCard {...props} />;
@@ -54,6 +54,8 @@ function MadePartCard({
   style,
   onCheck,
   checked = false,
+  checkFrom = "Ready for QA",
+  checkTo = "In Stock",
 }: {
   part: CardPart;
   save: SaveFn;
@@ -64,6 +66,8 @@ function MadePartCard({
   style?: React.CSSProperties;
   onCheck?: () => void; // Ready for QA: a big check mark replaces Download and moves the part to In Stock
   checked?: boolean; // Ready for QA: checked off this visit (struck through; a second click undoes it)
+  checkFrom?: string; // the status the check takes the part from (To Post Process: Post Processing)
+  checkTo?: string; // and the one it moves it to (To Post Process: Ready for QA)
 }) {
   const edit = useEditMode();
   const { robotId, versions } = useBom();
@@ -134,8 +138,8 @@ function MadePartCard({
               className={`press flex h-14 w-14 items-center justify-center rounded-full border-2 shadow-lg backdrop-blur-md ${
                 checked ? "border-emerald-400 bg-surface/90 text-emerald-500 hover:bg-raised" : "border-emerald-400 bg-emerald-500/90 text-white hover:bg-emerald-400"
               }`}
-              aria-label={checked ? `Undo: put ${partTitle(part)} back in Ready for QA` : `Checked: move ${partTitle(part)} to In Stock`}
-              title={checked ? "Undo: back to Ready for QA" : "Checked: move to In Stock"}
+              aria-label={checked ? `Undo: put ${partTitle(part)} back in ${checkFrom}` : `Checked: move ${partTitle(part)} to ${checkTo}`}
+              title={checked ? `Undo: back to ${checkFrom}` : `Checked: move to ${checkTo}`}
             >
               <CheckIcon className="h-8 w-8" />
             </button>
@@ -224,7 +228,7 @@ function MadePartCard({
 }
 
 // To Fab's read-only rows: the status and how many are made of the amount, then the material,
-// the machine it's at and Open drawing (the drawing in a big window).
+// the machine it's at and a drawing icon (the drawing in a big window).
 function FabFooter({ part, current, onClick }: { part: CardPart; current: (typeof SLOTS)[number] | undefined; onClick: (e: React.MouseEvent) => void }) {
   const { inventory } = useBom();
   const [drawing, setDrawing] = useState(false);
@@ -254,10 +258,10 @@ function FabFooter({ part, current, onClick }: { part: CardPart; current: (typeo
           onClick={() => setDrawing(true)}
           disabled={!part.hasDrawing}
           title={part.hasDrawing ? "Open the drawing" : "No drawing yet"}
-          className="press ml-auto flex h-7 shrink-0 items-center gap-1 rounded-md border border-line-strong px-2 text-[11px] font-semibold text-fg-2 hover:border-accent hover:text-accent disabled:opacity-40"
+          aria-label={part.hasDrawing ? "Open the drawing" : "No drawing yet"}
+          className="press ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-line-strong text-fg-2 hover:border-accent hover:text-accent disabled:opacity-40"
         >
           <Icon name="drawing" className="h-3.5 w-3.5" />
-          Open drawing
         </button>
       </div>
       {drawing && <DrawingPreview partId={ownerPartId(part)} title={partTitle(part)} onClose={() => setDrawing(false)} />}

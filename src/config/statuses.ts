@@ -15,9 +15,7 @@ export type StatusDef = {
 export const STATUSES = [
   { name: "Not Started", color: "#cbd5e1", kind: "not_started" },
   { name: "Released", color: "#00aaff", kind: "design" },
-  { name: "Ordered", color: "#00aaff", kind: "design" },
   { name: "Gcoded", color: "#8c00ff", kind: "design" },
-  { name: "Build In Queue", color: "#0040ff", kind: "design" },
   { name: "In Process 1", color: "#0004ff", kind: "design" },
   { name: "Ready for Process 2", color: "#00ffff", kind: "design" },
   { name: "Post Processing", color: "#f302f7", kind: "design" },
@@ -33,11 +31,14 @@ export type StatusName = (typeof STATUSES)[number]["name"];
 
 export const DEFAULT_STATUS: StatusName = "Not Started";
 
+// Statuses 1690 dropped for shop parts (2026-10-24). Parts still stored with them read as these.
+export const LEGACY_STATUSES: Record<string, StatusName> = { Ordered: "Released", "Build In Queue": "Released" };
+
 // Status shown once a fabrication counter has moved. FRCBOM derives a built-in status from the
 // first unfinished process slot and, because 1690 hides the built-ins, remaps it to the nearest
 // visible status. The remap below is our reading of that behaviour (ref §4).
 export const DERIVED_STATUS = {
-  preprocess: "Build In Queue",
+  preprocess: "In Process 1",
   process1: "In Process 1",
   process2: "Ready for Process 2",
   done: "Ready for QA",
@@ -61,12 +62,12 @@ export function isStatusName(name: string): name is StatusName {
 // "Printing", not "In Process 1". Only the name changes; the status, its colour and its place in
 // the order stay the same, so stats, filters and To Fab work as before.
 export const MACHINE_STATUS_LABELS: Record<MachineKind, Partial<Record<StatusName, string>>> = {
-  print: { Gcoded: "Sliced", "Build In Queue": "In Queue", "In Process 1": "Printing" },
-  laser: { "Build In Queue": "In Queue", "In Process 1": "Cutting" },
-  machining: { "Build In Queue": "In Queue", "In Process 1": "Machining" },
-  bending: { "Build In Queue": "In Queue", "In Process 1": "Bending" },
-  countersink: { "Build In Queue": "In Queue", "In Process 1": "Countersinking" },
-  factory: { "Build In Queue": "Sent to Factory", "In Process 1": "At Factory" },
+  print: { Gcoded: "Sliced", "In Process 1": "Printing" },
+  laser: { "In Process 1": "Cutting" },
+  machining: { "In Process 1": "Machining" },
+  bending: { "In Process 1": "Bending" },
+  countersink: { "In Process 1": "Countersinking" },
+  factory: { "In Process 1": "At Factory" },
 };
 
 export function statusLabel(status: string, machineId?: string | null): string {

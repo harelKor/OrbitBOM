@@ -4,13 +4,14 @@ import { useSearchParams } from "next/navigation";
 import { useLayoutEffect, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
 import { MACHINES, getMachine } from "@/config/machines";
 import type { Priority } from "@/config/priorities";
-import { DONE_STATUSES, STATUSES, getStatus, type StatusName } from "@/config/statuses";
-import { createFabBatch, deleteGroup, removeFromGroup, updateGroup } from "@/app/(app)/groups/actions";
+import { DONE_STATUSES, STATUSES, getStatus, statusLabel, type StatusName } from "@/config/statuses";
+import { removeBatchGcode } from "@/app/(app)/files-actions";
+import { createFabBatch, deleteGroup, moveToFabBatch, removeFromGroup, updateGroup } from "@/app/(app)/groups/actions";
 import { updatePart, updateParts } from "@/app/(app)/parts-actions";
 import { BomProvider, type InventoryName } from "@/components/bom/BomContext";
 import { matchesTopBar } from "@/components/bom/filter";
+import { upload } from "@/components/bom/FilesField";
 import { OptionList, Popover } from "@/components/bom/Popover";
-import { STATUS_OPTIONS } from "@/components/bom/options";
 import { PartCard, cadFormat } from "@/components/bom/PartCard";
 import { partTitle, type CardPart } from "@/components/bom/types";
 import { useFilters } from "@/components/shell/FilterContext";
@@ -21,9 +22,16 @@ import { ShallowLink } from "@/components/ui/FastLink";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { FINISHED_STATUS, IN_PROCESS_STATUS, READY_STATUS, fabStage, isFabFinished, machinesOf } from "@/lib/fab";
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
-import { computeStatus } from "@/lib/status";
+import { computeStatus, statusMachine } from "@/lib/status";
 
-export type Batch = { id: string; name: string; machine: string | null; madeBy: string | null; priority: Priority };
+export type Batch = {
+  id: string;
+  name: string;
+  machine: string | null;
+  madeBy: string | null;
+  priority: Priority;
+  gcode: { id: string; filename: string } | null;
+};
 
 // A batch's priority colours all its text. "normal" (the default) is no priority; the shop's three
 // levels use the stored critical / high / low.
@@ -40,22 +48,27 @@ const rank = (p: CardPart) => (isFabFinished(p) ? Infinity : (STATUS_RANK.get(co
 
 const isDone = (p: CardPart) => (DONE_STATUSES as string[]).includes(computeStatus(p));
 
-// Dragging cards or batches between sections sets their status.
+// Dragging cards or batches between sections sets their status. Released holds loose parts only;
+// Ready to Fab holds batches only (their parts are still Released: it is a To Fab section, not a status).
 const DRAG_TYPE = "application/x-orbit-parts";
-const SECTION_STATUS = { ready: READY_STATUS, inProcess: IN_PROCESS_STATUS, finished: FINISHED_STATUS } as const;
+const SECTION_STATUS = { ready: READY_STATUS, readyToFab: READY_STATUS, inProcess: IN_PROCESS_STATUS, finished: FINISHED_STATUS } as const;
 type Stage = keyof typeof SECTION_STATUS;
-// What a drag carries: the parts and the section they come from (dropping back there does nothing).
-type DragLoad = { ids: string[]; from: Stage | null };
+// What a drag carries: the parts, the section they come from (dropping back there does nothing),
+// the batch they come from and whether it is the whole batch.
+type DragLoad = { ids: string[]; from: Stage | null; batch: string | null; whole: boolean };
 const partStage = (p: CardPart): Stage | null => (isFabFinished(p) ? "finished" : fabStage(p));
 
-// A batch sits in Released while any part still waits there, then in In process, and in
+// A batch sits in Ready to Fab while any part still waits to start, then in In process, and in
 // Finished once every part is done.
 const batchStage = (members: CardPart[]): Stage =>
   members.every(isDone)
     ? "finished"
     : members.some((p) => fabStage(p) === "ready") || !members.some((p) => fabStage(p) === "inProcess")
-      ? "ready"
+      ? "readyToFab"
       : "inProcess";
+
+const POST_PROCESSING: StatusName = "Post Processing";
+const isPostProcessing = (p: CardPart) => computeStatus(p) === POST_PROCESSING;
 
 // Cards take their status's colour; a batch takes it when all its parts share one status. On To
 // Fab, finished parts and batches are painted green whatever their status.
@@ -63,12 +76,15 @@ const FINISHED_COLOR = "#16a34a";
 const tint = (color: string | undefined): React.CSSProperties | undefined =>
   color ? { backgroundColor: `color-mix(in srgb, ${color} 14%, var(--color-surface))`, borderColor: `color-mix(in srgb, ${color} 60%, transparent)` } : undefined;
 export const statusTint = (status: string | null) => tint(status ? getStatus(status)?.color : undefined);
+// On To Fab, Released parts are plain: leads hand them out as batches, and Ready to Fab takes the colour.
+const fabTint = (p: CardPart) => (isFabFinished(p) ? tint(FINISHED_COLOR) : computeStatus(p) === READY_STATUS ? {} : statusTint(computeStatus(p)));
 
 const common = (lists: string[][]) => (lists.length ? lists.reduce((acc, l) => acc.filter((m) => l.includes(m))) : []);
 
-// To Fab: machine boxes, then Released, In process and Finished, each with its fab batches
-// first (and, for one machine, its other parts). The Fab button picks cards of one material on one machine
-// and turns them into a batch.
+// To Fab: machine boxes, then To Post Process (batches with parts in Post Processing), Released
+// (loose parts), Ready to Fab (batches), In process and Finished (batches first, then parts), and
+// for one machine its other parts. The Fab button picks cards of one material on one machine and
+// turns them into a batch; dragging a Released part on or a part onto a batch does it too.
 export function FabView({
   parts,
   batches,
@@ -98,6 +114,27 @@ export function FabView({
       const r = ids.length === 1 ? await updatePart(ids[0], changes) : await updateParts(ids, changes);
       if (r.error) setError(r.error);
     });
+  };
+
+  const run = (task: () => Promise<{ error?: string }>) => {
+    setError(null);
+    startTransition(async () => {
+      const r = await task();
+      if (r.error) setError(r.error);
+    });
+  };
+  // Parts in Post Processing checked off this visit, as they were when checked, so they stay in
+  // their batch (struck through) until the member leaves.
+  const [postChecked, setPostChecked] = useState<Map<string, CardPart>>(() => new Map());
+  const checkPost = (p: CardPart) => {
+    const undo = postChecked.has(p.id);
+    setPostChecked((c) => {
+      const next = new Map(c);
+      if (undo) next.delete(p.id);
+      else next.set(p.id, p);
+      return next;
+    });
+    save([p.id], { status: undo ? POST_PROCESSING : FINISHED_STATUS });
   };
 
   const machine = useFabMachine();
@@ -141,16 +178,23 @@ export function FabView({
     const batched = new Set(shownBatches.flatMap((b) => b.members.map((p) => p.id)));
     const loose = optimistic.filter((p) => !batched.has(p.id) && onMachine(p) && matchesTopBar(p, filters));
     const batchesIn = (stage: Stage) => shownBatches.filter((b) => batchStage(b.members) === stage);
+    // A batch with parts in Post Processing also shows them at the top; one waiting on nothing
+    // else leaves In process for it.
+    const post = shownBatches
+      .map((b) => ({ ...b, post: [...b.members.filter((p) => isPostProcessing(p) && !postChecked.has(p.id)), ...[...postChecked.values()].filter((p) => p.groups.some((g) => g.id === b.id))] }))
+      .filter((b) => b.post.length > 0);
+    const onlyPost = new Set(post.filter((b) => b.members.filter((p) => !isDone(p)).every(isPostProcessing)).map((b) => b.id));
     // Each part shows once: in its batch, or in the section of its status.
     return {
-      batches: { ready: batchesIn("ready"), inProcess: batchesIn("inProcess"), finished: batchesIn("finished") },
+      post,
+      batches: { readyToFab: batchesIn("readyToFab"), inProcess: batchesIn("inProcess").filter((b) => !onlyPost.has(b.id)), finished: batchesIn("finished") },
       ready: mine ? [] : loose.filter((p) => partStage(p) === "ready"),
       inProcess: mine ? [] : loose.filter((p) => partStage(p) === "inProcess"),
       finished: mine ? [] : loose.filter((p) => partStage(p) === "finished"),
       other: machine && !mine ? loose.filter((p) => !partStage(p)) : [],
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onMachine only reads `machine`
-  }, [optimistic, batches, filters, machine, mine, me]);
+  }, [optimistic, batches, filters, machine, mine, me, postChecked]);
 
   // While picking a fab: the material of the first pick and the machines every pick goes through.
   const picked = optimistic.filter((p) => selected.has(p.id));
@@ -170,7 +214,8 @@ export function FabView({
         draggable={!fab}
         onDragStart={(e) => {
           e.stopPropagation(); // a card inside an open batch moves alone
-          e.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ ids: [p.id], from: partStage(p) } satisfies DragLoad));
+          const batch = batches.find((b) => p.groups.some((g) => g.id === b.id))?.id ?? null;
+          e.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ ids: [p.id], from: partStage(p), batch, whole: false } satisfies DragLoad));
         }}
         className={fab && !pickable ? "opacity-40" : undefined}
       >
@@ -179,18 +224,52 @@ export function FabView({
           save={(c) => save([p.id], c)}
           showSystem
           fabCounter
-          style={isFabFinished(p) ? tint(FINISHED_COLOR) : statusTint(computeStatus(p))}
+          style={fabTint(p)}
           selected={selected.has(p.id)}
           onToggleSelect={pickable ? () => toggle(p.id) : undefined}
         />
       </div>
     );
   };
-  const batchCard = (b: Batch & { members: CardPart[] }) => <BatchCard key={b.id} batch={b} members={b.members} save={save} card={card} draggable={!fab} memberNames={memberNames} />;
+  const batchCard = (b: Batch & { members: CardPart[] }) => (
+    <BatchCard
+      key={b.id}
+      batch={b}
+      members={b.members}
+      save={save}
+      card={card}
+      draggable={!fab}
+      memberNames={memberNames}
+      onDropParts={fab ? undefined : (load) => run(() => moveToFabBatch(b.id, load.ids, load.batch, batchStatus(b.members)))}
+    />
+  );
   const machinesWithParts = MACHINES.filter((m) => counts.byMachine.has(m.id));
   const base = `/robots/${robotId}/fab`;
+  // The machine a loose part is batched on: the one picked above, else the one it's at.
+  const batchMachine = (p: CardPart) => (machine && machinesOf(p).includes(machine) ? machine : (statusMachine(p) ?? machinesOf(p)[0]));
   const drop = (stage: Stage) => (load: DragLoad) => {
-    if (load.from !== stage && load.ids.length) save(load.ids, { status: SECTION_STATUS[stage] });
+    if (!load.ids.length) return;
+    const status = SECTION_STATUS[stage];
+    if (stage === "ready") {
+      // Released takes loose parts only: a part dragged out of a batch leaves it.
+      if (load.whole) return;
+      if (load.batch) run(async () => (await removeFromGroup(load.batch!, load.ids[0]), {}));
+      if (load.from !== "ready" || load.batch) save(load.ids, { status });
+      return;
+    }
+    // A loose part moved out of Released, or onto Ready to Fab, gets a new batch of its own.
+    if (!load.batch && (load.from === "ready" || stage === "readyToFab") && stage !== "finished") {
+      const p = optimistic.find((x) => x.id === load.ids[0]);
+      const m = p && batchMachine(p);
+      if (!p || !m) {
+        if (stage === "readyToFab") setError("Give the part a machine before it goes into a batch.");
+        else save(load.ids, { status });
+        return;
+      }
+      run(() => createFabBatch(robotId, load.ids, m, stage === "readyToFab" ? undefined : status));
+      return;
+    }
+    if (load.from !== stage) save(load.ids, { status });
   };
 
   return (
@@ -224,14 +303,48 @@ export function FabView({
 
         {error && <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">Couldn&apos;t save: {error}</p>}
 
-        <Section
-          title="Released"
-          count={view.batches.ready.length + view.ready.length}
-          empty="No parts are waiting to be made."
-          onDropParts={fab ? undefined : drop("ready")}
-        >
-          {view.batches.ready.map(batchCard)}
+        {view.post.length > 0 && (
+          <section className="space-y-3 rounded-lg border p-4" style={{ borderColor: "color-mix(in srgb, #f302f7 40%, transparent)", backgroundColor: "color-mix(in srgb, #f302f7 4%, transparent)" }}>
+            <div className="flex items-baseline gap-2">
+              <h2 className="display text-2xl font-bold">To Post Process</h2>
+              <span className="font-mono text-sm text-subtle tabular-nums">{view.post.reduce((n, b) => n + b.post.filter((p) => !postChecked.has(p.id)).length, 0)}</span>
+              <span className="text-xs text-subtle">Check a part off to move it to Ready for QA.</span>
+            </div>
+            {view.post.map((b) => (
+              <div key={b.id} className="space-y-2">
+                <div className="flex items-baseline gap-2 text-sm">
+                  <span className="font-semibold">{b.name}</span>
+                  {b.machine && <span className="text-xs text-subtle">{getMachine(b.machine)?.name}</span>}
+                  {b.madeBy && <span className="text-xs text-subtle">· {b.madeBy}</span>}
+                </div>
+                <div className="card-grid" style={{ "--card-min": "200px" } as React.CSSProperties}>
+                  {b.post.map((p) => (
+                    <PartCard
+                      key={p.id}
+                      part={p}
+                      save={(c) => save([p.id], c)}
+                      showSystem
+                      checked={postChecked.has(p.id)}
+                      onCheck={() => checkPost(p)}
+                      checkFrom={POST_PROCESSING}
+                      checkTo={FINISHED_STATUS}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </section>
+        )}
+        <Section title="Released" count={view.ready.length} empty="No parts are waiting to be made." onDropParts={fab ? undefined : drop("ready")}>
           {view.ready.map(card)}
+        </Section>
+        <Section
+          title="Ready to Fab"
+          count={view.batches.readyToFab.length}
+          empty="Drag a Released part here, or use ＋ Fab, to make a batch."
+          onDropParts={fab ? undefined : drop("readyToFab")}
+        >
+          {view.batches.readyToFab.map(batchCard)}
         </Section>
         <Section
           title="In process"
@@ -395,9 +508,24 @@ function Section({
   );
 }
 
-// A fab batch: a collage of its parts, its machine and material, one status for all of them,
-// download all and who made it. Clicking the card opens its member cards. Rename and delete are in
-// Edit mode.
+// The status a part dragged onto a batch takes: the batch's least advanced unfinished status
+// (none once every part is done).
+function batchStatus(members: CardPart[]): StatusName | null {
+  const open = members.filter((p) => !isDone(p));
+  if (!open.length) return null;
+  return computeStatus(open.reduce((a, p) => (rank(p) < rank(a) ? p : a), open[0])) as StatusName;
+}
+
+// The collage's grid: one part fills it, two sit side by side, up to four in a 2×2, then 3×3.
+function collageGrid(count: number): React.CSSProperties {
+  const cols = count <= 1 ? 1 : count <= 4 ? 2 : 3;
+  const rows = count <= 2 ? 1 : count <= 4 ? 2 : 3;
+  return { gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))` };
+}
+
+// A fab batch: a collage of its parts with who makes it on top, its machine and material, one
+// status for all of them (named as the machine calls it), download all and its G-code. Clicking
+// the card opens its member cards; cards dropped on it join it. Rename and delete are in Edit mode.
 function BatchCard({
   batch,
   members,
@@ -405,6 +533,7 @@ function BatchCard({
   card,
   draggable,
   memberNames,
+  onDropParts,
 }: {
   batch: Batch;
   members: CardPart[];
@@ -412,17 +541,21 @@ function BatchCard({
   card: (p: CardPart) => React.ReactNode;
   draggable: boolean;
   memberNames: string[];
+  onDropParts?: (load: DragLoad) => void;
 }) {
   const edit = useEditMode();
   const [open, setOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
+  const [over, setOver] = useState(false);
   const [madeBy, setMadeBy] = useState(batch.madeBy ?? "");
   const [, startTransition] = useTransition();
   const statuses = [...new Set(members.map((p) => computeStatus(p)))];
   const shared = statuses.length === 1 ? statuses[0] : null;
   const lowest = members.reduce((a, p) => (rank(p) < rank(a) ? p : a), members[0]);
   const [priority, setPriority] = useState(batch.priority);
-  const textColor = priorityColor(priority);
+  const stage = batchStage(members);
+  // A finished batch drops its priority colour.
+  const textColor = stage === "finished" ? undefined : priorityColor(priority);
   const qty = members.reduce((n, p) => n + p.quantity, 0);
   const materials = [...new Set(members.map((p) => p.material ?? ""))];
   const material = materials.length === 1 ? materials[0] || "No material" : "Mixed materials";
@@ -432,7 +565,10 @@ function BatchCard({
     return f ? [`/api/parts/${p.id}/export?format=${f}`] : [];
   });
   const notDone = members.filter((p) => !isDone(p));
-  const stage = batchStage(members);
+  // The batch's status as its machine names it; a batch waiting to start is Ready to Fab.
+  const label = (status: string) => (stage === "readyToFab" && status === READY_STATUS ? "Ready to Fab" : statusLabel(status, batch.machine));
+  const statusOptions = STATUSES.map((s) => ({ value: s.name, label: s.name === READY_STATUS ? "Ready to Fab" : statusLabel(s.name, batch.machine), color: s.color }));
+  const thumbs = members.slice(0, 9);
 
   // Opened, the batch takes a row of its own and lays its parts out at the grid's card width, as
   // many across as it has parts. Spanning only some columns let the closed cards beside it stretch
@@ -459,38 +595,84 @@ function BatchCard({
   };
   // Controls inside the card don't open or close it.
   const stop = (e: React.MouseEvent) => e.stopPropagation();
+  // Cards from elsewhere dropped on the batch join it (a whole batch doesn't).
+  const dropProps = onDropParts && {
+    onDragOver: (e: React.DragEvent) => {
+      if (!e.dataTransfer.types.includes(DRAG_TYPE)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setOver(true);
+    },
+    onDragLeave: (e: React.DragEvent) => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false);
+    },
+    onDrop: (e: React.DragEvent) => {
+      setOver(false);
+      const raw = e.dataTransfer.getData(DRAG_TYPE);
+      if (!raw) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const load = JSON.parse(raw) as DragLoad;
+      if (!load.whole && load.batch !== batch.id && load.ids.length) onDropParts(load);
+    },
+  };
 
   return (
     <div
       ref={ref}
+      {...dropProps}
       draggable={draggable && !renaming}
       onDragStart={(e) =>
-        e.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ ids: (notDone.length ? notDone : members).map((p) => p.id), from: stage } satisfies DragLoad))
+        e.dataTransfer.setData(
+          DRAG_TYPE,
+          JSON.stringify({ ids: (notDone.length ? notDone : members).map((p) => p.id), from: stage, batch: batch.id, whole: true } satisfies DragLoad),
+        )
       }
       onClick={() => setOpen((o) => !o)}
       style={{
         ...(stage === "finished" || isFabFinished(lowest) ? tint(FINISHED_COLOR) : statusTint(computeStatus(lowest))),
         ...(open && { gridColumn: "1 / -1" }),
       }}
-      className="card-interactive flex cursor-pointer flex-col text-sm"
+      className={`card-interactive flex cursor-pointer flex-col text-sm ${over ? "ring-2 ring-accent" : ""}`}
     >
       <div className={open ? "flex flex-wrap gap-4 p-3" : "flex flex-col"}>
-        <button
-          aria-expanded={open}
-          aria-label={open ? `Close ${batch.name}` : `Open ${batch.name}`}
-          className={`thumb-well grid grid-cols-2 grid-rows-2 gap-px overflow-hidden ${open ? "aspect-[4/3] w-40 rounded-lg" : "aspect-[4/3] w-full"}`}
-        >
-          {members.slice(0, 4).map((p) => (
-            <span key={p.id} className="flex items-center justify-center bg-well">
-              {p.thumbUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links
-                <img src={p.thumbUrl} alt="" loading="lazy" className="h-full w-full object-contain p-1.5" />
-              ) : (
-                <span className="px-1 text-center text-[10px] text-subtle">{partTitle(p)}</span>
-              )}
-            </span>
-          ))}
-        </button>
+        <div className={`relative shrink-0 ${open ? "w-40" : "w-full"}`}>
+          <button
+            aria-expanded={open}
+            aria-label={open ? `Close ${batch.name}` : `Open ${batch.name}`}
+            className={`thumb-well grid aspect-[4/3] w-full gap-px overflow-hidden ${open ? "rounded-lg" : ""}`}
+            style={collageGrid(thumbs.length)}
+          >
+            {thumbs.map((p) => (
+              <span key={p.id} className="flex min-h-0 items-center justify-center bg-well">
+                {p.thumbUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links
+                  <img src={p.thumbUrl} alt="" loading="lazy" className={`h-full w-full object-contain ${thumbs.length === 1 ? "p-3" : "p-1.5"}`} />
+                ) : (
+                  <span className="px-1 text-center text-[10px] text-subtle">{partTitle(p)}</span>
+                )}
+              </span>
+            ))}
+          </button>
+          <div className="absolute inset-x-2 top-2 flex" onClick={stop}>
+            <select
+              value={madeBy}
+              onChange={(e) => {
+                setMadeBy(e.target.value);
+                startTransition(() => void updateGroup(batch.id, { madeBy: e.target.value || null }));
+              }}
+              aria-label={`Who makes ${batch.name}`}
+              className="press max-w-full min-w-0 cursor-pointer truncate rounded-full border border-line bg-surface/90 px-2.5 py-1 text-xs font-bold text-fg shadow-sm backdrop-blur-md hover:border-accent focus:outline-none"
+            >
+              <option value="">Nobody yet</option>
+              {[...new Set([...(batch.madeBy ? [batch.madeBy] : []), ...memberNames])].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
         <div className="flex min-w-0 flex-1 flex-col gap-2 p-3">
           <div className="min-w-0" style={textColor ? { color: textColor } : undefined}>
             {renaming ? (
@@ -533,10 +715,10 @@ function BatchCard({
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2" onClick={stop}>
-            <Popover trigger={<StatusPill status={shared ?? "Mixed"} size="md" />}>
+            <Popover trigger={<StatusPill status={shared ?? "Mixed"} label={shared ? label(shared) : undefined} size="md" />}>
               {(close) => (
                 <OptionList
-                  options={STATUS_OPTIONS}
+                  options={statusOptions}
                   value={shared}
                   placeholder="Set status for all…"
                   onPick={(v) => {
@@ -566,31 +748,22 @@ function BatchCard({
                 ))}
               </select>
             )}
-            {downloads.length > 0 && (
-              <button className="overlay-btn" onClick={() => downloadAll(downloads)} aria-label={`Download ${downloads.length} files`} title={`Download ${downloads.length} files`}>
-                <Icon name="download" />
-              </button>
-            )}
+            <span className="ml-auto flex items-center gap-1.5">
+              {downloads.length > 0 && (
+                <button className="overlay-btn" onClick={() => downloadAll(downloads)} aria-label={`Download ${downloads.length} files`} title={`Download ${downloads.length} files`}>
+                  <Icon name="download" />
+                </button>
+              )}
+              {!open && batch.gcode && (
+                <a className="overlay-btn" href={`/api/files/${batch.gcode.id}?download=1`} aria-label={`Download G-code ${batch.gcode.filename}`} title={`G-code: ${batch.gcode.filename}`}>
+                  <Icon name="gcode" />
+                </a>
+              )}
+            </span>
           </div>
-          <div className="mt-auto flex items-center gap-2" onClick={stop}>
-            <select
-              value={madeBy}
-              onChange={(e) => {
-                setMadeBy(e.target.value);
-                startTransition(() => void updateGroup(batch.id, { madeBy: e.target.value || null }));
-              }}
-              aria-label={`Who makes ${batch.name}`}
-              className={`min-w-0 cursor-pointer truncate rounded bg-transparent py-0.5 text-sm font-bold hover:bg-raised focus:outline-none ${textColor ? "" : "text-fg"}`}
-              style={textColor ? { color: textColor } : undefined}
-            >
-              <option value="">Nobody yet</option>
-              {[...new Set([...(batch.madeBy ? [batch.madeBy] : []), ...memberNames])].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-            {open && edit && (
+          {open && <GcodeRow batch={batch} />}
+          {open && edit && (
+            <div className="mt-auto flex" onClick={stop}>
               <button
                 className="press ml-auto shrink-0 text-xs text-subtle hover:text-rose-700"
                 onClick={() => {
@@ -599,8 +772,8 @@ function BatchCard({
               >
                 Delete fab
               </button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
       {open && (
@@ -620,6 +793,61 @@ function BatchCard({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// An open batch's G-code: Upload G-code, or the file with Replace and Remove. Uploading moves the
+// batch's parts that haven't started to Gcoded.
+function GcodeRow({ batch }: { batch: Batch }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const run = async (task: () => Promise<string | null>) => {
+    setBusy(true);
+    setError(null);
+    setError(await task());
+    setBusy(false);
+  };
+  const btn = "press rounded-md border border-line-strong px-2 py-1 text-xs font-semibold text-fg-2 hover:border-accent hover:text-accent disabled:opacity-50";
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs" onClick={(e) => e.stopPropagation()}>
+      <input
+        ref={input}
+        type="file"
+        hidden
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (file) void run(() => upload({ kind: "group", id: batch.id }, "gcode", file));
+        }}
+      />
+      {batch.gcode ? (
+        <>
+          <a href={`/api/files/${batch.gcode.id}?download=1`} className="flex min-w-0 items-center gap-1 font-medium text-fg hover:text-accent" title={batch.gcode.filename}>
+            <Icon name="gcode" className="h-4 w-4 shrink-0" />
+            <span className="truncate">{batch.gcode.filename}</span>
+          </a>
+          <button className={btn} disabled={busy} onClick={() => input.current?.click()}>
+            {busy ? "Uploading…" : "Replace"}
+          </button>
+          <button
+            className={`${btn} hover:border-rose-500 hover:text-rose-700`}
+            disabled={busy}
+            onClick={() => {
+              if (confirm(`Remove the G-code from ${batch.name}?`)) void run(async () => (await removeBatchGcode(batch.id)).error ?? null);
+            }}
+          >
+            Remove
+          </button>
+        </>
+      ) : (
+        <button className={`${btn} flex items-center gap-1`} disabled={busy} onClick={() => input.current?.click()}>
+          <Icon name="gcode" className="h-4 w-4" />
+          {busy ? "Uploading…" : "Upload G-code"}
+        </button>
+      )}
+      {error && <span className="text-rose-700">{error}</span>}
     </div>
   );
 }
