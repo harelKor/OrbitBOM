@@ -5,11 +5,9 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { checkForChanges, commitChanges } from "@/app/(app)/versions-actions";
 import { useEditMode } from "@/components/shell/ModeContext";
 import type { Draft } from "@/lib/versions/detect";
-import { MODEL_STALE_EVENT } from "@/components/dashboard/modelEvents";
+import { afterPartsUpdate } from "./afterUpdate";
 import { CommitWindow } from "./CommitWindow";
 import { OPEN_COMMIT_EVENT } from "./events";
-
-type ThumbRound = { fetched: number; pending: number; calls: number; failed?: number; error?: string } | { error: string };
 
 // Update System (plan/system-versioning.md §4, §7): checks the Manufacture assembly for
 // changes and opens the Commit window when there are any. Changes found by the background
@@ -52,6 +50,7 @@ export function UpdateSystem({
       const r = await checkForChanges(systemId, quick);
       if (r.error) return setError(r.error);
       setDraft(r.draft ?? null);
+      if (r.applied) afterPartsUpdate(systemId, router);
       if (r.draft) {
         setCommitError(null);
         setOpen(true);
@@ -77,17 +76,6 @@ export function UpdateSystem({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, when opened from the Onshape panel
   }, [params]);
 
-  async function fetchThumbnails() {
-    for (let round = 0; round < 10; round++) {
-      const res = await fetch(`/api/systems/${systemId}/thumbnails`, { method: "POST" }).catch(() => null);
-      const r = ((await res?.json().catch(() => null)) ?? { error: "Thumbnails stopped." }) as ThumbRound;
-      if ("error" in r && !("fetched" in r)) return;
-      const t = r as Exclude<ThumbRound, { error: string }>;
-      if (t.fetched) router.refresh();
-      if (!t.pending || !t.fetched) return;
-    }
-  }
-
   const commit = (name: string, only?: string) =>
     startCommit(async () => {
       if (!draft) return;
@@ -100,12 +88,7 @@ export function UpdateSystem({
         setDraft(null);
       } else setDraft({ ...draft, changes: rest });
       setMessage(r.message ?? null);
-      // Outside the transition, so the committed BOM shows now rather than when they finish:
-      // new thumbnails, and the 3D model rebuilt from the assembly (RobotViewer listens).
-      setTimeout(() => {
-        window.dispatchEvent(new Event(MODEL_STALE_EVENT));
-        void fetchThumbnails();
-      });
+      afterPartsUpdate(systemId, router);
     });
 
   const waiting = draft?.changes.length ?? 0;

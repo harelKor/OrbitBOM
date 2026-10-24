@@ -74,6 +74,7 @@ export function CommitWindow({
     <Dialog open={open} onClose={onClose} title="Changes in Onshape" width="w-[min(46rem,calc(100vw-2rem))]">
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
+          {draft.onshape && <span className="rounded-full bg-accent/10 px-2 py-0.5 font-mono text-xs font-semibold text-accent">Onshape {draft.onshape}</span>}
           <span>Found {new Date(draft.detectedAt).toLocaleString()}</span>
           {counts.map(({ k, n }) => (
             <span key={k} className={`rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums ${CHANGE_CHIP[k].className}`}>
@@ -91,7 +92,7 @@ export function CommitWindow({
             }}
           >
             <label className="min-w-48 flex-1">
-              <span className="label">Version name</span>
+              <span className="label">Name (optional, shown beside {draft.onshape ?? "the version"})</span>
               <input className="input" value={name} maxLength={120} placeholder="e.g. Shorter intake arm" onChange={(e) => setName(e.target.value)} />
             </label>
             <button type="submit" className="btn-primary" disabled={committing}>

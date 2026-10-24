@@ -98,7 +98,7 @@ export async function syncSystem(systemId: string): Promise<SyncResult> {
       ? ` Unknown machines in Onshape: ${s.unknownMachines.join(", ")}.`
       : "";
     if (s.skipped) return { message: `BOM is up to date (${s.calls} Onshape calls).` };
-    return { message: `BOM updated as version ${s.version}: ${parts.join(", ")} (${s.calls} Onshape calls).${warning}` };
+    return { message: `BOM updated as ${s.version}: ${parts.join(", ")} (${s.calls} Onshape calls).${warning}` };
   } catch (err) {
     if (err instanceof OnshapeError) return { error: err.message };
     throw err;

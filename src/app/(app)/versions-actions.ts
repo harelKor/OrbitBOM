@@ -7,7 +7,7 @@ import { isUuid } from "@/lib/uuid";
 import { commitDraft, VersionError } from "@/lib/versions/commit";
 import { checkSystem, type Draft } from "@/lib/versions/detect";
 
-export type CheckResult = { draft?: Draft | null; error?: string; calls?: number };
+export type CheckResult = { draft?: Draft | null; error?: string; calls?: number; applied?: boolean };
 
 // Update System (and the Onshape panel opening a system): checks the Manufacture assembly for
 // changes and returns what is waiting to be committed. `quick` skips the BOM when the document
@@ -19,7 +19,7 @@ export async function checkForChanges(systemId: string, quick = false): Promise<
   try {
     const r = await checkSystem(systemId, member.id, { force: !quick });
     if (!r.unchanged) revalidatePath("/robots", "layout");
-    return { draft: r.draft, calls: r.calls };
+    return { draft: r.draft, calls: r.calls, applied: r.applied };
   } catch (err) {
     if (err instanceof OnshapeError) return { error: err.message };
     throw err;
@@ -37,8 +37,8 @@ export async function commitChanges(systemId: string, draftId: string, seen: str
     const c = await commitDraft(systemId, member.id, { draftId, seen, name: name.slice(0, 120), only });
     revalidatePath("/robots", "layout");
     const warning = c.unknownMachines.length ? ` Unknown machines in Onshape: ${c.unknownMachines.join(", ")}.` : "";
-    if (only) return { message: `Committed to version ${c.seq}.` };
-    return { message: `Committed as version ${c.seq}: ${c.added.length} added, ${c.updated} updated, ${c.removed.length} removed.${warning}` };
+    if (only) return { message: `Committed to ${c.label}.` };
+    return { message: `Committed as ${c.label}: ${c.added.length} added, ${c.updated} updated, ${c.removed.length} removed.${warning}` };
   } catch (err) {
     if (err instanceof VersionError) return { error: err.message };
     throw err;

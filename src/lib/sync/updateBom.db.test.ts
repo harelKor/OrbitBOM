@@ -76,7 +76,7 @@ else
       const s = await updateBomFromOnshape(system.id, member.id);
       expect(s.added.sort()).toEqual(["Bolt", "Plate", "Tube"]);
       expect(s.calls).toBe(3); // change check, BOM, the Part Studio's parts list
-      expect(s.version).toBe(1);
+      expect(s.version).toBe("#1");
       const ps = await live();
       expect(ps.map((p) => [p.onshapeName, p.quantity, p.process1, p.classification])).toEqual([
         ["Bolt", 8, null, "undefined"],
@@ -114,7 +114,7 @@ else
       microversion = "mv3";
       bomRows = [row("A", "Plate", 3), row("Z", "Tube", 1), row("B", "Bolt", 8, null)];
       const s = await updateBomFromOnshape(system.id, member.id);
-      expect(s.version).toBe(3);
+      expect(s.version).toBe("#3");
       expect((await live()).every((p) => p.removedFromCadAt === null)).toBe(true);
     });
   });

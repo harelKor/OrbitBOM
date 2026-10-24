@@ -9,7 +9,7 @@ export type SyncSummary = {
   removed: string[];
   unknownMachines: string[];
   calls: number;
-  version?: number; // the version the changes were committed as
+  version?: string; // the version the changes were committed as ("V70")
 };
 
 // Update BOM from Onshape in one step, for the MCP tool and linking a new assembly: checks for
@@ -24,5 +24,5 @@ export async function updateBomFromOnshape(
   const check = await checkSystem(systemId, memberId, { force });
   if (!check.draft) return { skipped: "unchanged", added: [], updated: 0, removed: [], unknownMachines: [], calls: check.calls };
   const c = await commitDraft(systemId, memberId, { draftId: check.draft.id, name: name ?? check.draft.name });
-  return { added: c.added, updated: c.updated, removed: c.removed, unknownMachines: c.unknownMachines, calls: check.calls, version: c.seq };
+  return { added: c.added, updated: c.updated, removed: c.removed, unknownMachines: c.unknownMachines, calls: check.calls, version: c.label };
 }

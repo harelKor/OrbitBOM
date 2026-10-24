@@ -445,7 +445,10 @@ export type VersionChange = {
   note?: string; // "Back in CAD", "Re-linked by name"
 };
 
-export type VersionRef = { mv: string | null; did: string; sources?: Record<string, { versionId: string; name: string }> };
+// The Onshape state a version comes from: the Manufacture document's microversion and, per
+// document inserted by version, that version ("V70"); `from` is what the parts used before.
+type DocVersions = Record<string, { versionId: string; name: string }>;
+export type VersionRef = { mv: string | null; did: string; sources?: DocVersions; from?: DocVersions };
 
 export const systemVersions = pgTable(
   "system_versions",

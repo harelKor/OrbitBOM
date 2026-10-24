@@ -9,9 +9,10 @@ import { studioPath } from "@/lib/onshape/parts";
 import { apiPath, parseOnshapeUrl } from "@/lib/onshape/url";
 import { applyBomRows, sigKey } from "@/lib/sync/applyBom";
 import { planMerge } from "@/lib/sync/merge";
+import { onshapeName } from "./label";
 import { shapeFingerprints } from "./shape";
 
-const { parts, systems, systemVersions } = schema;
+const { onshapeCache, parts, systems, systemVersions } = schema;
 
 // What a draft keeps to be applied as it is on commit.
 export type DraftRows = { bom: BomRow[]; sigs: Record<string, string>; partSigs: Record<string, string>; unknownMachines: string[] };
@@ -19,6 +20,7 @@ export type DraftRows = { bom: BomRow[]; sigs: Record<string, string>; partSigs:
 export type Draft = {
   id: string;
   name: string | null;
+  onshape: string | null; // the Onshape version it comes from, "V70"
   detectedAt: Date;
   changes: VersionChange[];
 };
@@ -26,12 +28,14 @@ export type Draft = {
 export type CheckResult = {
   draft: Draft | null; // null: the system is up to date with Onshape
   unchanged: boolean; // nothing moved in Onshape since the last check
+  applied?: boolean; // same parts in a newer reference were taken without a commit
   calls: number;
 };
 
 export const draftOf = (row: typeof systemVersions.$inferSelect): Draft => ({
   id: row.id,
   name: row.name,
+  onshape: onshapeName(row.onshapeRef),
   detectedAt: row.detectedAt,
   changes: row.changes,
 });
@@ -144,13 +148,13 @@ export async function checkSystem(systemId: string, memberId: string, { force = 
       if (current) await tx.delete(systemVersions).where(eq(systemVersions.id, current.id));
       await tx.update(systems).set({ lastCheckedAt: now, ...seenMv, ...account }).where(eq(systems.id, systemId));
     });
-    return { draft: null, unchanged: false, calls: client.calls };
+    return { draft: null, unchanged: false, applied: moved, calls: client.calls };
   }
 
   // 5. Keep it in the draft. A draft whose list didn't change keeps its time, so a member
   // halfway through reviewing it can still commit.
-  const onshapeRef: VersionRef = { mv: microversion, did: ref.did, sources: await versionNames(client, existing, parsed.rows) };
-  const name = Object.values(onshapeRef.sources ?? {}).map((s) => s.name).join(", ") || null;
+  const onshapeRef: VersionRef = { mv: microversion, did: ref.did, ...(await versionNames(client, existing, parsed.rows)) };
+  const name = current?.name ?? null;
   const same = current && stable(current.changes) === stable(changes);
   const values = { name, onshapeRef, changes, rows, ...(same ? {} : { detectedAt: now, detectedBy: memberId }) };
   const [row] = current
@@ -176,29 +180,44 @@ async function loadDraftRow(systemId: string) {
   return row ?? null;
 }
 
-// The Onshape version names of subassemblies whose inserted version changed ("V13 shorter arm"),
-// for the version's default name. One call per changed document.
+// The Onshape version names ("V70") of the documents the assembly inserts by version: the ones
+// the BOM uses now (`sources`) and the ones the committed parts use (`from`), which name a
+// version on the site. A version's name never changes, so each is read once (1 call) and kept.
 async function versionNames(
   client: OnshapeClient,
-  existing: { sourceDid: string | null; sourceWvm: string | null; sourceWid: string | null }[],
+  existing: { sourceDid: string | null; sourceWvm: string | null; sourceWid: string | null; removedFromCadAt: Date | null; isManual: boolean }[],
   rows: BomRow[],
-): Promise<VersionRef["sources"]> {
-  const before = new Map<string, Set<string>>();
-  for (const p of existing) {
-    if (p.sourceDid && p.sourceWvm === "v" && p.sourceWid) before.set(p.sourceDid, (before.get(p.sourceDid) ?? new Set()).add(p.sourceWid));
-  }
-  const moved = new Map<string, string>();
-  for (const r of rows) {
-    if (r.sourceWvm === "v" && r.sourceWid && before.has(r.sourceDid) && !before.get(r.sourceDid)!.has(r.sourceWid)) moved.set(r.sourceDid, r.sourceWid);
-  }
-  const out: NonNullable<VersionRef["sources"]> = {};
-  for (const [did, versionId] of moved) {
-    try {
-      const v = await client.json<{ name?: string }>(`documents/d/${did}/versions/${versionId}`);
-      if (v.name) out[did] = { versionId, name: v.name };
-    } catch (err) {
-      if (!(err instanceof OnshapeError)) throw err;
+): Promise<Pick<VersionRef, "sources" | "from">> {
+  const used = (list: { sourceDid: string | null; sourceWvm: string | null; sourceWid: string | null }[]) => {
+    const out = new Map<string, string>();
+    for (const p of list) if (p.sourceDid && p.sourceWvm === "v" && p.sourceWid) out.set(p.sourceDid, p.sourceWid);
+    return out;
+  };
+  const named = async (docs: Map<string, string>) => {
+    const out: NonNullable<VersionRef["sources"]> = {};
+    for (const [did, versionId] of docs) {
+      const name = await versionName(client, did, versionId);
+      if (name) out[did] = { versionId, name };
     }
+    return out;
+  };
+  return {
+    sources: await named(used(rows)),
+    from: await named(used(existing.filter((p) => !p.isManual && !p.removedFromCadAt))),
+  };
+}
+
+async function versionName(client: OnshapeClient, did: string, versionId: string): Promise<string | null> {
+  const key = `version-name:${versionId}`;
+  const [cached] = await db.select({ payload: onshapeCache.payload }).from(onshapeCache).where(eq(onshapeCache.key, key));
+  if (cached) return (cached.payload as { name: string }).name;
+  try {
+    const v = await client.json<{ name?: string }>(`documents/d/${did}/versions/${versionId}`);
+    if (!v.name) return null;
+    await db.insert(onshapeCache).values({ key, payload: { name: v.name } }).onConflictDoNothing();
+    return v.name;
+  } catch (err) {
+    if (!(err instanceof OnshapeError)) throw err;
+    return null;
   }
-  return out;
 }

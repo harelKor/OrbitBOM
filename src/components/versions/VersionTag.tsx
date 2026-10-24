@@ -9,10 +9,11 @@ import { useEditMode } from "@/components/shell/ModeContext";
 import { CheckIcon } from "@/components/ui/CheckBadge";
 import { Icon } from "@/components/ui/Icon";
 import type { PartVersionTag, VersionTags } from "@/lib/versions/tags";
+import { afterPartsUpdate } from "./afterUpdate";
 import { OPEN_COMMIT_EVENT } from "./events";
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—");
-const versionLabel = (t: PartVersionTag) => `v${t.seq}${t.name ? ` · ${t.name}` : ""}`;
+const versionLabel = (t: PartVersionTag) => `${t.label}${t.name && t.name !== t.label ? ` · ${t.name}` : ""}`;
 
 // A part card's version tag (plan/system-versioning.md §7): a quiet "Up to date" pill with when
 // and by whom the part was last committed, or a red "Outdated" one when other parts of its
@@ -27,11 +28,11 @@ export function VersionTag({ partId, tags }: { partId: string; tags: VersionTags
     <span onClick={(e) => e.stopPropagation()} className="contents">
       <Popover
         hideCaret
-        triggerClassName="inline-flex h-6 items-center gap-1 rounded-full border border-sky-400/30 bg-sky-400/10 px-2 text-[11px] font-semibold text-sky-500 hover:border-sky-400/60"
+        triggerClassName="inline-flex h-6 items-center gap-1 rounded-full border border-sky-400/50 bg-white/90 px-2 text-[11px] font-semibold text-sky-600 shadow-sm backdrop-blur-md hover:border-sky-400"
         trigger={
           <>
             <CheckIcon className="h-3 w-3" />
-            <span className="font-mono tabular-nums">v{tag.seq}</span>
+            <span className="font-mono tabular-nums">{tag.label}</span>
           </>
         }
       >
@@ -63,16 +64,16 @@ function OutdatedTag({ tag, tags, changeKey }: { tag: PartVersionTag | undefined
       const r = await commitChanges(tags.systemId, tags.draft.id, tags.draft.detectedAt, "", changeKey);
       if (r.error) return setError(r.error);
       setOpen(false);
-      router.refresh();
+      afterPartsUpdate(tags.systemId, router);
     });
   return (
     <span onClick={(e) => e.stopPropagation()} className="contents">
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="press inline-flex h-6 items-center gap-1 rounded-full border border-rose-500/40 bg-rose-500/15 px-2 text-[11px] font-semibold text-rose-500 hover:border-rose-500/70"
+        className="press inline-flex h-6 items-center gap-1 rounded-full border border-rose-400 bg-rose-500/90 px-2 text-[11px] font-semibold text-white shadow-sm backdrop-blur-md hover:bg-rose-500"
       >
-        <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+        <span className="h-1.5 w-1.5 rounded-full bg-white" />
         Outdated
       </button>
       <Dialog open={open} onClose={() => setOpen(false)} title="Outdated">

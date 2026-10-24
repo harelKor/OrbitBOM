@@ -144,6 +144,11 @@ function MadePartCard({
           )}
         </div>
         {part.note && <NoteCloud note={part.note} raised={fabControls} />}
+        {versions && !part.isManual && !fabControls && (
+          <div className="absolute right-2 bottom-2">
+            <VersionTag partId={part.id} tags={versions} />
+          </div>
+        )}
         {fabControls && (
           <>
             <button
@@ -200,7 +205,6 @@ function MadePartCard({
 
           <div className="flex min-w-0 flex-wrap items-center gap-1">
             <StatusField part={part} save={save} size="sm" />
-            {versions && !part.isManual && <VersionTag partId={part.id} tags={versions} />}
             {(part.material || part.inventoryItemId || edit) && <MaterialField part={part} save={save} className={pill} />}
             {machines.map((slot) => (
               <span key={slot.key} className="contents">

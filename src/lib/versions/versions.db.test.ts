@@ -40,7 +40,7 @@ else
         const version = input.match(/\/v\/(v\d)\//)![1];
         const wanted = [...input.matchAll(/partId=(\w+)/g)].map((m) => m[1]);
         body = { bodies: Object.fromEntries(wanted.map((id) => [id, { volume: [shapes[version][id]], periphery: [6], principalInertia: [1, 2, 3], hasMass: true }])) };
-      } else if (input.includes("/versions/")) body = { name: "V2 shorter arm" };
+      } else if (input.includes("/versions/")) body = { name: input.match(/versions\/(v\d)/)![1].toUpperCase() };
       else
         body = {
           headers,
@@ -93,7 +93,7 @@ else
       const r = await checkSystem(system.id, member.id);
       // The new version's shapes, and the old version's for parts with none stored yet.
       expect(calls.filter((c) => c.includes("massproperties"))).toHaveLength(2);
-      expect(r.draft?.name).toBe("V2 shorter arm");
+      expect(r.draft?.onshape).toBe("V2");
       expect(r.draft?.changes.map((c) => [c.name, c.change, c.geometry, Object.keys(c.fields)])).toEqual([
         ["Part A", "modified", true, []],
         ["Part B", "modified", false, ["quantity"]],
@@ -117,7 +117,7 @@ else
     it("commits the draft as version 1 over a baseline", async () => {
       const [draft] = await versions();
       const c = await commitDraft(system.id, member.id, { draftId: draft.id, seen: draft.detectedAt.toISOString(), name: "Shorter arm" });
-      expect(c.seq).toBe(1);
+      expect([c.seq, c.label]).toEqual([1, "V2"]);
 
       const all = (await versions()).sort((x, y) => x.seq! - y.seq!);
       expect(all.map((v) => [v.seq, v.state, v.name])).toEqual([

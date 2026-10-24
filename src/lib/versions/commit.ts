@@ -6,6 +6,7 @@ import { autoLink } from "@/lib/inventory/autolink";
 import { partKey, type BomRow } from "@/lib/onshape/bom";
 import { applyBomRows, sigKey } from "@/lib/sync/applyBom";
 import type { DraftRows } from "./detect";
+import { versionLabel } from "./label";
 import { frozenStudio } from "./studio";
 
 const { parts, partVersions, systems, systemVersions } = schema;
@@ -55,6 +56,7 @@ const snapshotOfRow = (r: BomRow, sig: string | null, docMvs: Record<string, str
 export type CommitResult = {
   versionId: string;
   seq: number;
+  label: string; // "V70"
   added: string[];
   updated: number;
   removed: string[];
@@ -99,7 +101,17 @@ export async function commitDraft(
       if (before.length) {
         const [baseline] = await tx
           .insert(systemVersions)
-          .values({ systemId, state: "committed", seq: 0, name: "Baseline", detectedAt: now, committedAt: now, committedBy: memberId })
+          .values({
+            systemId,
+            state: "committed",
+            seq: 0,
+            name: "Baseline",
+            // The Onshape versions the parts were on before.
+            onshapeRef: draft.onshapeRef ? { mv: system.docMicroversions[draft.onshapeRef.did] ?? null, did: draft.onshapeRef.did, sources: draft.onshapeRef.from } : null,
+            detectedAt: now,
+            committedAt: now,
+            committedBy: memberId,
+          })
           .returning({ id: systemVersions.id });
         await pointAt(
           tx,
@@ -171,7 +183,7 @@ export async function commitDraft(
       })
       .where(eq(systems.id, systemId));
     const seq = target?.seq ?? nextSeq;
-    return { versionId, seq, added: applied.added, updated: applied.updated, removed: applied.removed, unknownMachines: rows.unknownMachines, newIds: applied.newIds };
+    return { versionId, seq, label: versionLabel({ seq, onshapeRef: draft.onshapeRef }), added: applied.added, updated: applied.updated, removed: applied.removed, unknownMachines: rows.unknownMachines, newIds: applied.newIds };
   });
 
   // A new part that is an Onshape library part (or product) the inventory knows is linked to

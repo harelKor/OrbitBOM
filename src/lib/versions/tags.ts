@@ -1,10 +1,12 @@
 import "server-only";
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { db, schema } from "@/db";
+import type { VersionRef } from "@/db/schema";
+import { versionLabel } from "./label";
 
 const { members, parts, partVersions, systemVersions } = schema;
 
-export type PartVersionTag = { seq: number; name: string | null; at: string | null; by: string | null };
+export type PartVersionTag = { seq: number; label: string; name: string | null; at: string | null; by: string | null };
 
 // What the part cards' Up to date / Outdated tags show (plan/system-versioning.md §7): each
 // part's committed version, and the parts left Outdated by a draft whose other parts were
@@ -20,7 +22,7 @@ export type VersionTags = {
 export async function loadVersionTags(systemId: string): Promise<VersionTags> {
   const [rows, [draft]] = await Promise.all([
     db
-      .select({ partId: parts.id, seq: systemVersions.seq, name: systemVersions.name, at: systemVersions.committedAt, by: members.name })
+      .select({ partId: parts.id, seq: systemVersions.seq, onshapeRef: systemVersions.onshapeRef, name: systemVersions.name, at: systemVersions.committedAt, by: members.name })
       .from(parts)
       .innerJoin(partVersions, eq(partVersions.id, parts.versionRowId))
       .innerJoin(systemVersions, eq(systemVersions.id, partVersions.versionId))
@@ -31,8 +33,9 @@ export async function loadVersionTags(systemId: string): Promise<VersionTags> {
       .from(systemVersions)
       .where(and(eq(systemVersions.systemId, systemId), eq(systemVersions.state, "draft"))),
   ]);
-  const tag = (r: { seq: number | null; name: string | null; at: Date | null; by: string | null }): PartVersionTag => ({
+  const tag = (r: { seq: number | null; onshapeRef: VersionRef | null; name: string | null; at: Date | null; by: string | null }): PartVersionTag => ({
     seq: r.seq ?? 0,
+    label: versionLabel(r),
     name: r.name,
     at: r.at?.toISOString() ?? null,
     by: r.by,
@@ -42,7 +45,7 @@ export async function loadVersionTags(systemId: string): Promise<VersionTags> {
   const outdated: Record<string, string> = {};
   if (draft?.partialVersionId) {
     const [v] = await db
-      .select({ seq: systemVersions.seq, name: systemVersions.name, at: systemVersions.committedAt, by: members.name })
+      .select({ seq: systemVersions.seq, onshapeRef: systemVersions.onshapeRef, name: systemVersions.name, at: systemVersions.committedAt, by: members.name })
       .from(systemVersions)
       .leftJoin(members, eq(members.id, systemVersions.committedBy))
       .where(inArray(systemVersions.id, [draft.partialVersionId]));
