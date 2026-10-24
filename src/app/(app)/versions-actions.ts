@@ -28,14 +28,16 @@ export async function checkForChanges(systemId: string, quick = false): Promise<
 
 export type CommitResult = { error?: string; message?: string };
 
-// Commit changes: the draft the member reviewed becomes the system's next version.
-export async function commitChanges(systemId: string, draftId: string, seen: string, name: string): Promise<CommitResult> {
+// Commit changes: the draft the member reviewed becomes the system's next version. With `only`
+// (a change's key), just that part is committed and the rest stay Outdated.
+export async function commitChanges(systemId: string, draftId: string, seen: string, name: string, only?: string): Promise<CommitResult> {
   const member = await requireMember();
   if (!isUuid(systemId) || !isUuid(draftId)) return { error: "Unknown system." };
   try {
-    const c = await commitDraft(systemId, member.id, { draftId, seen, name: name.slice(0, 120) });
+    const c = await commitDraft(systemId, member.id, { draftId, seen, name: name.slice(0, 120), only });
     revalidatePath("/robots", "layout");
     const warning = c.unknownMachines.length ? ` Unknown machines in Onshape: ${c.unknownMachines.join(", ")}.` : "";
+    if (only) return { message: `Committed to version ${c.seq}.` };
     return { message: `Committed as version ${c.seq}: ${c.added.length} added, ${c.updated} updated, ${c.removed.length} removed.${warning}` };
   } catch (err) {
     if (err instanceof VersionError) return { error: err.message };

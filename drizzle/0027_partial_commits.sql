@@ -1,0 +1,1 @@
+ALTER TABLE "system_versions" ADD COLUMN "partial_version_id" uuid;

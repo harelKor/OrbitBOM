@@ -13,6 +13,7 @@ import { DrawingsBar } from "./DrawingsBar";
 import { MergeBar, type MergeInfo } from "./MergeBar";
 import { RELEASED_STATUS, ReleaseBar } from "./ReleaseBar";
 import { MERGE_PREFIX, fanOutChanges, isMergeId, mergedRow } from "@/lib/merges/merge";
+import type { VersionTags } from "@/lib/versions/tags";
 import { BomProvider, type InventoryName } from "./BomContext";
 import { matchesTopBar } from "./filter";
 import { KanbanView } from "./KanbanView";
@@ -46,6 +47,7 @@ export function BomView({
   toolbar,
   groupBySystem = false,
   allowRelease = false,
+  versions,
   stickyToolbar = false,
 }: {
   parts: CardPart[];
@@ -60,6 +62,7 @@ export function BomView({
   groupBySystem?: boolean; // card view: one collapsible section per system
   stickyToolbar?: boolean; // a system page: the toolbar stays under the top bar while scrolling
   allowRelease?: boolean; // a system page: the Release button (View and Edit mode)
+  versions?: VersionTags; // a system page: the cards' Up to date / Outdated tags
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -176,7 +179,7 @@ export function BomView({
   ];
 
   return (
-    <BomProvider value={{ inventory, isAdmin, robotId }}>
+    <BomProvider value={{ inventory, isAdmin, robotId, versions }}>
     {/* With the sticky toolbar, a card jumped to (#part-…) lands below both bars. */}
     <div className={`space-y-4 ${selecting ? "pb-20" : ""} ${stickyToolbar ? "md:[&_[id^=part-]]:scroll-mt-36" : ""}`}>
       <div

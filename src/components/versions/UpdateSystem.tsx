@@ -7,6 +7,7 @@ import { useEditMode } from "@/components/shell/ModeContext";
 import type { Draft } from "@/lib/versions/detect";
 import { MODEL_STALE_EVENT } from "@/components/dashboard/modelEvents";
 import { CommitWindow } from "./CommitWindow";
+import { OPEN_COMMIT_EVENT } from "./events";
 
 type ThumbRound = { fetched: number; pending: number; calls: number; failed?: number; error?: string } | { error: string };
 
@@ -57,6 +58,16 @@ export function UpdateSystem({
       } else if (!quick) setMessage(`Up to date with Onshape (${r.calls} Onshape calls).`);
     });
 
+  // An Outdated tag's missed update opens this window.
+  useEffect(() => {
+    const onOpen = () => {
+      setCommitError(null);
+      setOpen(true);
+    };
+    window.addEventListener(OPEN_COMMIT_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_COMMIT_EVENT, onOpen);
+  }, []);
+
   const autoChecked = useRef(false);
   useEffect(() => {
     if (params.get("check") !== "1" || autoChecked.current) return;
@@ -77,14 +88,17 @@ export function UpdateSystem({
     }
   }
 
-  const commit = (name: string) =>
+  const commit = (name: string, only?: string) =>
     startCommit(async () => {
       if (!draft) return;
       setCommitError(null);
-      const r = await commitChanges(systemId, draft.id, new Date(draft.detectedAt).toISOString(), name);
+      const r = await commitChanges(systemId, draft.id, new Date(draft.detectedAt).toISOString(), name, only);
       if (r.error) return setCommitError(r.error);
-      setOpen(false);
-      setDraft(null);
+      const rest = only ? draft.changes.filter((c) => c.key !== only) : [];
+      if (!rest.length) {
+        setOpen(false);
+        setDraft(null);
+      } else setDraft({ ...draft, changes: rest });
       setMessage(r.message ?? null);
       // Outside the transition, so the committed BOM shows now rather than when they finish:
       // new thumbnails, and the 3D model rebuilt from the assembly (RobotViewer listens).
@@ -131,6 +145,7 @@ export function UpdateSystem({
           key={draft.id + String(draft.detectedAt)}
           open={open}
           onClose={() => setOpen(false)}
+          systemId={systemId}
           draft={draft}
           thumbs={thumbs}
           canCommit={edit}

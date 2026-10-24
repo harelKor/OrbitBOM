@@ -12,6 +12,7 @@ import { statusTint } from "@/components/ui/statusTint";
 import { CheckBadge, CheckIcon } from "@/components/ui/CheckBadge";
 import { Icon } from "@/components/ui/Icon";
 import { StatusPill } from "@/components/ui/StatusPill";
+import { VersionTag } from "@/components/versions/VersionTag";
 import { useBom } from "./BomContext";
 import { PART_FILE_TYPES } from "@/config/fileTypes";
 import { MachineField, MaterialField, NameField, QuantityField, SLOTS, StatusField, TypeBadge, TypeField, type SaveFn } from "./fields";
@@ -65,7 +66,7 @@ function MadePartCard({
   checked?: boolean; // Ready for QA: checked off this visit (struck through; a second click undoes it)
 }) {
   const edit = useEditMode();
-  const { robotId } = useBom();
+  const { robotId, versions } = useBom();
   const machines = SLOTS.filter((s) => part[s.key]);
   // The process being worked on: the first slot whose done counter hasn't reached the quantity.
   const current = machines.find((s) => part[s.done] < Math.max(part.quantity, 1));
@@ -199,6 +200,7 @@ function MadePartCard({
 
           <div className="flex min-w-0 flex-wrap items-center gap-1">
             <StatusField part={part} save={save} size="sm" />
+            {versions && !part.isManual && <VersionTag partId={part.id} tags={versions} />}
             {(part.material || part.inventoryItemId || edit) && <MaterialField part={part} save={save} className={pill} />}
             {machines.map((slot) => (
               <span key={slot.key} className="contents">

@@ -1,11 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import dynamic from "next/dynamic";
+import { useEffect, useState } from "react";
 import { Dialog } from "@/components/Dialog";
 import { Icon } from "@/components/ui/Icon";
 import { getMachine } from "@/config/machines";
 import type { VersionChange } from "@/db/schema";
+import type { ViewerModel } from "@/components/dashboard/ModelCanvas";
 import type { Draft } from "@/lib/versions/detect";
+
+const ModelCanvas = dynamic(() => import("@/components/dashboard/ModelCanvas").then((m) => m.ModelCanvas), { ssr: false });
+const NO_COLORS = new Map<string, string>();
 
 const CHANGE_CHIP: Record<VersionChange["change"] | "props", { label: string; className: string }> = {
   added: { label: "Added", className: "bg-emerald-500/15 text-emerald-600" },
@@ -36,10 +41,12 @@ function shown(field: string, value: unknown) {
 const kindOf = (c: VersionChange) => (c.change === "modified" && !c.geometry ? "props" : c.change);
 
 // The Commit Changes window (plan/system-versioning.md §7): what changed in the Manufacture
-// assembly, a name for the version, and Commit. In View mode it is read-only.
+// assembly, a name for the version, and Commit. Each part's box opens its Before → After 3D
+// preview and can commit that part alone. In View mode it is read-only.
 export function CommitWindow({
   open,
   onClose,
+  systemId,
   draft,
   thumbs,
   canCommit,
@@ -49,12 +56,13 @@ export function CommitWindow({
 }: {
   open: boolean;
   onClose: () => void;
+  systemId: string;
   draft: Draft;
   thumbs: Record<string, string | null>;
   canCommit: boolean;
   committing: boolean;
   error: string | null;
-  onCommit: (name: string) => void;
+  onCommit: (name: string, only?: string) => void;
 }) {
   const [name, setName] = useState(draft.name ?? "");
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -97,7 +105,17 @@ export function CommitWindow({
 
         <ul className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
           {draft.changes.map((c) => (
-            <ChangeBox key={`${c.change}:${c.key}`} change={c} thumb={c.partId ? (thumbs[c.partId] ?? null) : null} open={expanded === c.key} onToggle={() => setExpanded(expanded === c.key ? null : c.key)} />
+            <ChangeBox
+              key={`${c.change}:${c.key}`}
+              systemId={systemId}
+              draftId={draft.id}
+              change={c}
+              thumb={c.partId ? (thumbs[c.partId] ?? null) : null}
+              open={expanded === c.key}
+              onToggle={() => setExpanded(expanded === c.key ? null : c.key)}
+              onCommit={canCommit ? () => onCommit(name, c.key) : undefined}
+              committing={committing}
+            />
           ))}
         </ul>
       </div>
@@ -105,7 +123,25 @@ export function CommitWindow({
   );
 }
 
-function ChangeBox({ change: c, thumb, open, onToggle }: { change: VersionChange; thumb: string | null; open: boolean; onToggle: () => void }) {
+function ChangeBox({
+  systemId,
+  draftId,
+  change: c,
+  thumb,
+  open,
+  onToggle,
+  onCommit,
+  committing,
+}: {
+  systemId: string;
+  draftId: string;
+  change: VersionChange;
+  thumb: string | null;
+  open: boolean;
+  onToggle: () => void;
+  onCommit?: () => void;
+  committing: boolean;
+}) {
   const chip = CHANGE_CHIP[kindOf(c)];
   const fields = Object.entries(c.fields);
   return (
@@ -138,8 +174,68 @@ function ChangeBox({ change: c, thumb, open, onToggle }: { change: VersionChange
               ))}
             </div>
           )}
+          <Previews systemId={systemId} draftId={draftId} change={c} />
+          {onCommit && (
+            <div className="flex justify-end">
+              <button type="button" className="btn" disabled={committing} onClick={onCommit}>
+                Commit this part
+              </button>
+            </div>
+          )}
         </div>
       )}
     </li>
   );
 }
+
+// Before → After for a changed shape; one view for an added or removed part, or when only its
+// properties changed.
+function Previews({ systemId, draftId, change: c }: { systemId: string; draftId: string; change: VersionChange }) {
+  const before = c.partId && c.change !== "added" ? { side: "before" as const, partId: c.partId } : null;
+  const after = c.change !== "removed" ? { side: "after" as const, draftId, key: c.key } : null;
+  if (c.change === "modified" && !c.geometry)
+    return (
+      <div className="grid grid-cols-1">
+        <Preview systemId={systemId} req={before ?? after!} label="Shape unchanged" />
+      </div>
+    );
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+      {before && <Preview systemId={systemId} req={before} label="Before" />}
+      {before && after && <Icon name="arrow" className="h-5 w-5 text-accent" />}
+      {after && <Preview systemId={systemId} req={after} label={before ? "After" : "Added"} />}
+      {!after && <span className="col-span-2 text-xs text-subtle">Removed from the assembly</span>}
+    </div>
+  );
+}
+
+type PreviewReq = { side: "before" | "after"; partId?: string; draftId?: string; key?: string };
+
+function Preview({ systemId, req, label }: { systemId: string; req: PreviewReq; label: string }) {
+  const [model, setModel] = useState<ViewerModel | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const body = JSON.stringify(req);
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/systems/${systemId}/preview`, { method: "POST", headers: { "content-type": "application/json" }, body })
+      .then(async (res) => {
+        const r = (await res.json().catch(() => ({}))) as { model?: ViewerModel; error?: string };
+        if (cancelled) return;
+        if (r.model) setModel(r.model);
+        else setError(r.error ?? `The 3D preview failed (${res.status}).`);
+      })
+      .catch(() => !cancelled && setError("The 3D preview couldn't load."));
+    return () => {
+      cancelled = true;
+    };
+  }, [systemId, body]);
+  return (
+    <div className="relative h-44 overflow-hidden rounded-lg border border-line bg-[radial-gradient(ellipse_at_50%_35%,var(--color-surface)_0%,var(--color-raised)_75%)]">
+      <span className="absolute top-2 left-2 z-10 rounded-full bg-surface/90 px-2 py-0.5 text-[11px] font-semibold text-muted">{label}</span>
+      {model && <ModelCanvas model={model} colors={NO_COLORS} mode="plain" locateKey={null} onLocated={noop} />}
+      {!model && <div className="absolute inset-0 flex items-center justify-center p-3 text-center text-xs text-muted">{error ?? "Loading…"}</div>}
+    </div>
+  );
+}
+
+const noop = () => {};

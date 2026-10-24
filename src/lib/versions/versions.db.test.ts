@@ -20,6 +20,7 @@ else
     const { encrypt } = await import("@/lib/crypto");
     const { checkSystem } = await import("./detect");
     const { commitDraft, VersionError } = await import("./commit");
+    const { loadVersionTags } = await import("./tags");
 
     const headers = [
       { id: "n", name: "Name" },
@@ -28,7 +29,7 @@ else
     let source = { wvmType: "v", wvmId: "v1" };
     // Each BOM row: partId → [name, quantity]. Shapes: version → partId → volume.
     let bomParts: Record<string, [string, number]> = { A: ["Part A", 2], B: ["Part B", 4] };
-    const shapes: Record<string, Record<string, number>> = { v1: { A: 1, B: 2 }, v2: { A: 1.5, B: 2 }, v3: { A9: 1.5, B9: 2 } };
+    const shapes: Record<string, Record<string, number>> = { v1: { A: 1, B: 2 }, v2: { A: 1.5, B: 2 }, v3: { A9: 1.5, B9: 2 }, v4: { A9: 1.7, B9: 2 } };
     let microversion = "mv1";
     const calls: string[] = [];
     vi.stubGlobal("fetch", async (input: string) => {
@@ -154,5 +155,32 @@ else
         .from(schema.systemVersions)
         .where(and(eq(schema.systemVersions.systemId, system.id), eq(schema.systemVersions.state, "draft")));
       expect(drafts).toHaveLength(0);
+    });
+
+    it("commits one part alone and leaves the rest Outdated until committed", async () => {
+      source = { wvmType: "v", wvmId: "v4" };
+      bomParts = { A9: ["Part A", 2], B9: ["Part B", 7] };
+      microversion = "mv3";
+      const { draft } = await checkSystem(system.id, member.id);
+      const [a, b] = await live();
+      const keyOf = (id: string) => draft!.changes.find((c) => c.partId === id)!.key;
+
+      const one = await commitDraft(system.id, member.id, { draftId: draft!.id, only: keyOf(a.id), name: "Arm plate" });
+      expect(one.seq).toBe(2);
+      const [a2, b2] = await live();
+      expect([a2.shapeSig?.slice(0, 7), b2.quantity]).toEqual(["1.70000", 6]);
+      let tags = await loadVersionTags(system.id);
+      expect(tags.parts[a.id]).toMatchObject({ seq: 2, name: "Arm plate" });
+      expect(Object.keys(tags.outdated)).toEqual([b.id]);
+      expect(tags.missed).toMatchObject({ seq: 2 });
+
+      await commitDraft(system.id, member.id, { draftId: draft!.id, only: tags.outdated[b.id] });
+      expect((await live())[1].quantity).toBe(7);
+      tags = await loadVersionTags(system.id);
+      expect(tags.outdated).toEqual({});
+      expect(tags.draft).toBeNull();
+      expect(tags.parts[b.id]).toMatchObject({ seq: 2 });
+      const v2 = (await versions()).find((v) => v.seq === 2)!;
+      expect(v2.changes.map((c) => c.name)).toEqual(["Part A", "Part B"]);
     });
   });

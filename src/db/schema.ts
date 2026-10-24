@@ -430,6 +430,7 @@ export type PartSnapshot = {
   process1: string | null;
   process2: string | null;
   sig: string | null; // shape fingerprint (src/lib/versions/shape.ts)
+  studio?: string | null; // its Part Studio, frozen (src/lib/versions/studio.ts), for the 3D preview
 };
 
 // A change a check found (or a commit made): what the Commit and Versions windows list.
@@ -464,6 +465,9 @@ export const systemVersions = pgTable(
     detectedBy: uuid("detected_by").references(() => members.id, { onDelete: "set null" }),
     committedAt: timestamp("committed_at", { withTimezone: true }),
     committedBy: uuid("committed_by").references(() => members.id, { onDelete: "set null" }),
+    // A draft some of whose parts were committed one at a time: the version they went into. The
+    // draft's other parts are Outdated until they are committed too.
+    partialVersionId: uuid("partial_version_id"),
   },
   (t) => [
     uniqueIndex("system_versions_seq_uq").on(t.systemId, t.seq),

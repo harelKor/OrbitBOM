@@ -21,6 +21,7 @@ import { robotModelBuiltAt } from "@/lib/model/build";
 import { isEditMode } from "@/lib/mode";
 import { isUuid } from "@/lib/uuid";
 import { loadDraft } from "@/lib/versions/detect";
+import { loadVersionTags } from "@/lib/versions/tags";
 
 // Update System checks Onshape in a server action; thumbnails follow from /api/systems/[id]/thumbnails.
 export const maxDuration = 60;
@@ -34,7 +35,7 @@ export default async function SystemPage({
   if (!isUuid(robotId) || !isUuid(systemId)) notFound();
   // Everything in one parallel round: the page waits for the slowest query, not their sum.
   const member = await requireMember();
-  const [data, parts, merges, inventory, edit, modelBuiltAt, fabActions, systemActions, draft] = await Promise.all([
+  const [data, parts, merges, inventory, edit, modelBuiltAt, fabActions, systemActions, draft, versions] = await Promise.all([
     getSystem(robotId, systemId),
     listSystemParts(systemId),
     listSystemMerges(systemId),
@@ -44,6 +45,7 @@ export default async function SystemPage({
     listRecentActions({ robotId, memberId: member.id, systemId, fabOnly: true }, 30),
     listRecentActions({ robotId, memberId: member.id, systemId }, 30),
     loadDraft(systemId),
+    loadVersionTags(systemId),
   ]);
   if (!data) notFound();
   const { system, robot, breakdown } = data;
@@ -116,7 +118,7 @@ export default async function SystemPage({
         )}
       </div>
 
-      <BomView parts={parts} inventory={inventory} isAdmin={member.isAdmin} merges={merges} mergeSystemId={system.id} robotId={robot.id} allowRelease stickyToolbar toolbar={<ManualPartButton key="manual-part" systemId={system.id} />} />
+      <BomView parts={parts} inventory={inventory} isAdmin={member.isAdmin} merges={merges} mergeSystemId={system.id} robotId={robot.id} allowRelease versions={versions} stickyToolbar toolbar={<ManualPartButton key="manual-part" systemId={system.id} />} />
       {parts.length === 0 && (
         <p className="rounded-lg border border-dashed border-line-strong p-8 text-center text-sm text-muted">
           {system.assemblyUrl
