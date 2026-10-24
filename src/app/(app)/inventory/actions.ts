@@ -15,6 +15,7 @@ import { inventoryItemDetail, listInventory, robotInventory, usageOf } from "@/l
 import { autoLink } from "@/lib/inventory/autolink";
 import { categoryOf, getCategory, slugify, type InvCategory } from "@/lib/inventory/categories";
 import type { ImportRow } from "@/lib/inventory/import";
+import { pushItemToCards } from "@/lib/inventory/cotsSync";
 import { recordItemChanges } from "@/lib/inventory/history";
 import { moveStock, setStock } from "@/lib/inventory/moves";
 import { readProduct, saveProductPhoto, toUsd } from "@/lib/inventory/product";
@@ -79,6 +80,12 @@ export async function saveItem(itemId: string | null, input: ItemInput): Promise
       if (!before) return null;
       await tx.update(inventoryItems).set(values).where(eq(inventoryItems.id, id));
       await recordItemChanges(tx, id, before, values, ctx);
+      // Its COTS cards show the same product.
+      await pushItemToCards(tx, id, {
+        ...(before.name !== values.name && { name: values.name }),
+        ...(JSON.stringify(before.cotsLinks) !== JSON.stringify(values.cotsLinks) && { cotsLinks: values.cotsLinks }),
+        ...(before.price !== values.price && { price: values.price }),
+      });
     } else {
       [{ id }] = await tx.insert(inventoryItems).values(values).returning({ id: inventoryItems.id });
       await recordItemChanges(tx, id!, null, values, ctx);

@@ -13,7 +13,10 @@ const { parts, systems, robots, members, partFiles, merges, mergeMembers, partDr
 
 export type PartFileRef = { id: string; type: string; filename: string };
 
-export type BomPart = typeof parts.$inferSelect & {
+// Loaded through the part's system, so systemId is always set; only a COTS card added on the COTS
+// page has none (systemId "" there).
+export type BomPart = Omit<typeof parts.$inferSelect, "systemId"> & {
+  systemId: string;
   status: string;
   systemName: string;
   lastModifiedByName: string | null;
@@ -26,11 +29,9 @@ export type BomPart = typeof parts.$inferSelect & {
   shelfSuggestion: ShelfSuggestion | null;
 };
 
-async function load(where: ReturnType<typeof and>): Promise<BomPart[]> {
-  const rows = await db
-    .select({ part: parts, systemName: systems.name, lastModifiedByName: members.name, drawingOf: partDrawings.partId })
-    .from(parts)
-    .innerJoin(systems, eq(systems.id, parts.systemId))
+async function load(where: ReturnType<typeof and>, { anySystem = false } = {}): Promise<BomPart[]> {
+  const base = db.select({ part: parts, systemName: systems.name, lastModifiedByName: members.name, drawingOf: partDrawings.partId }).from(parts);
+  const rows = await (anySystem ? base.leftJoin(systems, eq(systems.id, parts.systemId)) : base.innerJoin(systems, eq(systems.id, parts.systemId)))
     .leftJoin(members, eq(members.id, parts.lastModifiedBy))
     .leftJoin(partDrawings, eq(partDrawings.partId, parts.id))
     .where(where)
@@ -56,12 +57,13 @@ async function load(where: ReturnType<typeof and>): Promise<BomPart[]> {
   for (const { partId, ...f } of files) filesOf.set(partId, [...(filesOf.get(partId) ?? []), f]);
   return rows.map((r) => ({
     ...r.part,
+    systemId: r.part.systemId ?? "",
     groups: groups.get(r.part.id) ?? [],
     thumbUrl: thumbs.get(r.part.id) ?? null,
     modelKey:
       r.part.sourceDid && r.part.sourceEid && r.part.onshapePartId ? partKey(r.part.sourceDid, r.part.sourceEid, r.part.onshapePartId) : null,
     status: computeStatus(r.part),
-    systemName: r.systemName,
+    systemName: r.systemName ?? "",
     lastModifiedByName: r.lastModifiedByName,
     hasDrawing: r.drawingOf !== null,
     files: filesOf.get(r.part.id) ?? [],
@@ -127,30 +129,31 @@ export async function listSystemMerges(systemId: string) {
   return [...out.values()];
 }
 
-export type CotsPart = BomPart & { robotId: string; robotName: string };
+export type CotsPart = BomPart & { robotId: string | null; robotName: string | null };
 
-// The COTS page: live COTS parts on active robots, each with its robot; robots newest first.
+// The COTS page: live COTS parts on active robots, each with its robot (null for a card in the
+// General section, added on the COTS page for no robot); robots newest first.
 export async function listCotsParts(): Promise<{ robots: { id: string; name: string }[]; parts: CotsPart[] }> {
-  const systemRows = await db
-    .select({ id: systems.id, robotId: robots.id, robotName: robots.name })
-    .from(systems)
-    .innerJoin(robots, eq(robots.id, systems.robotId))
-    .where(eq(robots.archived, false))
-    .orderBy(sql`${robots.year} desc`, asc(robots.name));
-  const robotList = [...new Map(systemRows.map((s) => [s.robotId, { id: s.robotId, name: s.robotName }])).values()];
-  if (!systemRows.length) return { robots: robotList, parts: [] };
-  const robotOf = new Map(systemRows.map((s) => [s.id, s]));
-  const rows = await load(
-    and(
-      inArray(
-        parts.systemId,
-        systemRows.map((s) => s.id),
-      ),
-      isNull(parts.removedFromCadAt),
-      eq(parts.classification, "cots"),
-    ),
-  );
-  return { robots: robotList, parts: rows.map((p) => ({ ...p, robotId: robotOf.get(p.systemId)!.robotId, robotName: robotOf.get(p.systemId)!.robotName })) };
+  const [robotRows, systemRows] = await Promise.all([
+    db.select({ id: robots.id, name: robots.name }).from(robots).where(eq(robots.archived, false)).orderBy(sql`${robots.year} desc`, asc(robots.name)),
+    db.select({ id: systems.id, robotId: systems.robotId }).from(systems).innerJoin(robots, eq(robots.id, systems.robotId)).where(eq(robots.archived, false)),
+  ]);
+  const robotOfSystem = new Map(systemRows.map((s) => [s.id, s.robotId]));
+  const nameOf = new Map(robotRows.map((r) => [r.id, r.name]));
+  const own = [
+    isNull(parts.systemId),
+    ...(systemRows.length ? [inArray(parts.systemId, systemRows.map((s) => s.id))] : []),
+  ];
+  const rows = await load(and(or(...own), isNull(parts.removedFromCadAt), eq(parts.classification, "cots")), { anySystem: true });
+  return {
+    robots: robotRows,
+    parts: rows.flatMap((p) => {
+      const robotId = p.systemId ? robotOfSystem.get(p.systemId)! : p.robotId;
+      // A system-less card of an archived robot stays with that robot.
+      if (robotId && !nameOf.has(robotId)) return [];
+      return [{ ...p, robotId, robotName: robotId ? nameOf.get(robotId)! : null }];
+    }),
+  };
 }
 
 // How many COTS parts of active robots are in each status, for the COTS home page.
@@ -158,9 +161,10 @@ export async function countCotsStatuses(): Promise<Map<string, number>> {
   const rows = await db
     .select({ classification: parts.classification, designState: parts.designState, quantity: parts.quantity, preProcess: parts.preProcess, process1: parts.process1, process2: parts.process2, donePreprocess: parts.donePreprocess, doneProcess1: parts.doneProcess1, doneProcess2: parts.doneProcess2 })
     .from(parts)
-    .innerJoin(systems, eq(systems.id, parts.systemId))
-    .innerJoin(robots, eq(robots.id, systems.robotId))
-    .where(and(eq(robots.archived, false), isNull(parts.removedFromCadAt), eq(parts.classification, "cots")));
+    .leftJoin(systems, eq(systems.id, parts.systemId))
+    .leftJoin(robots, eq(robots.id, sql`coalesce(${systems.robotId}, ${parts.robotId})`))
+    // General cards (no system, no robot) count too.
+    .where(and(or(isNull(robots.id), eq(robots.archived, false)), isNull(parts.removedFromCadAt), eq(parts.classification, "cots")));
   const counts = new Map<string, number>();
   for (const r of rows) counts.set(computeStatus(r), (counts.get(computeStatus(r)) ?? 0) + 1);
   return counts;

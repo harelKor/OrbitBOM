@@ -38,7 +38,7 @@ export async function listRobots(): Promise<RobotSummary[]> {
   const robotOf = new Map(allSystems.map((s) => [s.id, s.robotId]));
   return all.map((robot) => ({
     ...robot,
-    breakdown: statusBreakdown(rows.filter((r) => robotOf.get(r.systemId) === robot.id)),
+    breakdown: statusBreakdown(rows.filter((r) => robotOf.get(r.systemId!) === robot.id)),
   }));
 }
 

@@ -79,6 +79,7 @@ export async function deleteManualPart(partId: string): Promise<ActionResult> {
     .returning({ id: schema.parts.id });
   if (deleted.length) await deleteObjects(keys);
   revalidatePath("/robots", "layout");
+  revalidatePath("/cots", "layout");
   return {};
 }
 

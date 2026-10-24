@@ -209,7 +209,7 @@ export function ItemPage({
                       const covered = usage!.coveredOf.get(p.partId) ?? 0;
                       return (
                         <li key={p.partId} className="flex items-center gap-2 py-1.5">
-                          <Link href={p.systemId ? `/robots/${p.robotId}/systems/${p.systemId}#part-${p.partId}` : `/robots/${p.robotId}`} className="min-w-0 flex-1 truncate hover:text-accent">
+                          <Link href={p.systemId ? `/robots/${p.robotId}/systems/${p.systemId}#part-${p.partId}` : p.robotId ? `/robots/${p.robotId}` : "/cots/released"} className="min-w-0 flex-1 truncate hover:text-accent">
                             <span className="text-muted">{p.systemName} › </span>
                             {p.partName}
                           </Link>

@@ -34,6 +34,7 @@ export function AddBox({
   defaultLocationId = null,
   placeholder,
   onPick,
+  newStock = "1",
 }: {
   q: string;
   setQ: (q: string) => void;
@@ -45,6 +46,7 @@ export function AddBox({
   defaultLocationId?: string | null;
   placeholder: string;
   onPick?: (itemId: string) => void; // a part's details window: an item picked or added links the part to it
+  newStock?: string; // what a new item starts with in stock (the COTS page adds items still to buy: "0")
 }) {
   const edit = useEditMode();
   const { openItem } = useInventoryPopup();
@@ -77,7 +79,7 @@ export function AddBox({
 
   const start = (over: Partial<Draft>) => {
     const cat = getCategory(categories, over.category ?? null);
-    setDraft(emptyDraft({ locationId: defaultLocationId ?? categoryLocation(cat, items), locationTouched: !!defaultLocationId, ...over }));
+    setDraft(emptyDraft({ inStock: newStock, locationId: defaultLocationId ?? categoryLocation(cat, items), locationTouched: !!defaultLocationId, ...over }));
     setSaved(null);
     setFocus(false);
   };
@@ -102,7 +104,7 @@ export function AddBox({
   const quickSave = () =>
     startQuickSave(async () => {
       const draft = emptyDraft({ category: quickCat!.id, specs: quick!.specs, locationId: defaultLocationId ?? categoryLocation(quickCat, items) });
-      const r = await saveItem(null, { name: quickName, category: draft.category, specs: draft.specs, inStock: "1", conditionId: null, locationId: draft.locationId, links: [], price: null, imageUrl: null });
+      const r = await saveItem(null, { name: quickName, category: draft.category, specs: draft.specs, inStock: newStock, conditionId: null, locationId: draft.locationId, links: [], price: null, imageUrl: null });
       if (r.error || !r.id) return setReadError(r.error ?? "Couldn't save.");
       if (onPick) {
         onPick(r.id);
@@ -161,7 +163,7 @@ export function AddBox({
               onClick={() => (quickWhole ? quickSave() : custom(quick!.categoryId))}
               icon="spark"
               title={quickSaving ? "Adding…" : `Add “${quickName}”`}
-              detail={quickWhole ? `${quickCat!.label} · Enter adds it, 1 in stock` : `${quickCat!.label} · Enter to finish the details`}
+              detail={quickWhole ? `${quickCat!.label} · Enter adds it, ${newStock} in stock` : `${quickCat!.label} · Enter to finish the details`}
             />
           )}
 

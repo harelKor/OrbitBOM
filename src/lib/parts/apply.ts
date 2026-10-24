@@ -5,13 +5,17 @@ import { db, schema } from "@/db";
 import { COTS_IN_STOCK, ORDER_STATUSES, cotsStatusOf } from "@/config/cots";
 import { usageOf } from "@/lib/data/inventory";
 import { isFabFinished } from "@/lib/fab";
+import { fillCardFromItem, pushCardToItem } from "@/lib/inventory/cotsSync";
 import { normName, onshapeKeyOf } from "@/lib/inventory/match";
 import { moveStock } from "@/lib/inventory/moves";
+import { computeStatus } from "@/lib/status";
 import { currentVisit } from "@/lib/visits";
 import { planPartUpdate, type PartChanges, type Plan } from "./changes";
 
 const { parts, partHistory, inventoryItems } = schema;
 const ORDERING = ORDER_STATUSES.filter((s) => s !== COTS_IN_STOCK) as string[];
+
+const inStockNow = (p: typeof parts.$inferSelect) => p.classification === "cots" && computeStatus(p) === COTS_IN_STOCK;
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Ctx = {
@@ -77,6 +81,8 @@ export async function applyEachPartChanges(
           ...set,
           // Made parts carry when they were finished; a part sent back to work loses it.
           fabFinishedAt: isFabFinished({ ...row, ...set }) ? (row.fabFinishedAt ?? new Date()) : null,
+          // A COTS part keeps when it arrived while it stays In Stock; leaving In Stock un-clears it.
+          ...(inStockNow(after) ? { cotsInStockAt: row.cotsInStockAt ?? new Date() } : { cotsInStockAt: null, cotsClearedAt: null }),
           lastModifiedAt: new Date(),
           lastModifiedBy: ctx.memberId,
         })
@@ -95,7 +101,12 @@ export async function applyEachPartChanges(
         })),
       );
       if (received) await moveStock(tx, { itemId: after.inventoryItemId!, delta: received, reason: "received", partId: row.id }, { memberId: ctx.memberId, via: ctx.via, batchId });
-      if (set.inventoryItemId) await rememberLink(tx, set.inventoryItemId, row);
+      if (set.inventoryItemId) {
+        await rememberLink(tx, set.inventoryItemId, row);
+        await fillCardFromItem(tx, after, set.inventoryItemId);
+      }
+      // Onshape sync doesn't touch the COTS fields; an edit by a member or AI reaches the item.
+      if (ctx.via !== "sync") await pushCardToItem(tx, row, after, { memberId: ctx.memberId, via: ctx.via, batchId });
       await ctx.afterEach?.(tx, row, plan);
     }
     return { batchId, changed };

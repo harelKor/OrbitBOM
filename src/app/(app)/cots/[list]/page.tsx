@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CotsView } from "@/components/cots/CotsView";
 import { requireMember } from "@/lib/auth";
+import { listInventory } from "@/lib/data/inventory";
 import { listCotsParts } from "@/lib/data/parts";
 
 const LISTS = {
@@ -15,7 +16,8 @@ export default async function CotsListPage({ params }: { params: Promise<{ list:
   const { list } = await params;
   const page = LISTS[list as keyof typeof LISTS];
   if (!page) notFound();
-  const { robots, parts } = await listCotsParts();
+  // Released's search box looks through the shelf.
+  const [{ robots, parts }, inventory] = await Promise.all([listCotsParts(), page.list === "released" ? listInventory() : null]);
   return (
     <div className="space-y-5">
       <div>
@@ -25,7 +27,12 @@ export default async function CotsListPage({ params }: { params: Promise<{ list:
         <h1 className="display text-3xl text-accent">{page.title}</h1>
         <p className="mt-1 max-w-3xl text-sm text-muted">{page.text}</p>
       </div>
-      <CotsView list={page.list} parts={parts} robots={robots} />
+      <CotsView
+        list={page.list}
+        parts={parts}
+        robots={robots}
+        shelf={inventory ? { items: inventory.items, categories: inventory.categories, locations: inventory.locations, conditions: inventory.conditions } : undefined}
+      />
     </div>
   );
 }

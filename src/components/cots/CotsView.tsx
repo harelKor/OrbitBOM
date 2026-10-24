@@ -1,15 +1,19 @@
 "use client";
 
-import { useMemo, useOptimistic, useState, useTransition } from "react";
-import { COTS_CATEGORIES, COTS_IN_STOCK, COTS_ORDERED, COTS_RELEASED, ORDER_STATUSES, type CotsCategoryId } from "@/config/cots";
-import { updateCotsParts } from "@/app/(app)/cots/actions";
+import { useOptimistic, useState, useTransition } from "react";
+import { COTS_CATEGORIES, COTS_IN_STOCK, COTS_ORDERED, COTS_RELEASED, IN_STOCK_SHOWN_DAYS, ORDER_STATUSES, getCotsStatus, type CotsCategoryId } from "@/config/cots";
+import { addCotsFromItem, clearInStock, updateCotsParts } from "@/app/(app)/cots/actions";
 import { BomProvider, useBom } from "@/components/bom/BomContext";
 import { PartStage, type StageView } from "@/components/dashboard/PartStage";
+import { AddBox } from "@/components/inventory/AddBox";
+import type { Condition, InvCategory, Item, Location } from "@/components/inventory/types";
+import { useEditMode } from "@/components/shell/ModeContext";
 import { statusTint } from "@/components/ui/statusTint";
 import { StatusField } from "@/components/bom/fields";
 import { Thumb } from "@/components/bom/Thumb";
 import { ownerPartId, partTitle, type CardPart } from "@/components/bom/types";
 import { Chevron } from "@/components/ui/Chevron";
+import { Icon } from "@/components/ui/Icon";
 import { Segmented } from "@/components/ui/Segmented";
 import { cotsCategoryOf, cotsTotal, groupSameCots, siteOf, spreadCotsChanges } from "@/lib/cots";
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
@@ -17,15 +21,22 @@ import { computeStatus } from "@/lib/status";
 import { CotsCard, OrderStatusButton } from "./CotsCard";
 import { formatPrice, useCurrency } from "./currency";
 
-export type CotsViewPart = CardPart & { robotId: string; robotName: string };
+// robotId null: the General section (a card added on the COTS page for no robot).
+export type CotsViewPart = CardPart & { robotId: string | null; robotName: string | null; cotsInStockAt: Date | null; cotsClearedAt: Date | null };
+// The shelf, for Released's search box.
+export type CotsShelf = { items: Item[]; categories: InvCategory[]; locations: Location[]; conditions: Condition[] };
 type Edit = { id: string; changes: PartChanges };
 // One card: a part, or the same part from several systems (members) shown with the total amount.
 type Row = { key: string; part: CardPart; members: CardPart[] };
 // Dragging cards between Released's robot sections and its In order list section.
 const DRAG_TYPE = "application/x-orbit-cots";
 type DragLoad = { ids: string[]; from: "list" | "ordered" };
+type Place = { robotId: string | null; name: string };
 
 const ORDERING = ORDER_STATUSES.filter((s) => s !== COTS_IN_STOCK) as string[];
+const SHOWN_MS = IN_STOCK_SHOWN_DAYS * 24 * 60 * 60 * 1000;
+const NO_VENDOR = "No vendor";
+const vendorOf = (p: CardPart) => (p.cotsLinks?.[0] ? siteOf(p.cotsLinks[0]) : NO_VENDOR);
 
 function shelfOf(members: CardPart[]) {
   const first = members.find((m) => m.shelf)?.shelf;
@@ -34,11 +45,24 @@ function shelfOf(members: CardPart[]) {
   return { ...first, covered: same.reduce((n, m) => n + (m.shelf?.covered ?? 0), 0) };
 }
 
-// The COTS page's Released and Order List: filter boxes on top, then a General section (parts that
-// belong to no robot) and one section per robot, as cards or a table. Released has Send to order;
-// on the Order List a part set In Stock is crossed out and moves down to In stock once the page
-// is left.
-export function CotsView({ list, parts, robots }: { list: "released" | "order"; parts: CotsViewPart[]; robots: { id: string; name: string }[] }) {
+// The COTS page's Released and Order List: compact filter boxes on top, then a General section
+// (parts that belong to no robot) and one section per robot, or one per vendor, as cards or a
+// table. Released has a search box that adds shelf items or new products as cards, and Send to
+// order; the Order List has status filters, and a part set In Stock there is crossed out and
+// moves down to In stock once the page is left. The In stock sections show a part for a week after
+// it arrived, or until its X.
+export function CotsView({
+  list,
+  parts,
+  robots,
+  shelf,
+}: {
+  list: "released" | "order";
+  parts: CotsViewPart[];
+  robots: { id: string; name: string }[];
+  shelf?: CotsShelf;
+}) {
+  const edit = useEditMode();
   const [optimistic, addOptimistic] = useOptimistic(parts, (state, edits: Edit[]) =>
     state.map((p) => {
       const e = edits.find((x) => x.id === p.id);
@@ -47,13 +71,22 @@ export function CotsView({ list, parts, robots }: { list: "released" | "order"; 
   );
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   // Parts set In Stock on this visit stay in place, crossed out.
   const [struck, setStruck] = useState<Set<string>>(new Set());
+  // Parts whose X was pressed on this visit, gone before the server answers.
+  const [cleared, setCleared] = useState<Set<string>>(new Set());
+  const [now] = useState(() => Date.now());
   const [category, setCategory] = useState<CotsCategoryId | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [view, setView] = useState<"cards" | "table">("cards");
+  const [byVendor, setByVendor] = useState(false);
   const [ordering, setOrdering] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState<Set<string>>(new Set()); // groups shown per system
+  const [addTo, setAddTo] = useState<string>(""); // "" = General, else a robot id
+
+  const places: Place[] = [{ robotId: null, name: "General" }, ...robots.map((r) => ({ robotId: r.id, name: r.name }))];
 
   function save(edits: Edit[]) {
     if (!edits.length) return;
@@ -76,19 +109,38 @@ export function CotsView({ list, parts, robots }: { list: "released" | "order"; 
   }
   const saveRow = (row: Row) => (changes: PartChanges) =>
     save(row.members.length === 1 ? [{ id: row.members[0].id, changes }] : spreadCotsChanges(row.members, changes));
+  const clear = (ids: string[]) => {
+    setCleared((s) => new Set([...s, ...ids]));
+    startTransition(async () => {
+      const r = await clearInStock(ids);
+      if (r.error) setError(r.error);
+    });
+  };
+  const addItem = (itemId: string) => {
+    setError(null);
+    setNotice(null);
+    startTransition(async () => {
+      const r = await addCotsFromItem(itemId, addTo || null);
+      if (r.error) setError(r.error);
+      else setNotice(r.message ?? null);
+    });
+  };
 
   const inList = (p: CardPart) => {
     const s = computeStatus(p);
     return list === "released" ? s === COTS_RELEASED : ORDERING.includes(s) || (s === COTS_IN_STOCK && struck.has(p.id));
   };
-  const main = optimistic.filter(inList);
-  const inStock = list === "order" ? optimistic.filter((p) => computeStatus(p) === COTS_IN_STOCK && !struck.has(p.id)) : [];
-  const counts = useMemo(() => {
-    const c = new Map<string, number>();
-    for (const p of main) c.set(cotsCategoryOf(p), (c.get(cotsCategoryOf(p)) ?? 0) + 1);
-    return c;
-  }, [main]);
+  const shownInStock = (p: CotsViewPart) =>
+    computeStatus(p) === COTS_IN_STOCK && !p.cotsClearedAt && !cleared.has(p.id) && (!p.cotsInStockAt || now - new Date(p.cotsInStockAt).getTime() < SHOWN_MS);
   const ofCategory = (p: CardPart) => !category || cotsCategoryOf(p) === category;
+  const ofStatus = (p: CardPart) => list !== "order" || !statusFilter || computeStatus(p) === statusFilter || struck.has(p.id);
+  const listed = optimistic.filter(inList);
+  const main = listed.filter((p) => ofCategory(p) && ofStatus(p));
+  const inStock = optimistic.filter((p) => shownInStock(p) && !struck.has(p.id) && ofCategory(p));
+  const counts = new Map<string, number>();
+  for (const p of listed) counts.set(cotsCategoryOf(p), (counts.get(cotsCategoryOf(p)) ?? 0) + 1);
+  const statusCounts = new Map<string, number>();
+  for (const p of listed) if (ofCategory(p)) statusCounts.set(computeStatus(p), (statusCounts.get(computeStatus(p)) ?? 0) + 1);
 
   const rowsOf = (ps: CotsViewPart[]): Row[] =>
     groupSameCots(ps).map((members) => {
@@ -107,7 +159,7 @@ export function CotsView({ list, parts, robots }: { list: "released" | "order"; 
           shelf: shelfOf(members),
           shelfSuggestion: members.find((m) => m.shelfSuggestion)?.shelfSuggestion ?? null,
           memberIds: members.map((m) => m.id),
-          systemName: [...new Set(members.map((m) => m.systemName))].join(", "),
+          systemName: [...new Set(members.map((m) => m.systemName).filter(Boolean))].join(", "),
         },
       };
     });
@@ -136,9 +188,9 @@ export function CotsView({ list, parts, robots }: { list: "released" | "order"; 
     save(load.ids.map((id) => ({ id, changes: to === "ordered" ? { status: COTS_ORDERED, cotsSentBack: null } : { status: COTS_RELEASED } })));
   };
 
-  const renderRows = (rows: Row[], small = false, from: DragLoad["from"] = "list") =>
+  const renderRows = (rows: Row[], { small = false, from = "list", clearable = false }: { small?: boolean; from?: DragLoad["from"]; clearable?: boolean } = {}) =>
     view === "table" ? (
-      <CotsTable rows={rows} saveRow={saveRow} struck={struck} orderList={list === "order" && !small} />
+      <CotsTable rows={rows} saveRow={saveRow} struck={struck} orderList={list === "order" && !small} onClear={clearable ? clear : undefined} />
     ) : (
       <div className="card-grid" style={{ "--card-min": small ? "200px" : list === "order" ? "300px" : "260px" } as React.CSSProperties}>
         {rows.map((row) => {
@@ -157,7 +209,7 @@ export function CotsView({ list, parts, robots }: { list: "released" | "order"; 
               </GroupBox>
             );
           return (
-            <div key={row.key} {...dragProps(ids, from)}>
+            <div key={row.key} className="relative" {...dragProps(ids, from)}>
               <CotsCard
                 part={row.part}
                 save={saveRow(row)}
@@ -168,16 +220,31 @@ export function CotsView({ list, parts, robots }: { list: "released" | "order"; 
                 selected={selected.has(row.key)}
                 onToggleSelect={ordering ? () => setSelected((s) => toggle(s, row.key)) : undefined}
               />
+              {clearable && <ClearButton name={partTitle(row.part)} onClick={() => clear(ids)} />}
             </div>
           );
         })}
       </div>
     );
 
-  const robotRows = robots
-    .map((r) => ({ robot: r, rows: rowsOf(main.filter((p) => p.robotId === r.id && ofCategory(p))) }))
-    .filter((r) => r.rows.length > 0);
-  const allRows = robotRows.flatMap((r) => r.rows);
+  // A list split by General and robot, each with a small heading (for the small sections and
+  // the vendor sections).
+  const byPlace = (ps: CotsViewPart[], opts: Parameters<typeof renderRows>[1] = {}) =>
+    places.map((place) => {
+      const rows = rowsOf(ps.filter((p) => p.robotId === place.robotId));
+      return rows.length ? (
+        <BomProvider key={place.robotId ?? "general"} value={{ inventory: [], isAdmin: false, robotId: place.robotId ?? undefined }}>
+          <div className="space-y-2">
+            <div className="text-xs font-semibold text-subtle">{place.name}</div>
+            {renderRows(rows, opts)}
+          </div>
+        </BomProvider>
+      ) : null;
+    });
+
+  const placeRows = places.map((place) => ({ place, rows: rowsOf(main.filter((p) => p.robotId === place.robotId)) }));
+  const allRows = placeRows.flatMap((r) => r.rows);
+  const vendors = [...new Set(main.map(vendorOf))].sort((a, b) => (a === NO_VENDOR ? 1 : b === NO_VENDOR ? -1 : a.localeCompare(b)));
   // Released: the parts already on the order list, in a small section below.
   const queued = list === "released" ? optimistic.filter((p) => computeStatus(p) === COTS_ORDERED && ofCategory(p)) : [];
   const sendToOrder = () => {
@@ -188,33 +255,34 @@ export function CotsView({ list, parts, robots }: { list: "released" | "order"; 
   };
 
   return (
-    <div className={`space-y-6 ${ordering ? "pb-20" : ""}`}>
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-3">
+    <div className={`space-y-5 ${ordering ? "pb-20" : ""}`}>
+      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible">
         {COTS_CATEGORIES.map((c) => (
           <button
             key={c.id}
             type="button"
             onClick={() => setCategory((cur) => (cur === c.id ? null : c.id))}
             data-selected={category === c.id}
-            className="card-interactive group relative flex aspect-[4/3] flex-col justify-end overflow-hidden text-left"
+            className="card-interactive group flex h-12 shrink-0 items-center gap-2.5 overflow-hidden pr-3 text-left active:scale-[0.98]"
           >
-            {c.image ? (
-              // eslint-disable-next-line @next/next/no-img-element -- static pictures from /public
-              <img src={c.image} alt="" className="absolute inset-0 h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]" />
-            ) : (
-              // Placeholder until the box's picture arrives.
-              <span className="absolute inset-0 bg-gradient-to-br from-accent/25 via-raised to-amber-400/20" />
-            )}
-            <span className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-            <span className="relative p-3">
-              <span className="block text-sm leading-tight font-bold text-white drop-shadow">{c.label}</span>
-              <span className="font-mono text-xs text-white/80 tabular-nums">{counts.get(c.id) ?? 0}</span>
+            <span className="relative h-full w-14 shrink-0 overflow-hidden">
+              {c.image ? (
+                // eslint-disable-next-line @next/next/no-img-element -- static pictures from /public
+                <img src={c.image} alt="" className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]" />
+              ) : (
+                // Placeholder until the box's picture arrives.
+                <span className="absolute inset-0 bg-gradient-to-br from-accent/30 via-raised to-amber-400/25" />
+              )}
+            </span>
+            <span className="min-w-0">
+              <span className="block text-xs leading-tight font-bold whitespace-nowrap text-fg">{c.label}</span>
+              <span className="font-mono text-[11px] text-subtle tabular-nums">{counts.get(c.id) ?? 0}</span>
             </span>
           </button>
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-2.5">
         <Segmented
           label="View"
           value={view}
@@ -224,79 +292,122 @@ export function CotsView({ list, parts, robots }: { list: "released" | "order"; 
             { value: "table", label: "Table" },
           ]}
         />
+        <button
+          type="button"
+          onClick={() => setByVendor((v) => !v)}
+          aria-pressed={byVendor}
+          className={`press rounded-lg border px-3.5 py-1.5 text-xs font-semibold transition-colors active:scale-[0.98] ${
+            byVendor ? "border-accent bg-accent text-white" : "border-line-strong bg-raised text-muted hover:text-fg"
+          }`}
+        >
+          Vendors
+        </button>
+        {list === "order" &&
+          ORDERING.map((s) => {
+            const color = getCotsStatus(s)?.color ?? "#94a3b8";
+            const on = statusFilter === s;
+            return (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setStatusFilter((cur) => (cur === s ? null : s))}
+                aria-pressed={on}
+                style={{ borderColor: color, background: on ? `${color}40` : undefined }}
+                className="press flex items-center gap-2 rounded-lg border-2 px-3.5 py-1.5 text-sm font-bold text-fg transition-colors active:scale-[0.98]"
+              >
+                <span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} />
+                {s}
+                <span className="font-mono text-xs tabular-nums">{statusCounts.get(s) ?? 0}</span>
+              </button>
+            );
+          })}
         {category && (
           <button type="button" onClick={() => setCategory(null)} className="press rounded-full border border-line-strong px-3 py-1 text-xs font-medium text-fg-2 hover:text-fg">
             {COTS_CATEGORIES.find((c) => c.id === category)!.label} ✕
           </button>
         )}
-        <span className="text-xs text-subtle tabular-nums">{allRows.length} parts</span>
+        <span className="font-mono text-xs text-subtle tabular-nums">{allRows.length} parts</span>
         {list === "released" && (
-          <button
-            onClick={() => {
-              setOrdering((o) => !o);
-              setSelected(new Set());
-            }}
-            aria-pressed={ordering}
-            className={`press ml-auto rounded-xl px-7 py-3 text-lg font-bold shadow-lg transition-colors ${
-              ordering ? "border border-line-strong bg-surface text-fg" : "bg-amber-400 text-slate-950 shadow-amber-400/40 hover:bg-amber-300"
-            }`}
-          >
-            {ordering ? "Cancel" : "🛒 Send to order"}
-          </button>
+          <div className="ml-auto flex w-full flex-wrap items-start justify-end gap-2 lg:w-auto lg:flex-nowrap">
+            {edit && shelf && !ordering && (
+              <>
+                <select value={addTo} onChange={(e) => setAddTo(e.target.value)} className="input min-h-12 w-auto py-2 text-sm" aria-label="Add the card to">
+                  {places.map((p) => (
+                    <option key={p.robotId ?? ""} value={p.robotId ?? ""}>
+                      Add to: {p.name}
+                    </option>
+                  ))}
+                </select>
+                <AddBoxSlot shelf={shelf} onPick={addItem} />
+              </>
+            )}
+            <button
+              onClick={() => {
+                setOrdering((o) => !o);
+                setSelected(new Set());
+              }}
+              aria-pressed={ordering}
+              className={`press shrink-0 rounded-xl px-7 py-3 text-lg font-bold shadow-lg transition-colors active:scale-[0.98] ${
+                ordering ? "border border-line-strong bg-surface text-fg" : "bg-amber-400 text-slate-950 shadow-amber-400/40 hover:bg-amber-300"
+              }`}
+            >
+              {ordering ? "Cancel" : "🛒 Send to order"}
+            </button>
+          </div>
         )}
       </div>
 
       {error && <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">Couldn&apos;t save: {error}</p>}
-
-      <Section title="General">
-        <p className="text-sm text-subtle">Parts that don&apos;t belong to a robot will show here.</p>
-      </Section>
-      {robotRows.length === 0 && (
-        <p className="rounded-lg border border-dashed border-line py-8 text-center text-sm text-subtle">
-          {list === "released" ? "No released COTS parts." : "Nothing on the order list."}
+      {notice && !error && (
+        <p className="flex items-center gap-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
+          <span className="flex-1">{notice}</span>
+          <button type="button" className="press" aria-label="Dismiss" onClick={() => setNotice(null)}>
+            <Icon name="close" className="h-4 w-4" />
+          </button>
         </p>
       )}
-      {robotRows.map(({ robot, rows }) => (
-        <BomProvider key={robot.id} value={{ inventory: [], isAdmin: false, robotId: robot.id }}>
-          <Section title={`In ${robot.name}`} count={rows.length} onDropParts={draggable ? dropTo("list") : undefined}>
-            {renderRows(rows)}
-          </Section>
-        </BomProvider>
-      ))}
+
+      {byVendor ? (
+        vendors.length === 0 ? (
+          <Empty list={list} />
+        ) : (
+          vendors.map((v) => {
+            const ps = main.filter((p) => vendorOf(p) === v);
+            return (
+              <Section key={v} title={v} count={rowsOf(ps).length}>
+                {byPlace(ps)}
+              </Section>
+            );
+          })
+        )
+      ) : (
+        <>
+          {placeRows.map(({ place, rows }) =>
+            place.robotId === null || rows.length ? (
+              <BomProvider key={place.robotId ?? "general"} value={{ inventory: [], isAdmin: false, robotId: place.robotId ?? undefined }}>
+                <Section title={place.robotId ? `In ${place.name}` : "General"} count={rows.length || undefined} onDropParts={draggable ? dropTo("list") : undefined}>
+                  {rows.length ? renderRows(rows) : <p className="text-sm text-subtle">Parts that don&apos;t belong to a robot will show here.</p>}
+                </Section>
+              </BomProvider>
+            ) : null,
+          )}
+          {allRows.length === 0 && <Empty list={list} />}
+        </>
+      )}
 
       {list === "released" && (
         <Section title="In order list" count={queued.length} small defaultOpen={false} onDropParts={draggable ? dropTo("ordered") : undefined}>
           {queued.length === 0 ? (
             <p className="rounded-lg border border-dashed border-line py-6 text-center text-sm text-subtle">Drag parts here to put them on the order list.</p>
           ) : (
-            robots.map((r) => {
-              const rows = rowsOf(queued.filter((p) => p.robotId === r.id));
-              return rows.length ? (
-                <BomProvider key={r.id} value={{ inventory: [], isAdmin: false, robotId: r.id }}>
-                  <div className="space-y-2">
-                    <div className="text-xs font-semibold text-subtle">{r.name}</div>
-                    {renderRows(rows, true, "ordered")}
-                  </div>
-                </BomProvider>
-              ) : null;
-            })
+            byPlace(queued, { small: true, from: "ordered" })
           )}
         </Section>
       )}
 
-      {list === "order" && inStock.length > 0 && (
+      {inStock.length > 0 && (
         <Section title="In stock" count={inStock.length} small defaultOpen={false}>
-          {robots.map((r) => {
-            const rows = rowsOf(inStock.filter((p) => p.robotId === r.id && ofCategory(p)));
-            return rows.length ? (
-              <BomProvider key={r.id} value={{ inventory: [], isAdmin: false, robotId: r.id }}>
-                <div className="space-y-2">
-                  <div className="text-xs font-semibold text-subtle">{r.name}</div>
-                  {renderRows(rows, true)}
-                </div>
-              </BomProvider>
-            ) : null;
-          })}
+          {byPlace(inStock, { small: true, clearable: true })}
         </Section>
       )}
 
@@ -319,6 +430,39 @@ export function CotsView({ list, parts, robots }: { list: "released" | "order"; 
         </div>
       )}
     </div>
+  );
+}
+
+// Released's search box: the Inventory page's own, handing the picked or new item to the page.
+function AddBoxSlot({ shelf, onPick }: { shelf: CotsShelf; onPick: (itemId: string) => void }) {
+  const [q, setQ] = useState("");
+  return (
+    <div className="flex min-w-0 flex-1 lg:w-[28rem] lg:flex-none">
+      <AddBox q={q} setQ={setQ} {...shelf} defaultCategory={null} placeholder="Add a COTS part: type a name or paste a link" onPick={onPick} newStock="0" />
+    </div>
+  );
+}
+
+function Empty({ list }: { list: "released" | "order" }) {
+  return (
+    <p className="rounded-lg border border-dashed border-line py-8 text-center text-sm text-subtle">
+      {list === "released" ? "No released COTS parts." : "Nothing on the order list."}
+    </p>
+  );
+}
+
+// The X on a card in an In stock section.
+function ClearButton({ name, onClick }: { name: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title="Clear from In stock"
+      aria-label={`Clear ${name} from In stock`}
+      className="press absolute -top-2 -right-2 z-30 flex h-7 w-7 items-center justify-center rounded-full border border-line-strong bg-surface text-subtle shadow-md hover:text-fg active:scale-[0.98]"
+    >
+      <Icon name="close" className="h-3.5 w-3.5" />
+    </button>
   );
 }
 
@@ -396,7 +540,19 @@ function GroupBox({ row, onClose, children, ...drag }: { row: Row; onClose: () =
 }
 
 // The table ("chart") view of the same cards.
-function CotsTable({ rows, saveRow, struck, orderList }: { rows: Row[]; saveRow: (row: Row) => (changes: PartChanges) => void; struck: Set<string>; orderList: boolean }) {
+function CotsTable({
+  rows,
+  saveRow,
+  struck,
+  orderList,
+  onClear,
+}: {
+  rows: Row[];
+  saveRow: (row: Row) => (changes: PartChanges) => void;
+  struck: Set<string>;
+  orderList: boolean;
+  onClear?: (ids: string[]) => void;
+}) {
   const currency = useCurrency();
   return (
     <div className="panel overflow-x-auto">
@@ -413,6 +569,7 @@ function CotsTable({ rows, saveRow, struck, orderList }: { rows: Row[]; saveRow:
             <th className="text-right">Total</th>
             <th>Where to buy</th>
             <th>Status</th>
+            {onClear && <th />}
           </tr>
         </thead>
         <tbody>
@@ -454,6 +611,13 @@ function CotsTable({ rows, saveRow, struck, orderList }: { rows: Row[]; saveRow:
                 <td>
                   {orderList ? <OrderStatusButton part={p} save={saveRow(row)} compact /> : <StatusField part={p} save={saveRow(row)} />}
                 </td>
+                {onClear && (
+                  <td>
+                    <button type="button" onClick={() => onClear(row.members.map((m) => m.id))} className="press rounded p-1 text-subtle hover:text-fg" aria-label={`Clear ${partTitle(p)} from In stock`}>
+                      <Icon name="close" className="h-4 w-4" />
+                    </button>
+                  </td>
+                )}
               </tr>
             );
           })}

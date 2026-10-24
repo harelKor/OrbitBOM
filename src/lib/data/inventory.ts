@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { cotsStatusOf } from "@/config/cots";
 import { categoryOf, getCategory, type InvCategory } from "@/lib/inventory/categories";
@@ -45,13 +45,15 @@ async function usageParts(exec: Exec = db, filter: { robotId?: string; itemIds?:
       onshapeName: parts.onshapeName,
     })
     .from(parts)
-    .innerJoin(systems, eq(systems.id, parts.systemId))
-    .innerJoin(robots, eq(robots.id, systems.robotId))
+    // A COTS card added on the COTS page may have no system (its robot is on the part), or no
+    // robot either (the General section).
+    .leftJoin(systems, eq(systems.id, parts.systemId))
+    .leftJoin(robots, eq(robots.id, sql`coalesce(${systems.robotId}, ${parts.robotId})`))
     .where(
       and(
         isNotNull(parts.inventoryItemId),
         isNull(parts.removedFromCadAt),
-        eq(robots.archived, false),
+        or(isNull(robots.id), eq(robots.archived, false)),
         filter.robotId ? eq(robots.id, filter.robotId) : undefined,
         filter.itemIds ? inArray(parts.inventoryItemId, filter.itemIds) : undefined,
       ),
@@ -61,10 +63,10 @@ async function usageParts(exec: Exec = db, filter: { robotId?: string; itemIds?:
     partId: r.partId,
     inventoryItemId: r.inventoryItemId!,
     quantity: r.quantity,
-    robotId: r.robotId,
-    robotName: r.robotName,
-    systemId: r.systemId,
-    systemName: r.systemName,
+    robotId: r.robotId ?? "",
+    robotName: r.robotName ?? "General",
+    systemId: r.systemId ?? undefined,
+    systemName: r.systemName ?? "",
     partName: r.displayName ?? r.onshapeName ?? "Unnamed part",
     status: r.classification === "cots" ? cotsStatusOf(r.designState) : undefined,
   }));

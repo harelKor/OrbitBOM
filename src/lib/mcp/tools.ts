@@ -12,6 +12,7 @@ import type { Member } from "@/lib/auth";
 import { vendorOfUrl } from "@/config/vendors";
 import { listInventory } from "@/lib/data/inventory";
 import { autoLink, findLinks, writePendingLinks } from "@/lib/inventory/autolink";
+import { pushItemToCards } from "@/lib/inventory/cotsSync";
 import { checkSpecs, fieldChoices, getCategory, type InvCategory } from "@/lib/inventory/categories";
 import { listCategories } from "@/lib/data/categories";
 import { moveStock, undoMoves } from "@/lib/inventory/moves";
@@ -28,7 +29,7 @@ import { computeStatus } from "@/lib/status";
 import { statusBreakdown } from "@/lib/stats";
 import { updateBomFromOnshape } from "@/lib/sync/updateBom";
 import { checkConfirmToken, confirmToken } from "./confirm";
-import type { DrawingEdits } from "@/db/schema";
+import type { CotsLink, DrawingEdits } from "@/db/schema";
 import { loadDrawing, makeDrawings } from "@/lib/drawing/make";
 import { MARGIN, partDrawing } from "@/lib/drawing/layout";
 import { drawingSummary } from "@/lib/drawing/summary";
@@ -857,7 +858,11 @@ write(
       preview: changed.map((p) => ({ item_id: p.row.id, item: p.row.name, set: p.values })),
       apply: async () => {
         await db.transaction(async (tx) => {
-          for (const p of changed) await tx.update(inventoryItems).set(p.values).where(eq(inventoryItems.id, p.row.id));
+          for (const p of changed) {
+            await tx.update(inventoryItems).set(p.values).where(eq(inventoryItems.id, p.row.id));
+            const v = p.values as { name?: string; cotsLinks?: CotsLink[]; price?: number | null };
+            await pushItemToCards(tx, p.row.id, { name: v.name, cotsLinks: v.cotsLinks, price: v.price });
+          }
         });
         const linked = changed.filter((p) => "cotsLinks" in p.values).map((p) => p.row.id);
         const auto_linked = await autoLink({ itemIds: linked }, { memberId: member.id, via: "mcp" });

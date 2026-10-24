@@ -134,9 +134,10 @@ export const parts = pgTable(
   "parts",
   {
     id: id(),
-    systemId: uuid("system_id")
-      .notNull()
-      .references(() => systems.id, { onDelete: "cascade" }),
+    // A COTS card added on the COTS page may belong to no system: then robotId says its robot,
+    // or neither is set and it is in the COTS page's General section.
+    systemId: uuid("system_id").references(() => systems.id, { onDelete: "cascade" }),
+    robotId: uuid("robot_id").references(() => robots.id, { onDelete: "cascade" }),
 
     // Identity (ref §6): Part Studio + partId + Onshape name.
     sourceDid: text("source_did"),
@@ -192,6 +193,10 @@ export const parts = pgTable(
     stockCount: integer("stock_count").notNull().default(0),
     // Why the Order List sent the part back to Released; cleared when it is sent to order again.
     cotsSentBack: text("cots_sent_back"),
+    // When the COTS part reached In Stock (null while it isn't), and when someone cleared it from
+    // the COTS page's In Stock sections (they also drop it a week after it arrived).
+    cotsInStockAt: timestamp("cots_in_stock_at", { withTimezone: true }),
+    cotsClearedAt: timestamp("cots_cleared_at", { withTimezone: true }),
 
     overriddenFields: text("overridden_fields").array().notNull().default(sql`'{}'::text[]`),
 
@@ -214,6 +219,7 @@ export const parts = pgTable(
   },
   (t) => [
     index("parts_system_idx").on(t.systemId),
+    index("parts_robot_idx").on(t.robotId),
     index("parts_identity_idx").on(t.sourceDid, t.sourceEid, t.onshapePartId),
   ],
 );

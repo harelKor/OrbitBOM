@@ -39,7 +39,7 @@ export async function listGroups(): Promise<GroupSummary[]> {
 
   // Live parts in the systems that have missing members, for Why? and Recover.
   const missingSystems = [
-    ...new Set(memberRows.filter((m) => m.part.removedFromCadAt).map((m) => m.part.systemId)),
+    ...new Set(memberRows.filter((m) => m.part.removedFromCadAt).map((m) => m.part.systemId!)),
   ];
   const live = missingSystems.length
     ? await db
@@ -66,11 +66,11 @@ export async function listGroups(): Promise<GroupSummary[]> {
         rows.map((m) => ({
           partId: m.part.id,
           name: m.part.onshapeName ?? nameOf(m.part),
-          systemId: m.part.systemId,
+          systemId: m.part.systemId!,
           systemName: m.systemName,
           removedFromCadAt: m.part.removedFromCadAt,
         })),
-        live.map((p) => ({ id: p.id, name: p.name ?? p.displayName ?? "", systemId: p.systemId })),
+        live.map((p) => ({ id: p.id, name: p.name ?? p.displayName ?? "", systemId: p.systemId! })),
         new Set(rows.map((m) => m.part.id)),
       ),
       files: files.filter((f) => f.groupId === group.id).map(({ id, type, filename }) => ({ id, type, filename })),

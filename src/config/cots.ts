@@ -18,6 +18,8 @@ export const COTS_DEFAULT_STATUS: CotsStatusName = "Not Started";
 export const COTS_RELEASED: CotsStatusName = "Released";
 export const COTS_ORDERED: CotsStatusName = "In Order List";
 export const COTS_IN_STOCK: CotsStatusName = "In Stock";
+// A part stays in the COTS page's In Stock sections this long after it arrived (or until its X).
+export const IN_STOCK_SHOWN_DAYS = 7;
 // The statuses the Order List page works through, in its status button.
 export const ORDER_STATUSES: CotsStatusName[] = ["In Order List", "Seen", "In Route", "In Stock"];
 

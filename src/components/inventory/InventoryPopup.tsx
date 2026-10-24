@@ -315,7 +315,7 @@ function ItemBody({
               return (
                 <li key={p.partId}>
                   <Link
-                    href={p.systemId ? `/robots/${p.robotId}/systems/${p.systemId}#part-${p.partId}` : `/robots/${p.robotId}`}
+                    href={p.systemId ? `/robots/${p.robotId}/systems/${p.systemId}#part-${p.partId}` : p.robotId ? `/robots/${p.robotId}` : "/cots/released"}
                     onClick={onClose}
                     className="flex items-center gap-2 px-2 py-1.5 hover:bg-raised"
                   >

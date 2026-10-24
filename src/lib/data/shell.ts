@@ -84,20 +84,20 @@ export async function listShellRobots(): Promise<ShellRobot[]> {
       const ids = new Set(own.map((s) => s.id));
       const fab = { total: 0, byMachine: {} as Record<string, number> };
       for (const row of statusRows) {
-        if (!ids.has(row.systemId) || !fabStage(row)) continue;
+        if (!ids.has(row.systemId!) || !fabStage(row)) continue;
         fab.total += 1;
         for (const m of machinesOf(row)) fab.byMachine[m] = (fab.byMachine[m] ?? 0) + 1;
       }
       return {
         fab,
-        review: reviewRows.filter((x) => ids.has(x.systemId)).length,
+        review: reviewRows.filter((x) => ids.has(x.systemId!)).length,
         id: r.id,
         name: r.name,
         year: r.year,
         code: r.code,
         mainAssemblyUrl: r.mainAssemblyUrl,
         archived: r.archived,
-        percent: statusBreakdown(statusRows.filter((x) => ids.has(x.systemId))).percent,
+        percent: statusBreakdown(statusRows.filter((x) => ids.has(x.systemId!))).percent,
         thumbUrl: r.thumbnailPath ? await imageUrl(r.thumbnailPath) : (own.find((s) => s.thumbUrl)?.thumbUrl ?? null),
         systems: own.map((s) => ({ id: s.id, name: s.name, assemblyUrl: s.assemblyUrl, percent: s.percent, total: s.total, thumbUrl: s.thumbUrl, sync: s.sync })),
       };

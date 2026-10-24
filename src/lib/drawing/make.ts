@@ -85,7 +85,7 @@ export async function loadDrawing(partId: string) {
   const others = await db
     .select({ displayName: schema.parts.displayName, onshapeName: schema.parts.onshapeName })
     .from(schema.parts)
-    .where(and(eq(schema.parts.systemId, part.systemId), ne(schema.parts.id, part.id), isNull(schema.parts.removedFromCadAt)));
+    .where(and(eq(schema.parts.systemId, part.systemId!), ne(schema.parts.id, part.id), isNull(schema.parts.removedFromCadAt)));
   const title: TitleBlock = {
     name: part.displayName ?? part.onshapeName ?? "Unnamed part",
     ...(part.material ? { material: part.material } : {}),

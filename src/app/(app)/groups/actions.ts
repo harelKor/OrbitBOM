@@ -152,7 +152,7 @@ export async function recoverMembers(groupId: string): Promise<ActionResult> {
     .innerJoin(parts, eq(parts.id, groupMembers.partId))
     .innerJoin(systems, eq(systems.id, parts.systemId))
     .where(eq(groupMembers.groupId, groupId));
-  const systemIds = [...new Set(rows.filter((r) => r.part.removedFromCadAt).map((r) => r.part.systemId))];
+  const systemIds = [...new Set(rows.filter((r) => r.part.removedFromCadAt).map((r) => r.part.systemId!))];
   if (!systemIds.length) return { message: "Every member is on the BOM." };
   const live = await db
     .select()
@@ -162,11 +162,11 @@ export async function recoverMembers(groupId: string): Promise<ActionResult> {
     rows.map((r) => ({
       partId: r.part.id,
       name: r.part.onshapeName ?? r.part.displayName ?? "",
-      systemId: r.part.systemId,
+      systemId: r.part.systemId!,
       systemName: r.systemName,
       removedFromCadAt: r.part.removedFromCadAt,
     })),
-    live.map((p) => ({ id: p.id, name: p.onshapeName ?? p.displayName ?? "", systemId: p.systemId })),
+    live.map((p) => ({ id: p.id, name: p.onshapeName ?? p.displayName ?? "", systemId: p.systemId! })),
     new Set(rows.map((r) => r.part.id)),
   );
   const moves = report.missing.filter((m) => m.recoverTo);

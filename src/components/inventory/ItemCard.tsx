@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { COTS_IN_STOCK, ORDER_STATUSES } from "@/config/cots";
 import { textOn } from "@/components/bom/options";
 import { Popover } from "@/components/bom/Popover";
 import { Icon } from "@/components/ui/Icon";
@@ -12,6 +13,8 @@ import type { InvCategory, Item } from "./types";
 
 // Seeded conditions carry a colour name (FRCBOM's); ones added since carry a hex colour.
 const NAMED: Record<string, string> = { emerald: "#10b981", amber: "#f59e0b", rose: "#f43f5e", sky: "#0ea5e9", slate: "#64748b", violet: "#8b5cf6" };
+const ORDERING = ORDER_STATUSES.filter((s) => s !== COTS_IN_STOCK) as string[];
+
 export const conditionColor = (color: string) => NAMED[color] ?? color;
 
 // An item's name: like a COTS part, it opens the product's page when the item has a link
@@ -83,6 +86,8 @@ export function ItemCard({
   const need = item.usage?.need ?? 0;
   const short = item.usage?.short ?? 0;
   const usedBy = item.usage?.parts.length ?? 0;
+  // A COTS part of the item is on the Order List (ordered, seen or on its way).
+  const ordering = !!item.usage?.parts.some((p) => p.status && ORDERING.includes(p.status));
   const color = condition ? conditionColor(condition.color) : undefined;
   const picture = item.thumbUrl ?? category?.imageUrl ?? null;
   const stop = (e: React.SyntheticEvent) => e.stopPropagation();
@@ -125,15 +130,22 @@ export function ItemCard({
           </Link>
         )}
       </div>
-      {location && (
-        <Link
-          href={`/inventory/location/${location.id}`}
-          onClick={stop}
-          className="absolute top-2 right-2 max-w-[38%] truncate rounded-full border border-line bg-surface/90 px-2 py-0.5 text-[11px] font-semibold text-fg-2 backdrop-blur-md hover:border-accent hover:text-accent"
-        >
-          📍 {location.name}
-        </Link>
-      )}
+      <div className="absolute top-2 right-2 flex max-w-[38%] flex-col items-end gap-1">
+        {ordering && (
+          <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[11px] font-bold whitespace-nowrap text-amber-950 shadow-sm" title="A COTS part of this item is on the Order List">
+            Ordering
+          </span>
+        )}
+        {location && (
+          <Link
+            href={`/inventory/location/${location.id}`}
+            onClick={stop}
+            className="max-w-full truncate rounded-full border border-line bg-surface/90 px-2 py-0.5 text-[11px] font-semibold text-fg-2 backdrop-blur-md hover:border-accent hover:text-accent"
+          >
+            📍 {location.name}
+          </Link>
+        )}
+      </div>
 
       <div className="-mt-12 flex items-center justify-between gap-2 px-2 pb-2" onClick={stop}>
         <button

@@ -65,6 +65,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ par
   }
   const [part] = await db.select({ systemId: schema.parts.systemId }).from(schema.parts).where(eq(schema.parts.id, partId));
   if (!part) return NextResponse.json({ error: "Unknown part." }, { status: 404 });
+  if (!part.systemId) return NextResponse.json({ error: "Only parts in a system get drawings." }, { status: 422 });
   try {
     const summary = await makeDrawings(part.systemId, [partId], member.id, started + 240_000, force);
     const skipped = summary.skipped.find((s) => s.id === partId);
