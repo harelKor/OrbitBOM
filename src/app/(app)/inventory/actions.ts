@@ -494,3 +494,10 @@ export async function materialPopup(material: string) {
   const key = material.trim().toLowerCase();
   return { material, categories, locations, conditions, items: items.filter((i) => i.specs.material?.toLowerCase() === key || i.name.toLowerCase() === key) };
 }
+
+// The inventory search in a part's details window: everything the Inventory page's box needs.
+export async function inventoryPicker() {
+  await requireMember();
+  const { items, categories, locations, conditions } = await listInventory();
+  return { items, categories, locations, conditions };
+}

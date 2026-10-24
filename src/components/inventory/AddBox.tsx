@@ -33,6 +33,7 @@ export function AddBox({
   defaultCategory,
   defaultLocationId = null,
   placeholder,
+  onPick,
 }: {
   q: string;
   setQ: (q: string) => void;
@@ -43,6 +44,7 @@ export function AddBox({
   defaultCategory: string | null;
   defaultLocationId?: string | null;
   placeholder: string;
+  onPick?: (itemId: string) => void; // a part's details window: an item picked or added links the part to it
 }) {
   const edit = useEditMode();
   const { openItem } = useInventoryPopup();
@@ -102,6 +104,10 @@ export function AddBox({
       const draft = emptyDraft({ category: quickCat!.id, specs: quick!.specs, locationId: defaultLocationId ?? categoryLocation(quickCat, items) });
       const r = await saveItem(null, { name: quickName, category: draft.category, specs: draft.specs, inStock: "1", conditionId: null, locationId: draft.locationId, links: [], price: null, imageUrl: null });
       if (r.error || !r.id) return setReadError(r.error ?? "Couldn't save.");
+      if (onPick) {
+        onPick(r.id);
+        return setQ("");
+      }
       setSaved({ id: r.id, name: quickName, draft, message: r.message });
       setQ("");
     });
@@ -129,7 +135,7 @@ export function AddBox({
             else if (quickWhole) quickSave();
             else if (quick) custom(quick.categoryId);
           }}
-          placeholder={edit ? "Add an item: type a name or paste a link" : placeholder}
+          placeholder={onPick ? placeholder : edit ? "Add an item: type a name or paste a link" : placeholder}
           className="input min-h-12 py-3 pr-10 pl-11 text-base"
           aria-label={edit ? "Add or find an item" : "Search the inventory"}
         />
@@ -160,9 +166,9 @@ export function AddBox({
           )}
 
           {onShelf.length > 0 && (
-            <Section title="Already on the shelf">
+            <Section title={onPick ? "On the shelf · click to link" : "Already on the shelf"}>
               {onShelf.map((i) => (
-                <Row key={i.id} onClick={() => openItem(i.id, i)} img={i.thumbUrl} icon="box" title={i.name} detail={`${formatStock(i.inStock, i.sheet)} ${i.sheet ? "sheets" : "in stock"}`} />
+                <Row key={i.id} onClick={() => (onPick ? onPick(i.id) : openItem(i.id, i))} img={i.thumbUrl} icon="box" title={i.name} detail={`${formatStock(i.inStock, i.sheet)} ${i.sheet ? "sheets" : "in stock"}`} />
               ))}
             </Section>
           )}
@@ -274,6 +280,11 @@ export function AddBox({
             items={items}
             onCancel={() => setDraft(null)}
             onSaved={(id, message) => {
+              if (onPick) {
+                onPick(id);
+                setDraft(null);
+                return setQ("");
+              }
               const cat = getCategory(categories, draft.category);
               const name = draft.nameTouched || !cat ? draft.name : buildName(cat, draft.specs) || draft.name;
               setSaved({ id, name, draft, message });

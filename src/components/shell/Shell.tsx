@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import type { ShellRobot } from "@/lib/data/shell";
 import { InventoryPopupProvider } from "@/components/inventory/InventoryPopup";
+import { PartDetailsProvider } from "@/components/bom/PartDetailsHost";
 import { Toaster } from "@/components/ui/Toaster";
 import { Icon } from "@/components/ui/Icon";
 import { FilterProvider } from "./FilterContext";
@@ -69,38 +70,40 @@ export function Shell({
       <FilterProvider>
         <MaterialColorsProvider initial={materialColors}>
           <InventoryPopupProvider>
-            <div
-              className={`flex min-h-screen [--shell-left:0px] [--shell-right:0px] ${collapsed.left ? "" : "lg:[--shell-left:14rem]"} ${collapsed.right ? "" : "xl:[--shell-right:18rem]"}`}
-            >
-              <aside
-                className={`fixed inset-y-0 left-0 z-40 w-56 shrink-0 border-r border-line bg-surface lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${collapsed.left ? "lg:hidden" : ""} ${
-                  open === "left" ? "translate-x-0" : "-translate-x-full"
-                } transition-transform duration-150`}
+            <PartDetailsProvider>
+              <div
+                className={`flex min-h-screen [--shell-left:0px] [--shell-right:0px] ${collapsed.left ? "" : "lg:[--shell-left:14rem]"} ${collapsed.right ? "" : "xl:[--shell-right:18rem]"}`}
               >
-                <LeftNav robots={robots} lastRobotId={lastRobotId} member={member} inventoryCategories={inventoryCategories} />
-              </aside>
-              <div className="flex min-w-0 flex-1 flex-col">
-                <TopBar onMenu={() => toggle("left")} onRobots={() => toggle("right")} />
-                {/* The wide side gutters keep the collapse arrows clear of the page. */}
-              <main className="min-w-0 flex-1 p-4 md:p-6 lg:pl-11 xl:pr-11">{children}</main>
-                <Suspense>
-                  <VisitTracker />
-                </Suspense>
-                <Shortcuts robots={robots} lastRobotId={lastRobotId} />
+                <aside
+                  className={`fixed inset-y-0 left-0 z-40 w-56 shrink-0 border-r border-line bg-surface lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${collapsed.left ? "lg:hidden" : ""} ${
+                    open === "left" ? "translate-x-0" : "-translate-x-full"
+                  } transition-transform duration-150`}
+                >
+                  <LeftNav robots={robots} lastRobotId={lastRobotId} member={member} inventoryCategories={inventoryCategories} />
+                </aside>
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <TopBar onMenu={() => toggle("left")} onRobots={() => toggle("right")} />
+                  {/* The wide side gutters keep the collapse arrows clear of the page. */}
+                <main className="min-w-0 flex-1 p-4 md:p-6 lg:pl-11 xl:pr-11">{children}</main>
+                  <Suspense>
+                    <VisitTracker />
+                  </Suspense>
+                  <Shortcuts robots={robots} lastRobotId={lastRobotId} />
+                </div>
+                <aside
+                  className={`fixed inset-y-0 right-0 z-40 w-72 shrink-0 border-l border-line bg-surface xl:sticky xl:top-0 xl:h-screen xl:translate-x-0 ${collapsed.right ? "xl:hidden" : ""} ${
+                    open === "right" ? "translate-x-0" : "translate-x-full"
+                  } transition-transform duration-150`}
+                >
+                  <RobotSwitcher robots={robots} lastRobotId={lastRobotId} isAdmin={member.isAdmin} />
+                </aside>
+                <EdgeArrow side="left" collapsed={collapsed.left} onClick={() => toggle("left")} />
+                <EdgeArrow side="right" collapsed={collapsed.right} onClick={() => toggle("right")} />
+                {open && (
+                  <button aria-label="Close" onClick={() => setDrawer(null)} className="fixed inset-0 z-30 bg-black/50 xl:hidden" />
+                )}
               </div>
-              <aside
-                className={`fixed inset-y-0 right-0 z-40 w-72 shrink-0 border-l border-line bg-surface xl:sticky xl:top-0 xl:h-screen xl:translate-x-0 ${collapsed.right ? "xl:hidden" : ""} ${
-                  open === "right" ? "translate-x-0" : "translate-x-full"
-                } transition-transform duration-150`}
-              >
-                <RobotSwitcher robots={robots} lastRobotId={lastRobotId} isAdmin={member.isAdmin} />
-              </aside>
-              <EdgeArrow side="left" collapsed={collapsed.left} onClick={() => toggle("left")} />
-              <EdgeArrow side="right" collapsed={collapsed.right} onClick={() => toggle("right")} />
-              {open && (
-                <button aria-label="Close" onClick={() => setDrawer(null)} className="fixed inset-0 z-30 bg-black/50 xl:hidden" />
-              )}
-            </div>
+            </PartDetailsProvider>
             <Toaster />
           </InventoryPopupProvider>
         </MaterialColorsProvider>

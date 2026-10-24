@@ -60,7 +60,12 @@ export function Popover({
       const t = e.target as Node;
       if (!button.current?.contains(t) && !panel.current?.contains(t)) setOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    // Escape closes only the popover, not the window it's in.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      setOpen(false);
+    };
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
     return () => {

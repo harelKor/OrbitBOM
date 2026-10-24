@@ -5,13 +5,12 @@ import { COTS_IN_STOCK, COTS_ORDERED, COTS_RELEASED, ORDER_STATUSES, getCotsStat
 import { Dialog } from "@/components/Dialog";
 import { statusTint } from "@/components/ui/statusTint";
 import { useBom } from "@/components/bom/BomContext";
-import { EditMenu, MergedBadge, NoteCloud, NotesButton, isCardBodyClick } from "@/components/bom/PartCard";
-import { PartDetails } from "@/components/bom/PartDetails";
+import { EditMenu, MergedBadge, NoteCloud, isCardBodyClick } from "@/components/bom/PartCard";
+import { usePartDetails } from "@/components/bom/PartDetailsHost";
 import { QuantityField, StatusField, TypeBadge, TypeField, type SaveFn } from "@/components/bom/fields";
 import { textOn } from "@/components/bom/options";
 import { Popover } from "@/components/bom/Popover";
-import { ownerPartId, partIds, partTitle, type CardPart } from "@/components/bom/types";
-import { PartStage, type StageView } from "@/components/dashboard/PartStage";
+import { partIds, partTitle, type CardPart } from "@/components/bom/types";
 import { VersionTag } from "@/components/versions/VersionTag";
 import { useEditMode } from "@/components/shell/ModeContext";
 import { CheckBadge } from "@/components/ui/CheckBadge";
@@ -56,9 +55,8 @@ export function CotsCard({
   onCheck?: () => void;
 }) {
   const edit = useEditMode();
-  const { robotId, versions } = useBom();
-  const [stage, setStage] = useState<StageView | null>(null);
-  const [details, setDetails] = useState(false);
+  const { versions } = useBom();
+  const showDetails = usePartDetails(part, save);
   const order = variant === "order";
   const links = part.cotsLinks ?? [];
   const title = partTitle(part);
@@ -84,19 +82,18 @@ export function CotsCard({
     // Enough on the shelf: the part is in stock.
     save(next >= Math.max(part.quantity, 1) && status !== COTS_IN_STOCK ? { stockCount: next, status: COTS_IN_STOCK } : { stockCount: next });
   };
-  // A grouped card opens on a click anywhere but its own controls (and their popovers).
-  const onCardClick = group
-    ? (e: React.MouseEvent) => {
-        if (isCardBodyClick(e)) group.onOpen();
-      }
-    : undefined;
-  // Otherwise a click below the thumbnail, off its controls, opens the part's details.
-  const onBodyClick = group ? undefined : (e: React.MouseEvent) => isCardBodyClick(e) && setDetails(true);
+  // A click anywhere but the card's own controls (and their popovers) opens it: a grouped card
+  // shows each system's part, any other card the part's details window.
+  const onCardClick = (e: React.MouseEvent) => {
+    if (onToggleSelect || !isCardBodyClick(e)) return;
+    if (group) group.onOpen();
+    else showDetails();
+  };
   const thumb = part.thumbUrl ? (
     // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
     <img src={part.thumbUrl} alt="" loading="lazy" className="h-full w-full object-contain p-3" />
   ) : (
-    <span className="text-xs text-muted">{group ? "No thumbnail yet" : "No thumbnail yet, click for 3D"}</span>
+    <span className="text-xs text-muted">No thumbnail yet</span>
   );
 
   return (
@@ -106,8 +103,8 @@ export function CotsCard({
       data-part={partIds(part)}
       style={style ?? statusTint(status)}
       onClick={onCardClick}
-      className={`card-interactive group flex scroll-mt-20 flex-col text-sm target:border-accent target:ring-2 target:ring-accent ${
-        group ? "cursor-pointer ring-2 ring-amber-400/70 ring-offset-2 ring-offset-ink" : ""
+      className={`card-interactive group flex scroll-mt-20 cursor-pointer flex-col text-sm target:border-accent target:ring-2 target:ring-accent ${
+        group ? "ring-2 ring-amber-400/70 ring-offset-2 ring-offset-ink" : ""
       } ${struck ? "opacity-60" : ""}`}
     >
       {onToggleSelect && (
@@ -125,17 +122,8 @@ export function CotsCard({
       <div className="thumb-well thumb-cots relative flex aspect-[4/3] items-center justify-center">
         {part.isManual ? (
           <span className="text-xs text-muted">Manual part</span>
-        ) : group ? (
-          <div className="flex h-full w-full items-center justify-center">{thumb}</div>
         ) : (
-          <button
-            type="button"
-            onClick={() => setStage(robotId ? "locate" : "part")}
-            className="flex h-full w-full cursor-zoom-in items-center justify-center"
-            aria-label={`Locate ${title} in the robot`}
-          >
-            {thumb}
-          </button>
+          <div className="flex h-full w-full items-center justify-center">{thumb}</div>
         )}
         <div className="absolute top-2 left-2 flex items-center gap-1">
           <span className={`rounded-full bg-[#111318]/85 font-bold text-white tabular-nums ${order ? "px-3 py-1 text-base" : "px-2 py-0.5 text-[11px]"}`}>
@@ -190,23 +178,8 @@ export function CotsCard({
           </>
         )}
       </div>
-      {stage && (
-        <PartStage
-          partId={ownerPartId(part)}
-          robotId={robotId ?? null}
-          modelKey={part.modelKey}
-          name={title}
-          material={part.material}
-          onshapeMaterial={part.geometry?.onshapeMaterial ?? null}
-          view={stage}
-          onView={setStage}
-          onClose={() => setStage(null)}
-        />
-      )}
 
-      {details && <PartDetails part={part} save={save} onClose={() => setDetails(false)} />}
-
-      <div className={`flex min-w-0 flex-col ${order ? "gap-3 p-3" : "gap-1.5 px-2.5 py-2"} ${group ? "" : "cursor-pointer"}`} onClick={onBodyClick}>
+      <div className={`flex min-w-0 flex-col ${order ? "gap-3 p-3" : "gap-1.5 px-2.5 py-2"}`}>
         <div className="flex min-w-0 items-center gap-1">
           <div className={`min-w-0 flex-1 truncate font-semibold ${order ? "text-base" : ""} ${struck ? "line-through decoration-2" : ""}`} title={title}>
             {links[0] ? (
@@ -237,15 +210,12 @@ export function CotsCard({
         {order ? (
           <OrderStatusButton part={part} save={save} />
         ) : (
-          <div className="flex items-center gap-2">
-            <div className="min-w-0 flex-1">
-              <StatusField part={part} save={save} />
-            </div>
-            <NotesButton part={part} save={save} />
+          <div className="flex min-w-0">
+            <StatusField part={part} save={save} />
           </div>
         )}
 
-        {(shelf || part.shelfSuggestion || edit) && (
+        {(shelf || part.shelfSuggestion) && (
           <div className="flex min-w-0">
             <ShelfPill part={part} shelf={shelf} save={save} />
           </div>

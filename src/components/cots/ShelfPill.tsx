@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useSyncExternalStore, useTransition } from "react";
+import { useSyncExternalStore } from "react";
 import { COTS_IN_STOCK } from "@/config/cots";
-import { createItemFromPart } from "@/app/(app)/inventory/actions";
 import type { SaveFn } from "@/components/bom/fields";
 import { Popover } from "@/components/bom/Popover";
 import type { CardPart, Shelf } from "@/components/bom/types";
@@ -16,14 +15,10 @@ const pill = "press inline-flex max-w-full items-center gap-1 rounded-full borde
 const REASONS = { onshape: "the same Onshape part", link: "the same product page", name: "the same name" } as const;
 
 // A COTS card's link to the team inventory: how much of it the shelf covers and how many to
-// order, or the item it most likely is, or (Edit mode) a button to add it to the inventory.
+// order, or the item it most likely is. Linking it to a new item happens in the part's details window.
 export function ShelfPill({ part, shelf, save }: { part: CardPart; shelf: Shelf | null; save: SaveFn }) {
   const edit = useEditMode();
   const { openItem } = useInventoryPopup();
-  const [pending, startTransition] = useTransition();
-  const [message, setMessage] = useState<string | null>(null);
-  const ids = part.memberIds ?? [part.id];
-
   if (shelf) {
     const missing = Math.max(0, part.quantity - shelf.covered);
     const tone = shelf.sheet ? "border-line-strong text-fg-2" : missing ? "border-amber-500/60 text-amber-600 dark:text-amber-400" : "border-emerald-500/60 text-emerald-600 dark:text-emerald-400";
@@ -129,24 +124,7 @@ export function ShelfPill({ part, shelf, save }: { part: CardPart; shelf: Shelf 
       </Popover>
     );
 
-  if (!edit) return null;
-  return (
-    <button
-      type="button"
-      disabled={pending}
-      onClick={() =>
-        startTransition(async () => {
-          const r = await createItemFromPart(ids);
-          setMessage(r.error ?? null);
-        })
-      }
-      className={`${pill} border-dashed border-line-strong text-muted hover:border-accent/60 hover:text-accent`}
-      title={message ?? "Make an inventory item for this part and link it"}
-    >
-      <Icon name="box" className="h-3 w-3 shrink-0" />
-      {pending ? "Adding…" : message ? "Couldn't add" : "Add to inventory"}
-    </button>
-  );
+  return null;
 }
 
 // Parts whose "the shelf covers this" suggestion was dismissed, remembered in this browser.

@@ -60,6 +60,8 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
   const [busy, setBusy] = useState<"regenerate" | "delete" | null>(null);
   const [loads, setLoads] = useState(0); // bumped by Regenerate to fetch the new drawing
   const sheet = useRef<HTMLDivElement>(null);
+  const frame = useRef<HTMLDialogElement>(null);
+  useEffect(() => frame.current?.showModal(), []);
   const router = useRouter();
 
   useEffect(() => {
@@ -165,9 +167,20 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
   const hasArrow = (id: string) => !!drawing?.notes.find((n) => n.id === id)?.leader;
 
   // On document.body: inside the part card, pressing the sheet would scale the card (:active) and
-  // pull the fixed editor into it. Clicks still bubble through React, so they stop here.
+  // pull the fixed editor into it. Clicks still bubble through React, so they stop here. A modal
+  // <dialog>, so it opens above the part's details window it can be opened from.
   return createPortal(
-    <div className="modal-enter fixed inset-0 z-50 flex flex-col bg-[#07090E]/95 p-3 backdrop-blur sm:p-5" role="dialog" aria-label="Drawing editor" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+    <dialog
+      ref={frame}
+      aria-label="Drawing editor"
+      onCancel={(e) => {
+        e.preventDefault();
+        close();
+      }}
+      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+      className="modal-enter m-0 h-dvh max-h-none w-screen max-w-none flex-col border-0 bg-[#07090E]/95 p-3 text-fg backdrop-blur open:flex sm:p-5"
+    >
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <h2 className="min-w-0 flex-1 truncate text-lg font-semibold text-white">{data?.title.name ?? "Drawing"}</h2>
         {hint && (
@@ -252,7 +265,7 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
           </div>
         </aside>
       </div>
-    </div>,
+    </dialog>,
     document.body,
   );
 }

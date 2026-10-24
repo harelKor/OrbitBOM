@@ -1,12 +1,10 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { getMachine } from "@/config/machines";
 import { IN_PROCESS_STATUS, READY_STATUS, fabStage, isFabFinished } from "@/lib/fab";
 import { deleteManualPart, unmergeParts } from "@/app/(app)/parts-actions";
 import { useEditMode } from "@/components/shell/ModeContext";
-import { PartStage, type StageView } from "@/components/dashboard/PartStage";
 import { computeStatus, partStatusLabel } from "@/lib/status";
 import { statusTint } from "@/components/ui/statusTint";
 import { CheckBadge, CheckIcon } from "@/components/ui/CheckBadge";
@@ -16,12 +14,12 @@ import { VersionTag } from "@/components/versions/VersionTag";
 import { useBom } from "./BomContext";
 import { PART_FILE_TYPES } from "@/config/fileTypes";
 import { MachineField, MaterialField, NameField, QuantityField, SLOTS, StatusField, TypeBadge, TypeField, type SaveFn } from "./fields";
-import { InputEditor, Popover } from "./Popover";
+import { Popover } from "./Popover";
 import { ownerPartId, partIds, partTitle, type CardPart } from "./types";
 import { downloadDrawing } from "@/lib/drawing/download";
-import { DrawingEditor } from "@/components/drawing/DrawingEditor";
 import { DrawingPreview } from "@/components/drawing/DrawingPreview";
-import { PartDetails } from "./PartDetails";
+import { usePartDetails } from "./PartDetailsHost";
+import { useInventoryPopup } from "@/components/inventory/InventoryPopup";
 import { CotsCard } from "@/components/cots/CotsCard";
 
 const EXPORTABLE = ["STEP", "STL", "PARASOLID"] as const;
@@ -33,13 +31,13 @@ const pill = "rounded-full border border-line-strong bg-raised px-2 py-0.5 text-
 // A click on a card's body opens the part's details, unless it lands on one of its controls.
 export const isCardBodyClick = (e: React.MouseEvent) => !(e.target as HTMLElement).closest("a, button, input, select, textarea, label, [role=dialog], dialog");
 
-// The part card: the Onshape thumbnail is the hero (click it for the part's 3D preview, where
-// Locate in robot lives), with quantity, type and the Merged tag on its top-left and Download on
-// its top-right; below it two dense rows: the name with the drawing and notes buttons, then the
-// status and the material → process pills. Properties only open their editors in Edit mode, and a
-// click anywhere else below the thumbnail opens the part's details window. On To Fab the rows are
-// read-only: status, amount, material, machine and the drawing icon. COTS parts get their own card
-// (CotsCard): bought, not made.
+// The part card: the Onshape thumbnail is the hero, with quantity, type and the Merged tag on its
+// top-left, Download (and the inventory item, when the part is linked to one) on its top-right and
+// View drawing on its bottom-right once a drawing exists; below it two dense rows: the name, then
+// the status and the material → process pills. Properties only open their editors in Edit mode,
+// and a click anywhere else on the card opens the part's details window (3D, notes, drawing,
+// inventory). On To Fab the rows are read-only: status, amount, material, machine and the
+// drawing icon. COTS parts get their own card (CotsCard): bought, not made.
 export function PartCard(props: React.ComponentProps<typeof MadePartCard>) {
   return props.part.classification === "cots" ? <CotsCard {...props} /> : <MadePartCard {...props} />;
 }
@@ -70,7 +68,7 @@ function MadePartCard({
   checkTo?: string; // and the one it moves it to (To Post Process: Ready for QA)
 }) {
   const edit = useEditMode();
-  const { robotId, versions } = useBom();
+  const { versions } = useBom();
   const machines = SLOTS.filter((s) => part[s.key]);
   // The process being worked on: the first slot whose done counter hasn't reached the quantity.
   const current = machines.find((s) => part[s.done] < Math.max(part.quantity, 1));
@@ -86,13 +84,15 @@ function MadePartCard({
   };
   const fabControls = fabCounter && part.classification !== "cots" && machines.length > 0;
   const format = cadFormat(part);
-  const [stage, setStage] = useState<StageView | null>(null);
-  const [details, setDetails] = useState(false);
-  const openDetails = (e: React.MouseEvent) => isCardBodyClick(e) && setDetails(true);
-  const onshapeMaterial = part.geometry?.onshapeMaterial ?? null;
+  const showDetails = usePartDetails(part, save);
+  const openDetails = (e: React.MouseEvent) => {
+    if (!onToggleSelect && isCardBodyClick(e)) showDetails();
+  };
+  const [drawing, setDrawing] = useState(false);
+  const { openItem } = useInventoryPopup();
 
   return (
-    <div id={`part-${part.id}`} data-selected={!!selected} data-part={partIds(part)} style={style ?? statusTint(computeStatus(part))} className={`card-interactive group flex scroll-mt-20 flex-col text-sm target:border-accent target:ring-2 target:ring-accent ${checked ? "opacity-60" : ""}`}>
+    <div id={`part-${part.id}`} data-selected={!!selected} data-part={partIds(part)} style={style ?? statusTint(computeStatus(part))} onClick={openDetails} className={`card-interactive group flex scroll-mt-20 cursor-pointer flex-col text-sm target:border-accent target:ring-2 target:ring-accent ${checked ? "opacity-60" : ""}`}>
       {checked && <span aria-hidden className="pointer-events-none absolute inset-x-3 top-1/2 z-10 h-0.5 -rotate-6 rounded-full bg-emerald-500" />}
       {onToggleSelect && (
         // While selecting, a click anywhere on the card toggles it.
@@ -110,15 +110,11 @@ function MadePartCard({
       <div className="thumb-well thumb-made relative flex aspect-[4/3] items-center justify-center">
         {part.isManual ? (
           <span className="text-xs text-muted">Manual part</span>
+        ) : part.thumbUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
+          <img src={part.thumbUrl} alt="" loading="lazy" className="h-full w-full object-contain p-3" />
         ) : (
-          <button type="button" onClick={() => setStage("part")} className="flex h-full w-full cursor-zoom-in items-center justify-center" aria-label={`3D preview of ${partTitle(part)}`}>
-            {part.thumbUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
-              <img src={part.thumbUrl} alt="" loading="lazy" className="h-full w-full object-contain p-3" />
-            ) : (
-              <span className="text-xs text-muted">No thumbnail yet, click for 3D</span>
-            )}
-          </button>
+          <span className="text-xs text-muted">No thumbnail yet</span>
         )}
         <div className="absolute top-2 left-2 flex items-center gap-1">
           {!fabCounter && (
@@ -144,15 +140,28 @@ function MadePartCard({
               <CheckIcon className="h-8 w-8" />
             </button>
           ) : (
-            (format || part.files.length > 0 || part.hasDrawing) && <DownloadMenu part={part} format={format} />
+            <>
+              {part.inventoryItemId && (
+                <button type="button" onClick={() => openItem(part.inventoryItemId!)} className="overlay-btn" aria-label="Open its inventory item" title="Open its inventory item">
+                  <Icon name="box" />
+                </button>
+              )}
+              {(format || part.files.length > 0 || part.hasDrawing) && <DownloadMenu part={part} format={format} />}
+            </>
           )}
         </div>
         {part.note && <NoteCloud note={part.note} raised={fabControls} />}
-        {versions && !fabControls && (
-          <div className="absolute right-2 bottom-2">
-            <VersionTag partId={part.id} tags={versions} manual={part.isManual} />
+        {!fabControls && (versions || part.hasDrawing) && (
+          <div className="absolute right-2 bottom-2 flex items-center gap-1.5">
+            {versions && <VersionTag partId={part.id} tags={versions} manual={part.isManual} />}
+            {part.hasDrawing && (
+              <button type="button" onClick={() => setDrawing(true)} className="overlay-btn" aria-label="View drawing" title="View drawing">
+                <Icon name="drawing" />
+              </button>
+            )}
           </div>
         )}
+        {drawing && <DrawingPreview partId={ownerPartId(part)} title={partTitle(part)} onClose={() => setDrawing(false)} />}
         {fabControls && (
           <>
             <button
@@ -176,34 +185,16 @@ function MadePartCard({
           </>
         )}
       </div>
-      {stage && (
-        <PartStage
-          partId={ownerPartId(part)}
-          robotId={robotId ?? null}
-          modelKey={part.modelKey}
-          name={partTitle(part)}
-          material={part.material}
-          onshapeMaterial={onshapeMaterial}
-          view={stage}
-          onView={setStage}
-          onClose={() => setStage(null)}
-        />
-      )}
-
-      {details && <PartDetails part={part} save={save} onClose={() => setDetails(false)} />}
-
       {fabCounter ? (
-        <FabFooter part={part} current={current ?? machines.at(-1)} onClick={openDetails} />
+        <FabFooter part={part} current={current ?? machines.at(-1)} />
       ) : (
-        <div className="flex min-w-0 cursor-pointer flex-col gap-1.5 px-2.5 py-2" onClick={openDetails}>
+        <div className="flex min-w-0 flex-col gap-1.5 px-2.5 py-2">
           <div className="flex min-w-0 items-center gap-1">
             <div className={`min-w-0 flex-1 truncate text-[13px] font-semibold text-fg ${checked ? "line-through" : ""}`} title={part.displayName ?? part.onshapeName ?? undefined}>
               {edit ? <NameField part={part} save={save} bare /> : (part.displayName ?? part.onshapeName ?? "Unnamed part")}
               {showSystem && <span className="ml-1.5 text-[11px] font-normal text-subtle">{part.systemName}</span>}
             </div>
             {showCounter && <DoneCounter part={part} save={save} slot={current!} />}
-            {!part.isManual && <DrawingButton partId={ownerPartId(part)} hasDrawing={!!part.hasDrawing} />}
-            <NotesButton part={part} save={save} />
             {edit && <EditMenu part={part} />}
           </div>
 
@@ -229,7 +220,7 @@ function MadePartCard({
 
 // To Fab's read-only rows: the status and how many are made of the amount, then the material,
 // the machine it's at and a drawing icon (the drawing in a big window).
-function FabFooter({ part, current, onClick }: { part: CardPart; current: (typeof SLOTS)[number] | undefined; onClick: (e: React.MouseEvent) => void }) {
+function FabFooter({ part, current }: { part: CardPart; current: (typeof SLOTS)[number] | undefined }) {
   const { inventory } = useBom();
   const [drawing, setDrawing] = useState(false);
   const linked = part.inventoryItemId ? inventory.find((i) => i.id === part.inventoryItemId) : undefined;
@@ -237,7 +228,7 @@ function FabFooter({ part, current, onClick }: { part: CardPart; current: (typeo
   const machine = current ? (getMachine(part[current.key]!)?.name ?? part[current.key]) : null;
   const made = current ? part[current.done] : part.quantity;
   return (
-    <div className="flex min-w-0 cursor-pointer flex-col gap-1.5 px-2.5 py-2" onClick={onClick}>
+    <div className="flex min-w-0 flex-col gap-1.5 px-2.5 py-2">
       <div className="flex min-w-0 items-center gap-1.5">
         <StatusPill status={computeStatus(part)} label={partStatusLabel(part)} />
         <span className="ml-auto font-mono text-xs font-semibold text-fg tabular-nums" title={machine ? `Made at ${machine} of the amount` : "Amount"}>
@@ -333,7 +324,7 @@ export function DownloadMenu({ part, format }: { part: CardPart; format: ExportF
 }
 
 // The part's note as a comic-book thought cloud over the thumbnail, in bold on yellow so it is hard
-// to miss; the notes button edits it.
+// to miss; the part's details window edits it.
 export function NoteCloud({ note, raised = false }: { note: string; raised?: boolean }) {
   return (
     <div className={`pointer-events-none absolute left-3 max-w-[80%] ${raised ? "bottom-14" : "bottom-4"}`}>
@@ -344,66 +335,6 @@ export function NoteCloud({ note, raised = false }: { note: string; raised?: boo
       <span className="absolute -bottom-2.5 left-5 h-3 w-3 rounded-full border-[3px] border-[#111318] bg-[#fff59d]" />
       <span className="absolute -bottom-4 left-2 h-2 w-2 rounded-full border-2 border-[#111318] bg-[#fff59d]" />
     </div>
-  );
-}
-
-// Opens the part's drawing in the drawing editor, making it from Onshape first when it has none.
-function DrawingButton({ partId, hasDrawing }: { partId: string; hasDrawing: boolean }) {
-  const router = useRouter();
-  const [open, setOpen] = useState(false);
-  const [making, setMaking] = useState(false);
-  async function onClick() {
-    if (hasDrawing) return setOpen(true);
-    setMaking(true);
-    const res = await fetch(`/api/parts/${partId}/drawing`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
-    setMaking(false);
-    if (!res.ok) return alert((await res.json().catch(() => ({}))).error ?? "Couldn't make the drawing.");
-    router.refresh();
-    setOpen(true);
-  }
-  return (
-    <>
-      <button
-        type="button"
-        onClick={onClick}
-        disabled={making}
-        className={`press flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-line-strong hover:border-accent/50 hover:text-fg ${hasDrawing ? "text-muted" : "border-dashed text-subtle"} ${making ? "animate-pulse" : ""}`}
-        aria-label={hasDrawing ? "Drawing" : "Make drawing"}
-        title={making ? "Making the drawing…" : hasDrawing ? "Drawing" : "Make drawing"}
-      >
-        <Icon name="drawing" />
-      </button>
-      {open && <DrawingEditor partId={partId} onClose={() => setOpen(false)} />}
-    </>
-  );
-}
-
-export function NotesButton({ part, save }: { part: CardPart; save: SaveFn }) {
-  return (
-    <Popover
-      align="right"
-      hideCaret
-      triggerClassName="relative h-7 w-7 shrink-0 justify-center rounded-md border border-line-strong text-muted hover:border-accent/50 hover:text-fg"
-      trigger={
-        <>
-          <Icon name="note" />
-          <span className="sr-only">{part.note ? "Notes" : "Add a note"}</span>
-          {part.note && <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-gold ring-2 ring-white" />}
-        </>
-      }
-    >
-      {(close) => (
-        <InputEditor
-          multiline
-          value={part.note ?? ""}
-          onCancel={close}
-          onSave={(v) => {
-            if (v.trim() !== (part.note ?? "")) save({ note: v });
-            close();
-          }}
-        />
-      )}
-    </Popover>
   );
 }
 

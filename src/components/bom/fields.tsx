@@ -181,7 +181,7 @@ export function MaterialField({ part, save, className }: Props & { className?: s
           />
         )}
       </Popover>
-      {openStock && (
+      {linked && openStock && (
         <button type="button" onClick={openStock} className="press flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-line text-subtle hover:border-accent hover:text-accent" aria-label="See it in the inventory" title="See it in the inventory">
           <Icon name="box" className="h-3.5 w-3.5" />
         </button>
