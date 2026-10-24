@@ -3,7 +3,9 @@ import { headers } from "next/headers";
 import { db, schema } from "@/db";
 import { requireMember } from "@/lib/auth";
 import { DAILY_CALL_BUDGET } from "@/lib/onshape/client";
-import { disconnectOnshape } from "./actions";
+import { TeamPicker } from "@/components/teams/TeamPicker";
+import { listTeamSystems } from "@/lib/teams";
+import { disconnectOnshape, setOwnTeam } from "./actions";
 import { McpTokens } from "./McpTokens";
 import { NameForm } from "./NameForm";
 
@@ -38,7 +40,7 @@ export default async function ProfilePage({
     .from(schema.mcpTokens)
     .where(eq(schema.mcpTokens.memberId, member.id))
     .orderBy(desc(schema.mcpTokens.createdAt));
-  const h = await headers();
+  const [h, systems] = await Promise.all([headers(), listTeamSystems()]);
   const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host")}`;
   const calls = token?.callsDay === today ? token.callsToday : 0;
 
@@ -51,6 +53,8 @@ export default async function ProfilePage({
           {member.isAdmin && " · Admin"}
         </p>
       </div>
+
+      <TeamPicker team={member.team} systemId={member.systemId} systems={systems} save={setOwnTeam} />
 
       {onshape && MESSAGES[onshape] && (
         <p className={`rounded-md p-3 text-sm ${onshape === "connected" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>

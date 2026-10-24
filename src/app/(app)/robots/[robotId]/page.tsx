@@ -46,6 +46,9 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
     storageTotal(),
   ]);
   if (!data) notFound();
+  // Build Team sees what they don't use smaller and dimmer, still a click away.
+  const build = member.team === "build";
+  const dim = build ? "opacity-55 transition-opacity duration-150 hover:opacity-100 focus-within:opacity-100" : "";
   const { robot, breakdown } = data;
   const aiReviews = reviews.filter((r) => r.source === "ai").length;
   const counted = inventory.filter((i) => !i.sheet);
@@ -82,7 +85,7 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className={`grid gap-3 ${build ? "sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]" : "sm:grid-cols-2"}`}>
         <LaunchCard
           href={`/robots/${robot.id}/fab`}
           icon="fab"
@@ -96,6 +99,8 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
           title="To Review"
           count={reviews.length}
           detail={reviews.length ? `${aiReviews} set up by Claude, ${reviews.length - aiReviews} by Suggest setup` : "Parts set up automatically wait here"}
+          minor={build}
+          className={dim}
         />
       </div>
 
@@ -138,7 +143,7 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
             </div>
           )}
         </section>
-        <div className="grid grid-rows-2 gap-3">
+        <div className={`grid gap-3 ${build ? `self-start ${dim}` : "grid-rows-2"}`}>
           <QaBox robotId={robot.id} systems={qaSystems} />
           <SyncBox robotId={robot.id} systems={syncSystems} />
         </div>
@@ -152,9 +157,11 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
         />
       </div>
 
-      <Suspense>
-        <StorageBox total={stored} />
-      </Suspense>
+      <div className={dim}>
+        <Suspense>
+          <StorageBox total={stored} />
+        </Suspense>
+      </div>
 
       <Link href={`/robots/${robot.id}/inventory`} className="card-interactive group flex items-center gap-3 px-4 py-3">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line-strong bg-raised text-accent-hover group-hover:border-accent/60">
@@ -169,9 +176,11 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
         <Icon name="arrow" className="h-5 w-5 shrink-0 text-subtle transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-fg" />
       </Link>
 
-      <RecentActions actions={actions} max={8} />
+      <div className={dim}>
+        <RecentActions actions={actions} max={build ? 4 : 8} />
+      </div>
 
-      <section className="space-y-3">
+      <section className={`space-y-3 ${dim}`}>
         <h2 className="text-lg font-semibold">All parts</h2>
         <BomView parts={parts} inventory={inventoryNames} isAdmin={member.isAdmin} showSystem allowBulkEdit={false} robotId={robot.id} groupBySystem />
       </section>
@@ -180,16 +189,17 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
   );
 }
 
-function LaunchCard({ href, icon, title, count, detail }: { href: string; icon: "fab" | "review"; title: string; count: number; detail: string }) {
+// minor: the compact card Build Team sees for pages they rarely need.
+function LaunchCard({ href, icon, title, count, detail, minor = false, className = "" }: { href: string; icon: "fab" | "review"; title: string; count: number; detail: string; minor?: boolean; className?: string }) {
   return (
-    <Link href={href} className="card-interactive group flex items-center gap-6 p-8">
-      <span className="flex h-20 w-20 items-center justify-center rounded-xl border border-line-strong bg-raised text-accent-hover group-hover:border-accent/60">
-        <Icon name={icon} className="h-9 w-9" />
+    <Link href={href} className={`card-interactive group flex items-center ${minor ? "gap-4 p-5" : "gap-6 p-8"} ${className}`}>
+      <span className={`flex items-center justify-center rounded-xl border border-line-strong bg-raised text-accent-hover group-hover:border-accent/60 ${minor ? "h-12 w-12" : "h-20 w-20"}`}>
+        <Icon name={icon} className={minor ? "h-6 w-6" : "h-9 w-9"} />
       </span>
       <div className="min-w-0 flex-1">
-        <div className="text-lg font-medium text-muted">{title}</div>
-        <div className="display text-6xl text-accent tabular-nums">
-          {count} <span className="text-2xl font-medium text-muted">{count === 1 ? "part" : "parts"}</span>
+        <div className={`font-medium text-muted ${minor ? "text-base" : "text-lg"}`}>{title}</div>
+        <div className={`display text-accent tabular-nums ${minor ? "text-4xl" : "text-6xl"}`}>
+          {count} <span className={`font-medium text-muted ${minor ? "text-lg" : "text-2xl"}`}>{count === 1 ? "part" : "parts"}</span>
         </div>
         <div className="truncate text-sm text-subtle">{detail}</div>
       </div>

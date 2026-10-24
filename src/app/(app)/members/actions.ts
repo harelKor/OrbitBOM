@@ -4,8 +4,11 @@ import { randomBytes } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db, schema } from "@/db";
+import type { Team } from "@/config/teams";
 import { requireAdmin } from "@/lib/auth";
 import { approveJoinRequest, INVITE_TTL_DAYS } from "@/lib/membership";
+import { saveTeam } from "@/lib/teams";
+import { isUuid } from "@/lib/uuid";
 
 export async function createInvite() {
   const admin = await requireAdmin();
@@ -51,5 +54,12 @@ export async function removeMember(memberId: string) {
   const admin = await requireAdmin();
   if (memberId === admin.id) throw new Error("You can't remove yourself.");
   await db.delete(schema.members).where(eq(schema.members.id, memberId));
+  revalidatePath("/members");
+}
+
+export async function setMemberTeam(memberId: string, team: Team | null, systemId: string | null) {
+  await requireAdmin();
+  if (!isUuid(memberId)) return;
+  await saveTeam(memberId, team, systemId);
   revalidatePath("/members");
 }

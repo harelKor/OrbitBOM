@@ -20,11 +20,14 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 
 const id = () => uuid("id").primaryKey().defaultRandom();
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 
 // ---------- Team ----------
+
+export const memberTeam = pgEnum("member_team", ["build", "cad"]);
 
 export const members = pgTable("members", {
   id: id(),
@@ -34,6 +37,10 @@ export const members = pgTable("members", {
   avatarUrl: text("avatar_url"),
   isAdmin: boolean("is_admin").notNull().default(false),
   onshapeConnected: boolean("onshape_connected").notNull().default(false),
+  // Build Team lands on To Fab, CAD Team on their subsystem's page. Null: the home tiles.
+  team: memberTeam("team"),
+  // CAD Team only: the robot system the member designs.
+  systemId: uuid("system_id").references((): AnyPgColumn => systems.id, { onDelete: "set null" }),
   createdAt: createdAt(),
 });
 

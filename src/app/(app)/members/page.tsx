@@ -9,11 +9,18 @@ import {
   revokeInvite,
   setAdmin,
 } from "./actions";
+import { TEAMS } from "@/config/teams";
+import { listTeamSystems } from "@/lib/teams";
 import { CopyLink } from "./CopyLink";
+import { MemberTeam } from "./MemberTeam";
 
 export default async function MembersPage() {
   const me = await requireMember();
-  const members = await db.select().from(schema.members).orderBy(asc(schema.members.name));
+  const [members, systems] = await Promise.all([
+    db.select().from(schema.members).orderBy(asc(schema.members.name)),
+    listTeamSystems(),
+  ]);
+  const systemName = new Map(systems.map((s) => [s.id, s.name]));
 
   const [invites, requests] = me.isAdmin
     ? await Promise.all([
@@ -70,8 +77,13 @@ export default async function MembersPage() {
                     </span>
                   )}
                 </div>
-                <div className="truncate text-sm text-muted">{m.email}</div>
+                <div className="truncate text-sm text-muted">
+                  {m.email}
+                  {!me.isAdmin && m.team && ` · ${TEAMS.find((t) => t.id === m.team)?.label}`}
+                  {!me.isAdmin && m.team === "cad" && m.systemId && systemName.has(m.systemId) && `, ${systemName.get(m.systemId)}`}
+                </div>
               </div>
+              {me.isAdmin && <MemberTeam memberId={m.id} team={m.team} systemId={m.systemId} systems={systems} />}
               {me.isAdmin && m.id !== me.id && (
                 <>
                   <form action={setAdmin.bind(null, m.id, !m.isAdmin)}>

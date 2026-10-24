@@ -3,9 +3,11 @@
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db, schema } from "@/db";
+import type { Team } from "@/config/teams";
 import { requireMember } from "@/lib/auth";
 import { createMcpToken } from "@/lib/mcp/tokens";
 import { disconnect } from "@/lib/onshape/client";
+import { saveTeam } from "@/lib/teams";
 import { isUuid } from "@/lib/uuid";
 
 export async function disconnectOnshape() {
@@ -38,4 +40,12 @@ export async function renameSelf(name: string): Promise<{ error?: string }> {
   await db.update(schema.members).set({ name: clean }).where(eq(schema.members.id, member.id));
   revalidatePath("/", "layout");
   return {};
+}
+
+// The member's own team and, for CAD Team, their subsystem.
+export async function setOwnTeam(team: Team | null, systemId: string | null) {
+  const member = await requireMember();
+  await saveTeam(member.id, team, systemId);
+  revalidatePath("/profile");
+  revalidatePath("/members");
 }

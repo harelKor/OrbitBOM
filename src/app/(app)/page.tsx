@@ -1,15 +1,22 @@
 import { cookies } from "next/headers";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { ROBOT_COOKIE } from "@/components/shell/mode";
 import { requireMember } from "@/lib/auth";
 import { listRobots } from "@/lib/data/robots";
+import { landingPath } from "@/lib/teams";
 
-// The landing page: one tile per app. Robots are picked in the right sidebar.
-export default async function HomePage() {
-  await requireMember();
-  const [robots, jar] = await Promise.all([listRobots(), cookies()]);
+// The landing page: one tile per app. Robots are picked in the right sidebar. Opening the app
+// takes a member with a team to their page; the sidebar's Home link (?home) keeps the tiles.
+export default async function HomePage({ searchParams }: { searchParams: Promise<{ home?: string }> }) {
+  const member = await requireMember();
+  const [robots, jar, { home }] = await Promise.all([listRobots(), cookies(), searchParams]);
   const last = jar.get(ROBOT_COOKIE)?.value;
   const robot = robots.find((r) => r.id === last) ?? robots.find((r) => !r.archived);
+  if (home === undefined) {
+    const path = await landingPath(member, robot?.id ?? null);
+    if (path) redirect(path);
+  }
 
   const tiles = [
     {
