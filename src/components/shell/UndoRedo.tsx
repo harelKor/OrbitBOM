@@ -29,8 +29,8 @@ function save(s: Stacks) {
   } catch {}
 }
 
-// Undo / Redo (plan/system-versioning.md §8), in Edit mode: buttons in the top bar and
-// Ctrl+Z / Ctrl+Shift+Z (Ctrl+Y), not while typing. Undo puts back this member's newest part
+// Undo / Redo (plan/system-versioning.md §8): buttons in the top bar in Edit mode, and
+// Ctrl+Z / Ctrl+Shift+Z (Ctrl+Y) in either mode, not while typing. Undo puts back this member's newest part
 // edit; it is a new change, so a field someone changed since is left alone and the toast says
 // so. This tab remembers what it undid (sessionStorage), so two tabs never fight.
 export function UndoRedo() {
@@ -81,7 +81,6 @@ export function UndoRedo() {
   });
 
   useEffect(() => {
-    if (!edit) return;
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
       const key = e.key.toLowerCase();
@@ -93,7 +92,7 @@ export function UndoRedo() {
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [edit]);
+  }, []);
 
   if (!edit) return null;
   const btn = "press flex h-8 w-8 items-center justify-center rounded-md border border-white/30 hover:bg-white/10 disabled:opacity-40";

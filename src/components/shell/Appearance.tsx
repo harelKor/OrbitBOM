@@ -1,12 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { APPEARANCE_KEY as KEY, DEFAULT_HUE } from "./boot-scripts";
 
 // Card size and site colour, set from the right panel and kept in this browser, so every page
 // opens the way the member left it. Both live on <html>: --card-scale sizes the part card
 // grids (.card-grid) and zooms the tables (.data-table), and data-hue + --hue turn the accent colours (globals.css).
-const KEY = "orbit-appearance";
-export const DEFAULT_HUE = 264; // Orbit blue, #0000cc
 
 type Prefs = { scale: number; hue: number };
 const DEFAULTS: Prefs = { scale: 1, hue: DEFAULT_HUE };
@@ -80,6 +79,3 @@ export function AppearanceControls() {
     </div>
   );
 }
-
-// Runs before the page paints, next to the theme script, so the saved size and colour never flash.
-export const APPEARANCE_SCRIPT = `try{var a=JSON.parse(localStorage.getItem("${KEY}")||"null");if(a){var r=document.documentElement;if(a.scale)r.style.setProperty("--card-scale",a.scale);if(a.hue!=null&&a.hue!==${DEFAULT_HUE}){r.dataset.hue="";r.style.setProperty("--hue",a.hue)}}}catch(e){}`;

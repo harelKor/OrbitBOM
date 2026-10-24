@@ -12,6 +12,7 @@ import { MaterialColorsProvider } from "./MaterialColors";
 import { ModeProvider } from "./ModeContext";
 import type { Mode } from "./mode";
 import { RobotSwitcher } from "./RobotSwitcher";
+import { Shortcuts } from "./Shortcuts";
 import { TopBar } from "./TopBar";
 import { VisitTracker } from "./VisitTracker";
 
@@ -85,6 +86,7 @@ export function Shell({
                 <Suspense>
                   <VisitTracker />
                 </Suspense>
+                <Shortcuts robots={robots} lastRobotId={lastRobotId} />
               </div>
               <aside
                 className={`fixed inset-y-0 right-0 z-40 w-72 shrink-0 border-l border-line bg-surface xl:sticky xl:top-0 xl:h-screen xl:translate-x-0 ${collapsed.right ? "xl:hidden" : ""} ${

@@ -2,11 +2,11 @@
 
 import { useSyncExternalStore } from "react";
 import { Icon } from "@/components/ui/Icon";
+import { SHADE_KEY as KEY } from "./boot-scripts";
 
 // Light to dark as a greyscale slider: 0 is the white theme, 100 the dark one, and every step
 // between greys the page, cards and lines (globals.css, data-shade). Text and accents follow the
 // nearer theme. Starts from the device setting; a move saves the shade in this browser.
-const KEY = "orbit-shade";
 
 function current(): number {
   const set = document.documentElement.dataset.shade;
@@ -53,7 +53,3 @@ export function ShadeSlider() {
     </label>
   );
 }
-
-// Runs before the page paints so a saved shade never flashes. A theme saved by the old light /
-// dark button becomes the matching end of the slider.
-export const SHADE_SCRIPT = `try{var r=document.documentElement,s=localStorage.getItem("${KEY}"),t=localStorage.getItem("orbit-theme");if(s==null&&(t==="light"||t==="dark"))s=t==="dark"?"100":"0";if(s!=null){r.dataset.shade=s;r.dataset.theme=Number(s)>=50?"dark":"light";r.style.setProperty("--shade",s+"%")}}catch(e){}`;

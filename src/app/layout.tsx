@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Geist_Mono, Jost } from "next/font/google";
-import { APPEARANCE_SCRIPT } from "@/components/shell/Appearance";
-import { SHADE_SCRIPT } from "@/components/shell/ShadeSlider";
+import { APPEARANCE_SCRIPT, SHADE_SCRIPT } from "@/components/shell/boot-scripts";
 import "./globals.css";
 
 // Jost is a Futura-style geometric face, close to the type on 1690orbit.com.
