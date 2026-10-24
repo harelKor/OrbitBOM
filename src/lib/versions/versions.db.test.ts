@@ -26,20 +26,26 @@ else
       { id: "q", name: "Quantity" },
     ];
     let source = { wvmType: "v", wvmId: "v1" };
-    let qty = { A: 2, B: 4 };
-    let partMvs = { A: "pmA1", B: "pmB1" };
+    // Each BOM row: partId → [name, quantity]. Shapes: version → partId → volume.
+    let bomParts: Record<string, [string, number]> = { A: ["Part A", 2], B: ["Part B", 4] };
+    const shapes: Record<string, Record<string, number>> = { v1: { A: 1, B: 2 }, v2: { A: 1.5, B: 2 }, v3: { A9: 1.5, B9: 2 } };
     let microversion = "mv1";
+    const calls: string[] = [];
     vi.stubGlobal("fetch", async (input: string) => {
+      calls.push(input);
       let body: unknown;
       if (input.includes("currentmicroversion")) body = { microversion };
-      else if (input.includes("/parts/d/")) body = Object.entries(partMvs).map(([partId, microversionId]) => ({ partId, microversionId }));
-      else if (input.includes("/versions/")) body = { name: "V2 shorter arm" };
+      else if (input.includes("/massproperties")) {
+        const version = input.match(/\/v\/(v\d)\//)![1];
+        const wanted = [...input.matchAll(/partId=(\w+)/g)].map((m) => m[1]);
+        body = { bodies: Object.fromEntries(wanted.map((id) => [id, { volume: [shapes[version][id]], periphery: [6], principalInertia: [1, 2, 3], hasMass: true }])) };
+      } else if (input.includes("/versions/")) body = { name: "V2 shorter arm" };
       else
         body = {
           headers,
-          rows: Object.entries(qty).map(([partId, q]) => ({
+          rows: Object.entries(bomParts).map(([partId, [n, q]]) => ({
             itemSource: { documentId: CAD, elementId: "studio", partId, ...source },
-            headerIdToValue: { n: `Part ${partId}`, q },
+            headerIdToValue: { n, q },
           })),
         };
       return new Response(JSON.stringify(body), { status: 200 });
@@ -64,8 +70,8 @@ else
     // Parts synced before versioning existed.
     const synced = { systemId: system.id, sourceDid: CAD, sourceWvm: "v", sourceWid: "v1", sourceEid: "studio" };
     await db.insert(schema.parts).values([
-      { ...synced, onshapePartId: "A", onshapeName: "Part A", quantity: 2, onshapeMv: "pmA1", designState: "Gcoded" },
-      { ...synced, onshapePartId: "B", onshapeName: "Part B", quantity: 4, onshapeMv: "pmB1" },
+      { ...synced, onshapePartId: "A", onshapeName: "Part A", quantity: 2, designState: "Gcoded" },
+      { ...synced, onshapePartId: "B", onshapeName: "Part B", quantity: 4 },
     ]);
 
     const live = async () =>
@@ -81,9 +87,11 @@ else
 
     it("finds a changed shape and a changed property without touching the BOM", async () => {
       source = { wvmType: "v", wvmId: "v2" };
-      partMvs = { A: "pmA2", B: "pmB1" };
-      qty = { A: 2, B: 6 };
+      bomParts = { A: ["Part A", 2], B: ["Part B", 6] };
+      calls.length = 0;
       const r = await checkSystem(system.id, member.id);
+      // The new version's shapes, and the old version's for parts with none stored yet.
+      expect(calls.filter((c) => c.includes("massproperties"))).toHaveLength(2);
       expect(r.draft?.name).toBe("V2 shorter arm");
       expect(r.draft?.changes.map((c) => [c.name, c.change, c.geometry, Object.keys(c.fields)])).toEqual([
         ["Part A", "modified", true, []],
@@ -116,7 +124,8 @@ else
         [1, "committed", "Shorter arm"],
       ]);
       const [a, b] = await live();
-      expect(a).toMatchObject({ sourceWid: "v2", onshapeMv: "pmA2", designState: "Gcoded" });
+      expect(a).toMatchObject({ sourceWid: "v2", designState: "Gcoded" });
+      expect(a.shapeSig).toMatch(/^1\.50000,/);
       expect(b.quantity).toBe(6);
 
       const rows = await db.select().from(schema.partVersions).where(eq(schema.partVersions.versionId, draft.id));
@@ -128,12 +137,18 @@ else
       expect(s.currentVersionId).toBe(draft.id);
     });
 
-    it("takes the same parts in a newer subassembly version without a commit", async () => {
+    it("takes the same shapes under new partIds in a newer version without a commit", async () => {
+      const before = await live();
       source = { wvmType: "v", wvmId: "v3" };
+      bomParts = { B9: ["Part B", 6], A9: ["Part A", 2] };
       microversion = "mv2";
       const r = await checkSystem(system.id, member.id, { force: false });
       expect(r.draft).toBeNull();
-      expect((await live()).map((p) => p.sourceWid)).toEqual(["v3", "v3"]);
+      const after = await live();
+      expect(after.map((p) => [p.id, p.onshapePartId, p.sourceWid])).toEqual([
+        [before[0].id, "A9", "v3"],
+        [before[1].id, "B9", "v3"],
+      ]);
       const drafts = await db
         .select()
         .from(schema.systemVersions)

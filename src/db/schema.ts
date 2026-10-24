@@ -194,9 +194,9 @@ export const parts = pgTable(
     thumbnailRev: text("thumbnail_rev"),
     // The thumbnail's fingerprint (src/lib/images/dhash.ts), so auto-link can spot the same part.
     thumbHash: text("thumb_hash"),
-    // The Onshape part microversion as of the part's last commit, and the version row (its
-    // committed state) the part points at; see system_versions below.
-    onshapeMv: text("onshape_mv"),
+    // The part's shape fingerprint as of its last commit (src/lib/versions/shape.ts), and the
+    // version row (its committed state) the part points at; see system_versions below.
+    shapeSig: text("shape_sig"),
     versionRowId: uuid("version_row_id"),
     removedFromCadAt: timestamp("removed_from_cad_at", { withTimezone: true }),
 
@@ -429,7 +429,7 @@ export type PartSnapshot = {
   preProcess: string | null;
   process1: string | null;
   process2: string | null;
-  mv: string | null; // Onshape part microversion
+  sig: string | null; // shape fingerprint (src/lib/versions/shape.ts)
 };
 
 // A change a check found (or a commit made): what the Commit and Versions windows list.

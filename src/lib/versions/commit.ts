@@ -4,14 +4,14 @@ import { db, schema } from "@/db";
 import type { PartSnapshot, VersionChange } from "@/db/schema";
 import { autoLink } from "@/lib/inventory/autolink";
 import { partKey, type BomRow } from "@/lib/onshape/bom";
-import { applyBomRows, mvKey } from "@/lib/sync/applyBom";
+import { applyBomRows, sigKey } from "@/lib/sync/applyBom";
 import type { DraftRows } from "./detect";
 
 const { parts, partVersions, systems, systemVersions } = schema;
 
 export class VersionError extends Error {}
 
-type PartLike = Omit<PartSnapshot, "onshapeMaterial" | "mv"> & { geometry: { onshapeMaterial?: string } | null; onshapeMv: string | null };
+type PartLike = Omit<PartSnapshot, "onshapeMaterial" | "sig"> & { geometry: { onshapeMaterial?: string } | null; shapeSig: string | null };
 
 const snapshotOfPart = (p: PartLike): PartSnapshot => ({
   sourceDid: p.sourceDid,
@@ -28,10 +28,10 @@ const snapshotOfPart = (p: PartLike): PartSnapshot => ({
   preProcess: p.preProcess,
   process1: p.process1,
   process2: p.process2,
-  mv: p.onshapeMv,
+  sig: p.shapeSig,
 });
 
-const snapshotOfRow = (r: BomRow, mv: string | null): PartSnapshot => ({
+const snapshotOfRow = (r: BomRow, sig: string | null): PartSnapshot => ({
   sourceDid: r.sourceDid,
   sourceWid: r.sourceWid,
   sourceWvm: r.sourceWvm,
@@ -46,7 +46,7 @@ const snapshotOfRow = (r: BomRow, mv: string | null): PartSnapshot => ({
   preProcess: r.preProcess,
   process1: r.process1,
   process2: r.process2,
-  mv,
+  sig,
 });
 
 export type CommitResult = {
@@ -99,7 +99,7 @@ export async function commitDraft(
       } else seq = 1;
     }
 
-    const applied = await applyBomRows(tx, systemId, rows.bom, { memberId, batchId: draft.id, mvs: rows.mvs });
+    const applied = await applyBomRows(tx, systemId, rows.bom, { memberId, batchId: draft.id, sigs: rows.sigs, partSigs: rows.partSigs });
 
     // Each listed part's new state, and the part pointing at it.
     const rowByKey = new Map(rows.bom.map((r) => [partKey(r), r]));
@@ -110,7 +110,7 @@ export async function commitDraft(
       if (!c.partId) return [];
       const row = rowByKey.get(c.key);
       const removed = removedParts.find((p) => p.id === c.partId);
-      const snapshot = c.change !== "removed" && row ? snapshotOfRow(row, rows.mvs[mvKey(row)] ?? null) : removed && snapshotOfPart(removed);
+      const snapshot = c.change !== "removed" && row ? snapshotOfRow(row, rows.sigs?.[sigKey(row)] ?? null) : removed && snapshotOfPart(removed);
       return snapshot ? [{ versionId: draft.id, partId: c.partId, change: c.change, snapshot }] : [];
     });
     if (values.length) await pointAt(tx, await tx.insert(partVersions).values(values).returning({ id: partVersions.id, partId: partVersions.partId }));

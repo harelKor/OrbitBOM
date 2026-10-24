@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { checkForChanges, commitChanges } from "@/app/(app)/versions-actions";
 import { useEditMode } from "@/components/shell/ModeContext";
 import type { Draft } from "@/lib/versions/detect";
+import { MODEL_STALE_EVENT } from "@/components/dashboard/modelEvents";
 import { CommitWindow } from "./CommitWindow";
 
 type ThumbRound = { fetched: number; pending: number; calls: number; failed?: number; error?: string } | { error: string };
@@ -85,8 +86,12 @@ export function UpdateSystem({
       setOpen(false);
       setDraft(null);
       setMessage(r.message ?? null);
-      router.refresh();
-      await fetchThumbnails();
+      // Outside the transition, so the committed BOM shows now rather than when they finish:
+      // new thumbnails, and the 3D model rebuilt from the assembly (RobotViewer listens).
+      setTimeout(() => {
+        window.dispatchEvent(new Event(MODEL_STALE_EVENT));
+        void fetchThumbnails();
+      });
     });
 
   const waiting = draft?.changes.length ?? 0;

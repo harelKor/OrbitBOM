@@ -21,21 +21,28 @@ export type BomApplied = {
   removedIds: string[];
 };
 
-// A part's Onshape microversion is looked up by Part Studio + partId (its name can change).
-export const mvKey = (p: { sourceDid: string | null; sourceEid: string | null; onshapePartId: string | null }) =>
+// A part's shape fingerprint is looked up by Part Studio + partId (its name can change).
+export const sigKey = (p: { sourceDid: string | null; sourceEid: string | null; onshapePartId: string | null }) =>
   `${p.sourceDid}|${p.sourceEid}|${p.onshapePartId}`;
 
 // Merges BOM rows into a system's parts (Update BOM's merge rules, plan §4) inside the caller's
 // transaction: inserts new parts, refreshes Onshape fields and identity, hides parts missing
-// from the BOM. `mvs` gives each part's Onshape microversion to keep as committed.
+// from the BOM. `sigs` gives each part's shape fingerprint (by sigKey) to keep as committed;
+// `partSigs` the committed shape (by part id) of parts that had none stored yet.
 export async function applyBomRows(
   tx: Tx,
   systemId: string,
   rows: BomRow[],
-  { memberId, batchId, mvs = {} }: { memberId: string; batchId: string; mvs?: Record<string, string> },
+  {
+    memberId,
+    batchId,
+    sigs = {},
+    partSigs = {},
+  }: { memberId: string; batchId: string; sigs?: Record<string, string>; partSigs?: Record<string, string> },
 ): Promise<BomApplied> {
-  const existing = await tx.select().from(parts).where(eq(parts.systemId, systemId)).for("update");
-  const plan = planMerge(existing, rows);
+  const rowsNow = await tx.select().from(parts).where(eq(parts.systemId, systemId)).for("update");
+  const existing = rowsNow.map((p) => ({ ...p, shapeSig: p.shapeSig ?? partSigs[p.id] ?? null }));
+  const plan = planMerge(existing, rows, (r) => sigs[sigKey(r)]);
   const byId = new Map(existing.map((p) => [p.id, p]));
   const now = new Date();
   const result: BomApplied = {
@@ -71,7 +78,7 @@ export async function applyBomRows(
           // A part with a process is made in-house; without one nobody has said yet (Undefined).
           classification: r.preProcess || r.process1 || r.process2 ? ("inhouse" as const) : ("undefined" as const),
           geometry: r.onshapeMaterial ? { onshapeMaterial: r.onshapeMaterial } : null,
-          onshapeMv: mvs[mvKey(r)] ?? null,
+          shapeSig: sigs[sigKey(r)] ?? null,
           lastModifiedBy: memberId,
         })),
       )
@@ -89,7 +96,7 @@ export async function applyBomRows(
     if (u.relinked) result.relinked.push(u.identity.onshapeName);
     if (u.restore) result.restored.push(u.identity.onshapeName);
     result.idByRow.set(partKey(u.identity), u.id);
-    const mv = mvs[mvKey(u.identity)];
+    const sig = sigs[sigKey(u.identity)];
     await tx
       .update(parts)
       .set({
@@ -97,7 +104,7 @@ export async function applyBomRows(
         ...u.identity,
         geometry: { ...(part.geometry ?? {}), onshapeMaterial: u.onshapeMaterial ?? undefined },
         removedFromCadAt: null,
-        ...(mv ? { onshapeMv: mv } : {}),
+        ...(sig ? { shapeSig: sig } : {}),
         ...(history.length ? { lastModifiedAt: now, lastModifiedBy: memberId } : {}),
       })
       .where(eq(parts.id, u.id));

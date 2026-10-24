@@ -3,7 +3,9 @@
 // - Onshape fields refresh unless the part has them in overridden_fields;
 // - app-only fields (status, counters, people, notes, files, groups…) are never touched;
 // - a part missing from the BOM is hidden (removed_from_cad_at), keeping its data;
-// - a part that reappears under a new identity with the same name is re-linked, keeping its data.
+// - a part that reappears under a new identity with the same name is re-linked, keeping its data;
+// - with shape fingerprints (src/lib/versions/shape.ts), a part goes to the same-named part with
+//   the same shape first, so regenerated partIds and same-named mirror parts pair up correctly.
 
 import { partKey, type BomRow } from "@/lib/onshape/bom";
 import { ONSHAPE_FIELDS, type PartChanges } from "@/lib/parts/changes";
@@ -23,6 +25,7 @@ export type ExistingPart = {
   preProcess: string | null;
   process1: string | null;
   process2: string | null;
+  shapeSig?: string | null;
 };
 
 export type IdentityUpdate = {
@@ -58,12 +61,11 @@ function identity(row: BomRow): IdentityUpdate {
   };
 }
 
-export function planMerge(existing: ExistingPart[], bom: BomRow[]): MergePlan {
+export function planMerge(existing: ExistingPart[], bom: BomRow[], sigOf: (row: BomRow) => string | undefined = () => undefined): MergePlan {
   const synced = existing.filter((p) => !p.isManual);
   const byKey = new Map(synced.map((p) => [partKey(p), p]));
   const matched = new Set<string>();
   const plan: MergePlan = { insert: [], update: [], remove: [] };
-  const unmatchedRows: BomRow[] = [];
 
   const queueUpdate = (part: ExistingPart, row: BomRow, relinked: boolean) => {
     matched.add(part.id);
@@ -81,20 +83,43 @@ export function planMerge(existing: ExistingPart[], bom: BomRow[]): MergePlan {
       relinked,
     });
   };
-
-  for (const row of bom) {
-    const part = byKey.get(partKey(row));
-    if (part && !matched.has(part.id)) queueUpdate(part, row, false);
-    else unmatchedRows.push(row);
-  }
-
-  // Re-keyed parts: same Onshape name, identity changed. Prefer parts still on the board,
-  // then parts already marked removed.
-  for (const row of unmatchedRows) {
-    const candidates = synced
+  const sameShape = (part: ExistingPart, row: BomRow) => {
+    const sig = sigOf(row);
+    return !!sig && part.shapeSig === sig;
+  };
+  const shapeUnknown = (part: ExistingPart, row: BomRow) => !part.shapeSig || !sigOf(row);
+  // Same-named parts not matched yet, those still on the board first.
+  const candidates = (row: BomRow) =>
+    synced
       .filter((p) => !matched.has(p.id) && p.onshapeName === row.onshapeName)
       .sort((a, b) => Number(a.removedFromCadAt !== null) - Number(b.removedFromCadAt !== null));
-    if (candidates[0]) queueUpdate(candidates[0], row, true);
+
+  // 1. Same identity, same (or unknown) shape.
+  let left: BomRow[] = [];
+  for (const row of bom) {
+    const part = byKey.get(partKey(row));
+    if (part && !matched.has(part.id) && (sameShape(part, row) || shapeUnknown(part, row))) queueUpdate(part, row, false);
+    else left.push(row);
+  }
+  // 2. Re-keyed parts with the same name and shape.
+  let next: BomRow[] = [];
+  for (const row of left) {
+    const part = candidates(row).find((p) => sameShape(p, row));
+    if (part) queueUpdate(part, row, partKey(part) !== partKey(row));
+    else next.push(row);
+  }
+  // 3. Same identity whose shape changed.
+  left = next;
+  next = [];
+  for (const row of left) {
+    const part = byKey.get(partKey(row));
+    if (part && !matched.has(part.id)) queueUpdate(part, row, false);
+    else next.push(row);
+  }
+  // 4. Re-keyed parts: same Onshape name, identity changed.
+  for (const row of next) {
+    const part = candidates(row)[0];
+    if (part) queueUpdate(part, row, true);
     else plan.insert.push(row);
   }
 

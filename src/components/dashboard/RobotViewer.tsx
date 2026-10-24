@@ -3,13 +3,14 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StatusCount } from "@/lib/stats";
 import { Segmented } from "@/components/ui/Segmented";
 import { Icon } from "@/components/ui/Icon";
 import { useMaterialColors } from "@/components/shell/MaterialColors";
 import { DEFAULT_MATERIAL_COLORS, MATERIAL_COLOR_GROUPS, materialColor, materialColorGroup } from "@/config/materialColors";
 import type { ViewerModel } from "./ModelCanvas";
+import { MODEL_STALE_EVENT } from "./modelEvents";
 
 const ModelCanvas = dynamic(() => import("./ModelCanvas").then((m) => m.ModelCanvas), { ssr: false });
 
@@ -126,6 +127,16 @@ export function RobotViewer({
       cancelled = true;
     };
   }, [robotId, version]);
+
+  const buildRef = useRef(build);
+  useEffect(() => {
+    buildRef.current = build;
+  });
+  useEffect(() => {
+    const onStale = () => void buildRef.current();
+    window.addEventListener(MODEL_STALE_EVENT, onStale);
+    return () => window.removeEventListener(MODEL_STALE_EVENT, onStale);
+  }, []);
 
   async function build() {
     setMessage(null);

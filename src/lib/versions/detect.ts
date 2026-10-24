@@ -5,15 +5,16 @@ import { db, schema } from "@/db";
 import type { VersionChange, VersionRef } from "@/db/schema";
 import { parseBom, partKey, type BomRow, type OnshapeBom } from "@/lib/onshape/bom";
 import { onshapeClient, OnshapeError, type OnshapeClient } from "@/lib/onshape/client";
-import { studioPath, type PartMetadata } from "@/lib/onshape/parts";
+import { studioPath } from "@/lib/onshape/parts";
 import { apiPath, parseOnshapeUrl } from "@/lib/onshape/url";
-import { applyBomRows, mvKey } from "@/lib/sync/applyBom";
+import { applyBomRows, sigKey } from "@/lib/sync/applyBom";
 import { planMerge } from "@/lib/sync/merge";
+import { shapeFingerprints } from "./shape";
 
 const { parts, systems, systemVersions } = schema;
 
 // What a draft keeps to be applied as it is on commit.
-export type DraftRows = { bom: BomRow[]; mvs: Record<string, string>; unknownMachines: string[] };
+export type DraftRows = { bom: BomRow[]; sigs: Record<string, string>; partSigs: Record<string, string>; unknownMachines: string[] };
 
 export type Draft = {
   id: string;
@@ -43,8 +44,8 @@ export async function loadDraft(systemId: string): Promise<Draft | null> {
 // Change detection (plan/system-versioning.md §4). Reads the Manufacture assembly's BOM and
 // compares it to the system's parts, which hold the committed state. Nothing reaches the BOM
 // here: what changed is kept in the system's one draft until a member commits it. Changes
-// that only move a part's Onshape reference (the same part in a newer subassembly version)
-// are applied at once, since fab would make exactly the same part.
+// that only move a part's Onshape reference (the same shape in a newer subassembly version,
+// or under a new partId) are applied at once, since fab would make exactly the same part.
 // With `force` false (the background refresh and the Onshape panel) it stops after one call
 // when the document's microversion is the one last seen.
 export async function checkSystem(systemId: string, memberId: string, { force = true } = {}): Promise<CheckResult> {
@@ -66,28 +67,43 @@ export async function checkSystem(systemId: string, memberId: string, { force = 
     return { draft: current ? draftOf(current) : null, unchanged: true, calls: client.calls };
   }
 
-  // 2. The BOM, merged against the committed parts.
+  // 2. The BOM.
   const bom = await client.json<OnshapeBom>(`assemblies/${apiPath(ref)}/bom?indented=false&multiLevel=false&generateIfAbsent=true`);
   const parsed = parseBom(bom);
   const existing = await db.select().from(parts).where(eq(parts.systemId, systemId));
-  const plan = planMerge(existing, parsed.rows);
   const byId = new Map(existing.map((p) => [p.id, p]));
 
-  // 3. Which shapes changed: each part's Onshape microversion, one parts list per Part Studio
-  // that may have changed (a workspace one, or one whose version moved, or a new part's).
-  const studios = new Set<string>();
-  for (const u of plan.update) {
-    const part = byId.get(u.id)!;
-    const path = studioPath(u.identity);
-    if (path && (u.identity.sourceWvm === "w" || studioPath(part) !== path || !part.onshapeMv)) studios.add(path);
-  }
-  for (const r of plan.insert) {
+  // 3. Shapes. Parts in a Part Studio reference that may hold new geometry (a workspace, or a
+  // version or microversion the committed parts don't use yet) get a fingerprint; so do the
+  // committed parts in it that have none stored yet, at their old, frozen reference. One call
+  // per Part Studio. Same shape = same part, whatever its Onshape partId or version.
+  const committedPaths = new Set(existing.filter((p) => !p.removedFromCadAt).map((p) => studioPath(p)));
+  const fresh = new Map<string, string[]>();
+  for (const r of parsed.rows) {
     const path = studioPath(r);
-    if (path) studios.add(path);
+    if (path && (r.sourceWvm === "w" || !committedPaths.has(path))) fresh.set(path, [...(fresh.get(path) ?? []), r.onshapePartId]);
   }
-  const mvs = await partMicroversions(client, [...studios]);
+  const names = new Set(parsed.rows.filter((r) => fresh.has(studioPath(r) ?? "")).map((r) => r.onshapeName));
+  const old = new Map<string, string[]>();
+  for (const p of existing) {
+    const path = studioPath(p);
+    if (p.isManual || p.shapeSig || !path || p.sourceWvm === "w" || fresh.has(path) || !names.has(p.onshapeName ?? "")) continue;
+    old.set(path, [...(old.get(path) ?? []), p.onshapePartId!]);
+  }
+  const [sigs, oldSigs] = await Promise.all([shapeFingerprints(client, fresh), shapeFingerprints(client, old)]);
+  const partSigs: Record<string, string> = {};
+  for (const p of existing) {
+    const sig = !p.shapeSig && oldSigs[sigKey(p)];
+    if (sig) partSigs[p.id] = sig;
+  }
+  const committedSig = (p: (typeof existing)[number]) => p.shapeSig ?? partSigs[p.id] ?? null;
 
-  // 4. The list a member reviews.
+  // 4. Merged against the committed parts, same-shaped parts paired first: the list a member reviews.
+  const plan = planMerge(
+    existing.map((p) => ({ ...p, shapeSig: committedSig(p) })),
+    parsed.rows,
+    (r) => sigs[sigKey(r)],
+  );
   const changes: VersionChange[] = [];
   for (const r of plan.insert) {
     changes.push({ key: partKey(r), partId: null, change: "added", name: r.onshapeName, partNumber: r.partNumber, fields: {}, geometry: false });
@@ -100,27 +116,31 @@ export async function checkSystem(systemId: string, memberId: string, { force = 
     if (part.onshapeName !== u.identity.onshapeName) fields.onshapeName = { from: part.onshapeName, to: u.identity.onshapeName };
     const material = part.geometry?.onshapeMaterial ?? null;
     if (material !== u.onshapeMaterial) fields.onshapeMaterial = { from: material, to: u.onshapeMaterial };
-    const mv = mvs[mvKey(u.identity)];
-    const geometry = !!(mv && part.onshapeMv && mv !== part.onshapeMv);
+    const sig = sigs[sigKey(u.identity)];
+    const before = committedSig(part);
+    const geometry = !!(sig && before && sig !== before);
     const base = { key: partKey(u.identity), partId: u.id, name: u.identity.onshapeName, partNumber: part.partNumber, fields, geometry };
     if (u.restore) changes.push({ ...base, change: "added", note: "Back in CAD" });
-    else if (geometry || Object.keys(fields).length) changes.push({ ...base, change: "modified", ...(u.relinked ? { note: "Re-linked by name" } : {}) });
-    else if (studioPath(part) !== studioPath(u.identity) || (mv && mv !== part.onshapeMv)) moved = true;
+    else if (geometry || Object.keys(fields).length) changes.push({ ...base, change: "modified" });
+    else if (u.relinked || studioPath(part) !== studioPath(u.identity) || (sig && sig !== part.shapeSig)) moved = true;
   }
   for (const id of plan.remove) {
     const part = byId.get(id)!;
     changes.push({ key: partKey(part), partId: id, change: "removed", name: part.onshapeName ?? "Part", partNumber: part.partNumber, fields: {}, geometry: false });
   }
 
+  const order = { modified: 0, added: 1, removed: 2 };
+  changes.sort((x, y) => order[x.change] - order[y.change] || x.name.localeCompare(y.name, undefined, { numeric: true }));
+
   const now = new Date();
-  const rows: DraftRows = { bom: parsed.rows, mvs, unknownMachines: parsed.unknownMachines };
+  const rows: DraftRows = { bom: parsed.rows, sigs, partSigs, unknownMachines: parsed.unknownMachines };
   const seenMv = microversion ? { docMicroversions: { ...system.docMicroversions, [ref.did]: microversion } } : {};
   const account = force ? { refreshMemberId: memberId } : {};
 
   if (!changes.length) {
     // Up to date. Same parts in a newer reference (or a first microversion) are taken as they are.
     await db.transaction(async (tx) => {
-      if (moved) await applyBomRows(tx, systemId, parsed.rows, { memberId, batchId: randomUUID(), mvs });
+      if (moved) await applyBomRows(tx, systemId, parsed.rows, { memberId, batchId: randomUUID(), sigs, partSigs });
       if (current) await tx.delete(systemVersions).where(eq(systemVersions.id, current.id));
       await tx.update(systems).set({ lastCheckedAt: now, ...seenMv, ...account }).where(eq(systems.id, systemId));
     });
@@ -154,28 +174,6 @@ async function loadDraftRow(systemId: string) {
     .from(systemVersions)
     .where(and(eq(systemVersions.systemId, systemId), eq(systemVersions.state, "draft")));
   return row ?? null;
-}
-
-// Each part's Onshape microversion, by mvKey, a few Part Studios at a time. A Part Studio that
-// fails is left out: its parts count as unchanged in shape.
-async function partMicroversions(client: OnshapeClient, paths: string[]): Promise<Record<string, string>> {
-  const out: Record<string, string> = {};
-  const queue = [...paths];
-  const worker = async () => {
-    for (let path = queue.shift(); path; path = queue.shift()) {
-      const [, did, , , , eid] = path.split("/");
-      try {
-        const metas = await client.json<PartMetadata[]>(`parts/${path}?withThumbnails=false`);
-        for (const m of Array.isArray(metas) ? metas : []) {
-          if (!m.isFlattenedBody && m.microversionId) out[mvKey({ sourceDid: did, sourceEid: eid, onshapePartId: m.partId })] = m.microversionId;
-        }
-      } catch (err) {
-        if (!(err instanceof OnshapeError)) throw err;
-      }
-    }
-  };
-  await Promise.all(Array.from({ length: 4 }, worker));
-  return out;
 }
 
 // The Onshape version names of subassemblies whose inserted version changed ("V13 shorter arm"),
