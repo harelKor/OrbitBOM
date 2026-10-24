@@ -77,7 +77,7 @@ export async function commitDraft(
           tx,
           await tx
             .insert(partVersions)
-            .values(before.map((p) => ({ versionId: baseline.id, partId: p.id, change: "baseline" as const, snapshot: snapshotOfPart(p, system.docMicroversions) })))
+            .values(before.map((p) => ({ versionId: baseline.id, partId: p.id, change: "baseline" as const, snapshot: snapshotOfPart({ ...p, shapeSig: p.shapeSig ?? rows.partSigs?.[p.id] ?? null }, system.docMicroversions) })))
             .returning({ id: partVersions.id, partId: partVersions.partId }),
         );
       }

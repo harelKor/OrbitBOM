@@ -205,6 +205,7 @@ else
       let tags = await loadVersionTags(system.id);
       expect(Object.keys(tags.outdated).sort()).toEqual([a.id, b.id].sort());
       expect(tags.outdated[a.id].missed).toMatchObject({ seq: 2 });
+      expect([tags.current?.label, tags.latest?.label]).toEqual(["V2", "V4"]);
 
       // Onshape still has the newest state: a check doesn't list the held parts as changes.
       microversion = "mv4";
@@ -220,7 +221,16 @@ else
       expect((await listVersions(system.id)).currentId).toBe(list.versions[0].id);
       tags = await loadVersionTags(system.id);
       expect(tags.outdated).toEqual({});
+      expect([tags.current?.label, tags.latest]).toEqual(["V4", null]);
       expect((await listSystemSync()).get(system.id)).toEqual({ outdated: null, waiting: 0 });
+
+      // Back to the baseline: its shapes were stored at the first commit, so both parts are held.
+      await revertSystem(system.id, list.versions[2].id, member.id);
+      tags = await loadVersionTags(system.id);
+      expect(Object.keys(tags.outdated).sort()).toEqual([a.id, b.id].sort());
+      await revertSystem(system.id, list.versions[0].id, member.id);
+      tags = await loadVersionTags(system.id);
+      expect([Object.keys(tags.outdated), tags.latest]).toEqual([[], null]);
       await expect(updatePartToLatest(system.id, a.id, member.id)).rejects.toBeInstanceOf(VersionError);
     });
   });

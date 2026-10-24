@@ -2,10 +2,10 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { checkForChanges, commitChanges } from "@/app/(app)/versions-actions";
+import { checkForChanges, commitChanges, revertToVersion } from "@/app/(app)/versions-actions";
 import { useEditMode } from "@/components/shell/ModeContext";
 import type { Draft } from "@/lib/versions/detect";
-import { afterPartsUpdate } from "./afterUpdate";
+import { PARTS_UPDATING_EVENT, afterPartsUpdate } from "./afterUpdate";
 import { CommitWindow } from "./CommitWindow";
 import { OPEN_COMMIT_EVENT } from "./events";
 
@@ -18,11 +18,13 @@ export function UpdateSystem({
   draft: initial,
   lastSyncedAt,
   thumbs,
+  latest,
 }: {
   systemId: string;
   draft: Draft | null;
   lastSyncedAt: Date | null;
   thumbs: Record<string, string | null>;
+  latest: { id: string; label: string } | null; // set while a Revert holds the system behind it
 }) {
   const router = useRouter();
   const edit = useEditMode();
@@ -35,6 +37,24 @@ export function UpdateSystem({
   const [commitError, setCommitError] = useState<string | null>(null);
   const [checking, startCheck] = useTransition();
   const [committing, startCommit] = useTransition();
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const onUpdating = (e: Event) => setLoading((e as CustomEvent<boolean>).detail);
+    window.addEventListener(PARTS_UPDATING_EVENT, onUpdating);
+    return () => window.removeEventListener(PARTS_UPDATING_EVENT, onUpdating);
+  }, []);
+
+  const backToLatest = () =>
+    startCommit(async () => {
+      if (!latest) return;
+      setMessage(null);
+      setError(null);
+      const r = await revertToVersion(systemId, latest.id);
+      if (r.error) return setError(r.error);
+      setMessage(`Back on ${latest.label}.`);
+      afterPartsUpdate(systemId, router);
+    });
 
   // A newer server draft (the page's own refresh found changes) replaces the one shown.
   const [lastInitial, setLastInitial] = useState(initial);
@@ -92,10 +112,20 @@ export function UpdateSystem({
     });
 
   const waiting = draft?.changes.length ?? 0;
-  if (!edit && !draft) return null;
+  if (!edit && !draft && !loading) return null;
   return (
     <div className="flex flex-wrap items-center gap-3">
-      {edit && (
+      {edit && latest && (
+        <button
+          className="btn-primary"
+          disabled={committing}
+          title="Put every part back on the latest version. Reverting to an older version is in Versions."
+          onClick={backToLatest}
+        >
+          {committing ? "Updating…" : `Back to latest (${latest.label})`}
+        </button>
+      )}
+      {edit && !latest && (
         <button
           className="btn"
           disabled={checking || committing}
@@ -119,6 +149,7 @@ export function UpdateSystem({
         </button>
       )}
       {message && <span className="text-sm text-emerald-600">{message}</span>}
+      {loading && <span className="animate-pulse text-sm text-subtle">Loading the new thumbnails and 3D model…</span>}
       {error && <span className="text-sm text-rose-600">{error}</span>}
       {!message && !error && !draft && lastSyncedAt && (
         <span className="text-xs text-subtle">Last committed {lastSyncedAt.toISOString().slice(0, 16).replace("T", " ")} UTC</span>

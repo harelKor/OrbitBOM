@@ -41,7 +41,9 @@ export async function heldParts(x: Exec, systemId: string): Promise<Map<string, 
     const newest = latest.get(p.id);
     if (!newest || newest.id === p.rowId) continue;
     const at = p.rowId ? byId.get(p.rowId) : undefined;
-    const differs = !at || at.change === "removed" || newest.change === "removed" || !sameState(at.snapshot, newest.snapshot);
+    // A newer row exists only for a real change, so a shape unknown on either side counts as changed.
+    const unknownShape = !at?.snapshot.sig || !newest.snapshot.sig;
+    const differs = !at || at.change === "removed" || newest.change === "removed" || unknownShape || !sameState(at.snapshot, newest.snapshot);
     if (differs) held.set(p.id, newest);
   }
   return held;

@@ -92,7 +92,7 @@ export default async function SystemPage({
           <div className="flex flex-wrap items-center gap-3">
             <Suspense>
               <VersionsWindow systemId={system.id} list={versionList} thumbs={thumbs} />
-              <UpdateSystem systemId={system.id} draft={draft} lastSyncedAt={system.lastSyncedAt} thumbs={thumbs} />
+              <UpdateSystem systemId={system.id} draft={draft} lastSyncedAt={system.lastSyncedAt} thumbs={thumbs} latest={versions.latest && { id: versions.latest.id, label: versions.latest.label }} />
             </Suspense>
           </div>
           <AutoRefresh systemId={system.id} />

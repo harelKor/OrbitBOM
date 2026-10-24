@@ -15,16 +15,17 @@ import { OPEN_COMMIT_EVENT, OPEN_VERSIONS_EVENT } from "./events";
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—");
 const versionLabel = (t: PartVersionTag) => `${t.label}${t.name && t.name !== t.label ? ` · ${t.name}` : ""}`;
 
-// A part card's version tag (plan/system-versioning.md §7): a quiet "Up to date" pill with when
-// and by whom the part was last committed, or a red "Outdated" one when other parts of its
-// change were committed without it, or a Revert held it behind the latest version. Outdated
-// opens a window with the update it missed (which opens the Commit or Versions window on top)
-// and Update, which brings just this part up to date.
-export function VersionTag({ partId, tags }: { partId: string; tags: VersionTags }) {
+// A part card's version tag (plan/system-versioning.md §7): a quiet "Up to date" pill with the
+// system's version (opening to the version the part itself last changed in), or a red
+// "Outdated" one when other parts of its change were committed without it, or a Revert held it
+// behind the latest version. Outdated opens a window with the update it missed (which opens the
+// Commit or Versions window on top) and Update, which brings just this part up to date.
+export function VersionTag({ partId, tags, manual = false }: { partId: string; tags: VersionTags; manual?: boolean }) {
   const tag = tags.parts[partId];
   const outdated = tags.outdated[partId];
   if (outdated) return <OutdatedTag partId={partId} tag={tag} tags={tags} outdated={outdated} />;
-  if (!tag) return null;
+  const current = tags.current;
+  if (!current) return null;
   return (
     <span onClick={(e) => e.stopPropagation()} className="contents">
       <Popover
@@ -33,18 +34,31 @@ export function VersionTag({ partId, tags }: { partId: string; tags: VersionTags
         trigger={
           <>
             <CheckIcon className="h-3 w-3" />
-            <span className="font-mono tabular-nums">{tag.label}</span>
+            <span className="font-mono tabular-nums">{current.label}</span>
           </>
         }
       >
         {() => (
-          <div className="space-y-1 text-sm">
-            <p className="font-semibold text-fg">Up to date</p>
-            <p className="text-muted">
-              Updated <span className="tabular-nums">{when(tag.at)}</span>
-              {tag.by && <> by {tag.by}</>}
+          <div className="space-y-2 text-sm">
+            <p className="font-semibold text-fg">
+              Up to date <span className="font-normal text-subtle">· system on {current.label}</span>
             </p>
-            <p className="text-subtle">{versionLabel(tag)}</p>
+            <div>
+              <p className="label">Last updated</p>
+              {manual ? (
+                <p className="text-muted">Added by hand, not from Onshape</p>
+              ) : tag ? (
+                <>
+                  <p className="text-fg">{versionLabel(tag)}</p>
+                  <p className="text-muted tabular-nums">
+                    {when(tag.at)}
+                    {tag.by && <> by {tag.by}</>}
+                  </p>
+                </>
+              ) : (
+                <p className="text-muted">Before version control</p>
+              )}
+            </div>
           </div>
         )}
       </Popover>

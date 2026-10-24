@@ -144,9 +144,9 @@ function MadePartCard({
           )}
         </div>
         {part.note && <NoteCloud note={part.note} raised={fabControls} />}
-        {versions && !part.isManual && !fabControls && (
+        {versions && !fabControls && (
           <div className="absolute right-2 bottom-2">
-            <VersionTag partId={part.id} tags={versions} />
+            <VersionTag partId={part.id} tags={versions} manual={part.isManual} />
           </div>
         )}
         {fabControls && (

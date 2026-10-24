@@ -12,6 +12,7 @@ import { textOn } from "@/components/bom/options";
 import { Popover } from "@/components/bom/Popover";
 import { ownerPartId, partIds, partTitle, type CardPart } from "@/components/bom/types";
 import { PartStage, type StageView } from "@/components/dashboard/PartStage";
+import { VersionTag } from "@/components/versions/VersionTag";
 import { useEditMode } from "@/components/shell/ModeContext";
 import { CheckBadge } from "@/components/ui/CheckBadge";
 import { Icon } from "@/components/ui/Icon";
@@ -55,7 +56,7 @@ export function CotsCard({
   onCheck?: () => void;
 }) {
   const edit = useEditMode();
-  const { robotId } = useBom();
+  const { robotId, versions } = useBom();
   const [stage, setStage] = useState<StageView | null>(null);
   const [details, setDetails] = useState(false);
   const order = variant === "order";
@@ -156,6 +157,11 @@ export function CotsCard({
           )}
         </div>
         {part.note && <NoteCloud note={part.note} raised={!order} />}
+        {versions && (
+          <div className={`absolute ${order ? "right-2 bottom-2" : "bottom-9 left-1/2 -translate-x-1/2"}`}>
+            <VersionTag partId={part.id} tags={versions} manual={part.isManual} />
+          </div>
+        )}
         {!order && (
           <>
             <button

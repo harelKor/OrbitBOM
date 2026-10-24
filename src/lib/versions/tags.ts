@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { VersionRef } from "@/db/schema";
 import { heldParts } from "./history";
@@ -21,6 +21,10 @@ export type VersionTags = {
   parts: Record<string, PartVersionTag>;
   outdated: Record<string, OutdatedTag>;
   draft: { id: string; detectedAt: string } | null;
+  // The system's version, which every Up to date part shows, and its latest one when a Revert
+  // put it behind (Back to latest).
+  current: PartVersionTag | null;
+  latest: (PartVersionTag & { id: string }) | null;
 };
 
 type VersionRow = { seq: number | null; onshapeRef: VersionRef | null; name: string | null; at: Date | null; by: string | null };
@@ -34,7 +38,7 @@ const tag = (r: VersionRow): PartVersionTag => ({
 const versionCols = { id: systemVersions.id, seq: systemVersions.seq, onshapeRef: systemVersions.onshapeRef, name: systemVersions.name, at: systemVersions.committedAt, by: members.name };
 
 export async function loadVersionTags(systemId: string): Promise<VersionTags> {
-  const [rows, [draft], held] = await Promise.all([
+  const [rows, [draft], held, [system], [latest]] = await Promise.all([
     db
       .select({ partId: parts.id, ...versionCols })
       .from(parts)
@@ -47,9 +51,18 @@ export async function loadVersionTags(systemId: string): Promise<VersionTags> {
       .from(systemVersions)
       .where(and(eq(systemVersions.systemId, systemId), eq(systemVersions.state, "draft"))),
     heldParts(db, systemId),
+    db.select({ currentVersionId: schema.systems.currentVersionId }).from(schema.systems).where(eq(schema.systems.id, systemId)),
+    db
+      .select(versionCols)
+      .from(systemVersions)
+      .leftJoin(members, eq(members.id, systemVersions.committedBy))
+      .where(and(eq(systemVersions.systemId, systemId), eq(systemVersions.state, "committed")))
+      .orderBy(desc(systemVersions.seq))
+      .limit(1),
   ]);
+  const currentId = system?.currentVersionId ?? latest?.id ?? null;
 
-  const ids = [...new Set([...[...held.values()].map((r) => r.versionId), ...(draft?.partialVersionId ? [draft.partialVersionId] : [])])];
+  const ids = [...new Set([...(currentId ? [currentId] : []), ...[...held.values()].map((r) => r.versionId), ...(draft?.partialVersionId ? [draft.partialVersionId] : [])])];
   const versions = ids.length
     ? await db.select(versionCols).from(systemVersions).leftJoin(members, eq(members.id, systemVersions.committedBy)).where(inArray(systemVersions.id, ids))
     : [];
@@ -65,5 +78,7 @@ export async function loadVersionTags(systemId: string): Promise<VersionTags> {
     parts: Object.fromEntries(rows.map((r) => [r.partId, tag(r)])),
     outdated,
     draft: draft ? { id: draft.id, detectedAt: draft.detectedAt.toISOString() } : null,
+    current: currentId ? (byId.get(currentId) ?? null) : null,
+    latest: latest && latest.id !== currentId ? { ...tag(latest), id: latest.id } : null,
   };
 }

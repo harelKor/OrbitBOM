@@ -10,7 +10,7 @@ import { Icon } from "@/components/ui/Icon";
 import { useMaterialColors } from "@/components/shell/MaterialColors";
 import { DEFAULT_MATERIAL_COLORS, MATERIAL_COLOR_GROUPS, materialColor, materialColorGroup } from "@/config/materialColors";
 import type { ViewerModel } from "./ModelCanvas";
-import { MODEL_STALE_EVENT } from "./modelEvents";
+import { MODEL_STALE_EVENT, type ModelStaleDetail } from "./modelEvents";
 
 const ModelCanvas = dynamic(() => import("./ModelCanvas").then((m) => m.ModelCanvas), { ssr: false });
 
@@ -133,7 +133,11 @@ export function RobotViewer({
     buildRef.current = build;
   });
   useEffect(() => {
-    const onStale = () => void buildRef.current();
+    const onStale = (e: Event) => {
+      const detail = (e as CustomEvent<ModelStaleDetail | undefined>).detail;
+      if (detail) detail.taken = true;
+      void buildRef.current().finally(() => detail?.resolve());
+    };
     window.addEventListener(MODEL_STALE_EVENT, onStale);
     return () => window.removeEventListener(MODEL_STALE_EVENT, onStale);
   }, []);
