@@ -8,6 +8,7 @@ import { OptionList, Popover, type Option } from "@/components/bom/Popover";
 import { DATE_OPTIONS, useFilters, type DateFilter, type Filters } from "./FilterContext";
 import { ModeToggle } from "./ModeContext";
 import { ShadeSlider } from "./ShadeSlider";
+import { UndoRedo } from "./UndoRedo";
 
 const PROCESS_OPTIONS: Option[] = [{ value: null, label: "Any process" }, ...MACHINES.map((m) => ({ value: m.id, label: m.name }))];
 const DATE_PICK: Option[] = [{ value: null, label: "Any time" }, ...DATE_OPTIONS.map((d) => ({ value: d.value, label: d.label }))];
@@ -78,6 +79,7 @@ export function TopBar({ onMenu, onRobots }: { onMenu: () => void; onRobots: () 
         </>
       )}
       <div className="ml-auto flex items-center gap-2">
+        <UndoRedo />
         <ShadeSlider />
         <ModeToggle />
         <button onClick={onRobots} className="press rounded-md border border-white/30 px-2 py-1 text-xs font-semibold xl:hidden" aria-label="Robots and systems" title="Show robots and systems">

@@ -25,6 +25,8 @@ const PATHS = {
   pencil: "M13.5 3.5l3 3-9 9H4.5v-3zM11.5 5.5l3 3",
   cart: "M2.5 3.5h2l2 9h8.5l1.5-6.5H5.5M8 16.5h.01M14 16.5h.01",
   search: "M9 15a6 6 0 1 0 0-12 6 6 0 0 0 0 12zM13.5 13.5 17 17",
+  undo: "M7.5 4.5 4 8l3.5 3.5M4 8h8a4 4 0 0 1 0 8H9",
+  redo: "M12.5 4.5 16 8l-3.5 3.5M16 8H8a4 4 0 0 0 0 8h3",
 } as const;
 
 export type IconName = keyof typeof PATHS;

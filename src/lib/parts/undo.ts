@@ -12,20 +12,37 @@ type Revert = { partId: string; field: string; to: unknown; from: unknown };
 // was changed again after the batch is left alone and reported, so an undo never overwrites
 // someone's later edit. The undo is itself a new batch.
 export async function planUndo(batchId: string) {
-  const rows = await db.select().from(partHistory).where(eq(partHistory.batchId, batchId)).orderBy(asc(partHistory.at));
+  return planUndoRows(await db.select().from(partHistory).where(eq(partHistory.batchId, batchId)).orderBy(asc(partHistory.at)));
+}
+
+// The same for every change made in one page visit (Recent actions' Revert).
+export async function planUndoVisit(visitId: string) {
+  return planUndoRows(await db.select().from(partHistory).where(eq(partHistory.visitId, visitId)).orderBy(asc(partHistory.at)));
+}
+
+// A field changed several times goes back to its value before the first change, and only
+// when it still holds the value of the last one.
+async function planUndoRows(rows: (typeof partHistory.$inferSelect)[]) {
   if (!rows.length) return null;
   const current = await db
     .select()
     .from(parts)
     .where(inArray(parts.id, [...new Set(rows.map((r) => r.partId))]));
   const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  const span = new Map<string, { first: (typeof rows)[number]; last: (typeof rows)[number] }>();
+  for (const r of rows) {
+    const k = `${r.partId}|${r.field}`;
+    const s = span.get(k);
+    span.set(k, { first: s?.first ?? r, last: r });
+  }
   const reverts: Revert[] = [];
   const skipped: Revert[] = [];
-  for (const r of rows) {
-    const part = current.find((p) => p.id === r.partId) as Record<string, unknown> | undefined;
-    if (!part || !(r.field in part)) continue;
-    const entry = { partId: r.partId, field: r.field, to: r.oldValue, from: part[r.field] };
-    (same(part[r.field], r.newValue) ? reverts : skipped).push(entry);
+  for (const { first, last } of span.values()) {
+    const part = current.find((p) => p.id === first.partId) as Record<string, unknown> | undefined;
+    if (!part || !(first.field in part)) continue;
+    if (same(first.oldValue, last.newValue)) continue;
+    const entry = { partId: first.partId, field: first.field, to: first.oldValue, from: part[first.field] };
+    (same(part[first.field], last.newValue) ? reverts : skipped).push(entry);
   }
   return { reverts, skipped };
 }

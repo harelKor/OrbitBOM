@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import type { ShellRobot } from "@/lib/data/shell";
 import { InventoryPopupProvider } from "@/components/inventory/InventoryPopup";
+import { Toaster } from "@/components/ui/Toaster";
 import { Icon } from "@/components/ui/Icon";
 import { FilterProvider } from "./FilterContext";
 import { LeftNav } from "./LeftNav";
@@ -98,6 +99,7 @@ export function Shell({
                 <button aria-label="Close" onClick={() => setDrawer(null)} className="fixed inset-0 z-30 bg-black/50 xl:hidden" />
               )}
             </div>
+            <Toaster />
           </InventoryPopupProvider>
         </MaterialColorsProvider>
       </FilterProvider>
