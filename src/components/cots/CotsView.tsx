@@ -203,7 +203,7 @@ export function CotsView({
               <GroupBox key={row.key} row={row} onClose={() => setOpen((s) => toggle(s, row.key))} {...dragProps(ids, from)}>
                 {row.members.map((m) => (
                   <div key={m.id} {...dragProps([m.id], from)}>
-                    <CotsCard part={m} save={saveRow({ key: m.id, part: m, members: [m] })} showSystem highlightSystem variant={variant} struck={struck.has(m.id)} />
+                    <CotsCard part={m} save={saveRow({ key: m.id, part: m, members: [m] })} showSystem highlightSystem variant={variant} shelfOnThumb struck={struck.has(m.id)} />
                   </div>
                 ))}
               </GroupBox>
@@ -214,7 +214,7 @@ export function CotsView({
                 part={row.part}
                 save={saveRow(row)}
                 showSystem
-                variant={variant}
+                variant={variant} shelfOnThumb
                 struck={crossed}
                 group={grouped && !ordering ? { systems: new Set(row.members.map((m) => m.systemId)).size, onOpen: () => setOpen((s) => toggle(s, row.key)) } : undefined}
                 selected={selected.has(row.key)}
@@ -556,7 +556,7 @@ function CotsTable({
   const currency = useCurrency();
   return (
     <div className="panel overflow-x-auto">
-      <table className="data-table">
+      <table className="data-table cots-table">
         <thead>
           <tr>
             <th />

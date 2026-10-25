@@ -305,6 +305,13 @@ body {
   .data-table tbody tr:last-child > td {
     @apply border-b-0;
   }
+  /* COTS rows are washed in their status colour: a strong line between them keeps them apart. */
+  .data-table.cots-table td {
+    @apply border-b-2 border-line-strong;
+  }
+  .data-table.cots-table td + td {
+    @apply border-l-line-strong;
+  }
   /* The colour slider's track shows every colour it can pick. */
   /* The greyscale slider's track runs from the light theme's page to the dark one's. */
   .shade-slider {

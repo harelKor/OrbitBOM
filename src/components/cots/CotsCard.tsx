@@ -25,8 +25,8 @@ import { formatPrice, setCurrency, useCurrency } from "./currency";
 // A COTS part's card, on every page, washed in its status colour: the light-blue name links to the
 // product page (a dropdown when there are several), a small pencil edits the name, links and
 // price, the thumbnail (light green: bought) opens the part's place in the robot, red − / green +
-// count how many are in stock (reaching the quantity sets In Stock), and the price sits at the
-// bottom with a $ / ₪ switch. No download, material or process: the part is bought, not made.
+// count how many are in stock (reaching the quantity sets In Stock), and the price sits right of
+// the status with a $ / ₪ switch. No download, material or process: the part is bought, not made.
 // On the Order List (`variant="order"`) the card is pared down to the name, the quantity, the price
 // and a big status button. A part the Order List sent back carries a red tag with the reason.
 export function CotsCard({
@@ -40,6 +40,7 @@ export function CotsCard({
   variant = "default",
   struck = false,
   group,
+  shelfOnThumb = false,
 }: {
   part: CardPart;
   save: SaveFn;
@@ -53,6 +54,8 @@ export function CotsCard({
   group?: { systems: number; onOpen: () => void }; // the same part from several systems: a click opens it
   fabCounter?: boolean;
   onCheck?: () => void;
+  // On the COTS page the inventory tag sits on the thumbnail, so every card is the same height.
+  shelfOnThumb?: boolean;
 }) {
   const edit = useEditMode();
   const { versions } = useBom();
@@ -69,6 +72,7 @@ export function CotsCard({
   );
   const [, startShelf] = useTransition();
   const onShelf = !!shelf && !shelf.sheet;
+  const hasShelfTag = !!shelf || !!part.shelfSuggestion;
   const stock = onShelf ? shelf.covered : (part.stockCount ?? 0);
   const addStock = (d: number) => {
     if (onShelf) {
@@ -145,6 +149,11 @@ export function CotsCard({
           )}
         </div>
         {part.note && <NoteCloud note={part.note} raised={!order} />}
+        {shelfOnThumb && hasShelfTag && (
+          <div className={`absolute flex max-w-[90%] rounded-full bg-surface/90 shadow-sm backdrop-blur-md ${order ? "bottom-2 left-2" : "bottom-12 left-1/2 -translate-x-1/2"}`}>
+            <ShelfPill part={part} shelf={shelf} save={save} />
+          </div>
+        )}
         {versions && (
           <div className={`absolute ${order ? "right-2 bottom-2" : "bottom-9 left-1/2 -translate-x-1/2"}`}>
             <VersionTag partId={part.id} tags={versions} manual={part.isManual} />
@@ -207,22 +216,17 @@ export function CotsCard({
             <div className="-mt-1.5 truncate text-xs text-subtle">{part.systemName}</div>
           ))}
 
-        {order ? (
-          <OrderStatusButton part={part} save={save} />
-        ) : (
-          <div className="flex min-w-0">
-            <StatusField part={part} save={save} />
-          </div>
-        )}
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="flex min-w-0 flex-1">{order ? <OrderStatusButton part={part} save={save} /> : <StatusField part={part} save={save} />}</div>
+          <Price part={part} big={order} />
+        </div>
 
-        {(shelf || part.shelfSuggestion) && (
+        {!shelfOnThumb && hasShelfTag && (
           <div className="flex min-w-0">
             <ShelfPill part={part} shelf={shelf} save={save} />
           </div>
         )}
         {!struck && <ShelfCoversPrompt part={part} shelf={shelf} save={save} />}
-
-        <Price part={part} big={order} />
       </div>
     </div>
   );
@@ -336,9 +340,9 @@ function Price({ part, big }: { part: CardPart; big: boolean }) {
   const currency = useCurrency();
   const total = cotsTotal(part);
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex shrink-0 items-center gap-1.5">
       {total == null ? (
-        <span className="text-xs text-faint">No price yet</span>
+        <span className="text-xs whitespace-nowrap text-faint">No price yet</span>
       ) : (
         <span
           className={`font-mono font-bold text-emerald-500 tabular-nums ${big ? "text-xl" : "text-base"}`}
