@@ -73,6 +73,14 @@ export async function revertSystemUpdate(versionId: string, memberId: string) {
   };
 }
 
+// The flipped arrow on a reverted System Update: the system goes back onto that version.
+export async function reapplySystemUpdate(versionId: string, memberId: string) {
+  const [version] = await db.select().from(systemVersions).where(and(eq(systemVersions.id, versionId), eq(systemVersions.state, "committed")));
+  if (!version) throw new VersionError("That version is gone.");
+  const r = await revertSystem(version.systemId, version.id, memberId);
+  return { systemId: version.systemId, message: `Back on ${r.label}: ${r.moved} ${r.moved === 1 ? "part" : "parts"} changed.` };
+}
+
 // Undo (plan §8): the newest part edit this member made in the app in the last day that this
 // tab hasn't undone yet (`exclude`: batches it undid, and the undo batches themselves).
 export async function undoLatest(memberId: string, exclude: string[]) {

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireMember } from "@/lib/auth";
-import { redoBatch, revertSystemUpdate, revertVisit, undoLatest } from "@/lib/actions/revert";
+import { reapplySystemUpdate, redoBatch, revertSystemUpdate, revertVisit, undoLatest } from "@/lib/actions/revert";
 import { isUuid } from "@/lib/uuid";
 import { VersionError } from "@/lib/versions/commit";
 
@@ -14,6 +14,21 @@ export async function revertAction(kind: "edit" | "system", id: string): Promise
   if (!isUuid(id)) return { error: "Unknown action." };
   try {
     const r = kind === "system" ? await revertSystemUpdate(id, member.id) : await revertVisit(id, member.id);
+    revalidatePath("/robots", "layout");
+    return r;
+  } catch (err) {
+    if (err instanceof VersionError) return { error: err.message };
+    throw err;
+  }
+}
+
+// The flipped arrow after a Revert: re-applies the action. A visit's edits come back by undoing
+// the revert's batch; a System Update puts the system back on its version.
+export async function reapplyAction(kind: "edit" | "system", id: string, batchId: string | null): Promise<ActionResult> {
+  const member = await requireMember();
+  if (!isUuid(id) || (kind === "edit" && (!batchId || !isUuid(batchId)))) return { error: "Nothing to re-apply." };
+  try {
+    const r = kind === "system" ? await reapplySystemUpdate(id, member.id) : await redoBatch(batchId!, member.id);
     revalidatePath("/robots", "layout");
     return r;
   } catch (err) {

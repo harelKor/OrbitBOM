@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { dismissAction } from "@/app/(app)/actions-actions";
-import { revertAction } from "@/app/(app)/undo-actions";
+import { reapplyAction, revertAction, type ActionResult } from "@/app/(app)/undo-actions";
 import { useEditMode } from "@/components/shell/ModeContext";
 import { toast } from "@/components/ui/Toaster";
 import { afterPartsUpdate } from "@/components/versions/afterUpdate";
@@ -251,7 +251,15 @@ function RevertButton({ a, className }: { a: RecentAction; className: string }) 
   const edit = useEditMode();
   const router = useRouter();
   const [pending, start] = useTransition();
+  const [reverted, setReverted] = useReverted(a.visitId);
   if (!edit) return null;
+  const done = (r: ActionResult, next: Reverted | null) => {
+    if (r.error) return toast(r.error, true);
+    toast(r.message ?? "Done.");
+    setReverted(next);
+    if (r.systemId) afterPartsUpdate(r.systemId, router);
+    else router.refresh();
+  };
   const revert = () => {
     const what =
       a.kind === "system"
@@ -260,24 +268,54 @@ function RevertButton({ a, className }: { a: RecentAction; className: string }) 
     if (!confirm(`Revert ${what}?`)) return;
     start(async () => {
       const r = await revertAction(a.kind ?? "edit", a.visitId);
-      if (r.error) return toast(r.error, true);
-      toast(r.message ?? "Reverted.");
-      if (r.systemId) afterPartsUpdate(r.systemId, router);
-      else router.refresh();
+      // A revert that changed nothing (everything edited again since) leaves nothing to redo.
+      done(r, a.kind === "system" || r.batchId ? { batchId: r.batchId ?? null } : null);
     });
   };
+  const reapply = () =>
+    start(async () => {
+      done(await reapplyAction(a.kind ?? "edit", a.visitId, reverted?.batchId ?? null), null);
+    });
   return (
     <button
       type="button"
-      onClick={revert}
+      onClick={reverted ? reapply : revert}
       disabled={pending}
-      aria-label="Revert this action"
-      title="Revert this action"
-      className={`press absolute flex h-6 w-6 items-center justify-center rounded-full border border-line bg-surface/90 text-subtle shadow-sm hover:border-accent hover:text-fg disabled:opacity-40 ${className}`}
+      aria-label={reverted ? "Re-apply this action" : "Revert this action"}
+      title={reverted ? "Reverted. Click to re-apply" : "Revert this action"}
+      className={`press absolute flex h-6 w-6 items-center justify-center rounded-full border shadow-sm disabled:opacity-40 ${
+        reverted ? "border-accent bg-accent text-white hover:bg-accent-hover" : "border-line bg-surface/90 text-subtle hover:border-accent hover:text-fg"
+      } ${className}`}
     >
-      <Icon name="undo" className="h-3.5 w-3.5" />
+      <Icon name="undo" className={`h-3.5 w-3.5 transition-transform duration-200 ${reverted ? "-scale-x-100" : ""}`} />
     </button>
   );
+}
+
+// Which actions this browser reverted (and the revert's batch, which re-applying undoes), so the
+// arrow stays flipped across reloads.
+type Reverted = { batchId: string | null };
+const REVERTED_KEY = "orbit-reverted-actions";
+function useReverted(id: string) {
+  const [value, set] = useState<Reverted | null>(null);
+  useEffect(() => {
+    try {
+      const all = JSON.parse(localStorage.getItem(REVERTED_KEY) ?? "{}") as Record<string, Reverted>;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- browser-only memory
+      set(all[id] ?? null);
+    } catch {}
+  }, [id]);
+  const save = (next: Reverted | null) => {
+    set(next);
+    try {
+      const all = JSON.parse(localStorage.getItem(REVERTED_KEY) ?? "{}") as Record<string, Reverted>;
+      if (next) all[id] = next;
+      else delete all[id];
+      // Actions drop off after a week, so a few hundred entries at most.
+      localStorage.setItem(REVERTED_KEY, JSON.stringify(Object.fromEntries(Object.entries(all).slice(-300))));
+    } catch {}
+  };
+  return [value, save] as const;
 }
 
 // Whether Recent actions is unfolded, remembered in this browser for each layout.

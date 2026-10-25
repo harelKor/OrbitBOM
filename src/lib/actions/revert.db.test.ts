@@ -14,7 +14,7 @@ else
     process.env.DATABASE_URL = url;
     const { db, schema } = await import("@/db");
     const { eq } = await import("drizzle-orm");
-    const { redoBatch, revertSystemUpdate, revertVisit, undoLatest } = await import("./revert");
+    const { reapplySystemUpdate, redoBatch, revertSystemUpdate, revertVisit, undoLatest } = await import("./revert");
     const { listRecentActions } = await import("@/lib/data/actions");
 
     const userId = randomUUID();
@@ -197,6 +197,9 @@ else
       const r = await revertSystemUpdate(v2.id, member.id);
       expect(r.message).toMatch(/^Reverted to #1/);
       expect((await part(a.id)).quantity).toBe(2);
+      // The flipped arrow puts it back.
+      expect((await reapplySystemUpdate(v2.id, member.id)).message).toMatch(/^Back on #2/);
+      expect((await part(a.id)).quantity).toBe(6);
       await expect(revertSystemUpdate(v1.id, member.id)).rejects.toThrow(/first version/);
     });
   });
