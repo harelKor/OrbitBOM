@@ -43,7 +43,18 @@ export function Popover({
       const up = below < Math.min(height, 320) && r.top > below;
       const left = Math.min(Math.max(8, align === "right" ? r.right - WIDTH : r.left), vw - WIDTH - 8);
       const room = (up ? r.top : below) - GAP - 8;
-      setPos({ left, top: up ? Math.max(8, r.top - GAP - Math.min(height, room)) : r.bottom + GAP, maxHeight: room });
+      const top = up ? Math.max(8, r.top - GAP - Math.min(height, room)) : r.bottom + GAP;
+      // If something around the panel (a window mid-animation) is the frame for fixed elements,
+      // the panel lands off by that frame's offset: measure it and take it back out.
+      const p = panel.current;
+      let dx = 0;
+      let dy = 0;
+      if (p) {
+        const at = p.getBoundingClientRect();
+        dx = at.left - parseFloat(p.style.left || "0");
+        dy = at.top - parseFloat(p.style.top || "0");
+      }
+      setPos({ left: left - dx, top: top - dy, maxHeight: room });
     };
     place();
     window.addEventListener("resize", place);

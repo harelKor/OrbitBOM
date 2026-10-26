@@ -176,7 +176,9 @@ body {
     0 0 0 4px color-mix(in oklab, var(--color-accent) 10%, transparent),
     inset 0 1px 0 0 rgb(255 255 255 / 0.06),
     0 28px 70px -18px rgb(5 8 20 / 0.55);
-  animation: modal-pop 220ms var(--ease-snap) both;
+  /* backwards, not both: a transform kept after the entrance makes the window the frame for its
+     fixed popovers, which then open off-window and show only scrollbars. */
+  animation: modal-pop 220ms var(--ease-snap) backwards;
   &::before {
     content: "";
     position: absolute;
@@ -202,7 +204,7 @@ body {
 
 /* Just the entrance, for full-screen windows that keep their own look. */
 @utility modal-enter {
-  animation: modal-pop 220ms var(--ease-snap) both;
+  animation: modal-pop 220ms var(--ease-snap) backwards;
 }
 
 @keyframes modal-pop {

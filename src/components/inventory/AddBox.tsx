@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { findProducts, readProductLink, saveItem } from "@/app/(app)/inventory/actions";
 import { useEditMode } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
@@ -35,6 +36,7 @@ export function AddBox({
   placeholder,
   onPick,
   newStock = "1",
+  floating = false,
 }: {
   q: string;
   setQ: (q: string) => void;
@@ -46,6 +48,7 @@ export function AddBox({
   defaultLocationId?: string | null;
   placeholder: string;
   onPick?: (itemId: string) => void; // a part's details window: an item picked or added links the part to it
+  floating?: boolean; // the results float over the window the box is in (a part's details window), not inside it
   newStock?: string; // what a new item starts with in stock (the COTS page adds items still to buy: "0")
 }) {
   const edit = useEditMode();
@@ -117,9 +120,140 @@ export function AddBox({
     start(quick?.categoryId === categoryId ? { category: categoryId, specs: quick.specs } : { category: categoryId, name: query, nameTouched: !!query });
 
   const open = edit && focus && !!query && !draft;
+
+  // Floating results: fixed in the window's top layer, under the box (or over it when there's
+  // more room above), as wide as useful and as tall as the screen allows.
+  const label = useRef<HTMLLabelElement>(null);
+  const [float, setFloat] = useState<{ host: Element; style: React.CSSProperties } | null>(null);
+  useLayoutEffect(() => {
+    if (!floating || !open) return;
+    const place = () => {
+      const el = label.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const width = Math.min(Math.max(r.width, 448), vw - 16);
+      const left = Math.min(Math.max(8, r.right - width), vw - width - 8);
+      const below = vh - r.bottom - 14;
+      const up = below < 280 && r.top > below;
+      const style: React.CSSProperties = up
+        ? { left, width, bottom: vh - r.top + 6, maxHeight: r.top - 14 }
+        : { left, width, top: r.bottom + 6, maxHeight: below };
+      setFloat({ host: el.closest("dialog") ?? document.body, style });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [floating, open]);
+
+  const results = (
+    <>
+      {link && (
+        <Row onClick={readLink} icon="download" title={reading ? "Reading the page…" : "Read this product link"} detail="Name, price and photo from the store's page" />
+      )}
+      {quickName && (
+        <Row
+          onClick={() => (quickWhole ? quickSave() : custom(quick!.categoryId))}
+          icon="spark"
+          title={quickSaving ? "Adding…" : `Add “${quickName}”`}
+          detail={quickWhole ? `${quickCat!.label} · Enter adds it, ${newStock} in stock` : `${quickCat!.label} · Enter to finish the details`}
+        />
+      )}
+
+      {onShelf.length > 0 && (
+        <Section title={onPick ? "On the shelf · click to link" : "Already on the shelf"}>
+          {onShelf.map((i) => (
+            <Row key={i.id} onClick={() => (onPick ? onPick(i.id) : openItem(i.id, i))} img={i.thumbUrl} icon="box" title={i.name} detail={`${formatStock(i.inStock, i.sheet)} ${i.sheet ? "sheets" : "in stock"}`} />
+          ))}
+        </Section>
+      )}
+
+      {!link && query.length >= 3 && (
+        <Section title={searching && !products ? "Products · searching the stores…" : "Products"}>
+          {products?.groups.length === 0 && <p className="px-2 text-xs text-muted">No store result for that. Try other words, or paste a product link.</p>}
+          {products?.groups.map((g) => (
+            // The whole row picks the product (the cheapest store with a price); a store button picks that store.
+            <div
+              key={g.offers[0].url}
+              role="button"
+              tabIndex={0}
+              onClick={() => fromOffer(g, bestOffer(g))}
+              onKeyDown={(e) => e.key === "Enter" && fromOffer(g, bestOffer(g))}
+              className="press flex cursor-pointer gap-3 rounded-xl p-2 hover:bg-raised"
+            >
+              <div className="thumb-well flex h-14 w-14 shrink-0 items-center justify-center rounded-lg">
+                {g.image ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- the store's own picture
+                  <img src={g.image} alt="" className="h-full w-full rounded-lg bg-white object-contain" />
+                ) : (
+                  <Icon name="cart" className="h-6 w-6 text-subtle" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-semibold text-fg" title={g.title}>
+                  {g.title}
+                </div>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {g.offers.map((o) => (
+                    <button
+                      key={o.url}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        fromOffer(g, o);
+                      }} className="press min-h-9 rounded-full border border-line-strong px-3 text-xs font-semibold text-fg-2 hover:border-accent hover:text-accent" title={o.title}>
+                      {o.vendor}
+                      {o.price != null && <span className="ml-1.5 font-mono text-emerald-600 tabular-nums">${o.price.toFixed(2)}</span>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
+          {products && (
+            <p className="px-2 pt-1 text-xs text-muted">
+              Also look on{" "}
+              {products.elsewhere.map((e, i) => (
+                <span key={e.name}>
+                  {i > 0 && ", "}
+                  <a href={e.url} target="_blank" rel="noreferrer" className="text-sky-600 hover:underline">
+                    {e.name} ↗
+                  </a>
+                </span>
+              ))}{" "}
+              and paste the product link here.
+            </p>
+          )}
+        </Section>
+      )}
+
+      {!link && (
+        <Section title="Make it custom">
+          <div className="flex flex-wrap gap-1.5 px-1">
+            {categories.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => custom(c.id)}
+                className={`press min-h-10 rounded-full border px-3.5 text-sm font-semibold ${c.id === quick?.categoryId ? "border-accent bg-accent text-white" : "border-line-strong text-fg-2 hover:border-accent hover:text-accent"}`}
+              >
+                {c.noun || c.label}
+              </button>
+            ))}
+          </div>
+        </Section>
+      )}
+    </>
+  );
+  const panel = "space-y-3 overflow-y-auto rounded-2xl border border-line-strong bg-surface p-3 shadow-[0_16px_40px_-12px_rgba(17,19,24,0.35)]";
   return (
     <div className="relative min-w-0 flex-1 sm:max-w-2xl">
-      <label className="relative block">
+      <label ref={label} className="relative block">
         <Icon name={edit ? "box" : "search"} className="pointer-events-none absolute top-1/2 left-3.5 h-5 w-5 -translate-y-1/2 text-subtle" />
         <input
           ref={box}
@@ -153,105 +287,20 @@ export function AddBox({
         </button>
       )}
 
-      {open && (
-        <div className="absolute top-full right-0 left-0 z-40 mt-1.5 max-h-[70vh] space-y-3 overflow-y-auto rounded-2xl border border-line-strong bg-surface p-3 shadow-[0_16px_40px_-12px_rgba(17,19,24,0.35)]" onMouseDown={(e) => e.preventDefault()}>
-          {link && (
-            <Row onClick={readLink} icon="download" title={reading ? "Reading the page…" : "Read this product link"} detail="Name, price and photo from the store's page" />
-          )}
-          {quickName && (
-            <Row
-              onClick={() => (quickWhole ? quickSave() : custom(quick!.categoryId))}
-              icon="spark"
-              title={quickSaving ? "Adding…" : `Add “${quickName}”`}
-              detail={quickWhole ? `${quickCat!.label} · Enter adds it, ${newStock} in stock` : `${quickCat!.label} · Enter to finish the details`}
-            />
-          )}
-
-          {onShelf.length > 0 && (
-            <Section title={onPick ? "On the shelf · click to link" : "Already on the shelf"}>
-              {onShelf.map((i) => (
-                <Row key={i.id} onClick={() => (onPick ? onPick(i.id) : openItem(i.id, i))} img={i.thumbUrl} icon="box" title={i.name} detail={`${formatStock(i.inStock, i.sheet)} ${i.sheet ? "sheets" : "in stock"}`} />
-              ))}
-            </Section>
-          )}
-
-          {!link && query.length >= 3 && (
-            <Section title={searching && !products ? "Products · searching the stores…" : "Products"}>
-              {products?.groups.length === 0 && <p className="px-2 text-xs text-muted">No store result for that. Try other words, or paste a product link.</p>}
-              {products?.groups.map((g) => (
-                // The whole row picks the product (the cheapest store with a price); a store button picks that store.
-                <div
-                  key={g.offers[0].url}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => fromOffer(g, bestOffer(g))}
-                  onKeyDown={(e) => e.key === "Enter" && fromOffer(g, bestOffer(g))}
-                  className="press flex cursor-pointer gap-3 rounded-xl p-2 hover:bg-raised"
-                >
-                  <div className="thumb-well flex h-14 w-14 shrink-0 items-center justify-center rounded-lg">
-                    {g.image ? (
-                      // eslint-disable-next-line @next/next/no-img-element -- the store's own picture
-                      <img src={g.image} alt="" className="h-full w-full rounded-lg bg-white object-contain" />
-                    ) : (
-                      <Icon name="cart" className="h-6 w-6 text-subtle" />
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-semibold text-fg" title={g.title}>
-                      {g.title}
-                    </div>
-                    <div className="mt-1 flex flex-wrap gap-1.5">
-                      {g.offers.map((o) => (
-                        <button
-                          key={o.url}
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            fromOffer(g, o);
-                          }} className="press min-h-9 rounded-full border border-line-strong px-3 text-xs font-semibold text-fg-2 hover:border-accent hover:text-accent" title={o.title}>
-                          {o.vendor}
-                          {o.price != null && <span className="ml-1.5 font-mono text-emerald-600 tabular-nums">${o.price.toFixed(2)}</span>}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {products && (
-                <p className="px-2 pt-1 text-xs text-muted">
-                  Also look on{" "}
-                  {products.elsewhere.map((e, i) => (
-                    <span key={e.name}>
-                      {i > 0 && ", "}
-                      <a href={e.url} target="_blank" rel="noreferrer" className="text-sky-600 hover:underline">
-                        {e.name} ↗
-                      </a>
-                    </span>
-                  ))}{" "}
-                  and paste the product link here.
-                </p>
-              )}
-            </Section>
-          )}
-
-          {!link && (
-            <Section title="Make it custom">
-              <div className="flex flex-wrap gap-1.5 px-1">
-                {categories.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => custom(c.id)}
-                    className={`press min-h-10 rounded-full border px-3.5 text-sm font-semibold ${c.id === quick?.categoryId ? "border-accent bg-accent text-white" : "border-line-strong text-fg-2 hover:border-accent hover:text-accent"}`}
-                  >
-                    {c.noun || c.label}
-                  </button>
-                ))}
-              </div>
-            </Section>
-          )}
-        </div>
-      )}
+      {open &&
+        (floating
+          ? float &&
+            createPortal(
+              <div style={float.style} className={`fixed z-[60] ${panel}`} onMouseDown={(e) => e.preventDefault()}>
+                {results}
+              </div>,
+              float.host,
+            )
+          : (
+            <div className={`absolute top-full right-0 left-0 z-40 mt-1.5 max-h-[70vh] ${panel}`} onMouseDown={(e) => e.preventDefault()}>
+              {results}
+            </div>
+          ))}
 
       {readError && <p className="mt-2 text-sm text-amber-700">{readError}</p>}
       {saved && !draft && (

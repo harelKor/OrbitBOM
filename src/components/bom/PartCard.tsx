@@ -89,6 +89,8 @@ function MadePartCard({
     if (!onToggleSelect && isCardBodyClick(e)) showDetails();
   };
   const [drawing, setDrawing] = useState(false);
+  // A drawing file uploaded in the details window, for a part with no drawing made from Onshape.
+  const drawingFile = part.files.find((f) => f.type === "drawing");
   const { openItem } = useInventoryPopup();
 
   return (
@@ -151,11 +153,17 @@ function MadePartCard({
           )}
         </div>
         {part.note && <NoteCloud note={part.note} raised={fabControls} />}
-        {!fabControls && (versions || part.hasDrawing) && (
+        {!fabControls && (versions || part.hasDrawing || drawingFile) && (
           <div className="absolute right-2 bottom-2 flex items-center gap-1.5">
             {versions && <VersionTag partId={part.id} tags={versions} manual={part.isManual} />}
-            {part.hasDrawing && (
-              <button type="button" onClick={() => setDrawing(true)} className="overlay-btn" aria-label="View drawing" title="View drawing">
+            {(part.hasDrawing || drawingFile) && (
+              <button
+                type="button"
+                onClick={() => (part.hasDrawing ? setDrawing(true) : window.open(`/api/files/${drawingFile!.id}`, "_blank", "noopener"))}
+                className="overlay-btn"
+                aria-label="View drawing"
+                title="View drawing"
+              >
                 <Icon name="drawing" />
               </button>
             )}
@@ -207,10 +215,6 @@ function MadePartCard({
                 <MachineField part={part} save={save} slot={slot} className={`${pill} ${slot === current ? "border-accent/60 text-accent" : ""}`} />
               </span>
             ))}
-            {edit &&
-              SLOTS.filter((s) => !part[s.key] && s.stage === "Process")
-                .slice(0, 1)
-                .map((slot) => <MachineField key={slot.key} part={part} save={save} slot={slot} placeholder={`+ ${slot.label}`} className={`${pill} border-dashed text-subtle`} />)}
           </div>
         </div>
       )}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Dialog } from "@/components/Dialog";
 import { deleteManualPart } from "@/app/(app)/parts-actions";
 import { inventoryPicker } from "@/app/(app)/inventory/actions";
@@ -15,6 +15,7 @@ import { ShelfPill } from "@/components/cots/ShelfPill";
 import { Icon } from "@/components/ui/Icon";
 import { cotsTotal, siteOf } from "@/lib/cots";
 import { useBom } from "./BomContext";
+import { upload } from "./FilesField";
 import { MachineField, MaterialField, NameField, PersonField, PriorityField, QuantityField, StatusField, TypeField, machineSlotsShown, type SaveFn } from "./fields";
 import { DoneCounter, DownloadMenu, MergedBadge, cadFormat } from "./PartCard";
 import { ownerPartId, partTitle, type CardPart } from "./types";
@@ -37,9 +38,9 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
   const overlay = "btn h-8 gap-1.5 bg-surface/95 text-xs shadow-sm";
 
   return (
-    <Dialog open onClose={onClose} title={title} width="w-[min(66rem,calc(100vw-2rem))]">
+    <Dialog open onClose={onClose} title={title} width="w-[min(74rem,calc(100vw-2rem))]">
       <EditScope>
-        <div className="grid gap-5 md:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
+        <div className="grid gap-5 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
           <div className="space-y-3">
             <div className="relative aspect-[4/3] overflow-hidden rounded-xl border border-line">
               {stage === "thumb" ? (
@@ -78,7 +79,9 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
                   )}
                 </div>
               )}
-              <div className="absolute bottom-3 left-3">
+              <div className="absolute bottom-3 left-3 flex flex-wrap items-center gap-1.5">
+                {!part.isManual && !cots && <DrawingAction partId={ownerPartId(part)} hasDrawing={!!part.hasDrawing} />}
+                {!cots && <DrawingFileButton part={part} />}
                 <MergedBadge part={part} />
               </div>
               {(format || part.files.length > 0 || part.hasDrawing) && (
@@ -90,9 +93,8 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
 
             <NotesBox part={part} save={save} />
 
-            <div className="flex flex-wrap items-center gap-2">
-              {!part.isManual && !cots && <DrawingAction partId={ownerPartId(part)} hasDrawing={!!part.hasDrawing} />}
-              {edit && part.isManual && (
+            {edit && part.isManual && (
+              <div className="flex">
                 <button
                   type="button"
                   className="btn-danger ml-auto"
@@ -104,8 +106,8 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
                 >
                   Delete part
                 </button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
           <div className="min-w-0 space-y-5">
@@ -168,14 +170,14 @@ function NotesBox({ part, save }: { part: CardPart; save: SaveFn }) {
     setText(part.note ?? "");
   }
   return (
-    <label className="block rounded-xl border-2 border-amber-400/70 bg-amber-50 px-3.5 py-2.5 shadow-[3px_4px_0_0_rgba(245,158,11,0.25)] focus-within:border-amber-500 dark:bg-amber-400/10">
+    <label className="block rounded-xl border-2 border-amber-400/70 bg-amber-50 px-3 py-2 shadow-[3px_4px_0_0_rgba(245,158,11,0.25)] focus-within:border-amber-500 dark:bg-amber-400/10">
       <span className="flex items-center gap-1.5 text-xs font-bold tracking-wide text-amber-700 uppercase dark:text-amber-300">
         <Icon name="note" className="h-3.5 w-3.5" />
         Notes
       </span>
       <textarea
         value={text}
-        rows={3}
+        rows={2}
         onChange={(e) => setText(e.target.value)}
         onFocus={() => setFocused(true)}
         onBlur={() => {
@@ -183,7 +185,7 @@ function NotesBox({ part, save }: { part: CardPart; save: SaveFn }) {
           if (text.trim() !== (part.note ?? "").trim()) save({ note: text.trim() });
         }}
         placeholder="Add a note for whoever makes or orders this part…"
-        className="mt-1 block w-full resize-y bg-transparent text-[15px] leading-snug font-semibold text-fg outline-none placeholder:font-normal placeholder:text-amber-700/50 dark:placeholder:text-amber-300/40"
+        className="mt-0.5 block w-full resize-y bg-transparent text-sm leading-snug font-semibold text-fg outline-none placeholder:font-normal placeholder:text-amber-700/50 dark:placeholder:text-amber-300/40"
       />
     </label>
   );
@@ -205,11 +207,49 @@ function DrawingAction({ partId, hasDrawing }: { partId: string; hasDrawing: boo
   }
   return (
     <>
-      <button type="button" onClick={onClick} disabled={making} className={`btn ${making ? "animate-pulse" : ""}`}>
-        <Icon name="drawing" />
+      <button type="button" onClick={onClick} disabled={making} className={`btn h-8 gap-1.5 bg-surface/95 text-xs shadow-sm ${making ? "animate-pulse" : ""}`}>
+        <Icon name="drawing" className="h-3.5 w-3.5" />
         {making ? "Making the drawing…" : hasDrawing ? "Open drawing" : "Make drawing"}
       </button>
       {open && <DrawingEditor partId={partId} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+// Upload a drawing file (a PDF or picture made outside the app); the card's View drawing opens it.
+function DrawingFileButton({ part }: { part: CardPart }) {
+  const router = useRouter();
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const file = part.files.find((f) => f.type === "drawing");
+  return (
+    <>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => input.current?.click()}
+        className={`btn h-8 gap-1.5 bg-surface/95 text-xs shadow-sm ${busy ? "animate-pulse" : ""}`}
+        title={file ? `Replace ${file.filename}` : "Upload a drawing file"}
+      >
+        <Icon name="download" className="h-3.5 w-3.5 rotate-180" />
+        {busy ? "Uploading…" : file ? "Replace drawing file" : "Add drawing file"}
+      </button>
+      <input
+        ref={input}
+        type="file"
+        hidden
+        accept=".pdf,.png,.jpg,.jpeg,.svg,.dxf,.dwg,image/*,application/pdf"
+        onChange={async (e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (!f) return;
+          setBusy(true);
+          const error = await upload({ kind: "part", id: ownerPartId(part) }, "drawing", f);
+          setBusy(false);
+          if (error) alert(error);
+          else router.refresh();
+        }}
+      />
     </>
   );
 }
@@ -260,6 +300,7 @@ function InventoryLink({ part, save }: { part: CardPart; save: SaveFn }) {
         defaultCategory={null}
         placeholder={itemId ? "Link another item: search, paste a link or add one" : "Link an inventory item: search, paste a link or add one"}
         onPick={(id) => save({ inventoryItemId: id })}
+        floating
       />
     </section>
   );
