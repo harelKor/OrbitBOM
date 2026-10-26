@@ -79,7 +79,7 @@ else
       expect(after.aliases).toEqual([]);
     });
 
-    it("suggests links into To Review, links on Approve, and remembers a Reject", async () => {
+    it("suggests links into To Review, links on Approve, and offers a rejected one again only as a fallback", async () => {
       const { autoLink } = await import("./autolink");
       const { listRobotReviews, approveReviews, rejectReviews } = await import("@/lib/review/review");
       const [kraken] = await db.insert(schema.inventoryItems).values({ name: "Zorbex Q7 gearbox", cotsLinks: [{ url: "https://wcproducts.com/products/zorbex-q7" }] }).returning();
@@ -103,7 +103,11 @@ else
 
       await rejectReviews([loose2.id], member.id);
       expect(await itemOf(loose2.id)).toBeNull();
-      expect(await autoLink({ itemIds: [kraken.id] }, ctx)).toBe(0);
+      // A sync doesn't bring the rejected link back...
+      expect(await autoLink({ partIds: [loose2.id] }, ctx)).toBe(0);
+      // ...but a run for the item, which has no other match, offers it again.
+      expect(await autoLink({ itemIds: [kraken.id] }, ctx)).toBe(1);
+      expect((await listRobotReviews(r1.id)).find((r) => r.partId === loose2.id)?.reason).toContain("rejected before");
       await db.delete(schema.parts).where(eq(schema.parts.id, loose2.id));
       await db.delete(schema.inventoryItems).where(eq(schema.inventoryItems.id, kraken.id));
     });

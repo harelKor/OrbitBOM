@@ -21,8 +21,8 @@ const HASH_BUDGET = 120;
 // BOM parts", and for new BOM parts on Onshape sync. Every BOM part with no item (set up or
 // not, except In-house parts) is scored against every item (src/lib/inventory/linkScore.ts).
 // The best clear match waits in To Review, not linked yet: Approve links it, Reject drops it
-// and the pair isn't suggested again. Pass the parts or items that just changed to look only at
-// those. Returns how many links it suggested.
+// and the pair isn't suggested again, unless the item has no other match (fallback below). Pass
+// the parts or items that just changed to look only at those. Returns how many links it suggested.
 export async function autoLink(scope: { partIds?: string[]; itemIds?: string[] }, ctx: { memberId: string | null; via: "ui" | "mcp" | "sync" }) {
   const { found, names } = await findLinks(scope);
   return writePendingLinks(
@@ -111,6 +111,20 @@ export async function findLinks(scope: { partIds?: string[]; itemIds?: string[] 
   const no = new Set(rejected.map((r) => `${r.partId}:${r.itemId}`));
   const names = new Map(items.map((i) => [i.id, i.name]));
   const found = bestLinks(linkParts, linkItems, (p, i) => no.has(`${p}:${i}`)).filter((l) => inScope.has(l.itemId));
+  // Fallback (Harel, 2026-10-25): an item the run was for that got no new match may get back a
+  // link someone rejected before, if it still clears the bar. Only for runs on given items (an
+  // item added or edited, Find BOM parts), so an Onshape sync doesn't bring rejects back.
+  if (scope.itemIds) {
+    const matched = new Set(found.map((l) => l.itemId));
+    const taken = new Set(found.map((l) => l.partId));
+    const lacking = linkItems.filter((i) => inScope.has(i.id) && !matched.has(i.id));
+    const again = bestLinks(
+      linkParts.filter((p) => !taken.has(p.id)),
+      linkItems,
+      (p, i) => !no.has(`${p}:${i}`) && !lacking.some((x) => x.id === i),
+    ).filter((l) => lacking.some((x) => x.id === l.itemId));
+    found.push(...again.map((l) => ({ ...l, why: [...l.why, "rejected before"] })));
+  }
   return { found, names };
 }
 
