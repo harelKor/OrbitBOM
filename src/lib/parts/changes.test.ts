@@ -28,6 +28,7 @@ const part: PartRow = {
   unitPrice: null,
   cotsCategory: null,
   stockCount: 0,
+  postDone: 0,
   cotsSentBack: null,
   overriddenFields: [],
 };
@@ -57,6 +58,14 @@ describe("planPartUpdate", () => {
     expect(planPartUpdate(part, { material: "2mm 6061-T6" }, "sync").set).toEqual({
       material: "2mm 6061-T6",
     });
+  });
+
+  it("keeps the post-processed count only through Post Processing and the done statuses", () => {
+    const counted = { ...part, postDone: 2 };
+    expect(planPartUpdate(counted, { status: "Ready for QA" }, "ui").set.postDone).toBeUndefined();
+    expect(planPartUpdate(counted, { status: "Post Processing" }, "ui").set.postDone).toBeUndefined();
+    expect(planPartUpdate(counted, { status: "Released" }, "ui").set.postDone).toBe(0);
+    expect(planPartUpdate(counted, { status: "Ready for QA", postDone: 3 }, "ui").set.postDone).toBe(3);
   });
 
   it("resets counters when a status is chosen", () => {

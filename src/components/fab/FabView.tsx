@@ -1,7 +1,8 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useLayoutEffect, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
+import { useId, useLayoutEffect, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
+import { flushSync } from "react-dom";
 import { MACHINES, getMachine } from "@/config/machines";
 import type { Priority } from "@/config/priorities";
 import { DONE_STATUSES, STATUSES, getStatus, statusLabel, type StatusName } from "@/config/statuses";
@@ -123,18 +124,35 @@ export function FabView({
       if (r.error) setError(r.error);
     });
   };
-  // Parts in Post Processing checked off this visit, as they were when checked, so they stay in
-  // their batch (struck through) until the member leaves.
-  const [postChecked, setPostChecked] = useState<Map<string, CardPart>>(() => new Map());
-  const checkPost = (p: CardPart) => {
-    const undo = postChecked.has(p.id);
+  // Parts in Post Processing checked off this visit: they stay in their place in the batch, struck
+  // through, until the member leaves.
+  const [postChecked, setPostChecked] = useState<Set<string>>(() => new Set());
+  const markPost = (id: string, on: boolean) =>
     setPostChecked((c) => {
-      const next = new Map(c);
-      if (undo) next.delete(p.id);
-      else next.set(p.id, p);
+      const next = new Set(c);
+      if (on) next.add(id);
+      else next.delete(id);
       return next;
     });
-    save([p.id], { status: undo ? POST_PROCESSING : FINISHED_STATUS });
+  // The check moves the part to Ready for QA with all of it post-processed; undo puts it back.
+  const checkPost = (p: CardPart) => {
+    const undo = postChecked.has(p.id);
+    const need = Math.max(p.quantity, 1);
+    markPost(p.id, !undo);
+    save([p.id], undo ? { status: POST_PROCESSING, postDone: Math.min(p.postDone, need - 1) } : { status: FINISHED_STATUS, postDone: need });
+  };
+  // − / + count the pieces post-processed; the part leaves Post Processing only once all are done.
+  const countPost = (p: CardPart, n: number) => {
+    const need = Math.max(p.quantity, 1);
+    const done = Math.min(Math.max(n, 0), need);
+    const wasChecked = postChecked.has(p.id);
+    if (done >= need && !wasChecked) {
+      markPost(p.id, true);
+      save([p.id], { postDone: done, status: FINISHED_STATUS });
+    } else if (done < need && wasChecked) {
+      markPost(p.id, false);
+      save([p.id], { postDone: done, status: POST_PROCESSING });
+    } else save([p.id], { postDone: done });
   };
 
   const machine = useFabMachine();
@@ -178,16 +196,15 @@ export function FabView({
     const batched = new Set(shownBatches.flatMap((b) => b.members.map((p) => p.id)));
     const loose = optimistic.filter((p) => !batched.has(p.id) && onMachine(p) && matchesTopBar(p, filters));
     const batchesIn = (stage: Stage) => shownBatches.filter((b) => batchStage(b.members) === stage);
-    // A batch with parts in Post Processing also shows them at the top; one waiting on nothing
-    // else leaves In process for it.
+    // A batch with parts in Post Processing also shows them at the top (and stays where it is
+    // below); checked-off parts keep their place.
     const post = shownBatches
-      .map((b) => ({ ...b, post: [...b.members.filter((p) => isPostProcessing(p) && !postChecked.has(p.id)), ...[...postChecked.values()].filter((p) => p.groups.some((g) => g.id === b.id))] }))
+      .map((b) => ({ ...b, post: b.members.filter((p) => isPostProcessing(p) || postChecked.has(p.id)) }))
       .filter((b) => b.post.length > 0);
-    const onlyPost = new Set(post.filter((b) => b.members.filter((p) => !isDone(p)).every(isPostProcessing)).map((b) => b.id));
-    // Each part shows once: in its batch, or in the section of its status.
+    // Each part shows once per section: in its batch, or in the section of its status.
     return {
       post,
-      batches: { readyToFab: batchesIn("readyToFab"), inProcess: batchesIn("inProcess").filter((b) => !onlyPost.has(b.id)), finished: batchesIn("finished") },
+      batches: { readyToFab: batchesIn("readyToFab"), inProcess: batchesIn("inProcess"), finished: batchesIn("finished") },
       ready: mine ? [] : loose.filter((p) => partStage(p) === "ready"),
       inProcess: mine ? [] : loose.filter((p) => partStage(p) === "inProcess"),
       finished: mine ? [] : loose.filter((p) => partStage(p) === "finished"),
@@ -206,7 +223,8 @@ export function FabView({
     (machinesOf(p).some((m) => (picked.length ? sharedMachines : machine ? [machine] : MACHINES.map((x) => x.id as string)).includes(m)) &&
       (material === null || (p.material ?? "") === material));
 
-  const card = (p: CardPart) => {
+  // A To Fab card; inside a batch its status can be changed on its own.
+  const card = (p: CardPart, inBatch = false) => {
     const pickable = fab && canPick(p);
     return (
       <div
@@ -224,6 +242,7 @@ export function FabView({
           save={(c) => save([p.id], c)}
           showSystem
           fabCounter
+          fabStatusEditable={inBatch}
           style={fabTint(p)}
           selected={selected.has(p.id)}
           onToggleSelect={pickable ? () => toggle(p.id) : undefined}
@@ -240,6 +259,7 @@ export function FabView({
       card={card}
       draggable={!fab}
       memberNames={memberNames}
+      me={me}
       onDropParts={fab ? undefined : (load) => run(() => moveToFabBatch(b.id, load.ids, load.batch, batchStatus(b.members)))}
     />
   );
@@ -304,21 +324,18 @@ export function FabView({
         {error && <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">Couldn&apos;t save: {error}</p>}
 
         {view.post.length > 0 && (
-          <section className="space-y-3 rounded-lg border p-4" style={{ borderColor: "color-mix(in srgb, #f302f7 40%, transparent)", backgroundColor: "color-mix(in srgb, #f302f7 4%, transparent)" }}>
-            <div className="flex items-baseline gap-2">
-              <h2 className="display text-2xl font-bold">To Post Process</h2>
-              <span className="font-mono text-sm text-subtle tabular-nums">{view.post.reduce((n, b) => n + b.post.filter((p) => !postChecked.has(p.id)).length, 0)}</span>
-              <span className="text-xs text-subtle">Check a part off to move it to Ready for QA.</span>
-            </div>
-            {view.post.map((b) => (
-              <div key={b.id} className="space-y-2">
-                <div className="flex items-baseline gap-2 text-sm">
-                  <span className="font-semibold">{b.name}</span>
-                  {b.machine && <span className="text-xs text-subtle">{getMachine(b.machine)?.name}</span>}
-                  {b.madeBy && <span className="text-xs text-subtle">· {b.madeBy}</span>}
-                </div>
-                <div className="card-grid" style={{ "--card-min": "200px" } as React.CSSProperties}>
-                  {b.post.map((p) => (
+          <div className="rounded-xl border p-3" style={{ borderColor: "color-mix(in srgb, #f302f7 40%, transparent)", backgroundColor: "color-mix(in srgb, #f302f7 4%, transparent)" }}>
+            <Section title="To Post Process" count={view.post.reduce((n, b) => n + b.post.filter((p) => !postChecked.has(p.id)).length, 0)}>
+              {view.post.map((b) => (
+                <BatchCard
+                  key={b.id}
+                  batch={b}
+                  members={b.post}
+                  save={save}
+                  draggable={false}
+                  memberNames={memberNames}
+                  me={me}
+                  card={(p) => (
                     <PartCard
                       key={p.id}
                       part={p}
@@ -328,15 +345,16 @@ export function FabView({
                       onCheck={() => checkPost(p)}
                       checkFrom={POST_PROCESSING}
                       checkTo={FINISHED_STATUS}
+                      post={{ done: p.postDone, onChange: (n) => countPost(p, n) }}
                     />
-                  ))}
-                </div>
-              </div>
-            ))}
-          </section>
+                  )}
+                />
+              ))}
+            </Section>
+          </div>
         )}
         <Section title="Released" count={view.ready.length} empty="No parts are waiting to be made." onDropParts={fab ? undefined : drop("ready")}>
-          {view.ready.map(card)}
+          {view.ready.map((p) => card(p))}
         </Section>
         <Section
           title="Ready to Fab"
@@ -353,7 +371,7 @@ export function FabView({
           onDropParts={fab ? undefined : drop("inProcess")}
         >
           {view.batches.inProcess.map(batchCard)}
-          {view.inProcess.map(card)}
+          {view.inProcess.map((p) => card(p))}
         </Section>
         <Section
           title="Finished"
@@ -362,11 +380,11 @@ export function FabView({
           onDropParts={fab ? undefined : drop("finished")}
         >
           {view.batches.finished.map(batchCard)}
-          {view.finished.map(card)}
+          {view.finished.map((p) => card(p))}
         </Section>
         {machine && view.other.length > 0 && (
           <Section title={`Other parts on ${getMachine(machine)?.name ?? "this machine"}`} count={view.other.length} small defaultOpen={false}>
-            {view.other.map(card)}
+            {view.other.map((p) => card(p))}
           </Section>
         )}
 
@@ -523,9 +541,33 @@ function collageGrid(count: number): React.CSSProperties {
   return { gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))` };
 }
 
-// A fab batch: a collage of its parts with who makes it on top, its machine and material, one
-// status for all of them (named as the machine calls it), download all and its G-code. Clicking
-// the card opens its member cards; cards dropped on it join it. Rename and delete are in Edit mode.
+// Where an open batch sits in its section's grid: the column it was in when closed, spanning as
+// many columns to the right as it has parts (and room for).
+type Place = { start: number; span: number; colWidth: number };
+function measurePlace(el: HTMLElement | null, parts: number): Place | null {
+  const grid = el?.parentElement;
+  if (!el || !grid) return null;
+  const style = getComputedStyle(grid);
+  const cols = style.gridTemplateColumns.split(" ").filter(Boolean);
+  const colWidth = parseFloat(cols[0]) || 0;
+  const step = colWidth + (parseFloat(style.columnGap) || 0);
+  const index = step ? Math.round((el.getBoundingClientRect().left - grid.getBoundingClientRect().left) / step) : 0;
+  const start = Math.min(Math.max(index, 0), cols.length - 1);
+  return { start: start + 1, span: Math.max(1, Math.min(cols.length - start, parts)), colWidth };
+}
+
+// Runs a layout change as a short view transition where the browser has them, so the eye can
+// follow a batch as it opens or closes.
+function withTransition(change: () => void) {
+  const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown };
+  if (doc.startViewTransition && !matchMedia("(prefers-reduced-motion: reduce)").matches) doc.startViewTransition(() => flushSync(change));
+  else change();
+}
+
+// A fab batch: a collage of its parts, who makes it (on the collage when open, on the right when
+// closed; glowing when it's you), its machine and material, one status for all of them (named as
+// the machine calls it), download all and its G-code. Clicking the card opens it in place, with
+// each part's own status; cards dropped on it join it. Rename and delete are in Edit mode.
 function BatchCard({
   batch,
   members,
@@ -533,14 +575,16 @@ function BatchCard({
   card,
   draggable,
   memberNames,
+  me,
   onDropParts,
 }: {
   batch: Batch;
   members: CardPart[];
   save: (ids: string[], changes: PartChanges) => void;
-  card: (p: CardPart) => React.ReactNode;
+  card: (p: CardPart, inBatch?: boolean) => React.ReactNode;
   draggable: boolean;
   memberNames: string[];
+  me: string;
   onDropParts?: (load: DragLoad) => void;
 }) {
   const edit = useEditMode();
@@ -570,25 +614,49 @@ function BatchCard({
   const statusOptions = STATUSES.map((s) => ({ value: s.name, label: s.name === READY_STATUS ? "Ready to Fab" : statusLabel(s.name, batch.machine), color: s.color }));
   const thumbs = members.slice(0, 9);
 
-  // Opened, the batch takes a row of its own and lays its parts out at the grid's card width, as
-  // many across as it has parts. Spanning only some columns let the closed cards beside it stretch
-  // to its height, so they looked open too and jumped when it closed.
+  const mine = !!madeBy && madeBy === me;
+  // Opened, the batch stays where it was and grows to the right and down, laying its parts out at
+  // the grid's card width, as many across as it has parts and room for. Closed cards beside it
+  // keep their own height (self-start).
   const ref = useRef<HTMLDivElement>(null);
-  const [span, setSpan] = useState(1);
-  const [colWidth, setColWidth] = useState(0);
+  const [place, setPlace] = useState<Place | null>(null);
+  const transitionName = `batch-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  const toggle = () => {
+    const next = !open;
+    withTransition(() => {
+      setPlace(next ? measurePlace(ref.current, members.length) : null);
+      setOpen(next);
+    });
+  };
   useLayoutEffect(() => {
     const grid = ref.current?.parentElement;
     if (!open || !grid) return;
-    const measure = () => {
-      const cols = getComputedStyle(grid).gridTemplateColumns.split(" ").filter(Boolean);
-      setSpan(Math.max(1, Math.min(cols.length, members.length)));
-      setColWidth(parseFloat(cols[0]) || 0);
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
+    const observer = new ResizeObserver(() => setPlace(measurePlace(ref.current, members.length)));
     observer.observe(grid);
     return () => observer.disconnect();
   }, [open, members.length]);
+  const userBox = (
+    <select
+      value={madeBy}
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => {
+        setMadeBy(e.target.value);
+        startTransition(() => void updateGroup(batch.id, { madeBy: e.target.value || null }));
+      }}
+      aria-label={`Who makes ${batch.name}`}
+      title={mine ? "You make this batch" : undefined}
+      className={`press max-w-full min-w-0 cursor-pointer truncate rounded-full border bg-surface/90 px-2.5 py-1 text-xs font-bold shadow-sm backdrop-blur-md transition-shadow hover:border-accent focus:outline-none ${
+        mine ? "border-sky-400 text-sky-600 shadow-[0_0_10px_2px_rgba(56,189,248,0.55)] dark:text-sky-300" : "border-line-strong text-fg"
+      }`}
+    >
+      <option value="">Nobody yet</option>
+      {[...new Set([...(batch.madeBy ? [batch.madeBy] : []), ...memberNames])].map((n) => (
+        <option key={n} value={n}>
+          {n}
+        </option>
+      ))}
+    </select>
+  );
   const rename = (name: string) => {
     setRenaming(false);
     if (name.trim() && name.trim() !== batch.name) startTransition(() => void updateGroup(batch.id, { name }));
@@ -628,12 +696,14 @@ function BatchCard({
           JSON.stringify({ ids: (notDone.length ? notDone : members).map((p) => p.id), from: stage, batch: batch.id, whole: true } satisfies DragLoad),
         )
       }
-      onClick={() => setOpen((o) => !o)}
+      onClick={toggle}
       style={{
         ...(stage === "finished" || isFabFinished(lowest) ? tint(FINISHED_COLOR) : statusTint(computeStatus(lowest))),
-        ...(open && { gridColumn: "1 / -1" }),
+        ...(open && place && { gridColumn: `${place.start} / span ${place.span}` }),
+        ...(mine && { boxShadow: "0 0 0 2px rgba(56,189,248,0.75), 0 0 22px 4px rgba(56,189,248,0.4)" }),
+        viewTransitionName: transitionName,
       }}
-      className={`card-interactive flex cursor-pointer flex-col text-sm ${over ? "ring-2 ring-accent" : ""}`}
+      className={`card-interactive flex cursor-pointer flex-col self-start text-sm ${over ? "ring-2 ring-accent" : ""}`}
     >
       <div className={open ? "flex flex-wrap gap-4 p-3" : "flex flex-col"}>
         <div className={`relative shrink-0 ${open ? "w-40" : "w-full"}`}>
@@ -654,24 +724,7 @@ function BatchCard({
               </span>
             ))}
           </button>
-          <div className="absolute inset-x-2 top-2 flex" onClick={stop}>
-            <select
-              value={madeBy}
-              onChange={(e) => {
-                setMadeBy(e.target.value);
-                startTransition(() => void updateGroup(batch.id, { madeBy: e.target.value || null }));
-              }}
-              aria-label={`Who makes ${batch.name}`}
-              className="press max-w-full min-w-0 cursor-pointer truncate rounded-full border border-line bg-surface/90 px-2.5 py-1 text-xs font-bold text-fg shadow-sm backdrop-blur-md hover:border-accent focus:outline-none"
-            >
-              <option value="">Nobody yet</option>
-              {[...new Set([...(batch.madeBy ? [batch.madeBy] : []), ...memberNames])].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </div>
+          {open && <div className="absolute inset-x-2 top-2 flex">{userBox}</div>}
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-2 p-3">
           <div className="min-w-0" style={textColor ? { color: textColor } : undefined}>
@@ -689,10 +742,11 @@ function BatchCard({
                 }}
               />
             ) : (
-              <div className="flex items-baseline gap-2">
-                <span className="display truncate text-xl text-accent" style={textColor ? { color: textColor } : undefined}>
+              <div className="flex items-center gap-2">
+                <span className="display min-w-0 truncate text-xl text-accent" style={textColor ? { color: textColor } : undefined}>
                   {batch.name}
                 </span>
+                {!open && <span className="ml-auto flex min-w-0 shrink">{userBox}</span>}
                 {open && edit && (
                   <button
                     className="press shrink-0 text-xs text-subtle hover:text-accent"
@@ -777,10 +831,14 @@ function BatchCard({
         </div>
       </div>
       {open && (
-        <div className="grid cursor-default gap-3 border-t border-line p-3" style={{ gridTemplateColumns: `repeat(${span}, ${colWidth ? `minmax(0, ${colWidth}px)` : "minmax(0, 1fr)"})` }} onClick={stop}>
+        <div
+          className="batch-open grid cursor-default gap-3 border-t border-line p-3"
+          style={{ gridTemplateColumns: `repeat(${place?.span ?? 1}, ${place?.colWidth ? `minmax(0, ${place.colWidth}px)` : "minmax(0, 1fr)"})` }}
+          onClick={stop}
+        >
           {members.map((p) => (
             <div key={p.id} className="flex flex-col gap-1">
-              {card(p)}
+              {card(p, true)}
               {edit && (
                 <button
                   className="self-start text-xs text-subtle hover:text-rose-700"

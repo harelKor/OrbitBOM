@@ -28,6 +28,7 @@ const FIELD_NAMES: Record<string, string> = {
   donePreprocess: "Status",
   doneProcess1: "Status",
   doneProcess2: "Status",
+  postDone: "Post processed",
   material: "Material",
   preProcess: "Processes",
   process1: "Processes",

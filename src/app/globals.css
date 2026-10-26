@@ -370,3 +370,23 @@ body {
     box-shadow: 0 0 0 3px transparent;
   }
 }
+
+/* To Fab: an opening fab batch morphs into place (view transition) and its parts fade in. */
+::view-transition-group(*) {
+  animation-duration: 240ms;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.batch-open {
+  animation: batch-open 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes batch-open {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .batch-open {
+    animation: none;
+  }
+}

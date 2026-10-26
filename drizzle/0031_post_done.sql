@@ -1,0 +1,1 @@
+ALTER TABLE "parts" ADD COLUMN "post_done" integer DEFAULT 0 NOT NULL;

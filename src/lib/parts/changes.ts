@@ -8,7 +8,7 @@ import { z } from "zod";
 import { MACHINES } from "@/config/machines";
 import { PRIORITIES } from "@/config/priorities";
 import { COTS_STATUSES, isCotsCategory } from "@/config/cots";
-import { STATUSES } from "@/config/statuses";
+import { DONE_STATUSES, STATUSES } from "@/config/statuses";
 import { applyCounters, applyStatus } from "@/lib/status";
 
 const machineIds = MACHINES.map((m) => m.id) as [string, ...string[]];
@@ -39,6 +39,7 @@ export const partChangesSchema = z
     donePreprocess: count,
     doneProcess1: count,
     doneProcess2: count,
+    postDone: count,
     priority: z.enum(PRIORITIES),
     deadline: z
       .string()
@@ -97,6 +98,7 @@ export type PartRow = {
   donePreprocess: number;
   doneProcess1: number;
   doneProcess2: number;
+  postDone: number;
   priority: (typeof PRIORITIES)[number];
   deadline: string | null;
   designerName: string | null;
@@ -128,6 +130,8 @@ export function planPartUpdate(
   const next: Partial<PartRow> = { ...rest };
 
   if (status !== undefined) Object.assign(next, applyStatus(status));
+  // The post-processed count belongs to Post Processing and the done statuses after it.
+  if (status !== undefined && rest.postDone === undefined && status !== "Post Processing" && !(DONE_STATUSES as string[]).includes(status)) next.postDone = 0;
   const counters = Object.fromEntries(
     Object.entries({ donePreprocess, doneProcess1, doneProcess2 }).filter(([, v]) => v !== undefined),
   );

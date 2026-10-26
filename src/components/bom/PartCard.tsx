@@ -36,8 +36,8 @@ export const isCardBodyClick = (e: React.MouseEvent) => !(e.target as HTMLElemen
 // View drawing on its bottom-right once a drawing exists; below it two dense rows: the name, then
 // the status and the material → process pills. Properties only open their editors in Edit mode,
 // and a click anywhere else on the card opens the part's details window (3D, notes, drawing,
-// inventory). On To Fab the rows are read-only: status, amount, material, machine and the
-// drawing icon. COTS parts get their own card (CotsCard): bought, not made.
+// inventory). On To Fab the rows are read-only (status, amount, material, machine) and the
+// drawing icon sits on the thumbnail's top-left. COTS parts get their own card (CotsCard): bought, not made.
 export function PartCard(props: React.ComponentProps<typeof MadePartCard>) {
   return props.part.classification === "cots" ? <CotsCard {...props} /> : <MadePartCard {...props} />;
 }
@@ -54,6 +54,8 @@ function MadePartCard({
   checked = false,
   checkFrom = "Ready for QA",
   checkTo = "In Stock",
+  fabStatusEditable = false,
+  post,
 }: {
   part: CardPart;
   save: SaveFn;
@@ -66,6 +68,10 @@ function MadePartCard({
   checked?: boolean; // Ready for QA: checked off this visit (struck through; a second click undoes it)
   checkFrom?: string; // the status the check takes the part from (To Post Process: Post Processing)
   checkTo?: string; // and the one it moves it to (To Post Process: Ready for QA)
+  fabStatusEditable?: boolean; // To Fab, inside a batch: the part's own status can be changed
+  // To Post Process: how many are post-processed, with − / + along the thumbnail's bottom; the card
+  // drops the type, amount, material and machines.
+  post?: { done: number; onChange: (n: number) => void };
 }) {
   const edit = useEditMode();
   const { versions } = useBom();
@@ -95,7 +101,7 @@ function MadePartCard({
 
   return (
     <div id={`part-${part.id}`} data-selected={!!selected} data-part={partIds(part)} style={style ?? statusTint(computeStatus(part))} onClick={openDetails} className={`card-interactive group flex scroll-mt-20 cursor-pointer flex-col text-sm target:border-accent target:ring-2 target:ring-accent ${checked ? "opacity-60" : ""}`}>
-      {checked && <span aria-hidden className="pointer-events-none absolute inset-x-3 top-1/2 z-10 h-0.5 -rotate-6 rounded-full bg-emerald-500" />}
+      {checked && !post && <span aria-hidden className="pointer-events-none absolute inset-x-3 top-1/2 z-10 h-0.5 -rotate-6 rounded-full bg-emerald-500" />}
       {onToggleSelect && (
         // While selecting, a click anywhere on the card toggles it.
         <button
@@ -118,13 +124,30 @@ function MadePartCard({
         ) : (
           <span className="text-xs text-muted">No thumbnail yet</span>
         )}
+        {post && checked && (
+          // Checked off: a red line from the bottom-left corner to the top-right.
+          <svg aria-hidden className="pointer-events-none absolute inset-0 z-10 h-full w-full" preserveAspectRatio="none" viewBox="0 0 100 100">
+            <line x1="4" y1="96" x2="96" y2="4" stroke="#dc2626" strokeWidth="4" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+          </svg>
+        )}
         <div className="absolute top-2 left-2 flex items-center gap-1">
-          {!fabCounter && (
+          {(fabCounter || post) && (part.hasDrawing || drawingFile) && (
+            <button
+              type="button"
+              onClick={() => (part.hasDrawing ? setDrawing(true) : window.open(`/api/files/${drawingFile!.id}`, "_blank", "noopener"))}
+              className="overlay-btn"
+              aria-label="View drawing"
+              title="View drawing"
+            >
+              <Icon name="drawing" />
+            </button>
+          )}
+          {!fabCounter && !post && (
             <span className="rounded-full bg-[#111318]/85 px-2 py-0.5 text-[11px] font-bold text-white tabular-nums">
               {edit ? <QuantityField part={part} save={save} /> : `×${part.quantity}`}
             </span>
           )}
-          {!fabCounter && (edit ? <TypeField part={part} save={save} badge /> : <TypeBadge part={part} />)}
+          {!fabCounter && !post && (edit ? <TypeField part={part} save={save} badge /> : <TypeBadge part={part} />)}
           <MergedBadge part={part} />
         </div>
         <div className="absolute top-2 right-2 flex gap-1.5">
@@ -152,8 +175,27 @@ function MadePartCard({
             </>
           )}
         </div>
-        {part.note && <NoteCloud note={part.note} raised={fabControls} />}
-        {!fabControls && (versions || part.hasDrawing || drawingFile) && (
+        {part.note && <NoteCloud note={part.note} raised={fabControls || !!post} />}
+        {post && (
+          <div className="absolute inset-x-2 bottom-2 flex items-center justify-between gap-2">
+            <button type="button" onClick={() => post.onChange(post.done - 1)} disabled={post.done === 0} className="overlay-btn text-lg font-bold disabled:opacity-30" aria-label="One less post-processed">
+              −
+            </button>
+            <span className="rounded-full bg-[#111318]/85 px-2.5 py-1 font-mono text-xs font-bold text-white tabular-nums" title="Post-processed of the amount">
+              {post.done}/{part.quantity}
+            </span>
+            <button
+              type="button"
+              onClick={() => post.onChange(post.done + 1)}
+              disabled={post.done >= part.quantity}
+              className="overlay-btn text-lg font-bold disabled:opacity-30"
+              aria-label="One more post-processed"
+            >
+              +
+            </button>
+          </div>
+        )}
+        {!fabControls && !post && (versions || part.hasDrawing || drawingFile) && (
           <div className="absolute right-2 bottom-2 flex items-center gap-1.5">
             {versions && <VersionTag partId={part.id} tags={versions} manual={part.isManual} />}
             {(part.hasDrawing || drawingFile) && (
@@ -194,7 +236,7 @@ function MadePartCard({
         )}
       </div>
       {fabCounter ? (
-        <FabFooter part={part} current={current ?? machines.at(-1)} />
+        <FabFooter part={part} save={save} current={current ?? machines.at(-1)} editStatus={fabStatusEditable} />
       ) : (
         <div className="flex min-w-0 flex-col gap-1.5 px-2.5 py-2">
           <div className="flex min-w-0 items-center gap-1">
@@ -208,8 +250,8 @@ function MadePartCard({
 
           <div className="flex min-w-0 flex-wrap items-center gap-1">
             <StatusField part={part} save={save} size="sm" />
-            {(part.material || part.inventoryItemId || edit) && <MaterialField part={part} save={save} className={pill} />}
-            {machines.map((slot) => (
+            {!post && (part.material || part.inventoryItemId || edit) && <MaterialField part={part} save={save} className={pill} />}
+            {!post && machines.map((slot) => (
               <span key={slot.key} className="contents">
                 <span className="text-[10px] text-faint">→</span>
                 <MachineField part={part} save={save} slot={slot} className={`${pill} ${slot === current ? "border-accent/60 text-accent" : ""}`} />
@@ -222,11 +264,10 @@ function MadePartCard({
   );
 }
 
-// To Fab's read-only rows: the status and how many are made of the amount, then the material,
-// the machine it's at and a drawing icon (the drawing in a big window).
-function FabFooter({ part, current }: { part: CardPart; current: (typeof SLOTS)[number] | undefined }) {
+// To Fab's rows: the status (its own menu inside a batch, else read-only) and how many are made of
+// the amount, then the material and the machine it's at.
+function FabFooter({ part, save, current, editStatus }: { part: CardPart; save: SaveFn; current: (typeof SLOTS)[number] | undefined; editStatus: boolean }) {
   const { inventory } = useBom();
-  const [drawing, setDrawing] = useState(false);
   const linked = part.inventoryItemId ? inventory.find((i) => i.id === part.inventoryItemId) : undefined;
   const material = linked?.name ?? part.material;
   const machine = current ? (getMachine(part[current.key]!)?.name ?? part[current.key]) : null;
@@ -234,7 +275,7 @@ function FabFooter({ part, current }: { part: CardPart; current: (typeof SLOTS)[
   return (
     <div className="flex min-w-0 flex-col gap-1.5 px-2.5 py-2">
       <div className="flex min-w-0 items-center gap-1.5">
-        <StatusPill status={computeStatus(part)} label={partStatusLabel(part)} />
+        {editStatus ? <StatusField part={part} save={save} size="sm" /> : <StatusPill status={computeStatus(part)} label={partStatusLabel(part)} />}
         <span className="ml-auto font-mono text-xs font-semibold text-fg tabular-nums" title={machine ? `Made at ${machine} of the amount` : "Amount"}>
           {made}/{part.quantity}
         </span>
@@ -248,18 +289,7 @@ function FabFooter({ part, current }: { part: CardPart; current: (typeof SLOTS)[
             {machine}
           </span>
         )}
-        <button
-          type="button"
-          onClick={() => setDrawing(true)}
-          disabled={!part.hasDrawing}
-          title={part.hasDrawing ? "Open the drawing" : "No drawing yet"}
-          aria-label={part.hasDrawing ? "Open the drawing" : "No drawing yet"}
-          className="press ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-line-strong text-fg-2 hover:border-accent hover:text-accent disabled:opacity-40"
-        >
-          <Icon name="drawing" className="h-3.5 w-3.5" />
-        </button>
       </div>
-      {drawing && <DrawingPreview partId={ownerPartId(part)} title={partTitle(part)} onClose={() => setDrawing(false)} />}
     </div>
   );
 }

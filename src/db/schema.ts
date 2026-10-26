@@ -168,6 +168,9 @@ export const parts = pgTable(
     donePreprocess: integer("done_preprocess").notNull().default(0),
     doneProcess1: integer("done_process1").notNull().default(0),
     doneProcess2: integer("done_process2").notNull().default(0),
+    // How many are post-processed, counted on To Fab's To Post Process (it isn't a process slot,
+    // so it doesn't move the status).
+    postDone: integer("post_done").notNull().default(0),
     designState: text("design_state"),
     // When the part was first made (reached a done status with a machine); it stays in To Fab's
     // Finished section from then on.
