@@ -263,10 +263,12 @@ export async function shelfOfParts(rows: ShelfPart[]) {
           .from(inventoryItems)
       : [],
   ]);
+  const thumbs = await itemThumbs(items);
   for (const p of linked) {
     const item = items.find((i) => i.id === p.inventoryItemId);
     if (!item) continue;
     const u = usage.get(item.id);
+    const total = Math.max(u?.need ?? 0, item.seasonNeed ?? 0);
     shelf.set(p.id, {
       itemId: item.id,
       itemName: item.name,
@@ -276,6 +278,10 @@ export async function shelfOfParts(rows: ShelfPart[]) {
       // A part on an archived robot isn't in the usage; it shows the stock but covers nothing.
       covered: u?.coveredOf.get(p.id) ?? 0,
       free: u ? u.free : item.inStock,
+      total,
+      restock: p.restock,
+      met: total > 0 && item.inStock + 1e-9 >= total,
+      thumbUrl: thumbs.get(item.id) ?? null,
     });
   }
   for (const p of unlinked) {

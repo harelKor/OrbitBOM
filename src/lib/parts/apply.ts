@@ -62,7 +62,7 @@ export async function applyEachPartChanges(
       if (!history.length) continue;
       changed++;
       // An order arrived: a linked COTS part going from the Order List to In Stock adds what the
-      // shelf was missing for it to its item's stock.
+      // shelf was missing for it to its item's stock (nothing when the shelf already had it).
       const after = { ...row, ...set };
       let received = 0;
       if (
@@ -72,8 +72,14 @@ export async function applyEachPartChanges(
         set.designState === COTS_IN_STOCK &&
         ORDERING.includes(cotsStatusOf(row.designState))
       ) {
-        const { usage } = await usageOf([after.inventoryItemId], tx);
-        received = Math.max(0, after.quantity - (usage.get(after.inventoryItemId)?.coveredOf.get(row.id) ?? 0));
+        const { usage, items } = await usageOf([after.inventoryItemId], tx);
+        if (after.restock) {
+          // A card Inventory sent to refill the shelf: what the item still misses of its whole need
+          // (the bigger of its season count and the robots'), up to the card's quantity.
+          const item = items[0];
+          const total = Math.max(item?.seasonNeed ?? 0, usage.get(after.inventoryItemId)?.need ?? 0);
+          received = item ? Math.min(after.quantity, Math.max(0, Math.ceil(total - item.inStock - 1e-9))) : 0;
+        } else received = Math.max(0, after.quantity - (usage.get(after.inventoryItemId)?.coveredOf.get(row.id) ?? 0));
       }
       await tx
         .update(parts)

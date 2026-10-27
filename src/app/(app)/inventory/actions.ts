@@ -195,7 +195,7 @@ export async function setSeasonNeed(itemId: string, text: string): Promise<Actio
 }
 
 // The cart on a short item's card: a General COTS card for what's missing goes to Released,
-// marked as a restock so it doesn't count as a robot's need. When it reaches In Stock on the Order
+// List, what the shelf still misses (up to its quantity) goes on the shelf.
 // List its whole quantity goes on the shelf.
 export async function sendItemToReleased(itemId: string): Promise<ActionResult & { href?: string }> {
   const member = await requireMember();

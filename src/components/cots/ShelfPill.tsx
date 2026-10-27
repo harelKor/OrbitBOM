@@ -162,14 +162,24 @@ function useDismissed(id: string) {
 }
 
 // The card's suggestion when the shelf already covers a part that isn't In Stock yet (Harel: a
-// suggestion, never automatic). Dismissing hides it in this browser.
+// suggestion, never automatic). A card Inventory sent to refill the shelf asks once the shelf has
+// the item's whole need (its season count). Dismissing hides it in this browser.
 export function ShelfCoversPrompt({ part, shelf, save }: { part: CardPart; shelf: Shelf | null; save: SaveFn }) {
   const dismissed = useDismissed(part.id);
-  if (!shelf || shelf.sheet || dismissed || shelf.covered < Math.max(part.quantity, 1) || computeStatus(part) === COTS_IN_STOCK) return null;
+  if (!shelf || dismissed || computeStatus(part) === COTS_IN_STOCK) return null;
+  if (shelf.restock ? !shelf.met : shelf.sheet || shelf.covered < Math.max(part.quantity, 1)) return null;
   return (
     <div className="flex items-center gap-2 rounded-lg border border-emerald-500/50 bg-emerald-500/10 px-2 py-1.5 text-xs">
       <span className="min-w-0 flex-1 text-fg-2">
-        The shelf has <span className="font-mono font-semibold tabular-nums">{part.quantity}</span> for this. Mark In Stock?
+        {shelf.restock ? (
+          <>
+            The shelf has <span className="font-mono font-semibold tabular-nums">{formatStock(shelf.inStock, shelf.sheet)}</span>, all that&apos;s needed. Mark In Stock?
+          </>
+        ) : (
+          <>
+            The shelf has <span className="font-mono font-semibold tabular-nums">{part.quantity}</span> for this. Mark In Stock?
+          </>
+        )}
       </span>
       <button type="button" onClick={() => save({ status: COTS_IN_STOCK })} className="press rounded-md bg-emerald-600 px-2 py-0.5 font-semibold text-white hover:bg-emerald-500">
         In Stock

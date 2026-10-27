@@ -16,6 +16,7 @@ import { useEditMode } from "@/components/shell/ModeContext";
 import { CheckBadge } from "@/components/ui/CheckBadge";
 import { Icon } from "@/components/ui/Icon";
 import { cotsTotal, siteOf } from "@/lib/cots";
+import { formatStock } from "@/lib/inventory/stock";
 import type { PartChanges } from "@/lib/parts/changes";
 import { computeStatus } from "@/lib/status";
 import { stepShelfStock } from "@/app/(app)/inventory/actions";
@@ -29,6 +30,9 @@ import { formatPrice, setCurrency, useCurrency } from "./currency";
 // the status with a $ / ₪ switch. No download, material or process: the part is bought, not made.
 // On the Order List (`variant="order"`) the card is pared down to the name, the quantity, the price
 // and a big status button. A part the Order List sent back carries a red tag with the reason.
+// On Released (`origin`) the thumbnail says where the part came from (General: sent from the
+// inventory or added for no robot; Robot: a robot's BOM) and the count is the whole shelf against
+// the item's whole need ("7 / 20 on shelf"). A part with no picture of its own shows its item's.
 export function CotsCard({
   part,
   save,
@@ -41,6 +45,7 @@ export function CotsCard({
   struck = false,
   group,
   shelfOnThumb = false,
+  origin,
 }: {
   part: CardPart;
   save: SaveFn;
@@ -56,6 +61,7 @@ export function CotsCard({
   onCheck?: () => void;
   // On the COTS page the inventory tag sits on the thumbnail, so every card is the same height.
   shelfOnThumb?: boolean;
+  origin?: "General" | "Robot";
 }) {
   const edit = useEditMode();
   const { versions } = useBom();
@@ -93,12 +99,15 @@ export function CotsCard({
     if (group) group.onOpen();
     else showDetails();
   };
-  const thumb = part.thumbUrl ? (
+  const picture = (!part.isManual && part.thumbUrl) || shelf?.thumbUrl || null;
+  const thumb = picture ? (
     // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
-    <img src={part.thumbUrl} alt="" loading="lazy" className="h-full w-full object-contain p-3" />
+    <img src={picture} alt="" loading="lazy" className="h-full w-full object-contain p-3" />
   ) : (
-    <span className="text-xs text-muted">No thumbnail yet</span>
+    <span className="text-xs text-muted">{part.isManual ? "Manual part" : "No thumbnail yet"}</span>
   );
+  // Released: the whole shelf against the item's whole need.
+  const wholeShelf = !!origin && onShelf;
 
   return (
     <div
@@ -124,11 +133,7 @@ export function CotsCard({
       )}
 
       <div className="thumb-well thumb-cots relative flex aspect-[4/3] items-center justify-center">
-        {part.isManual ? (
-          <span className="text-xs text-muted">Manual part</span>
-        ) : (
-          <div className="flex h-full w-full items-center justify-center">{thumb}</div>
-        )}
+        <div className="flex h-full w-full items-center justify-center">{thumb}</div>
         <div className="absolute top-2 left-2 flex items-center gap-1">
           <span className={`rounded-full bg-[#111318]/85 font-bold text-white tabular-nums ${order ? "px-3 py-1 text-base" : "px-2 py-0.5 text-[11px]"}`}>
             {edit && !order ? <QuantityField part={part} save={save} /> : `×${part.quantity}`}
@@ -137,6 +142,14 @@ export function CotsCard({
           {!group && <MergedBadge part={part} />}
         </div>
         <div className="absolute top-2 right-2 flex max-w-[55%] flex-col items-end gap-1">
+          {origin && (
+            <span
+              className={`rounded-full px-2 py-0.5 text-[11px] font-bold shadow-sm ${origin === "General" ? "bg-[#0D111A]/85 text-amber-300" : "bg-sky-500 text-white"}`}
+              title={origin === "General" ? "Sent from the inventory, or added for no robot" : "From a robot's BOM"}
+            >
+              {origin}
+            </span>
+          )}
           {group && (
             <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[11px] font-bold text-amber-950 shadow-sm" title="Click to see each system's part">
               ⧉ {group.systems} systems
@@ -149,7 +162,7 @@ export function CotsCard({
           )}
         </div>
         {part.note && <NoteCloud note={part.note} raised={!order} />}
-        {shelfOnThumb && hasShelfTag && (
+        {shelfOnThumb && hasShelfTag && !(wholeShelf && shelf) && (
           <div className={`absolute flex max-w-[90%] rounded-full bg-surface/90 shadow-sm backdrop-blur-md ${order ? "bottom-2 left-2" : "bottom-12 left-1/2 -translate-x-1/2"}`}>
             <ShelfPill part={part} shelf={shelf} save={save} />
           </div>
@@ -172,9 +185,11 @@ export function CotsCard({
             </button>
             <span
               className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-[#111318]/80 px-2 py-0.5 font-mono text-[11px] font-semibold whitespace-nowrap text-white tabular-nums"
-              title={onShelf ? `Covered by ${shelf.itemName} on the shelf` : "In stock"}
+              title={onShelf ? (wholeShelf ? `${shelf.itemName} on the shelf / everything needed` : `Covered by ${shelf.itemName} on the shelf`) : "In stock"}
             >
-              {stock}/{part.quantity} {onShelf ? "on shelf" : "in stock"}
+              {wholeShelf
+                ? `${formatStock(shelf.inStock)} / ${formatStock(shelf.total || part.quantity)} on shelf`
+                : `${stock}/${part.quantity} ${onShelf ? "on shelf" : "in stock"}`}
             </span>
             <button
               type="button"

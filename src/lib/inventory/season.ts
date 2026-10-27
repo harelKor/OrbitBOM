@@ -33,10 +33,11 @@ export function missing(i: Needs, view: NeedView): number {
   return gap > 1e-9 ? (i.sheet ? Math.ceil(gap - 1e-9) : Math.ceil(gap)) : 0;
 }
 
-// The card's colour in the Short views: red short, orange on order, green covered.
+// The card's colour in the Short views: green as soon as the shelf has what's needed (even with
+// an order still on its way), else orange on order, else red.
 export function standing(i: Needs, view: NeedView): Standing {
-  if (i.openOrder) return "ordered";
-  return missing(i, view) > 0 ? "short" : "ok";
+  if (missing(i, view) === 0) return "ok";
+  return i.openOrder ? "ordered" : "short";
 }
 
 // Whether a linked COTS card counts as an open order, and the newest of an item's cards.

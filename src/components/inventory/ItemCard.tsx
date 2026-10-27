@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { sendItemToReleased } from "@/app/(app)/inventory/actions";
 import { textOn } from "@/components/bom/options";
+import { formatPrice, setCurrency, useCurrency } from "@/components/cots/currency";
 import { Popover } from "@/components/bom/Popover";
 import { Icon } from "@/components/ui/Icon";
 import { statusTint } from "@/components/ui/statusTint";
@@ -194,10 +195,36 @@ export function ItemCard({
             </span>
           )}
           {item.cotsLinks[0] && <span className="truncate rounded-full bg-raised px-2 py-0.5 text-fg-2">{item.cotsLinks[0].site || hostOf(item.cotsLinks[0].url)}</span>}
-          {item.price != null && <span className="font-mono text-emerald-600 tabular-nums">${item.price.toFixed(2)}</span>}
+          {item.price != null && <ItemPrice price={item.price} />}
         </div>
       </div>
     </div>
+  );
+}
+
+// An item's price for one, in dollars or shekels, with the same $ / ₪ switch as the COTS cards
+// (one switch for every price in this browser).
+export function ItemPrice({ price, suffix = "" }: { price: number; suffix?: string }) {
+  const currency = useCurrency();
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span className="font-mono font-semibold text-emerald-600 tabular-nums dark:text-emerald-400">
+        {formatPrice(price, currency)}
+        {suffix}
+      </span>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setCurrency(currency === "usd" ? "ils" : "usd");
+        }}
+        className="press rounded-full border border-line-strong px-1.5 text-[11px] font-semibold text-muted hover:border-emerald-500/60 hover:text-emerald-500 active:scale-[0.98]"
+        aria-label={currency === "usd" ? "Show in shekels" : "Show in dollars"}
+        title={currency === "usd" ? "Show in shekels" : "Show in dollars"}
+      >
+        {currency === "usd" ? "₪" : "$"}
+      </button>
+    </span>
   );
 }
 

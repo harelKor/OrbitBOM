@@ -4,7 +4,22 @@ import type { PartRow } from "@/lib/parts/changes";
 // The shelf behind a part linked to an inventory item: the item's stock, what every active robot
 // needs of it, how much of this part it covers, and what's left over. A COTS part with no item
 // gets the item it most likely is instead.
-export type Shelf = { itemId: string; itemName: string; sheet: boolean; inStock: number; need: number; covered: number; free: number };
+// `need` is the robots' (every active robot's linked parts); `total` the item's whole need, the
+// bigger of that and its Needed for Season. `restock`: the part is a card Inventory sent to refill
+// the shelf, and `met` says the shelf already has the item's whole need.
+export type Shelf = {
+  itemId: string;
+  itemName: string;
+  sheet: boolean;
+  inStock: number;
+  need: number;
+  total: number;
+  covered: number;
+  free: number;
+  restock: boolean;
+  met: boolean;
+  thumbUrl: string | null; // the item's picture
+};
 export type ShelfSuggestion = { itemId: string; itemName: string; inStock: number; sheet: boolean; reason: MatchReason };
 
 // What the BOM views get for each part.

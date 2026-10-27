@@ -12,7 +12,7 @@ import { materialCategory } from "@/config/materials";
 import { getCategory } from "@/lib/inventory/categories";
 import { hasSeasonNeed, missing } from "@/lib/inventory/season";
 import { formatStock, snapStock } from "@/lib/inventory/stock";
-import { CountBox, PieceStepper, conditionColor, hostOf } from "./ItemCard";
+import { CountBox, ItemPrice, PieceStepper, conditionColor, hostOf } from "./ItemCard";
 import { ItemForm, draftOf } from "./ItemForm";
 import { ItemHistory } from "./ItemHistory";
 import { PhotoButtons } from "./photo";
@@ -265,7 +265,7 @@ function ItemBody({
     <div className="space-y-4">
       <div className="flex gap-4">
         <div className="shrink-0 space-y-1.5">
-          <div className="thumb-well flex h-28 w-28 items-center justify-center rounded-xl sm:h-36 sm:w-36">
+          <div className="thumb-well flex h-36 w-36 items-center justify-center rounded-xl sm:h-48 sm:w-48">
             {photo || picture ? (
               // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
               <img src={photo ?? picture!} alt="" className="h-full w-full object-contain p-2" />
@@ -345,7 +345,9 @@ function ItemBody({
           {item.price != null && (
             <>
               <dt className="text-muted">Price</dt>
-              <dd className="font-mono text-emerald-600 tabular-nums">${item.price.toFixed(2)} each</dd>
+              <dd className="flex items-center gap-1.5">
+                <ItemPrice price={item.price} suffix=" each" />
+              </dd>
             </>
           )}
         </dl>

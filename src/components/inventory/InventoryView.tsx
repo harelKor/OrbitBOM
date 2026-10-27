@@ -143,7 +143,7 @@ export function InventoryView({ items, scope, actions, ...lookups }: Lookups & {
       </select>
     </>
   );
-  const grid = (list: Item[]) => (
+  const grid = (list: Item[], cardView: NeedView = need) => (
     <div className="card-grid" style={{ "--card-min": "220px" } as React.CSSProperties}>
       {list.map((item) => (
         <ItemCard
@@ -152,7 +152,7 @@ export function InventoryView({ items, scope, actions, ...lookups }: Lookups & {
           categories={categories}
           condition={conditions.find((c) => c.id === item.conditionId)}
           location={locations.find((l) => l.id === locationOf(item))}
-          view={need}
+          view={cardView}
           onStep={(d) => step(item.id, d)}
           onCount={(n) => count(item.id, n)}
         />
@@ -288,6 +288,14 @@ export function InventoryView({ items, scope, actions, ...lookups }: Lookups & {
             <div className="panel p-6 text-sm text-muted">{query ? "Nothing matches that." : view === "season" ? "No item has a Needed for Season count here. Set one in an item's window." : view === "robots" ? "No item here is used by an active robot." : "No items here yet."}</div>
           ) : (
             grid(shown)
+          )}
+          {view && (
+            // The whole inventory stays one tap away, folded (Harel, 2026-10-27).
+            <div className="pt-2">
+              <Fold id="all-in-view" title={`All items (${items.length})`}>
+                {grid(optimistic.filter((i) => (!conditionId || i.conditionId === conditionId) && (!locationId || locationOf(i) === locationId)), "any")}
+              </Fold>
+            </div>
           )}
         </div>
       )}

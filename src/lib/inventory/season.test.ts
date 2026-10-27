@@ -31,6 +31,7 @@ describe("season needs", () => {
     expect(standing(item(1, 3), "season")).toBe("short");
     expect(standing(item(3, 3), "season")).toBe("ok");
     expect(standing(item(1, 3, 0, { openOrder: { partId: "p", status: "Released" } }), "season")).toBe("ordered");
+    expect(standing(item(3, 3, 0, { openOrder: { partId: "p", status: "In Route" } }), "season")).toBe("ok");
   });
 
   it("finds each item's newest open order", () => {

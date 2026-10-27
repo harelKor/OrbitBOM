@@ -37,6 +37,8 @@ type DragLoad = { ids: string[]; from: "list" | "ordered" };
 type Place = { robotId: string | null; name: string };
 
 const groupLabel = (id: CategoryGroupId) => CATEGORY_GROUPS.find((g) => g.id === id)!.label;
+// Where a Released card came from: a robot's BOM (or a robot's section), or General.
+const originOf = (p: CardPart): "General" | "Robot" => (p.systemId || (p as CotsViewPart).robotId ? "Robot" : "General");
 const ORDERING = ORDER_STATUSES.filter((s) => s !== COTS_IN_STOCK) as string[];
 const SHOWN_MS = IN_STOCK_SHOWN_DAYS * 24 * 60 * 60 * 1000;
 const NO_VENDOR = "No vendor";
@@ -245,6 +247,7 @@ export function CotsView({
                 save={saveRow(row)}
                 showSystem
                 variant={variant} shelfOnThumb
+                origin={list === "released" ? originOf(row.members[0]) : undefined}
                 struck={crossed}
                 group={grouped && !ordering ? { systems: new Set(row.members.map((m) => m.systemId)).size, onOpen: () => setOpen((s) => toggle(s, row.key)) } : undefined}
                 selected={selected.has(row.key)}
