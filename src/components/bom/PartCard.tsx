@@ -56,6 +56,7 @@ function MadePartCard({
   checkTo = "In Stock",
   fabStatusEditable = false,
   post,
+  thumbBadge,
 }: {
   part: CardPart;
   save: SaveFn;
@@ -72,6 +73,7 @@ function MadePartCard({
   // To Post Process: how many are post-processed, with − / + along the thumbnail's bottom; the card
   // drops the type, amount, material and machines.
   post?: { done: number; onChange: (n: number) => void };
+  thumbBadge?: React.ReactNode; // To Fab, inside a batch: a control at the very start of the thumbnail's top-left
 }) {
   const edit = useEditMode();
   const { versions } = useBom();
@@ -131,6 +133,7 @@ function MadePartCard({
           </svg>
         )}
         <div className="absolute top-2 left-2 flex items-center gap-1">
+          {thumbBadge}
           {(fabCounter || post) && (part.hasDrawing || drawingFile) && (
             <button
               type="button"

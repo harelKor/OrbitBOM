@@ -5,6 +5,7 @@ import { useId, useLayoutEffect, useMemo, useOptimistic, useRef, useState, useTr
 import { flushSync } from "react-dom";
 import { MACHINES, getMachine } from "@/config/machines";
 import type { Priority } from "@/config/priorities";
+import { DEFAULT_MATERIAL_COLORS, MATERIAL_COLOR_GROUPS, OTHER_MATERIAL, materialColorGroup } from "@/config/materialColors";
 import { DONE_STATUSES, STATUSES, getStatus, statusLabel, type StatusName } from "@/config/statuses";
 import { removeBatchGcode } from "@/app/(app)/files-actions";
 import { createFabBatch, deleteGroup, moveToFabBatch, removeFromGroup, updateGroup } from "@/app/(app)/groups/actions";
@@ -16,6 +17,8 @@ import { OptionList, Popover } from "@/components/bom/Popover";
 import { PartCard, cadFormat } from "@/components/bom/PartCard";
 import { partTitle, type CardPart } from "@/components/bom/types";
 import { useFilters } from "@/components/shell/FilterContext";
+import { useMaterialColors } from "@/components/shell/MaterialColors";
+import { pushQuery } from "@/components/ui/CategoryBoxes";
 import { useEditMode } from "@/components/shell/ModeContext";
 import { Chevron } from "@/components/ui/Chevron";
 import { Icon } from "@/components/ui/Icon";
@@ -82,10 +85,30 @@ const fabTint = (p: CardPart) => (isFabFinished(p) ? tint(FINISHED_COLOR) : comp
 
 const common = (lists: string[][]) => (lists.length ? lists.reduce((acc, l) => acc.filter((m) => l.includes(m))) : []);
 
+// The material filter boxes group parts by material category (the Material mode colours' groups).
+const materialGroupOf = (p: CardPart) => materialColorGroup(p.material, p.geometry?.onshapeMaterial);
+
+// A batch part with no machine or no material can take them from the rest of the batch: the
+// material of a part that has one, and the machines of a part that has them (else the batch's).
+function inheritFromBatch(p: CardPart, batch: Batch, members: CardPart[]): PartChanges | null {
+  const others = members.filter((m) => m.id !== p.id);
+  const changes: PartChanges = {};
+  const material = others.find((m) => m.material)?.material;
+  if (!p.material && material) changes.material = material;
+  if (!machinesOf(p).length) {
+    const donor = others.find((m) => machinesOf(m).length > 0);
+    if (donor) Object.assign(changes, { preProcess: donor.preProcess, process1: donor.process1, process2: donor.process2 });
+    else if (batch.machine) changes.process1 = batch.machine;
+  }
+  return Object.keys(changes).length ? changes : null;
+}
+
 // To Fab: machine boxes, then To Post Process (batches with parts in Post Processing), Released
 // (loose parts), Ready to Fab (batches), In process and Finished (batches first, then parts), and
-// for one machine its other parts. The Fab button picks cards of one material on one machine and
-// turns them into a batch; dragging a Released part on or a part onto a batch does it too.
+// for one machine its other parts. Material boxes (?mat=) filter all of it. The Fab button (or a
+// long press on a Released card on a phone) picks cards of one material on one machine and turns
+// them into a batch or adds them to an existing one; dragging a Released part on or a part onto a
+// batch does it too.
 export function FabView({
   parts,
   batches,
@@ -161,6 +184,17 @@ export function FabView({
   const [mine, setMine] = useState(false); // only the batches made by the signed-in member
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pickedMachine, setPickedMachine] = useState("");
+  const [target, setTarget] = useState(""); // the batch the Fab button adds to ("" = a new one)
+  // ?mat= : the material filter box picked.
+  const rawMat = useSearchParams().get("mat");
+  const mat = rawMat && MATERIAL_COLOR_GROUPS.includes(rawMat) ? rawMat : null;
+  const matchesMat = (p: CardPart) => !mat || materialGroupOf(p) === mat;
+  // Long-pressing a Released card on a phone turns on Fab with that card picked.
+  const press = useRef<{ timer: number | null; fired: boolean }>({ timer: null, fired: false });
+  const endPress = () => {
+    if (press.current.timer) clearTimeout(press.current.timer);
+    press.current.timer = null;
+  };
   const toggle = (id: string) =>
     setSelected((s) => {
       const next = new Set(s);
@@ -174,14 +208,16 @@ export function FabView({
   // Per-machine counts of the parts in the queue, for the boxes.
   const counts = useMemo(() => {
     const byMachine = new Map<string, number>();
+    const byMaterial = new Map<string, number>();
     let total = 0;
     for (const p of optimistic) {
       if (!fabStage(p)) continue;
       total += 1;
       for (const m of machinesOf(p)) byMachine.set(m, (byMachine.get(m) ?? 0) + 1);
+      if (!machine || machinesOf(p).includes(machine)) byMaterial.set(materialGroupOf(p), (byMaterial.get(materialGroupOf(p)) ?? 0) + 1);
     }
-    return { total, byMachine };
-  }, [optimistic]);
+    return { total, byMachine, byMaterial };
+  }, [optimistic, machine]);
 
   const view = useMemo(() => {
     const shownBatches = batches
@@ -191,10 +227,10 @@ export function FabView({
           b.members.length > 0 &&
           (!mine || b.madeBy === me) &&
           (machine ? (b.machine ? b.machine === machine : b.members.some(onMachine)) : true) &&
-          b.members.some((p) => matchesTopBar(p, filters)),
+          b.members.some((p) => matchesTopBar(p, filters) && matchesMat(p)),
       );
     const batched = new Set(shownBatches.flatMap((b) => b.members.map((p) => p.id)));
-    const loose = optimistic.filter((p) => !batched.has(p.id) && onMachine(p) && matchesTopBar(p, filters));
+    const loose = optimistic.filter((p) => !batched.has(p.id) && onMachine(p) && matchesTopBar(p, filters) && matchesMat(p));
     const batchesIn = (stage: Stage) => shownBatches.filter((b) => batchStage(b.members) === stage);
     // A batch with parts in Post Processing also shows them at the top (and stays where it is
     // below); checked-off parts keep their place.
@@ -210,30 +246,102 @@ export function FabView({
       finished: mine ? [] : loose.filter((p) => partStage(p) === "finished"),
       other: machine && !mine ? loose.filter((p) => !partStage(p)) : [],
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- onMachine only reads `machine`
-  }, [optimistic, batches, filters, machine, mine, me, postChecked]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onMachine and matchesMat only read `machine` and `mat`
+  }, [optimistic, batches, filters, machine, mat, mine, me, postChecked]);
 
   // While picking a fab: the material of the first pick and the machines every pick goes through.
   const picked = optimistic.filter((p) => selected.has(p.id));
   const material = picked.length ? (picked[0].material ?? "") : null;
   const sharedMachines = machine ? [machine] : common(picked.map(machinesOf));
   const fabMachine = machine ?? (sharedMachines.includes(pickedMachine) ? pickedMachine : sharedMachines[0]);
+  // The batches the Fab button can add to: unfinished ones on the machine (and of the material) of
+  // the picks.
+  const openBatches = batches
+    .map((b) => ({ ...b, members: optimistic.filter((p) => p.groups.some((g) => g.id === b.id)) }))
+    .filter((b) => b.members.length > 0 && batchStage(b.members) !== "finished");
+  const batchMaterial = (b: { members: CardPart[] }) => b.members.find((p) => p.material)?.material ?? "";
+  const fitsBatch = (p: CardPart, b: Batch & { members: CardPart[] }) =>
+    (!b.machine || !machinesOf(p).length || machinesOf(p).includes(b.machine)) && (!p.material || !batchMaterial(b) || p.material === batchMaterial(b));
+  const targetOptions = openBatches.filter((b) => (!machine || !b.machine || b.machine === machine) && picked.every((p) => fitsBatch(p, b)));
+  const targetBatch = targetOptions.find((b) => b.id === target) ?? null;
+  // Adding to a batch also takes parts with no machine or material yet: they inherit them there.
   const canPick = (p: CardPart) =>
     selected.has(p.id) ||
-    (machinesOf(p).some((m) => (picked.length ? sharedMachines : machine ? [machine] : MACHINES.map((x) => x.id as string)).includes(m)) &&
-      (material === null || (p.material ?? "") === material));
+    (targetBatch
+      ? fitsBatch(p, targetBatch)
+      : machinesOf(p).some((m) => (picked.length ? sharedMachines : machine ? [machine] : MACHINES.map((x) => x.id as string)).includes(m)) &&
+        (material === null || (p.material ?? "") === material));
+  const startFab = (on: boolean) => {
+    setFab(on);
+    setSelected(new Set());
+    setTarget("");
+  };
+  const batchOf = (p: CardPart) => batches.find((b) => p.groups.some((g) => g.id === b.id))?.id ?? null;
+  const submitFab = () =>
+    startTransition(async () => {
+      let r: { error?: string };
+      if (targetBatch) {
+        // Parts picked inside another batch move out of it.
+        const from = new Map<string | null, string[]>();
+        for (const id of selected) {
+          const p = optimistic.find((x) => x.id === id);
+          const b = p ? batchOf(p) : null;
+          if (b === targetBatch.id) continue;
+          from.set(b, [...(from.get(b) ?? []), id]);
+        }
+        r = {};
+        for (const [b, ids] of from) {
+          const res = await moveToFabBatch(targetBatch.id, ids, b, batchStatus(targetBatch.members));
+          if (res.error) r = res;
+        }
+      } else r = await createFabBatch(robotId, [...selected], fabMachine!);
+      setError(r.error ?? null);
+      if (!r.error) startFab(false);
+    });
 
-  // A To Fab card; inside a batch its status can be changed on its own.
-  const card = (p: CardPart, inBatch = false) => {
+  // A To Fab card; inside a batch its status can be changed on its own, and a part missing its
+  // machine or material gets a glowing button that copies them from the rest of the batch.
+  const card = (p: CardPart, inBatch?: { batch: Batch; members: CardPart[] }) => {
     const pickable = fab && canPick(p);
+    const inherit = inBatch && (!p.material || !machinesOf(p).length) ? inheritFromBatch(p, inBatch.batch, inBatch.members) : null;
+    // A loose Released card: a long press on a phone starts the Fab picking with it.
+    const longPress = !fab && !inBatch && partStage(p) === "ready";
     return (
       <div
         key={p.id}
         draggable={!fab}
         onDragStart={(e) => {
+          endPress();
           e.stopPropagation(); // a card inside an open batch moves alone
-          const batch = batches.find((b) => p.groups.some((g) => g.id === b.id))?.id ?? null;
-          e.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ ids: [p.id], from: partStage(p), batch, whole: false } satisfies DragLoad));
+          e.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ ids: [p.id], from: partStage(p), batch: batchOf(p), whole: false } satisfies DragLoad));
+        }}
+        {...(longPress && {
+          onPointerDown: (e: React.PointerEvent) => {
+            if (e.pointerType !== "touch") return;
+            endPress();
+            press.current.fired = false;
+            press.current.timer = window.setTimeout(() => {
+              press.current = { timer: null, fired: true };
+              navigator.vibrate?.(30);
+              setFab(true);
+              setTarget("");
+              setSelected(new Set(canPick(p) ? [p.id] : []));
+            }, 500);
+          },
+          onPointerUp: endPress,
+          onPointerCancel: endPress,
+          onPointerLeave: endPress,
+          onContextMenu: (e: React.MouseEvent) => {
+            if (press.current.timer || press.current.fired) e.preventDefault();
+          },
+          style: { WebkitTouchCallout: "none" } as React.CSSProperties,
+        })}
+        onClickCapture={(e) => {
+          // The tap that ends a long press doesn't also open the part.
+          if (!press.current.fired) return;
+          press.current.fired = false;
+          e.stopPropagation();
+          e.preventDefault();
         }}
         className={fab && !pickable ? "opacity-40" : undefined}
       >
@@ -242,10 +350,23 @@ export function FabView({
           save={(c) => save([p.id], c)}
           showSystem
           fabCounter
-          fabStatusEditable={inBatch}
+          fabStatusEditable={!!inBatch}
           style={fabTint(p)}
           selected={selected.has(p.id)}
           onToggleSelect={pickable ? () => toggle(p.id) : undefined}
+          thumbBadge={
+            inherit && (
+              <button
+                type="button"
+                onClick={() => save([p.id], inherit)}
+                className="press flex h-7 w-7 animate-pulse items-center justify-center rounded-full border border-amber-300 bg-amber-400 text-slate-950 shadow-[0_0_12px_3px_rgba(245,158,11,0.65)] hover:animate-none active:scale-[0.98]"
+                aria-label={`Give ${partTitle(p)} the batch's machine and material`}
+                title={`No ${[!p.material && "material", !machinesOf(p).length && "machine"].filter(Boolean).join(" or ")}: take the batch's`}
+              >
+                <Icon name="spark" className="h-4 w-4" />
+              </button>
+            )
+          }
         />
       </div>
     );
@@ -308,10 +429,7 @@ export function FabView({
             My batches
           </button>
           <button
-            onClick={() => {
-              setFab((f) => !f);
-              setSelected(new Set());
-            }}
+            onClick={() => startFab(!fab)}
             aria-pressed={fab}
             className={`press self-center rounded-xl px-7 py-3 text-lg font-bold shadow-lg transition-colors ${
               fab ? "border border-line-strong bg-surface text-fg" : "bg-amber-400 text-slate-950 shadow-amber-400/40 hover:bg-amber-300"
@@ -320,6 +438,8 @@ export function FabView({
             {fab ? "Cancel" : "＋ Fab"}
           </button>
         </div>
+
+        <MaterialBoxes counts={counts.byMaterial} active={mat} />
 
         {error && <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">Couldn&apos;t save: {error}</p>}
 
@@ -396,7 +516,22 @@ export function FabView({
                 {material === null ? "Tap cards to add them to the fab." : `Only ${material || "parts with no material"} on the same machine can join.`}
               </span>
               <span className="ml-auto" />
-              {machine ? (
+              <select
+                className="input w-auto py-1"
+                value={targetBatch?.id ?? ""}
+                onChange={(e) => setTarget(e.target.value)}
+                aria-label="Batch to add to"
+              >
+                <option value="">New batch</option>
+                {targetOptions.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+              {targetBatch ? (
+                targetBatch.machine && <span className="rounded-full bg-raised px-2.5 py-1 text-xs font-semibold">{getMachine(targetBatch.machine)?.name}</span>
+              ) : machine ? (
                 <span className="rounded-full bg-raised px-2.5 py-1 text-xs font-semibold">{getMachine(machine)?.name}</span>
               ) : (
                 selected.size > 0 && (
@@ -417,19 +552,10 @@ export function FabView({
               )}
               <button
                 className="btn-primary"
-                disabled={pending || selected.size === 0 || !fabMachine}
-                onClick={() =>
-                  startTransition(async () => {
-                    const r = await createFabBatch(robotId, [...selected], fabMachine!);
-                    setError(r.error ?? null);
-                    if (!r.error) {
-                      setFab(false);
-                      setSelected(new Set());
-                    }
-                  })
-                }
+                disabled={pending || selected.size === 0 || (!targetBatch && !fabMachine)}
+                onClick={submitFab}
               >
-                ✓ Create fab
+                {targetBatch ? `✓ Add to ${targetBatch.name}` : "✓ Create fab"}
               </button>
               <button className="btn" onClick={() => setSelected(new Set())} disabled={selected.size === 0}>
                 Clear
@@ -469,6 +595,46 @@ function MachineBox({ href, name, count, active }: { href: string; name: string;
       <span className="display text-2xl text-accent tabular-nums">{count}</span>
       <span className="truncate text-xs font-medium text-fg-2">{name}</span>
     </ShallowLink>
+  );
+}
+
+// Compact filter boxes, one per material category with parts in the queue (on the machine picked),
+// like the COTS page's; ?mat= keeps the pick.
+function MaterialBoxes({ counts, active }: { counts: Map<string, number>; active: string | null }) {
+  const colors = useMaterialColors();
+  const groups = MATERIAL_COLOR_GROUPS.filter((g) => counts.has(g));
+  if (groups.length < 2 && !active) return null;
+  const total = [...counts.values()].reduce((a, b) => a + b, 0);
+  const box = (id: string | null, label: string, count: number, color: string | null) => {
+    const selected = active === id;
+    return (
+      <button
+        key={id ?? "all"}
+        type="button"
+        onClick={() => pushQuery({ mat: selected ? null : id })}
+        data-selected={selected}
+        aria-pressed={selected}
+        className="card-interactive group flex h-12 shrink-0 items-center gap-2.5 overflow-hidden pr-3 text-left active:scale-[0.98]"
+      >
+        <span className="relative flex h-full w-12 shrink-0 items-center justify-center bg-gradient-to-br from-sky-500/25 via-raised to-amber-400/20">
+          {color ? (
+            <span className="h-6 w-6 rounded-md border border-white/20 shadow-sm transition-transform duration-150 group-hover:scale-[1.03]" style={{ backgroundColor: color }} />
+          ) : (
+            <Icon name="fab" className="h-5 w-5 text-sky-400" />
+          )}
+        </span>
+        <span className="min-w-0">
+          <span className="block text-xs leading-tight font-bold whitespace-nowrap text-fg">{label}</span>
+          <span className="block font-mono text-[11px] text-subtle tabular-nums">{count}</span>
+        </span>
+      </button>
+    );
+  };
+  return (
+    <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible">
+      {box(null, "All materials", total, null)}
+      {groups.map((g) => box(g, g, counts.get(g)!, colors[g] ?? DEFAULT_MATERIAL_COLORS[g] ?? DEFAULT_MATERIAL_COLORS[OTHER_MATERIAL]))}
+    </div>
   );
 }
 
@@ -564,9 +730,9 @@ function withTransition(change: () => void) {
   else change();
 }
 
-// A fab batch: a collage of its parts, who makes it (on the collage when open, on the right when
-// closed; glowing when it's you), its machine and material, one status for all of them (named as
-// the machine calls it), download all and its G-code. Clicking the card opens it in place, with
+// A fab batch: a collage of its parts, who makes it (on top of the collage; glowing when it's
+// you), its machine and material, one status for all of them (named as the machine calls it),
+// download all (on a closed batch only until it has G-code) and its G-code. Clicking the card opens it in place, with
 // each part's own status; cards dropped on it join it. Rename and delete are in Edit mode.
 function BatchCard({
   batch,
@@ -581,7 +747,7 @@ function BatchCard({
   batch: Batch;
   members: CardPart[];
   save: (ids: string[], changes: PartChanges) => void;
-  card: (p: CardPart, inBatch?: boolean) => React.ReactNode;
+  card: (p: CardPart, inBatch?: { batch: Batch; members: CardPart[] }) => React.ReactNode;
   draggable: boolean;
   memberNames: string[];
   me: string;
@@ -600,7 +766,6 @@ function BatchCard({
   const stage = batchStage(members);
   // A finished batch drops its priority colour.
   const textColor = stage === "finished" ? undefined : priorityColor(priority);
-  const qty = members.reduce((n, p) => n + p.quantity, 0);
   const materials = [...new Set(members.map((p) => p.material ?? ""))];
   const material = materials.length === 1 ? materials[0] || "No material" : "Mixed materials";
   const machineName = batch.machine ? (getMachine(batch.machine)?.name ?? batch.machine) : null;
@@ -724,7 +889,9 @@ function BatchCard({
               </span>
             ))}
           </button>
-          {open && <div className="absolute inset-x-2 top-2 flex">{userBox}</div>}
+          <div className="absolute inset-x-2 top-2 flex" onClick={stop}>
+            {userBox}
+          </div>
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-2 p-3">
           <div className="min-w-0" style={textColor ? { color: textColor } : undefined}>
@@ -746,7 +913,6 @@ function BatchCard({
                 <span className="display min-w-0 truncate text-xl text-accent" style={textColor ? { color: textColor } : undefined}>
                   {batch.name}
                 </span>
-                {!open && <span className="ml-auto flex min-w-0 shrink">{userBox}</span>}
                 {open && edit && (
                   <button
                     className="press shrink-0 text-xs text-subtle hover:text-accent"
@@ -763,9 +929,6 @@ function BatchCard({
             <div className={`truncate text-xs font-medium ${textColor ? "" : "text-fg-2"}`}>
               {material}
               {machineName && ` · ${machineName}`}
-            </div>
-            <div className={`text-xs tabular-nums ${textColor ? "" : "text-subtle"}`}>
-              {members.length} parts, {qty} pcs
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2" onClick={stop}>
@@ -803,7 +966,7 @@ function BatchCard({
               </select>
             )}
             <span className="ml-auto flex items-center gap-1.5">
-              {downloads.length > 0 && (
+              {downloads.length > 0 && !(batch.gcode && !open) && (
                 <button className="overlay-btn" onClick={() => downloadAll(downloads)} aria-label={`Download ${downloads.length} files`} title={`Download ${downloads.length} files`}>
                   <Icon name="download" />
                 </button>
@@ -838,7 +1001,7 @@ function BatchCard({
         >
           {members.map((p) => (
             <div key={p.id} className="flex flex-col gap-1">
-              {card(p, true)}
+              {card(p, { batch, members })}
               {edit && (
                 <button
                   className="self-start text-xs text-subtle hover:text-rose-700"
