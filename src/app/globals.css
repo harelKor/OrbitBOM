@@ -248,6 +248,10 @@ body {
   .card-interactive:active:not(:has(:is(button, a, input, textarea):active)) {
     transform: scale(0.98);
   }
+  /* A card a link pointed at (?part=): a sky glow for a few seconds. */
+  [data-glow="1"] {
+    @apply border-sky-400 ring-2 ring-sky-400 shadow-[0_0_28px_rgba(56,189,248,0.55)];
+  }
   .card-interactive[data-selected="true"] {
     @apply border-transparent bg-accent/5 ring-2 ring-accent shadow-[0_8px_24px_-10px_rgba(0,0,204,0.5)];
   }

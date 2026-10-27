@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { DEFAULT_CATEGORIES } from "@/config/inventory";
 import { cotsCategoryOf, groupSameCots, spreadCotsChanges } from "./cots";
 import { computeStatus } from "./status";
+
+const IDS = DEFAULT_CATEGORIES.map((c) => c.id);
 
 const part = (id: string, name: string, extra: Record<string, unknown> = {}) => ({
   id,
@@ -16,11 +19,13 @@ const part = (id: string, name: string, extra: Record<string, unknown> = {}) => 
 
 describe("COTS", () => {
   it("guesses the filter box from the name unless one is set", () => {
-    expect(cotsCategoryOf(part("a", "WCP 18T HTD Pulley"))).toBe("motion");
-    expect(cotsCategoryOf(part("a", "REV NEO Vortex"))).toBe("motors");
-    expect(cotsCategoryOf(part("a", "1x1 Box Tube"))).toBe("square-tubes");
-    expect(cotsCategoryOf(part("a", "Bracket", { cotsCategory: "wheels" }))).toBe("wheels");
-    expect(cotsCategoryOf(part("a", "Thing"))).toBe("other");
+    expect(cotsCategoryOf(part("a", "WCP 18T HTD Pulley"), IDS)).toBe("pulleys");
+    expect(cotsCategoryOf(part("a", "REV NEO Vortex"), IDS)).toBe("motors");
+    expect(cotsCategoryOf(part("a", "1x1 Box Tube"), IDS)).toBe("square-tubes");
+    expect(cotsCategoryOf(part("a", "Bracket", { cotsCategory: "wheels" }), IDS)).toBe("wheels");
+    expect(cotsCategoryOf(part("a", "Bracket", { cotsCategory: "wheels" }), IDS, "gears")).toBe("gears");
+    expect(cotsCategoryOf(part("a", "Bracket", { cotsCategory: "motion" }), IDS)).toBe("other");
+    expect(cotsCategoryOf(part("a", "Thing"), IDS)).toBe("other");
   });
 
   it("groups the same part across systems by Onshape identity or name", () => {

@@ -2,14 +2,17 @@ import "server-only";
 import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { Shelf, ShelfSuggestion } from "@/components/bom/types";
+import { listCategories } from "@/lib/data/categories";
 import { groupsOfParts } from "@/lib/data/groups";
 import { shelfOfParts } from "@/lib/data/inventory";
+import { cotsCategoryOf } from "@/lib/cots";
+import { categoryOf, type InvCategory } from "@/lib/inventory/categories";
 import { partKey } from "@/lib/model/assembly";
 import { thumbKey } from "@/lib/onshape/thumbnails";
 import { computeStatus } from "@/lib/status";
 import { imageUrl } from "@/lib/storage/r2";
 
-const { parts, systems, robots, members, partFiles, merges, mergeMembers, partDrawings } = schema;
+const { parts, systems, robots, members, partFiles, merges, mergeMembers, partDrawings, inventoryItems } = schema;
 
 export type PartFileRef = { id: string; type: string; filename: string };
 
@@ -129,11 +132,27 @@ export async function listSystemMerges(systemId: string) {
   return [...out.values()];
 }
 
-export type CotsPart = BomPart & { robotId: string | null; robotName: string | null };
+export type CotsPart = BomPart & { robotId: string | null; robotName: string | null; category: string };
+
+type CotsNamed = { id: string; displayName: string | null; onshapeName: string | null; material: string | null; cotsCategory: string | null; inventoryItemId: string | null };
+
+// Each COTS part's filter box (an inventory category; a linked item's own category wins), and
+// the categories, with their pictures' links.
+export async function cotsCategories(list: CotsNamed[]): Promise<{ categories: InvCategory[]; of: Map<string, string> }> {
+  const itemIds = [...new Set(list.flatMap((p) => (p.inventoryItemId ? [p.inventoryItemId] : [])))];
+  const [categories, items] = await Promise.all([
+    listCategories(),
+    itemIds.length ? db.select({ id: inventoryItems.id, name: inventoryItems.name, category: inventoryItems.category }).from(inventoryItems).where(inArray(inventoryItems.id, itemIds)) : [],
+  ]);
+  const ids = categories.map((c) => c.id);
+  const itemCat = new Map(items.map((i) => [i.id, categoryOf(i, categories)]));
+  await Promise.all(categories.map(async (c) => (c.imageUrl = c.image ? await imageUrl(c.image) : null)));
+  return { categories, of: new Map(list.map((p) => [p.id, cotsCategoryOf(p, ids, p.inventoryItemId ? itemCat.get(p.inventoryItemId) : null)])) };
+}
 
 // The COTS page: live COTS parts on active robots, each with its robot (null for a card in the
 // General section, added on the COTS page for no robot); robots newest first.
-export async function listCotsParts(): Promise<{ robots: { id: string; name: string }[]; parts: CotsPart[] }> {
+export async function listCotsParts(): Promise<{ robots: { id: string; name: string }[]; parts: CotsPart[]; categories: InvCategory[] }> {
   const [robotRows, systemRows] = await Promise.all([
     db.select({ id: robots.id, name: robots.name }).from(robots).where(eq(robots.archived, false)).orderBy(sql`${robots.year} desc`, asc(robots.name)),
     db.select({ id: systems.id, robotId: systems.robotId }).from(systems).innerJoin(robots, eq(robots.id, systems.robotId)).where(eq(robots.archived, false)),
@@ -145,13 +164,15 @@ export async function listCotsParts(): Promise<{ robots: { id: string; name: str
     ...(systemRows.length ? [inArray(parts.systemId, systemRows.map((s) => s.id))] : []),
   ];
   const rows = await load(and(or(...own), isNull(parts.removedFromCadAt), eq(parts.classification, "cots")), { anySystem: true });
+  const { categories, of } = await cotsCategories(rows);
   return {
     robots: robotRows,
+    categories,
     parts: rows.flatMap((p) => {
       const robotId = p.systemId ? robotOfSystem.get(p.systemId)! : p.robotId;
       // A system-less card of an archived robot stays with that robot.
       if (robotId && !nameOf.has(robotId)) return [];
-      return [{ ...p, robotId, robotName: robotId ? nameOf.get(robotId)! : null }];
+      return [{ ...p, robotId, robotName: robotId ? nameOf.get(robotId)! : null, category: of.get(p.id)! }];
     }),
   };
 }

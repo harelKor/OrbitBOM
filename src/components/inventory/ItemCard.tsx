@@ -1,19 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { COTS_IN_STOCK, ORDER_STATUSES } from "@/config/cots";
+import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
+import { sendItemToReleased } from "@/app/(app)/inventory/actions";
 import { textOn } from "@/components/bom/options";
 import { Popover } from "@/components/bom/Popover";
 import { Icon } from "@/components/ui/Icon";
+import { statusTint } from "@/components/ui/statusTint";
 import { getCategory } from "@/lib/inventory/categories";
+import { missing, neededFor, orderHref, standing, type NeedView, type Standing } from "@/lib/inventory/season";
 import { SHEET_PIECES, formatStock, parseStock } from "@/lib/inventory/stock";
 import { useInventoryPopup } from "./InventoryPopup";
 import type { InvCategory, Item } from "./types";
 
 // Seeded conditions carry a colour name (FRCBOM's); ones added since carry a hex colour.
 const NAMED: Record<string, string> = { emerald: "#10b981", amber: "#f59e0b", rose: "#f43f5e", sky: "#0ea5e9", slate: "#64748b", violet: "#8b5cf6" };
-const ORDERING = ORDER_STATUSES.filter((s) => s !== COTS_IN_STOCK) as string[];
+// The Short views' card colours, the BOM's: Reproduction red, the Order List's orange, In Stock green.
+const TINT: Record<Standing, string> = { short: "Reproduction", ordered: "In Order List", ok: "In Stock" };
 
 export const conditionColor = (color: string) => NAMED[color] ?? color;
 
@@ -63,18 +67,23 @@ export function ProductName({ item, className = "", wrap = false }: { item: Pick
 // An inventory item as a compact 4:3 card, like the part cards: the picture (its product photo,
 // else a linked part's Onshape thumbnail, else the category's picture) with the category,
 // condition and location tags on it (each opens its page), big red − / green + and the count
-// (tap it to type the real count), then the name and how the robots use it. The left edge takes
-// the condition's colour. Anywhere else on the card opens the item's window; a linked name opens
-// the product.
+// (tap it to type the real count) over what's needed ("3 / 6": the view's need, the bigger of the
+// season's and the robots' elsewhere), then the name and how the robots use it. The left edge
+// takes the condition's colour. A short item gets a cart on its picture that sends what's missing
+// to Released; once it's on order the cart and the card turn orange and the cart opens that COTS
+// card. In the Short views the card is red, orange or green. Anywhere else on the card opens the
+// item's window; a linked name opens the product.
 export function ItemCard({
   item,
   categories,
   condition,
   location,
+  view = "any",
   onStep,
   onCount,
 }: {
   item: Item;
+  view?: NeedView;
   categories: InvCategory[];
   condition?: { id: string; label: string; color: string };
   location?: { id: string; name: string };
@@ -83,11 +92,12 @@ export function ItemCard({
 }) {
   const { openItem } = useInventoryPopup();
   const category = getCategory(categories, item.category);
-  const need = item.usage?.need ?? 0;
   const short = item.usage?.short ?? 0;
   const usedBy = item.usage?.parts.length ?? 0;
-  // A COTS part of the item is on the Order List (ordered, seen or on its way).
-  const ordering = !!item.usage?.parts.some((p) => p.status && ORDERING.includes(p.status));
+  const needed = neededFor(item, view);
+  const gap = missing(item, view);
+  const state = standing(item, view);
+  const tinted = view !== "any" || state === "ordered" ? statusTint(TINT[state]) : undefined;
   const color = condition ? conditionColor(condition.color) : undefined;
   const picture = item.thumbUrl ?? category?.imageUrl ?? null;
   const stop = (e: React.SyntheticEvent) => e.stopPropagation();
@@ -100,7 +110,7 @@ export function ItemCard({
       onKeyDown={(e) => e.key === "Enter" && e.target === e.currentTarget && openItem(item.id, item)}
       aria-label={`Open ${item.name}`}
       className="card-interactive group flex cursor-pointer flex-col border-l-4 text-sm"
-      style={color ? { borderLeftColor: color } : undefined}
+      style={{ ...tinted, ...(color && { borderLeftColor: color }) }}
     >
       <div className="thumb-well relative flex aspect-[4/3] items-center justify-center">
         {picture ? (
@@ -131,11 +141,7 @@ export function ItemCard({
         )}
       </div>
       <div className="absolute top-2 right-2 flex max-w-[38%] flex-col items-end gap-1">
-        {ordering && (
-          <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[11px] font-bold whitespace-nowrap text-amber-950 shadow-sm" title="A COTS part of this item is on the Order List">
-            Ordering
-          </span>
-        )}
+        {(gap > 0 || item.openOrder) && <CartButton item={item} gap={gap} />}
         {location && (
           <Link
             href={`/inventory/location/${location.id}`}
@@ -158,8 +164,10 @@ export function ItemCard({
           −
         </button>
         <span className="z-10 flex items-center gap-1 rounded-full bg-[#111318]/80 px-2.5 py-1 font-mono text-xs font-semibold whitespace-nowrap text-white tabular-nums">
-          <CountBox item={item} onCount={onCount} />
-          {item.sheet ? " sheets" : need > 0 ? <span className="text-white/70">/ need {need}</span> : " in stock"}
+          <span className={gap > 0 ? "text-rose-300" : undefined}>
+            <CountBox item={item} onCount={onCount} />
+          </span>
+          {needed != null && <span className="text-white/70">/ {formatStock(needed, item.sheet)}</span>}
           {item.sheet && <PieceStepper onStep={onStep} max={item.inStock} />}
         </span>
         <button
@@ -190,6 +198,38 @@ export function ItemCard({
         </div>
       </div>
     </div>
+  );
+}
+
+// The cart on a card's picture. Short with nothing on order: sends what's missing to Released.
+// On order: orange, and opens that COTS card.
+function CartButton({ item, gap }: { item: Item; gap: number }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const order = item.openOrder;
+  const label = order ? `${order.status}: open it on the COTS page` : `Send ${formatStock(gap, false)} to Released`;
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (order) return router.push(orderHref(order));
+        start(async () => {
+          setError(null);
+          const r = await sendItemToReleased(item.id);
+          if (r.error) setError(r.error);
+        });
+      }}
+      title={error ?? label}
+      aria-label={label}
+      className={`press flex h-9 w-9 items-center justify-center rounded-full border shadow-sm backdrop-blur-md transition-colors duration-150 active:scale-[0.98] disabled:opacity-60 ${
+        order ? "border-amber-300 bg-amber-500 text-white hover:bg-amber-400" : error ? "border-rose-400 bg-rose-500/80 text-white" : "border-white/40 bg-[#0D111A]/60 text-white hover:border-sky-400/60 hover:text-sky-300"
+      }`}
+    >
+      <Icon name="cart" className={`h-4.5 w-4.5 ${pending ? "animate-pulse" : ""}`} />
+    </button>
   );
 }
 

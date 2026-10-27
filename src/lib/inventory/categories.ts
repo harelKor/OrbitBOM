@@ -2,7 +2,7 @@
 // short spec line on a card, and checks on values coming from a form or an AI.
 
 import { MATERIALS } from "@/config/materials";
-import { guessCategory } from "@/config/inventory";
+import { guessCategory, type CategoryGroupId } from "@/config/inventory";
 import type { CategoryField } from "@/db/schema";
 
 export type { CategoryField };
@@ -10,6 +10,7 @@ export type InvCategory = {
   id: string;
   label: string;
   noun: string;
+  group: CategoryGroupId;
   sheet: boolean;
   image: string | null; // R2 key of its picture
   imageUrl?: string | null; // a short-lived link to it, filled for pages

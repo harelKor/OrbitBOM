@@ -1,11 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useMemo, useOptimistic, useState, useSyncExternalStore, useTransition } from "react";
 import { adjustStock, countStock } from "@/app/(app)/inventory/actions";
 import { EditOnly } from "@/components/shell/ModeContext";
+import { CategoryBoxes, pushQuery, type BoxCount } from "@/components/ui/CategoryBoxes";
 import { Icon } from "@/components/ui/Icon";
+import { groupOf, isCategoryGroup, type CategoryGroupId } from "@/config/inventory";
 import { getCategory } from "@/lib/inventory/categories";
+import { hasSeasonNeed, missing, standing, usedByRobots, type NeedView } from "@/lib/inventory/season";
 import { snapStock } from "@/lib/inventory/stock";
 import { AddBox } from "./AddBox";
 import { CategorySettings } from "./CategorySettings";
@@ -18,14 +22,16 @@ import { ScanButton } from "./ScanButton";
 import { ConditionsDialog, LocationsDialog } from "./ListDialogs";
 import type { Item, Lookups } from "./types";
 
-export type InventoryScope = { kind: "home" } | { kind: "short" } | { kind: "category" | "location" | "condition"; id: string };
+export type InventoryScope = { kind: "home" } | { kind: "category" | "location" | "condition"; id: string };
 
 type Open = { kind: "settings" | "conditions" | "locations" | "import" } | null;
 
-// The Inventory pages' body. Home: the add / search box, then a box per category and a Short for
-// robots card. A category, location, condition or Short: the item cards, filtered by the same box
-// (which also knows location names) and by condition and location. Edit mode adds the toolbar,
-// the add flow and the category settings panel.
+// The Inventory pages' body. Home: the add / search box, the Short for Season / Short for Robots
+// toggles, then the group boxes (a group opens its category boxes). A toggle (?view=) turns home
+// into that view's cards in place, coloured red / orange / green and narrowed by the boxes. A
+// category, location or condition page: the item cards, filtered by the same box (which also
+// knows location names) and by condition and location. Edit mode adds the toolbar, the add flow
+// and the category settings panel.
 export function InventoryView({ items, scope, actions, ...lookups }: Lookups & { items: Item[]; scope: InventoryScope; actions?: RecentAction[] }) {
   const { openItem } = useInventoryPopup();
   const { conditions, locations, categories } = lookups;
@@ -71,25 +77,51 @@ export function InventoryView({ items, scope, actions, ...lookups }: Lookups & {
         ? locationOf(i) === scope.id
         : scope.kind === "condition"
           ? i.conditionId === scope.id
-          : scope.kind === "short"
-            ? (i.usage?.short ?? 0) > 0
-            : true;
-  const shown = optimistic.filter(
-    (i) => inScope(i) && matches(i) && (!conditionId || i.conditionId === conditionId) && (!locationId || locationOf(i) === locationId),
-  );
-  const boxes = scope.kind === "home" && !query;
+          : true;
 
-  const perCategory = useMemo(() => {
-    const m = new Map<string, { items: number; short: number }>();
-    for (const i of items) {
-      const c = m.get(i.category) ?? { items: 0, short: 0 };
-      c.items++;
-      if ((i.usage?.short ?? 0) > 0) c.short++;
-      m.set(i.category, c);
+  // Home's place, kept in the URL: the Short toggle, and the group and category boxes.
+  const params = useSearchParams();
+  const home = scope.kind === "home";
+  const rawView = params.get("view");
+  const view: NeedView | null = home && (rawView === "season" || rawView === "robots") ? rawView : null;
+  const rawGroup = params.get("group");
+  const group: CategoryGroupId | null = home && rawGroup && isCategoryGroup(rawGroup) ? rawGroup : null;
+  const cat = group ? params.get("cat") : null;
+  const groupOfCat = new Map(categories.map((c) => [c.id, c.group]));
+  const need: NeedView = view ?? "any";
+  const inView = (i: Item) => (view === "season" ? hasSeasonNeed(i) : view === "robots" ? usedByRobots(i) : true);
+  const inBox = (i: Item) => (!group || groupOf(groupOfCat.get(i.category)) === group) && (!cat || i.category === cat);
+  const red = (i: Item) => standing(i, need) === "short";
+
+  const RANK = { short: 0, ordered: 1, ok: 2 } as const;
+  const shown = optimistic
+    .filter((i) => inScope(i) && inView(i) && inBox(i) && matches(i) && (!conditionId || i.conditionId === conditionId) && (!locationId || locationOf(i) === locationId))
+    .sort((a, b) => (view ? RANK[standing(a, view)] - RANK[standing(b, view)] : 0));
+  const boxes = home && !view && !query;
+  const showBoxes = home && (!query || !!view);
+
+  // Each group's and category's items (in the view, when one is on) and how many are short.
+  const counts = useMemo(() => {
+    const m = new Map<string, BoxCount>();
+    const add = (key: string, short: boolean) => {
+      const c = m.get(key) ?? { count: 0, short: 0 };
+      c.count++;
+      if (short) c.short!++;
+      m.set(key, c);
+    };
+    for (const i of optimistic) {
+      if (!inView(i)) continue;
+      const short = red(i);
+      add(i.category, short);
+      add(groupOf(groupOfCat.get(i.category)), short);
     }
     return m;
-  }, [items]);
-  const shortCount = items.filter((i) => (i.usage?.short ?? 0) > 0).length;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- inView and red follow view
+  }, [optimistic, view, categories]);
+  const toggles = [
+    { id: "season" as const, title: "Short for Season", text: "Items under their Needed for Season count", items: optimistic.filter((i) => hasSeasonNeed(i) && missing(i, "season") > 0) },
+    { id: "robots" as const, title: "Short for Robots", text: "Items the active robots need more of than the shelf has", items: optimistic.filter((i) => (i.usage?.short ?? 0) > 0) },
+  ];
 
   const filters = (
     <>
@@ -120,6 +152,7 @@ export function InventoryView({ items, scope, actions, ...lookups }: Lookups & {
           categories={categories}
           condition={conditions.find((c) => c.id === item.conditionId)}
           location={locations.find((l) => l.id === locationOf(item))}
+          view={need}
           onStep={(d) => step(item.id, d)}
           onCount={(n) => count(item.id, n)}
         />
@@ -167,7 +200,7 @@ export function InventoryView({ items, scope, actions, ...lookups }: Lookups & {
           placeholder={scope.kind === "home" ? "Do we have it? Name, size, bore, vendor, location…" : "Filter by name, size, vendor, location…"}
         />
         <ScanButton onCode={setQ} />
-        {!boxes && filters}
+        {!boxes && !showBoxes && filters}
       </div>
 
       {locations.length > 0 && (
@@ -189,38 +222,44 @@ export function InventoryView({ items, scope, actions, ...lookups }: Lookups & {
 
       {error && <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">Couldn&apos;t save: {error}</p>}
 
+      {home && (
+        <div className="grid grid-cols-2 gap-3">
+          {toggles.map((t) => {
+            const on = view === t.id;
+            const urgent = t.items.some((i) => standing(i, t.id) === "short");
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => pushQuery({ view: on ? null : t.id })}
+                aria-pressed={on}
+                className={`card-interactive group flex min-w-0 items-center gap-3 p-4 text-left active:scale-[0.98] sm:gap-5 sm:p-5 ${on ? "border-sky-400/60 bg-sky-500/10 ring-1 ring-sky-400/40" : ""}`}
+              >
+                <span className={`display font-mono text-4xl tabular-nums sm:text-5xl ${urgent ? "text-rose-500" : "text-accent"}`}>{t.items.length}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block display text-lg leading-tight text-fg sm:text-2xl">{t.title}</span>
+                  <span className="hidden text-sm text-muted sm:block">{on ? "Showing every item in this view · tap to close" : t.text}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {showBoxes && (
+        <CategoryBoxes
+          categories={categories}
+          counts={counts}
+          group={group}
+          category={cat}
+          onGroup={(g) => pushQuery({ group: g, cat: null })}
+          onCategory={(c) => pushQuery({ cat: c })}
+          categoryHref={view ? undefined : (id) => `/inventory/c/${id}`}
+        />
+      )}
+
       {boxes ? (
         <div className="space-y-4">
-          <Link href="/inventory/short" className="card-interactive group flex items-center gap-6 p-6">
-            <span className={`display font-mono text-6xl tabular-nums ${shortCount ? "text-amber-600" : "text-accent"}`}>{shortCount}</span>
-            <span className="min-w-0 flex-1">
-              <span className="block display text-3xl text-fg">Short for robots</span>
-              <span className="text-sm text-muted">Items the active robots need more of than the shelf has</span>
-            </span>
-            <Icon name="arrow" className="h-6 w-6 text-subtle transition-transform group-hover:translate-x-1 group-hover:text-accent" />
-          </Link>
-          <div className="card-grid" style={{ "--card-min": "190px" } as React.CSSProperties}>
-            {categories.map((c) => {
-              const n = perCategory.get(c.id);
-              return (
-                <Link key={c.id} href={`/inventory/c/${c.id}`} className="card-interactive group relative flex min-h-32 flex-col justify-between p-4">
-                  <span className="flex items-start justify-between">
-                    <span className="display font-mono text-4xl text-accent tabular-nums">{n?.items ?? 0}</span>
-                    {!!n?.short && (
-                      <span className="rounded-full bg-amber-500 px-2 py-0.5 font-mono text-[11px] font-bold text-white tabular-nums" title="Items short for robots">
-                        {n.short} short
-                      </span>
-                    )}
-                  </span>
-                  {c.imageUrl && (
-                    // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
-                    <img src={c.imageUrl} alt="" className="pointer-events-none absolute right-3 bottom-3 h-16 w-16 object-contain opacity-90" />
-                  )}
-                  <span className="text-base font-semibold text-fg group-hover:text-accent">{c.label}</span>
-                </Link>
-              );
-            })}
-          </div>
           {items.length === 0 && <div className="panel p-6 text-sm text-muted">No inventory yet. In Edit mode, add items one by one or import a spreadsheet.</div>}
 
           <Fold id="recent" title="Recent actions" defaultOpen>
@@ -239,11 +278,14 @@ export function InventoryView({ items, scope, actions, ...lookups }: Lookups & {
         </div>
       ) : (
         <div className="space-y-2">
-          <div className="text-sm text-muted">
-            {shown.length} item{shown.length === 1 ? "" : "s"}
+          <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
+            <span className="font-mono tabular-nums">
+              {shown.length} item{shown.length === 1 ? "" : "s"}
+            </span>
+            {showBoxes && filters}
           </div>
           {shown.length === 0 ? (
-            <div className="panel p-6 text-sm text-muted">{query ? "Nothing matches that." : scope.kind === "short" ? "Nothing is short: the shelf covers every linked part." : "No items here yet."}</div>
+            <div className="panel p-6 text-sm text-muted">{query ? "Nothing matches that." : view === "season" ? "No item has a Needed for Season count here. Set one in an item's window." : view === "robots" ? "No item here is used by an active robot." : "No items here yet."}</div>
           ) : (
             grid(shown)
           )}

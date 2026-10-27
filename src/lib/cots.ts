@@ -1,17 +1,19 @@
 // COTS parts on the COTS page: which filter box a part belongs in, the same part across a robot's
 // systems shown as one card, and prices.
 
-import { COTS_CATEGORIES, isCotsCategory, type CotsCategoryId } from "@/config/cots";
+import { guessCategory } from "@/config/inventory";
 import { fanOutChanges } from "@/lib/merges/merge";
 import type { PartChanges } from "@/lib/parts/changes";
 
 type Named = { displayName: string | null; onshapeName: string | null; material: string | null; cotsCategory: string | null };
 
-// The part's filter box: the one set on it, else a guess from its name and material.
-export function cotsCategoryOf(part: Named): CotsCategoryId {
-  if (part.cotsCategory && isCotsCategory(part.cotsCategory)) return part.cotsCategory;
+// The part's filter box, one of the inventory categories (Harel, 2026-10-27): its linked item's,
+// else the one set on it, else a guess from its name and material, else Other.
+export function cotsCategoryOf(part: Named, categoryIds: string[], itemCategory?: string | null): string {
+  if (itemCategory && categoryIds.includes(itemCategory)) return itemCategory;
+  if (part.cotsCategory && categoryIds.includes(part.cotsCategory)) return part.cotsCategory;
   const text = [part.displayName, part.onshapeName, part.material].filter(Boolean).join(" ");
-  return COTS_CATEGORIES.find((c) => c.match?.test(text))?.id ?? "other";
+  return guessCategory(text, categoryIds) ?? (categoryIds.includes("other") ? "other" : (categoryIds.at(-1) ?? "other"));
 }
 
 type Identity = Named & {

@@ -2,14 +2,13 @@ import { cookies } from "next/headers";
 import { ROBOT_COOKIE } from "@/components/shell/mode";
 import { Shell } from "@/components/shell/Shell";
 import { requireMember } from "@/lib/auth";
-import { listCategories } from "@/lib/data/categories";
 import { listMaterialColors } from "@/lib/data/materialColors";
 import { listShellRobots } from "@/lib/data/shell";
 import { getMode } from "@/lib/mode";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const member = await requireMember();
-  const [robots, mode, jar, materialColors, categories] = await Promise.all([listShellRobots(), getMode(), cookies(), listMaterialColors(), listCategories()]);
+  const [robots, mode, jar, materialColors] = await Promise.all([listShellRobots(), getMode(), cookies(), listMaterialColors()]);
 
   return (
     <Shell
@@ -17,7 +16,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       lastRobotId={jar.get(ROBOT_COOKIE)?.value ?? null}
       mode={mode}
       materialColors={materialColors}
-      inventoryCategories={categories.map((c) => ({ id: c.id, label: c.label }))}
       member={{ name: member.name, email: member.email, isAdmin: member.isAdmin }}
     >
       {children}

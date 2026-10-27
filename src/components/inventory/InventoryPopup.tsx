@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useState, useTransition } from "react";
-import { adjustStock, countStock, deleteItem, findBomParts, itemPopup, materialPopup, setItemPhoto } from "@/app/(app)/inventory/actions";
+import { adjustStock, countStock, deleteItem, findBomParts, itemPopup, materialPopup, setItemPhoto, setSeasonNeed } from "@/app/(app)/inventory/actions";
 import { textOn } from "@/components/bom/options";
 import { Dialog } from "@/components/Dialog";
 import { EditOnly } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
 import { materialCategory } from "@/config/materials";
 import { getCategory } from "@/lib/inventory/categories";
+import { hasSeasonNeed, missing } from "@/lib/inventory/season";
 import { formatStock, snapStock } from "@/lib/inventory/stock";
 import { CountBox, PieceStepper, conditionColor, hostOf } from "./ItemCard";
 import { ItemForm, draftOf } from "./ItemForm";
@@ -163,6 +164,43 @@ function Stepper({ item, onStep, onCount, big = false }: { item: Pick<Item, "inS
   );
 }
 
+// "Needed for Season": how many the team wants on the shelf for the season, typed in place. Blank
+// or 0 clears it. Saves on Enter or when the box loses focus.
+function SeasonBox({ item, onSaved, onError }: { item: Item; onSaved: () => void; onError: (m: string | null) => void }) {
+  const current = hasSeasonNeed(item) ? formatStock(item.seasonNeed!, item.sheet) : "";
+  const [text, setText] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const save = () => {
+    if (text === null || text.trim() === current) return setText(null);
+    const value = text;
+    start(async () => {
+      const r = await setSeasonNeed(item.id, value);
+      onError(r.error ?? null);
+      setText(null);
+      if (!r.error) onSaved();
+    });
+  };
+  return (
+    <label className="w-28 shrink-0 self-start rounded-xl border border-line bg-raised p-2.5 text-center shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] sm:w-32">
+      <span className="block text-[11px] leading-tight font-semibold text-subtle uppercase">Needed for Season</span>
+      <input
+        value={text ?? current}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={save}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          if (e.key === "Escape") setText(null);
+        }}
+        disabled={pending}
+        inputMode={item.sheet ? "text" : "numeric"}
+        placeholder="—"
+        aria-label="Needed for Season"
+        className="mt-1 w-full rounded-md border border-line-strong bg-surface px-1 py-1.5 text-center font-mono text-2xl font-semibold tabular-nums outline-none focus:border-sky-400"
+      />
+    </label>
+  );
+}
+
 // The item window: picture and tags (each opens its page), the count, the details, the parts
 // that use it, Edit / To BOM / Delete in Edit mode, and the history.
 function ItemBody({
@@ -269,10 +307,17 @@ function ItemBody({
           </div>
           <Stepper item={item} onStep={onStep} onCount={onCount} big />
           <div className="text-xs text-muted">
-            {item.sheet ? "sheets on the shelf · tap the number to type the count" : usage?.need ? `Robots need ${usage.need} · tap the number to type the count` : "Tap the number to type the count"}
-            {!!usage?.short && <span className="font-semibold text-amber-600"> · {usage.short} short</span>}
+            {[
+              item.sheet ? "sheets on the shelf" : null,
+              hasSeasonNeed(item) ? `Season needs ${formatStock(item.seasonNeed!, item.sheet)}` : null,
+              usage?.need ? `Robots need ${usage.need}` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ") || "Tap the number to type the count"}
+            {missing(item, "any") > 0 && <span className="font-mono font-semibold text-rose-500 tabular-nums"> · {missing(item, "any")} short</span>}
           </div>
         </div>
+        <SeasonBox item={item} onSaved={onSaved} onError={setMessage} />
       </div>
 
       {(cat?.fields.some((f) => item.specs[f.id]) || item.cotsLinks.length > 0 || item.price != null) && (

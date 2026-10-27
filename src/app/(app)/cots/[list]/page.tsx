@@ -17,7 +17,7 @@ export default async function CotsListPage({ params }: { params: Promise<{ list:
   const page = LISTS[list as keyof typeof LISTS];
   if (!page) notFound();
   // Released's search box looks through the shelf.
-  const [{ robots, parts }, inventory] = await Promise.all([listCotsParts(), page.list === "released" ? listInventory() : null]);
+  const [{ robots, parts, categories }, inventory] = await Promise.all([listCotsParts(), page.list === "released" ? listInventory() : null]);
   return (
     <div className="space-y-5">
       <div>
@@ -31,6 +31,7 @@ export default async function CotsListPage({ params }: { params: Promise<{ list:
         list={page.list}
         parts={parts}
         robots={robots}
+        categories={categories}
         shelf={inventory ? { items: inventory.items, categories: inventory.categories, locations: inventory.locations, conditions: inventory.conditions } : undefined}
       />
     </div>

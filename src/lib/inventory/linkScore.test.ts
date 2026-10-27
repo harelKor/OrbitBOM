@@ -3,7 +3,7 @@ import { DEFAULT_CATEGORIES } from "@/config/inventory";
 import type { InvCategory } from "./categories";
 import { LINK_THRESHOLD, bestLinks, scoreLink, type LinkItem, type LinkPart } from "./linkScore";
 
-const cats: InvCategory[] = DEFAULT_CATEGORIES.map((c) => ({ id: c.id, label: c.label, noun: c.noun, sheet: !!c.sheet, image: null, defaultLocationId: null, fields: c.fields }));
+const cats: InvCategory[] = DEFAULT_CATEGORIES.map((c) => ({ id: c.id, label: c.label, noun: c.noun, group: c.group, sheet: !!c.sheet, image: null, defaultLocationId: null, fields: c.fields }));
 const cat = (id: string) => cats.find((c) => c.id === id);
 
 const part = (over: Partial<LinkPart>): LinkPart => ({ id: "p", names: [], onshapeKey: null, docKey: null, urls: [], thumbHash: null, ...over });

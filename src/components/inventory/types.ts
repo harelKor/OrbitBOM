@@ -1,4 +1,5 @@
 import type { InvCategory } from "@/lib/inventory/categories";
+import type { OpenOrder } from "@/lib/inventory/season";
 import type { ItemUsage } from "@/lib/inventory/usage";
 
 export type { InvCategory };
@@ -15,9 +16,11 @@ export type Item = {
   conditionId: string | null;
   locationId: string | null;
   inStock: number;
+  seasonNeed: number | null;
   price: number | null;
   imagePath: string | null;
   usage: ItemUsage | null;
+  openOrder: OpenOrder | null;
   sheet: boolean;
   thumbUrl: string | null;
 };

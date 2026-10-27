@@ -5,7 +5,7 @@ import { eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { COTS_DEFAULT_STATUS, COTS_IN_STOCK, COTS_ORDERED, COTS_RELEASED, cotsStatusOf } from "@/config/cots";
-import { guessCategory } from "@/config/inventory";
+import { guessCategory, isCategoryGroup } from "@/config/inventory";
 import { vendorOfUrl } from "@/config/vendors";
 import { db, schema } from "@/db";
 import { requireMember } from "@/lib/auth";
@@ -20,6 +20,7 @@ import { recordItemChanges } from "@/lib/inventory/history";
 import { moveStock, setStock } from "@/lib/inventory/moves";
 import { readProduct, saveProductPhoto, toUsd } from "@/lib/inventory/product";
 import { searchProducts } from "@/lib/inventory/search";
+import { missing, orderHref } from "@/lib/inventory/season";
 import { parseStock } from "@/lib/inventory/stock";
 import { applyEachPartChanges } from "@/lib/parts/apply";
 import { StorageNotConfiguredError, deleteObject, objectExists, presignUpload } from "@/lib/storage/r2";
@@ -171,6 +172,61 @@ export async function countStock(itemId: string, amount: number): Promise<Action
   await db.transaction((tx) => setStock(tx, itemId, amount, { memberId: member.id, via: "ui" }));
   refresh();
   return {};
+}
+
+// The item window's "Needed for season": blank or 0 clears it (the item leaves the Season view).
+export async function setSeasonNeed(itemId: string, text: string): Promise<ActionResult> {
+  const member = await requireMember();
+  if (!isUuid(itemId)) return { error: "Unknown item." };
+  const [item] = await db.select().from(inventoryItems).where(eq(inventoryItems.id, itemId));
+  if (!item) return { error: "That item was deleted." };
+  const cats = await listCategories();
+  const sheet = !!getCategory(cats, categoryOf(item, cats))?.sheet;
+  const n = parseStock(text, sheet);
+  if (n === null) return { error: sheet ? 'Needed for season is sheets, like "2" or "1 3/4".' : "Needed for season is a whole number." };
+  const seasonNeed = n > 0 ? n : null;
+  if (seasonNeed === item.seasonNeed) return {};
+  await db.transaction(async (tx) => {
+    await tx.update(inventoryItems).set({ seasonNeed }).where(eq(inventoryItems.id, itemId));
+    await recordItemChanges(tx, itemId, item, { seasonNeed }, { memberId: member.id, via: "ui" });
+  });
+  refresh();
+  return {};
+}
+
+// The cart on a short item's card: a General COTS card for what's missing goes to Released,
+// marked as a restock so it doesn't count as a robot's need. When it reaches In Stock on the Order
+// List its whole quantity goes on the shelf.
+export async function sendItemToReleased(itemId: string): Promise<ActionResult & { href?: string }> {
+  const member = await requireMember();
+  if (!isUuid(itemId)) return { error: "Unknown item." };
+  const { items } = await listInventory();
+  const item = items.find((i) => i.id === itemId);
+  if (!item) return { error: "That item was deleted." };
+  if (item.openOrder) return { href: orderHref(item.openOrder) };
+  const quantity = missing(item, "any");
+  if (!quantity) return { error: "Nothing is missing: the shelf already has what's needed." };
+  const [card] = await db
+    .insert(parts)
+    .values({
+      systemId: null,
+      robotId: null,
+      isManual: true,
+      displayName: item.name,
+      classification: "cots",
+      classSource: "manual",
+      inventoryItemId: item.id,
+      cotsLinks: item.cotsLinks,
+      unitPrice: item.price,
+      cotsCategory: item.category,
+      quantity,
+      restock: true,
+      designState: COTS_RELEASED,
+      lastModifiedBy: member.id,
+    })
+    .returning({ id: parts.id });
+  refresh();
+  return { message: `Sent ${quantity} ${item.name} to Released.`, href: orderHref({ partId: card.id, status: COTS_RELEASED }) };
 }
 
 // A linked COTS card's − / +: the units go on or come off its item's shelf. Like the card's own
@@ -413,6 +469,7 @@ const categorySchema = z.object({
   label: z.string().trim().min(1, "A category needs a name.").max(60),
   noun: z.string().trim().max(40),
   sheet: z.boolean(),
+  group: z.string().refine(isCategoryGroup, "Unknown group."),
   defaultLocationId: z.string().nullable().refine((v) => v === null || isUuid(v), "Unknown location."),
   fields: z.array(fieldSchema).max(20),
 });

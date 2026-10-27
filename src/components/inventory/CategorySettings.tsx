@@ -2,6 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { addCategory, deleteCategory, moveCategory, saveCategory } from "@/app/(app)/inventory/actions";
+import { CATEGORY_GROUPS } from "@/config/inventory";
 import { MATERIALS } from "@/config/materials";
 import { Icon } from "@/components/ui/Icon";
 import type { CategoryField } from "@/lib/inventory/categories";
@@ -122,6 +123,16 @@ export function CategorySettings({ open, onClose, categories, locations, items }
                 <label>
                   <span className="label">Ends the item name</span>
                   <input value={cat.noun} onChange={(e) => change({ ...cat, noun: e.target.value })} placeholder="e.g. Pulley" className="input min-h-11" />
+                </label>
+                <label>
+                  <span className="label">Group</span>
+                  <select value={cat.group} onChange={(e) => change({ ...cat, group: e.target.value as InvCategory["group"] })} className="input min-h-11">
+                    {CATEGORY_GROUPS.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.label}
+                      </option>
+                    ))}
+                  </select>
                 </label>
                 <label>
                   <span className="label">Location for new items</span>

@@ -1,7 +1,9 @@
 "use client";
 
-import { useOptimistic, useState, useTransition } from "react";
-import { COTS_CATEGORIES, COTS_IN_STOCK, COTS_ORDERED, COTS_RELEASED, IN_STOCK_SHOWN_DAYS, ORDER_STATUSES, getCotsStatus, type CotsCategoryId } from "@/config/cots";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useOptimistic, useState, useTransition } from "react";
+import { COTS_IN_STOCK, COTS_ORDERED, COTS_RELEASED, IN_STOCK_SHOWN_DAYS, ORDER_STATUSES, getCotsStatus } from "@/config/cots";
+import { CATEGORY_GROUPS, groupOf, isCategoryGroup, type CategoryGroupId } from "@/config/inventory";
 import { addCotsFromItem, clearInStock, updateCotsParts } from "@/app/(app)/cots/actions";
 import { BomProvider, useBom } from "@/components/bom/BomContext";
 import { PartStage, type StageView } from "@/components/dashboard/PartStage";
@@ -12,17 +14,18 @@ import { statusTint } from "@/components/ui/statusTint";
 import { StatusField } from "@/components/bom/fields";
 import { Thumb } from "@/components/bom/Thumb";
 import { ownerPartId, partTitle, type CardPart } from "@/components/bom/types";
+import { CategoryBoxes, pushQuery } from "@/components/ui/CategoryBoxes";
 import { Chevron } from "@/components/ui/Chevron";
 import { Icon } from "@/components/ui/Icon";
 import { Segmented } from "@/components/ui/Segmented";
-import { cotsCategoryOf, cotsTotal, groupSameCots, siteOf, spreadCotsChanges } from "@/lib/cots";
+import { cotsTotal, groupSameCots, siteOf, spreadCotsChanges } from "@/lib/cots";
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { computeStatus } from "@/lib/status";
 import { CotsCard, OrderStatusButton } from "./CotsCard";
 import { formatPrice, useCurrency } from "./currency";
 
 // robotId null: the General section (a card added on the COTS page for no robot).
-export type CotsViewPart = CardPart & { robotId: string | null; robotName: string | null; cotsInStockAt: Date | null; cotsClearedAt: Date | null };
+export type CotsViewPart = CardPart & { robotId: string | null; robotName: string | null; cotsInStockAt: Date | null; cotsClearedAt: Date | null; category: string };
 // The shelf, for Released's search box.
 export type CotsShelf = { items: Item[]; categories: InvCategory[]; locations: Location[]; conditions: Condition[] };
 type Edit = { id: string; changes: PartChanges };
@@ -33,6 +36,7 @@ const DRAG_TYPE = "application/x-orbit-cots";
 type DragLoad = { ids: string[]; from: "list" | "ordered" };
 type Place = { robotId: string | null; name: string };
 
+const groupLabel = (id: CategoryGroupId) => CATEGORY_GROUPS.find((g) => g.id === id)!.label;
 const ORDERING = ORDER_STATUSES.filter((s) => s !== COTS_IN_STOCK) as string[];
 const SHOWN_MS = IN_STOCK_SHOWN_DAYS * 24 * 60 * 60 * 1000;
 const NO_VENDOR = "No vendor";
@@ -45,21 +49,25 @@ function shelfOf(members: CardPart[]) {
   return { ...first, covered: same.reduce((n, m) => n + (m.shelf?.covered ?? 0), 0) };
 }
 
-// The COTS page's Released and Order List: compact filter boxes on top, then a General section
+// The COTS page's Released and Order List: compact filter boxes on top (the inventory's groups,
+// then a group's categories, kept in ?group=&cat=), then a General section
 // (parts that belong to no robot) and one section per robot, or one per vendor, as cards or a
 // table. Released has a search box that adds shelf items or new products as cards, and Send to
 // order; the Order List has status filters, and a part set In Stock there is crossed out and
 // moves down to In stock once the page is left. The In stock sections show a part for a week after
-// it arrived, or until its X.
+// it arrived, or until its X. ?part=<id> (the cart on an Inventory card) scrolls to that card and
+// makes it glow.
 export function CotsView({
   list,
   parts,
   robots,
+  categories,
   shelf,
 }: {
   list: "released" | "order";
   parts: CotsViewPart[];
   robots: { id: string; name: string }[];
+  categories: InvCategory[];
   shelf?: CotsShelf;
 }) {
   const edit = useEditMode();
@@ -77,7 +85,11 @@ export function CotsView({
   // Parts whose X was pressed on this visit, gone before the server answers.
   const [cleared, setCleared] = useState<Set<string>>(new Set());
   const [now] = useState(() => Date.now());
-  const [category, setCategory] = useState<CotsCategoryId | null>(null);
+  const params = useSearchParams();
+  const rawGroup = params.get("group");
+  const group: CategoryGroupId | null = rawGroup && isCategoryGroup(rawGroup) ? rawGroup : null;
+  const category = group ? params.get("cat") : null;
+  const groupOfCat = new Map(categories.map((c) => [c.id, c.group]));
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [view, setView] = useState<"cards" | "table">("cards");
   const [byVendor, setByVendor] = useState(false);
@@ -132,13 +144,31 @@ export function CotsView({
   };
   const shownInStock = (p: CotsViewPart) =>
     computeStatus(p) === COTS_IN_STOCK && !p.cotsClearedAt && !cleared.has(p.id) && (!p.cotsInStockAt || now - new Date(p.cotsInStockAt).getTime() < SHOWN_MS);
-  const ofCategory = (p: CardPart) => !category || cotsCategoryOf(p) === category;
+  const ofCategory = (p: CotsViewPart) => (!group || groupOf(groupOfCat.get(p.category)) === group) && (!category || p.category === category);
   const ofStatus = (p: CardPart) => list !== "order" || !statusFilter || computeStatus(p) === statusFilter || struck.has(p.id);
   const listed = optimistic.filter(inList);
   const main = listed.filter((p) => ofCategory(p) && ofStatus(p));
   const inStock = optimistic.filter((p) => shownInStock(p) && !struck.has(p.id) && ofCategory(p));
-  const counts = new Map<string, number>();
-  for (const p of listed) counts.set(cotsCategoryOf(p), (counts.get(cotsCategoryOf(p)) ?? 0) + 1);
+  const counts = new Map<string, { count: number }>();
+  for (const p of listed)
+    for (const key of [p.category, groupOf(groupOfCat.get(p.category))]) counts.set(key, { count: (counts.get(key)?.count ?? 0) + 1 });
+
+  // ?part=<id>: clear a box filter that would hide it, then scroll to its card and let it glow.
+  const target = params.get("part");
+  useEffect(() => {
+    if (!target) return;
+    const part = parts.find((p) => p.id === target);
+    if (part && !ofCategory(part)) pushQuery({ group: null, cat: null });
+    const timer = setTimeout(() => {
+      const el = document.querySelector<HTMLElement>(`[data-part~="${CSS.escape(target)}"]`);
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.dataset.glow = "1";
+      setTimeout(() => delete el.dataset.glow, 4000);
+    }, 150);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per target
+  }, [target]);
   const statusCounts = new Map<string, number>();
   for (const p of listed) if (ofCategory(p)) statusCounts.set(computeStatus(p), (statusCounts.get(computeStatus(p)) ?? 0) + 1);
 
@@ -256,31 +286,15 @@ export function CotsView({
 
   return (
     <div className={`space-y-5 ${ordering ? "pb-20" : ""}`}>
-      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible">
-        {COTS_CATEGORIES.map((c) => (
-          <button
-            key={c.id}
-            type="button"
-            onClick={() => setCategory((cur) => (cur === c.id ? null : c.id))}
-            data-selected={category === c.id}
-            className="card-interactive group flex h-12 shrink-0 items-center gap-2.5 overflow-hidden pr-3 text-left active:scale-[0.98]"
-          >
-            <span className="relative h-full w-14 shrink-0 overflow-hidden">
-              {c.image ? (
-                // eslint-disable-next-line @next/next/no-img-element -- static pictures from /public
-                <img src={c.image} alt="" className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]" />
-              ) : (
-                // Placeholder until the box's picture arrives.
-                <span className="absolute inset-0 bg-gradient-to-br from-accent/30 via-raised to-amber-400/25" />
-              )}
-            </span>
-            <span className="min-w-0">
-              <span className="block text-xs leading-tight font-bold whitespace-nowrap text-fg">{c.label}</span>
-              <span className="font-mono text-[11px] text-subtle tabular-nums">{counts.get(c.id) ?? 0}</span>
-            </span>
-          </button>
-        ))}
-      </div>
+      <CategoryBoxes
+        compact
+        categories={categories}
+        counts={counts}
+        group={group}
+        category={category}
+        onGroup={(g) => pushQuery({ group: g, cat: null })}
+        onCategory={(c) => pushQuery({ cat: c })}
+      />
 
       <div className="flex flex-wrap items-center gap-2.5">
         <Segmented
@@ -321,9 +335,9 @@ export function CotsView({
               </button>
             );
           })}
-        {category && (
-          <button type="button" onClick={() => setCategory(null)} className="press rounded-full border border-line-strong px-3 py-1 text-xs font-medium text-fg-2 hover:text-fg">
-            {COTS_CATEGORIES.find((c) => c.id === category)!.label} ✕
+        {group && (
+          <button type="button" onClick={() => pushQuery({ group: null, cat: null })} className="press rounded-full border border-line-strong px-3 py-1 text-xs font-medium text-fg-2 hover:text-fg">
+            {categories.find((c) => c.id === category)?.label ?? groupLabel(group)} ✕
           </button>
         )}
         <span className="font-mono text-xs text-subtle tabular-nums">{allRows.length} parts</span>

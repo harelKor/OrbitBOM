@@ -4,7 +4,7 @@ import { and, asc, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { findMachineByName, getMachine, MACHINES } from "@/config/machines";
 import { ALL_MATERIALS, MATERIALS } from "@/config/materials";
-import { COTS_CATEGORIES, COTS_STATUSES } from "@/config/cots";
+import { COTS_STATUSES } from "@/config/cots";
 import { STATUSES } from "@/config/statuses";
 import { PRIORITIES } from "@/config/priorities";
 import { db, schema } from "@/db";
@@ -15,13 +15,15 @@ import { autoLink, findLinks, writePendingLinks } from "@/lib/inventory/autolink
 import { pushItemToCards } from "@/lib/inventory/cotsSync";
 import { checkSpecs, fieldChoices, getCategory, type InvCategory } from "@/lib/inventory/categories";
 import { listCategories } from "@/lib/data/categories";
+import { cotsCategories } from "@/lib/data/parts";
 import { moveStock, undoMoves } from "@/lib/inventory/moves";
+import { hasSeasonNeed, missing } from "@/lib/inventory/season";
 import { formatStock } from "@/lib/inventory/stock";
 import { listRobots } from "@/lib/data/robots";
 import { OnshapeError } from "@/lib/onshape/client";
 import { refreshThumbnails } from "@/lib/onshape/thumbnails";
 import { applyEachPartChanges, applyPartChanges } from "@/lib/parts/apply";
-import { cotsCategoryOf, groupSameCots } from "@/lib/cots";
+import { groupSameCots } from "@/lib/cots";
 import { partChangesSchema, planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { applyUndo, planUndo } from "@/lib/parts/undo";
 import { applySuggestions, logAiAction, partsToSetUp } from "@/lib/review/review";
@@ -307,7 +309,7 @@ read("system_stats", "A system's completion and count per status.", z.object({ s
 
 read(
   "search_inventory",
-  "Inventory items with stock. All active robots share one shelf: need is what every robot's linked parts need together, short what the stock doesn't cover, free what no part needs. Sheet items (plates) count sheets and pieces (2.75 = 2 ¾ sheets) and have no need.",
+  "Inventory items with stock. All active robots share one shelf: need is what every robot's linked parts need together, short what the stock doesn't cover, free what no part needs. Sheet items (plates) count sheets and pieces (2.75 = 2 ¾ sheets) and have no need. season_need is a separate shelf target for the season (season_short what the stock is under it); on_order is the status of a COTS card already ordering it.",
   z.object({ text: z.string().optional() }),
   async ({ text }) => {
     const { items } = await listInventory();
@@ -321,6 +323,9 @@ read(
         sheet: i.sheet,
         need: i.usage?.need ?? 0,
         short: i.usage?.short ?? 0,
+        season_need: i.seasonNeed,
+        season_short: hasSeasonNeed(i) ? missing(i, "season") : 0,
+        on_order: i.openOrder?.status ?? null,
         free: i.usage?.free ?? i.inStock,
         category: i.category,
         specs: i.specs,
@@ -648,10 +653,10 @@ read(
     categories: (await listCategories()).map((c) => ({
       id: c.id,
       label: c.label,
+      group: c.group,
       sheet: c.sheet,
       fields: c.fields.filter((f) => !f.hidden).map((f) => ({ id: f.id, label: f.label, kind: f.kind, choices: fieldChoices(f).length ? fieldChoices(f) : undefined })),
     })),
-    not_tracked: "Screws, nuts and other small fasteners.",
   }),
 );
 
@@ -758,6 +763,7 @@ const itemInfo = z.object({
   specs: z.record(z.string(), z.string()).optional().describe("The category's fields by id, e.g. { teeth: '24', bore: '1/2\" Hex' }."),
   product_url: z.url().optional().describe("The product's page."),
   price: z.number().min(0).optional().describe("US dollars for one."),
+  season_need: z.number().min(0).optional().describe("How many the team wants on the shelf for the season, whatever the robots use; 0 clears it."),
 });
 
 // Category and specs checked against the team's categories.
@@ -777,12 +783,13 @@ function checkItemInfo(info: z.infer<typeof itemInfo>, current: { category: stri
     ...(specs ? { specs } : {}),
     ...(info.product_url && !links.some((l) => l.url === info.product_url) ? { cotsLinks: [{ url: info.product_url, site: vendorOfUrl(info.product_url) }, ...links] } : {}),
     ...(info.price != null ? { price: info.price } : {}),
+    ...(info.season_need != null ? { seasonNeed: info.season_need > 0 ? info.season_need : null } : {}),
   };
 }
 
 write(
   "add_inventory_items",
-  "Add several items to the team inventory at once, e.g. from a spreadsheet, an order email or a photo of a shelf the member shares with you. Screws and small fasteners aren't tracked. in_stock for sheet categories can have pieces (2.75 = 2 ¾ sheets). location is a shelf or bin name; a new name is created. BOM parts with the same product link or Onshape part are linked to the new items and wait in To Review.",
+  "Add several items to the team inventory at once, e.g. from a spreadsheet, an order email or a photo of a shelf the member shares with you. in_stock for sheet categories can have pieces (2.75 = 2 ¾ sheets). location is a shelf or bin name; a new name is created. BOM parts with the same product link or Onshape part are linked to the new items and wait in To Review.",
   z.object({ items: z.array(itemInfo.extend({ name: z.string().trim().min(1).max(200), in_stock: z.number().min(0).default(0), location: z.string().trim().max(100).optional() })).min(1).max(500) }),
   async ({ items }, { member, aiName }) => {
     const cats = await listCategories();
@@ -842,7 +849,7 @@ read(
 
 write(
   "set_inventory_info",
-  "Fill in inventory items' category, specs, product link and price (each item can differ). Specs must use the category's fields and choices from list_inventory_categories. BOM parts with the same product link are then linked to the item and wait in To Review.",
+  "Fill in inventory items' category, specs, product link, price and season need (each item can differ). Specs must use the category's fields and choices from list_inventory_categories. BOM parts with the same product link are then linked to the item and wait in To Review.",
   z.object({ items: z.array(itemInfo.extend({ item_id: uuid })).min(1).max(500) }),
   async ({ items }, { member }) => {
     const [rows, cats] = await Promise.all([db.select().from(inventoryItems).where(inArray(inventoryItems.id, items.map((i) => i.item_id))), listCategories()]);
@@ -1017,6 +1024,7 @@ read(
     const groups = robotIds
       .flatMap((id) => groupSameCots(rows.filter((r) => r.robotId === id)))
       .filter((g) => include_done || g.some((p) => !p.cotsLinks.length || p.unitPrice == null));
+    const { categories, of } = await cotsCategories(groups.slice(0, limit).map((g) => g[0]));
     return {
       total: groups.length,
       parts: groups.slice(0, limit).map((g) => ({
@@ -1027,12 +1035,12 @@ read(
         systems: [...new Set(g.map((p) => p.systemName))],
         quantity: g.reduce((n, p) => n + p.quantity, 0),
         status: computeStatus(g[0]),
-        category: cotsCategoryOf(g[0]),
+        category: of.get(g[0].id),
         links: g[0].cotsLinks,
         unit_price_usd: g[0].unitPrice,
       })),
       truncated: groups.length > limit,
-      categories: COTS_CATEGORIES.map((c) => c.id),
+      categories: categories.map((c) => c.id),
     };
   },
 );
@@ -1052,10 +1060,7 @@ const cotsInfoInput = z.object({
     .optional()
     .describe("Every product page found, the main vendor first. Replaces the part's links."),
   unit_price_usd: z.number().min(0).optional().describe("The average price of one at the quantity needed, in US dollars."),
-  category: z
-    .enum(COTS_CATEGORIES.map((c) => c.id) as [string, ...string[]])
-    .optional()
-    .describe("The COTS page filter box."),
+  category: z.string().optional().describe("The COTS page filter box: an inventory category id from list_inventory_categories (a linked item's category wins)."),
 });
 
 write(
@@ -1074,6 +1079,9 @@ write(
     });
     const ids = edits.map((e) => e.id);
     if (new Set(ids).size !== ids.length) throw new ToolError("Each part may appear once.");
+    const catIds = (await listCategories()).map((c) => c.id);
+    const badCat = items.find((i) => i.category !== undefined && !catIds.includes(i.category));
+    if (badCat) throw new ToolError(`Unknown category "${badCat.category}". See list_inventory_categories.`);
     const rows = await db.select().from(parts).where(inArray(parts.id, ids));
     if (rows.length !== ids.length) throw new ToolError("Some part ids don't exist.");
     const notCots = rows.filter((p) => p.classification !== "cots");

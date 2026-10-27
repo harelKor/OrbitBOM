@@ -29,7 +29,6 @@ export function Shell({
   lastRobotId,
   mode,
   materialColors,
-  inventoryCategories,
   member,
   children,
 }: {
@@ -37,7 +36,6 @@ export function Shell({
   lastRobotId: string | null;
   mode: Mode;
   materialColors: Record<string, string>;
-  inventoryCategories: { id: string; label: string }[];
   member: { name: string; email: string; isAdmin: boolean };
   children: React.ReactNode;
 }) {
@@ -79,7 +77,7 @@ export function Shell({
                     open === "left" ? "translate-x-0" : "-translate-x-full"
                   } transition-transform duration-150`}
                 >
-                  <LeftNav robots={robots} lastRobotId={lastRobotId} member={member} inventoryCategories={inventoryCategories} />
+                  <LeftNav robots={robots} lastRobotId={lastRobotId} member={member} />
                 </aside>
                 <div className="flex min-w-0 flex-1 flex-col">
                   <TopBar onMenu={() => toggle("left")} onRobots={() => toggle("right")} />

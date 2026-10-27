@@ -7,7 +7,7 @@
 import { z } from "zod";
 import { MACHINES } from "@/config/machines";
 import { PRIORITIES } from "@/config/priorities";
-import { COTS_STATUSES, isCotsCategory } from "@/config/cots";
+import { COTS_STATUSES } from "@/config/cots";
 import { DONE_STATUSES, STATUSES } from "@/config/statuses";
 import { applyCounters, applyStatus } from "@/lib/status";
 
@@ -65,7 +65,7 @@ export const partChangesSchema = z
       )
       .max(20),
     unitPrice: z.number().min(0).max(1_000_000).nullable(),
-    cotsCategory: z.string().refine(isCotsCategory, "Unknown COTS category.").nullable(),
+    cotsCategory: z.string().trim().min(1).max(60).nullable(), // an inventory category id
     stockCount: count,
     cotsSentBack: text,
   })

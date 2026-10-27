@@ -37,24 +37,8 @@ export function cotsStatusOf(designState: string | null): CotsStatusName {
   return LEGACY[designState] ?? COTS_DEFAULT_STATUS;
 }
 
-// The COTS page's filter boxes. `image` is the box's thumbnail under /public (Harel sends
-// pictures later; until then the box shows a placeholder). `match` guesses a part's category
-// from its name and material when nobody set one.
-export const COTS_CATEGORIES = [
-  { id: "motion", label: "Gears / Pulleys / Sprockets", image: null, match: /gear|pulley|sprocket|\bhub\b/i },
-  { id: "belts", label: "Belts", image: null, match: /\bbelts?\b|htd|gt2|timing/i },
-  { id: "motors", label: "Motors", image: null, match: /motor|\bneo\b|vortex|falcon|kraken|\bcim\b|\b775\b|minion|\bbag\b/i },
-  { id: "wheels", label: "Wheels", image: null, match: /wheel|omni|mecanum|colson|traction|compliant|stealth|tread/i },
-  { id: "round-tubes", label: "Round tubes", image: null, match: /round\s*tube|\btube\b.*\bod\b|\bod\b.*\btube\b|\bpipe\b/i },
-  { id: "square-tubes", label: "Square tubes", image: null, match: /(box|square|rect\w*)\s*tube|\btube\b.*\d+\s*x\s*\d+|\d+\s*x\s*\d+.*\btube\b/i },
-  { id: "polycarbonate", label: "Polycarbonate plates", image: null, match: /polycarb|lexan|\bpc\b/i },
-  { id: "aluminum-plates", label: "Aluminum plates", image: null, match: /alumin\w*.*(plate|sheet)|(plate|sheet).*alumin|\b(6061|5052|7075)\b.*(plate|sheet)/i },
-  { id: "other", label: "Other", image: null, match: null },
-] as const satisfies readonly { id: string; label: string; image: string | null; match: RegExp | null }[];
-
-export type CotsCategoryId = (typeof COTS_CATEGORIES)[number]["id"];
-
-export const isCotsCategory = (id: string): id is CotsCategoryId => COTS_CATEGORIES.some((c) => c.id === id);
+// The COTS page's filter boxes are the inventory categories and their groups (config/inventory.ts,
+// inventory_categories) since 2026-10-27; 0032 moved the old box ids over.
 
 // Prices are kept in US dollars; the card's ₪ button shows them in shekels at this rate.
 export const ILS_PER_USD = 3.7;

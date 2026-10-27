@@ -7,6 +7,7 @@ import { listCategories } from "./categories";
 import type { Shelf, ShelfSuggestion } from "@/components/bom/types";
 import { suggestItem } from "@/lib/inventory/match";
 import { computeUsage, type ItemUsage, type UsagePart } from "@/lib/inventory/usage";
+import { newestOpenOrders, type OpenOrder } from "@/lib/inventory/season";
 import { thumbKey } from "@/lib/onshape/thumbnails";
 import { imageUrl } from "@/lib/storage/r2";
 
@@ -18,6 +19,7 @@ export type InventoryItem = Omit<typeof inventoryItems.$inferSelect, "category">
   category: string;
   categorySet: string | null; // the category someone picked, if any
   usage: ItemUsage | null;
+  openOrder: OpenOrder | null; // the newest COTS card on its way for it
   sheet: boolean;
   thumbUrl: string | null;
 };
@@ -53,6 +55,8 @@ async function usageParts(exec: Exec = db, filter: { robotId?: string; itemIds?:
       and(
         isNotNull(parts.inventoryItemId),
         isNull(parts.removedFromCadAt),
+        // A card Inventory sent to refill the shelf orders stock; no robot uses it.
+        eq(parts.restock, false),
         or(isNull(robots.id), eq(robots.archived, false)),
         filter.robotId ? eq(robots.id, filter.robotId) : undefined,
         filter.itemIds ? inArray(parts.inventoryItemId, filter.itemIds) : undefined,
@@ -88,13 +92,14 @@ export async function usageOf(itemIds: string[], exec: Exec = db) {
 }
 
 export async function listInventory() {
-  const [items, groups, conditions, locations, used, categories] = await Promise.all([
+  const [items, groups, conditions, locations, used, categories, orders] = await Promise.all([
     db.select().from(inventoryItems).orderBy(asc(inventoryItems.name)),
     db.select().from(inventoryGroups).orderBy(asc(inventoryGroups.name)),
     db.select().from(inventoryConditions).orderBy(asc(inventoryConditions.label)),
     db.select().from(inventoryLocations).orderBy(asc(inventoryLocations.name)),
     usageParts(),
     listCategories(),
+    openOrders(),
   ]);
   const sheets = sheetSet(items, categories);
   const usage = computeUsage(new Map(items.map((i) => [i.id, i.inStock])), used, sheets);
@@ -106,6 +111,7 @@ export async function listInventory() {
       category: categoryOf(i, categories),
       categorySet: i.category,
       usage: usage.get(i.id) ?? null,
+      openOrder: orders.get(i.id) ?? null,
       sheet: sheets.has(i.id),
       thumbUrl: thumbs.get(i.id) ?? null,
     })) as InventoryItem[],
@@ -114,6 +120,15 @@ export async function listInventory() {
     locations,
     categories,
   };
+}
+
+// Each item's newest COTS card on its way (lib/inventory/season.ts says which count).
+async function openOrders() {
+  const rows = await db
+    .select({ itemId: parts.inventoryItemId, partId: parts.id, designState: parts.designState, systemId: parts.systemId, restock: parts.restock, at: parts.createdAt })
+    .from(parts)
+    .where(and(isNotNull(parts.inventoryItemId), isNull(parts.removedFromCadAt), eq(parts.classification, "cots")));
+  return newestOpenOrders(rows.map((r) => ({ ...r, itemId: r.itemId!, status: cotsStatusOf(r.designState) })));
 }
 
 // One picture per item: its own photo, else the newest Onshape thumbnail among the parts linked

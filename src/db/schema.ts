@@ -189,9 +189,10 @@ export const parts = pgTable(
     boxQty: integer("box_qty"),
 
     // COTS: product pages, the average price of one at the quantity needed (US dollars), the COTS
-    // page's filter box (config/cots.ts; guessed from the name while null) and how many are in stock.
+    // page's filter box and how many are in stock.
     cotsLinks: jsonb("cots_links").$type<CotsLink[]>().notNull().default([]),
     unitPrice: real("unit_price"),
+    // An inventory category id (inventory_categories); a linked item's category wins over it.
     cotsCategory: text("cots_category"),
     stockCount: integer("stock_count").notNull().default(0),
     // Why the Order List sent the part back to Released; cleared when it is sent to order again.
@@ -200,6 +201,9 @@ export const parts = pgTable(
     // the COTS page's In Stock sections (they also drop it a week after it arrived).
     cotsInStockAt: timestamp("cots_in_stock_at", { withTimezone: true }),
     cotsClearedAt: timestamp("cots_cleared_at", { withTimezone: true }),
+    // A COTS card Inventory sent to Released to refill the shelf (its item was short): it orders
+    // stock, it isn't a part a robot uses, so it never counts in the robots' need.
+    restock: boolean("restock").notNull().default(false),
 
     overriddenFields: text("overridden_fields").array().notNull().default(sql`'{}'::text[]`),
 
@@ -572,6 +576,7 @@ export const inventoryCategories = pgTable("inventory_categories", {
   label: text("label").notNull(),
   noun: text("noun").notNull().default(""), // ends the built name: "36T HTD 5mm Pulley"
   position: integer("position").notNull().default(0),
+  group: text("group").notNull().default("general"), // CATEGORY_GROUPS in config/inventory.ts
   // Counted in whole sheets and pieces of one (¼ ⅓ ½ ⅔ ¾).
   sheet: boolean("sheet").notNull().default(false),
   image: text("image"), // R2 key of the category's picture (the Inventory home box)
@@ -592,6 +597,9 @@ export const inventoryItems = pgTable("inventory_items", {
   locationId: uuid("location_id").references(() => inventoryLocations.id, { onDelete: "set null" }),
   // Whole units; an item in a sheet category also holds pieces, in twelfths of a sheet.
   inStock: doublePrecision("in_stock").notNull().default(0),
+  // How many the team wants on the shelf for the season, whatever the robots use (Harel,
+  // 2026-10-27). Null: no season need. Sheet items take pieces like in_stock.
+  seasonNeed: doublePrecision("season_need"),
   imagePath: text("image_path"),
   price: real("price"),
   // The Onshape library part (did:eid:partId) it was first linked to: new BOM parts with the same

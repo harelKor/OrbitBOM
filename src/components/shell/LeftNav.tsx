@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
+import { CATEGORY_GROUPS } from "@/config/inventory";
 import { MACHINES } from "@/config/machines";
 import type { ShellRobot } from "@/lib/data/shell";
 import { SignOutButton } from "@/components/SignOutButton";
@@ -15,15 +16,14 @@ export function LeftNav({
   robots,
   lastRobotId,
   member,
-  inventoryCategories,
 }: {
   robots: ShellRobot[];
-  inventoryCategories: { id: string; label: string }[];
   lastRobotId: string | null;
   member: { name: string; email: string; isAdmin: boolean };
 }) {
   const { pathname, robot } = useRobotContext(robots, lastRobotId);
-  const machine = useSearchParams().get("machine");
+  const query = useSearchParams();
+  const machine = query.get("machine");
   const base = robot ? `/robots/${robot.id}` : null;
   const onFab = !!base && pathname.startsWith(`${base}/fab`);
   const [toggled, setToggled] = useState<boolean | null>(null);
@@ -126,7 +126,7 @@ export function LeftNav({
                   key={l.href}
                   href={l.href}
                   className={`press flex items-center gap-2 rounded-md px-2 py-1 text-xs ${
-                    pathname === l.href ? "bg-accent/15 text-white" : "text-fg-2 hover:bg-raised hover:text-fg"
+                    pathname === "/inventory" && `/inventory?${query.toString()}` === l.href ? "bg-accent/15 text-white" : "text-fg-2 hover:bg-raised hover:text-fg"
                   }`}
                 >
                   {l.name}
@@ -151,8 +151,12 @@ export function LeftNav({
           </div>
           {inventoryOpen && (
             <div className="mt-0.5 mb-1 ml-5 space-y-px border-l border-line pl-2">
-              {[{ href: "/inventory/short", name: "Short for robots" }, ...inventoryCategories.map((c) => ({ href: `/inventory/c/${c.id}`, name: c.label }))].map((l) => (
-                <FastLink
+              {[
+                { href: "/inventory?view=season", name: "Short for season" },
+                { href: "/inventory?view=robots", name: "Short for robots" },
+                ...CATEGORY_GROUPS.map((g) => ({ href: `/inventory?group=${g.id}`, name: g.label })),
+              ].map((l) => (
+                <ShallowLink
                   key={l.href}
                   href={l.href}
                   className={`press flex items-center gap-2 rounded-md px-2 py-1 text-xs ${
@@ -160,7 +164,7 @@ export function LeftNav({
                   }`}
                 >
                   {l.name}
-                </FastLink>
+                </ShallowLink>
               ))}
             </div>
           )}

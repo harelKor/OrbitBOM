@@ -4,7 +4,7 @@ import type { InvCategory } from "./categories";
 import { buildName } from "./categories";
 import { parseQuick } from "./quick";
 
-const cats: InvCategory[] = DEFAULT_CATEGORIES.map((c) => ({ id: c.id, label: c.label, noun: c.noun, sheet: !!c.sheet, image: null, defaultLocationId: null, fields: c.fields }));
+const cats: InvCategory[] = DEFAULT_CATEGORIES.map((c) => ({ id: c.id, label: c.label, noun: c.noun, group: c.group, sheet: !!c.sheet, image: null, defaultLocationId: null, fields: c.fields }));
 const pulleys = cats.find((c) => c.id === "pulleys")!;
 
 describe("parseQuick", () => {

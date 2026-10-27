@@ -111,4 +111,16 @@ else
       await db.delete(schema.parts).where(eq(schema.parts.id, loose2.id));
       await db.delete(schema.inventoryItems).where(eq(schema.inventoryItems.id, kraken.id));
     });
+    it("keeps a restock card out of the robots' need and puts its whole order on the shelf", async () => {
+      const [screw] = await db.insert(schema.inventoryItems).values({ name: "Restock test item", inStock: 1, seasonNeed: 5 }).returning();
+      const [card] = await db
+        .insert(schema.parts)
+        .values({ systemId: null, robotId: null, isManual: true, displayName: screw.name, classification: "cots" as const, inventoryItemId: screw.id, quantity: 4, restock: true, designState: "In Order List" })
+        .returning();
+      expect((await usageOf([screw.id])).usage.get(screw.id)).toBeUndefined();
+      await applyPartChanges([card.id], { status: "In Stock" }, ctx);
+      expect(await stock(screw.id)).toBe(5);
+      await db.delete(schema.parts).where(eq(schema.parts.id, card.id));
+      await db.delete(schema.inventoryItems).where(eq(schema.inventoryItems.id, screw.id));
+    });
   });

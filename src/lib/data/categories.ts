@@ -1,7 +1,7 @@
 import "server-only";
 import { asc } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { DEFAULT_CATEGORIES } from "@/config/inventory";
+import { DEFAULT_CATEGORIES, groupOf } from "@/config/inventory";
 import type { InvCategory } from "@/lib/inventory/categories";
 
 const { inventoryCategories } = schema;
@@ -14,9 +14,9 @@ export async function listCategories(exec: Exec = db): Promise<InvCategory[]> {
   if (!rows.length) {
     await exec
       .insert(inventoryCategories)
-      .values(DEFAULT_CATEGORIES.map((c, i) => ({ id: c.id, label: c.label, noun: c.noun, sheet: !!c.sheet, position: i, fields: c.fields })))
+      .values(DEFAULT_CATEGORIES.map((c, i) => ({ id: c.id, label: c.label, noun: c.noun, group: c.group, sheet: !!c.sheet, position: i, fields: c.fields })))
       .onConflictDoNothing();
     rows = await exec.select().from(inventoryCategories).orderBy(asc(inventoryCategories.position), asc(inventoryCategories.label));
   }
-  return rows.map((r) => ({ id: r.id, label: r.label, noun: r.noun, sheet: r.sheet, image: r.image, defaultLocationId: r.defaultLocationId, fields: r.fields }));
+  return rows.map((r) => ({ id: r.id, label: r.label, noun: r.noun, group: groupOf(r.group), sheet: r.sheet, image: r.image, defaultLocationId: r.defaultLocationId, fields: r.fields }));
 }
