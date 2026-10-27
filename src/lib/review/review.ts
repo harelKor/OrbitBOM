@@ -368,6 +368,13 @@ export async function listAiLogs(limit = 100): Promise<AiLog[]> {
   });
 }
 
+// The card's X: off To Review, nothing applied or put back (a waiting link is dropped).
+export async function dismissReviews(partIds: string[]) {
+  if (!partIds.length) return 0;
+  const rows = await db.delete(partReviews).where(inArray(partReviews.partId, partIds)).returning({ id: partReviews.partId });
+  return rows.length;
+}
+
 // Approve keeps the suggestion, makes the changes that were waiting (an inventory link), and
 // takes the part off To Review.
 export async function approveReviews(partIds: string[], memberId: string | null = null) {

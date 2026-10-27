@@ -2,7 +2,16 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { getMachine } from "@/config/machines";
-import { approveInventory, approveParts, rejectInventory, rejectParts, suggestSetup, type ActionResult } from "@/app/(app)/robots/[robotId]/review/actions";
+import {
+  approveInventory,
+  approveParts,
+  dismissInventory,
+  dismissParts,
+  rejectInventory,
+  rejectParts,
+  suggestSetup,
+  type ActionResult,
+} from "@/app/(app)/robots/[robotId]/review/actions";
 import { matchesTopBar } from "@/components/bom/filter";
 import { partTitle, type CardPart } from "@/components/bom/types";
 import { useFilters } from "@/components/shell/FilterContext";
@@ -93,7 +102,7 @@ const decidedParts = new Set<string>();
 const decidedInventory = new Set<string>();
 
 // Hides decided ids at once and sends the decision; on a failure they come back with the error.
-function useDecisions(decided: Set<string>, listed: string[], send: (ids: string[], approve: boolean) => Promise<ActionResult>, onNote: (n: ActionResult | null) => void) {
+function useDecisions(decided: Set<string>, listed: string[], send: (ids: string[], approve: Decision) => Promise<ActionResult>, onNote: (n: ActionResult | null) => void) {
   const [gone, setGone] = useState<ReadonlySet<string>>(() => new Set(listed.filter((id) => decided.has(id))));
   const [, startDecide] = useTransition(); // decisions don't lock the other buttons
   // New props: forget the ids the server no longer lists (adjusting state while rendering).
@@ -112,7 +121,7 @@ function useDecisions(decided: Set<string>, listed: string[], send: (ids: string
     for (const id of ids) decided.delete(id);
     setGone((g) => new Set([...g].filter((id) => !ids.includes(id))));
   };
-  const decide = (ids: string[], approve: boolean) => {
+  const decide = (ids: string[], approve: Decision) => {
     onNote(null);
     for (const id of ids) decided.add(id);
     setGone((g) => new Set([...g, ...ids]));
@@ -129,6 +138,9 @@ function useDecisions(decided: Set<string>, listed: string[], send: (ids: string
   };
   return { gone, decide };
 }
+
+// true approves, false rejects; "dismiss" (the card's X) only takes the request off To Review.
+type Decision = boolean | "dismiss";
 
 const machinesOf = (p: CardPart) => [p.preProcess, p.process1, p.process2].filter((m): m is string => !!m);
 
@@ -147,13 +159,13 @@ export function ReviewView({ robotId, items, inventory }: { robotId: string; ite
   const parts = useDecisions(
     decidedParts,
     items.map((i) => i.part.id),
-    (ids, approve) => (approve ? approveParts(ids) : rejectParts(ids)),
+    (ids, approve) => (approve === "dismiss" ? dismissParts(ids) : approve ? approveParts(ids) : rejectParts(ids)),
     setNote,
   );
   const inv = useDecisions(
     decidedInventory,
     inventory.map((i) => i.id),
-    (ids, approve) => (approve ? approveInventory(ids) : rejectInventory(ids)),
+    (ids, approve) => (approve === "dismiss" ? dismissInventory(ids) : approve ? approveInventory(ids) : rejectInventory(ids)),
     setNote,
   );
   const decide = parts.decide;
@@ -256,7 +268,7 @@ function BulkButtons({
   count: number;
   what: string;
   disabled: boolean;
-  onDecide: (ids: string[], approve: boolean) => void;
+  onDecide: (ids: string[], approve: Decision) => void;
   filtered?: boolean;
   undoes?: string;
 }) {
@@ -289,7 +301,7 @@ function BatchSection({
   system: string;
   batch: Batch;
   pending: boolean;
-  onDecide: (ids: string[], approve: boolean) => void;
+  onDecide: (ids: string[], approve: Decision) => void;
 }) {
   const [open, setOpen] = useState(true);
   const [material, setMaterial] = useState("");
@@ -346,7 +358,23 @@ function BatchSection({
 
 const pill = "max-w-full truncate rounded-full border px-2 py-0.5 text-[11px] font-medium";
 
-function ReviewCard({ item, disabled, onDecide }: { item: ReviewItem; disabled: boolean; onDecide: (approve: boolean) => void }) {
+// The card's X: takes the request off To Review, neither approving nor rejecting it.
+function DismissButton({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label="Remove from To Review"
+      title="Remove from To Review (keep things as they are now, without approving or rejecting)"
+      className="press -mr-1 shrink-0 rounded p-1 text-subtle hover:bg-raised hover:text-fg active:scale-[0.98]"
+    >
+      <Icon name="close" className="h-3.5 w-3.5" />
+    </button>
+  );
+}
+
+function ReviewCard({ item, disabled, onDecide }: { item: ReviewItem; disabled: boolean; onDecide: (approve: Decision) => void }) {
   const { part } = item;
   const fields = ORDER.filter((f) => f in item.changes);
   return (
@@ -373,10 +401,11 @@ function ReviewCard({ item, disabled, onDecide }: { item: ReviewItem; disabled: 
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col gap-2 p-3">
-        <div className="flex min-w-0 items-baseline gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <div className="min-w-0 flex-1 truncate font-semibold text-fg" title={partTitle(part)}>
             {part.displayName ?? part.onshapeName ?? "Unnamed part"}
           </div>
+          <DismissButton onClick={() => onDecide("dismiss")} disabled={disabled} />
         </div>
 
         <ul className="space-y-1">
@@ -417,7 +446,7 @@ const INVENTORY_UNDO = "Items get their old values back and new categories are r
 
 // To Review's Inventory box: a Claude's edits to existing items and the categories it added,
 // split by category. Approve keeps a change (it is already applied); Reject puts it back.
-function InventorySection({ reviews, onDecide }: { reviews: InventoryReview[]; onDecide: (ids: string[], approve: boolean) => void }) {
+function InventorySection({ reviews, onDecide }: { reviews: InventoryReview[]; onDecide: (ids: string[], approve: Decision) => void }) {
   const groups = new Map<string, { label: string; reviews: InventoryReview[] }>();
   for (const r of reviews) {
     const g = groups.get(r.categoryId) ?? { label: r.categoryLabel, reviews: [] };
@@ -454,7 +483,7 @@ function InventorySection({ reviews, onDecide }: { reviews: InventoryReview[]; o
   );
 }
 
-function InventoryCategory({ label, reviews, onDecide }: { label: string; reviews: InventoryReview[]; onDecide: (ids: string[], approve: boolean) => void }) {
+function InventoryCategory({ label, reviews, onDecide }: { label: string; reviews: InventoryReview[]; onDecide: (ids: string[], approve: Decision) => void }) {
   const [open, setOpen] = useState(true);
   const n = reviews.length;
   return (
@@ -485,7 +514,7 @@ function InventoryCategory({ label, reviews, onDecide }: { label: string; review
   );
 }
 
-function InventoryCard({ review, onDecide }: { review: InventoryReview; onDecide: (approve: boolean) => void }) {
+function InventoryCard({ review, onDecide }: { review: InventoryReview; onDecide: (approve: Decision) => void }) {
   return (
     <div className="card-interactive flex flex-col gap-2 p-3 text-sm">
       <div className="flex min-w-0 items-center gap-2">
@@ -496,6 +525,7 @@ function InventoryCard({ review, onDecide }: { review: InventoryReview; onDecide
         <span className="max-w-[45%] shrink-0 truncate rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold tracking-wide text-white" title={`By ${review.aiName ?? "a member's Claude"}`}>
           {review.aiName ?? "AI"}
         </span>
+        <DismissButton onClick={() => onDecide("dismiss")} />
       </div>
       <ul className="space-y-1">
         {review.changes.map((c) => (

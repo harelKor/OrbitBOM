@@ -218,6 +218,10 @@ async function removeCategory(tx: Tx, categoryId: string, ctx: MoveCtx) {
   await tx.delete(inventoryCategories).where(eq(inventoryCategories.id, categoryId));
 }
 
+// The card's X: off To Review as it is now. An item edit or new category is already applied, so
+// this keeps it, like Approve, without counting as one.
+export const dismissInventoryReviews = approveInventoryReviews;
+
 // Reject puts an item's old values back, or removes a new category, and takes it off To Review.
 export async function rejectInventoryReviews(ids: string[], memberId: string) {
   if (!ids.length) return { rejected: 0, keptEdits: 0 };

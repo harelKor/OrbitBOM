@@ -2,8 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { requireMember } from "@/lib/auth";
-import { approveInventoryReviews, rejectInventoryReviews } from "@/lib/review/inventory";
-import { approveReviews, rejectReviews, suggestRobotSetups } from "@/lib/review/review";
+import { approveInventoryReviews, dismissInventoryReviews, rejectInventoryReviews } from "@/lib/review/inventory";
+import { approveReviews, dismissReviews, rejectReviews, suggestRobotSetups } from "@/lib/review/review";
 import { isUuid } from "@/lib/uuid";
 
 export type ActionResult = { error?: string; message?: string };
@@ -28,6 +28,24 @@ export async function rejectParts(partIds: string[]): Promise<ActionResult> {
   const { keptEdits } = await rejectReviews(partIds, member.id);
   refresh();
   return keptEdits ? { message: `Put back the suggestion. ${keptEdits} field${keptEdits === 1 ? " was" : "s were"} edited since and kept as edited.` } : {};
+}
+
+// The card's X: the part leaves To Review as it is now. A link waiting for Approve isn't made,
+// and isn't remembered as rejected either.
+export async function dismissParts(partIds: string[]): Promise<ActionResult> {
+  await requireMember();
+  if (partIds.some((id) => !isUuid(id))) return { error: "Unknown part." };
+  await dismissReviews(partIds);
+  refresh();
+  return {};
+}
+
+export async function dismissInventory(ids: string[]): Promise<ActionResult> {
+  await requireMember();
+  if (ids.some((id) => !isUuid(id))) return { error: "Unknown change." };
+  await dismissInventoryReviews(ids);
+  refresh();
+  return {};
 }
 
 // To Review's Inventory section: a Claude's edits to items and new categories.
