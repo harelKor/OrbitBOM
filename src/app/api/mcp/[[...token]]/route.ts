@@ -17,7 +17,11 @@ const INSTRUCTIONS =
   "Every applied change returns a batch_id that undo_batch can revert. " +
   "To set up parts' material and processes yourself, read parts_to_set_up and apply with set_up_parts: those parts wait in To Review for their designer, as do parts changed with update_parts or set_cots_info. " +
   "To fill in COTS parts' official names, product links and prices, read cots_parts_to_look_up, search FRCDesign.org and the vendors' sites, and apply with set_cots_info. " +
-  "Inventory: every active robot shares one shelf. Link COTS parts to items with inventory_to_link and link_inventory, see what to buy with inventory_shortages, add items in bulk with add_inventory_items, and fill in specs with inventory_to_look_up and set_inventory_info (categories and their fields come from list_inventory_categories). The site suggests links from BOM parts to items (auto-link); like yours, they wait in To Review until a member approves.";
+  "Inventory: every active robot shares one shelf. Link COTS parts to items with inventory_to_link and link_inventory, see what to buy with inventory_shortages, add items in bulk with add_inventory_items, and fill in specs with inventory_to_look_up and set_inventory_info (categories and their fields come from list_inventory_categories). " +
+  "New items are added at once and show in AI logs. set_inventory_info also renames items and moves them to another category or location, so you can clean up a messy inventory; those edits to existing items wait in To Review's Inventory section until a member approves (Reject puts the old values back). " +
+  "When items fit no category, add one with add_inventory_category (it waits in To Review too). " +
+  "The site suggests links from BOM parts to items (auto-link); like yours, they wait in To Review until a member approves. " +
+  "Members can revert any of your runs from the AI logs page.";
 
 type Rpc = { jsonrpc: "2.0"; id?: string | number | null; method: string; params?: Record<string, unknown> };
 

@@ -371,9 +371,11 @@ export const aiLogs = pgTable(
     aiName: text("ai_name"),
     summary: text("summary").notNull(),
     parts: integer("parts"),
+    // When a member pressed Revert change on the AI logs page.
+    revertedAt: timestamp("reverted_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
-  (t) => [index("ai_logs_created_idx").on(t.createdAt)],
+  (t) => [index("ai_logs_created_idx").on(t.createdAt), index("ai_logs_batch_idx").on(t.batchId)],
 );
 
 export const changeVia = pgEnum("change_via", ["ui", "sync", "mcp"]);
@@ -582,6 +584,8 @@ export const inventoryCategories = pgTable("inventory_categories", {
   image: text("image"), // R2 key of the category's picture (the Inventory home box)
   defaultLocationId: uuid("default_location_id").references(() => inventoryLocations.id, { onDelete: "set null" }),
   fields: jsonb("fields").$type<CategoryField[]>().notNull().default([]),
+  // The AI run that added the category (add_inventory_category), so its Revert removes it.
+  batchId: uuid("batch_id"),
 });
 
 export const inventoryItems = pgTable("inventory_items", {
@@ -667,12 +671,39 @@ export const inventoryItemHistory = pgTable(
     memberId: uuid("member_id").references(() => members.id, { onDelete: "set null" }),
     via: changeVia("via").notNull(),
     aiName: text("ai_name"),
+    // The MCP run that made the change, for AI logs and their Revert.
+    batchId: uuid("batch_id"),
     visitId: uuid("visit_id"),
     page: text("page"),
     at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("inventory_item_history_item_idx").on(t.itemId, t.at), index("inventory_item_history_visit_idx").on(t.visitId)],
+  (t) => [
+    index("inventory_item_history_item_idx").on(t.itemId, t.at),
+    index("inventory_item_history_visit_idx").on(t.visitId),
+    index("inventory_item_history_batch_idx").on(t.batchId),
+  ],
 );
+
+// To Review's Inventory section (Harel, 2026-10-27): a member's Claude editing an existing item
+// (applied at once, Reject puts the old values back) or adding a category (Reject removes it).
+// New items don't wait here; they show in AI logs.
+export const inventoryReviews = pgTable("inventory_reviews", {
+  id: id(),
+  kind: text("kind").$type<"item" | "category">().notNull(),
+  itemId: uuid("item_id")
+    .unique()
+    .references(() => inventoryItems.id, { onDelete: "cascade" }),
+  categoryId: text("category_id")
+    .unique()
+    .references(() => inventoryCategories.id, { onDelete: "cascade" }),
+  // An item's changed fields with their value before and after (inventory_item_history's names).
+  changes: jsonb("changes").$type<Record<string, { from: unknown; to: unknown }>>().notNull().default({}),
+  reason: text("reason"),
+  memberId: uuid("member_id").references(() => members.id, { onDelete: "set null" }),
+  batchId: uuid("batch_id"),
+  aiName: text("ai_name"),
+  createdAt: createdAt(),
+});
 
 // ---------- Onshape ----------
 

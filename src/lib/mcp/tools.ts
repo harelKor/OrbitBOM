@@ -12,11 +12,13 @@ import type { Member } from "@/lib/auth";
 import { vendorOfUrl } from "@/config/vendors";
 import { listInventory } from "@/lib/data/inventory";
 import { autoLink, findLinks, writePendingLinks } from "@/lib/inventory/autolink";
-import { pushItemToCards } from "@/lib/inventory/cotsSync";
-import { checkSpecs, fieldChoices, getCategory, type InvCategory } from "@/lib/inventory/categories";
+import { checkSpecs, fieldChoices, getCategory, slugify, type InvCategory } from "@/lib/inventory/categories";
+import { recordItemChanges } from "@/lib/inventory/history";
+import { CATEGORY_GROUPS, isCategoryGroup } from "@/config/inventory";
+import { addCategoryForReview, applyItemEdits } from "@/lib/review/inventory";
 import { listCategories } from "@/lib/data/categories";
 import { cotsCategories } from "@/lib/data/parts";
-import { moveStock, undoMoves } from "@/lib/inventory/moves";
+import { moveStock } from "@/lib/inventory/moves";
 import { hasSeasonNeed, missing } from "@/lib/inventory/season";
 import { formatStock } from "@/lib/inventory/stock";
 import { listRobots } from "@/lib/data/robots";
@@ -25,13 +27,13 @@ import { refreshThumbnails } from "@/lib/onshape/thumbnails";
 import { applyEachPartChanges, applyPartChanges } from "@/lib/parts/apply";
 import { groupSameCots } from "@/lib/cots";
 import { partChangesSchema, planPartUpdate, type PartChanges } from "@/lib/parts/changes";
-import { applyUndo, planUndo } from "@/lib/parts/undo";
-import { applySuggestions, logAiAction, partsToSetUp } from "@/lib/review/review";
+import { planUndo } from "@/lib/parts/undo";
+import { applySuggestions, logAiAction, partsToSetUp, revertAiBatch } from "@/lib/review/review";
 import { computeStatus } from "@/lib/status";
 import { statusBreakdown } from "@/lib/stats";
 import { updateBomFromOnshape } from "@/lib/sync/updateBom";
 import { checkConfirmToken, confirmToken } from "./confirm";
-import type { CotsLink, DrawingEdits } from "@/db/schema";
+import type { DrawingEdits } from "@/db/schema";
 import { loadDrawing, makeDrawings } from "@/lib/drawing/make";
 import { MARGIN, partDrawing } from "@/lib/drawing/layout";
 import { drawingSummary } from "@/lib/drawing/summary";
@@ -457,26 +459,32 @@ write(
 
 write(
   "undo_batch",
-  "Revert every change in a batch (from update_parts, set_group_status or the UI). Fields edited again since are left alone.",
+  "Revert every change in a batch (from any write tool or the UI): part fields, inventory item edits, stock, and items or categories it added (those are removed). Fields edited again since are left alone. The AI logs page's Revert change does the same.",
   z.object({ batch_id: uuid }),
   async ({ batch_id }, { member }) => {
-    const [plan, moves] = await Promise.all([
+    const [plan, moves, itemEdits, cats] = await Promise.all([
       planUndo(batch_id),
       db.select({ itemId: inventoryMoves.itemId, delta: inventoryMoves.delta }).from(inventoryMoves).where(eq(inventoryMoves.batchId, batch_id)),
+      db
+        .select({ itemId: schema.inventoryItemHistory.itemId, field: schema.inventoryItemHistory.field })
+        .from(schema.inventoryItemHistory)
+        .where(eq(schema.inventoryItemHistory.batchId, batch_id)),
+      db.select({ id: schema.inventoryCategories.id }).from(schema.inventoryCategories).where(eq(schema.inventoryCategories.batchId, batch_id)),
     ]);
-    if (!plan && !moves.length) throw new ToolError("No changes with that batch id.");
+    if (!plan && !moves.length && !itemEdits.length && !cats.length) throw new ToolError("No changes with that batch id.");
     const reverts = plan?.reverts ?? [];
     return {
-      count: new Set(reverts.map((r) => r.partId)).size + moves.length,
+      count: new Set(reverts.map((r) => r.partId)).size + moves.length + new Set(itemEdits.map((e) => e.itemId)).size + cats.length,
       preview: {
         revert: reverts.map((r) => ({ part_id: r.partId, field: r.field, from: r.from, to: r.to })),
         left_alone_because_edited_since: (plan?.skipped ?? []).map((r) => ({ part_id: r.partId, field: r.field })),
         stock: moves.map((m) => ({ item_id: m.itemId, take_back: m.delta })),
+        inventory_items: itemEdits.map((e) => ({ item_id: e.itemId, revert: e.field === "created" ? "remove the item" : e.field })),
+        remove_categories: cats.map((c) => c.id),
       },
       apply: async () => {
-        const undoBatch = reverts.length ? await applyUndo(reverts, member.id, "mcp") : randomUUID();
-        const stock = moves.length ? await db.transaction((tx) => undoMoves(tx, batch_id, { memberId: member.id, via: "mcp", batchId: undoBatch })) : 0;
-        return { batch_id: undoBatch, reverted: reverts.length, stock_moves_reverted: stock };
+        const r = await revertAiBatch(batch_id, member.id, "mcp");
+        return { batch_id: r.batchId, reverted: r.reverted, result: r.message };
       },
     };
   },
@@ -628,6 +636,7 @@ write(
   }),
   async (a, { member, aiName }) => ({
     count: 1,
+    summary: `Added ${a.name}`,
     preview: a,
     apply: async () => {
       const batchId = randomUUID();
@@ -636,11 +645,13 @@ write(
           .insert(inventoryItems)
           .values({ name: a.name, cotsLinks: a.product_url ? [{ url: a.product_url, site: vendorOfUrl(a.product_url) }] : [] })
           .returning({ id: inventoryItems.id });
-        await moveStock(tx, { itemId: item.id, delta: a.in_stock, reason: "counted" }, { memberId: member.id, via: "mcp", aiName, batchId });
+        const ctx = { memberId: member.id, via: "mcp" as const, aiName, batchId };
+        await recordItemChanges(tx, item.id, null, { name: a.name }, ctx);
+        await moveStock(tx, { itemId: item.id, delta: a.in_stock, reason: "counted" }, ctx);
         return item.id;
       });
       const auto_linked = await autoLink({ itemIds: [id] }, { memberId: member.id, via: "mcp" });
-      return { item_id: id, auto_linked };
+      return { item_id: id, batch_id: batchId, auto_linked };
     },
   }),
 );
@@ -789,7 +800,7 @@ function checkItemInfo(info: z.infer<typeof itemInfo>, current: { category: stri
 
 write(
   "add_inventory_items",
-  "Add several items to the team inventory at once, e.g. from a spreadsheet, an order email or a photo of a shelf the member shares with you. in_stock for sheet categories can have pieces (2.75 = 2 ¾ sheets). location is a shelf or bin name; a new name is created. BOM parts with the same product link or Onshape part are linked to the new items and wait in To Review.",
+  "Add several items to the team inventory at once, e.g. from a spreadsheet, an order email or a photo of a shelf the member shares with you. New items are added at once (not to To Review) and show in AI logs, where they can be reverted. in_stock for sheet categories can have pieces (2.75 = 2 ¾ sheets). location is a shelf or bin name; a new name is created. BOM parts with the same product link or Onshape part are linked to the new items and wait in To Review.",
   z.object({ items: z.array(itemInfo.extend({ name: z.string().trim().min(1).max(200), in_stock: z.number().min(0).default(0), location: z.string().trim().max(100).optional() })).min(1).max(500) }),
   async ({ items }, { member, aiName }) => {
     const cats = await listCategories();
@@ -813,7 +824,9 @@ write(
               }
             }
             const [item] = await tx.insert(inventoryItems).values({ name: p.input.name, locationId, ...p.values }).returning({ id: inventoryItems.id });
-            await moveStock(tx, { itemId: item.id, delta: p.input.in_stock, reason: "counted" }, { memberId: member.id, via: "mcp", aiName, batchId });
+            const ctx = { memberId: member.id, via: "mcp" as const, aiName, batchId };
+            await recordItemChanges(tx, item.id, null, { name: p.input.name }, ctx);
+            await moveStock(tx, { itemId: item.id, delta: p.input.in_stock, reason: "counted" }, ctx);
             out.push(item.id);
           }
           return out;
@@ -849,31 +862,117 @@ read(
 
 write(
   "set_inventory_info",
-  "Fill in inventory items' category, specs, product link, price and season need (each item can differ). Specs must use the category's fields and choices from list_inventory_categories. BOM parts with the same product link are then linked to the item and wait in To Review.",
-  z.object({ items: z.array(itemInfo.extend({ item_id: uuid })).min(1).max(500) }),
-  async ({ items }, { member }) => {
-    const [rows, cats] = await Promise.all([db.select().from(inventoryItems).where(inArray(inventoryItems.id, items.map((i) => i.item_id))), listCategories()]);
+  "Edit existing inventory items (each item can differ): rename them (name), move them to another category or location, and fill in specs, product link, price and season need. Use it to clean up messy items: clear names, the right category with its specs, one shelf per kind. Specs must use the category's fields and choices from list_inventory_categories. The changes apply at once and wait in To Review's Inventory section with your name until a member approves; Reject puts the old values back. BOM parts with the same product link are then linked to the item and wait in To Review.",
+  z.object({
+    items: z
+      .array(
+        itemInfo.extend({
+          item_id: uuid,
+          name: z.string().trim().min(1).max(200).optional().describe("A new name for the item."),
+          location: z.string().trim().min(1).max(100).optional().describe("The shelf or bin it moves to; a new name is created."),
+          reason: z.string().max(300).optional().describe("Why, shown on To Review."),
+        }),
+      )
+      .min(1)
+      .max(500),
+  }),
+  async ({ items }, { member, aiName }) => {
+    const [rows, cats, locs] = await Promise.all([
+      db.select().from(inventoryItems).where(inArray(inventoryItems.id, items.map((i) => i.item_id))),
+      listCategories(),
+      db.select().from(inventoryLocations),
+    ]);
+    const locationId = new Map(locs.map((l) => [l.name.toLowerCase(), l.id]));
+    const locationName = new Map(locs.map((l) => [l.id, l.name]));
     const planned = items.map((i) => {
       const row = rows.find((r) => r.id === i.item_id);
       if (!row) throw new ToolError(`No inventory item ${i.item_id}.`);
-      return { row, values: checkItemInfo(i, row, cats) };
+      const values: Record<string, unknown> = { ...checkItemInfo(i, row, cats) };
+      if (i.name && i.name !== row.name) values.name = i.name;
+      const loc = i.location ? (locationId.get(i.location.toLowerCase()) ?? null) : undefined;
+      const newLocation = i.location && loc === null ? i.location : null;
+      if (loc && loc !== row.locationId) values.locationId = loc;
+      return { row, values, newLocation, reason: i.reason ?? null };
     });
-    const changed = planned.filter((p) => Object.keys(p.values).length);
+    const changed = planned.filter((p) => Object.keys(p.values).length || p.newLocation);
     return {
       count: changed.length,
-      summary: `Filled in ${changed.length} inventory ${changed.length === 1 ? "item" : "items"}`,
-      preview: changed.map((p) => ({ item_id: p.row.id, item: p.row.name, set: p.values })),
+      summary: `Edited ${changed.length} inventory ${changed.length === 1 ? "item" : "items"}, waiting in To Review`,
+      preview: changed.map((p) => ({
+        item_id: p.row.id,
+        item: p.row.name,
+        set: { ...p.values, ...("locationId" in p.values ? { locationId: undefined, location: locationName.get(p.values.locationId as string) } : {}) },
+        ...(p.newLocation ? { new_location: p.newLocation } : {}),
+      })),
       apply: async () => {
-        await db.transaction(async (tx) => {
-          for (const p of changed) {
-            await tx.update(inventoryItems).set(p.values).where(eq(inventoryItems.id, p.row.id));
-            const v = p.values as { name?: string; cotsLinks?: CotsLink[]; price?: number | null };
-            await pushItemToCards(tx, p.row.id, { name: v.name, cotsLinks: v.cotsLinks, price: v.price });
+        // New shelves first, so the items can move onto them.
+        for (const p of changed) {
+          if (!p.newLocation) continue;
+          let id = locationId.get(p.newLocation.toLowerCase());
+          if (!id) {
+            [{ id }] = await db.insert(inventoryLocations).values({ name: p.newLocation }).returning({ id: inventoryLocations.id });
+            locationId.set(p.newLocation.toLowerCase(), id);
           }
-        });
+          if (id !== p.row.locationId) p.values.locationId = id;
+        }
+        const batchId = randomUUID();
+        const n = await applyItemEdits(
+          changed.map((p) => ({ itemId: p.row.id, values: p.values, reason: p.reason })),
+          { memberId: member.id, aiName: aiName ?? null, batchId },
+        );
         const linked = changed.filter((p) => "cotsLinks" in p.values).map((p) => p.row.id);
         const auto_linked = await autoLink({ itemIds: linked }, { memberId: member.id, via: "mcp" });
-        return { changed: changed.length, auto_linked };
+        return { changed: n, waiting_in_to_review: n, batch_id: batchId, auto_linked };
+      },
+    };
+  },
+);
+
+write(
+  "add_inventory_category",
+  `Add a new inventory category with its fields, when items don't fit any category in list_inventory_categories (check it first so you don't make a duplicate). It is created at once, so you can put items in it with set_inventory_info or add_inventory_items, and waits in To Review's Inventory section with your name; Reject removes it again and its items lose the category. group is one of: ${CATEGORY_GROUPS.map((g) => `${g.id} (${g.text})`).join(", ")}.`,
+  z.object({
+    label: z.string().trim().min(1).max(60).describe("Plural name, e.g. 'Pulleys'."),
+    noun: z.string().trim().max(40).optional().describe("Ends an item's built name, e.g. 'Pulley' in '36T HTD 5mm Pulley'. Defaults to the label without a final s."),
+    group: z.string().refine(isCategoryGroup, "Unknown group.").describe("The Inventory home group."),
+    sheet: z.boolean().optional().describe("Counted in whole sheets and pieces of one (plates, sheet stock)."),
+    fields: z
+      .array(
+        z.object({
+          label: z.string().trim().min(1).max(60).describe("e.g. 'Teeth'."),
+          kind: z.enum(["number", "text", "options"]),
+          options: z.array(z.string().trim().min(1).max(60)).max(100).optional().describe("The choices, for kind options."),
+          name: z.string().max(40).optional().describe("How the value goes into the item's built name, '{}' standing for it ('{}T' gives '36T'); leave out to skip it."),
+        }),
+      )
+      .max(20)
+      .default([]),
+    reason: z.string().max(300).optional().describe("Why, shown on To Review."),
+  }),
+  async (a, { member, aiName }) => {
+    const cats = await listCategories();
+    const dup = cats.find((c) => c.label.toLowerCase() === a.label.toLowerCase());
+    if (dup) throw new ToolError(`There is already a category "${dup.label}" (id ${dup.id}).`);
+    let id = slugify(a.label);
+    for (let n = 2; cats.some((c) => c.id === id); n++) id = `${slugify(a.label)}-${n}`;
+    const fields = a.fields.map((f) => ({
+      id: slugify(f.label),
+      label: f.label,
+      kind: f.kind,
+      ...(f.kind === "options" && f.options?.length ? { options: f.options } : {}),
+      ...(f.name != null ? { name: f.name } : {}),
+    }));
+    if (new Set(fields.map((f) => f.id)).size !== fields.length) throw new ToolError("Two fields have the same name.");
+    if (fields.some((f) => f.kind === "options" && !f.options)) throw new ToolError("A field of kind options needs its options.");
+    const cat = { id, label: a.label, noun: a.noun ?? a.label.replace(/s$/i, ""), group: a.group, sheet: !!a.sheet, fields };
+    return {
+      count: 1,
+      summary: `Added the inventory category ${a.label}, waiting in To Review`,
+      preview: cat,
+      apply: async () => {
+        const batchId = randomUUID();
+        await addCategoryForReview(cat, { memberId: member.id, aiName: aiName ?? null, batchId, reason: a.reason ?? null });
+        return { category_id: id, batch_id: batchId, waiting_in_to_review: true };
       },
     };
   },

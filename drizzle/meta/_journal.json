@@ -232,6 +232,13 @@
       "when": 1793090446061,
       "tag": "0032_inventory_season",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1793116759667,
+      "tag": "0033_ai_inventory_review",
+      "breakpoints": true
     }
   ]
 }

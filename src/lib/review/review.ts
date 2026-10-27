@@ -6,10 +6,15 @@ import { db, schema } from "@/db";
 import { partKey } from "@/lib/model/assembly";
 import { builtStudios } from "@/lib/model/build";
 import { decodeMeshes } from "@/lib/model/mesh";
+import { undoMoves } from "@/lib/inventory/moves";
 import { applyEachPartChanges } from "@/lib/parts/apply";
 import type { PartChanges } from "@/lib/parts/changes";
+import { applyUndo, planUndo } from "@/lib/parts/undo";
 import { getObject, storageConfigured } from "@/lib/storage/r2";
 import { currentVisit } from "@/lib/visits";
+import { itemFieldLabel, itemValueText, locationNames, revertInventoryBatch } from "./inventory";
+import { listCategories } from "@/lib/data/categories";
+import { getCategory } from "@/lib/inventory/categories";
 import { sizeOf, suggestSetup, wallThickness, type Learned } from "./rules";
 
 const { parts, systems, partReviews, partHistory, members, aiLogs } = schema;
@@ -231,8 +236,12 @@ export async function logAiAction(entry: {
 }
 
 export type AiLogChange = { partId: string; part: string; system: string; robot: string; field: string; from: unknown; to: unknown };
+// A change the batch made to an inventory item: an edited field, "created", or "stock".
+export type AiLogItemChange = { itemId: string; item: string; category: string; field: string; label: string; from: string | null; to: string | null };
 export type AiLog = {
   id: string;
+  batchId: string | null;
+  revertedAt: string | null;
   source: ReviewSource | "manual";
   tool: string;
   aiName: string | null;
@@ -242,7 +251,9 @@ export type AiLog = {
   at: string;
   changes: AiLogChange[]; // up to CHANGES_PER_LOG, in part order
   changeCount: number;
-  waiting: number; // parts of the batch still in To Review
+  waiting: number; // parts and inventory items of the batch still in To Review
+  itemChanges: AiLogItemChange[]; // up to CHANGES_PER_LOG
+  itemChangeCount: number;
 };
 
 const CHANGES_PER_LOG = 60;
@@ -277,17 +288,64 @@ export async function listAiLogs(limit = 100): Promise<AiLog[]> {
         .where(inArray(partHistory.batchId, batchIds))
         .orderBy(asc(partHistory.at))
     : [];
-  const waiting = batchIds.length
-    ? await db
-        .select({ batchId: partReviews.batchId, n: sql<number>`count(*)::int` })
-        .from(partReviews)
-        .where(inArray(partReviews.batchId, batchIds))
-        .groupBy(partReviews.batchId)
-    : [];
+  const { inventoryItemHistory, inventoryMoves, inventoryItems, inventoryReviews } = schema;
+  const [waiting, waitingItems, itemHistory, moves, cats, locations] = batchIds.length
+    ? await Promise.all([
+        db
+          .select({ batchId: partReviews.batchId, n: sql<number>`count(*)::int` })
+          .from(partReviews)
+          .where(inArray(partReviews.batchId, batchIds))
+          .groupBy(partReviews.batchId),
+        db
+          .select({ batchId: inventoryReviews.batchId, n: sql<number>`count(*)::int` })
+          .from(inventoryReviews)
+          .where(inArray(inventoryReviews.batchId, batchIds))
+          .groupBy(inventoryReviews.batchId),
+        db
+          .select({ h: inventoryItemHistory, name: inventoryItems.name, category: inventoryItems.category })
+          .from(inventoryItemHistory)
+          .innerJoin(inventoryItems, eq(inventoryItems.id, inventoryItemHistory.itemId))
+          .where(inArray(inventoryItemHistory.batchId, batchIds))
+          .orderBy(asc(inventoryItemHistory.at)),
+        db
+          .select({ m: inventoryMoves, name: inventoryItems.name, category: inventoryItems.category })
+          .from(inventoryMoves)
+          .innerJoin(inventoryItems, eq(inventoryItems.id, inventoryMoves.itemId))
+          .where(inArray(inventoryMoves.batchId, batchIds))
+          .orderBy(asc(inventoryMoves.at)),
+        listCategories(),
+        locationNames(),
+      ])
+    : [[], [], [], [], [], new Map<string, string>()];
+  const catLabel = (id: string | null) => getCategory(cats, id)?.label ?? "No category";
+  const itemChanges = new Map<string, AiLogItemChange[]>();
+  const addItemChange = (batchId: string | null, c: AiLogItemChange) => {
+    if (batchId) itemChanges.set(batchId, [...(itemChanges.get(batchId) ?? []), c]);
+  };
+  for (const { h, name, category } of itemHistory) {
+    const ctx = { cats, locations, category };
+    addItemChange(h.batchId, {
+      itemId: h.itemId,
+      item: name,
+      category: catLabel(category),
+      field: h.field,
+      label: h.field === "created" ? "Added" : itemFieldLabel(h.field),
+      from: h.field === "created" ? null : itemValueText(h.field, h.oldValue, ctx),
+      to: h.field === "created" ? String(h.newValue ?? name) : itemValueText(h.field, h.newValue, ctx),
+    });
+  }
+  for (const { m, name, category } of moves) {
+    addItemChange(m.batchId, { itemId: m.itemId, item: name, category: catLabel(category), field: "stock", label: "Stock", from: null, to: `${m.delta > 0 ? "+" : ""}${m.delta}` });
+  }
   return logs.map(({ log, memberName }) => {
     const mine = history.filter((h) => h.batchId === log.batchId);
+    const items = (log.batchId && itemChanges.get(log.batchId)) || [];
     return {
       id: log.id,
+      batchId: log.batchId,
+      revertedAt: log.revertedAt?.toISOString() ?? null,
+      itemChanges: items.slice(0, CHANGES_PER_LOG),
+      itemChangeCount: items.length,
       source: log.source,
       tool: log.tool,
       aiName: log.aiName,
@@ -296,7 +354,7 @@ export async function listAiLogs(limit = 100): Promise<AiLog[]> {
       parts: log.parts,
       at: log.createdAt.toISOString(),
       changeCount: mine.length,
-      waiting: waiting.find((w) => w.batchId === log.batchId)?.n ?? 0,
+      waiting: (waiting.find((w) => w.batchId === log.batchId)?.n ?? 0) + (waitingItems.find((w) => w.batchId === log.batchId)?.n ?? 0),
       changes: mine.slice(0, CHANGES_PER_LOG).map((h) => ({
         partId: h.partId,
         part: [h.partNumber, h.name ?? h.onshapeName ?? "Unnamed part"].filter(Boolean).join(" "),
@@ -315,9 +373,35 @@ export async function listAiLogs(limit = 100): Promise<AiLog[]> {
 export async function approveReviews(partIds: string[], memberId: string | null = null) {
   if (!partIds.length) return 0;
   const rows = await db.delete(partReviews).where(inArray(partReviews.partId, partIds)).returning({ id: partReviews.partId, pending: partReviews.pending });
-  const waiting = rows.filter((r) => Object.keys(r.pending).length);
-  if (waiting.length) await applyEachPartChanges(waiting.map((r) => ({ id: r.id, changes: r.pending as PartChanges })), { memberId, via: "ui" });
+  // A suggested link to an item deleted since can't be made; the rest of the review still is.
+  const live = await liveItems(rows.flatMap((r) => [r.pending.inventoryItemId]));
+  const waiting = rows.flatMap((r) => {
+    const changes = { ...r.pending } as PartChanges;
+    if (typeof changes.inventoryItemId === "string" && !live.has(changes.inventoryItemId)) delete changes.inventoryItemId;
+    return Object.keys(changes).length ? [{ id: r.id, changes }] : [];
+  });
+  if (waiting.length) await applyEachPartChanges(waiting, { memberId, via: "ui" });
   return rows.length;
+}
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+// Which of these inventory item ids still exist.
+async function liveItems(ids: unknown[], exec: Tx | typeof db = db) {
+  const wanted = [...new Set(ids.filter((v): v is string => typeof v === "string"))];
+  if (!wanted.length) return new Set<string>();
+  const rows = await exec.select({ id: schema.inventoryItems.id }).from(schema.inventoryItems).where(inArray(schema.inventoryItems.id, wanted));
+  return new Set(rows.map((r) => r.id));
+}
+
+// The value Reject writes back: never null into a column that can't hold it, never a link to an
+// item deleted since.
+function restorable(field: string, from: unknown, live: Set<string>) {
+  if (field === "cotsLinks") return from ?? [];
+  if (field === "classification") return from ?? "undefined";
+  if (field === "priority") return from ?? "normal";
+  if (field === "inventoryItemId") return typeof from === "string" && live.has(from) ? from : null;
+  return from ?? null;
 }
 
 // Reject puts every suggested field back, except one someone edited since, and takes the part
@@ -335,11 +419,19 @@ export async function rejectReviews(partIds: string[], memberId: string) {
       .for("update");
     let keptEdits = 0;
     const history: (typeof partHistory.$inferInsert)[] = [];
-    // A rejected inventory link isn't suggested again.
-    const noLinks = rows.flatMap(({ review }) =>
-      [review.pending.inventoryItemId, review.changes.inventoryItemId?.to].flatMap((itemId) => (typeof itemId === "string" ? [{ partId: review.partId, itemId, memberId }] : [])),
+    // A rejected inventory link isn't suggested again. Links to items deleted since are skipped
+    // (they broke the whole Reject on the rejections' foreign key), and each pair goes in once.
+    const live = await liveItems(
+      rows.flatMap(({ review }) => [review.pending.inventoryItemId, review.changes.inventoryItemId?.to, review.changes.inventoryItemId?.from]),
+      tx,
     );
-    if (noLinks.length) await tx.insert(schema.inventoryLinkRejections).values(noLinks).onConflictDoNothing();
+    const noLinks = new Map<string, { partId: string; itemId: string; memberId: string }>();
+    for (const { review } of rows) {
+      for (const itemId of [review.pending.inventoryItemId, review.changes.inventoryItemId?.to]) {
+        if (typeof itemId === "string" && live.has(itemId)) noLinks.set(`${review.partId}:${itemId}`, { partId: review.partId, itemId, memberId });
+      }
+    }
+    if (noLinks.size) await tx.insert(schema.inventoryLinkRejections).values([...noLinks.values()]).onConflictDoNothing();
     for (const { review, part } of rows) {
       const current = part as unknown as Record<string, unknown>;
       const reverted = Object.entries(review.changes).filter(([field, c]) => {
@@ -352,13 +444,13 @@ export async function rejectReviews(partIds: string[], memberId: string) {
         await tx
           .update(parts)
           .set({
-            ...Object.fromEntries(reverted.map(([f, c]) => [f, c.from])),
+            ...Object.fromEntries(reverted.map(([f, c]) => [f, restorable(f, c.from, live)])),
             overriddenFields: part.overriddenFields.filter((f) => !(fields.has(f) && review.addedOverrides.includes(f))),
             lastModifiedAt: new Date(),
             lastModifiedBy: memberId,
           })
           .where(eq(parts.id, part.id));
-        history.push(...reverted.map(([field, c]) => ({ partId: part.id, field, oldValue: c.to, newValue: c.from, memberId, via: "ui" as const, batchId, visitId: visit?.id, page: visit?.page })));
+        history.push(...reverted.map(([field, c]) => ({ partId: part.id, field, oldValue: c.to, newValue: restorable(field, c.from, live), memberId, via: "ui" as const, batchId, visitId: visit?.id, page: visit?.page })));
       }
     }
     // One insert and one delete for the whole group instead of a pair per part.
@@ -366,4 +458,49 @@ export async function rejectReviews(partIds: string[], memberId: string) {
     if (rows.length) await tx.delete(partReviews).where(inArray(partReviews.partId, rows.map((r) => r.part.id)));
     return { rejected: rows.length, keptEdits };
   });
+}
+
+// Revert change on the AI logs page (and undo_batch): everything one AI run changed goes back.
+// Part fields and item fields edited again since are kept; stock moves are reversed; items and
+// categories the run added are removed; its To Review entries go.
+export async function revertAiBatch(batchId: string, memberId: string, via: "ui" | "mcp") {
+  const plan = await planUndo(batchId);
+  const reverts = plan?.reverts ?? [];
+  const undoBatch = reverts.length ? await applyUndo(reverts, memberId, via) : randomUUID();
+  const ctx = { memberId, via, batchId: undoBatch } as const;
+  const { inventory, stock } = await db.transaction(async (tx) => {
+    // Deleting the items it created takes their stock moves with them, so they're not reversed twice.
+    const inventory = await revertInventoryBatch(tx, batchId, ctx);
+    const stock = await undoMoves(tx, batchId, ctx);
+    // Its parts in To Review keep only what is still changed (an edit made since, or another run's).
+    const reviews = await tx
+      .select({ review: partReviews, part: parts })
+      .from(partReviews)
+      .innerJoin(parts, eq(parts.id, partReviews.partId))
+      .where(eq(partReviews.batchId, batchId))
+      .for("update");
+    for (const { review, part } of reviews) {
+      const current = part as unknown as Record<string, unknown>;
+      const changes = Object.fromEntries(Object.entries(review.changes).filter(([f, c]) => !same(current[f], c.from)));
+      if (!Object.keys(changes).length) await tx.delete(partReviews).where(eq(partReviews.partId, part.id));
+      else await tx.update(partReviews).set({ changes, pending: {} }).where(eq(partReviews.partId, part.id));
+    }
+    await tx.update(aiLogs).set({ revertedAt: new Date() }).where(eq(aiLogs.batchId, batchId));
+    return { inventory, stock };
+  });
+  const kept = (plan?.skipped.length ?? 0) + inventory.kept;
+  const done = [
+    reverts.length && `${reverts.length} part ${reverts.length === 1 ? "field" : "fields"}`,
+    inventory.edited && `${inventory.edited} item ${inventory.edited === 1 ? "field" : "fields"}`,
+    inventory.created && `removed ${inventory.created} added ${inventory.created === 1 ? "item" : "items"}`,
+    inventory.categories && `removed ${inventory.categories} ${inventory.categories === 1 ? "category" : "categories"}`,
+    stock && `${stock} stock ${stock === 1 ? "change" : "changes"}`,
+  ].filter(Boolean);
+  return {
+    batchId: undoBatch,
+    reverted: reverts.length + inventory.edited + inventory.created + inventory.categories + stock,
+    message:
+      (done.length ? `Reverted ${done.join(", ")}.` : "Nothing left to revert.") +
+      (kept ? ` ${kept} ${kept === 1 ? "field was" : "fields were"} edited again since and kept.` : ""),
+  };
 }

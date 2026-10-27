@@ -6,6 +6,7 @@ import { imageUrl } from "@/lib/storage/r2";
 import { fabStage, machinesOf } from "@/lib/fab";
 import { statusBreakdown } from "@/lib/stats";
 import { listSystemSync, type SystemSync } from "@/lib/versions/sync";
+import { countInventoryReviews } from "@/lib/review/inventory";
 
 const { robots, systems, parts, partReviews } = schema;
 
@@ -29,7 +30,7 @@ export type ShellRobot = {
 // picture is its stored thumbnail or, until one exists, one of its part thumbnails, so this
 // never calls Onshape.
 export async function listShellRobots(): Promise<ShellRobot[]> {
-  const [robotRows, systemRows, statusRows, partThumbs, reviewRows, sync] = await Promise.all([
+  const [robotRows, systemRows, statusRows, partThumbs, reviewRows, sync, inventoryReviews] = await Promise.all([
     db.select().from(robots).orderBy(desc(robots.year), asc(robots.name)),
     db.select().from(systems).orderBy(asc(systems.name)),
     db
@@ -58,6 +59,8 @@ export async function listShellRobots(): Promise<ShellRobot[]> {
       .innerJoin(parts, eq(parts.id, partReviews.partId))
       .where(isNull(parts.removedFromCadAt)),
     listSystemSync(),
+    // Inventory changes waiting in To Review count on every active robot (one shared shelf).
+    countInventoryReviews(),
   ]);
   const partThumb = new Map(partThumbs.map((t) => [t.systemId, thumbKey(t.id, t.rev!)]));
 
@@ -90,7 +93,7 @@ export async function listShellRobots(): Promise<ShellRobot[]> {
       }
       return {
         fab,
-        review: reviewRows.filter((x) => ids.has(x.systemId!)).length,
+        review: reviewRows.filter((x) => ids.has(x.systemId!)).length + (r.archived ? 0 : inventoryReviews),
         id: r.id,
         name: r.name,
         year: r.year,

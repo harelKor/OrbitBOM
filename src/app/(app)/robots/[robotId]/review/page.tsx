@@ -4,17 +4,23 @@ import { requireMember } from "@/lib/auth";
 import { listInventoryNames } from "@/lib/data/inventory";
 import { listRobotParts } from "@/lib/data/parts";
 import { getRobot } from "@/lib/data/robots";
+import { listInventoryReviews } from "@/lib/review/inventory";
 import { listRobotReviews } from "@/lib/review/review";
 
 // To Review: parts whose material, processes or type were set automatically, by Suggest setup
 // or by a member's Claude, and suggested inventory links, waiting for their designer to approve
-// or reject.
+// or reject; and a Claude's edits to inventory items and new categories (shared by every robot).
 export default async function ReviewPage({ params }: { params: Promise<{ robotId: string }> }) {
   await requireMember();
   const { robotId } = await params;
   const data = await getRobot(robotId);
   if (!data) notFound();
-  const [parts, reviews, inventory] = await Promise.all([listRobotParts(data.robot.id), listRobotReviews(data.robot.id), listInventoryNames()]);
+  const [parts, reviews, inventory, inventoryReviews] = await Promise.all([
+    listRobotParts(data.robot.id),
+    listRobotReviews(data.robot.id),
+    listInventoryNames(),
+    listInventoryReviews(),
+  ]);
   const byPart = new Map(parts.map((p) => [p.id, p]));
   // An inventory link shows the item's name, not its id.
   const itemName = new Map(inventory.map((i) => [i.id, i.name]));
@@ -39,7 +45,7 @@ export default async function ReviewPage({ params }: { params: Promise<{ robotId
         <div className="text-xs font-semibold tracking-wide text-subtle uppercase">{data.robot.name}</div>
         <h1 className="display text-3xl text-accent">To Review</h1>
       </div>
-      <ReviewView robotId={data.robot.id} items={items} />
+      <ReviewView robotId={data.robot.id} items={items} inventory={inventoryReviews} />
     </div>
   );
 }

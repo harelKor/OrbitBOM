@@ -20,6 +20,6 @@ export async function recordItemChanges(tx: Tx | typeof db, itemId: string, befo
   if (!rows.length) return;
   const visit = ctx.via === "ui" ? await currentVisit() : null;
   await tx.insert(schema.inventoryItemHistory).values(
-    rows.map((r) => ({ itemId, ...r, memberId: ctx.memberId, via: ctx.via, aiName: ctx.aiName ?? null, visitId: visit?.id, page: visit?.page })),
+    rows.map((r) => ({ itemId, ...r, memberId: ctx.memberId, via: ctx.via, aiName: ctx.aiName ?? null, batchId: ctx.batchId ?? null, visitId: visit?.id, page: visit?.page })),
   );
 }

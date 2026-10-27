@@ -1,9 +1,8 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { getMachine } from "@/config/machines";
-import { approveParts, rejectParts, suggestSetup } from "@/app/(app)/robots/[robotId]/review/actions";
+import { approveInventory, approveParts, rejectInventory, rejectParts, suggestSetup, type ActionResult } from "@/app/(app)/robots/[robotId]/review/actions";
 import { matchesTopBar } from "@/components/bom/filter";
 import { partTitle, type CardPart } from "@/components/bom/types";
 import { useFilters } from "@/components/shell/FilterContext";
@@ -12,6 +11,7 @@ import { Chevron } from "@/components/ui/Chevron";
 import { Icon } from "@/components/ui/Icon";
 import { statusTint } from "@/components/ui/statusTint";
 import { computeStatus } from "@/lib/status";
+import type { InventoryReview } from "@/lib/review/inventory";
 
 export type ReviewItem = {
   part: CardPart;
@@ -86,6 +86,50 @@ function groupItems(items: ReviewItem[]): SystemGroup[] {
   return [...systems.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
+// Ids decided in this tab. Kept outside the component so a decided card can't come back while
+// the server catches up, even if the page remounts; an id leaves only when the server no longer
+// lists it, or when the decision failed.
+const decidedParts = new Set<string>();
+const decidedInventory = new Set<string>();
+
+// Hides decided ids at once and sends the decision; on a failure they come back with the error.
+function useDecisions(decided: Set<string>, listed: string[], send: (ids: string[], approve: boolean) => Promise<ActionResult>, onNote: (n: ActionResult | null) => void) {
+  const [gone, setGone] = useState<ReadonlySet<string>>(() => new Set(listed.filter((id) => decided.has(id))));
+  const [, startDecide] = useTransition(); // decisions don't lock the other buttons
+  // New props: forget the ids the server no longer lists (adjusting state while rendering).
+  const key = listed.join(",");
+  const [seen, setSeen] = useState(key);
+  if (seen !== key) {
+    setSeen(key);
+    const now = new Set(listed);
+    if ([...gone].some((id) => !now.has(id))) setGone(new Set([...gone].filter((id) => now.has(id))));
+  }
+  useEffect(() => {
+    const now = new Set(key ? key.split(",") : []);
+    for (const id of decided) if (!now.has(id) && !gone.has(id)) decided.delete(id);
+  }, [decided, key, gone]);
+  const restore = (ids: string[]) => {
+    for (const id of ids) decided.delete(id);
+    setGone((g) => new Set([...g].filter((id) => !ids.includes(id))));
+  };
+  const decide = (ids: string[], approve: boolean) => {
+    onNote(null);
+    for (const id of ids) decided.add(id);
+    setGone((g) => new Set([...g, ...ids]));
+    startDecide(async () => {
+      try {
+        const r = await send(ids, approve);
+        if (r.error) restore(ids);
+        if (r.error || r.message) onNote(r);
+      } catch {
+        restore(ids);
+        onNote({ error: "That didn't go through. Try again." });
+      }
+    });
+  };
+  return { gone, decide };
+}
+
 const machinesOf = (p: CardPart) => [p.preProcess, p.process1, p.process2].filter((m): m is string => !!m);
 
 // To Review: compact cards for parts that were set up automatically, with what changed and why.
@@ -93,35 +137,31 @@ const machinesOf = (p: CardPart) => [p.preProcess, p.process1, p.process2].filte
 // title; inside a batch the cards filter by material and machine. Approve keeps the change, Reject
 // puts the old values back (also for a whole batch or subsystem). Both work in View mode too,
 // since reviewing is what the page is for; Suggest setup (the site's rules) is Edit mode only.
-export function ReviewView({ robotId, items }: { robotId: string; items: ReviewItem[] }) {
+export function ReviewView({ robotId, items, inventory }: { robotId: string; items: ReviewItem[]; inventory: InventoryReview[] }) {
   const edit = useEditMode();
   const { filters } = useFilters();
-  const router = useRouter();
-  // Decided parts disappear the moment they are clicked; the server catches up in the background.
-  const [gone, setGone] = useState<ReadonlySet<string>>(new Set());
-  const optimistic = items.filter((i) => !gone.has(i.part.id));
   const [pending, startTransition] = useTransition();
-  const [, startDecide] = useTransition(); // decisions don't lock the other buttons
-  const [note, setNote] = useState<{ error?: string; message?: string } | null>(null);
+  const [note, setNote] = useState<ActionResult | null>(null);
+  // Decided parts disappear the moment they are clicked; the action revalidates the page before
+  // it returns, and they stay hidden until the new props leave them out.
+  const parts = useDecisions(
+    decidedParts,
+    items.map((i) => i.part.id),
+    (ids, approve) => (approve ? approveParts(ids) : rejectParts(ids)),
+    setNote,
+  );
+  const inv = useDecisions(
+    decidedInventory,
+    inventory.map((i) => i.id),
+    (ids, approve) => (approve ? approveInventory(ids) : rejectInventory(ids)),
+    setNote,
+  );
+  const decide = parts.decide;
+  const optimistic = items.filter((i) => !parts.gone.has(i.part.id));
+  const inventoryLeft = inventory.filter((i) => !inv.gone.has(i.id));
 
   const matching = optimistic.filter((i) => matchesTopBar(i.part, filters));
   const systems = groupItems(matching);
-
-  const decide = (ids: string[], approve: boolean) => {
-    setNote(null);
-    setGone((g) => new Set([...g, ...ids]));
-    startDecide(async () => {
-      try {
-        const r = approve ? await approveParts(ids) : await rejectParts(ids);
-        if (r.error) setGone((g) => new Set([...g].filter((id) => !ids.includes(id))));
-        if (r.error || r.message) setNote(r);
-      } catch {
-        setGone((g) => new Set([...g].filter((id) => !ids.includes(id))));
-        setNote({ error: "That didn't go through. Try again." });
-      }
-      router.refresh();
-    });
-  };
   const suggest = () => {
     setNote(null);
     startTransition(async () => setNote(await suggestSetup(robotId)));
@@ -133,6 +173,12 @@ export function ReviewView({ robotId, items }: { robotId: string; items: ReviewI
         <div className="mr-auto text-sm text-muted">
           <span className="font-mono font-semibold text-fg tabular-nums">{optimistic.length}</span> {optimistic.length === 1 ? "part waits" : "parts wait"} for
           their designer
+          {inventoryLeft.length > 0 && (
+            <>
+              , <span className="font-mono font-semibold text-fg tabular-nums">{inventoryLeft.length}</span> inventory{" "}
+              {inventoryLeft.length === 1 ? "change" : "changes"}
+            </>
+          )}
         </div>
         {edit && (
           <button type="button" onClick={suggest} disabled={pending} className="btn" title="Material from Onshape and the 3D model's sizes, processes from what the team usually does">
@@ -147,6 +193,8 @@ export function ReviewView({ robotId, items }: { robotId: string; items: ReviewI
           {note.error ?? note.message}
         </div>
       )}
+
+      {inventoryLeft.length > 0 && <InventorySection reviews={inventoryLeft} onDecide={inv.decide} />}
 
       {systems.length ? (
         <div className="space-y-5">
@@ -176,7 +224,7 @@ export function ReviewView({ robotId, items }: { robotId: string; items: ReviewI
             </details>
           ))}
         </div>
-      ) : (
+      ) : inventoryLeft.length ? null : (
         <div className="rounded-lg border border-dashed border-line p-10 text-center text-sm text-muted">
           {optimistic.length ? (
             "No parts match the search."
@@ -202,6 +250,7 @@ function BulkButtons({
   disabled,
   onDecide,
   filtered,
+  undoes = "Their material and processes go back to what they were.",
 }: {
   ids: string[];
   count: number;
@@ -209,6 +258,7 @@ function BulkButtons({
   disabled: boolean;
   onDecide: (ids: string[], approve: boolean) => void;
   filtered?: boolean;
+  undoes?: string;
 }) {
   const word = filtered ? "shown" : "all";
   return (
@@ -218,7 +268,7 @@ function BulkButtons({
         type="button"
         disabled={disabled || !count}
         className="btn-danger"
-        onClick={() => confirm(`Reject ${what}? Their material and processes go back to what they were.`) && onDecide(ids, false)}
+        onClick={() => confirm(`Reject ${what}? ${undoes}`) && onDecide(ids, false)}
       >
         Reject {word} <span className="font-mono tabular-nums">{count}</span>
       </button>
@@ -358,6 +408,121 @@ function ReviewCard({ item, disabled, onDecide }: { item: ReviewItem; disabled: 
             Reject
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+const INVENTORY_UNDO = "Items get their old values back and new categories are removed.";
+
+// To Review's Inventory box: a Claude's edits to existing items and the categories it added,
+// split by category. Approve keeps a change (it is already applied); Reject puts it back.
+function InventorySection({ reviews, onDecide }: { reviews: InventoryReview[]; onDecide: (ids: string[], approve: boolean) => void }) {
+  const groups = new Map<string, { label: string; reviews: InventoryReview[] }>();
+  for (const r of reviews) {
+    const g = groups.get(r.categoryId) ?? { label: r.categoryLabel, reviews: [] };
+    g.reviews.push(r);
+    groups.set(r.categoryId, g);
+  }
+  const sorted = [...groups.entries()].sort((a, b) => a[1].label.localeCompare(b[1].label));
+  const n = reviews.length;
+  return (
+    <details open aria-label="Inventory" className="group rounded-xl border border-line bg-surface p-4 shadow-sm">
+      <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 [&::-webkit-details-marker]:hidden">
+        <h2 className="mr-auto flex items-center gap-2 text-lg font-bold text-fg">
+          <span aria-hidden className="inline-block text-sm text-muted transition-transform group-open:rotate-90">
+            ▸
+          </span>
+          Inventory
+          <span className="rounded-full bg-raised px-2 py-0.5 font-mono text-xs font-semibold text-fg-2 tabular-nums">{n}</span>
+        </h2>
+        <BulkButtons
+          disabled={false}
+          count={n}
+          what={`all ${n} inventory ${n === 1 ? "change" : "changes"}`}
+          ids={reviews.map((r) => r.id)}
+          onDecide={onDecide}
+          undoes={INVENTORY_UNDO}
+        />
+      </summary>
+      <div className="mt-3 space-y-4">
+        {sorted.map(([id, g]) => (
+          <InventoryCategory key={id} label={g.label} reviews={g.reviews} onDecide={onDecide} />
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function InventoryCategory({ label, reviews, onDecide }: { label: string; reviews: InventoryReview[]; onDecide: (ids: string[], approve: boolean) => void }) {
+  const [open, setOpen] = useState(true);
+  const n = reviews.length;
+  return (
+    <div className="rounded-lg border border-line bg-bg/40 p-3">
+      <div className={`flex flex-wrap items-center gap-2 ${open ? "mb-3" : ""}`}>
+        <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="mr-auto flex min-w-0 items-center gap-2 text-left">
+          <Chevron open={open} small />
+          <span className="font-semibold text-fg">{label}</span>
+          <span className="rounded-full bg-raised px-2 py-0.5 font-mono text-xs font-semibold text-fg-2 tabular-nums">{n}</span>
+        </button>
+        <BulkButtons
+          ids={reviews.map((r) => r.id)}
+          count={n}
+          what={`all ${n} ${n === 1 ? "change" : "changes"} in ${label}`}
+          disabled={false}
+          onDecide={onDecide}
+          undoes={INVENTORY_UNDO}
+        />
+      </div>
+      {open && (
+        <div className="card-grid [--card-min:260px]">
+          {reviews.map((r) => (
+            <InventoryCard key={r.id} review={r} onDecide={(approve) => onDecide([r.id], approve)} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InventoryCard({ review, onDecide }: { review: InventoryReview; onDecide: (approve: boolean) => void }) {
+  return (
+    <div className="card-interactive flex flex-col gap-2 p-3 text-sm">
+      <div className="flex min-w-0 items-center gap-2">
+        <div className="min-w-0 flex-1 truncate font-semibold text-fg" title={review.name}>
+          {review.name}
+        </div>
+        {review.kind === "category" && <span className="shrink-0 rounded-full bg-gold/10 px-2 py-0.5 text-[10px] font-bold tracking-wide text-gold">NEW CATEGORY</span>}
+        <span className="max-w-[45%] shrink-0 truncate rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold tracking-wide text-white" title={`By ${review.aiName ?? "a member's Claude"}`}>
+          {review.aiName ?? "AI"}
+        </span>
+      </div>
+      <ul className="space-y-1">
+        {review.changes.map((c) => (
+          <li key={c.field} className="flex min-w-0 items-center gap-1">
+            <span className="shrink-0 text-[10px] font-semibold text-subtle uppercase">{c.label}</span>
+            {c.from && <span className={`${pill} border-line text-faint line-through`}>{c.from}</span>}
+            {c.from && <span className="text-[10px] text-faint">→</span>}
+            <span className={`${pill} ${c.to ? "border-accent/60 bg-accent/5 text-accent" : "border-dashed border-line-strong text-subtle"}`}>{c.to ?? "none"}</span>
+          </li>
+        ))}
+      </ul>
+      {review.reason && (
+        <p className="line-clamp-2 text-xs text-subtle" title={review.reason}>
+          {review.reason}
+        </p>
+      )}
+      <div className="text-[11px] text-subtle tabular-nums">
+        {when(review.at)}
+        {review.memberName ? `, ${review.memberName}` : ""}
+      </div>
+      <div className="mt-auto flex gap-2 pt-1">
+        <button type="button" onClick={() => onDecide(true)} className="btn-primary flex-1 justify-center">
+          Approve
+        </button>
+        <button type="button" onClick={() => onDecide(false)} className="btn flex-1 justify-center">
+          Reject
+        </button>
       </div>
     </div>
   );
