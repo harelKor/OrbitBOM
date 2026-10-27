@@ -616,12 +616,17 @@ function MaterialBoxes({ counts, active }: { counts: Map<string, number>; active
         onClick={() => pushQuery({ mat: selected ? null : m })}
         data-selected={selected}
         aria-pressed={selected}
-        className="card-interactive flex min-w-28 flex-col px-4 py-2.5 text-left active:scale-[0.98]"
+        className="card-interactive group flex h-12 shrink-0 items-center gap-2.5 self-center overflow-hidden pr-3 text-left active:scale-[0.98]"
       >
-        <span className="display text-2xl text-accent tabular-nums">{counts.get(m)}</span>
-        <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-fg-2">
-          <span className="h-2.5 w-2.5 shrink-0 rounded-sm border border-line-strong" style={{ backgroundColor: materialColor(none ? null : m, colors) }} />
-          <span className="truncate">{none ? "No material" : m.replace(/-T6$/, "")}</span>
+        <span className="relative flex h-full w-12 shrink-0 items-center justify-center bg-gradient-to-br from-sky-500/25 via-raised to-amber-400/20">
+          <span
+            className="h-6 w-6 rounded-md border border-white/20 shadow-sm transition-transform duration-150 group-hover:scale-[1.03]"
+            style={{ backgroundColor: materialColor(none ? null : m, colors) }}
+          />
+        </span>
+        <span className="min-w-0">
+          <span className="block text-xs leading-tight font-bold whitespace-nowrap text-fg">{none ? "No material" : m.replace(/-T6$/, "")}</span>
+          <span className="block font-mono text-[11px] text-subtle tabular-nums">{counts.get(m)}</span>
         </span>
       </button>
     );
