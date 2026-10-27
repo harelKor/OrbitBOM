@@ -252,7 +252,7 @@ export function ItemPrice({ price, suffix = "" }: { price: number; suffix?: stri
 
 // The cart on a card's picture. Short with nothing on order: sends what's missing to Released.
 // On order: orange, and opens that COTS card.
-function CartButton({ item, gap }: { item: Item; gap: number }) {
+export function CartButton({ item, gap }: { item: Item; gap: number }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
