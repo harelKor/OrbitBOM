@@ -28,28 +28,34 @@ function subscribe(fn: () => void) {
 export function ShadeSlider() {
   const shade = useSyncExternalStore(subscribe, current, () => 0);
   return (
-    <label className="flex items-center gap-1.5" title="Light to dark">
-      <Icon name="sun" className="h-4 w-4 opacity-80" />
-      <input
-        type="range"
-        min={0}
-        max={100}
-        value={shade}
-        onChange={(e) => {
-          const n = Number(e.target.value);
-          const root = document.documentElement;
-          root.dataset.shade = String(n);
-          root.dataset.theme = n >= 50 ? "dark" : "light";
-          root.style.setProperty("--shade", `${n}%`);
-          try {
-            localStorage.setItem(KEY, String(n));
-          } catch {}
-          listeners.forEach((fn) => fn());
-        }}
-        aria-label="Light to dark"
-        className="shade-slider w-20 md:w-24"
-      />
-      <Icon name="moon" className="h-4 w-4 opacity-80" />
+    <label className="block">
+      <span className="mb-1 flex items-center justify-between text-xs font-semibold text-muted">
+        Grayscale
+        <span className="font-mono tabular-nums text-subtle">{shade}%</span>
+      </span>
+      <span className="flex items-center gap-1.5">
+        <Icon name="sun" className="h-4 w-4 shrink-0 text-subtle" />
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={shade}
+          onChange={(e) => {
+            const n = Number(e.target.value);
+            const root = document.documentElement;
+            root.dataset.shade = String(n);
+            root.dataset.theme = n >= 50 ? "dark" : "light";
+            root.style.setProperty("--shade", `${n}%`);
+            try {
+              localStorage.setItem(KEY, String(n));
+            } catch {}
+            listeners.forEach((fn) => fn());
+          }}
+          aria-label="Light to dark"
+          className="shade-slider w-full"
+        />
+        <Icon name="moon" className="h-4 w-4 shrink-0 text-subtle" />
+      </span>
     </label>
   );
 }

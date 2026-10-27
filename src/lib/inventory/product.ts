@@ -6,7 +6,7 @@ import { readProductPage, type Product } from "./productPage";
 
 export type { Product };
 
-const UA = "Mozilla/5.0 (compatible; OrbitMech-BOM/1.0; +https://orbit-bom.vercel.app)";
+const UA = "Mozilla/5.0 (compatible; OrbitParts-BOM/1.0; +https://orbit-bom.vercel.app)";
 
 // Only public web pages: no local or private addresses, so a pasted link can't reach inside.
 export function publicUrl(raw: string): URL | null {

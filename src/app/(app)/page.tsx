@@ -30,7 +30,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
 
   return (
     <div className="mx-auto max-w-4xl py-6">
-      <h1 className="mb-6 display text-2xl text-accent">OrbitMech</h1>
+      <h1 className="mb-6 display text-2xl text-accent">OrbitParts</h1>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {tiles.map((t) => (
           <Link

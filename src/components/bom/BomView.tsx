@@ -181,11 +181,14 @@ export function BomView({
   return (
     <BomProvider value={{ inventory, isAdmin, robotId, versions }}>
     {/* With the sticky toolbar, a card jumped to (#part-…) lands below both bars. */}
-    <div className={`space-y-4 ${selecting ? "pb-20" : ""} ${stickyToolbar ? "md:[&_[id^=part-]]:scroll-mt-36" : ""}`}>
+    <div className={`space-y-4 ${selecting ? "pb-20" : ""} ${stickyToolbar ? "[&_[id^=part-]]:scroll-mt-[calc(var(--topbar-h)+5rem)]" : ""}`}>
       <div
         className={`flex flex-wrap items-center gap-3 ${
-          // From md the top bar is one row (3.5rem); the strip bleeds into main's padding so cards scroll under it cleanly.
-          stickyToolbar ? "md:sticky md:top-14 md:z-10 md:-mx-6 md:border-b md:border-line md:bg-ink/95 md:px-6 md:py-2.5 md:backdrop-blur lg:-ml-11 lg:pl-11 xl:-mr-11 xl:pr-11" : ""
+          // Sticks right under the top bar (whatever its height); the strip bleeds into main's padding so cards scroll
+          // under it cleanly. On phones it stays one row that scrolls sideways, so it doesn't cover the cards.
+          stickyToolbar
+            ? "sticky top-[var(--topbar-h)] z-10 -mx-4 border-b border-line bg-ink/95 px-4 py-2.5 backdrop-blur max-md:flex-nowrap max-md:overflow-x-auto max-md:[&>*]:shrink-0 md:-mx-6 md:px-6 lg:-ml-11 lg:pl-11 xl:-mr-11 xl:pr-11"
+            : ""
         }`}
       >
         <div className="flex flex-wrap gap-1.5">

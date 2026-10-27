@@ -184,7 +184,7 @@ export function ReviewView({ robotId, items }: { robotId: string; items: ReviewI
             <>
               Nothing to review. Parts set up automatically wait here for their designer.
               <div className="mt-2 text-subtle">
-                {edit ? "Press Suggest setup, or ask" : "Ask"} your Claude (with the OrbitMech connector) to &ldquo;set up the parts of this robot that have no
+                {edit ? "Press Suggest setup, or ask" : "Ask"} your Claude (with the OrbitParts connector) to &ldquo;set up the parts of this robot that have no
                 material&rdquo;.
               </div>
             </>

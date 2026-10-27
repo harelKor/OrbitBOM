@@ -5,7 +5,7 @@ import { createMcpTokenAction, revokeMcpToken } from "./actions";
 
 type Token = { id: string; label: string | null; createdAt: Date; lastUsedAt: Date | null };
 
-// "Use OrbitMech from Claude" (plan §6): a personal connector link, shown once.
+// "Use OrbitParts from Claude" (plan §6): a personal connector link, shown once.
 export function McpTokens({ tokens, origin }: { tokens: Token[]; origin: string }) {
   const [label, setLabel] = useState("");
   const [link, setLink] = useState<string | null>(null);
@@ -33,8 +33,8 @@ export function McpTokens({ tokens, origin }: { tokens: Token[]; origin: string 
           </div>
           <ol className="list-decimal space-y-0.5 pl-5 text-fg-2">
             <li>In Claude (web or desktop), open Settings → Connectors → Add custom connector.</li>
-            <li>Name it OrbitMech and paste the link as the URL. Leave the OAuth fields empty.</li>
-            <li>In a chat, turn on OrbitMech from the tools menu and ask, for example: &ldquo;Which parts in Drivetrain still have no machine?&rdquo;</li>
+            <li>Name it OrbitParts and paste the link as the URL. Leave the OAuth fields empty.</li>
+            <li>In a chat, turn on OrbitParts from the tools menu and ask, for example: &ldquo;Which parts in Drivetrain still have no machine?&rdquo;</li>
           </ol>
         </div>
       ) : (

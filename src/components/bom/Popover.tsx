@@ -121,6 +121,12 @@ export function Popover({
   );
 }
 
+// Focuses a dropdown's search box when it opens, but only with a mouse: on a touch screen the
+// focus would pop the keyboard over the list, so phones open it only when the box is tapped.
+export function focusIfMouse(el: HTMLInputElement | null) {
+  if (el && matchMedia("(pointer: fine)").matches) el.focus({ preventScroll: true });
+}
+
 export type Option = { value: string | null; label: string; color?: string; group?: string };
 
 // A searchable list, like FRCBOM's status and material menus.
@@ -139,7 +145,7 @@ export function OptionList({
   const filtered = options.filter((o) => o.label.toLowerCase().includes(q.trim().toLowerCase()));
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={placeholder} className="input mb-1.5 py-2" />
+      <input ref={focusIfMouse} value={q} onChange={(e) => setQ(e.target.value)} placeholder={placeholder} className="input mb-1.5 py-2" />
       <ul className="min-h-0 flex-1 overflow-y-auto text-sm">
         {filtered.map((o, i) => {
           const header = o.group && (i === 0 || filtered[i - 1].group !== o.group) ? o.group : null;

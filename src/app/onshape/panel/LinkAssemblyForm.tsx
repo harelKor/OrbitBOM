@@ -24,7 +24,7 @@ export function LinkAssemblyForm({
   if (!robots.length)
     return (
       <p className="text-muted">
-        Create a robot in OrbitMech first, then reopen this panel.
+        Create a robot in OrbitParts first, then reopen this panel.
       </p>
     );
   return (
@@ -77,7 +77,7 @@ export function LinkAssemblyForm({
         </div>
         {!onshapeConnected && (
           <p className="text-amber-700">
-            Connect Onshape on your OrbitMech profile page to pull the parts.
+            Connect Onshape on your OrbitParts profile page to pull the parts.
           </p>
         )}
         {state?.error && <p className="text-rose-700">{state.error}</p>}

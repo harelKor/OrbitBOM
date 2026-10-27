@@ -886,7 +886,7 @@ write(
   async ({ system_id }, { member }) => {
     const [system] = await db.select().from(systems).where(eq(systems.id, system_id));
     if (!system) throw new ToolError("No such system.");
-    if (!member.onshapeConnected) throw new ToolError("Connect Onshape on your OrbitMech profile first.");
+    if (!member.onshapeConnected) throw new ToolError("Connect Onshape on your OrbitParts profile first.");
     return {
       count: 1,
       preview: { system: system.name, assembly: system.assemblyUrl, note: "Uses a few of your Onshape API calls." },
@@ -927,7 +927,7 @@ write(
       .select({ id: parts.id, displayName: parts.displayName, onshapeName: parts.onshapeName, partNumber: parts.partNumber })
       .from(parts)
       .where(and(eq(parts.systemId, system_id), inArray(parts.id, part_ids)));
-    if (!member.onshapeConnected) throw new ToolError("Connect Onshape on your OrbitMech profile first.");
+    if (!member.onshapeConnected) throw new ToolError("Connect Onshape on your OrbitParts profile first.");
     return {
       count: rows.length,
       summary: `Made drawings for ${rows.length} ${rows.length === 1 ? "part" : "parts"}`,

@@ -7,7 +7,6 @@ import { MATERIAL_OPTIONS } from "@/components/bom/options";
 import { OptionList, Popover, type Option } from "@/components/bom/Popover";
 import { DATE_OPTIONS, useFilters, type DateFilter, type Filters } from "./FilterContext";
 import { ModeToggle } from "./ModeContext";
-import { ShadeSlider } from "./ShadeSlider";
 import { UndoRedo } from "./UndoRedo";
 
 const PROCESS_OPTIONS: Option[] = [{ value: null, label: "Any process" }, ...MACHINES.map((m) => ({ value: m.id, label: m.name }))];
@@ -18,6 +17,7 @@ export function TopBar({ onMenu, onRobots }: { onMenu: () => void; onRobots: () 
   const pathname = usePathname();
   const { filters, setFilters } = useFilters();
   const search = useRef<HTMLInputElement>(null);
+  const header = useRef<HTMLElement>(null);
   // Part search and filters apply to the robot pages; Inventory has its own.
   const partPages = pathname.startsWith("/robots/") && pathname !== "/robots/new";
 
@@ -32,10 +32,19 @@ export function TopBar({ onMenu, onRobots }: { onMenu: () => void; onRobots: () 
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
+  // The bar wraps to more rows on narrow screens; --topbar-h lets sticky strips sit right under it.
+  useEffect(() => {
+    const el = header.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => document.documentElement.style.setProperty("--topbar-h", `${el.offsetHeight}px`));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const active = filters.q || filters.material || filters.process || filters.date;
 
   return (
-    <header className="sticky top-0 z-20 flex min-h-14 flex-wrap items-center gap-2 bg-bar px-4 py-2.5 text-white shadow-[0_2px_8px_rgba(0,0,120,0.25)] md:px-6">
+    <header ref={header} className="sticky top-0 z-20 flex min-h-14 flex-wrap items-center gap-2 bg-bar px-4 py-2.5 text-white shadow-[0_2px_8px_rgba(0,0,120,0.25)] md:px-6">
       <button onClick={onMenu} className="press rounded-md border border-white/30 px-2 py-1 lg:hidden" aria-label="Pages" title="Show pages">
         ☰
       </button>
@@ -80,7 +89,6 @@ export function TopBar({ onMenu, onRobots }: { onMenu: () => void; onRobots: () 
       )}
       <div className="ml-auto flex items-center gap-2">
         <UndoRedo />
-        <ShadeSlider />
         <ModeToggle />
         <button onClick={onRobots} className="press rounded-md border border-white/30 px-2 py-1 text-xs font-semibold xl:hidden" aria-label="Robots and systems" title="Show robots and systems">
           Robots

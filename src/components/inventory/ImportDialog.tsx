@@ -64,7 +64,7 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
           Bearings&rdquo; makes a sub-group.{" "}
           <a
             href={`data:text/csv;charset=utf-8,${encodeURIComponent(TEMPLATE)}`}
-            download="OrbitMech_Inventory_Template.csv"
+            download="OrbitParts_Inventory_Template.csv"
             className="text-accent-soft hover:text-accent-soft"
           >
             Download the template

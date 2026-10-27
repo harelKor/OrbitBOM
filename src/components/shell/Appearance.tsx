@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ShadeSlider } from "./ShadeSlider";
 import { APPEARANCE_KEY as KEY, DEFAULT_HUE } from "./boot-scripts";
 
 // Card size and site colour, set from the right panel and kept in this browser, so every page
@@ -45,18 +46,19 @@ export function AppearanceControls() {
       <label className="block">
         <span className="mb-1 flex items-center justify-between text-xs font-semibold text-muted">
           Card size
-          <span className="font-mono text-subtle">{Math.round(prefs.scale * 100)}%</span>
+          <span className="font-mono tabular-nums text-subtle">{Math.round(prefs.scale * 100)}%</span>
         </span>
         <input
           type="range"
           min={0.3}
           max={2.5}
-          step={0.05}
+          step={0.01}
           value={prefs.scale}
           onChange={(e) => update({ scale: Number(e.target.value) })}
           className="w-full accent-accent"
         />
       </label>
+      <ShadeSlider />
       <label className="block">
         <span className="mb-1 flex items-center justify-between text-xs font-semibold text-muted">
           Colour

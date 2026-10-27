@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Jost } from "next/font/google";
 import { APPEARANCE_SCRIPT, SHADE_SCRIPT } from "@/components/shell/boot-scripts";
 import "./globals.css";
@@ -17,9 +17,19 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "OrbitMech",
+  title: "OrbitParts",
+  applicationName: "OrbitParts",
   icons: { icon: [{ url: "/orbit-icon.png", type: "image/png" }, { url: "/favicon.ico" }], apple: "/apple-icon.png" },
   description: "Team 1690 bill of materials, inventory and Onshape integration",
+  // Opened from the home screen, phones run the app without the browser's address bar.
+  appleWebApp: { capable: true, title: "OrbitParts", statusBarStyle: "default" },
+  other: { "mobile-web-app-capable": "yes" },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#0000cc",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

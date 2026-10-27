@@ -43,6 +43,8 @@
 
 :root {
   color-scheme: light;
+  /* The top bar's height, measured by TopBar; sticky strips sit right under it. */
+  --topbar-h: 3.5rem;
 }
 
 /* Dark mode: follows the device unless the greyscale slider picked a shade (data-theme on <html>). */
@@ -90,7 +92,7 @@
   }
 }
 
-/* The greyscale slider (top bar): data-shade on <html> greys the page, cards and lines between the
+/* The greyscale slider (right panel): data-shade on <html> greys the page, cards and lines between the
    light theme (0%) and the dark one (100%); data-theme, set with it, picks text and accents. */
 :root[data-shade] {
   --color-ink: color-mix(in oklab, #0b0d14 var(--shade), #f2f2f2);
@@ -321,7 +323,7 @@ body {
   /* The colour slider's track shows every colour it can pick. */
   /* The greyscale slider's track runs from the light theme's page to the dark one's. */
   .shade-slider {
-    @apply h-2 cursor-pointer appearance-none rounded-full border border-white/40;
+    @apply h-2 cursor-pointer appearance-none rounded-full border border-line;
     background: linear-gradient(to right, #ffffff, #0b0d14);
   }
   .shade-slider::-webkit-slider-thumb {

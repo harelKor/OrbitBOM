@@ -37,7 +37,7 @@ export function LeftNav({
 
   return (
     <div className="flex h-full flex-col">
-      <Link href="/?home" className="flex min-h-14 items-center gap-2.5 bg-bar px-4 text-white" aria-label="OrbitMech home">
+      <Link href="/?home" className="flex min-h-14 items-center gap-2.5 bg-bar px-4 text-white" aria-label="OrbitParts home">
         <Image src="/orbit-logo.png" alt="" width={34} height={34} className="h-[34px] w-[34px] rounded-md" priority />
         <span className="display text-[26px] leading-none">1690</span>
         <span className="leading-tight">

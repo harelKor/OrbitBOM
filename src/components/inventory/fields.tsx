@@ -1,6 +1,7 @@
 "use client";
 
-import { useId, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import { focusIfMouse } from "@/components/bom/Popover";
 import { fieldChoices, type CategoryField } from "@/lib/inventory/categories";
 
 // The add form's field controls: up to 6 choices are chips, more are a dropdown you type into
@@ -93,6 +94,10 @@ export function Combo({
   const [active, setActive] = useState(0);
   const listId = useId();
   const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (autoFocus) focusIfMouse(input.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when the field first shows
+  }, []);
   const q = (text ?? "").trim().toLowerCase();
   const ordered = [...recent.filter((r) => options.includes(r)), ...options.filter((o) => !recent.includes(o))];
   const shown = q ? ordered.filter((o) => o.toLowerCase().includes(q)) : ordered;
@@ -106,7 +111,6 @@ export function Combo({
     <div className="relative">
       <input
         ref={input}
-        autoFocus={autoFocus}
         role="combobox"
         aria-label={ariaLabel}
         aria-expanded={open}
