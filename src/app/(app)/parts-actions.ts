@@ -107,8 +107,9 @@ export async function syncSystem(systemId: string): Promise<SyncResult> {
 }
 
 // Called by an open system page every few minutes: checks Onshape for changes if the system
-// is due (one call), on the viewer's account or else the system's refresh account. New changes
-// wait in the system's draft; `changed` tells the page to show them.
+// is due (one call), on the viewer's account or else the system's refresh account (another
+// connected member's when that one can't). New changes wait in the system's draft; `changed`
+// tells the page to show them.
 export async function refreshIfDue(systemId: string): Promise<{ changed: boolean }> {
   const member = await requireMember();
   if (!isUuid(systemId)) return { changed: false };
@@ -116,8 +117,8 @@ export async function refreshIfDue(systemId: string): Promise<{ changed: boolean
     .select({ refreshMemberId: schema.systems.refreshMemberId })
     .from(schema.systems)
     .where(eq(schema.systems.id, systemId));
-  const accountId = member.onshapeConnected ? member.id : system?.refreshMemberId;
-  if (!accountId) return { changed: false };
+  if (!system) return { changed: false };
+  const accountId = member.onshapeConnected ? member.id : system.refreshMemberId;
   const r = await refreshSystem(systemId, accountId, Date.now() + 45_000);
   if (r?.changed) revalidatePath("/robots", "layout");
   return { changed: !!r?.changed };

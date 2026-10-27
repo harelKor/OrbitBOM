@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BomRow } from "@/lib/onshape/bom";
-import { planMerge, type ExistingPart } from "./merge";
+import { moreToMake, planMerge, type ExistingPart } from "./merge";
 
 const row = (partId: string, name: string, extra: Partial<BomRow> = {}): BomRow => ({
   sourceDid: "d",
@@ -85,5 +85,44 @@ describe("planMerge", () => {
     const plan = planMerge([part("p1", "A", "Bolt")], [row("X", "Bolt"), row("Y", "Bolt")]);
     expect(plan.update).toHaveLength(1);
     expect(plan.insert).toHaveLength(1);
+  });
+});
+
+describe("moreToMake", () => {
+  const made = {
+    classification: "inhouse" as const,
+    quantity: 2,
+    designState: "In Stock",
+    preProcess: null,
+    process1: "cnc",
+    process2: "bend",
+    donePreprocess: 0,
+    doneProcess1: 0,
+    doneProcess2: 0,
+    note: null,
+  };
+
+  it("keeps what was made and reopens a finished part when CAD raises its quantity", () => {
+    const extra = moreToMake(made, { quantity: 4 });
+    expect(extra).toMatchObject({ doneProcess1: 2, doneProcess2: 2 });
+    expect(extra?.donePreprocess).toBeUndefined();
+    expect(extra?.note).toContain("2 more to make");
+  });
+
+  it("uses Secondary Production for a finished part without machines", () => {
+    const extra = moreToMake({ ...made, process1: null, process2: null }, { quantity: 3 });
+    expect(extra?.status).toBe("Secondary Production");
+  });
+
+  it("only adds a note when the counters already show what was made", () => {
+    const extra = moreToMake({ ...made, designState: null, doneProcess1: 2, doneProcess2: 2 }, { quantity: 4 });
+    expect(extra).toEqual({ note: expect.stringContaining("2 → 4") });
+  });
+
+  it("leaves unfinished parts, COTS and lower quantities alone", () => {
+    expect(moreToMake({ ...made, designState: "Released" }, { quantity: 4 })).toBeNull();
+    expect(moreToMake({ ...made, classification: "cots" }, { quantity: 4 })).toBeNull();
+    expect(moreToMake(made, { quantity: 1 })).toBeNull();
+    expect(moreToMake(made, { material: "x" })).toBeNull();
   });
 });

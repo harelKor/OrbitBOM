@@ -228,6 +228,7 @@ export const parts = pgTable(
     index("parts_system_idx").on(t.systemId),
     index("parts_robot_idx").on(t.robotId),
     index("parts_identity_idx").on(t.sourceDid, t.sourceEid, t.onshapePartId),
+    index("parts_inventory_item_idx").on(t.inventoryItemId),
   ],
 );
 
@@ -321,7 +322,7 @@ export const groupMembers = pgTable(
     // Identity at the time of grouping, so Why?/Recover can explain and re-link a missing member.
     keySnapshot: jsonb("key_snapshot").$type<Record<string, string | null>>().notNull(),
   },
-  (t) => [primaryKey({ columns: [t.groupId, t.partId] })],
+  (t) => [primaryKey({ columns: [t.groupId, t.partId] }), index("group_members_part_idx").on(t.partId)],
 );
 
 export const groupFiles = pgTable("group_files", {
@@ -338,25 +339,29 @@ export const groupFiles = pgTable("group_files", {
 // To Review: parts whose material, processes or type were set automatically (by the site's
 // rules or by a member's Claude), waiting for their designer to approve. `changes` keeps each
 // field's value before and after, so Reject can put it back.
-export const partReviews = pgTable("part_reviews", {
-  partId: uuid("part_id")
-    .primaryKey()
-    .references(() => parts.id, { onDelete: "cascade" }),
-  source: classSource("source").notNull(),
-  reason: text("reason"),
-  changes: jsonb("changes").$type<Record<string, { from: unknown; to: unknown }>>().notNull(),
-  // Suggested but not applied yet (an inventory link waits for Approve, Harel 2026-10-23):
-  // Approve applies them, Reject drops them.
-  pending: jsonb("pending").$type<Record<string, unknown>>().notNull().default({}),
-  // Onshape fields the suggestion marked overridden; Reject un-marks them again.
-  addedOverrides: text("added_overrides").array().notNull().default(sql`'{}'::text[]`),
-  memberId: uuid("member_id").references(() => members.id, { onDelete: "set null" }),
-  // The history batch of the run that suggested it, so To Review can group by run.
-  batchId: uuid("batch_id"),
-  // The name the AI gave itself (e.g. "Claude Opus 5.5"); null for the site's rules.
-  aiName: text("ai_name"),
-  createdAt: createdAt(),
-});
+export const partReviews = pgTable(
+  "part_reviews",
+  {
+    partId: uuid("part_id")
+      .primaryKey()
+      .references(() => parts.id, { onDelete: "cascade" }),
+    source: classSource("source").notNull(),
+    reason: text("reason"),
+    changes: jsonb("changes").$type<Record<string, { from: unknown; to: unknown }>>().notNull(),
+    // Suggested but not applied yet (an inventory link waits for Approve, Harel 2026-10-23):
+    // Approve applies them, Reject drops them.
+    pending: jsonb("pending").$type<Record<string, unknown>>().notNull().default({}),
+    // Onshape fields the suggestion marked overridden; Reject un-marks them again.
+    addedOverrides: text("added_overrides").array().notNull().default(sql`'{}'::text[]`),
+    memberId: uuid("member_id").references(() => members.id, { onDelete: "set null" }),
+    // The history batch of the run that suggested it, so To Review can group by run.
+    batchId: uuid("batch_id"),
+    // The name the AI gave itself (e.g. "Claude Opus 5.5"); null for the site's rules.
+    aiName: text("ai_name"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("part_reviews_batch_idx").on(t.batchId)],
+);
 
 // AI logs: every change a member's Claude applied through the MCP server, and every Suggest
 // setup run. For a change to parts, batch_id points at its part_history rows.

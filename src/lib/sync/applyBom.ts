@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { partKey, type BomRow } from "@/lib/onshape/bom";
 import { planPartUpdate } from "@/lib/parts/changes";
-import { planMerge } from "./merge";
+import { moreToMake, planMerge } from "./merge";
 
 const { parts, partHistory } = schema;
 
@@ -111,7 +111,9 @@ export async function applyBomRows(
 
   for (const u of plan.update) {
     const part = byId.get(u.id)!;
-    const { set, history } = planPartUpdate(part, u.changes, "sync");
+    // A finished part whose CAD quantity went up goes back to the shop for the extra pieces.
+    const reopen = moreToMake(part, u.changes);
+    const { set, history } = planPartUpdate(part, reopen ? { ...u.changes, ...reopen } : u.changes, "sync");
     if (history.length) result.updated++;
     if (u.relinked) result.relinked.push(u.identity.onshapeName);
     if (u.restore) result.restored.push(u.identity.onshapeName);
@@ -124,6 +126,7 @@ export async function applyBomRows(
         ...u.identity,
         geometry: { ...(part.geometry ?? {}), onshapeMaterial: u.onshapeMaterial ?? undefined },
         removedFromCadAt: null,
+        ...(reopen ? { fabFinishedAt: null } : {}),
         ...(sig ? { shapeSig: sig } : {}),
         ...(history.length ? { lastModifiedAt: now, lastModifiedBy: memberId } : {}),
       })

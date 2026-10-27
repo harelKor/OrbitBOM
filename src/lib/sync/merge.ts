@@ -9,6 +9,7 @@
 
 import { partKey, type BomRow } from "@/lib/onshape/bom";
 import { ONSHAPE_FIELDS, type PartChanges } from "@/lib/parts/changes";
+import { hasProgress, isDone, type StatusInput } from "@/lib/status";
 
 export type ExistingPart = {
   id: string;
@@ -127,4 +128,32 @@ export function planMerge(existing: ExistingPart[], bom: BomRow[], sigOf: (row: 
     if (!matched.has(p.id) && p.removedFromCadAt === null) plan.remove.push(p.id);
   }
   return plan;
+}
+
+// CAD raised the quantity of an in-house part the shop had already finished (2 → 4): the part
+// must not stay In Stock as if all 4 were made. Returns the extra changes for the sync to apply:
+// the old quantity as made on each of its machines (so the status derives to the first process
+// with 2/4 done), or Secondary Production when it has no machine, and a note on the card saying
+// how many more to make. A part finished through its counters needs no counter change: with the
+// new quantity they already read as unfinished. Null when nothing needs protecting.
+export function moreToMake(
+  part: StatusInput & { note: string | null },
+  changes: PartChanges,
+): PartChanges | null {
+  const newQty = changes.quantity;
+  if (part.classification !== "inhouse" || newQty === undefined || newQty <= part.quantity || !isDone(part)) return null;
+  const extra = newQty - part.quantity;
+  const line = `CAD quantity ${part.quantity} → ${newQty}: ${extra} more to make (${part.quantity} already made).`;
+  const out: PartChanges = { note: part.note ? `${part.note}\n${line}` : line };
+  if (hasProgress(part)) return out;
+  const machines = {
+    preProcess: changes.preProcess !== undefined ? changes.preProcess : part.preProcess,
+    process1: changes.process1 !== undefined ? changes.process1 : part.process1,
+    process2: changes.process2 !== undefined ? changes.process2 : part.process2,
+  };
+  if (!machines.preProcess && !machines.process1 && !machines.process2) return { ...out, status: "Secondary Production" };
+  if (machines.preProcess) out.donePreprocess = part.quantity;
+  if (machines.process1) out.doneProcess1 = part.quantity;
+  if (machines.process2) out.doneProcess2 = part.quantity;
+  return out;
 }

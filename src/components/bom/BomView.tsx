@@ -288,6 +288,7 @@ export function BomView({
       {mode === "release" && (
         <ReleaseBar
           count={selected.size}
+          selected={shown.filter((p) => selected.has(p.id))}
           total={shown.length}
           onRelease={() => {
             save([...selected], { status: RELEASED_STATUS });
