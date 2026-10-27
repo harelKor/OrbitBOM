@@ -1,11 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useMaterialColors } from "@/components/shell/MaterialColors";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
-import { Segmented } from "@/components/ui/Segmented";
-import { materialColor } from "@/config/materialColors";
 import type { ViewerModel } from "./ModelCanvas";
 
 const ModelCanvas = dynamic(() => import("./ModelCanvas").then((m) => m.ModelCanvas), { ssr: false });
@@ -15,14 +12,12 @@ export type StageView = "part" | "locate";
 
 // A part's 3D window in the middle of the screen, opened from its card without leaving the
 // page: the part on its own ("part"), or where it sits in the see-through robot ("locate").
-// The corner button switches between the two; on its own the part can show its material colour.
+// The corner button switches between the two. The part shows in its Onshape appearance.
 export function PartStage({
   partId,
   robotId,
   modelKey,
   name,
-  material,
-  onshapeMaterial,
   view,
   onView,
   onClose,
@@ -47,7 +42,7 @@ export function PartStage({
             <Icon name="close" />
           </button>
         </div>
-        <PartModel partId={partId} robotId={robotId} modelKey={modelKey} material={material} onshapeMaterial={onshapeMaterial} view={view} onView={onView} className="flex-1" />
+        <PartModel partId={partId} robotId={robotId} modelKey={modelKey} view={view} onView={onView} className="flex-1" />
       </div>
     </dialog>
   );
@@ -57,8 +52,6 @@ type ModelProps = {
   partId: string;
   robotId: string | null;
   modelKey: string | null;
-  material: string | null;
-  onshapeMaterial: string | null;
   view: StageView;
   onView: (view: StageView) => void;
 };
@@ -69,8 +62,6 @@ export function PartModel({
   partId,
   robotId,
   modelKey,
-  material,
-  onshapeMaterial,
   view,
   onView,
   className = "",
@@ -88,13 +79,6 @@ export function PartModel({
   }
   const model = models[view];
   const error = errors[view];
-  const [colors, setColors] = useState<"plain" | "material">("plain");
-  const materialOverrides = useMaterialColors();
-  const partColors = useMemo(() => {
-    if (view !== "part" || colors !== "material" || !model) return NO_COLORS;
-    const color = materialColor(material, materialOverrides, onshapeMaterial);
-    return new Map(model.placements.map((p) => [p.k, color]));
-  }, [view, colors, model, material, onshapeMaterial, materialOverrides]);
 
   useEffect(() => {
     if (models[view] || errors[view]) return;
@@ -126,23 +110,10 @@ export function PartModel({
 
   return (
     <div className={`relative bg-[radial-gradient(ellipse_at_50%_35%,var(--color-surface)_0%,var(--color-raised)_75%)] ${className}`}>
-      {model && <ModelCanvas key={view} model={model} colors={partColors} mode={partColors === NO_COLORS ? "plain" : "status"} locateKey={view === "locate" ? modelKey : null} onLocated={onLocated} />}
+      {model && <ModelCanvas key={view} model={model} colors={NO_COLORS} mode="plain" locateKey={view === "locate" ? modelKey : null} onLocated={onLocated} />}
       {(error || !model || missing) && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">
           {error ?? (missing ? "This part isn't in the robot's linked Onshape assemblies." : view === "part" ? "Loading the part…" : "Loading the robot…")}
-        </div>
-      )}
-      {view === "part" && model && (
-        <div className="absolute top-3 left-3">
-          <Segmented
-            label="Part colour"
-            value={colors}
-            onChange={setColors}
-            options={[
-              { value: "plain", label: "Plain" },
-              { value: "material", label: "Material" },
-            ]}
-          />
         </div>
       )}
       {locateButton && robotId && modelKey && (

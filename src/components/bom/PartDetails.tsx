@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { Dialog } from "@/components/Dialog";
 import { deleteManualPart } from "@/app/(app)/parts-actions";
 import { inventoryPicker } from "@/app/(app)/inventory/actions";
@@ -23,8 +24,8 @@ import { ownerPartId, partTitle, type CardPart } from "./types";
 type Stage = StageView | "thumb";
 
 // Everything about one part in a roomy window, opened by a click anywhere on its card. On the
-// left the live 3D part (Locate in robot and the 2D thumbnail on it), the notes right under it and
-// the drawing; on the right its properties and its inventory link. Its fields edit in either page
+// left the live 3D part (Locate in robot and the 2D thumbnail on it) and the notes right under it;
+// on the right its properties, its inventory link and, under the inventory search, the drawing. Its fields edit in either page
 // mode; deleting a manual part still needs Edit mode.
 export function PartDetails({ part, save, onClose }: { part: CardPart; save: SaveFn; onClose: () => void }) {
   const edit = useEditMode();
@@ -57,8 +58,6 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
                   partId={ownerPartId(part)}
                   robotId={robotId ?? null}
                   modelKey={part.modelKey}
-                  material={part.material}
-                  onshapeMaterial={part.geometry?.onshapeMaterial ?? null}
                   view={stage}
                   onView={setStage}
                   locateButton={false}
@@ -80,8 +79,6 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
                 </div>
               )}
               <div className="absolute bottom-3 left-3 flex flex-wrap items-center gap-1.5">
-                {!part.isManual && !cots && <DrawingAction partId={ownerPartId(part)} hasDrawing={!!part.hasDrawing} />}
-                {!cots && <DrawingFileButton part={part} />}
                 <MergedBadge part={part} />
               </div>
               {(format || part.files.length > 0 || part.hasDrawing) && (
@@ -142,6 +139,12 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
               </Row>
             </dl>
             <InventoryLink part={part} save={save} />
+            {!cots && (
+              <div className="flex flex-wrap items-center gap-2">
+                {!part.isManual && <DrawingAction partId={ownerPartId(part)} hasDrawing={!!part.hasDrawing} />}
+                <DrawingFileButton part={part} />
+              </div>
+            )}
           </div>
         </div>
       </EditScope>
@@ -191,8 +194,10 @@ function NotesBox({ part, save }: { part: CardPart; save: SaveFn }) {
   );
 }
 
-// Make the part's drawing from Onshape, or open the one it has in the drawing editor.
-function DrawingAction({ partId, hasDrawing }: { partId: string; hasDrawing: boolean }) {
+// Make the part's drawing from Onshape, or open the one it has in the drawing editor. `compact` is
+// the part card's icon button. The editor goes on document.body, its clicks stopped there, so a
+// press inside doesn't reach the card it was opened from.
+export function DrawingAction({ partId, hasDrawing, compact = false }: { partId: string; hasDrawing: boolean; compact?: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [making, setMaking] = useState(false);
@@ -205,34 +210,50 @@ function DrawingAction({ partId, hasDrawing }: { partId: string; hasDrawing: boo
     router.refresh();
     setOpen(true);
   }
+  const label = making ? "Making the drawing…" : hasDrawing ? "Open drawing" : "Make drawing";
   return (
     <>
-      <button type="button" onClick={onClick} disabled={making} className={`btn h-8 gap-1.5 bg-surface/95 text-xs shadow-sm ${making ? "animate-pulse" : ""}`}>
-        <Icon name="drawing" className="h-3.5 w-3.5" />
-        {making ? "Making the drawing…" : hasDrawing ? "Open drawing" : "Make drawing"}
-      </button>
-      {open && <DrawingEditor partId={partId} onClose={() => setOpen(false)} />}
+      {compact ? (
+        <button type="button" onClick={onClick} disabled={making} className={`overlay-btn ${making ? "animate-pulse" : ""}`} aria-label={label} title={label}>
+          <Icon name="spark" />
+        </button>
+      ) : (
+        <button type="button" onClick={onClick} disabled={making} className={`btn h-8 gap-1.5 text-xs ${making ? "animate-pulse" : ""}`}>
+          <Icon name="drawing" className="h-3.5 w-3.5" />
+          {label}
+        </button>
+      )}
+      {open &&
+        createPortal(
+          <div onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+            <DrawingEditor partId={partId} onClose={() => setOpen(false)} />
+          </div>,
+          document.body,
+        )}
     </>
   );
 }
 
 // Upload a drawing file (a PDF or picture made outside the app); the card's View drawing opens it.
-function DrawingFileButton({ part }: { part: CardPart }) {
+// `compact` is the part card's icon button.
+export function DrawingFileButton({ part, compact = false }: { part: CardPart; compact?: boolean }) {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const file = part.files.find((f) => f.type === "drawing");
+  const label = busy ? "Uploading…" : file ? "Replace drawing file" : "Add drawing file";
   return (
     <>
       <button
         type="button"
         disabled={busy}
         onClick={() => input.current?.click()}
-        className={`btn h-8 gap-1.5 bg-surface/95 text-xs shadow-sm ${busy ? "animate-pulse" : ""}`}
+        className={`${compact ? "overlay-btn" : "btn h-8 gap-1.5 text-xs"} ${busy ? "animate-pulse" : ""}`}
+        aria-label={compact ? label : undefined}
         title={file ? `Replace ${file.filename}` : "Upload a drawing file"}
       >
-        <Icon name="download" className="h-3.5 w-3.5 rotate-180" />
-        {busy ? "Uploading…" : file ? "Replace drawing file" : "Add drawing file"}
+        <Icon name="download" className={compact ? "rotate-180" : "h-3.5 w-3.5 rotate-180"} />
+        {!compact && label}
       </button>
       <input
         ref={input}

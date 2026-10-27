@@ -36,6 +36,7 @@ export function ModelCanvas({
   hidden,
   selectedKey,
   onPick,
+  onOpen,
 }: {
   model: ViewerModel;
   colors: Map<string, string>; // part key → status colour
@@ -45,6 +46,7 @@ export function ModelCanvas({
   hidden?: Set<number>; // subsystem groups not drawn
   selectedKey?: string | null; // a part picked with a click: drawn in bright green
   onPick?: (key: string | null) => void; // a click on a part (its key) or on empty space (null)
+  onOpen?: (key: string) => void; // a double-click on a part
 }) {
   const host = useRef<HTMLDivElement>(null);
   // Recolours the parts and frames the located one; true when it is in the model.
@@ -54,9 +56,11 @@ export function ModelCanvas({
     select: (key: string | null) => void;
   } | null>(null);
   const pick = useRef(onPick);
+  const openPart = useRef(onOpen);
   useEffect(() => {
     pick.current = onPick;
-  }, [onPick]);
+    openPart.current = onOpen;
+  }, [onPick, onOpen]);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>({ done: 0, total: model.studios.length });
   const [error, setError] = useState<string | null>(null);
   const hiddenAtLoad = useRef(hidden);
@@ -183,8 +187,16 @@ export function ModelCanvas({
     };
     scene.current = { paint, hide, select };
 
-    // Left click (not a drag) picks the part under the pointer.
+    // Left click (not a drag) picks the part under the pointer; a double-click opens it.
     const ray = new THREE.Raycaster();
+    const keyAt = (e: MouseEvent) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      ray.setFromCamera(new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -(((e.clientY - rect.top) / rect.height) * 2 - 1)), camera);
+      const shown = meshes.filter((m) => m.mesh.visible);
+      const [hit] = ray.intersectObjects(shown.map((m) => m.mesh), false);
+      const owner = hit && shown.find((m) => m.mesh === hit.object);
+      return owner && hit.instanceId !== undefined ? (owner.keys[hit.instanceId] ?? null) : null;
+    };
     let down: { x: number; y: number } | null = null;
     const onDown = (e: PointerEvent) => {
       down = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
@@ -192,15 +204,16 @@ export function ModelCanvas({
     const onUp = (e: PointerEvent) => {
       if (!down || e.button !== 0 || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
       down = null;
-      const rect = renderer.domElement.getBoundingClientRect();
-      ray.setFromCamera(new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -(((e.clientY - rect.top) / rect.height) * 2 - 1)), camera);
-      const shown = meshes.filter((m) => m.mesh.visible);
-      const [hit] = ray.intersectObjects(shown.map((m) => m.mesh), false);
-      const owner = hit && shown.find((m) => m.mesh === hit.object);
-      pick.current?.(owner && hit.instanceId !== undefined ? (owner.keys[hit.instanceId] ?? null) : null);
+      pick.current?.(keyAt(e));
+    };
+    const onDouble = (e: MouseEvent) => {
+      if (e.button !== 0 || !openPart.current) return;
+      const key = keyAt(e);
+      if (key) openPart.current(key);
     };
     renderer.domElement.addEventListener("pointerdown", onDown);
     renderer.domElement.addEventListener("pointerup", onUp);
+    renderer.domElement.addEventListener("dblclick", onDouble);
 
     (async () => {
       const shapes: Map<string, { geometry: THREE.BufferGeometry; look?: Appearance }>[] = [];
@@ -268,6 +281,7 @@ export function ModelCanvas({
       renderer.domElement.removeEventListener("mousedown", noAutoScroll);
       renderer.domElement.removeEventListener("pointerdown", onDown);
       renderer.domElement.removeEventListener("pointerup", onUp);
+      renderer.domElement.removeEventListener("dblclick", onDouble);
       geometries.forEach((g) => g.dispose());
       meshes.forEach(({ mesh }) => mesh.dispose());
       material.dispose();

@@ -19,3 +19,14 @@ export const BEARINGS = [
 export const FITS = ["light press", "heavy press", "slip", "precise slip"] as const;
 export type Fit = (typeof FITS)[number];
 export const DEFAULT_FIT: Fit = "light press";
+
+// Ink on the sheet, in grayscale (it prints on any printer). The part's own lines are a dark grey
+// so the dimension and note arrows, in solid black and drawn heavier, stand out from them.
+export const INK = {
+  part: "#4d4d4d", // visible edges
+  center: "#808080", // centre marks and chain lines
+  annotation: "#000", // dimension, extension and leader lines, arrowheads and their text
+  annotationWidth: 0.35, // mm, dimension and leader lines (ISO thin is 0.25)
+  arrowLength: 4, // mm
+  arrowHalfWidth: 1.1, // mm, half the arrowhead's base
+};

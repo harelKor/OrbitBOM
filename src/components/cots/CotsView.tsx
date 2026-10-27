@@ -659,8 +659,6 @@ function ThumbLocate({ part }: { part: CardPart }) {
           robotId={robotId ?? null}
           modelKey={part.modelKey}
           name={partTitle(part)}
-          material={part.material}
-          onshapeMaterial={part.geometry?.onshapeMaterial ?? null}
           view={stage}
           onView={setStage}
           onClose={() => setStage(null)}

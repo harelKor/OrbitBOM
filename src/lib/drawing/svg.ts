@@ -1,27 +1,31 @@
 // A drawing as one SVG in sheet millimetres, ISO style: thick visible lines, thin dimension and
 // leader lines, thin chain centre lines, 3.5 mm lettering, BOM block bottom right.
 
+import { INK } from "@/config/drawings";
 import { MARGIN, noteBox, TITLE } from "./layout";
 import type { Dim, Drawing, Note, Pt, Stroke } from "./types";
 
 const STROKES: Record<Stroke, string> = {
-  visible: 'stroke-width="0.5"',
-  thin: 'stroke-width="0.25"',
-  center: 'stroke-width="0.25" stroke-dasharray="6 1.5 1 1.5"',
+  visible: `stroke="${INK.part}" stroke-width="0.5"`,
+  thin: `stroke="${INK.center}" stroke-width="0.25"`,
+  center: `stroke="${INK.center}" stroke-width="0.25" stroke-dasharray="6 1.5 1 1.5"`,
 };
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const n = (x: number) => String(Math.round(x * 100) / 100);
 const path = (pts: Pt[]) => pts.map((p, i) => `${i ? "L" : "M"}${n(p[0])} ${n(p[1])}`).join("");
-const thin = (pts: Pt[]) => `<path d="${path(pts)}" fill="none" stroke="#000" stroke-width="0.25"/>`;
+// A dimension, extension or leader line: heavier and darker than the part's lines (INK).
+const thin = (pts: Pt[]) => `<path d="${path(pts)}" fill="none" stroke="${INK.annotation}" stroke-width="${INK.annotationWidth}" stroke-linecap="round"/>`;
 
-// A filled arrowhead with its tip at `tip`, pointing away from `from`.
+// A filled arrowhead with its tip at `tip`, pointing away from `from`: long and wide enough to
+// read at a glance on a printed sheet.
 function arrow(tip: Pt, from: Pt) {
   const [dx, dy] = [tip[0] - from[0], tip[1] - from[1]];
   const l = Math.hypot(dx, dy) || 1;
   const [ux, uy] = [dx / l, dy / l];
-  const [bx, by] = [tip[0] - ux * 3, tip[1] - uy * 3];
-  return `<path d="M${n(tip[0])} ${n(tip[1])}L${n(bx - uy * 0.6)} ${n(by + ux * 0.6)}L${n(bx + uy * 0.6)} ${n(by - ux * 0.6)}Z" fill="#000"/>`;
+  const [len, half] = [INK.arrowLength, INK.arrowHalfWidth];
+  const [bx, by] = [tip[0] - ux * len, tip[1] - uy * len];
+  return `<path d="M${n(tip[0])} ${n(tip[1])}L${n(bx - uy * half)} ${n(by + ux * half)}L${n(bx + uy * half)} ${n(by - ux * half)}Z" fill="${INK.annotation}" stroke="${INK.annotation}" stroke-width="0.15" stroke-linejoin="round"/>`;
 }
 
 function text(at: Pt, value: string, opts: { size?: number; anchor?: string; bold?: boolean; rotate?: boolean } = {}) {
@@ -73,7 +77,7 @@ export function drawingSvg(d: Drawing): string {
     `<rect x="${MARGIN}" y="${MARGIN}" width="${w - 2 * MARGIN}" height="${h - 2 * MARGIN}" fill="none" stroke="#000" stroke-width="0.7"/>`,
   ];
   if (d.image) out.push(`<image href="${esc(d.image.href)}" x="${d.image.x}" y="${d.image.y}" width="${d.image.w}" height="${d.image.h}" preserveAspectRatio="xMidYMid meet"/>`);
-  out.push('<g fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round">');
+  out.push('<g fill="none" stroke-linecap="round" stroke-linejoin="round">');
   for (const l of d.lines) out.push(`<path d="${path(l.pts)}" ${STROKES[l.stroke]}/>`);
   out.push("</g>", ...d.dims.map(dimension), ...d.notes.map(note), titleBlock(d), "</svg>");
   return out.join("");

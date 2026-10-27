@@ -1,10 +1,11 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { OPEN_PART_EVENT, OPEN_PART_PENDING, type OpenPartDetail } from "@/components/dashboard/modelEvents";
 import { BomProvider, useBom } from "./BomContext";
 import type { SaveFn } from "./fields";
 import { PartDetails } from "./PartDetails";
-import type { CardPart } from "./types";
+import { partIds, type CardPart } from "./types";
 
 type Bom = ReturnType<typeof useBom>;
 type Open = { part: CardPart; save: SaveFn; bom: Bom };
@@ -41,13 +42,35 @@ export function PartDetailsProvider({ children }: { children: React.ReactNode })
 }
 
 // A card's way to open its part's window; while it's open the card hands it every new version of
-// the part (and its save, which is bound to the page the card is on).
+// the part (and its save, which is bound to the page the card is on). A double-click on the part
+// in a 3D view opens it too (OPEN_PART_EVENT), also right after the viewer brought us to its page.
 export function usePartDetails(part: CardPart, save: SaveFn) {
   const { openId, open, sync } = useContext(Ctx);
   const bom = useBom();
   const isOpen = openId === part.id;
+  const show = useRef(() => open({ part, save, bom }));
   useEffect(() => {
+    show.current = () => open({ part, save, bom });
     if (isOpen) sync({ part, save, bom });
   });
+  const ids = partIds(part);
+  useEffect(() => {
+    const mine = ids.split(" ");
+    const onOpen = (e: Event) => {
+      const detail = (e as CustomEvent<OpenPartDetail>).detail;
+      if (detail.taken || !mine.includes(detail.partId)) return;
+      detail.taken = true;
+      show.current();
+    };
+    window.addEventListener(OPEN_PART_EVENT, onOpen);
+    try {
+      const pending = sessionStorage.getItem(OPEN_PART_PENDING);
+      if (pending && mine.includes(pending)) {
+        sessionStorage.removeItem(OPEN_PART_PENDING);
+        show.current();
+      }
+    } catch {}
+    return () => window.removeEventListener(OPEN_PART_EVENT, onOpen);
+  }, [ids]);
   return () => open({ part, save, bom });
 }

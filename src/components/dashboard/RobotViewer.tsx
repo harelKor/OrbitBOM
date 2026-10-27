@@ -1,7 +1,6 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StatusCount } from "@/lib/stats";
@@ -10,7 +9,7 @@ import { Icon } from "@/components/ui/Icon";
 import { useMaterialColors } from "@/components/shell/MaterialColors";
 import { DEFAULT_MATERIAL_COLORS, MATERIAL_COLOR_GROUPS, materialColor, materialColorGroup } from "@/config/materialColors";
 import type { ViewerModel } from "./ModelCanvas";
-import { MODEL_STALE_EVENT, type ModelStaleDetail } from "./modelEvents";
+import { MODEL_STALE_EVENT, OPEN_PART_EVENT, OPEN_PART_PENDING, type ModelStaleDetail, type OpenPartDetail } from "./modelEvents";
 
 const ModelCanvas = dynamic(() => import("./ModelCanvas").then((m) => m.ModelCanvas), { ssr: false });
 
@@ -26,9 +25,10 @@ export type ViewerPart = { key: string; color: string; id: string; systemId: str
 // (Edit mode's Update 3D model) and kept in R2; viewing it costs no Onshape calls. The expand
 // button opens it large over the page, leaving the side panels and a margin of background. The
 // Subsystems button shows and hides subsystems (open by default when large). On a system page
-// (systemId) it shows only that subsystem. A click on a part highlights it; a second click goes
-// to its card, or offers To Fab or the system page when the part is in To Fab. (Locate opens a
-// part's own window from its card: PartStage.)
+// (systemId) it shows only that subsystem. A click on a part highlights it; a double-click opens
+// its details window over the viewer, which stays as it is behind it (from a page without the
+// part's card, it goes to the system page and opens it there). (Locate opens a part's own window
+// from its card: PartStage.)
 export function RobotViewer({
   robotId,
   systemId,
@@ -51,7 +51,6 @@ export function RobotViewer({
   const [large, setLarge] = useState(false);
   const [bar, setBar] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
-  const [choosing, setChoosing] = useState(false);
   const [hiddenGroups, setHiddenGroups] = useState<Set<number>>(() => new Set());
   const [version, setVersion] = useState(builtAt);
   // undefined while loading, null when there is no model to show.
@@ -72,20 +71,19 @@ export function RobotViewer({
   const onLocated = useCallback(() => {}, []);
   const partByKey = useMemo(() => new Map(parts.map((p) => [p.key, p])), [parts]);
   const picked = selected ? partByKey.get(selected) : undefined;
-  const cardHref = (p: ViewerPart) => `/robots/${robotId}/systems/${p.systemId}#part-${p.id}`;
-  const openCard = (p: ViewerPart) => {
-    setLarge(false);
-    setChoosing(false);
-    if (systemId === p.systemId) window.location.hash = `part-${p.id}`;
-    else router.push(cardHref(p));
-  };
-  const onPick = (key: string | null) => {
-    setChoosing(false);
-    if (!key || key !== selected) return setSelected(key);
+  const onPick = (key: string | null) => setSelected(key);
+  const onOpen = (key: string) => {
+    setSelected(key);
     const part = partByKey.get(key);
     if (!part) return; // placed in CAD but not on the BOM
-    if (part.fab) setChoosing(true);
-    else openCard(part);
+    const detail: OpenPartDetail = { partId: part.id, taken: false };
+    window.dispatchEvent(new CustomEvent(OPEN_PART_EVENT, { detail }));
+    if (detail.taken) return;
+    try {
+      sessionStorage.setItem(OPEN_PART_PENDING, part.id);
+    } catch {}
+    setLarge(false);
+    router.push(`/robots/${robotId}/systems/${part.systemId}#part-${part.id}`);
   };
   const groups = useMemo(() => model?.groups ?? [], [model]);
   // A system page draws only the groups its system is in.
@@ -237,6 +235,7 @@ export function RobotViewer({
               hidden={hidden}
               selectedKey={selected}
               onPick={onPick}
+              onOpen={onOpen}
             />
           ) : (
             <>
@@ -269,17 +268,10 @@ export function RobotViewer({
           {picked || selected ? (
             <div className="absolute top-3 left-1/2 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 animate-pop flex-wrap items-center justify-center gap-2 rounded-md border border-accent/50 bg-surface/95 px-3 py-2 text-xs shadow-sm backdrop-blur">
               <span className="min-w-0 truncate font-semibold text-fg">{picked?.name ?? "Placed in CAD, not on the BOM"}</span>
-              {choosing && picked ? (
-                <>
-                  <Link href={`/robots/${robotId}/fab`} className="btn-primary h-7 px-2.5 text-xs">
-                    To Fab
-                  </Link>
-                  <button className="btn h-7 px-2.5 text-xs" onClick={() => openCard(picked)}>
-                    System page
-                  </button>
-                </>
-              ) : (
-                picked && <span className="text-subtle">Click it again to open its card</span>
+              {picked && (
+                <button className="btn h-7 px-2.5 text-xs" onClick={() => onOpen(picked.key)} title="Or double-click the part">
+                  Open part
+                </button>
               )}
               <button onClick={() => onPick(null)} className="press text-muted hover:text-fg" aria-label="Clear selection">
                 ✕
