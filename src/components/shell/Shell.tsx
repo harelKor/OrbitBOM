@@ -80,7 +80,7 @@ export function Shell({
                   <LeftNav robots={robots} lastRobotId={lastRobotId} member={member} />
                 </aside>
                 <div className="flex min-w-0 flex-1 flex-col">
-                  <TopBar onMenu={() => toggle("left")} onRobots={() => toggle("right")} />
+                  <TopBar onMenu={() => toggle("left")} onRobots={() => toggle("right")} navHidden={collapsed.left} />
                   {/* The wide side gutters keep the collapse arrows clear of the page. */}
                 <main className="min-w-0 flex-1 p-4 md:p-6 lg:pl-11 xl:pr-11">{children}</main>
                   <Suspense>

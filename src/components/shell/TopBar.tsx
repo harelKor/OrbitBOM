@@ -6,6 +6,7 @@ import { getMachine, MACHINES } from "@/config/machines";
 import { MATERIAL_OPTIONS } from "@/components/bom/options";
 import { OptionList, Popover, type Option } from "@/components/bom/Popover";
 import { DATE_OPTIONS, useFilters, type DateFilter, type Filters } from "./FilterContext";
+import { Brand } from "./Brand";
 import { ModeToggle } from "./ModeContext";
 import { UndoRedo } from "./UndoRedo";
 
@@ -13,7 +14,7 @@ const PROCESS_OPTIONS: Option[] = [{ value: null, label: "Any process" }, ...MAC
 const DATE_PICK: Option[] = [{ value: null, label: "Any time" }, ...DATE_OPTIONS.map((d) => ({ value: d.value, label: d.label }))];
 const MATERIAL_PICK: Option[] = [{ value: null, label: "Any material" }, ...MATERIAL_OPTIONS.filter((o) => o.value)];
 
-export function TopBar({ onMenu, onRobots }: { onMenu: () => void; onRobots: () => void }) {
+export function TopBar({ onMenu, onRobots, navHidden }: { onMenu: () => void; onRobots: () => void; navHidden: boolean }) {
   const pathname = usePathname();
   const { filters, setFilters } = useFilters();
   const search = useRef<HTMLInputElement>(null);
@@ -48,6 +49,10 @@ export function TopBar({ onMenu, onRobots }: { onMenu: () => void; onRobots: () 
       <button onClick={onMenu} className="press rounded-md border border-white/30 px-2 py-1 lg:hidden" aria-label="Pages" title="Show pages">
         ☰
       </button>
+      {/* The mark stays on screen whenever the left panel isn't showing it. */}
+      <div className={navHidden ? "" : "lg:hidden"}>
+        <Brand compact />
+      </div>
       {partPages && (
         <>
           <div className="relative min-w-40 flex-1 md:max-w-sm">

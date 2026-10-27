@@ -1,12 +1,11 @@
 "use client";
 
-import Link from "next/link";
-import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { CATEGORY_GROUPS } from "@/config/inventory";
 import { MACHINES } from "@/config/machines";
 import type { ShellRobot } from "@/lib/data/shell";
+import { Brand } from "./Brand";
 import { SignOutButton } from "@/components/SignOutButton";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { FastLink, ShallowLink } from "@/components/ui/FastLink";
@@ -37,14 +36,9 @@ export function LeftNav({
 
   return (
     <div className="flex h-full flex-col">
-      <Link href="/?home" className="flex min-h-14 items-center gap-2.5 bg-bar px-4 text-white" aria-label="OrbitParts home">
-        <Image src="/orbit-logo.png" alt="" width={34} height={34} className="h-[34px] w-[34px] rounded-md" priority />
-        <span className="display text-[26px] leading-none">1690</span>
-        <span className="leading-tight">
-          <span className="block text-[13px] font-semibold tracking-[0.12em]">ORBIT</span>
-          <span className="block text-[11px] tracking-[0.12em] text-white/75">MECH</span>
-        </span>
-      </Link>
+      <div className="flex min-h-14 items-center bg-bar px-4">
+        <Brand />
+      </div>
       <nav className="flex-1 space-y-0.5 overflow-y-auto p-2 text-sm">
         <Item href="/?home" icon="home" active={pathname === "/"}>
           Home
