@@ -5,7 +5,8 @@ import { useId, useLayoutEffect, useMemo, useOptimistic, useRef, useState, useTr
 import { flushSync } from "react-dom";
 import { MACHINES, getMachine } from "@/config/machines";
 import type { Priority } from "@/config/priorities";
-import { DEFAULT_MATERIAL_COLORS, MATERIAL_COLOR_GROUPS, OTHER_MATERIAL, materialColorGroup } from "@/config/materialColors";
+import { materialColor } from "@/config/materialColors";
+import { ALL_MATERIALS } from "@/config/materials";
 import { DONE_STATUSES, STATUSES, getStatus, statusLabel, type StatusName } from "@/config/statuses";
 import { removeBatchGcode } from "@/app/(app)/files-actions";
 import { createFabBatch, deleteGroup, moveToFabBatch, removeFromGroup, updateGroup } from "@/app/(app)/groups/actions";
@@ -85,8 +86,9 @@ const fabTint = (p: CardPart) => (isFabFinished(p) ? tint(FINISHED_COLOR) : comp
 
 const common = (lists: string[][]) => (lists.length ? lists.reduce((acc, l) => acc.filter((m) => l.includes(m))) : []);
 
-// The material filter boxes group parts by material category (the Material mode colours' groups).
-const materialGroupOf = (p: CardPart) => materialColorGroup(p.material, p.geometry?.onshapeMaterial);
+// The material filter boxes go by the exact material ("3mm 6061-T6"); NO_MATERIAL stands for none.
+const NO_MATERIAL_KEY = "none";
+const materialKeyOf = (p: CardPart) => p.material || NO_MATERIAL_KEY;
 
 // A batch part with no machine or no material can take them from the rest of the batch: the
 // material of a part that has one, and the machines of a part that has them (else the batch's).
@@ -187,8 +189,8 @@ export function FabView({
   const [target, setTarget] = useState(""); // the batch the Fab button adds to ("" = a new one)
   // ?mat= : the material filter box picked.
   const rawMat = useSearchParams().get("mat");
-  const mat = rawMat && MATERIAL_COLOR_GROUPS.includes(rawMat) ? rawMat : null;
-  const matchesMat = (p: CardPart) => !mat || materialGroupOf(p) === mat;
+  const mat = rawMat || null;
+  const matchesMat = (p: CardPart) => !mat || materialKeyOf(p) === mat;
   // Long-pressing a Released card on a phone turns on Fab with that card picked.
   const press = useRef<{ timer: number | null; fired: boolean }>({ timer: null, fired: false });
   const endPress = () => {
@@ -214,7 +216,7 @@ export function FabView({
       if (!fabStage(p)) continue;
       total += 1;
       for (const m of machinesOf(p)) byMachine.set(m, (byMachine.get(m) ?? 0) + 1);
-      if (!machine || machinesOf(p).includes(machine)) byMaterial.set(materialGroupOf(p), (byMaterial.get(materialGroupOf(p)) ?? 0) + 1);
+      if (!machine || machinesOf(p).includes(machine)) byMaterial.set(materialKeyOf(p), (byMaterial.get(materialKeyOf(p)) ?? 0) + 1);
     }
     return { total, byMachine, byMaterial };
   }, [optimistic, machine]);
@@ -421,6 +423,7 @@ export function FabView({
           {machinesWithParts.map((m) => (
             <MachineBox key={m.id} href={`${base}?machine=${m.id}`} name={m.name} count={counts.byMachine.get(m.id)!} active={machine === m.id} />
           ))}
+          <MaterialBoxes counts={counts.byMaterial} active={mat} />
           <button
             onClick={() => setMine((m) => !m)}
             aria-pressed={mine}
@@ -438,8 +441,6 @@ export function FabView({
             {fab ? "Cancel" : "＋ Fab"}
           </button>
         </div>
-
-        <MaterialBoxes counts={counts.byMaterial} active={mat} />
 
         {error && <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">Couldn&apos;t save: {error}</p>}
 
@@ -598,44 +599,33 @@ function MachineBox({ href, name, count, active }: { href: string; name: string;
   );
 }
 
-// Compact filter boxes, one per material category with parts in the queue (on the machine picked),
-// like the COTS page's; ?mat= keeps the pick.
+// One filter box per material with parts in the queue (on the machine picked), in the machine
+// boxes' row (it wraps when there are many); ?mat= keeps the pick and a second click clears it.
 function MaterialBoxes({ counts, active }: { counts: Map<string, number>; active: string | null }) {
   const colors = useMaterialColors();
-  const groups = MATERIAL_COLOR_GROUPS.filter((g) => counts.has(g));
-  if (groups.length < 2 && !active) return null;
-  const total = [...counts.values()].reduce((a, b) => a + b, 0);
-  const box = (id: string | null, label: string, count: number, color: string | null) => {
-    const selected = active === id;
+  const order = (m: string) => (m === NO_MATERIAL_KEY ? Infinity : ALL_MATERIALS.indexOf(m) === -1 ? ALL_MATERIALS.length : ALL_MATERIALS.indexOf(m));
+  const keys = [...counts.keys()].sort((a, b) => order(a) - order(b) || a.localeCompare(b));
+  if (keys.length < 2 && !active) return null;
+  return keys.map((m) => {
+    const selected = active === m;
+    const none = m === NO_MATERIAL_KEY;
     return (
       <button
-        key={id ?? "all"}
+        key={m}
         type="button"
-        onClick={() => pushQuery({ mat: selected ? null : id })}
+        onClick={() => pushQuery({ mat: selected ? null : m })}
         data-selected={selected}
         aria-pressed={selected}
-        className="card-interactive group flex h-12 shrink-0 items-center gap-2.5 overflow-hidden pr-3 text-left active:scale-[0.98]"
+        className="card-interactive flex min-w-28 flex-col px-4 py-2.5 text-left active:scale-[0.98]"
       >
-        <span className="relative flex h-full w-12 shrink-0 items-center justify-center bg-gradient-to-br from-sky-500/25 via-raised to-amber-400/20">
-          {color ? (
-            <span className="h-6 w-6 rounded-md border border-white/20 shadow-sm transition-transform duration-150 group-hover:scale-[1.03]" style={{ backgroundColor: color }} />
-          ) : (
-            <Icon name="fab" className="h-5 w-5 text-sky-400" />
-          )}
-        </span>
-        <span className="min-w-0">
-          <span className="block text-xs leading-tight font-bold whitespace-nowrap text-fg">{label}</span>
-          <span className="block font-mono text-[11px] text-subtle tabular-nums">{count}</span>
+        <span className="display text-2xl text-accent tabular-nums">{counts.get(m)}</span>
+        <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-fg-2">
+          <span className="h-2.5 w-2.5 shrink-0 rounded-sm border border-line-strong" style={{ backgroundColor: materialColor(none ? null : m, colors) }} />
+          <span className="truncate">{none ? "No material" : m.replace(/-T6$/, "")}</span>
         </span>
       </button>
     );
-  };
-  return (
-    <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible">
-      {box(null, "All materials", total, null)}
-      {groups.map((g) => box(g, g, counts.get(g)!, colors[g] ?? DEFAULT_MATERIAL_COLORS[g] ?? DEFAULT_MATERIAL_COLORS[OTHER_MATERIAL]))}
-    </div>
-  );
+  });
 }
 
 function Section({
