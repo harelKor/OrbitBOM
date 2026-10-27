@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMemo, useOptimistic, useState, useSyncExternalStore, useTransition } from "react";
-import { adjustStock, countStock } from "@/app/(app)/inventory/actions";
-import { EditOnly } from "@/components/shell/ModeContext";
+import { adjustStock, bulkDeleteItems, bulkMoveItems, countStock } from "@/app/(app)/inventory/actions";
+import { EditOnly, useEditMode } from "@/components/shell/ModeContext";
 import { CategoryBoxes, pushQuery, type BoxCount } from "@/components/ui/CategoryBoxes";
 import { Icon } from "@/components/ui/Icon";
 import { groupOf, isCategoryGroup, type CategoryGroupId } from "@/config/inventory";
@@ -40,11 +40,19 @@ export function InventoryView({ items, scope, actions, ...lookups }: Lookups & {
   const [conditionId, setConditionId] = useState("");
   const [locationId, setLocationId] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  // Move / Delete: taps select cards, the bar at the bottom acts on them.
+  const edit = useEditMode();
+  const [picking, setPicking] = useState<"move" | "delete" | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [moveCat, setMoveCat] = useState("");
+  const [moveLoc, setMoveLoc] = useState(""); // "" keep, "none" clear, else a location id
+  const selecting = edit ? picking : null;
 
   const [optimistic, addOptimistic] = useOptimistic(items, (state, { id, delta }: { id: string; delta: number }) =>
     state.map((i) => (i.id === id ? { ...i, inStock: snapStock(i.inStock + delta, i.sheet) } : i)),
   );
-  const [, startTransition] = useTransition();
+  const [busy, startTransition] = useTransition();
   const step = (id: string, delta: number) =>
     startTransition(async () => {
       setError(null);
@@ -98,6 +106,8 @@ export function InventoryView({ items, scope, actions, ...lookups }: Lookups & {
     .filter((i) => inScope(i) && inView(i) && inBox(i) && matches(i) && (!conditionId || i.conditionId === conditionId) && (!locationId || locationOf(i) === locationId))
     .sort((a, b) => (view ? RANK[standing(a, view)] - RANK[standing(b, view)] : 0));
   const boxes = home && !view && !query;
+  // The view's own items, filtered only by condition and location (not by the boxes).
+  const inViewAll = view ? optimistic.filter((i) => inView(i) && (!conditionId || i.conditionId === conditionId) && (!locationId || locationOf(i) === locationId)) : [];
   const showBoxes = home && (!query || !!view);
 
   // Each group's and category's items (in the view, when one is on) and how many are short.
@@ -143,6 +153,45 @@ export function InventoryView({ items, scope, actions, ...lookups }: Lookups & {
       </select>
     </>
   );
+  const pick = (m: "move" | "delete") => {
+    setPicking((cur) => (cur === m ? null : m));
+    setSelected(new Set());
+    setMoveCat("");
+    setMoveLoc("");
+    setNotice(null);
+  };
+  const toggleSelected = (id: string) =>
+    setSelected((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const done = (r: { error?: string; message?: string }) => {
+    if (r.error) return setError(r.error);
+    setNotice(r.message ?? null);
+    setPicking(null);
+    setSelected(new Set());
+  };
+  const confirmMove = () => {
+    const ids = [...selected];
+    const target = { ...(moveCat && { category: moveCat }), ...(moveLoc && { locationId: moveLoc === "none" ? null : moveLoc }) };
+    startTransition(async () => {
+      setError(null);
+      done(await bulkMoveItems(ids, target));
+    });
+  };
+  const confirmDelete = () => {
+    const ids = [...selected];
+    const used = optimistic.filter((i) => selected.has(i.id) && i.usage?.parts.length).length;
+    const warn = used ? ` ${used} of them ${used === 1 ? "is" : "are"} linked to BOM parts.` : "";
+    if (!confirm(`Delete ${ids.length} item${ids.length === 1 ? "" : "s"} from the inventory?${warn}`)) return;
+    startTransition(async () => {
+      setError(null);
+      done(await bulkDeleteItems(ids));
+    });
+  };
+
   const grid = (list: Item[], cardView: NeedView = need) => (
     <div className="card-grid" style={{ "--card-min": "220px" } as React.CSSProperties}>
       {list.map((item) => (
@@ -155,6 +204,9 @@ export function InventoryView({ items, scope, actions, ...lookups }: Lookups & {
           view={cardView}
           onStep={(d) => step(item.id, d)}
           onCount={(n) => count(item.id, n)}
+          hideCategory={scope.kind === "category" || !!cat}
+          selected={selected.has(item.id)}
+          onToggleSelect={selecting ? () => toggleSelected(item.id) : undefined}
         />
       ))}
     </div>
@@ -168,8 +220,11 @@ export function InventoryView({ items, scope, actions, ...lookups }: Lookups & {
     }),
   }));
 
+  // Select all: the cards on screen (the main list, else every item on home).
+  const selectable = boxes ? optimistic : shown;
+
   return (
-    <div className="space-y-4">
+    <div className={`space-y-4 ${selecting ? "pb-20" : ""}`}>
       <EditOnly>
         <div className="panel flex flex-wrap items-center gap-2 p-3">
           <button className="btn min-h-11" onClick={() => setOpen({ kind: "settings" })}>
@@ -184,6 +239,18 @@ export function InventoryView({ items, scope, actions, ...lookups }: Lookups & {
           <button className="btn min-h-11" onClick={() => setOpen({ kind: "import" })}>
             Import spreadsheet
           </button>
+          <span className="ml-auto" />
+          {(["move", "delete"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => pick(m)}
+              aria-pressed={picking === m}
+              className={`btn min-h-11 active:scale-[0.98] ${picking === m ? (m === "delete" ? "border-rose-500 bg-rose-500 text-white" : "border-accent bg-accent text-white") : m === "delete" ? "text-rose-600" : ""}`}
+            >
+              {m === "move" ? "Move" : "Delete"}
+            </button>
+          ))}
         </div>
       </EditOnly>
 
@@ -221,6 +288,14 @@ export function InventoryView({ items, scope, actions, ...lookups }: Lookups & {
       )}
 
       {error && <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">Couldn&apos;t save: {error}</p>}
+      {notice && !error && (
+        <p className="flex items-center gap-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
+          <span className="flex-1">{notice}</span>
+          <button type="button" className="press" aria-label="Dismiss" onClick={() => setNotice(null)}>
+            <Icon name="close" className="h-4 w-4" />
+          </button>
+        </p>
+      )}
 
       {home && (
         <div className="grid grid-cols-2 gap-3">
@@ -290,13 +365,60 @@ export function InventoryView({ items, scope, actions, ...lookups }: Lookups & {
             grid(shown)
           )}
           {view && (
-            // The whole inventory stays one tap away, folded (Harel, 2026-10-27).
+            // Every item of this view stays one tap away, folded, whatever box is picked (Harel, 2026-10-27).
             <div className="pt-2">
-              <Fold id="all-in-view" title={`All items (${items.length})`}>
-                {grid(optimistic.filter((i) => (!conditionId || i.conditionId === conditionId) && (!locationId || locationOf(i) === locationId)), "any")}
+              <Fold id={`all-in-${view}`} title={`All items (${inViewAll.length})`} defaultOpen={false}>
+                {grid(inViewAll)}
               </Fold>
             </div>
           )}
+        </div>
+      )}
+
+      {selecting && (
+        <div className="sticky bottom-3 z-30 rounded-xl border border-line-strong bg-surface/95 p-3 shadow-lg backdrop-blur">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="font-mono font-semibold tabular-nums">{selected.size} selected</span>
+            {selecting === "move" ? (
+              <>
+                <select value={moveCat} onChange={(e) => setMoveCat(e.target.value)} className="input min-h-11 w-auto py-1.5 text-sm" aria-label="Move to category">
+                  <option value="">Category: keep</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+                <select value={moveLoc} onChange={(e) => setMoveLoc(e.target.value)} className="input min-h-11 w-auto py-1.5 text-sm" aria-label="Move to location">
+                  <option value="">Location: keep</option>
+                  <option value="none">No location</option>
+                  {locations.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </select>
+                <span className="ml-auto" />
+                <button className="btn-primary min-h-11 active:scale-[0.98]" disabled={busy || selected.size === 0 || (!moveCat && !moveLoc)} onClick={confirmMove}>
+                  ✓ Confirm move
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="text-subtle">Tap the items to delete.</span>
+                <span className="ml-auto" />
+                <button className="btn min-h-11 border-rose-500 bg-rose-500 text-white hover:bg-rose-400 active:scale-[0.98] disabled:opacity-50" disabled={busy || selected.size === 0} onClick={confirmDelete}>
+                  Delete <span className="font-mono tabular-nums">{selected.size}</span> item{selected.size === 1 ? "" : "s"}
+                </button>
+              </>
+            )}
+            <button className="btn min-h-11" onClick={() => setSelected(new Set(selectable.map((i) => i.id)))}>
+              Select all
+            </button>
+            <button className="btn min-h-11" onClick={() => pick(selecting)}>
+              Cancel
+            </button>
+          </div>
         </div>
       )}
 

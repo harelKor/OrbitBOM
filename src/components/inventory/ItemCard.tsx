@@ -7,6 +7,7 @@ import { sendItemToReleased } from "@/app/(app)/inventory/actions";
 import { textOn } from "@/components/bom/options";
 import { formatPrice, setCurrency, useCurrency } from "@/components/cots/currency";
 import { Popover } from "@/components/bom/Popover";
+import { CheckBadge } from "@/components/ui/CheckBadge";
 import { Icon } from "@/components/ui/Icon";
 import { statusTint } from "@/components/ui/statusTint";
 import { getCategory } from "@/lib/inventory/categories";
@@ -73,7 +74,8 @@ export function ProductName({ item, className = "", wrap = false }: { item: Pick
 // takes the condition's colour. A short item gets a cart on its picture that sends what's missing
 // to Released; once it's on order the cart and the card turn orange and the cart opens that COTS
 // card. In the Short views the card is red, orange or green. Anywhere else on the card opens the
-// item's window; a linked name opens the product.
+// item's window; a linked name opens the product. With onToggleSelect (the page's Move / Delete),
+// a tap anywhere selects the card instead. hideCategory drops the category tag inside a category.
 export function ItemCard({
   item,
   categories,
@@ -82,8 +84,14 @@ export function ItemCard({
   view = "any",
   onStep,
   onCount,
+  hideCategory = false,
+  selected,
+  onToggleSelect,
 }: {
   item: Item;
+  hideCategory?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
   view?: NeedView;
   categories: InvCategory[];
   condition?: { id: string; label: string; color: string };
@@ -113,6 +121,20 @@ export function ItemCard({
       className="card-interactive group flex cursor-pointer flex-col border-l-4 text-sm"
       style={{ ...tinted, ...(color && { borderLeftColor: color }) }}
     >
+      {onToggleSelect && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleSelect();
+          }}
+          aria-pressed={!!selected}
+          aria-label={selected ? `Deselect ${item.name}` : `Select ${item.name}`}
+          className={`absolute inset-0 z-20 flex cursor-pointer items-start justify-end rounded-[inherit] p-2 active:scale-[0.98] ${selected ? "ring-2 ring-sky-400" : ""}`}
+        >
+          <CheckBadge checked={!!selected} />
+        </button>
+      )}
       <div className="thumb-well relative flex aspect-[4/3] items-center justify-center">
         {picture ? (
           // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
@@ -125,7 +147,7 @@ export function ItemCard({
         )}
       </div>
       <div className="absolute top-2 left-2 flex max-w-[60%] flex-wrap gap-1">
-        {category && (
+        {category && !hideCategory && (
           <Link href={`/inventory/c/${category.id}`} onClick={stop} className="truncate rounded-full bg-[#111318]/85 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-accent">
             {category.label}
           </Link>

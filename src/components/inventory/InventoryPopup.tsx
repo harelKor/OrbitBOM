@@ -3,15 +3,30 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useState, useTransition } from "react";
-import { adjustStock, countStock, deleteItem, findBomParts, itemPopup, materialPopup, setItemPhoto, setSeasonNeed } from "@/app/(app)/inventory/actions";
+import {
+  adjustStock,
+  countStock,
+  deleteItem,
+  findBomParts,
+  findProducts,
+  itemPopup,
+  linkItemToProduct,
+  materialPopup,
+  readProductLink,
+  setItemCategory,
+  setItemPhoto,
+  setSeasonNeed,
+} from "@/app/(app)/inventory/actions";
 import { textOn } from "@/components/bom/options";
 import { Dialog } from "@/components/Dialog";
-import { EditOnly } from "@/components/shell/ModeContext";
+import { EditOnly, useEditMode } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
 import { materialCategory } from "@/config/materials";
 import { getCategory } from "@/lib/inventory/categories";
 import { hasSeasonNeed, missing } from "@/lib/inventory/season";
+import type { Offer, ProductGroup } from "@/lib/inventory/productGroups";
 import { formatStock, snapStock } from "@/lib/inventory/stock";
+import { bestOffer, isLink } from "./AddBox";
 import { CountBox, ItemPrice, PieceStepper, conditionColor, hostOf } from "./ItemCard";
 import { ItemForm, draftOf } from "./ItemForm";
 import { ItemHistory } from "./ItemHistory";
@@ -164,8 +179,8 @@ function Stepper({ item, onStep, onCount, big = false }: { item: Pick<Item, "inS
   );
 }
 
-// "Needed for Season": how many the team wants on the shelf for the season, typed in place. Blank
-// or 0 clears it. Saves on Enter or when the box loses focus.
+// "Needed for Season": how many the team wants on the shelf for the season, typed in place under
+// the count. Blank or 0 clears it. Saves on Enter or when the box loses focus.
 function SeasonBox({ item, onSaved, onError }: { item: Item; onSaved: () => void; onError: (m: string | null) => void }) {
   const current = hasSeasonNeed(item) ? formatStock(item.seasonNeed!, item.sheet) : "";
   const [text, setText] = useState<string | null>(null);
@@ -181,8 +196,8 @@ function SeasonBox({ item, onSaved, onError }: { item: Item; onSaved: () => void
     });
   };
   return (
-    <label className="w-28 shrink-0 self-start rounded-xl border border-line bg-raised p-2.5 text-center shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] sm:w-32">
-      <span className="block text-[11px] leading-tight font-semibold text-subtle uppercase">Needed for Season</span>
+    <label className="inline-flex items-center gap-2.5 rounded-xl border border-line bg-raised py-1.5 pr-1.5 pl-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]">
+      <span className="text-[11px] leading-tight font-semibold text-subtle uppercase">Needed for Season</span>
       <input
         value={text ?? current}
         onChange={(e) => setText(e.target.value)}
@@ -195,7 +210,7 @@ function SeasonBox({ item, onSaved, onError }: { item: Item; onSaved: () => void
         inputMode={item.sheet ? "text" : "numeric"}
         placeholder="—"
         aria-label="Needed for Season"
-        className="mt-1 w-full rounded-md border border-line-strong bg-surface px-1 py-1.5 text-center font-mono text-2xl font-semibold tabular-nums outline-none focus:border-sky-400"
+        className="w-20 rounded-md border border-line-strong bg-surface px-1 py-1 text-center font-mono text-lg font-semibold tabular-nums outline-none focus:border-sky-400"
       />
     </label>
   );
@@ -226,6 +241,14 @@ function ItemBody({
   const [finding, startFind] = useTransition();
   const [photo, setPhoto] = useState<string | null>(null);
   const [, startPhoto] = useTransition();
+  const edit = useEditMode();
+  const [moving, startMove] = useTransition();
+  const moveTo = (categoryId: string) =>
+    startMove(async () => {
+      const r = await setItemCategory(item.id, categoryId);
+      setMessage(r.error ?? null);
+      if (!r.error) onSaved();
+    });
   const find = () =>
     startFind(async () => {
       const r = await findBomParts(item.id);
@@ -265,7 +288,7 @@ function ItemBody({
     <div className="space-y-4">
       <div className="flex gap-4">
         <div className="shrink-0 space-y-1.5">
-          <div className="thumb-well flex h-36 w-36 items-center justify-center rounded-xl sm:h-48 sm:w-48">
+          <div className="thumb-well flex h-44 w-44 items-center justify-center rounded-xl sm:h-56 sm:w-56">
             {photo || picture ? (
               // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
               <img src={photo ?? picture!} alt="" className="h-full w-full object-contain p-2" />
@@ -289,10 +312,29 @@ function ItemBody({
         </div>
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap gap-1">
-            {cat && (
-              <Link href={`/inventory/c/${cat.id}`} onClick={onClose} className={`${tag} bg-[#111318]/85 text-white hover:bg-accent`}>
-                {cat.label}
-              </Link>
+            {edit && data ? (
+              // Edit mode: the pill moves the item to another category at once.
+              <select
+                value={item.category ?? ""}
+                disabled={moving}
+                onChange={(e) => e.target.value && moveTo(e.target.value)}
+                aria-label="Category"
+                className={`${tag} press cursor-pointer appearance-none border border-transparent bg-[#111318]/85 pr-6 text-white hover:border-sky-400/40 disabled:opacity-60`}
+                style={{ backgroundImage: "linear-gradient(45deg, transparent 50%, #fff 50%), linear-gradient(135deg, #fff 50%, transparent 50%)", backgroundPosition: "right 10px center, right 6px center", backgroundSize: "4px 4px", backgroundRepeat: "no-repeat" }}
+              >
+                {!cat && <option value="">No category</option>}
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id} className="bg-surface text-fg">
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              cat && (
+                <Link href={`/inventory/c/${cat.id}`} onClick={onClose} className={`${tag} bg-[#111318]/85 text-white hover:bg-accent`}>
+                  {cat.label}
+                </Link>
+              )
             )}
             {condition && (
               <Link href={`/inventory/condition/${condition.id}`} onClick={onClose} className={`${tag} hover:brightness-110`} style={{ background: color, color: textOn(color!) }}>
@@ -316,8 +358,8 @@ function ItemBody({
               .join(" · ") || "Tap the number to type the count"}
             {missing(item, "any") > 0 && <span className="font-mono font-semibold text-rose-500 tabular-nums"> · {missing(item, "any")} short</span>}
           </div>
+          <SeasonBox item={item} onSaved={onSaved} onError={setMessage} />
         </div>
-        <SeasonBox item={item} onSaved={onSaved} onError={setMessage} />
       </div>
 
       {(cat?.fields.some((f) => item.specs[f.id]) || item.cotsLinks.length > 0 || item.price != null) && (
@@ -386,6 +428,17 @@ function ItemBody({
       )}
 
       {message && <p className="text-sm text-emerald-700">{message}</p>}
+      <EditOnly>
+        <ProductSearch
+          itemId={item.id}
+          initial={item.name}
+          onMessage={setMessage}
+          onLinked={(m) => {
+            setMessage(m);
+            onSaved();
+          }}
+        />
+      </EditOnly>
       <div className="flex flex-wrap gap-2 border-t border-line pt-3">
         <button className="btn min-h-11" disabled={finding} onClick={find} title="Look for BOM parts that are this item; each one waits in To Review for Approve">
           <Icon name="search" className="h-4 w-4" /> {finding ? "Looking…" : "Find BOM parts"}
@@ -433,6 +486,118 @@ function ItemBody({
         )}
       </div>
       {data && <ToBomDialog key={mode === "toBom" ? "bom" : "closed-bom"} item={mode === "toBom" ? item : null} targets={data.targets} onClose={() => setMode("view")} />}
+    </div>
+  );
+}
+
+// The item window's product bar: search the team's stores (like the add box) or paste a product
+// link; picking one links the item to it (link, price, photo) and the window reloads.
+function ProductSearch({ itemId, initial, onLinked, onMessage }: { itemId: string; initial: string; onLinked: (message: string | null) => void; onMessage: (m: string | null) => void }) {
+  const [q, setQ] = useState("");
+  const [found, setFound] = useState<{ q: string; groups: ProductGroup[] } | null>(null);
+  const [searching, startSearch] = useTransition();
+  const [linking, startLink] = useTransition();
+  const query = q.trim();
+  const link = isLink(query);
+
+  // Stores are asked only after a pause in typing.
+  useEffect(() => {
+    if (link || query.length < 3) return;
+    const t = setTimeout(() => startSearch(async () => setFound({ q: query, groups: (await findProducts(query)).groups })), 450);
+    return () => clearTimeout(t);
+  }, [link, query]);
+  const groups = found?.q === query ? found.groups : null;
+
+  const pick = (o: Pick<Offer, "url" | "vendor" | "price" | "image">) =>
+    startLink(async () => {
+      const r = await linkItemToProduct(itemId, { url: o.url, site: o.vendor || undefined, price: o.price, imageUrl: o.image });
+      if (r.error) return onMessage(r.error);
+      setQ("");
+      onLinked(r.message ?? null);
+    });
+  const readLink = () =>
+    startLink(async () => {
+      const r = await readProductLink(query);
+      const p = r.product;
+      const res = await linkItemToProduct(itemId, p ? { url: p.url, site: p.site, price: p.price, imageUrl: p.image } : { url: query });
+      if (res.error) return onMessage(res.error);
+      setQ("");
+      onLinked(r.error ? `Linked the product. ${r.error}` : (res.message ?? null));
+    });
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2">
+        <label className="flex min-h-11 flex-1 items-center gap-2 rounded-xl border border-line-strong bg-surface px-3 focus-within:border-sky-400">
+          <Icon name="search" className="h-4 w-4 shrink-0 text-subtle" />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && link && readLink()}
+            placeholder="Link to a product: search the stores or paste a link"
+            aria-label="Link to a product"
+            className="min-w-0 flex-1 bg-transparent py-2 text-sm outline-none"
+          />
+        </label>
+        {!query && (
+          <button type="button" className="btn min-h-11" onClick={() => setQ(initial)}>
+            Search “{initial.length > 18 ? `${initial.slice(0, 18)}…` : initial}”
+          </button>
+        )}
+        {link && (
+          <button type="button" className="btn-primary min-h-11" disabled={linking} onClick={readLink}>
+            {linking ? "Linking…" : "Link"}
+          </button>
+        )}
+      </div>
+      {!link && query.length >= 3 && (
+        <div className="max-h-64 space-y-0.5 overflow-y-auto rounded-xl border border-line p-1">
+          {!groups && <p className="px-2 py-2 text-xs text-muted">{searching ? "Searching the stores…" : "…"}</p>}
+          {groups?.length === 0 && <p className="px-2 py-2 text-xs text-muted">No store result for that. Try other words, or paste a product link.</p>}
+          {groups?.map((g) => (
+            <div
+              key={g.offers[0].url}
+              role="button"
+              tabIndex={0}
+              aria-disabled={linking}
+              onClick={() => !linking && pick({ ...bestOffer(g), image: bestOffer(g).image ?? g.image })}
+              onKeyDown={(e) => e.key === "Enter" && !linking && pick({ ...bestOffer(g), image: bestOffer(g).image ?? g.image })}
+              className="press flex cursor-pointer gap-3 rounded-lg p-2 hover:bg-raised active:scale-[0.98]"
+            >
+              <div className="thumb-well flex h-12 w-12 shrink-0 items-center justify-center rounded-lg">
+                {g.image ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- the store's own picture
+                  <img src={g.image} alt="" className="h-full w-full rounded-lg bg-white object-contain" />
+                ) : (
+                  <Icon name="cart" className="h-5 w-5 text-subtle" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-semibold text-fg" title={g.title}>
+                  {g.title}
+                </div>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {g.offers.map((o) => (
+                    <button
+                      key={o.url}
+                      type="button"
+                      disabled={linking}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        pick({ ...o, image: o.image ?? g.image });
+                      }}
+                      className="press min-h-8 rounded-full border border-line-strong px-2.5 text-xs font-semibold text-fg-2 hover:border-accent hover:text-accent"
+                    >
+                      {o.vendor}
+                      {o.price != null && <span className="ml-1.5 font-mono text-emerald-600 tabular-nums">${o.price.toFixed(2)}</span>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -156,6 +156,83 @@ export async function deleteItem(itemId: string) {
   refresh();
 }
 
+// The Inventory page's Delete mode.
+export async function bulkDeleteItems(itemIds: string[]): Promise<ActionResult> {
+  await requireMember();
+  if (!itemIds.length || itemIds.some((id) => !isUuid(id))) return { error: "Unknown item." };
+  await db.delete(inventoryItems).where(inArray(inventoryItems.id, itemIds));
+  refresh();
+  return { message: `Deleted ${itemIds.length} item${itemIds.length === 1 ? "" : "s"}.` };
+}
+
+// The Inventory page's Move mode: a new category and / or location for every selected item.
+// A field left out stays as it is; null clears the location.
+export async function bulkMoveItems(itemIds: string[], target: { category?: string | null; locationId?: string | null }): Promise<ActionResult> {
+  const member = await requireMember();
+  if (!itemIds.length || itemIds.some((id) => !isUuid(id))) return { error: "Unknown item." };
+  const values: { category?: string | null; locationId?: string | null } = {};
+  if (target.category !== undefined) {
+    if (target.category && !getCategory(await listCategories(), target.category)) return { error: "Unknown category." };
+    values.category = target.category;
+  }
+  if (target.locationId !== undefined) {
+    if (target.locationId !== null && !isUuid(target.locationId)) return { error: "Unknown location." };
+    values.locationId = target.locationId;
+  }
+  if (!Object.keys(values).length) return { error: "Pick a category or a location." };
+  const ctx = { memberId: member.id, via: "ui" as const };
+  await db.transaction(async (tx) => {
+    const rows = await tx.select().from(inventoryItems).where(inArray(inventoryItems.id, itemIds)).for("update");
+    for (const before of rows) {
+      await tx.update(inventoryItems).set(values).where(eq(inventoryItems.id, before.id));
+      await recordItemChanges(tx, before.id, before, values, ctx);
+    }
+  });
+  refresh();
+  return { message: `Moved ${itemIds.length} item${itemIds.length === 1 ? "" : "s"}.` };
+}
+
+// The item window's category pill in Edit mode.
+export async function setItemCategory(itemId: string, categoryId: string): Promise<ActionResult> {
+  return bulkMoveItems([itemId], { category: categoryId });
+}
+
+// The item window's product search: the product becomes the item's first link, its price the
+// item's, its picture the item's photo; linked COTS cards show the same product.
+const productSchema = z.object({
+  url: z.url("A product link must be a web link."),
+  site: z.string().trim().max(80).optional(),
+  price: z.number().min(0).nullable().optional(),
+  imageUrl: z.string().nullable().optional(),
+});
+export async function linkItemToProduct(itemId: string, product: z.input<typeof productSchema>): Promise<ActionResult> {
+  const member = await requireMember();
+  if (!isUuid(itemId)) return { error: "Unknown item." };
+  const parsed = productSchema.safeParse(product);
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const p = parsed.data;
+  const ctx = { memberId: member.id, via: "ui" as const };
+  const ok = await db.transaction(async (tx) => {
+    const [before] = await tx.select().from(inventoryItems).where(eq(inventoryItems.id, itemId)).for("update");
+    if (!before) return false;
+    const link = { url: p.url, site: p.site || vendorOfUrl(p.url) };
+    const cotsLinks = [link, ...before.cotsLinks.filter((l) => l.url !== p.url)].slice(0, 10);
+    const values = { cotsLinks, ...(p.price != null && { price: p.price }) };
+    await tx.update(inventoryItems).set(values).where(eq(inventoryItems.id, itemId));
+    await recordItemChanges(tx, itemId, before, values, ctx);
+    await pushItemToCards(tx, itemId, values);
+    return true;
+  });
+  if (!ok) return { error: "That item was deleted." };
+  if (p.imageUrl) {
+    const key = await saveProductPhoto(itemId, p.imageUrl);
+    if (key) await db.update(inventoryItems).set({ imagePath: key }).where(eq(inventoryItems.id, itemId));
+  }
+  const linked = await autoLink({ itemIds: [itemId] }, ctx);
+  refresh();
+  return { message: linked ? `Linked the product. ${linkMessage(linked)}` : "Linked the product." };
+}
+
 // The − / + stepper (a sheet item also steps by pieces of a sheet).
 export async function adjustStock(itemId: string, delta: number): Promise<ActionResult> {
   const member = await requireMember();

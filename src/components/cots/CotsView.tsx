@@ -40,6 +40,8 @@ const groupLabel = (id: CategoryGroupId) => CATEGORY_GROUPS.find((g) => g.id ===
 // Where a Released card came from: a robot's BOM (or a robot's section), or General.
 const originOf = (p: CardPart): "General" | "Robot" => (p.systemId || (p as CotsViewPart).robotId ? "Robot" : "General");
 const ORDERING = ORDER_STATUSES.filter((s) => s !== COTS_IN_STOCK) as string[];
+// The statuses the Status bar can set on the selected cards.
+const BULK_STATUSES: string[] = [COTS_RELEASED, ...ORDER_STATUSES];
 const SHOWN_MS = IN_STOCK_SHOWN_DAYS * 24 * 60 * 60 * 1000;
 const NO_VENDOR = "No vendor";
 const vendorOf = (p: CardPart) => (p.cotsLinks?.[0] ? siteOf(p.cotsLinks[0]) : NO_VENDOR);
@@ -95,7 +97,9 @@ export function CotsView({
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [view, setView] = useState<"cards" | "table">("cards");
   const [byVendor, setByVendor] = useState(false);
-  const [ordering, setOrdering] = useState(false);
+  // Picking cards: "order" (Released's Send to order) or "status" (set one status on all of them).
+  const [selecting, setSelecting] = useState<"order" | "status" | null>(null);
+  const ordering = selecting !== null;
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState<Set<string>>(new Set()); // groups shown per system
   const [addTo, setAddTo] = useState<string>(""); // "" = General, else a robot id
@@ -283,7 +287,17 @@ export function CotsView({
   const sendToOrder = () => {
     const ids = allRows.filter((r) => selected.has(r.key)).flatMap((r) => r.members.map((m) => m.id));
     save(ids.map((id) => ({ id, changes: { status: COTS_ORDERED, cotsSentBack: null } })));
-    setOrdering(false);
+    setSelecting(null);
+    setSelected(new Set());
+  };
+  const setStatusOfSelected = (status: string) => {
+    const ids = allRows.filter((r) => selected.has(r.key)).flatMap((r) => r.members.map((m) => m.id));
+    save(ids.map((id) => ({ id, changes: status === COTS_ORDERED ? { status, cotsSentBack: null } : { status } })));
+    setSelecting(null);
+    setSelected(new Set());
+  };
+  const toggleSelecting = (m: "order" | "status") => {
+    setSelecting((cur) => (cur === m ? null : m));
     setSelected(new Set());
   };
 
@@ -318,6 +332,16 @@ export function CotsView({
           }`}
         >
           Vendors
+        </button>
+        <button
+          type="button"
+          onClick={() => toggleSelecting("status")}
+          aria-pressed={selecting === "status"}
+          className={`press rounded-lg border px-3.5 py-1.5 text-xs font-semibold transition-colors active:scale-[0.98] ${
+            selecting === "status" ? "border-accent bg-accent text-white" : "border-line-strong bg-raised text-muted hover:text-fg"
+          }`}
+        >
+          Status
         </button>
         {list === "order" &&
           ORDERING.map((s) => {
@@ -359,16 +383,13 @@ export function CotsView({
               </>
             )}
             <button
-              onClick={() => {
-                setOrdering((o) => !o);
-                setSelected(new Set());
-              }}
-              aria-pressed={ordering}
+              onClick={() => toggleSelecting("order")}
+              aria-pressed={selecting === "order"}
               className={`press shrink-0 rounded-xl px-7 py-3 text-lg font-bold shadow-lg transition-colors active:scale-[0.98] ${
-                ordering ? "border border-line-strong bg-surface text-fg" : "bg-amber-400 text-slate-950 shadow-amber-400/40 hover:bg-amber-300"
+                selecting === "order" ? "border border-line-strong bg-surface text-fg" : "bg-amber-400 text-slate-950 shadow-amber-400/40 hover:bg-amber-300"
               }`}
             >
-              {ordering ? "Cancel" : "🛒 Send to order"}
+              {selecting === "order" ? "Cancel" : "🛒 Send to order"}
             </button>
           </div>
         )}
@@ -428,7 +449,42 @@ export function CotsView({
         </Section>
       )}
 
-      {ordering && (
+      {selecting === "status" && (
+        <div className="sticky bottom-3 z-30 rounded-xl border border-line-strong bg-surface/95 p-3 shadow-lg backdrop-blur">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="font-mono font-semibold tabular-nums">{selected.size} selected</span>
+            <span className="text-subtle">Set to:</span>
+            {BULK_STATUSES.map((s) => {
+              const color = getCotsStatus(s)?.color ?? "#94a3b8";
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  disabled={pending || selected.size === 0}
+                  onClick={() => setStatusOfSelected(s)}
+                  style={{ borderColor: color }}
+                  className="press flex items-center gap-1.5 rounded-lg border-2 px-3 py-1.5 text-xs font-bold text-fg transition-colors hover:bg-raised active:scale-[0.98] disabled:opacity-50"
+                >
+                  <span className="h-2 w-2 rounded-full" style={{ background: color }} />
+                  {s}
+                </button>
+              );
+            })}
+            <span className="ml-auto" />
+            <button className="btn" onClick={() => setSelected(new Set(allRows.map((r) => r.key)))}>
+              Select all
+            </button>
+            <button className="btn" onClick={() => setSelected(new Set())} disabled={selected.size === 0}>
+              Clear
+            </button>
+            <button className="btn" onClick={() => toggleSelecting("status")}>
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+
+      {selecting === "order" && (
         <div className="sticky bottom-3 z-30 rounded-xl border border-line-strong bg-surface/95 p-3 shadow-lg backdrop-blur">
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span className="font-semibold tabular-nums">{selected.size} selected</span>

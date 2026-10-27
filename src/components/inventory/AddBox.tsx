@@ -16,7 +16,7 @@ import type { Condition, InvCategory, Item, Location } from "./types";
 
 type Found = { q: string; groups: ProductGroup[]; elsewhere: { name: string; url: string }[] };
 
-const isLink = (s: string) => /^https?:\/\/\S+\.\S+/i.test(s.trim());
+export const isLink = (s: string) => /^https?:\/\/\S+\.\S+/i.test(s.trim());
 
 // The one box at the top of Inventory. In View mode it filters the shelf ("Do we have it?"). In
 // Edit mode it also adds: as you type, items already on the shelf, products from the team's
@@ -349,7 +349,7 @@ export function AddBox({
   );
 }
 
-const bestOffer = (g: ProductGroup) => g.offers.filter((o) => o.price != null).sort((a, b) => a.price! - b.price!)[0] ?? g.offers[0];
+export const bestOffer = (g: ProductGroup) => g.offers.filter((o) => o.price != null).sort((a, b) => a.price! - b.price!)[0] ?? g.offers[0];
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
