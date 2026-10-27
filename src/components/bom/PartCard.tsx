@@ -19,7 +19,6 @@ import { ownerPartId, partIds, partTitle, type CardPart } from "./types";
 import { downloadDrawing } from "@/lib/drawing/download";
 import { DrawingPreview } from "@/components/drawing/DrawingPreview";
 import { usePartDetails } from "./PartDetailsHost";
-import { DrawingAction, DrawingFileButton } from "./PartDetails";
 import { useInventoryPopup } from "@/components/inventory/InventoryPopup";
 import { CotsCard } from "@/components/cots/CotsCard";
 
@@ -34,8 +33,7 @@ export const isCardBodyClick = (e: React.MouseEvent) => !(e.target as HTMLElemen
 
 // The part card: the Onshape thumbnail is the hero, with quantity, type and the Merged tag on its
 // top-left, Download (and the inventory item, when the part is linked to one) on its top-right and
-// the drawing icons on its bottom-right: Make drawing (from Onshape) and Add drawing file until the
-// part has each, then View drawing; below it two dense rows: the name, then
+// the version tag on its bottom-right; below it two dense rows: the name, then
 // the status and the material → process pills. Properties only open their editors in Edit mode,
 // and a click anywhere else on the card opens the part's details window (3D, notes, drawing,
 // inventory). On To Fab the rows are read-only (status, amount, material, machine) and the
@@ -200,22 +198,9 @@ function MadePartCard({
             </button>
           </div>
         )}
-        {!fabControls && !post && (
+        {!fabControls && !post && versions && (
           <div className="absolute right-2 bottom-2 flex items-center gap-1.5">
-            {versions && <VersionTag partId={part.id} tags={versions} manual={part.isManual} />}
-            {!part.isManual && !part.hasDrawing && <DrawingAction partId={ownerPartId(part)} hasDrawing={false} compact />}
-            {!drawingFile && <DrawingFileButton part={part} compact />}
-            {(part.hasDrawing || drawingFile) && (
-              <button
-                type="button"
-                onClick={() => (part.hasDrawing ? setDrawing(true) : window.open(`/api/files/${drawingFile!.id}`, "_blank", "noopener"))}
-                className="overlay-btn"
-                aria-label="View drawing"
-                title="View drawing"
-              >
-                <Icon name="drawing" />
-              </button>
-            )}
+            <VersionTag partId={part.id} tags={versions} manual={part.isManual} />
           </div>
         )}
         {drawing && <DrawingPreview partId={ownerPartId(part)} title={partTitle(part)} onClose={() => setDrawing(false)} />}
