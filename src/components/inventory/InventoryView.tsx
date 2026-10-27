@@ -107,7 +107,13 @@ export function InventoryView({ items, scope, actions, ...lookups }: Lookups & {
     .sort((a, b) => (view ? RANK[standing(a, view)] - RANK[standing(b, view)] : 0));
   const boxes = home && !view && !query;
   // The view's own items, filtered only by condition and location (not by the boxes).
-  const inViewAll = view ? optimistic.filter((i) => inView(i) && (!conditionId || i.conditionId === conditionId) && (!locationId || locationOf(i) === locationId)) : [];
+  // In a view, the cards up top are only the ones still short or on order; every other item of
+  // the view (covered, or outside the picked box) is in the folded All items, so none shows twice.
+  const shownMain = view ? shown.filter((i) => standing(i, view) !== "ok") : shown;
+  const mainIds = new Set(shownMain.map((i) => i.id));
+  const inViewAll = view
+    ? optimistic.filter((i) => inView(i) && !mainIds.has(i.id) && (!conditionId || i.conditionId === conditionId) && (!locationId || locationOf(i) === locationId))
+    : [];
   const showBoxes = home && (!query || !!view);
 
   // Each group's and category's items (in the view, when one is on) and how many are short.
@@ -221,7 +227,7 @@ export function InventoryView({ items, scope, actions, ...lookups }: Lookups & {
   }));
 
   // Select all: the cards on screen (the main list, else every item on home).
-  const selectable = boxes ? optimistic : shown;
+  const selectable = boxes ? optimistic : shownMain;
 
   return (
     <div className={`space-y-4 ${selecting ? "pb-20" : ""}`}>
@@ -355,16 +361,16 @@ export function InventoryView({ items, scope, actions, ...lookups }: Lookups & {
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
             <span className="font-mono tabular-nums">
-              {shown.length} item{shown.length === 1 ? "" : "s"}
+              {shownMain.length} item{shownMain.length === 1 ? "" : "s"}
             </span>
             {showBoxes && filters}
           </div>
-          {shown.length === 0 ? (
-            <div className="panel p-6 text-sm text-muted">{query ? "Nothing matches that." : view === "season" ? "No item has a Needed for Season count here. Set one in an item's window." : view === "robots" ? "No item here is used by an active robot." : "No items here yet."}</div>
+          {shownMain.length === 0 ? (
+            <div className="panel p-6 text-sm text-muted">{query ? "Nothing matches that." : view && shown.length ? "Nothing is short here: everything is covered." : view === "season" ? "No item has a Needed for Season count here. Set one in an item's window." : view === "robots" ? "No item here is used by an active robot." : "No items here yet."}</div>
           ) : (
-            grid(shown)
+            grid(shownMain)
           )}
-          {view && (
+          {view && inViewAll.length > 0 && (
             // Every item of this view stays one tap away, folded, whatever box is picked (Harel, 2026-10-27).
             <div className="pt-2">
               <Fold id={`all-in-${view}`} title={`All items (${inViewAll.length})`} defaultOpen={false}>
