@@ -6,13 +6,11 @@ import { Icon } from "@/components/ui/Icon";
 import { setItemLocation, setSeasonNeed } from "@/app/(app)/inventory/actions";
 import { useEditMode } from "@/components/shell/ModeContext";
 import { CheckBadge } from "@/components/ui/CheckBadge";
-import { statusTint } from "@/components/ui/statusTint";
 import { getCategory } from "@/lib/inventory/categories";
 import {
   hasSeasonNeed,
   missing,
   neededFor,
-  standing,
   type NeedView,
 } from "@/lib/inventory/season";
 import { formatStock } from "@/lib/inventory/stock";
@@ -23,16 +21,11 @@ import {
   PieceStepper,
   ProductName,
   conditionColor,
+  standingTint,
 } from "./ItemCard";
 import { useInventoryPopup } from "./InventoryPopup";
 import type { Condition, InvCategory, Item, Location } from "./types";
 import { SheetViewport } from "@/components/ui/SheetViewport";
-
-const TINT = {
-  short: "Reproduction",
-  ordered: "In Order List",
-  ok: "In Stock",
-} as const;
 
 // The Table side of the Cards | Table switch (Harel, 2026-10-27): one row per item, for long
 // lists of screws, belts, gears and drills. The count ("3 / 6", like a card), − / +, Needed for
@@ -90,11 +83,7 @@ export function ItemTable({
             const gap = missing(item, view);
             const needed = neededFor(item, view);
             const picture = item.thumbUrl ?? category?.imageUrl ?? null;
-            const state = standing(item, view);
-            const tint =
-              view !== "any" || state === "ordered"
-                ? statusTint(TINT[state])
-                : undefined;
+            const tint = standingTint(item, view);
             return (
               <tr
                 key={item.id}

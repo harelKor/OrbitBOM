@@ -11,7 +11,7 @@ import { Popover } from "@/components/bom/Popover";
 import { pushQuery } from "@/components/ui/CategoryBoxes";
 import { CheckBadge } from "@/components/ui/CheckBadge";
 import { Icon } from "@/components/ui/Icon";
-import { statusTint } from "@/components/ui/statusTint";
+import { softStatusTint } from "@/components/ui/statusTint";
 import { getCategory } from "@/lib/inventory/categories";
 import { missing, neededFor, orderHref, standing, type NeedView, type Standing } from "@/lib/inventory/season";
 import { SHEET_PIECES, formatStock, parseStock } from "@/lib/inventory/stock";
@@ -22,6 +22,14 @@ import type { InvCategory, Item } from "./types";
 const NAMED: Record<string, string> = { emerald: "#10b981", amber: "#f59e0b", rose: "#f43f5e", sky: "#0ea5e9", slate: "#64748b", violet: "#8b5cf6" };
 // The Short views' card colours, the BOM's: Reproduction red, the Order List's orange, In Stock green.
 const TINT: Record<Standing, string> = { short: "Reproduction", ordered: "In Order List", ok: "In Stock" };
+
+// Every item wears its standing (red short, orange on order, green covered) on every page, not
+// only in the Short views; an item nothing needs and the shelf doesn't hold stays plain.
+export function standingTint(item: Item, view: NeedView) {
+  const state = standing(item, view);
+  if (state === "ok" && neededFor(item, view) == null && item.inStock <= 0) return undefined;
+  return softStatusTint(TINT[state]);
+}
 
 export const conditionColor = (color: string) => NAMED[color] ?? color;
 
@@ -76,7 +84,7 @@ export function ProductName({ item, className = "", wrap = false }: { item: Pick
 // season's and the robots' elsewhere), then the name and how the robots use it. The left edge
 // takes the condition's colour. A short item gets a cart on its picture that sends what's missing
 // to Released; once it's on order the cart and the card turn orange and the cart opens that COTS
-// card. In the Short views the card is red, orange or green. Anywhere else on the card opens the
+// card. The card is washed red, orange or green by its standing. Anywhere else on the card opens the
 // item's window; a linked name opens the product. With onToggleSelect (the page's Move / Delete),
 // a tap anywhere selects the card instead. hideCategory drops the category tag inside a category.
 export function ItemCard({
@@ -108,8 +116,7 @@ export function ItemCard({
   const usedBy = item.usage?.parts.length ?? 0;
   const needed = neededFor(item, view);
   const gap = missing(item, view);
-  const state = standing(item, view);
-  const tinted = view !== "any" || state === "ordered" ? statusTint(TINT[state]) : undefined;
+  const tinted = standingTint(item, view);
   const color = condition ? conditionColor(condition.color) : undefined;
   const picture = item.thumbUrl ?? category?.imageUrl ?? null;
   const stop = (e: React.SyntheticEvent) => e.stopPropagation();
