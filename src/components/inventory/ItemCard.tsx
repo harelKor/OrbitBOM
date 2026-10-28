@@ -13,7 +13,7 @@ import { CheckBadge } from "@/components/ui/CheckBadge";
 import { Icon } from "@/components/ui/Icon";
 import { softStatusTint } from "@/components/ui/statusTint";
 import { getCategory } from "@/lib/inventory/categories";
-import { missing, neededFor, orderHref, standing, type NeedView, type Standing } from "@/lib/inventory/season";
+import { hasSeasonNeed, missing, neededFor, orderHref, standing, type NeedView, type Standing } from "@/lib/inventory/season";
 import { SHEET_PIECES, formatStock, parseStock } from "@/lib/inventory/stock";
 import { useInventoryPopup } from "./InventoryPopup";
 import type { InvCategory, Item } from "./types";
@@ -23,12 +23,13 @@ const NAMED: Record<string, string> = { emerald: "#10b981", amber: "#f59e0b", ro
 // The Short views' card colours, the BOM's: Reproduction red, the Order List's orange, In Stock green.
 const TINT: Record<Standing, string> = { short: "Reproduction", ordered: "In Order List", ok: "In Stock" };
 
-// Every item wears its standing (red short, orange on order, green covered) on every page, not
-// only in the Short views; an item nothing needs and the shelf doesn't hold stays plain.
+// Every item with a Season need (a robots need in the Robots view) wears its standing on every
+// page: red short, orange on order, green covered. Without one it keeps the plain card, unless
+// it's on order (Harel, 2026-10-28).
 export function standingTint(item: Item, view: NeedView) {
   const state = standing(item, view);
-  if (state === "ok" && neededFor(item, view) == null && item.inStock <= 0) return undefined;
-  return softStatusTint(TINT[state]);
+  const needed = view === "robots" ? neededFor(item, view) != null : hasSeasonNeed(item);
+  return needed || state === "ordered" ? softStatusTint(TINT[state]) : undefined;
 }
 
 export const conditionColor = (color: string) => NAMED[color] ?? color;
