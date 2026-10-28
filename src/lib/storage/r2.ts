@@ -105,8 +105,8 @@ export async function deleteObject(key: string) {
 
 export type ListedObject = { key: string; bytes: number; modified: Date };
 
-// Every object in the bucket, 1,000 per call (the nightly storage recount).
-export async function listObjects(): Promise<ListedObject[]> {
+// Every object in the bucket (or under a prefix), 1,000 per call (the nightly storage recount).
+export async function listObjects(prefix?: string): Promise<ListedObject[]> {
   const { client, base } = mustConfig();
   const out: ListedObject[] = [];
   let token: string | null = null;
@@ -114,6 +114,7 @@ export async function listObjects(): Promise<ListedObject[]> {
     const url = new URL(base);
     url.searchParams.set("list-type", "2");
     url.searchParams.set("max-keys", "1000");
+    if (prefix) url.searchParams.set("prefix", prefix);
     if (token) url.searchParams.set("continuation-token", token);
     const res = await client.fetch(url);
     if (!res.ok) throw new Error(`R2 list failed (${res.status})`);

@@ -6,6 +6,7 @@ import { Dialog } from "@/components/Dialog";
 import {
   IMPORT_COLUMNS,
   guessColumns,
+  isOrbitExport,
   parseCsv,
   parseImportRows,
   type ColumnMap,
@@ -43,6 +44,7 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
       if (data.length < 2) throw new Error("The sheet has no rows under the header.");
       setRows(data);
       setMap(guessColumns(data[0]));
+      setSpecInName(!isOrbitExport(data[0]));
     } catch (err) {
       setRows(null);
       setResult({ error: `Couldn't read that file: ${err instanceof Error ? err.message : String(err)}` });
@@ -61,7 +63,8 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
         <p className="text-muted">
           Excel (.xlsx) or .csv. From Google Sheets: File → Download → .xlsx. Tell us which column holds what, check
           the preview, and import. Locations and groups named in the sheet are created; &ldquo;Hardware &gt;
-          Bearings&rdquo; makes a sub-group.{" "}
+          Bearings&rdquo; makes a sub-group. A row with the same name and category as an item already here updates
+          that item instead of adding a copy, so an exported spreadsheet imports back cleanly.{" "}
           <a
             href={`data:text/csv;charset=utf-8,${encodeURIComponent(TEMPLATE)}`}
             download="OrbitParts_Inventory_Template.csv"
@@ -125,7 +128,7 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
                   {parsed.slice(0, 50).map((r, i) => (
                     <tr key={i}>
                       <td>{r.name}</td>
-                      <td className="font-mono tabular-nums">{r.inStock}</td>
+                      <td className="font-mono tabular-nums">{r.inStock ?? ""}</td>
                       <td>{r.location}</td>
                       <td>{r.groupPath.join(" › ")}</td>
                       <td>{r.condition}</td>

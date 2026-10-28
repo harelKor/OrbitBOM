@@ -2,11 +2,11 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
-import { deletePreviews, loadStorage, recountAndClean } from "@/app/(app)/storage-actions";
+import { backUpNow, deletePreviews, downloadLatestBackup, loadStorage, recountAndClean } from "@/app/(app)/storage-actions";
 import { Dialog } from "@/components/Dialog";
 import { useEditMode } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
-import { DATABASE_LIMIT, STORAGE_CLEAN_UP, STORAGE_CLEAN_UP_TO, STORAGE_LIMIT, STORAGE_WARN } from "@/config/storage";
+import { BACKUP_DAYS, DATABASE_LIMIT, STORAGE_CLEAN_UP, STORAGE_CLEAN_UP_TO, STORAGE_LIMIT, STORAGE_WARN } from "@/config/storage";
 import type { StorageUsage } from "@/lib/storage/usage";
 
 const GB = 1024 ** 3;
@@ -18,6 +18,7 @@ const KINDS: [keyof StorageUsage["byKind"], string][] = [
   ["thumb", "Thumbnails"],
   ["file", "Part files (G-code, DXF…)"],
   ["image", "Inventory photos"],
+  ["backup", "Backups"],
   ["other", "Other"],
 ];
 
@@ -120,6 +121,44 @@ function StorageWindow({ onClose }: { onClose: () => void }) {
               </li>
             ))}
           </ul>
+
+          <div className="panel flex flex-wrap items-center gap-3 px-3 py-2.5">
+            <Icon name="download" className="h-5 w-5 text-accent" />
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold">Backups</span>
+              <span className="block text-xs text-subtle">
+                {usage.backups.latest ? (
+                  <>
+                    Latest {new Date(usage.backups.latest.at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })} ·{" "}
+                    <span className="font-mono tabular-nums">{size(usage.backups.latest.bytes)}</span> ·{" "}
+                    <span className="font-mono tabular-nums">{usage.backups.count}</span> kept
+                  </>
+                ) : (
+                  "No backup yet."
+                )}{" "}
+                The whole BOM and inventory as JSON, saved every night; the last {BACKUP_DAYS} days are kept.
+              </span>
+            </span>
+            <button
+              type="button"
+              className="btn h-9 active:scale-[0.98]"
+              disabled={pending || !usage.backups.latest}
+              onClick={() =>
+                start(async () => {
+                  const r = await downloadLatestBackup();
+                  if (r.url) window.location.assign(r.url);
+                  else setMessage({ text: r.error ?? "No backup yet.", error: true });
+                })
+              }
+            >
+              Download latest backup
+            </button>
+            {edit && (
+              <button type="button" className="btn h-9 active:scale-[0.98]" disabled={pending} onClick={() => run(backUpNow)}>
+                Back up now
+              </button>
+            )}
+          </div>
 
           <div className="space-y-2">
             <p className="label">Version previews by system</p>

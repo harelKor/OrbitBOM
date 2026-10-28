@@ -21,7 +21,7 @@ import { moveStock, setStock } from "@/lib/inventory/moves";
 import { readProduct, saveProductPhoto, toUsd } from "@/lib/inventory/product";
 import { searchProducts } from "@/lib/inventory/search";
 import { missing, orderHref } from "@/lib/inventory/season";
-import { parseStock } from "@/lib/inventory/stock";
+import { parseStock, snapStock } from "@/lib/inventory/stock";
 import { applyEachPartChanges } from "@/lib/parts/apply";
 import { StorageNotConfiguredError, deleteObject, objectExists, presignUpload } from "@/lib/storage/r2";
 import { isUuid } from "@/lib/uuid";
@@ -451,22 +451,31 @@ const importRows = z
   .array(
     z.object({
       name: z.string().trim().min(1),
-      inStock: z.number().int().min(0),
+      inStock: z.number().min(0).nullable(),
       location: z.string().trim().nullable(),
       groupPath: z.array(z.string().trim().min(1)),
       condition: z.string().trim().nullable(),
       material: z.string().trim().nullable(),
+      seasonNeed: z.number().min(0).nullable(),
+      price: z.number().min(0).nullable(),
+      url: z.url().nullable(),
+      note: z.string().max(2000).nullable(),
     }),
   )
   .max(5000, "Import at most 5000 rows at a time.");
 
+// A row whose name and category match an item already here updates it (stock as a counted move,
+// and only the fields the row fills in); every other row is a new item.
 export async function importItems(rows: ImportRow[]): Promise<ActionResult> {
   const member = await requireMember();
   const parsed = importRows.safeParse(rows);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const key = (s: string) => s.toLowerCase();
+  const itemKey = (name: string, category: string) => `${category}\u0000${name.toLowerCase().replace(/\s+/g, " ").trim()}`;
+  const ctx = { memberId: member.id, via: "ui" as const };
 
   const cats = await listCategories();
+  const isSheet = (category: string | null) => !!getCategory(cats, category)?.sheet;
   const created = await db.transaction(async (tx) => {
     const locations = new Map(
       (await tx.select().from(inventoryLocations)).map((l) => [key(l.name), l.id] as const),
@@ -475,7 +484,10 @@ export async function importItems(rows: ImportRow[]): Promise<ActionResult> {
       (await tx.select().from(inventoryConditions)).map((c) => [key(c.label), c.id] as const),
     );
     const groups = await tx.select().from(inventoryGroups);
-    const counts = { locations: 0, groups: 0, conditions: 0 };
+    const existing = new Map(
+      (await tx.select().from(inventoryItems)).map((i) => [itemKey(i.name, categoryOf(i, cats)), i] as const),
+    );
+    const counts = { locations: 0, groups: 0, conditions: 0, added: 0, updated: 0 };
 
     const locationId = async (name: string | null) => {
       if (!name) return null;
@@ -515,16 +527,52 @@ export async function importItems(rows: ImportRow[]): Promise<ActionResult> {
     };
 
     for (const row of parsed.data) {
+      const category = importCategory(row, cats);
+      const sheet = isSheet(category);
+      const k = itemKey(row.name, categoryOf({ category, name: row.name }, cats));
+      const before = existing.get(k);
+      // A category column that only names one of our categories (an exported file) makes no group.
+      const path = row.groupPath.length === 1 && cats.some((c) => key(c.label) === key(row.groupPath[0])) ? [] : row.groupPath;
+      if (before) {
+        const links = row.url && !before.cotsLinks.some((l) => l.url === row.url) ? [{ url: row.url, site: vendorOfUrl(row.url) }, ...before.cotsLinks].slice(0, 10) : null;
+        const values = {
+          ...(row.location && { locationId: await locationId(row.location) }),
+          ...(row.condition && { conditionId: await conditionId(row.condition) }),
+          ...(row.material && { specs: { ...before.specs, material: row.material } }),
+          ...(row.seasonNeed !== null && { seasonNeed: snapStock(row.seasonNeed, sheet) || null }),
+          ...(row.price !== null && { price: row.price }),
+          ...(row.note && { note: row.note }),
+          ...(links && { cotsLinks: links }),
+        };
+        if (Object.keys(values).length) {
+          await tx.update(inventoryItems).set(values).where(eq(inventoryItems.id, before.id));
+          await recordItemChanges(tx, before.id, before, values, ctx);
+          await pushItemToCards(tx, before.id, {
+            ...(values.cotsLinks && { cotsLinks: values.cotsLinks }),
+            ...(values.price !== undefined && values.price !== before.price && { price: values.price }),
+          });
+        }
+        if (row.inStock !== null) await setStock(tx, before.id, snapStock(row.inStock, sheet), ctx);
+        counts.updated++;
+        continue;
+      }
+      const inStock = snapStock(row.inStock ?? 0, sheet);
       const [item] = await tx.insert(inventoryItems).values({
         name: row.name,
-        inStock: row.inStock,
+        inStock,
         specs: row.material ? { material: row.material } : {},
         locationId: await locationId(row.location),
         conditionId: await conditionId(row.condition),
-        groupId: await groupId(row.groupPath),
-        category: importCategory(row, cats),
-      }).returning({ id: inventoryItems.id });
-      if (row.inStock) await tx.insert(inventoryMoves).values({ itemId: item.id, delta: row.inStock, reason: "counted", memberId: member.id, via: "ui" });
+        groupId: await groupId(path),
+        category,
+        seasonNeed: row.seasonNeed ? snapStock(row.seasonNeed, sheet) || null : null,
+        price: row.price,
+        note: row.note,
+        cotsLinks: row.url ? [{ url: row.url, site: vendorOfUrl(row.url) }] : [],
+      }).returning();
+      existing.set(k, item);
+      counts.added++;
+      if (inStock) await tx.insert(inventoryMoves).values({ itemId: item.id, delta: inStock, reason: "counted", memberId: member.id, via: "ui" });
     }
     return counts;
   });
@@ -535,8 +583,9 @@ export async function importItems(rows: ImportRow[]): Promise<ActionResult> {
     created.locations && `${created.locations} locations`,
     created.conditions && `${created.conditions} conditions`,
   ].filter(Boolean);
+  const done = [created.added && `added ${created.added} items`, created.updated && `updated ${created.updated} existing items`].filter(Boolean).join(" and ");
   return {
-    message: `Imported ${parsed.data.length} items${extra.length ? `; created ${extra.join(", ")}` : ""}.`,
+    message: `Imported: ${done || "nothing new"}${extra.length ? `; created ${extra.join(", ")}` : ""}.`,
   };
 }
 

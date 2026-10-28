@@ -4,6 +4,7 @@ import { db, schema } from "@/db";
 import { KEEP_PREVIEW_VERSIONS, STORAGE_CLEAN_UP, STORAGE_CLEAN_UP_TO } from "@/config/storage";
 import { partModelFile } from "@/lib/model/part";
 import { versionLabel } from "@/lib/versions/label";
+import { backupInfo, type BackupInfo } from "./backup";
 import { kindOf, type StoredKind } from "./ledger";
 import { deleteObject, listObjects, storageConfigured } from "./r2";
 
@@ -36,11 +37,12 @@ export type StorageUsage = {
   database: number;
   systems: SystemUsage[];
   unassigned: number; // previews of drafts that were replaced
+  backups: BackupInfo;
 };
 
 // The storage window: everything comes from the database (the ledger), no R2 calls.
 export async function storageUsage(): Promise<StorageUsage> {
-  const [kinds, byVersion, versions, [dbSize], keep] = await Promise.all([
+  const [kinds, byVersion, versions, [dbSize], keep, backups] = await Promise.all([
     db
       .select({ kind: storedFiles.kind, bytes: sql<number>`coalesce(sum(${storedFiles.bytes}), 0)::bigint` })
       .from(storedFiles)
@@ -59,6 +61,7 @@ export async function storageUsage(): Promise<StorageUsage> {
       .orderBy(asc(robots.name), asc(systems.name), desc(systemVersions.seq)),
     db.execute<{ size: number }>(sql`select pg_database_size(current_database())::bigint as size`).then((r) => r.rows),
     protectedVersions(),
+    backupInfo(),
   ]);
   const size = new Map(byVersion.map((v) => [v.versionId, { bytes: Number(v.bytes), files: v.files }]));
   const out = new Map<string, SystemUsage>();
@@ -78,6 +81,7 @@ export async function storageUsage(): Promise<StorageUsage> {
     database: Number(dbSize?.size ?? 0),
     systems: [...out.values()].sort((a, b) => b.bytes - a.bytes),
     unassigned,
+    backups,
   };
 }
 

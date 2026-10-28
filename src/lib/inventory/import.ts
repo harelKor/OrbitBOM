@@ -1,6 +1,9 @@
 // Inventory spreadsheet import (ref §5): the member maps columns, checks a preview, imports.
 // Groups written "Raw stock > Tube" become a sub-group; unknown groups, locations and
-// conditions are created.
+// conditions are created. A row whose name and category match an item already on the shelf
+// updates that item, so a file from "Export spreadsheet" imports back without duplicates.
+
+import { parseStock } from "./stock";
 
 export const IMPORT_COLUMNS = [
   { id: "item", label: "Item", required: true },
@@ -10,17 +13,26 @@ export const IMPORT_COLUMNS = [
   { id: "category", label: "Category (group)" },
   { id: "condition", label: "Condition" },
   { id: "material", label: "Material" },
+  { id: "seasonNeed", label: "Needed for Season" },
+  { id: "price", label: "Price ($)" },
+  { id: "url", label: "Product URL" },
+  { id: "note", label: "Notes" },
 ] as const;
 export type ImportColumn = (typeof IMPORT_COLUMNS)[number]["id"];
 export type ColumnMap = Partial<Record<ImportColumn, number>>; // column index per field
 
+// A field left blank (or not mapped) is null: a new item leaves it empty, an existing one keeps it.
 export type ImportRow = {
   name: string;
-  inStock: number;
+  inStock: number | null;
   location: string | null;
   groupPath: string[];
   condition: string | null;
   material: string | null;
+  seasonNeed: number | null;
+  price: number | null;
+  url: string | null;
+  note: string | null;
 };
 
 const cell = (row: unknown[], i: number | undefined) =>
@@ -30,19 +42,40 @@ const cell = (row: unknown[], i: number | undefined) =>
 export function guessColumns(header: unknown[]): ColumnMap {
   const map: ColumnMap = {};
   const names = header.map((h) => String(h ?? "").trim().toLowerCase());
+  // The first word wins: an exact header, then one that starts with it.
   const find = (...words: string[]) => {
-    const i = names.findIndex((n) => words.some((w) => n === w || n.startsWith(w)));
-    return i >= 0 ? i : undefined;
+    for (const w of words) {
+      const i = names.indexOf(w);
+      if (i >= 0) return i;
+    }
+    for (const w of words) {
+      const i = names.findIndex((n) => n.startsWith(w));
+      if (i >= 0) return i;
+    }
+    return undefined;
   };
-  map.item = find("item", "name", "part");
+  map.item = find("item name", "item", "name", "part");
   map.spec = find("size", "spec");
   map.quantity = find("quantity", "qty", "in stock", "count");
   map.location = find("location", "shelf", "bin");
   map.category = find("category", "group");
   map.condition = find("condition");
   map.material = find("material");
+  map.seasonNeed = find("needed for season", "season need", "needed");
+  map.price = find("unit price", "price");
+  map.url = find("product url", "url", "link");
+  map.note = find("notes", "note");
   return map;
 }
+
+// A file from "Export spreadsheet": its Specs are already part of the item name.
+export const isOrbitExport = (header: unknown[]) => {
+  const names = header.map((h) => String(h ?? "").trim().toLowerCase());
+  return names.includes("item name") && names.includes("specs");
+};
+
+// "3", "2 ¾" (a sheet); blank or unreadable is null.
+const amount = (text: string) => (text ? parseStock(text, true) : null);
 
 export function parseImportRows(rows: unknown[][], map: ColumnMap, specInName: boolean): ImportRow[] {
   const out: ImportRow[] = [];
@@ -50,10 +83,11 @@ export function parseImportRows(rows: unknown[][], map: ColumnMap, specInName: b
     const item = cell(row, map.item);
     if (!item) continue;
     const spec = cell(row, map.spec);
-    const qty = Number(cell(row, map.quantity));
+    const price = Number(cell(row, map.price).replace(/[$,₪\s]/g, ""));
+    const url = cell(row, map.url);
     out.push({
       name: specInName && spec ? `${item} ${spec}` : item,
-      inStock: Number.isFinite(qty) && qty > 0 ? Math.round(qty) : 0,
+      inStock: amount(cell(row, map.quantity)),
       location: cell(row, map.location) || null,
       groupPath: cell(row, map.category)
         .split(">")
@@ -61,6 +95,10 @@ export function parseImportRows(rows: unknown[][], map: ColumnMap, specInName: b
         .filter(Boolean),
       condition: cell(row, map.condition) || null,
       material: cell(row, map.material) || null,
+      seasonNeed: amount(cell(row, map.seasonNeed)),
+      price: cell(row, map.price) && Number.isFinite(price) && price >= 0 ? price : null,
+      url: /^https?:\/\//i.test(url) ? url : null,
+      note: cell(row, map.note) || null,
     });
   }
   return out;

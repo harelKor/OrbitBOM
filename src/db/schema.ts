@@ -533,7 +533,7 @@ export const storedFiles = pgTable(
   {
     key: text("key").primaryKey(),
     bytes: bigint("bytes", { mode: "number" }).notNull(),
-    kind: text("kind").notNull(), // studio | part | preview | thumb | file | image | other
+    kind: text("kind").notNull(), // studio | part | preview | thumb | file | image | backup | other
     // A 3D preview's version, so the storage window can count and free a version's previews.
     versionId: uuid("version_id").references(() => systemVersions.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

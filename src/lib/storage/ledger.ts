@@ -4,7 +4,7 @@ import { db, schema } from "@/db";
 
 const { storedFiles } = schema;
 
-export type StoredKind = "studio" | "part" | "preview" | "thumb" | "file" | "image" | "other";
+export type StoredKind = "studio" | "part" | "preview" | "thumb" | "file" | "image" | "backup" | "other";
 
 // What a key holds, from its prefix.
 export function kindOf(key: string): StoredKind {
@@ -14,6 +14,7 @@ export function kindOf(key: string): StoredKind {
   if (key.startsWith("thumbs/")) return "thumb";
   if (key.startsWith("parts/") || key.startsWith("groups/")) return "file";
   if (key.startsWith("inventory/")) return "image";
+  if (key.startsWith("backups/")) return "backup";
   return "other";
 }
 

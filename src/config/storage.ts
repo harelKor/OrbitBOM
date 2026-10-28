@@ -10,3 +10,5 @@ export const STORAGE_CLEAN_UP_TO = 7 * GB;
 export const KEEP_PREVIEW_VERSIONS = 3;
 // Supabase Free's database size.
 export const DATABASE_LIMIT = 500 * 1024 ** 2;
+// Nightly backups (backups/orbitparts-YYYY-MM-DD.json.gz) kept in R2.
+export const BACKUP_DAYS = 30;

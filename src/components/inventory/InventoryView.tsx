@@ -327,6 +327,19 @@ export function InventoryView({
     } catch {}
     foldListeners.forEach((fn) => fn());
   };
+  // Export spreadsheet: every item, in any mode (a backup any mentor can take).
+  const exportButton = (
+    <button
+      type="button"
+      className="btn min-h-11 active:scale-[0.98]"
+      onClick={async () => {
+        const { downloadInventory } = await import("@/lib/inventory/export");
+        downloadInventory(optimistic, { categories, conditions, locations }, locationOf);
+      }}
+    >
+      <Icon name="download" className="h-4 w-4" /> Export spreadsheet
+    </button>
+  );
   const layoutSwitch = (
     <Segmented
       label="Show items as"
@@ -419,6 +432,7 @@ export function InventoryView({
           >
             Import spreadsheet
           </button>
+          {exportButton}
           <span className="ml-auto" />
           {(["move", "delete"] as const).map((m) => (
             <button
@@ -585,7 +599,9 @@ export function InventoryView({
             <Fold id="all" title={`All items (${items.length})`}>
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 {filters}
-                <span className="ml-auto">{layoutSwitch}</span>
+                <span className="ml-auto" />
+                {!edit && exportButton}
+                {layoutSwitch}
               </div>
               {grid(
                 optimistic.filter(
@@ -604,7 +620,9 @@ export function InventoryView({
               {shownMain.length} item{shownMain.length === 1 ? "" : "s"}
             </span>
             {showBoxes && filters}
-            <span className="ml-auto">{layoutSwitch}</span>
+            <span className="ml-auto" />
+            {!edit && exportButton}
+            {layoutSwitch}
           </div>
           {shownMain.length === 0 ? (
             <div className="panel p-6 text-sm text-muted">
