@@ -6,6 +6,7 @@ import { getMachine, MACHINES } from "@/config/machines";
 import { MATERIAL_OPTIONS } from "@/components/bom/options";
 import { OptionList, Popover, type Option } from "@/components/bom/Popover";
 import { DATE_OPTIONS, useFilters, type DateFilter, type Filters } from "./FilterContext";
+import { Icon } from "@/components/ui/Icon";
 import { Brand } from "./Brand";
 import { ModeToggle } from "./ModeContext";
 import { UndoRedo } from "./UndoRedo";
@@ -61,23 +62,26 @@ export function TopBar({ onMenu, onRobots, navHidden }: { onMenu: () => void; on
               value={filters.q}
               onChange={(e) => setFilters({ q: e.target.value })}
               placeholder="Search part name"
-              className={`input border-white bg-white text-[#111318] ${filters.q ? "pr-20" : "pr-14"}`}
+              className={`input border-white bg-white text-[#111318] ${filters.q ? "pr-[5.5rem]" : "pr-16"}`}
             />
-            {filters.q && (
-              <button
-                type="button"
-                onClick={() => {
-                  setFilters({ q: "" });
-                  search.current?.focus();
-                }}
-                aria-label="Clear search"
-                title="Clear search"
-                className="press absolute top-1/2 right-14 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-subtle hover:bg-line hover:text-[#111318]"
-              >
-                ✕
-              </button>
-            )}
-            <kbd className="absolute top-1.5 right-2 rounded border border-line-strong px-1.5 text-[11px] text-subtle">Ctrl K</kbd>
+            {/* Right edge of the box: the shortcut hint, then the clear button in the far corner. */}
+            <div className="absolute inset-y-0 right-1.5 flex items-center gap-1.5">
+              <kbd className="pointer-events-none rounded border border-line-strong px-1.5 text-[11px] text-subtle">Ctrl K</kbd>
+              {filters.q && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilters({ q: "" });
+                    search.current?.focus();
+                  }}
+                  aria-label="Clear search"
+                  title="Clear search"
+                  className="press flex h-6 w-6 items-center justify-center rounded-md border border-line-strong bg-raised text-muted hover:border-accent hover:bg-accent hover:text-white active:scale-[0.98]"
+                >
+                  <Icon name="close" className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             <Pill label="Material" value={filters.material || null} options={MATERIAL_PICK} pick={(v) => setFilters({ material: v ?? "" })} />
