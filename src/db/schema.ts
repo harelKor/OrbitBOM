@@ -554,9 +554,13 @@ export const storedFiles = pgTable(
 
 // ---------- Inventory ----------
 
+// map_x / map_y place the location's pin on the workshop map (config/workshopMap.ts units);
+// null keeps it off the map.
 export const inventoryLocations = pgTable("inventory_locations", {
   id: id(),
   name: text("name").notNull().unique(),
+  mapX: real("map_x"),
+  mapY: real("map_y"),
 });
 
 export const inventoryConditions = pgTable("inventory_conditions", {

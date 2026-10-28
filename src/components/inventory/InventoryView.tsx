@@ -48,6 +48,7 @@ import { useInventoryPopup } from "./InventoryPopup";
 import { ItemCard } from "./ItemCard";
 import { ItemTable } from "./ItemTable";
 import { ScanButton } from "./ScanButton";
+import { WorkshopMap, type PinStats } from "./WorkshopMap";
 import type { Item, Lookups } from "./types";
 
 export type InventoryScope =
@@ -126,6 +127,33 @@ export function InventoryView({
     i.locationId ??
     lookups.groups.find((g) => g.id === i.groupId)?.locationId ??
     null;
+  // The workshop map (closed at first, remembered): each pin's items and how many are short.
+  const [mapOpen, toggleMap] = useFold("map", false);
+  const activeLocation = locations.find((l) => l.id === locationId);
+  const pinStats = useMemo(() => {
+    const m: PinStats = new Map();
+    for (const i of optimistic) {
+      const at = locationOf(i);
+      if (!at) continue;
+      const c = m.get(at) ?? { count: 0, short: 0 };
+      c.count++;
+      if (standing(i, "any") === "short") c.short++;
+      m.set(at, c);
+    }
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- locationOf follows the groups
+  }, [optimistic, lookups.groups]);
+  const mapButton = (
+    <button
+      type="button"
+      onClick={toggleMap}
+      aria-expanded={mapOpen}
+      className={`btn shrink-0 self-start active:scale-[0.98] ${mapOpen ? "min-h-8 border-sky-400/50 text-sky-300" : "min-h-12"}`}
+      title={mapOpen ? "Close the workshop map" : "Open the workshop map"}
+    >
+      <span aria-hidden>{mapOpen ? "✕" : "🗺️"}</span> {mapOpen ? "Close" : "Map"}
+    </button>
+  );
   const query = q.trim().toLowerCase();
   const matches = (i: Item) => {
     if (!query) return true;
@@ -459,7 +487,12 @@ export function InventoryView({
 
       {/* The search row stays under the top bar while the list scrolls. */}
       {/* On phones the box and Scan get the whole first row and the filters the next. */}
-      <div className="sticky top-[var(--topbar-h)] z-20 -mx-2 flex flex-wrap gap-2 bg-ink/95 px-2 py-2 backdrop-blur">
+      {/* The open map grows out of its button at the top right, narrowing the search beside it and
+          pushing the rest down (Harel, 2026-10-28); the row stops sticking while it's open. */}
+      <div
+        className={`${mapOpen ? "" : "sticky top-[var(--topbar-h)] z-20"} -mx-2 flex flex-col gap-2 bg-ink/95 px-2 py-2 backdrop-blur sm:flex-row sm:items-start`}
+      >
+      <div className="flex min-w-0 flex-1 flex-wrap gap-2">
         <div className="flex w-full min-w-0 gap-2 sm:contents">
           <AddBox
             q={q}
@@ -479,33 +512,47 @@ export function InventoryView({
             }
           />
           <ScanButton onCode={setQ} />
+          {!mapOpen && mapButton}
         </div>
         {!boxes && !showBoxes && filters}
+        {!mapOpen && activeLocation && (
+          <button
+            type="button"
+            onClick={() => setLocationId("")}
+            className="press min-h-9 self-center rounded-full border border-accent bg-accent px-3 py-1.5 text-xs font-semibold text-white active:scale-[0.98]"
+            title="Clear the location filter"
+          >
+            📍 {activeLocation.name} ✕
+          </button>
+        )}
       </div>
-
-      {locations.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-xs font-semibold text-subtle">📍</span>
-          {locations.map((l) => {
-            const on = locationId === l.id;
-            return (
+      {mapOpen && (
+        <div className="map-unfold w-full self-end sm:w-[58%] sm:max-w-[720px]">
+          <div className="mb-1.5 flex items-center gap-2">
+            <span className="text-xs font-semibold text-fg-2">🗺️ Workshop map</span>
+            {activeLocation && (
               <button
-                key={l.id}
                 type="button"
-                onClick={() => setLocationId(on ? "" : l.id)}
-                aria-pressed={on}
-                className={`press min-h-9 rounded-full border px-3 py-1.5 text-xs font-semibold active:scale-[0.98] ${
-                  on
-                    ? "border-accent bg-accent text-white"
-                    : "border-line-strong bg-surface text-fg-2 hover:border-accent hover:text-accent"
-                }`}
+                onClick={() => setLocationId("")}
+                className="press rounded-full border border-accent bg-accent px-2.5 py-0.5 text-xs font-semibold text-white active:scale-[0.98]"
+                title="Clear the location filter"
               >
-                {l.name}
+                📍 {activeLocation.name} ✕
               </button>
-            );
-          })}
+            )}
+            <span className="ml-auto" />
+            {mapButton}
+          </div>
+          <WorkshopMap
+            locations={locations}
+            stats={pinStats}
+            selectedId={locationId || undefined}
+            onPick={(id) => setLocationId(locationId === id ? "" : id)}
+            editable={edit}
+          />
         </div>
       )}
+      </div>
 
       {error && (
         <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">

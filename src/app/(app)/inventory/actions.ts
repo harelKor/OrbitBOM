@@ -539,6 +539,21 @@ export async function deleteLocation(id: string) {
   refresh();
 }
 
+// Edit mode's workshop map: a dragged pin saves its spot (map units, 0..1000 x 0..560); null takes
+// the location off the map.
+export async function setLocationSpot(id: string, spot: { x: number; y: number } | null): Promise<ActionResult> {
+  await requireMember();
+  if (!isUuid(id)) return { error: "Unknown location." };
+  const ok = (v: number, max: number) => Number.isFinite(v) && v >= 0 && v <= max;
+  if (spot && !(ok(spot.x, 1000) && ok(spot.y, 560))) return { error: "That spot is off the map." };
+  await db
+    .update(inventoryLocations)
+    .set(spot ? { mapX: Math.round(spot.x), mapY: Math.round(spot.y) } : { mapX: null, mapY: null })
+    .where(eq(inventoryLocations.id, id));
+  refresh();
+  return {};
+}
+
 // ---------- Spreadsheet import ----------
 
 const importRows = z

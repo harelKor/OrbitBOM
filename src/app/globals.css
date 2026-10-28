@@ -220,6 +220,18 @@ body {
   }
 }
 
+/* Inventory's workshop map grows out of its Map button (top right), widening into place. */
+@utility map-unfold {
+  animation: map-unfold 300ms var(--ease-snap) backwards;
+}
+
+@keyframes map-unfold {
+  from {
+    width: 6rem;
+    opacity: 0.2;
+  }
+}
+
 @keyframes modal-fade {
   from {
     opacity: 0;

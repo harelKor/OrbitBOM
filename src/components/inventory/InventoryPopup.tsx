@@ -39,6 +39,7 @@ import { ItemForm, draftOf } from "./ItemForm";
 import { ItemHistory } from "./ItemHistory";
 import { PhotoButtons } from "./photo";
 import { ToBomDialog } from "./ToBomDialog";
+import { WorkshopMap } from "./WorkshopMap";
 import type { InvCategory, Item, Location } from "./types";
 
 // Anything connected to the inventory (a part card's material or inventory pill, a robot's
@@ -349,6 +350,8 @@ function ItemBody({
   const condition = conditions.find((c) => c.id === item.conditionId);
   const color = condition ? conditionColor(condition.color) : undefined;
   const location = locations.find((l) => l.id === item.locationId);
+  const onMap = location?.mapX != null && location?.mapY != null;
+  const [showMap, setShowMap] = useState(false);
   const usage = item.usage;
   const picture = item.thumbUrl ?? cat?.imageUrl ?? null;
 
@@ -474,13 +477,40 @@ function ItemBody({
               </Link>
             )}
             {location && (
-              <Link href={`/inventory?loc=${location.id}`} onClick={onClose} className={`${tag} border border-line text-fg-2 hover:border-accent hover:text-accent`}>
+              <button
+                type="button"
+                onClick={() => setShowMap((v) => !v)}
+                aria-expanded={showMap}
+                title={onMap ? "Show where it is on the workshop map" : "Show the workshop map"}
+                className={`${tag} press border active:scale-[0.98] ${showMap ? "border-sky-400/60 bg-sky-500/15 text-sky-300" : "border-line text-fg-2 hover:border-sky-400/40 hover:text-accent"}`}
+              >
                 📍 {location.name}
-              </Link>
+              </button>
             )}
               </>
             )}
+            {edit && data && location && (
+              <button
+                type="button"
+                onClick={() => setShowMap((v) => !v)}
+                aria-expanded={showMap}
+                aria-label="Show on the workshop map"
+                title="Show on the workshop map"
+                className={`${tag} press border active:scale-[0.98] ${showMap ? "border-sky-400/60 bg-sky-500/15 text-sky-300" : "border-line text-fg-2 hover:border-sky-400/40"}`}
+              >
+                🗺️
+              </button>
+            )}
           </div>
+          {showMap && location && (
+            // A compact map centred on the item's shelf, its pin lit in Orbit blue.
+            <div className="map-unfold w-full max-w-md space-y-1">
+              <WorkshopMap key={location.id} locations={locations} focusId={location.id} selectedId={location.id} compact />
+              <Link href={`/inventory?loc=${location.id}`} onClick={onClose} className="inline-block text-xs font-semibold text-accent hover:underline">
+                {onMap ? `Everything at ${location.name} →` : `${location.name} isn't on the map yet. See everything there →`}
+              </Link>
+            </div>
+          )}
           <Stepper item={item} onStep={onStep} onCount={onCount} big />
           <div className="text-xs text-muted">
             {[

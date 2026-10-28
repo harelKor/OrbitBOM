@@ -309,6 +309,13 @@
       "when": 1793213265821,
       "tag": "0043_bearing_filters",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1793222935355,
+      "tag": "0044_workshop_map",
+      "breakpoints": true
     }
   ]
 }
