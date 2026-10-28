@@ -12,9 +12,10 @@ import { StorageBox } from "@/components/storage/StorageBox";
 import { Icon } from "@/components/ui/Icon";
 import { requireMember } from "@/lib/auth";
 import { listRecentActions } from "@/lib/data/actions";
+import { listRobotGroups } from "@/lib/data/groups";
 import { listInventoryNames, robotInventory } from "@/lib/data/inventory";
 import { listRobotParts } from "@/lib/data/parts";
-import { STATUSES } from "@/config/statuses";
+import { DONE_STATUSES, STATUSES } from "@/config/statuses";
 import { robotModelBuiltAt } from "@/lib/model/build";
 import { getRobot } from "@/lib/data/robots";
 import { fabStage } from "@/lib/fab";
@@ -27,13 +28,15 @@ import { storageTotal } from "@/lib/storage/usage";
 
 // The robot dashboard: launch cards for To Fab and To Review, status and process completion,
 // the 3D stage, a compact Inventory box above Recent actions, and every part of the robot
-// (searched and filtered from the top bar).
+// (searched and filtered from the top bar). Build Team gets To Post Process and My Batches in
+// place of To Review, Ready for QA and Onshape sync.
 export default async function RobotPage({ params }: { params: Promise<{ robotId: string }> }) {
   const { robotId } = await params;
   if (!isUuid(robotId)) notFound();
   // Everything in one parallel round: the page waits for the slowest query, not their sum.
   const member = await requireMember();
-  const [data, parts, inventoryNames, inventory, edit, modelBuiltAt, reviews, actions, sync, stored] = await Promise.all([
+  const build = member.team === "build";
+  const [data, parts, inventoryNames, inventory, edit, modelBuiltAt, reviews, actions, sync, stored, groups] = await Promise.all([
     getRobot(robotId),
     listRobotParts(robotId),
     listInventoryNames(),
@@ -44,10 +47,10 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
     listRecentActions({ robotId, memberId: member.id }),
     listSystemSync(),
     storageTotal(),
+    build ? listRobotGroups(robotId) : [],
   ]);
   if (!data) notFound();
-  // Build Team sees what they don't use smaller and dimmer, still a click away.
-  const build = member.team === "build";
+  // Build Team sees what they don't use dimmer, still a click away.
   const dim = build ? "opacity-55 transition-opacity duration-150 hover:opacity-100 focus-within:opacity-100" : "";
   const { robot, breakdown } = data;
   const aiReviews = reviews.filter((r) => r.source === "ai").length;
@@ -63,6 +66,14 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
   for (const p of parts) if (p.status === "Ready for QA") qaCount.set(p.systemId, (qaCount.get(p.systemId) ?? 0) + 1);
   const qaSystems = data.systems.flatMap((s) => (qaCount.has(s.id) ? [{ id: s.id, name: s.name, count: qaCount.get(s.id)! }] : []));
   const syncSystems = data.systems.flatMap((s) => (s.assemblyUrl ? [{ id: s.id, name: s.name, ...(sync.get(s.id) ?? { outdated: null, waiting: 0 }) }] : []));
+  // Build Team: parts waiting for post-processing, and the member's unfinished fab batches.
+  const postProcess = parts.filter((p) => p.status === "Post Processing").length;
+  const myBatches = groups.flatMap((g) => {
+    if (g.madeBy !== member.name) return [];
+    const members = parts.filter((p) => p.groups.some((x) => x.id === g.id));
+    return members.length && !members.every((p) => (DONE_STATUSES as string[]).includes(p.status)) ? [members.length] : [];
+  });
+  const myBatchParts = myBatches.reduce((n, c) => n + c, 0);
   const activeStatuses = breakdown.statuses.filter((s) => s.count > 0);
   // BOM parts by their key in the 3D model, with their status colour.
   const statusColor = new Map<string, string>(STATUSES.map((s) => [s.name, s.color]));
@@ -93,18 +104,37 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
           count={inProcess + ready}
           detail={`${inProcess} in process, ${ready} released`}
         />
-        <LaunchCard
-          href={`/robots/${robot.id}/review`}
-          icon="review"
-          title="To Review"
-          count={reviews.length}
-          detail={reviews.length ? `${aiReviews} set up by Claude, ${reviews.length - aiReviews} by Suggest setup` : "Parts set up automatically wait here"}
-          minor={build}
-          className={dim}
-        />
+        {build ? (
+          <div className="grid gap-3">
+            <StatBox
+              href={`/robots/${robot.id}/fab#post-process`}
+              icon="spark"
+              color={statusColorOf("Post Processing")}
+              title="To Post Process"
+              detail={postProcess ? `${postProcess === 1 ? "part" : "parts"} in Post Processing` : "Nothing to post-process"}
+              count={postProcess}
+            />
+            <StatBox
+              href={`/robots/${robot.id}/fab?mine=1`}
+              icon="user"
+              color="#38BDF8"
+              title="My Batches"
+              detail={myBatches.length ? `${myBatchParts} ${myBatchParts === 1 ? "part" : "parts"} to make` : "No batches assigned to you"}
+              count={myBatches.length}
+            />
+          </div>
+        ) : (
+          <LaunchCard
+            href={`/robots/${robot.id}/review`}
+            icon="review"
+            title="To Review"
+            count={reviews.length}
+            detail={reviews.length ? `${aiReviews} set up by Claude, ${reviews.length - aiReviews} by Suggest setup` : "Parts set up automatically wait here"}
+          />
+        )}
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,5fr)_minmax(0,2fr)_minmax(0,5fr)]">
+      <div className={`grid gap-3 ${build ? "lg:grid-cols-2" : "lg:grid-cols-[minmax(0,5fr)_minmax(0,2fr)_minmax(0,5fr)]"}`}>
         <section className="panel space-y-5 p-4">
           <div className="flex items-center gap-5">
             <CompletionRing percent={breakdown.percent} done={breakdown.done} total={breakdown.total} />
@@ -143,10 +173,12 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
             </div>
           )}
         </section>
-        <div className={`grid gap-3 ${build ? `self-start ${dim}` : "grid-rows-2"}`}>
-          <QaBox robotId={robot.id} systems={qaSystems} />
-          <SyncBox robotId={robot.id} systems={syncSystems} />
-        </div>
+        {!build && (
+          <div className="grid grid-rows-2 gap-3">
+            <QaBox robotId={robot.id} systems={qaSystems} />
+            <SyncBox robotId={robot.id} systems={syncSystems} />
+          </div>
+        )}
         <RobotViewer
           robotId={robot.id}
           statuses={activeStatuses}
@@ -189,21 +221,43 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
   );
 }
 
-// minor: the compact card Build Team sees for pages they rarely need.
-function LaunchCard({ href, icon, title, count, detail, minor = false, className = "" }: { href: string; icon: "fab" | "review"; title: string; count: number; detail: string; minor?: boolean; className?: string }) {
+const statusColorOf = (name: string) => STATUSES.find((s) => s.name === name)?.color ?? "#38BDF8";
+
+function LaunchCard({ href, icon, title, count, detail }: { href: string; icon: "fab" | "review"; title: string; count: number; detail: string }) {
   return (
-    <Link href={href} className={`card-interactive group flex items-center ${minor ? "gap-4 p-5" : "gap-6 p-8"} ${className}`}>
-      <span className={`flex items-center justify-center rounded-xl border border-line-strong bg-raised text-accent-hover group-hover:border-accent/60 ${minor ? "h-12 w-12" : "h-20 w-20"}`}>
-        <Icon name={icon} className={minor ? "h-6 w-6" : "h-9 w-9"} />
+    <Link href={href} className="card-interactive group flex items-center gap-6 p-8 active:scale-[0.98]">
+      <span className="flex h-20 w-20 items-center justify-center rounded-xl border border-line-strong bg-raised text-accent-hover group-hover:border-accent/60">
+        <Icon name={icon} className="h-9 w-9" />
       </span>
       <div className="min-w-0 flex-1">
-        <div className={`font-medium text-muted ${minor ? "text-base" : "text-lg"}`}>{title}</div>
-        <div className={`display text-accent tabular-nums ${minor ? "text-4xl" : "text-6xl"}`}>
-          {count} <span className={`font-medium text-muted ${minor ? "text-lg" : "text-2xl"}`}>{count === 1 ? "part" : "parts"}</span>
+        <div className="text-lg font-medium text-muted">{title}</div>
+        <div className="display text-6xl text-accent tabular-nums">
+          {count} <span className="text-2xl font-medium text-muted">{count === 1 ? "part" : "parts"}</span>
         </div>
         <div className="truncate text-sm text-subtle">{detail}</div>
       </div>
       <Icon name="arrow" className="h-8 w-8 text-subtle transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-fg" />
+    </Link>
+  );
+}
+
+// A Build Team box in the Ready for QA box's style: an icon ring in `color`, a title, a line of
+// detail and a big count, linking into To Fab.
+function StatBox({ href, icon, color, title, detail, count }: { href: string; icon: "spark" | "user"; color: string; title: string; detail: string; count: number }) {
+  return (
+    <Link href={href} className="card-interactive group flex items-center gap-4 p-4 active:scale-[0.98]">
+      <span
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2"
+        style={{ color, borderColor: `color-mix(in srgb, ${color} 60%, transparent)`, backgroundColor: `color-mix(in srgb, ${color} 10%, transparent)` }}
+      >
+        <Icon name={icon} className="h-6 w-6" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium text-muted">{title}</span>
+        <span className="block truncate text-xs text-subtle tabular-nums">{detail}</span>
+      </span>
+      <span className="display font-mono text-4xl text-accent tabular-nums">{count}</span>
+      <Icon name="arrow" className="h-5 w-5 shrink-0 text-subtle transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-fg" />
     </Link>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { createContext, useContext, useId, useLayoutEffect, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
+import { createContext, useContext, useEffect, useId, useLayoutEffect, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
 import { flushSync } from "react-dom";
 import { MACHINES, getMachine } from "@/config/machines";
 import type { Priority } from "@/config/priorities";
@@ -183,14 +183,12 @@ export function FabView({
   const machine = useFabMachine();
   const { filters } = useFilters();
   const [fab, setFab] = useState(false);
-  const [mine, setMine] = useState(false); // only the batches made by the signed-in member
+  const searchParams = useSearchParams();
+  // Only the batches made by the signed-in member; the dashboard's My Batches box opens it on (?mine=1).
+  const [mine, setMine] = useState(() => searchParams.get("mine") === "1");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pickedMachine, setPickedMachine] = useState("");
   const [target, setTarget] = useState(""); // the batch the Fab button adds to ("" = a new one)
-  // ?mat= : the material filter box picked.
-  const rawMat = useSearchParams().get("mat");
-  const mat = rawMat || null;
-  const matchesMat = (p: CardPart) => !mat || materialKeyOf(p) === mat;
   // Long-pressing a Released card on a phone turns on Fab with that card picked.
   const press = useRef<{ timer: number | null; fired: boolean }>({ timer: null, fired: false });
   const endPress = () => {
@@ -211,15 +209,41 @@ export function FabView({
   const counts = useMemo(() => {
     const byMachine = new Map<string, number>();
     const byMaterial = new Map<string, number>();
+    const materialsOn = new Map<string, Set<string>>(); // machine -> materials of its queue parts
     let total = 0;
     for (const p of optimistic) {
       if (!fabStage(p)) continue;
       total += 1;
-      for (const m of machinesOf(p)) byMachine.set(m, (byMachine.get(m) ?? 0) + 1);
-      if (!machine || machinesOf(p).includes(machine)) byMaterial.set(materialKeyOf(p), (byMaterial.get(materialKeyOf(p)) ?? 0) + 1);
+      const key = materialKeyOf(p);
+      for (const m of machinesOf(p)) {
+        byMachine.set(m, (byMachine.get(m) ?? 0) + 1);
+        materialsOn.set(m, (materialsOn.get(m) ?? new Set()).add(key));
+      }
+      if (!machine || machinesOf(p).includes(machine)) byMaterial.set(key, (byMaterial.get(key) ?? 0) + 1);
     }
-    return { total, byMachine, byMaterial };
+    return { total, byMachine, byMaterial, materialsOn };
   }, [optimistic, machine]);
+
+  // ?mat= : the material filter box picked. A material with no parts on the machine picked is
+  // dropped, so switching machines never leaves an empty filter.
+  const rawMat = searchParams.get("mat");
+  const mat = rawMat && counts.byMaterial.has(rawMat) ? rawMat : null;
+  const matchesMat = (p: CardPart) => !mat || materialKeyOf(p) === mat;
+  useEffect(() => {
+    if (rawMat && !mat) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("mat");
+      window.history.replaceState(null, "", url.pathname + url.search);
+    }
+  }, [rawMat, mat]);
+  const base = `/robots/${robotId}/fab`;
+  // Machine boxes keep the material picked when that machine has parts of it.
+  const machineHref = (id: string | null) => {
+    const q = new URLSearchParams();
+    if (id) q.set("machine", id);
+    if (mat && (!id || counts.materialsOn.get(id)?.has(mat))) q.set("mat", mat);
+    return q.size ? `${base}?${q}` : base;
+  };
 
   const view = useMemo(() => {
     const shownBatches = batches
@@ -387,7 +411,6 @@ export function FabView({
     />
   );
   const machinesWithParts = MACHINES.filter((m) => counts.byMachine.has(m.id));
-  const base = `/robots/${robotId}/fab`;
   // The machine a loose part is batched on: the one picked above, else the one it's at.
   const batchMachine = (p: CardPart) => (machine && machinesOf(p).includes(machine) ? machine : (statusMachine(p) ?? machinesOf(p)[0]));
   const drop = (stage: Stage) => (load: DragLoad) => {
@@ -419,9 +442,9 @@ export function FabView({
     <BomProvider value={{ inventory, isAdmin, robotId }}>
       <div className="space-y-6">
         <div className="flex flex-wrap items-stretch gap-2">
-          <MachineBox href={base} name="All machines" count={counts.total} active={!machine} />
+          <MachineBox href={machineHref(null)} name="All machines" count={counts.total} active={!machine} />
           {machinesWithParts.map((m) => (
-            <MachineBox key={m.id} href={`${base}?machine=${m.id}`} name={m.name} count={counts.byMachine.get(m.id)!} active={machine === m.id} />
+            <MachineBox key={m.id} href={machineHref(m.id)} name={m.name} count={counts.byMachine.get(m.id)!} active={machine === m.id} />
           ))}
           <MaterialBoxes counts={counts.byMaterial} active={mat} />
           <button
@@ -445,7 +468,7 @@ export function FabView({
         {error && <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">Couldn&apos;t save: {error}</p>}
 
         {view.post.length > 0 && (
-          <div className="rounded-xl border p-3" style={{ borderColor: "color-mix(in srgb, #f302f7 40%, transparent)", backgroundColor: "color-mix(in srgb, #f302f7 4%, transparent)" }}>
+          <div id="post-process" className="scroll-mt-20 rounded-xl border p-3" style={{ borderColor: "color-mix(in srgb, #f302f7 40%, transparent)", backgroundColor: "color-mix(in srgb, #f302f7 4%, transparent)" }}>
             <Section title="To Post Process" count={view.post.reduce((n, b) => n + b.post.filter((p) => !postChecked.has(p.id)).length, 0)}>
               {view.post.map((b) => (
                 <BatchCard
