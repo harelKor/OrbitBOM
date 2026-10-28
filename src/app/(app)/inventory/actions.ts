@@ -51,6 +51,7 @@ const itemInput = z.object({
   price: z.number().min(0).nullable().default(null),
   imageUrl: z.string().nullable().optional(), // a product's picture, copied to R2 on save
   photoKey: z.string().regex(PHOTO_KEY, "Unknown photo.").nullable().optional(), // a photo the member uploaded (wins over imageUrl)
+  note: z.string().max(2000).nullable().optional(), // left out: the note stays as it is
 });
 export type ItemInput = z.input<typeof itemInput>;
 
@@ -72,7 +73,16 @@ export async function saveItem(itemId: string | null, input: ItemInput): Promise
   const inStock = parseStock(d.inStock, sheet);
   if (inStock === null) return { error: sheet ? 'In stock is sheets, like "2" or "1 3/4".' : "In stock is a whole number." };
   const cotsLinks = d.links.map((l) => ({ url: l.url, site: l.site || vendorOfUrl(l.url) }));
-  const values = { name: d.name, category: d.category, specs, conditionId: d.conditionId, locationId: d.locationId, cotsLinks, price: d.price };
+  const values = {
+    name: d.name,
+    category: d.category,
+    specs,
+    conditionId: d.conditionId,
+    locationId: d.locationId,
+    cotsLinks,
+    price: d.price,
+    ...(d.note !== undefined && { note: d.note?.trim() || null }),
+  };
   const ctx = { memberId: member.id, via: "ui" as const };
   const id = await db.transaction(async (tx) => {
     let id = itemId;
@@ -247,6 +257,22 @@ export async function countStock(itemId: string, amount: number): Promise<Action
   const member = await requireMember();
   if (!isUuid(itemId) || !Number.isFinite(amount) || amount < 0) return { error: "Type a count of 0 or more." };
   await db.transaction((tx) => setStock(tx, itemId, amount, { memberId: member.id, via: "ui" }));
+  refresh();
+  return {};
+}
+
+// The item window's Notes box: blank clears the note.
+export async function setItemNote(itemId: string, note: string): Promise<ActionResult> {
+  const member = await requireMember();
+  if (!isUuid(itemId)) return { error: "Unknown item." };
+  const value = note.trim().slice(0, 2000) || null;
+  const [item] = await db.select().from(inventoryItems).where(eq(inventoryItems.id, itemId));
+  if (!item) return { error: "That item was deleted." };
+  if (value === item.note) return {};
+  await db.transaction(async (tx) => {
+    await tx.update(inventoryItems).set({ note: value }).where(eq(inventoryItems.id, itemId));
+    await recordItemChanges(tx, itemId, item, { note: value }, { memberId: member.id, via: "ui" });
+  });
   refresh();
   return {};
 }

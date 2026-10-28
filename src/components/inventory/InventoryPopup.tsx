@@ -15,6 +15,7 @@ import {
   readProductLink,
   setItemCategory,
   setItemPhoto,
+  setItemNote,
   setSeasonNeed,
 } from "@/app/(app)/inventory/actions";
 import { textOn } from "@/components/bom/options";
@@ -176,6 +177,45 @@ function Stepper({ item, onStep, onCount, big = false }: { item: Pick<Item, "inS
         </span>
       )}
     </div>
+  );
+}
+
+// The item's note, like a part's Notes box: typed in place, saved when the box loses focus.
+function ItemNotesBox({ item, onSaved, onError }: { item: Item; onSaved: () => void; onError: (m: string | null) => void }) {
+  const [text, setText] = useState(item.note ?? "");
+  const [focused, setFocused] = useState(false);
+  const [seen, setSeen] = useState(item.note);
+  const [, start] = useTransition();
+  // A note changed elsewhere (another member, Undo) shows here unless it's being typed in.
+  if (seen !== item.note && !focused) {
+    setSeen(item.note);
+    setText(item.note ?? "");
+  }
+  return (
+    <label className="block rounded-xl border-2 border-amber-400/70 bg-amber-50 px-3 py-2 shadow-[3px_4px_0_0_rgba(245,158,11,0.25)] focus-within:border-amber-500 dark:bg-amber-400/10">
+      <span className="flex items-center gap-1.5 text-xs font-bold tracking-wide text-amber-700 uppercase dark:text-amber-300">
+        <Icon name="note" className="h-3.5 w-3.5" />
+        Notes
+      </span>
+      <textarea
+        value={text}
+        rows={2}
+        onChange={(e) => setText(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => {
+          setFocused(false);
+          if (text.trim() === (item.note ?? "").trim()) return;
+          const value = text;
+          start(async () => {
+            const r = await setItemNote(item.id, value);
+            onError(r.error ?? null);
+            if (!r.error) onSaved();
+          });
+        }}
+        placeholder="Add a note for whoever takes or orders this…"
+        className="mt-0.5 block w-full resize-y bg-transparent text-sm leading-snug font-semibold text-fg outline-none placeholder:font-normal placeholder:text-amber-700/50 dark:placeholder:text-amber-300/40"
+      />
+    </label>
   );
 }
 
@@ -361,6 +401,8 @@ function ItemBody({
           <SeasonBox item={item} onSaved={onSaved} onError={setMessage} />
         </div>
       </div>
+
+      <ItemNotesBox item={item} onSaved={onSaved} onError={setMessage} />
 
       {(cat?.fields.some((f) => item.specs[f.id]) || item.cotsLinks.length > 0 || item.price != null) && (
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">

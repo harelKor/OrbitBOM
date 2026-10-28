@@ -17,6 +17,7 @@ export type Item = {
   locationId: string | null;
   inStock: number;
   seasonNeed: number | null;
+  note: string | null;
   price: number | null;
   imagePath: string | null;
   usage: ItemUsage | null;

@@ -48,7 +48,7 @@ export function ItemHistory({
       case "imagePath":
         return "New photo";
       default: {
-        const label = { category: "Category", locationId: "Location", conditionId: "Condition", price: "Price", seasonNeed: "Needed for season" }[e.field] ?? e.field;
+        const label = { category: "Category", locationId: "Location", conditionId: "Condition", price: "Price", seasonNeed: "Needed for season", note: "Note" }[e.field] ?? e.field;
         return `${label}: ${nameOf(e.field, e.from)} → ${nameOf(e.field, e.to)}`;
       }
     }

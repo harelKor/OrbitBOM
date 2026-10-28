@@ -1,12 +1,21 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
-import { enrichShopSeed, importShopSeed } from "@/lib/inventory/shopSeed";
+import {
+  cleanupShopSeed,
+  enrichShopSeed,
+  importShopSeed,
+  relinkInventory,
+  searchPreview,
+} from "@/lib/inventory/shopSeed";
 
 export const maxDuration = 60;
 
 // The one-off import of the shop spreadsheet (lib/inventory/shopSeed.ts). ?step=import adds the
 // items, ?step=enrich (call it until remaining is 0) links products and saves their pictures.
-// Both are safe to call again. Callers send CRON_SECRET, or the import key whose hash is below.
+// Round 2 (2026-10-28): ?step=cleanup empties Released and the Order List and shortens names,
+// ?step=relink (until remaining is 0; &dry=1 only lists its picks) links COTS, electrical and tool
+// items, ?step=search&q= shows what a store search returns. All are safe to call again.
+// Callers send CRON_SECRET, or the import key whose hash is below.
 const KEY_SHA256 =
   "9e07a8d9fc3529859bf68cb4ad417e30f10fdab9bb8640cc2fc65fbd30d67f9a";
 
@@ -37,8 +46,25 @@ export async function GET(request: NextRequest) {
       ...(await enrichShopSeed(started + 55_000)),
       ms: Date.now() - started,
     });
+  if (step === "cleanup")
+    return NextResponse.json({
+      ...(await cleanupShopSeed()),
+      ms: Date.now() - started,
+    });
+  if (step === "relink")
+    return NextResponse.json({
+      ...(await relinkInventory(
+        started + 55_000,
+        request.nextUrl.searchParams.get("dry") === "1",
+      )),
+      ms: Date.now() - started,
+    });
+  if (step === "search")
+    return NextResponse.json(
+      await searchPreview(request.nextUrl.searchParams.get("q") ?? ""),
+    );
   return NextResponse.json(
-    { error: "step must be import or enrich" },
+    { error: "step must be import, enrich, cleanup, relink or search" },
     { status: 400 },
   );
 }

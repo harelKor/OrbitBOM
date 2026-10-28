@@ -6,6 +6,7 @@ import { useState, useTransition } from "react";
 import { sendItemToReleased } from "@/app/(app)/inventory/actions";
 import { textOn } from "@/components/bom/options";
 import { formatPrice, setCurrency, useCurrency } from "@/components/cots/currency";
+import { NoteCloud } from "@/components/bom/NoteCloud";
 import { Popover } from "@/components/bom/Popover";
 import { pushQuery } from "@/components/ui/CategoryBoxes";
 import { CheckBadge } from "@/components/ui/CheckBadge";
@@ -147,6 +148,7 @@ export function ItemCard({
             <span className="text-[11px]">{category?.label}</span>
           </span>
         )}
+        {item.note && <NoteCloud note={item.note} raised />}
       </div>
       <div className="card-overlay absolute top-2 left-2 flex max-w-[60%] flex-wrap gap-1">
         {category && !hideCategory && (

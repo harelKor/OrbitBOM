@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { Popover } from "@/components/bom/Popover";
+import { Icon } from "@/components/ui/Icon";
 import { setSeasonNeed } from "@/app/(app)/inventory/actions";
 import { CheckBadge } from "@/components/ui/CheckBadge";
 import { statusTint } from "@/components/ui/statusTint";
@@ -134,6 +136,7 @@ export function ItemTable({
                         />
                       )}
                       <ProductName item={item} className="font-semibold" />
+                      {item.note && <NoteButton note={item.note} />}
                     </span>
                   </span>
                 </td>
@@ -251,5 +254,30 @@ function SeasonCell({ item }: { item: Item }) {
       aria-label={`Needed for Season: ${item.name}`}
       className={`w-16 rounded-md border bg-surface px-1 py-1 text-center font-mono font-semibold tabular-nums outline-none focus:border-sky-400 ${error ? "border-rose-500" : "border-line-strong"}`}
     />
+  );
+}
+
+// The note icon next to a row's name: the note opens in a cloud from the icon, without opening
+// the item's window.
+function NoteButton({ note }: { note: string }) {
+  return (
+    <span onClick={(e) => e.stopPropagation()} className="shrink-0">
+      <Popover
+        hideCaret
+        triggerClassName="press relative flex h-7 w-7 items-center justify-center rounded-full border border-amber-400/70 bg-amber-50 text-amber-700 hover:border-amber-500 active:scale-[0.98] dark:bg-amber-400/10 dark:text-amber-300"
+        trigger={
+          <>
+            <Icon name="note" className="h-3.5 w-3.5" />
+            <span className="sr-only">Show note</span>
+          </>
+        }
+      >
+        {() => (
+          <div className="max-w-72 rounded-[1.4rem] border-[3px] border-[#111318] bg-[#fff59d] px-3.5 py-2 text-sm leading-snug font-bold break-words whitespace-pre-line text-[#111318] shadow-[3px_4px_0_0_rgba(17,19,24,0.9)]">
+            {note}
+          </div>
+        )}
+      </Popover>
+    </span>
   );
 }

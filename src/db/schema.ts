@@ -609,6 +609,8 @@ export const inventoryItems = pgTable("inventory_items", {
   // How many the team wants on the shelf for the season, whatever the robots use (Harel,
   // 2026-10-27). Null: no season need. Sheet items take pieces like in_stock.
   seasonNeed: doublePrecision("season_need"),
+  // A remark for whoever takes or orders it, shown as a cloud on the card (Harel, 2026-10-28).
+  note: text("note"),
   imagePath: text("image_path"),
   price: real("price"),
   // The Onshape library part (did:eid:partId) it was first linked to: new BOM parts with the same
