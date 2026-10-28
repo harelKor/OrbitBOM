@@ -7,7 +7,7 @@ import {
   relinkInventory,
   searchPreview,
 } from "@/lib/inventory/shopSeed";
-import { auditInventory } from "@/lib/inventory/specBackfill";
+import { auditInventory, backfillSpecs } from "@/lib/inventory/specBackfill";
 
 export const maxDuration = 60;
 
@@ -63,6 +63,10 @@ export async function GET(request: NextRequest) {
       ms: Date.now() - started,
     });
   if (step === "audit") return NextResponse.json(await auditInventory());
+  if (step === "specs")
+    return NextResponse.json(
+      await backfillSpecs(request.nextUrl.searchParams.get("dry") === "1"),
+    );
   if (step === "search")
     return NextResponse.json(
       await searchPreview(request.nextUrl.searchParams.get("q") ?? ""),

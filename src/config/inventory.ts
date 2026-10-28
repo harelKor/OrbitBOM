@@ -92,6 +92,24 @@ const length: CategoryField = {
   name: "{}mm",
 };
 
+// Fields added 2026-10-28 (Harel: sizes were stuck in names and notes); lib/inventory/specBackfill.ts
+// copied them into the live categories and filled the items' values.
+const wall: CategoryField = {
+  id: "wall",
+  label: "Wall (mm)",
+  kind: "text",
+  name: "{}mm wall",
+};
+const color: CategoryField = { id: "color", label: "Color", kind: "text" };
+const size: CategoryField = { id: "size", label: "Size", kind: "text" };
+const countedIn: CategoryField = {
+  id: "unit",
+  label: "Counted in",
+  kind: "options",
+  options: ["Meters", "Feet"],
+  name: "",
+};
+
 export const DEFAULT_CATEGORIES: CategorySeed[] = [
   {
     id: "gears",
@@ -103,7 +121,21 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     fields: [
       teeth,
       { id: "dp", label: "DP", kind: "options", options: ["20 DP", "32 DP"] },
-      bore,
+      { ...bore, options: [...BORES, "SIM shaft", '1.125" Bearing'] },
+      {
+        id: "type",
+        label: "Type",
+        kind: "options",
+        options: ["Spur", "Bevel", "Ball shifter"],
+        name: "",
+      },
+      {
+        id: "material",
+        label: "Material",
+        kind: "options",
+        options: ["Aluminum", "Steel", "Plastic"],
+        name: "",
+      },
     ],
   },
   {
@@ -117,7 +149,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
       teeth,
       { id: "pitch", label: "Pitch", kind: "options", options: PITCHES },
       { id: "width", label: "Width (mm)", kind: "number", name: "{}mm wide" },
-      bore,
+      { ...bore, options: [...BORES, "Kraken spline", "Falcon spline"] },
     ],
   },
   {
@@ -130,6 +162,8 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
       teeth,
       { id: "chain", label: "Chain", kind: "options", options: ["#25", "#35"] },
       bore,
+      { id: "boreSize", label: "Bore size", kind: "text", name: "{} bore" },
+      { id: "thickness", label: "Thickness", kind: "text", name: "{} thick" },
     ],
   },
   {
@@ -143,6 +177,14 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
       teeth,
       { id: "pitch", label: "Pitch", kind: "options", options: PITCHES },
       { id: "width", label: "Width (mm)", kind: "number", name: "{}mm wide" },
+      { id: "length", label: "Length (mm)", kind: "number", name: "{}mm" },
+      {
+        id: "sides",
+        label: "Sides",
+        kind: "options",
+        options: ["Single", "Double-sided"],
+        name: "",
+      },
     ],
   },
   {
@@ -158,7 +200,9 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
         kind: "options",
         options: [...BORES, '3/8" Round', '1/4" Round'],
       },
+      { id: "id", label: "ID", kind: "text", name: "{} ID" },
       { id: "od", label: "OD", kind: "text", name: "{} OD" },
+      { id: "width", label: "Width", kind: "text", name: "{} wide" },
       {
         id: "flanged",
         label: "Flanged",
@@ -225,7 +269,19 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
         id: "diameter",
         label: "Diameter",
         kind: "options",
-        options: ['2"', '3"', '4"', '6"'],
+        options: [
+          '1"',
+          '1.5"',
+          '1 5/8"',
+          '2"',
+          '2.25"',
+          '2.5"',
+          '3"',
+          '4"',
+          '5"',
+          '6"',
+          '8"',
+        ],
       },
       {
         id: "type",
@@ -238,9 +294,18 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
           "Compliant",
           "Colson",
           "Stealth",
+          "Star",
+          "Flex",
+          "Sushi",
+          "Pneumatic",
+          "Silicone tubing",
+          "Tread",
+          "Flywheel",
         ],
       },
       bore,
+      { id: "width", label: "Width", kind: "text", name: "{} wide" },
+      color,
     ],
   },
   {
@@ -260,6 +325,8 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
           "Carbon Fiber Tubes",
         ],
       },
+      { id: "od", label: "OD (mm)", kind: "number", name: "Ø{}mm" },
+      wall,
       length,
     ],
   },
@@ -277,6 +344,8 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
         kind: "material",
         materials: ["Aluminum Extrusions"],
       },
+      { id: "size", label: "Size (mm)", kind: "text", name: "{}mm" },
+      wall,
       length,
     ],
   },
@@ -409,7 +478,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     label: "Shop supplies",
     noun: "",
     match: /zip\s*tie|tape|loctite|grease|\brivets?\b|epoxy|glue|lubric/i,
-    fields: [],
+    fields: [size, countedIn],
   },
   {
     id: "controllers",
@@ -426,7 +495,29 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     label: "Wiring & connectors",
     noun: "",
     match: /wire|cable|connector|wago|anderson|ferrule|heat\s*shrink|\bawg\b/i,
-    fields: [],
+    fields: [
+      {
+        id: "kind",
+        label: "Kind",
+        kind: "options",
+        options: [
+          "Wire",
+          "Cable",
+          "Ferrule",
+          "Ring terminal",
+          "Lug",
+          "Connector",
+          "Contact",
+          "Housing",
+          "Resistor",
+          "Loom",
+          "Other",
+        ],
+        name: "",
+      },
+      { id: "gauge", label: "Gauge (AWG)", kind: "text", name: "{} AWG" },
+      countedIn,
+    ],
   },
   {
     id: "batteries",
@@ -446,6 +537,19 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
       /pinion|spline\s*(xs|xl)?\s*adapter|falcon\s*(spline|shaft)|motor\s*(gear|pulley)/i,
     fields: [
       teeth,
+      {
+        id: "dp",
+        label: "DP / pitch",
+        kind: "options",
+        options: ["10 DP", "20 DP", "32 DP", "HTD 5mm", "GT2 3mm"],
+      },
+      {
+        id: "kind",
+        label: "Kind",
+        kind: "options",
+        options: ["Pinion", "Pulley", "Adapter"],
+        name: "",
+      },
       {
         id: "spline",
         label: "Spline",
@@ -562,7 +666,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     noun: "",
     match:
       /wrench|allen|hex\s*key|plier|screwdriver|crimper|stripper|\bfiles?\b|hammer|caliper/i,
-    fields: [],
+    fields: [size],
   },
   {
     id: "power-tools",
