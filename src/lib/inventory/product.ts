@@ -35,10 +35,10 @@ async function get(url: URL, accept: string, maxBytes: number, ms = 8000) {
 }
 
 // A pasted product link: the page's own product tags (the ones stores publish for Google).
-export async function readProduct(raw: string): Promise<Product> {
+export async function readProduct(raw: string, ms?: number): Promise<Product> {
   const url = publicUrl(raw);
   if (!url) throw new Error("That isn't a web link.");
-  const page = await get(url, "text/html,application/xhtml+xml", 3_000_000);
+  const page = await get(url, "text/html,application/xhtml+xml", 3_000_000, ms);
   return readProductPage(new TextDecoder().decode(page.bytes), page.finalUrl);
 }
 

@@ -28,7 +28,7 @@ const WORDS: string[][] = [
   ["tape", "טייפ", "סלוטייפ"],
   ["filament", "פילמנט"],
   ["carbon", "קרבון"],
-  ["endmill", "end mill", "כרסום"],
+  ["end mill", "endmill", "כרסום"],
   ["insert", "סכין"],
   ["caliper", "קליבר"],
   ["pliers", "פלייר", "פלאייר"],
@@ -39,6 +39,18 @@ const WORDS: string[][] = [
   ["connector", "קונקטור", "קונקטורים"],
   ["zip tie", "אזיקון", "אזיקונים"],
   ["servo", "סרבו"],
+  ["epoxy", "אפוקסי"],
+  ["electrical tape", "איזולירבנד", "בידוד"],
+  ["heat shrink", "שרינק", "מכווץ"],
+  ["ring terminal", "נעל", "נעלי"],
+  ["solder", "בדיל", "הלחמה"],
+  ["thick", "סמיך"],
+  ["thin", "דליל"],
+  ["minute", "דקות", "דקה"],
+  ["flute", "פלוט", "פלוטים"],
+  ["washer", "דסקית", "דסקיות"],
+  ["nut", "אום", "אומים"],
+  ["spacer", "ספייסר", "ספייסרים"],
 ];
 
 const clean = (s: string) => s.toLowerCase().replace(/["'׳״”]/g, "");
@@ -72,4 +84,46 @@ export function matchesSearch(text: string, query: string): boolean {
     .split(/\s+/)
     .filter(Boolean)
     .every((word) => searchAlternatives(word).some((alt) => t.includes(alt)));
+}
+
+// Store searches are in English (Harel, 2026-10-28): a Hebrew or mixed query is turned into
+// English shop words first. Whole phrases come before single words; numbers and English words
+// are kept. Edit here.
+const PHRASES: [string, string][] = [
+  ["דבק מהיר", "ca glue"],
+  ["דבק קרטון", "hot glue"],
+  ["דבק חם", "hot glue"],
+  ["נעל כבל", "ring terminal"],
+  ["מפתח אלן", "hex key"],
+  ["פלוט אחד", "single flute"],
+  ["שני פלוטים", "2 flute"],
+  ["חוט סיליקון", "silicone wire"],
+  ["כבל סיליקון", "silicone wire"],
+  ["גלגל שיניים", "gear"],
+];
+
+const hebrew = (s: string) => /[\u0590-\u05ff]/.test(s);
+
+// The English for a Hebrew query, or null when it has no Hebrew (or no word could be turned
+// into English).
+export function toEnglishQuery(query: string): string | null {
+  let q = clean(query);
+  if (!hebrew(q)) return null;
+  for (const [he, en] of PHRASES) q = q.split(he).join(` ${en} `);
+  const out: string[] = [];
+  let unknown = 0;
+  for (const word of q.split(/\s+/).filter(Boolean)) {
+    if (!hebrew(word)) {
+      out.push(word);
+      continue;
+    }
+    const alts = searchAlternatives(word);
+    const en = alts.find((a) => !hebrew(a));
+    if (en) out.push(en);
+    else unknown++;
+  }
+  const english = [...new Set(out)].join(" ").trim();
+  // Only numbers left means the words themselves weren't understood.
+  if (!english || !/[a-z]/.test(english)) return null;
+  return unknown > out.length ? null : english;
 }

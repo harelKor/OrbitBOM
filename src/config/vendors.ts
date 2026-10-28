@@ -25,6 +25,10 @@ export const VENDORS: Vendor[] = [
   { id: "rev", name: "REV", host: "www.revrobotics.com", shopify: false, searchUrl: (q) => `https://www.revrobotics.com/search.php?search_query=${encodeURIComponent(q)}` },
   { id: "aliexpress", name: "AliExpress", host: "www.aliexpress.com", shopify: false, searchUrl: (q) => `https://www.aliexpress.com/w/wholesale-${encodeURIComponent(q.replace(/\s+/g, "-"))}.html` },
   { id: "amazon", name: "Amazon", host: "www.amazon.com", shopify: false, searchUrl: (q) => `https://www.amazon.com/s?k=${encodeURIComponent(q)}` },
+  // Shop supplies, tools and electronics the FRC stores don't sell (Harel, 2026-10-28).
+  { id: "mcmaster", name: "McMaster", host: "www.mcmaster.com", shopify: false, searchUrl: (q) => `https://www.mcmaster.com/products/${encodeURIComponent(q.replace(/\s+/g, "-"))}/` },
+  { id: "digikey", name: "DigiKey", host: "www.digikey.com", shopify: false, searchUrl: (q) => `https://www.digikey.com/en/products/result?keywords=${encodeURIComponent(q)}` },
+  { id: "mouser", name: "Mouser", host: "www.mouser.com", shopify: false, searchUrl: (q) => `https://www.mouser.com/c/?q=${encodeURIComponent(q)}` },
 ];
 
 export const vendorOfUrl = (url: string) => {

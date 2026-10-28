@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { matchesSearch, searchAlternatives } from "./searchWords";
+import { matchesSearch, searchAlternatives, toEnglishQuery } from "./searchWords";
 
 describe("matchesSearch", () => {
   it("finds English names from Hebrew words and back", () => {
@@ -17,5 +17,28 @@ describe("matchesSearch", () => {
   });
   it("keeps the typed word itself", () => {
     expect(searchAlternatives("kraken")).toEqual(["kraken"]);
+  });
+});
+
+describe("toEnglishQuery", () => {
+  it("turns Hebrew shop words into English", () => {
+    const cases: [string, string][] = [
+      ["דבק מהיר סמיך", "ca glue thick"],
+      ["אפוקסי 5 דקות", "epoxy 5 minute"],
+      ["איזולירבנד", "electrical tape"],
+      ["סופיות 16AWG", "ferrule 16awg"],
+      ["נעל כבל", "ring terminal"],
+      ["אזיקונים", "zip tie"],
+      ["מפתח אלן 4", "hex key 4"],
+      ["מקדח 4.2", "drill 4.2"],
+      ["מברז M5", "tap m5"],
+      ["כרסום פלוט אחד", "end mill single flute"],
+      ["כבל 12AWG", "wire 12awg"],
+    ];
+    for (const [he, en] of cases) expect(toEnglishQuery(he)).toBe(en);
+  });
+  it("leaves English alone and gives up on unknown Hebrew", () => {
+    expect(toEnglishQuery("kraken x60")).toBeNull();
+    expect(toEnglishQuery("שלום עולם")).toBeNull();
   });
 });
