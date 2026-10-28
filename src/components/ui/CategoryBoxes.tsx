@@ -92,7 +92,7 @@ export function CategoryBoxes({
           );
           const body = compact ? (
             <>
-              <span className="relative h-full w-12 shrink-0 overflow-hidden">
+              <span className={`relative h-full w-12 shrink-0 overflow-hidden ${b.imageUrl ? "thumb-well" : ""}`}>
                 {b.imageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element -- static or short-lived R2 links, not optimisable
                   <img src={b.imageUrl} alt="" className="h-full w-full object-contain p-1 transition-transform duration-150 group-hover:scale-[1.03]" />
@@ -110,19 +110,27 @@ export function CategoryBoxes({
                 </span>
               </span>
             </>
+          ) : b.imageUrl ? (
+            // A picture box is a product tile: the picture fills a studio stage, name and count under it.
+            <>
+              <span className="thumb-well relative block aspect-[16/10] w-full">
+                {/* eslint-disable-next-line @next/next/no-img-element -- static or short-lived R2 links, not optimisable */}
+                <img src={b.imageUrl} alt="" className="pointer-events-none absolute inset-0 h-full w-full object-contain px-3 pt-3 pb-1.5" />
+                {shortPill && <span className="absolute top-2 right-2">{shortPill}</span>}
+              </span>
+              <span className="flex items-baseline justify-between gap-2 px-3.5 py-2.5">
+                <span className="min-w-0 truncate text-sm font-semibold text-fg group-hover:text-accent">{b.label}</span>
+                <span className="text-xl font-bold">{number}</span>
+              </span>
+            </>
           ) : (
             <>
               <span className="flex items-start justify-between gap-2">
                 <span className="display text-4xl">{number}</span>
                 {shortPill}
               </span>
-              {b.imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element -- static or short-lived R2 links, not optimisable
-                <img src={b.imageUrl} alt="" className="pointer-events-none absolute right-2.5 bottom-2 h-20 w-24 object-contain opacity-95 transition-transform duration-150 group-hover:scale-105" />
-              ) : (
-                b.icon && <Icon name={b.icon} className="pointer-events-none absolute right-4 bottom-4 h-10 w-10 text-sky-400/40" />
-              )}
-              <span className={`min-w-0 ${b.imageUrl ? "pr-20" : "pr-14"}`}>
+              {b.icon && <Icon name={b.icon} className="pointer-events-none absolute right-4 bottom-4 h-10 w-10 text-sky-400/40" />}
+              <span className="min-w-0 pr-14">
                 <span className="block text-base font-semibold text-fg group-hover:text-accent">{b.label}</span>
                 {b.text && <span className="block text-xs text-muted">{b.text}</span>}
               </span>
@@ -130,7 +138,9 @@ export function CategoryBoxes({
           );
           const cls = compact
             ? "card-interactive group flex h-12 shrink-0 items-center gap-2.5 overflow-hidden pr-3 text-left active:scale-[0.98]"
-            : "card-interactive group relative flex min-h-32 flex-col justify-between p-4 text-left active:scale-[0.98]";
+            : b.imageUrl
+              ? "card-interactive group relative flex flex-col text-left active:scale-[0.98]"
+              : "card-interactive group relative flex min-h-32 flex-col justify-between p-4 text-left active:scale-[0.98]";
           return g && categoryHref ? (
             <Link key={b.id} href={categoryHref(b.id)} className={cls}>
               {body}
