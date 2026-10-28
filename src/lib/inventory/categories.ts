@@ -12,7 +12,7 @@ export type InvCategory = {
   noun: string;
   group: CategoryGroupId;
   sheet: boolean;
-  image: string | null; // R2 key of its picture
+  image: string | null; // its picture: a public/categories/ path ("/categories/gears.png") or an R2 key
   imageUrl?: string | null; // a short-lived link to it, filled for pages
   defaultLocationId: string | null;
   fields: CategoryField[];

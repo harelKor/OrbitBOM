@@ -94,7 +94,7 @@ export function CategoryBoxes({
             <>
               <span className="relative h-full w-12 shrink-0 overflow-hidden">
                 {b.imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
+                  // eslint-disable-next-line @next/next/no-img-element -- static or short-lived R2 links, not optimisable
                   <img src={b.imageUrl} alt="" className="h-full w-full object-contain p-1 transition-transform duration-150 group-hover:scale-[1.03]" />
                 ) : (
                   <span className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-sky-500/25 via-raised to-amber-400/20 text-sky-400">
@@ -117,12 +117,12 @@ export function CategoryBoxes({
                 {shortPill}
               </span>
               {b.imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
-                <img src={b.imageUrl} alt="" className="pointer-events-none absolute right-3 bottom-3 h-16 w-16 object-contain opacity-90" />
+                // eslint-disable-next-line @next/next/no-img-element -- static or short-lived R2 links, not optimisable
+                <img src={b.imageUrl} alt="" className="pointer-events-none absolute right-2.5 bottom-2 h-20 w-24 object-contain opacity-95 transition-transform duration-150 group-hover:scale-105" />
               ) : (
                 b.icon && <Icon name={b.icon} className="pointer-events-none absolute right-4 bottom-4 h-10 w-10 text-sky-400/40" />
               )}
-              <span className="min-w-0 pr-14">
+              <span className={`min-w-0 ${b.imageUrl ? "pr-20" : "pr-14"}`}>
                 <span className="block text-base font-semibold text-fg group-hover:text-accent">{b.label}</span>
                 {b.text && <span className="block text-xs text-muted">{b.text}</span>}
               </span>

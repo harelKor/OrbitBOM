@@ -58,6 +58,7 @@ export type CategorySeed = {
   sheet?: boolean;
   fields: CategoryField[];
   match: RegExp | null;
+  image?: string; // a picture in public/categories/ (a path starting with "/"), or an R2 key
 };
 
 const BORES = [
@@ -96,6 +97,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     id: "gears",
     group: "cots",
     label: "Gears",
+    image: "/categories/gears.png",
     noun: "Gear",
     match: /\bgears?\b/i,
     fields: [
@@ -108,6 +110,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     id: "pulleys",
     group: "cots",
     label: "Pulleys",
+    image: "/categories/pulleys.png",
     noun: "Pulley",
     match: /pulley/i,
     fields: [
@@ -133,6 +136,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     id: "belts",
     group: "cots",
     label: "Belts",
+    image: "/categories/belts.png",
     noun: "Belt",
     match: /\bbelts?\b|htd|gt2|timing/i,
     fields: [

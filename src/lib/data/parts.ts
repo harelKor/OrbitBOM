@@ -2,7 +2,7 @@ import "server-only";
 import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { Shelf, ShelfSuggestion } from "@/components/bom/types";
-import { listCategories } from "@/lib/data/categories";
+import { categoryImageUrl, listCategories } from "@/lib/data/categories";
 import { groupsOfParts } from "@/lib/data/groups";
 import { shelfOfParts } from "@/lib/data/inventory";
 import { cotsCategoryOf } from "@/lib/cots";
@@ -146,7 +146,7 @@ export async function cotsCategories(list: CotsNamed[]): Promise<{ categories: I
   ]);
   const ids = categories.map((c) => c.id);
   const itemCat = new Map(items.map((i) => [i.id, categoryOf(i, categories)]));
-  await Promise.all(categories.map(async (c) => (c.imageUrl = c.image ? await imageUrl(c.image) : null)));
+  await Promise.all(categories.map(async (c) => (c.imageUrl = await categoryImageUrl(c.image))));
   return { categories, of: new Map(list.map((p) => [p.id, cotsCategoryOf(p, ids, p.inventoryItemId ? itemCat.get(p.inventoryItemId) : null)])) };
 }
 

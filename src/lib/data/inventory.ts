@@ -3,7 +3,7 @@ import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle
 import { db, schema } from "@/db";
 import { cotsStatusOf } from "@/config/cots";
 import { categoryOf, getCategory, type InvCategory } from "@/lib/inventory/categories";
-import { listCategories } from "./categories";
+import { categoryImageUrl, listCategories } from "./categories";
 import type { Shelf, ShelfSuggestion } from "@/components/bom/types";
 import { suggestItem } from "@/lib/inventory/match";
 import { computeUsage, type ItemUsage, type UsagePart } from "@/lib/inventory/usage";
@@ -103,7 +103,7 @@ export async function listInventory() {
   ]);
   const sheets = sheetSet(items, categories);
   const usage = computeUsage(new Map(items.map((i) => [i.id, i.inStock])), used, sheets);
-  const [thumbs, catUrls] = await Promise.all([itemThumbs(items), Promise.all(categories.map((c) => (c.image ? imageUrl(c.image) : null)))]);
+  const [thumbs, catUrls] = await Promise.all([itemThumbs(items), Promise.all(categories.map((c) => categoryImageUrl(c.image)))]);
   categories.forEach((c, i) => (c.imageUrl = catUrls[i]));
   return {
     items: items.map((i) => ({

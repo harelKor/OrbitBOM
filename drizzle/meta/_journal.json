@@ -267,6 +267,13 @@
       "when": 1793188202897,
       "tag": "0037_inventory_item_note",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1793194838729,
+      "tag": "0038_category_pictures",
+      "breakpoints": true
     }
   ]
 }
