@@ -28,7 +28,10 @@ export function Dialog({
   return (
     <dialog
       ref={ref}
-      onClose={onClose}
+      // React hands a window inside this one its close event too; only this window's own counts.
+      onClose={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
       className={`m-auto ${width ?? (wide ? "w-[min(40rem,calc(100vw-2rem))]" : "w-[min(28rem,calc(100vw-2rem))]")} modal p-0`}
     >
       <div className="flex items-center justify-between border-b border-line px-5 py-3">

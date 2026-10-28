@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { sendItemToReleased } from "@/app/(app)/inventory/actions";
+import { sendItemToReleased, setItemLocation } from "@/app/(app)/inventory/actions";
 import { textOn } from "@/components/bom/options";
 import { formatPrice, setCurrency, useCurrency } from "@/components/cots/currency";
 import { NoteCloud } from "@/components/bom/NoteCloud";
@@ -15,8 +15,10 @@ import { softStatusTint } from "@/components/ui/statusTint";
 import { getCategory } from "@/lib/inventory/categories";
 import { hasSeasonNeed, missing, neededFor, orderHref, standing, type NeedView, type Standing } from "@/lib/inventory/season";
 import { SHEET_PIECES, formatStock, parseStock } from "@/lib/inventory/stock";
+import { useEditMode } from "@/components/shell/ModeContext";
 import { useInventoryPopup } from "./InventoryPopup";
-import type { InvCategory, Item } from "./types";
+import { LocationPicker } from "./LocationPicker";
+import type { InvCategory, Item, Location } from "./types";
 
 // Seeded conditions carry a colour name (FRCBOM's); ones added since carry a hex colour.
 const NAMED: Record<string, string> = { emerald: "#10b981", amber: "#f59e0b", rose: "#f43f5e", sky: "#0ea5e9", slate: "#64748b", violet: "#8b5cf6" };
@@ -93,6 +95,7 @@ export function ItemCard({
   categories,
   condition,
   location,
+  locations,
   view = "any",
   onStep,
   onCount,
@@ -108,6 +111,8 @@ export function ItemCard({
   categories: InvCategory[];
   condition?: { id: string; label: string; color: string };
   location?: { id: string; name: string };
+  // With every location, the card's 📍 tag opens the workshop map window.
+  locations?: Location[];
   onStep: (delta: number) => void;
   onCount: (amount: number) => void;
 }) {
@@ -121,6 +126,8 @@ export function ItemCard({
   const color = condition ? conditionColor(condition.color) : undefined;
   const picture = item.thumbUrl ?? category?.imageUrl ?? null;
   const stop = (e: React.SyntheticEvent) => e.stopPropagation();
+  const edit = useEditMode();
+  const [movingLocation, startLocation] = useTransition();
 
   return (
     <div
@@ -177,18 +184,52 @@ export function ItemCard({
       </div>
       <div className="card-overlay absolute top-2 right-2 flex max-w-[38%] flex-col items-end gap-1">
         {(gap > 0 || item.openOrder) && <CartButton item={item} gap={gap} />}
-        {location && (
-          // Filters the page to this location in place, like the 📍 pills over the cards.
-          <button
-            type="button"
-            onClick={(e) => {
-              stop(e);
-              pushQuery({ loc: location.id });
-            }}
-            className="max-w-full truncate rounded-full border border-line bg-surface/90 px-2 py-0.5 text-[11px] font-semibold text-fg-2 backdrop-blur-md hover:border-accent hover:text-accent active:scale-[0.98]"
-          >
-            📍 {location.name}
-          </button>
+        {location && locations ? (
+          // Opens the workshop map with this item's spot lit: Edit mode moves the item to the pin
+          // tapped, View mode can filter the page to it (Harel, 2026-10-28).
+          <span onClick={stop} className="max-w-full">
+            <LocationPicker
+              locations={locations}
+              value={item.locationId ?? location.id}
+              readOnly={!edit}
+              onChange={(id) =>
+                startLocation(async () => {
+                  await setItemLocation(item.id, id);
+                })
+              }
+              disabled={movingLocation}
+              ariaLabel={`Location: ${location.name}`}
+              className="block max-w-full truncate rounded-full border border-line bg-surface/90 px-2 py-0.5 text-[11px] font-semibold text-fg-2 backdrop-blur-md hover:border-accent hover:text-accent active:scale-[0.98] disabled:opacity-60"
+              footer={(close) => (
+                <button
+                  type="button"
+                  className="btn min-h-9 text-xs active:scale-[0.98]"
+                  onClick={() => {
+                    close();
+                    pushQuery({ loc: location.id });
+                  }}
+                >
+                  Show everything at {location.name}
+                </button>
+              )}
+            >
+              📍 {location.name}
+            </LocationPicker>
+          </span>
+        ) : (
+          location && (
+            // Filters the page to this location in place.
+            <button
+              type="button"
+              onClick={(e) => {
+                stop(e);
+                pushQuery({ loc: location.id });
+              }}
+              className="max-w-full truncate rounded-full border border-line bg-surface/90 px-2 py-0.5 text-[11px] font-semibold text-fg-2 backdrop-blur-md hover:border-accent hover:text-accent active:scale-[0.98]"
+            >
+              📍 {location.name}
+            </button>
+          )
         )}
       </div>
 

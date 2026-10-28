@@ -38,6 +38,7 @@ export function WorkshopMap({
   editable = false,
   focusId,
   compact = false,
+  hideUnplaced = false,
 }: {
   locations: Location[];
   stats?: PinStats;
@@ -46,6 +47,7 @@ export function WorkshopMap({
   editable?: boolean;
   focusId?: string;
   compact?: boolean;
+  hideUnplaced?: boolean;
 }) {
   const svg = useRef<SVGSVGElement>(null);
   // Spots dragged here, shown until the page brings the saved ones back.
@@ -144,6 +146,7 @@ export function WorkshopMap({
     dragPin: false,
   });
   const [dragging, setDragging] = useState<string | null>(null);
+  const [hover, setHover] = useState<string | null>(null);
   const onDown = (e: React.PointerEvent<SVGSVGElement>) => {
     cancelAnimationFrame(anim.current);
     const target = e.target as Element;
@@ -152,7 +155,11 @@ export function WorkshopMap({
     if (pointers.current.size === 0) gesture.current = { travel: 0, pin, room, dragPin: editable && !!pin };
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.current.size > 1) gesture.current.dragPin = false;
-    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  // The pointer is held only once it drags, so a plain hover or tap keeps normal enter / leave.
+  const hold = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.setPointerCapture(e.pointerId);
+    setHover(null);
   };
   const onMove = (e: React.PointerEvent<SVGSVGElement>) => {
     const prev = pointers.current.get(e.pointerId);
@@ -162,6 +169,7 @@ export function WorkshopMap({
       g.travel += Math.hypot(e.clientX - prev.x, e.clientY - prev.y);
       pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (g.travel < 4) return;
+      hold(e);
       if (g.dragPin && g.pin) {
         const p = toMap(e.clientX, e.clientY);
         setDragging(g.pin);
@@ -184,6 +192,7 @@ export function WorkshopMap({
     const before = Math.hypot(prev.x - o.x, prev.y - o.y);
     const after = Math.hypot(e.clientX - o.x, e.clientY - o.y);
     g.travel += 10;
+    hold(e);
     const midBefore = toMap((prev.x + o.x) / 2, (prev.y + o.y) / 2);
     const midAfter = toMap((e.clientX + o.x) / 2, (e.clientY + o.y) / 2);
     const v = viewRef.current;
@@ -233,7 +242,22 @@ export function WorkshopMap({
     });
   };
 
-  const [hover, setHover] = useState<string | null>(null);
+
+  // Lit pins draw last, on top of their neighbours.
+  const rank = (id: string) => (id === dragging ? 3 : id === hover ? 2 : id === selectedId || id === focusId ? 1 : 0);
+  const tipOf = (id: string) => {
+    const pin = pins.find((p) => p.id === id);
+    if (!pin) return null;
+    const st = stats?.get(id);
+    const text =
+      dragging === id
+        ? "Release to save"
+        : st
+          ? `${st.count} item${st.count === 1 ? "" : "s"}${st.short ? ` · ${st.short} short` : ""}`
+          : (roomAt(pin.x, pin.y)?.label ?? pin.name);
+    return { x: pin.x, y: pin.y, text };
+  };
+  const tipPin = tipOf(dragging ?? hover ?? "");
   const active = pins.find((p) => p.id === (selectedId || focusId));
   const activeRoom = active ? roomAt(active.x, active.y) : null;
   const ctrl =
@@ -250,6 +274,7 @@ export function WorkshopMap({
           onPointerMove={onMove}
           onPointerUp={onUp}
           onPointerCancel={onUp}
+          onPointerLeave={() => setHover(null)}
           role="img"
           aria-label="Workshop map"
         >
@@ -326,7 +351,7 @@ export function WorkshopMap({
             ])}
           </g>
 
-          {pins.map((p) => {
+          {[...pins].sort((a, b) => rank(a.id) - rank(b.id)).map((p) => {
             const on = p.id === selectedId || p.id === focusId;
             const lit = on || hover === p.id || dragging === p.id;
             const st = stats?.get(p.id);
@@ -352,7 +377,19 @@ export function WorkshopMap({
                   }
                 }}
               >
-                <g filter={lit ? "url(#wm-pin-glow)" : undefined}>
+                {on && (
+                  // The picked location breathes, so it's found at a glance.
+                  <rect x={-bw / 2 - 3} y={-13} width={bw + 6} height={26} rx={10} fill="none" stroke={BLUE} strokeWidth={2} pointerEvents="none">
+                    <animate attributeName="opacity" values="0.9;0.15;0.9" dur="1.6s" repeatCount="indefinite" />
+                  </rect>
+                )}
+                <g
+                  filter={lit ? "url(#wm-pin-glow)" : undefined}
+                  style={{
+                    transform: hover === p.id && !dragging ? "scale(1.12)" : "scale(1)",
+                    transition: "transform 150ms cubic-bezier(0.22, 1, 0.36, 1)",
+                  }}
+                >
                   <rect
                     x={-bw / 2}
                     y={-10}
@@ -384,17 +421,19 @@ export function WorkshopMap({
                     <circle r={3.5} fill="#F43F5E" stroke="#07090E" strokeWidth={1} />
                   </g>
                 )}
-                {(hover === p.id || dragging === p.id) && (
-                  <g transform="translate(0 14)" pointerEvents="none">
-                    <rect x={-(tip.length * 3.3 + 10)} y={0} width={tip.length * 6.6 + 20} height={18} rx={6} fill="rgba(13,17,26,0.96)" stroke="rgba(37,99,235,0.7)" />
-                    <text y={9.5} textAnchor="middle" dominantBaseline="middle" fontSize={10} fill="#E2E8F0" className="tabular-nums">
-                      {dragging === p.id ? "Release to save" : tip}
-                    </text>
-                  </g>
-                )}
               </g>
             );
           })}
+
+          {/* The hovered pin's tooltip floats just above it, over every other pin. */}
+          {tipPin && (
+            <g transform={`translate(${tipPin.x} ${tipPin.y}) scale(${k}) translate(0 -16)`} pointerEvents="none" className="animate-[modal-fade_140ms_ease-out]">
+              <rect x={-(tipPin.text.length * 3.1 + 9)} y={-20} width={tipPin.text.length * 6.2 + 18} height={18} rx={6} fill="rgba(13,17,26,0.96)" stroke="rgba(37,99,235,0.7)" />
+              <text y={-10.5} textAnchor="middle" dominantBaseline="middle" fontSize={10} fill="#E2E8F0" className="tabular-nums">
+                {tipPin.text}
+              </text>
+            </g>
+          )}
         </svg>
 
         {/* Compass */}
@@ -426,7 +465,7 @@ export function WorkshopMap({
       </div>
 
       {error && <p className="text-xs text-rose-500">Couldn&apos;t save the pin: {error}</p>}
-      {!compact && unplaced.length > 0 && (
+      {!compact && !hideUnplaced && unplaced.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-xs text-subtle">{editable ? "Not on the map, tap to place:" : "Not on the map:"}</span>
           {unplaced.map((l) => {

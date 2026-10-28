@@ -480,18 +480,6 @@ function ItemBody({
             )}
               </>
             )}
-            {edit && data && location && (
-              <button
-                type="button"
-                onClick={() => setShowMap((v) => !v)}
-                aria-expanded={showMap}
-                aria-label="Show on the workshop map"
-                title="Show on the workshop map"
-                className={`${tag} press border active:scale-[0.98] ${showMap ? "border-sky-400/60 bg-sky-500/15 text-sky-300" : "border-line text-fg-2 hover:border-sky-400/40"}`}
-              >
-                🗺️
-              </button>
-            )}
           </div>
           {showMap && location && (
             // A compact map centred on the item's shelf, its pin lit in Orbit blue.

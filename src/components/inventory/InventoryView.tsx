@@ -432,6 +432,7 @@ export function InventoryView({
             categories={categories}
             condition={conditions.find((c) => c.id === item.conditionId)}
             location={locations.find((l) => l.id === locationOf(item))}
+            locations={locations}
             view={cardView}
             onStep={(d) => step(item.id, d)}
             onCount={(n) => count(item.id, n)}

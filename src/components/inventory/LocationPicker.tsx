@@ -18,32 +18,42 @@ export function LocationPicker({
   style,
   children,
   ariaLabel = "Location",
+  readOnly = false,
+  footer,
+  onClick,
 }: {
   locations: Location[];
   value: string | null;
-  onChange: (id: string | null) => void;
+  onChange?: (id: string | null) => void;
   choices?: { value: string | null; label: string }[];
   disabled?: boolean;
   className?: string;
   style?: React.CSSProperties;
   children?: React.ReactNode;
   ariaLabel?: string;
+  // View only: the map shows where the location is, and tapping pins does nothing.
+  readOnly?: boolean;
+  footer?: (close: () => void) => React.ReactNode;
+  onClick?: (e: React.MouseEvent) => void;
 }) {
   const [open, setOpen] = useState(false);
   const current = locations.find((l) => l.id === value);
   const pick = (id: string | null) => {
     setOpen(false);
-    if (id !== value) onChange(id);
+    if (id !== value) onChange?.(id);
   };
-  const extra = choices ?? (value ? [{ value: null, label: "No location" }] : []);
+  const extra = readOnly ? [] : (choices ?? (value ? [{ value: null, label: "No location" }] : []));
   return (
     <>
       <button
         type="button"
         disabled={disabled}
-        onClick={() => setOpen(true)}
+        onClick={(e) => {
+          onClick?.(e);
+          setOpen(true);
+        }}
         aria-label={ariaLabel}
-        title="Choose on the workshop map"
+        title={readOnly ? "Show on the workshop map" : "Choose on the workshop map"}
         className={className ?? "input min-h-11 text-left active:scale-[0.98]"}
         style={style}
       >
@@ -53,11 +63,11 @@ export function LocationPicker({
         open={open}
         onClose={() => setOpen(false)}
         width="w-[min(46rem,calc(100vw-2rem))]"
-        title={current ? `Location: ${current.name}` : "Choose a location"}
+        title={readOnly && current ? `📍 ${current.name}` : current ? `Location: ${current.name}` : "Choose a location"}
       >
         {open && (
           <div className="space-y-3">
-            <WorkshopMap locations={locations} selectedId={value ?? undefined} onPick={pick} />
+            <WorkshopMap locations={locations} selectedId={value ?? undefined} onPick={readOnly ? undefined : pick} hideUnplaced={readOnly} />
             {extra.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
                 {extra.map((c) => (
@@ -72,6 +82,7 @@ export function LocationPicker({
                 ))}
               </div>
             )}
+            {footer?.(() => setOpen(false))}
           </div>
         )}
       </Dialog>
