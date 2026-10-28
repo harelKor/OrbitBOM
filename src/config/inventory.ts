@@ -156,6 +156,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     id: "sprockets",
     group: "cots",
     label: "Sprockets",
+    image: "/categories/sprockets.png",
     noun: "Sprocket",
     match: /sprocket/i,
     fields: [
@@ -191,6 +192,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     id: "bearings",
     group: "cots",
     label: "Bearings",
+    image: "/categories/bearings.png",
     noun: "Bearing",
     match: /bearing|bushing/i,
     fields: [
@@ -532,6 +534,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     id: "pinions-adapters",
     group: "cots",
     label: "Pinions & adapters",
+    image: "/categories/pinions-adapters.png",
     noun: "",
     match:
       /pinion|spline\s*(xs|xl)?\s*adapter|falcon\s*(spline|shaft)|motor\s*(gear|pulley)/i,

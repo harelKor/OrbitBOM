@@ -92,7 +92,7 @@ export function CategoryBoxes({
       )}
       <div
         className={compact ? "-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible" : "card-grid"}
-        style={compact ? undefined : ({ "--card-min": "190px" } as React.CSSProperties)}
+        style={compact ? undefined : ({ "--card-min": "165px" } as React.CSSProperties)}
       >
         {boxes.map((b) => {
           const n = counts.get(b.id) ?? { count: 0 };
