@@ -27,7 +27,7 @@ import {
   isCategoryGroup,
   type CategoryGroupId,
 } from "@/config/inventory";
-import { getCategory } from "@/lib/inventory/categories";
+import { activeFields, getCategory } from "@/lib/inventory/categories";
 import {
   hasSeasonNeed,
   missing,
@@ -74,6 +74,8 @@ export function InventoryView({
   const [open, setOpen] = useState<Open>(null);
   const [q, setQ] = useState("");
   const [conditionId, setConditionId] = useState("");
+  // Sub-type pills inside a category (Glue, Tape...), and one more row of the type's own choices.
+  const [subPick, setSubPick] = useState<{ cat: string; type: string | null; more: string | null } | null>(null);
   // The location filter lives in the URL (?loc=), so the 📍 pills, the card tags and the
   // Any location menu share it on every Inventory page, and Back steps out of it.
   const params = useSearchParams();
@@ -164,6 +166,22 @@ export function InventoryView({
     (!cat || i.category === cat);
   const red = (i: Item) => standing(i, need) === "short";
 
+  // In a category whose first field has options: All plus each option some item has, and after a
+  // "|" the choices of the next options field (for the picked type) that items have.
+  const focusCat = getCategory(categories, scope.kind === "category" ? scope.id : cat);
+  const typeField = focusCat?.fields[0]?.kind === "options" ? focusCat.fields[0] : undefined;
+  const pickNow = subPick && subPick.cat === focusCat?.id ? subPick : null;
+  const catItems = focusCat ? optimistic.filter((i) => i.category === focusCat.id) : [];
+  const typePills = typeField ? (typeField.options ?? []).filter((o) => catItems.some((i) => i.specs[typeField.id] === o)) : [];
+  const moreField =
+    focusCat && typeField
+      ? activeFields(focusCat, pickNow?.type ? { [typeField.id]: pickNow.type } : {}).find((f) => f !== typeField && f.kind === "options")
+      : undefined;
+  const ofType = catItems.filter((i) => !pickNow?.type || i.specs[typeField!.id] === pickNow.type);
+  const morePills = moreField ? (moreField.options ?? []).filter((o) => ofType.some((i) => i.specs[moreField.id] === o)) : [];
+  const inSub = (i: Item) =>
+    !pickNow || ((!pickNow.type || i.specs[typeField!.id] === pickNow.type) && (!pickNow.more || !moreField || i.specs[moreField.id] === pickNow.more));
+
   const RANK = { short: 0, ordered: 1, ok: 2 } as const;
   const shown = optimistic
     .filter(
@@ -171,6 +189,7 @@ export function InventoryView({
         inScope(i) &&
         inView(i) &&
         inBox(i) &&
+        inSub(i) &&
         matches(i) &&
         (!conditionId || i.conditionId === conditionId) &&
         (!locationId || locationOf(i) === locationId),
@@ -603,6 +622,29 @@ export function InventoryView({
         </div>
       ) : (
         <div className="space-y-2">
+          {focusCat && typePills.length + morePills.length > 1 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {[null, ...typePills].map((t) => (
+                <SubPill key={t ?? ""} on={(pickNow?.type ?? null) === t} onClick={() => setSubPick({ cat: focusCat.id, type: t, more: null })}>
+                  {t ?? "All"}
+                </SubPill>
+              ))}
+              {morePills.length > 1 && (
+                <>
+                  <span className="px-1 text-subtle">|</span>
+                  {morePills.map((m) => (
+                    <SubPill
+                      key={m}
+                      on={pickNow?.more === m}
+                      onClick={() => setSubPick({ cat: focusCat.id, type: pickNow?.type ?? null, more: pickNow?.more === m ? null : m })}
+                    >
+                      {m}
+                    </SubPill>
+                  ))}
+                </>
+              )}
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
             <span className="font-mono tabular-nums">
               {shownMain.length} item{shownMain.length === 1 ? "" : "s"}
@@ -801,5 +843,18 @@ function Fold({
       </button>
       {open && <div className="px-4 pb-4">{children}</div>}
     </section>
+  );
+}
+
+function SubPill({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={on}
+      className={`press min-h-9 rounded-full border px-3 text-xs font-semibold ${on ? "border-accent bg-accent text-white" : "border-line-strong text-fg-2"}`}
+    >
+      {children}
+    </button>
   );
 }

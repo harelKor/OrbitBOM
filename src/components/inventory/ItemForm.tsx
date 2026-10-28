@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { saveItem } from "@/app/(app)/inventory/actions";
-import { buildName, getCategory } from "@/lib/inventory/categories";
+import { activeFields, buildName, dropInactive, getCategory } from "@/lib/inventory/categories";
 import { formatStock, parseStock } from "@/lib/inventory/stock";
 import { Chips, FieldInput } from "./fields";
 import { hostOf } from "./ItemCard";
@@ -99,7 +99,12 @@ export function ItemForm({
     const next = getCategory(categories, id);
     setDraft({ ...d, category: id, locationId: d.locationTouched ? d.locationId : categoryLocation(next, items) });
   };
-  const setSpec = (field: string, value: string) => setDraft({ ...d, specs: { ...d.specs, [field]: value } });
+  // Picking another sub-type clears the values of fields the new one doesn't have.
+  const setSpec = (field: string, value: string) => {
+    const specs = { ...d.specs, [field]: value };
+    setDraft({ ...d, specs: cat && field === cat.fields[0]?.id ? dropInactive(cat, specs) : specs });
+  };
+  const fields = cat ? activeFields(cat, d.specs) : [];
   const step = (by: number) => {
     const n = parseStock(d.inStock, sheet) ?? 0;
     setDraft({ ...d, inStock: formatStock(Math.max(0, n + by), sheet) });
@@ -137,11 +142,9 @@ export function ItemForm({
         <Chips size="lg" options={categories.map((c) => c.label)} value={cat?.label ?? ""} onPick={(label) => pickCategory(categories.find((c) => c.label === label)?.id ?? null)} />
       </div>
 
-      {cat && cat.fields.some((f) => !f.hidden) && (
+      {cat && fields.length > 0 && (
         <div className="grid gap-3 sm:grid-cols-2">
-          {cat.fields
-            .filter((f) => !f.hidden)
-            .map((f, i) => (
+          {fields.map((f, i) => (
               <div key={f.id} className={f.kind === "options" && (f.options?.length ?? 0) <= 6 ? "sm:col-span-2" : ""}>
                 <div className="label">{f.label}</div>
                 <FieldInput field={f} categoryId={cat.id} value={d.specs[f.id] ?? ""} onChange={(v) => setSpec(f.id, v)} autoFocus={i === 0 && !itemId && f.kind === "number"} />

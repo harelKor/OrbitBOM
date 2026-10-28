@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from "node:crypto";
+import { shop5 } from "@/lib/inventory/shop5";
 import { NextResponse, type NextRequest } from "next/server";
 import {
   cleanupShopSeed,
@@ -21,6 +22,7 @@ export const maxDuration = 60;
 // ?step=relink (until remaining is 0; &dry=1 only lists its picks, &retry=1
 // tries the not-found ones again) links COTS, electrical and tool
 // items, ?step=search&q= shows what a store search returns. All are safe to call again.
+// 2026-10-28: ?step=shop5 (&dry=1 first) moves the shop into the 5 groups (lib/inventory/shop5.ts).
 // Callers send CRON_SECRET, or the import key whose hash is below.
 const KEY_SHA256 =
   "9e07a8d9fc3529859bf68cb4ad417e30f10fdab9bb8640cc2fc65fbd30d67f9a";
@@ -69,6 +71,10 @@ export async function GET(request: NextRequest) {
   if (step === "hubs")
     return NextResponse.json(
       await reorganizeHubs(request.nextUrl.searchParams.get("dry") === "1"),
+    );
+  if (step === "shop5")
+    return NextResponse.json(
+      await shop5(request.nextUrl.searchParams.get("dry") === "1"),
     );
   if (step === "audit") return NextResponse.json(await auditInventory());
   if (step === "specs")

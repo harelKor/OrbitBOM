@@ -91,8 +91,8 @@ export function CategoryBoxes({
         </nav>
       )}
       <div
-        className={compact ? "-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible" : "card-grid"}
-        style={compact ? undefined : ({ "--card-min": "165px" } as React.CSSProperties)}
+        className={compact ? "-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible" : g ? "card-grid" : "grid gap-3 sm:grid-cols-2 lg:grid-cols-5"}
+        style={compact || !g ? undefined : ({ "--card-min": "165px" } as React.CSSProperties)}
       >
         {boxes.map((b) => {
           const n = counts.get(b.id) ?? { count: 0 };

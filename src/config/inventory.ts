@@ -1,50 +1,51 @@
 // The inventory's starting categories and their fields (Harel, 2026-10-23: categories replace
 // part types and material). They seed the inventory_categories table the first time it's read;
 // after that the team edits them on the Settings page. `match` guesses an item's category from
-// its name while none is set; it stays here because names are matched in code. Screws are tracked again, by size, head and length (Harel,
-// 2026-10-27).
+// its name while none is set; it stays here because names are matched in code.
+//
+// Since 2026-10-28 (Harel) the shop has 5 groups, and a category with several kinds of things in
+// it (glues and tapes, hand tools, wiring...) starts with a `type` field: fields with `when` only
+// apply to the types they name (at most 2 per type), see activeFields in lib/inventory/categories.ts.
 
 import type { CategoryField } from "@/db/schema";
 
-// The big boxes above the categories (Harel, 2026-10-27). Each category belongs to one; the
-// settings panel moves them. A category with an unknown group shows under General.
+// The big boxes above the categories. Each category belongs to one; the Settings page moves them.
+// A category with an unknown group shows under Hardware & Assembly.
 export const CATEGORY_GROUPS = [
   {
+    id: "cots",
+    label: "COTS & Motion",
+    icon: "cog",
+    text: "Gears, pulleys, belts, bearings, wheels, hubs, gearboxes",
+  },
+  {
     id: "consumables",
-    label: "Consumables",
-    icon: "box",
-    text: "Shafts, plates, tubes, filament",
+    label: "Raw Stock",
+    icon: "layers",
+    text: "Plates, box & round tubes, carbon, shafts, 3D filament",
+  },
+  {
+    id: "hardware",
+    label: "Hardware & Assembly",
+    icon: "cube",
+    text: "Screws, rivets, tapes, glues, zip ties, rigging",
   },
   {
     id: "electrical",
-    label: "Electrical",
-    icon: "spark",
-    text: "Motors, controllers, sensors, wiring",
-  },
-  {
-    id: "cots",
-    label: "COTS",
-    icon: "gear",
-    text: "Wheels, gears, pulleys, bearings",
-  },
-  // Hardware replaced Bumpers & Field on 2026-10-28 (Harel); 0041 moved the categories.
-  {
-    id: "hardware",
-    label: "Hardware",
-    icon: "cube",
-    text: "Fasteners, rivets, tape, glue, zip ties",
+    label: "Electrical & Control",
+    icon: "bolt",
+    text: "Motors, controllers, sensors, breakers, fuses, wiring",
   },
   {
     id: "tools",
-    label: "Tools",
-    icon: "fab",
-    text: "Hand and power tools, bits",
+    label: "Shop & Machining Tools",
+    icon: "wrench",
+    text: "CNC bits, lathe cutters, drills, taps, hand tools",
   },
-  { id: "general", label: "General", icon: "more", text: "Everything else" },
 ] as const;
 
 export type CategoryGroupId = (typeof CATEGORY_GROUPS)[number]["id"];
-export const DEFAULT_GROUP: CategoryGroupId = "general";
+export const DEFAULT_GROUP: CategoryGroupId = "hardware";
 export const isCategoryGroup = (id: string): id is CategoryGroupId =>
   CATEGORY_GROUPS.some((g) => g.id === id);
 export const groupOf = (group: string | null | undefined): CategoryGroupId =>
@@ -72,9 +73,39 @@ const BORES = [
   "5mm",
 ];
 const PITCHES = ["GT2 3mm", "HTD 5mm"];
-// Motor shafts, for pinion gears and motor pulleys (Harel, 2026-10-28: they live in Gears and
-// Pulleys, not a category of their own).
+// Motor shafts, for pinion gears and motor pulleys (they live in Gears and Pulleys).
 const MOTOR_BORES = ["8mm SplineXS", "Falcon", "Kraken", "RS775", "CIM"];
+// Metric bearing bores, as the shop's bearings are sized.
+const BEARING_BORES = [
+  "4mm",
+  "5mm",
+  "6mm",
+  "6.35mm",
+  "8mm",
+  "9mm",
+  "9.5mm",
+  "10mm",
+  "12mm",
+  "15mm",
+  "17mm",
+  "20mm",
+  "25mm",
+  "30mm",
+];
+const THREADS = ["M3", "M4", "M5", "M6", "#10-32", "#8-32"];
+const AWG = [
+  "4 AWG",
+  "6 AWG",
+  "10 AWG",
+  "12 AWG",
+  "14 AWG",
+  "16 AWG",
+  "18 AWG",
+  "20 AWG",
+  "22 AWG",
+  "24 AWG",
+  "CAN",
+];
 
 const teeth: CategoryField = {
   id: "teeth",
@@ -94,33 +125,41 @@ const length: CategoryField = {
   kind: "number",
   name: "{}mm",
 };
-
-// Fields added 2026-10-28 (Harel: sizes were stuck in names and notes); lib/inventory/specBackfill.ts
-// copied them into the live categories and filled the items' values.
 const wall: CategoryField = {
   id: "wall",
   label: "Wall (mm)",
   kind: "text",
   name: "{}mm wall",
 };
-const color: CategoryField = { id: "color", label: "Color", kind: "text" };
-const size: CategoryField = { id: "size", label: "Size", kind: "text" };
-const countedIn: CategoryField = {
-  id: "unit",
-  label: "Counted in",
-  kind: "options",
-  options: ["Meters", "Feet"],
-  name: "",
+const thickness: CategoryField = {
+  id: "thickness",
+  label: "Thickness (mm)",
+  kind: "number",
+  name: "{}mm",
 };
+const sheetSize: CategoryField = {
+  id: "size",
+  label: "Sheet size (mm)",
+  kind: "text",
+  name: "{}mm",
+};
+const typeField = (options: string[]): CategoryField => ({
+  id: "type",
+  label: "Type",
+  kind: "options",
+  options,
+  name: "",
+});
 
 export const DEFAULT_CATEGORIES: CategorySeed[] = [
+  // COTS & Motion
   {
     id: "gears",
     group: "cots",
     label: "Gears",
     image: "/categories/gears.png",
     noun: "Gear",
-    match: /\bgears?\b/i,
+    match: /\bgears?\b|pinion/i,
     fields: [
       teeth,
       {
@@ -130,20 +169,6 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
         options: ["10 DP", "12 DP", "20 DP", "32 DP"],
       },
       { ...bore, options: [...BORES, ...MOTOR_BORES, '1.125" Bearing'] },
-      {
-        id: "type",
-        label: "Type",
-        kind: "options",
-        options: ["Spur", "Bevel", "Ball shifter"],
-        name: "",
-      },
-      {
-        id: "material",
-        label: "Material",
-        kind: "options",
-        options: ["Aluminum", "Steel", "Plastic"],
-        name: "",
-      },
     ],
   },
   {
@@ -161,21 +186,6 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     ],
   },
   {
-    id: "sprockets",
-    group: "cots",
-    label: "Sprockets",
-    image: "/categories/sprockets.png",
-    noun: "Sprocket",
-    match: /sprocket/i,
-    fields: [
-      teeth,
-      { id: "chain", label: "Chain", kind: "options", options: ["#25", "#35"] },
-      bore,
-      { id: "boreSize", label: "Bore size", kind: "text", name: "{} bore" },
-      { id: "thickness", label: "Thickness", kind: "text", name: "{} thick" },
-    ],
-  },
-  {
     id: "belts",
     group: "cots",
     label: "Belts",
@@ -183,17 +193,29 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     noun: "Belt",
     match: /\bbelts?\b|htd|gt2|timing/i,
     fields: [
-      teeth,
       { id: "pitch", label: "Pitch", kind: "options", options: PITCHES },
+      teeth,
       { id: "width", label: "Width (mm)", kind: "number", name: "{}mm wide" },
-      { id: "length", label: "Length (mm)", kind: "number", name: "{}mm" },
       {
-        id: "sides",
-        label: "Sides",
+        id: "groove",
+        label: "Groove",
         kind: "options",
         options: ["Single", "Double-sided"],
         name: "",
       },
+    ],
+  },
+  {
+    id: "sprockets",
+    group: "cots",
+    label: "Sprockets",
+    image: "/categories/sprockets.png",
+    noun: "Sprocket",
+    match: /sprocket|chain/i,
+    fields: [
+      { id: "chain", label: "Chain", kind: "options", options: ["#25", "#35"] },
+      teeth,
+      bore,
     ],
   },
   {
@@ -208,9 +230,8 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
         id: "bore",
         label: "Bore",
         kind: "options",
-        options: [...BORES, '3/8" Round', '1/4" Round'],
+        options: [...BORES, '3/8" Round', '1/4" Round', ...BEARING_BORES],
       },
-      { id: "id", label: "ID", kind: "text", name: "{} ID" },
       { id: "od", label: "OD", kind: "text", name: "{} OD" },
       { id: "width", label: "Width", kind: "text", name: "{} wide" },
       {
@@ -222,77 +243,13 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     ],
   },
   {
-    id: "shafts",
-    group: "consumables",
-    label: "Shafts",
-    noun: "Shaft",
-    match: /shaft|hex\s*stock|axle/i,
-    fields: [
-      {
-        id: "profile",
-        label: "Profile",
-        kind: "options",
-        options: [
-          '1/2" Hex',
-          '3/8" Hex',
-          '1/2" ThunderHex',
-          '3/8" ThunderHex',
-          "Round",
-        ],
-      },
-      length,
-    ],
-  },
-  {
-    id: "motors",
-    group: "electrical",
-    label: "Motors",
-    noun: "",
-    match: /motor|\bneo\b|vortex|falcon|kraken|\bcim\b|\b775\b|minion|\bbag\b/i,
-    fields: [
-      {
-        id: "model",
-        label: "Model",
-        kind: "options",
-        options: [
-          "Kraken X60",
-          "Kraken X44",
-          "NEO Vortex",
-          "NEO",
-          "NEO 550",
-          "Falcon 500",
-          "Minion",
-          "CIM",
-          "775pro",
-        ],
-      },
-    ],
-  },
-  {
     id: "wheels",
     group: "cots",
-    label: "Wheels",
+    label: "Wheels & rollers",
     noun: "Wheel",
-    match: /wheel|omni|mecanum|colson|traction|compliant|stealth|tread/i,
+    match:
+      /wheel|omni|mecanum|colson|traction|compliant|stealth|tread|roller|silicone\s*tubing/i,
     fields: [
-      {
-        id: "diameter",
-        label: "Diameter",
-        kind: "options",
-        options: [
-          '1"',
-          '1.5"',
-          '1 5/8"',
-          '2"',
-          '2.25"',
-          '2.5"',
-          '3"',
-          '4"',
-          '5"',
-          '6"',
-          '8"',
-        ],
-      },
       {
         id: "type",
         label: "Type",
@@ -313,9 +270,137 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
           "Flywheel",
         ],
       },
+      {
+        id: "diameter",
+        label: "Diameter",
+        kind: "options",
+        options: [
+          '1"',
+          '1.5"',
+          '1 5/8"',
+          '2"',
+          '2.25"',
+          '2.5"',
+          '3"',
+          '4"',
+          '5"',
+          '6"',
+          '8"',
+        ],
+      },
       bore,
-      { id: "width", label: "Width", kind: "text", name: "{} wide" },
-      color,
+      { id: "durometer", label: "Durometer", kind: "text" },
+    ],
+  },
+  {
+    id: "hubs-adapters",
+    group: "cots",
+    label: "Hubs, adapters & spacers",
+    image: "/categories/hubs-adapters.png",
+    noun: "",
+    match:
+      /\bhubs?\b|spacer|shaft\s*collar|collar|adapter|775\s*connect|bearing\s*block/i,
+    fields: [
+      {
+        id: "kind",
+        label: "Kind",
+        kind: "options",
+        options: ["Hex Hub", "Shaft Adapter", "Spacer", "Bearing Block"],
+        name: "",
+      },
+      { ...bore, options: [...MOTOR_BORES, ...BORES] },
+    ],
+  },
+  {
+    id: "gearboxes",
+    group: "cots",
+    label: "Gearboxes & planetaries",
+    noun: "",
+    match: /gearbox|planetary|cycloid|versa\s*planetary|maxplanetary/i,
+    fields: [
+      {
+        id: "system",
+        label: "System",
+        kind: "options",
+        options: ["MaxPlanetary", "VersaPlanetary", "Cycloidal", "Other"],
+      },
+      { id: "ratio", label: "Ratio", kind: "text", name: "{}" },
+    ],
+  },
+  // A COTS part that fits no category lands here (the COTS page needs a box for it).
+  {
+    id: "other",
+    group: "cots",
+    label: "Other",
+    noun: "",
+    match: null,
+    fields: [],
+  },
+
+  // Raw Stock
+  {
+    id: "aluminum-plates",
+    group: "consumables",
+    label: "Aluminum plates",
+    noun: "Plate",
+    sheet: true,
+    match:
+      /alumin\w*.*(plate|sheet)|(plate|sheet).*alumin|\b(6061|5052|7075)\b/i,
+    fields: [
+      {
+        id: "material",
+        label: "Material",
+        kind: "material",
+        materials: ["Aluminum Plates"],
+      },
+      thickness,
+      sheetSize,
+    ],
+  },
+  {
+    id: "polycarbonate",
+    group: "consumables",
+    label: "Polycarbonate plates",
+    noun: "Plate",
+    sheet: true,
+    match: /polycarb|lexan|\bpoly\b|\bpc\b/i,
+    fields: [thickness, sheetSize],
+  },
+  {
+    id: "wood-composites",
+    group: "consumables",
+    label: "Wood & composite sheets",
+    noun: "Sheet",
+    sheet: true,
+    match: /plywood|birch|\bmdf\b|srpp|sandwich|בירץ|סנדוויץ/i,
+    fields: [
+      {
+        id: "material",
+        label: "Material",
+        kind: "options",
+        options: ["Birch", "Sandwich/Plywood", "MDF", "SRPP"],
+      },
+      thickness,
+      sheetSize,
+    ],
+  },
+  {
+    id: "square-tubes",
+    group: "consumables",
+    label: "Box tubes & extrusions",
+    noun: "Box tube",
+    match:
+      /(box|square|rect\w*)\s*tube|\btube\b.*\d+\s*x\s*\d+|\d+\s*x\s*\d+.*\btube\b|extrusion/i,
+    fields: [
+      {
+        id: "material",
+        label: "Material",
+        kind: "material",
+        materials: ["Aluminum Extrusions"],
+      },
+      { id: "size", label: "Size (mm)", kind: "text", name: "{}mm" },
+      wall,
+      length,
     ],
   },
   {
@@ -341,39 +426,14 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     ],
   },
   {
-    id: "square-tubes",
-    group: "consumables",
-    label: "Square tubes",
-    noun: "Box tube",
-    match:
-      /(box|square|rect\w*)\s*tube|\btube\b.*\d+\s*x\s*\d+|\d+\s*x\s*\d+.*\btube\b|extrusion/i,
-    fields: [
-      {
-        id: "material",
-        label: "Material",
-        kind: "material",
-        materials: ["Aluminum Extrusions"],
-      },
-      { id: "size", label: "Size (mm)", kind: "text", name: "{}mm" },
-      wall,
-      length,
-    ],
-  },
-  {
     id: "carbon-tubes",
     group: "consumables",
-    label: "Carbon tubes",
+    label: "Carbon fiber tubes",
     noun: "Carbon tube",
     match: /carbon|קרבון/i,
     fields: [
-      {
-        id: "shape",
-        label: "Shape",
-        kind: "options",
-        options: ["Round", "Square"],
-      },
       { id: "od", label: "OD", kind: "text", name: "Ø{}" },
-      { id: "wall", label: "Wall (mm)", kind: "text", name: "{}mm wall" },
+      wall,
       {
         id: "length",
         label: "Length",
@@ -383,92 +443,31 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     ],
   },
   {
-    id: "aluminum-plates",
+    id: "shafts",
     group: "consumables",
-    label: "Aluminum plates",
-    noun: "Plate",
-    sheet: true,
-    match:
-      /alumin\w*.*(plate|sheet)|(plate|sheet).*alumin|\b(6061|5052|7075)\b/i,
+    label: "Shaft stock",
+    noun: "Shaft",
+    match: /shaft|hex\s*stock|axle/i,
     fields: [
       {
-        id: "material",
-        label: "Material",
-        kind: "material",
-        materials: ["Aluminum Plates"],
-      },
-      { id: "size", label: "Sheet size (mm)", kind: "text", name: "{}mm" },
-    ],
-  },
-  {
-    id: "polycarbonate",
-    group: "consumables",
-    label: "Polycarbonate plates",
-    noun: "Plate",
-    sheet: true,
-    match: /polycarb|lexan|\bpoly\b|\bpc\b/i,
-    fields: [
-      {
-        id: "material",
-        label: "Material",
-        kind: "material",
-        materials: ["Polycarbonate Plates"],
-      },
-      { id: "size", label: "Sheet size (mm)", kind: "text", name: "{}mm" },
-    ],
-  },
-  {
-    id: "wood-composites",
-    group: "consumables",
-    label: "Wood & composites",
-    noun: "Sheet",
-    sheet: true,
-    match: /plywood|birch|\bmdf\b|srpp|sandwich|בירץ|סנדוויץ/i,
-    fields: [
-      {
-        id: "material",
-        label: "Material",
-        kind: "options",
-        options: ["Birch", "Sandwich", "MDF", "SRPP"],
-      },
-      {
-        id: "thickness",
-        label: "Thickness (mm)",
-        kind: "number",
-        name: "{}mm",
-      },
-      { id: "size", label: "Sheet size (mm)", kind: "text", name: "{}mm" },
-    ],
-  },
-  {
-    id: "electrical",
-    group: "electrical",
-    label: "Electrical",
-    noun: "",
-    match: /fuse|breaker|roborio|\bpdh\b|\bpdp\b|\bvrm\b|\brsl\b|radio/i,
-    fields: [
-      {
-        id: "kind",
-        label: "Kind",
+        id: "profile",
+        label: "Profile",
         kind: "options",
         options: [
-          "Wire",
-          "Connector",
-          "Motor controller",
-          "Sensor",
-          "Breaker",
-          "Battery",
-          "Other",
+          '1/2" Hex',
+          '3/8" Hex',
+          '1/2" ThunderHex',
+          '3/8" ThunderHex',
+          "Round",
         ],
-        name: "",
       },
-      { id: "size", label: "Gauge / size", kind: "text" },
+      length,
     ],
   },
   {
     id: "filament",
     group: "consumables",
-    label: "Filament",
+    label: "3D printing & filament",
     noun: "Filament",
     match: /filament|\bpla\b|petg|\babs\b|onyx|\btpu\b/i,
     fields: [
@@ -481,173 +480,291 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
       { id: "color", label: "Color", kind: "text" },
     ],
   },
-  // Added 2026-10-27 with the groups; 0032 inserts them for teams already seeded.
+
+  // Hardware & Assembly
   {
-    id: "shop-supplies",
+    id: "rivets",
     group: "hardware",
-    label: "Shop supplies",
-    noun: "",
-    match: /zip\s*tie|tape|loctite|grease|\brivets?\b|epoxy|glue|lubric/i,
-    fields: [size, countedIn],
-  },
-  {
-    id: "controllers",
-    group: "electrical",
-    label: "Controllers & sensors",
-    noun: "",
-    match:
-      /spark\s*(max|flex)|talon|victor|controller|encoder|sensor|limelight|candle|canivore|pigeon|navx|gyro|camera|beam\s*break/i,
-    fields: [],
-  },
-  {
-    id: "wiring",
-    group: "electrical",
-    label: "Wiring & connectors",
-    noun: "",
-    match: /wire|cable|connector|wago|anderson|ferrule|heat\s*shrink|\bawg\b/i,
+    label: "Rivets",
+    noun: "Rivet",
+    match: /rivet|ניט/i,
     fields: [
       {
-        id: "kind",
-        label: "Kind",
+        id: "diameter",
+        label: "Diameter",
         kind: "options",
-        options: [
-          "Wire",
-          "Cable",
-          "Ferrule",
-          "Ring terminal",
-          "Lug",
-          "Connector",
-          "Contact",
-          "Housing",
-          "Resistor",
-          "Loom",
-          "Other",
-        ],
+        options: ['4mm (5/32")', '5mm (3/16")'],
+      },
+      {
+        id: "head",
+        label: "Head",
+        kind: "options",
+        options: ["Standard", "Large head (ראש גדול)"],
         name: "",
       },
-      { id: "gauge", label: "Gauge (AWG)", kind: "text", name: "{} AWG" },
-      countedIn,
-    ],
-  },
-  {
-    id: "batteries",
-    group: "electrical",
-    label: "Batteries",
-    noun: "Battery",
-    match: /batter/i,
-    fields: [],
-  },
-  // Added 2026-10-27 for the shop spreadsheet; 0035 inserts them for teams already seeded.
-  // Hubs & adapters replaced Pinions & adapters and Hubs & spacers on 2026-10-28 (Harel); the
-  // pinions moved to Gears and the motor pulleys to Pulleys.
-  {
-    id: "hubs-adapters",
-    group: "cots",
-    label: "Hubs & adapters",
-    image: "/categories/hubs-adapters.png",
-    noun: "",
-    match: /\bhubs?\b|spacer|shaft\s*collar|collar|adapter|775\s*connect/i,
-    fields: [
-      {
-        id: "kind",
-        label: "Kind",
-        kind: "options",
-        options: [
-          "Hub",
-          "Shaft adapter",
-          "3D-print adapter",
-          "Spacer",
-          "Shaft collar",
-          "Other",
-        ],
-        name: "",
-      },
-      {
-        id: "from",
-        label: "From",
-        kind: "options",
-        options: [...MOTOR_BORES, ...BORES],
-      },
-      {
-        id: "to",
-        label: "To",
-        kind: "options",
-        options: [
-          '1/2" Hex',
-          '3/8" Hex',
-          '1/2" ThunderHex',
-          "3D print",
-          "Other",
-        ],
-      },
-      { id: "length", label: "Length", kind: "text", name: "{} long" },
-    ],
-  },
-  {
-    id: "gearboxes",
-    group: "cots",
-    label: "Gearboxes",
-    noun: "",
-    match: /gearbox|planetary|cycloid|versa\s*planetary|maxplanetary/i,
-    fields: [
-      {
-        id: "type",
-        label: "Type",
-        kind: "options",
-        options: ["MAXPlanetary", "VersaPlanetary", "Cycloidal", "Other"],
-      },
-      { id: "ratio", label: "Ratio", kind: "text", name: "{}" },
-    ],
-  },
-  {
-    id: "chain",
-    group: "cots",
-    label: "Chain",
-    noun: "Chain",
-    match: /\bchain\b/i,
-    fields: [
-      { id: "chain", label: "Chain", kind: "options", options: ["#25", "#35"] },
+      length,
     ],
   },
   {
     id: "fasteners",
     group: "hardware",
-    label: "Fasteners",
+    label: "Screws & nuts",
     noun: "",
     match:
-      /screw|bolt|\bnuts?\b|washer|standoff|\bshcs\b|\bbhcs\b|rivet|ניט|בורג|ברגי/i,
+      /screw|bolt|\bnuts?\b|washer|standoff|\bshcs\b|\bbhcs\b|בורג|ברגי|\bm[3-8]\s*[x×]\s*\d+/i,
     fields: [
-      { id: "size", label: "Size", kind: "text" },
       {
-        id: "head",
-        label: "Head",
+        id: "kind",
+        label: "Kind",
         kind: "options",
-        options: ["Socket", "Button", "Flat", "Rivet", "Rivet, large head"],
+        options: [
+          "SHCS (רגיל)",
+          "Button Head (כיפה)",
+          "Flat Head (קוני)",
+          "Wood Screw",
+          "Nut / Washer",
+        ],
+        name: "",
       },
-      { id: "length", label: "Length (mm)", kind: "text" },
+      { id: "thread", label: "Thread", kind: "options", options: THREADS },
+      length,
     ],
   },
   {
+    id: "adhesives-tapes",
+    group: "hardware",
+    label: "Tapes, glues & chemicals",
+    noun: "",
+    match:
+      /tape|glue|epoxy|loctite|\bca\b|acetone|alcohol|lubric|grease|solvent|spray|אפוקסי|דבק|טייפ|איזו/i,
+    fields: [
+      typeField(["Glue", "Loctite", "Tape", "Spray & Solvent"]),
+      {
+        id: "glue",
+        label: "Kind",
+        kind: "options",
+        options: ["Epoxy", "Super Glue (CA)", "Structural", "Hot Glue"],
+        when: "Glue",
+      },
+      {
+        id: "cure",
+        label: "Cure",
+        kind: "options",
+        options: ["Instant", "5 Min", "15 Min", "24 Hr"],
+        when: "Glue",
+      },
+      {
+        id: "grade",
+        label: "Grade",
+        kind: "options",
+        options: ["Blue (Medium)", "Red (Strong)", "Purple (Low)", "Green"],
+        when: "Loctite",
+      },
+      {
+        id: "tape",
+        label: "Kind",
+        kind: "options",
+        options: [
+          "Duct Tape",
+          "Electrical",
+          "VHB / Double-Sided",
+          "Kapton",
+          "Masking",
+        ],
+        when: "Tape",
+      },
+      {
+        id: "width",
+        label: "Width (mm)",
+        kind: "number",
+        name: "{}mm",
+        when: "Tape",
+      },
+    ],
+  },
+  {
+    id: "rigging-ties",
+    group: "hardware",
+    label: "Zip ties, rope & rigging",
+    noun: "",
+    match: /zip\s*tie|rope|dyneema|velcro|elastic|surgical\s*tub|אזיקון|חוט/i,
+    fields: [
+      typeField(["Zip Tie", "Rope", "Tube / Elastic", "Velcro"]),
+      {
+        id: "size",
+        label: "Size",
+        kind: "options",
+        options: ["Small", "Medium", "Large", "Heavy Duty"],
+        when: "Zip Tie",
+      },
+      {
+        id: "diameter",
+        label: "Diameter (mm)",
+        kind: "number",
+        name: "Ø{}mm",
+        when: "Rope",
+      },
+      {
+        id: "length",
+        label: "Length (m)",
+        kind: "number",
+        name: "{}m",
+        when: "Rope",
+      },
+    ],
+  },
+
+  // Electrical & Control
+  {
+    id: "motors",
+    group: "electrical",
+    label: "Motors & servos",
+    noun: "",
+    match: /motor|servo|\bneo\b|vortex|falcon|kraken|\bcim\b|\b775\b|minion|\bbag\b/i,
+    fields: [
+      {
+        id: "model",
+        label: "Model",
+        kind: "options",
+        options: [
+          "Kraken X60",
+          "Kraken X44",
+          "NEO Vortex",
+          "NEO",
+          "NEO 550",
+          "Falcon 500",
+          "Minion",
+          "CIM",
+          "775pro",
+        ],
+      },
+    ],
+  },
+  {
+    id: "controllers",
+    group: "electrical",
+    label: "Controllers & modules",
+    noun: "",
+    match:
+      /spark\s*(max|flex)|talon|victor|controller|roborio|\bpdh\b|\bpdp\b|\bvrm\b|\brsl\b|radio|canivore|candi|canifier|candle|switch|orange\s*pi|led/i,
+    fields: [],
+  },
+  {
+    id: "sensors",
+    group: "electrical",
+    label: "Sensors & vision",
+    noun: "",
+    match:
+      /sensor|encoder|limelight|camera|pigeon|navx|gyro|cancoder|beam\s*break|limit\s*switch|hall\s*effect/i,
+    fields: [],
+  },
+  {
+    id: "power-distribution",
+    group: "electrical",
+    label: "Breakers, fuses & batteries",
+    noun: "",
+    match: /breaker|fuse|batter|פיוז|מצבר/i,
+    fields: [
+      typeField(["Fuse / Snap Breaker", "Main Breaker", "Battery"]),
+      {
+        id: "rating",
+        label: "Rating",
+        kind: "options",
+        options: ["7.5A", "10A", "15A", "20A", "25A", "30A", "40A", "120A"],
+        when: ["Fuse / Snap Breaker", "Main Breaker"],
+      },
+    ],
+  },
+  {
+    id: "wiring",
+    group: "electrical",
+    label: "Wires, connectors & terminals",
+    noun: "",
+    match:
+      /wire|cable|connector|wago|anderson|ferrule|heat\s*shrink|\bawg\b|terminal|lug|כבל|סופי/i,
+    fields: [
+      typeField([
+        "Wire",
+        "Connector",
+        "Ferrule (סופית)",
+        "Ring Terminal (נעל כבל)",
+        "Heat Shrink",
+      ]),
+      {
+        id: "awg",
+        label: "Gauge",
+        kind: "options",
+        options: AWG,
+        when: ["Wire", "Ferrule (סופית)", "Ring Terminal (נעל כבל)"],
+      },
+      { id: "color", label: "Color", kind: "text", when: "Wire" },
+      {
+        id: "series",
+        label: "Series",
+        kind: "options",
+        options: ["Anderson", "SB50", "Wago", "Weidmüller", "PWM / CAN"],
+        when: "Connector",
+      },
+      {
+        id: "size",
+        label: "Size",
+        kind: "text",
+        when: ["Ferrule (סופית)", "Ring Terminal (נעל כבל)"],
+      },
+    ],
+  },
+
+  // Shop & Machining Tools
+  {
     id: "cnc-bits",
     group: "tools",
-    label: "CNC bits",
+    label: "CNC & router bits",
     noun: "",
     match: /end\s*mill|chamfer|thread\s*mill|collet|\bflute\b|כרסום|קולט/i,
     fields: [
-      { id: "type", label: "Type", kind: "text" },
+      {
+        id: "kind",
+        label: "Kind",
+        kind: "options",
+        options: [
+          "Single Flute",
+          "Single Flute Long",
+          "Chamfer",
+          "Reverse Chamfer",
+          "Thread Mill",
+          "Collet",
+        ],
+        name: "",
+      },
       { id: "size", label: "Size", kind: "text" },
     ],
   },
   {
     id: "lathe-tools",
     group: "tools",
-    label: "Lathe tools",
+    label: "Lathe cutters & inserts",
     noun: "",
     match: /lathe|insert|boring\s*bar|parting|tailstock|מחרטה|גודעת/i,
     fields: [
       {
-        id: "for",
-        label: "For",
+        id: "kind",
+        label: "Kind",
+        kind: "options",
+        options: [
+          "Light Cutter",
+          "Rough Cutter",
+          "Parting",
+          "Internal",
+          "C-Clip",
+          "Threading",
+          "Holder",
+          "Center",
+        ],
+        name: "",
+      },
+      {
+        id: "material",
+        label: "Material",
         kind: "options",
         options: ["Aluminum", "Steel"],
       },
@@ -658,41 +775,68 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     group: "tools",
     label: "Drills & taps",
     noun: "",
-    match: /drill\s*bit|\btaps?\b|מקדח|מברז/i,
+    match: /drill|\btaps?\b|מקדח|מברז/i,
     fields: [
+      typeField(["Drill Bit", "Tap"]),
       {
-        id: "kind",
-        label: "Kind",
-        kind: "options",
-        options: ["Drill bit", "Tap"],
+        id: "size",
+        label: "Size (mm)",
+        kind: "number",
+        name: "Ø{}mm",
+        when: "Drill Bit",
       },
-      { id: "size", label: "Size", kind: "text" },
+      {
+        id: "thread",
+        label: "Thread",
+        kind: "options",
+        options: [...THREADS.slice(0, 4), "M8", ...THREADS.slice(4), '1/4"-20'],
+        when: "Tap",
+      },
     ],
   },
   {
     id: "hand-tools",
     group: "tools",
-    label: "Hand tools",
+    label: "Hand, power & measuring tools",
     noun: "",
     match:
-      /wrench|allen|hex\s*key|plier|screwdriver|crimper|stripper|\bfiles?\b|hammer|caliper/i,
-    fields: [size],
-  },
-  {
-    id: "power-tools",
-    group: "tools",
-    label: "Power tools & bits",
-    noun: "",
-    match: /drill|\bbits?\b|saw|blade|grinder|end\s*mill|router/i,
-    fields: [],
-  },
-  {
-    id: "other",
-    group: "general",
-    label: "Other",
-    noun: "",
-    match: null,
-    fields: [],
+      /wrench|allen|hex\s*key|torx|plier|screwdriver|crimper|stripper|cutter|\bfiles?\b|hammer|caliper|socket|measure|scale|level|multimeter|riveter|dremel|heat\s*gun|soldering|אלן|מפתח|קליבר/i,
+    fields: [
+      typeField([
+        "Allen Key",
+        "Wrench",
+        "Crimper",
+        "Pliers & Cutters",
+        "Measuring",
+      ]),
+      {
+        id: "size",
+        label: "Size",
+        kind: "text",
+        when: ["Allen Key", "Wrench"],
+      },
+      {
+        id: "keyStyle",
+        label: "Style",
+        kind: "options",
+        options: ["T-Handle", "L-Key", "Ball-End", "Set"],
+        when: "Allen Key",
+      },
+      {
+        id: "wrenchStyle",
+        label: "Style",
+        kind: "options",
+        options: ["Combination", "Ratchet", "Socket", "Adjustable"],
+        when: "Wrench",
+      },
+      {
+        id: "for",
+        label: "For",
+        kind: "options",
+        options: ["Anderson", "Ferrule (סופיות)", "Ring Terminal", "Stripper"],
+        when: "Crimper",
+      },
+    ],
   },
 ];
 

@@ -8,7 +8,7 @@ import { textOn } from "@/components/bom/options";
 import { EditOnly } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
 import { Dialog } from "@/components/Dialog";
-import { getCategory, specLine } from "@/lib/inventory/categories";
+import { activeFields, getCategory, specLine } from "@/lib/inventory/categories";
 import type { ItemHistoryEntry } from "@/lib/data/inventory";
 import { formatStock, snapStock } from "@/lib/inventory/stock";
 import { PieceStepper, ProductName, conditionColor, hostOf } from "./ItemCard";
@@ -133,7 +133,7 @@ export function ItemPage({
             </div>
           )}
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-            {(category?.fields ?? [])
+            {(category ? activeFields(category, item.specs) : [])
               .filter((f) => item.specs[f.id])
               .map((f) => (
                 <div key={f.id} className="contents">

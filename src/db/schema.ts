@@ -586,6 +586,8 @@ export type CategoryField = {
   materialChoices?: string[];
   name?: string;
   hidden?: boolean;
+  // Only for these values of the category's first field (its sub-type); see activeFields.
+  when?: string | string[];
 };
 
 // Inventory categories with their own fields, edited on the Settings page. Seeded from config/inventory.ts the first time they're read.

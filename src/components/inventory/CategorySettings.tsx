@@ -199,6 +199,7 @@ export function CategorySettings({ categories, locations, items }: { categories:
                         ✕
                       </IconButton>
                     </div>
+                    {i > 0 && cat.fields[0].kind === "options" && <WhenPicker field={f} types={cat.fields[0].options ?? []} onChange={(when) => setField(i, { when })} />}
                     {f.kind === "options" && <OptionsEditor options={f.options ?? []} onChange={(options) => setField(i, { options })} />}
                     {f.kind === "material" && (
                       <div>
@@ -304,3 +305,31 @@ function OptionsEditor({ options, onChange }: { options: string[]; onChange: (o:
   );
 }
 
+
+// Which sub-types (the first field's options) a later field is for; All types shows it always.
+function WhenPicker({ field, types, onChange }: { field: CategoryField; types: string[]; onChange: (when: string | string[] | undefined) => void }) {
+  const when = field.when == null ? [] : Array.isArray(field.when) ? field.when : [field.when];
+  const value = when.length ? when.join(" | ") : "";
+  const choices = [...new Set([...types, ...(when.length > 1 ? [value] : [])])];
+  return (
+    <label className="flex items-center gap-2 text-xs text-muted">
+      Only for
+      <select
+        value={value}
+        onChange={(e) => {
+          const v = e.target.value;
+          onChange(!v ? undefined : v.includes(" | ") ? v.split(" | ") : v);
+        }}
+        aria-label="Only for type"
+        className="input min-h-9 w-auto py-1 text-xs"
+      >
+        <option value="">All types</option>
+        {choices.map((t) => (
+          <option key={t} value={t}>
+            {t}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}

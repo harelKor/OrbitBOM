@@ -34,24 +34,59 @@ export function fieldChoices(field: CategoryField): string[] {
   return [];
 }
 
-const shown = (cat: InvCategory) => cat.fields.filter((f) => !f.hidden);
+// A field with `when` applies only while the category's first field (its sub-type, like Glue or
+// Tape) holds one of those values.
+const whenOf = (f: CategoryField) => (f.when == null ? [] : Array.isArray(f.when) ? f.when : [f.when]);
+const applies = (cat: InvCategory, f: CategoryField, specs: Record<string, string>) => {
+  const when = whenOf(f);
+  return !when.length || when.includes(specs[cat.fields[0]?.id] ?? "");
+};
+
+// The fields an item of this category shows for its values: not hidden, and fit for its sub-type.
+export const activeFields = (cat: InvCategory, specs: Record<string, string>) =>
+  cat.fields.filter((f) => !f.hidden && applies(cat, f, specs));
+
+// The category's sub-type field: a first options field that other fields depend on.
+export const typeFieldOf = (cat: InvCategory | undefined) => {
+  const first = cat?.fields[0];
+  return first?.kind === "options" && cat!.fields.some((f) => whenOf(f).length) ? first : undefined;
+};
+
+// The values without those of conditional fields the current sub-type doesn't have (after the
+// sub-type changes).
+export function dropInactive(cat: InvCategory, specs: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(specs).filter(([id]) => {
+      const f = cat.fields.find((x) => x.id === id);
+      return !f || applies(cat, f, specs);
+    }),
+  );
+}
+
+const plain = (v: string) => v.replace(/\s*\([^)]*\)/g, "").trim();
 
 // "36T HTD 5mm 9mm wide 1/2" Hex Pulley": each value through its field's `name`, then the noun.
+// A sub-type ("M5 Tap") goes last like a noun, and neither repeats a word the name already has.
 export function buildName(cat: InvCategory, specs: Record<string, string>): string {
-  const parts = shown(cat).flatMap((f) => {
+  const type = typeFieldOf(cat);
+  const parts = activeFields(cat, specs).flatMap((f) => {
     const v = specs[f.id]?.trim();
-    if (!v) return [];
+    if (!v || f === type) return [];
     const pattern = f.name ?? "{}";
     return pattern ? [pattern.replace("{}", v)] : [];
   });
   if (!parts.length) return "";
-  return [...parts, cat.noun].join(" ").replace(/\s+/g, " ").trim();
+  const has = (word: string) => parts.join(" ").toLowerCase().includes(word.toLowerCase());
+  const typeWord = type ? plain(specs[type.id] ?? "") : "";
+  if (typeWord && !has(typeWord)) parts.push(typeWord);
+  if (cat.noun && !has(cat.noun)) parts.push(cat.noun);
+  return parts.join(" ").replace(/\s+/g, " ").trim();
 }
 
 // The values in one short line for a card: "36T · HTD 5mm · 1/2" Hex".
 export function specLine(cat: InvCategory | undefined, specs: Record<string, string>): string {
   if (!cat) return Object.values(specs).filter(Boolean).join(" · ");
-  return cat.fields
+  return activeFields(cat, specs)
     .filter((f) => specs[f.id])
     .map((f) => (f.id === "teeth" ? `${specs[f.id]}T` : specs[f.id]))
     .join(" · ");
@@ -62,7 +97,12 @@ export function specLine(cat: InvCategory | undefined, specs: Record<string, str
 export function checkSpecs(cat: InvCategory, specs: Record<string, unknown>): { values: Record<string, string> } | { error: string } {
   const values: Record<string, string> = {};
   for (const [key, raw] of Object.entries(specs)) {
-    const field = cat.fields.find((f) => f.id === key || f.label.toLowerCase() === key.toLowerCase());
+    // Labels can repeat across sub-types ("Kind" of glue, "Kind" of tape): the sub-type's own first.
+    const byLabel = (f: CategoryField) => f.label.toLowerCase() === key.toLowerCase();
+    const field =
+      cat.fields.find((f) => f.id === key) ??
+      cat.fields.find((f) => byLabel(f) && applies(cat, f, specs as Record<string, string>)) ??
+      cat.fields.find(byLabel);
     if (!field) return { error: `${cat.label} has no field "${key}". Its fields: ${cat.fields.map((f) => f.id).join(", ") || "none"}.` };
     const value = String(raw ?? "").trim();
     if (!value) continue;

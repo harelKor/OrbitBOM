@@ -679,6 +679,7 @@ const fieldSchema = z.object({
   materials: z.array(z.string()).max(20).optional(),
   name: z.string().max(40).optional(),
   hidden: z.boolean().optional(),
+  when: z.union([z.string().max(60), z.array(z.string().max(60)).max(20)]).optional(),
 });
 const categorySchema = z.object({
   id: z.string(),

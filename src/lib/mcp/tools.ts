@@ -668,7 +668,7 @@ read(
       label: c.label,
       group: c.group,
       sheet: c.sheet,
-      fields: c.fields.filter((f) => !f.hidden).map((f) => ({ id: f.id, label: f.label, kind: f.kind, choices: fieldChoices(f).length ? fieldChoices(f) : undefined })),
+      fields: c.fields.filter((f) => !f.hidden).map((f) => ({ id: f.id, label: f.label, kind: f.kind, onlyForType: f.when, choices: fieldChoices(f).length ? fieldChoices(f) : undefined })),
     })),
   }),
 );

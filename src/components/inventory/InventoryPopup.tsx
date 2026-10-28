@@ -28,7 +28,7 @@ import { EditOnly, useEditMode } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
 import { materialCategory } from "@/config/materials";
 import { useMaterials } from "@/components/shell/MaterialColors";
-import { fieldChoices, getCategory, type CategoryField } from "@/lib/inventory/categories";
+import { activeFields, dropInactive, fieldChoices, getCategory, type CategoryField } from "@/lib/inventory/categories";
 import { hasSeasonNeed, missing } from "@/lib/inventory/season";
 import type { Offer, ProductGroup } from "@/lib/inventory/productGroups";
 import { formatStock, snapStock } from "@/lib/inventory/stock";
@@ -334,7 +334,8 @@ function ItemBody({
   const tag = "rounded-full px-2.5 py-0.5 text-xs font-semibold";
   const caret = { backgroundPosition: "right 10px center, right 6px center", backgroundSize: "4px 4px", backgroundRepeat: "no-repeat" } as const;
   const caretOf = (c: string) => ({ ...caret, backgroundImage: `linear-gradient(45deg, transparent 50%, ${c} 50%), linear-gradient(135deg, ${c} 50%, transparent 50%)` });
-  const specFields = edit && data ? (cat?.fields.filter((f) => !f.hidden) ?? []) : [];
+  const shownFields = cat ? activeFields(cat, item.specs) : [];
+  const specFields = edit && data ? shownFields : [];
   return (
     <div className="space-y-4">
       <div className="flex gap-4">
@@ -457,7 +458,7 @@ function ItemBody({
 
       <ItemNotesBox item={item} onSaved={onSaved} onError={setMessage} />
 
-      {(specFields.length > 0 || cat?.fields.some((f) => item.specs[f.id]) || item.cotsLinks.length > 0 || item.price != null) && (
+      {(specFields.length > 0 || shownFields.some((f) => item.specs[f.id]) || item.cotsLinks.length > 0 || item.price != null) && (
         <dl className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-1 text-sm">
           {specFields.length
             ? // Edit mode: every shown field of the category, saved as it's picked or typed.
@@ -469,12 +470,12 @@ function ItemBody({
                       field={f}
                       categoryId={cat!.id}
                       value={item.specs[f.id] ?? ""}
-                      onSave={(v) => v !== (item.specs[f.id] ?? "") && save(() => setItemSpecs(item.id, { ...item.specs, [f.id]: v }))}
+                      onSave={(v) => v !== (item.specs[f.id] ?? "") && save(() => setItemSpecs(item.id, f === cat!.fields[0] ? dropInactive(cat!, { ...item.specs, [f.id]: v }) : { ...item.specs, [f.id]: v }))}
                     />
                   </dd>
                 </div>
               ))
-            : (cat?.fields ?? [])
+            : shownFields
                 .filter((f) => item.specs[f.id])
                 .map((f) => (
                   <div key={f.id} className="contents">
