@@ -27,17 +27,18 @@ export const CATEGORY_GROUPS = [
     icon: "gear",
     text: "Wheels, gears, pulleys, bearings",
   },
+  // Hardware replaced Bumpers & Field on 2026-10-28 (Harel); 0041 moved the categories.
+  {
+    id: "hardware",
+    label: "Hardware",
+    icon: "cube",
+    text: "Fasteners, rivets, tape, glue, zip ties",
+  },
   {
     id: "tools",
     label: "Tools",
     icon: "fab",
-    text: "Fasteners, hand and power tools",
-  },
-  {
-    id: "bumpers",
-    label: "Bumpers & Field",
-    icon: "cube",
-    text: "Bumper materials, field elements",
+    text: "Hand and power tools, bits",
   },
   { id: "general", label: "General", icon: "more", text: "Everything else" },
 ] as const;
@@ -483,7 +484,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
   // Added 2026-10-27 with the groups; 0032 inserts them for teams already seeded.
   {
     id: "shop-supplies",
-    group: "consumables",
+    group: "hardware",
     label: "Shop supplies",
     noun: "",
     match: /zip\s*tie|tape|loctite|grease|\brivets?\b|epoxy|glue|lubric/i,
@@ -610,7 +611,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
   },
   {
     id: "fasteners",
-    group: "tools",
+    group: "hardware",
     label: "Fasteners",
     noun: "",
     match:
@@ -683,22 +684,6 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     label: "Power tools & bits",
     noun: "",
     match: /drill|\bbits?\b|saw|blade|grinder|end\s*mill|router/i,
-    fields: [],
-  },
-  {
-    id: "bumper-materials",
-    group: "bumpers",
-    label: "Bumper materials",
-    noun: "",
-    match: /bumper|pool\s*noodle|plywood|cordura|fabric/i,
-    fields: [],
-  },
-  {
-    id: "field-elements",
-    group: "bumpers",
-    label: "Field elements",
-    noun: "",
-    match: /field\s*element|game\s*piece|\bfield\b/i,
     fields: [],
   },
   {
