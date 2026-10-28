@@ -258,7 +258,6 @@ function RevertButton({ a, className }: { a: RecentAction; className: string }) 
     toast(r.message ?? "Done.");
     setReverted(next);
     if (r.systemId) afterPartsUpdate(r.systemId, router);
-    else router.refresh();
   };
   const revert = () => {
     const what =

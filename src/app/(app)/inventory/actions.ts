@@ -3,6 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { z } from "zod";
 import { COTS_DEFAULT_STATUS, COTS_IN_STOCK, COTS_ORDERED, COTS_RELEASED, cotsStatusOf } from "@/config/cots";
 import { guessCategory, isCategoryGroup } from "@/config/inventory";
@@ -35,6 +36,18 @@ const refresh = () => {
   revalidatePath("/robots", "layout");
   revalidatePath("/cots", "layout");
 };
+
+// A product picture is downloaded from the shop's site and copied to R2, which can take seconds.
+// The save waits for it only briefly: a slow picture finishes after the reply and shows on the
+// item's next load.
+const PHOTO_WAIT_MS = 1200;
+async function savePhotoSoon(itemId: string, imageUrl: string) {
+  const job = saveProductPhoto(itemId, imageUrl).then(async (key) => {
+    if (key) await db.update(inventoryItems).set({ imagePath: key }).where(eq(inventoryItems.id, itemId));
+  });
+  const done = await Promise.race([job.then(() => true), new Promise<false>((r) => setTimeout(r, PHOTO_WAIT_MS, false))]);
+  if (!done) after(() => job.catch(() => {}));
+}
 
 // Photos members take or upload go straight from the browser to R2 under this prefix.
 const PHOTO_KEY = /^inventory\/photos\/[0-9a-f-]{36}\.jpg$/;
@@ -109,8 +122,7 @@ export async function saveItem(itemId: string | null, input: ItemInput): Promise
     const error = await applyPhoto(id, d.photoKey, ctx);
     if (error) return { id, error };
   } else if (d.imageUrl) {
-    const key = await saveProductPhoto(id, d.imageUrl);
-    if (key) await db.update(inventoryItems).set({ imagePath: key }).where(eq(inventoryItems.id, id));
+    await savePhotoSoon(id, d.imageUrl);
   }
   const linked = await autoLink({ itemIds: [id] }, { memberId: member.id, via: "ui" });
   refresh();
@@ -298,10 +310,7 @@ export async function linkItemToProduct(itemId: string, product: z.input<typeof 
     return true;
   });
   if (!ok) return { error: "That item was deleted." };
-  if (p.imageUrl) {
-    const key = await saveProductPhoto(itemId, p.imageUrl);
-    if (key) await db.update(inventoryItems).set({ imagePath: key }).where(eq(inventoryItems.id, itemId));
-  }
+  if (p.imageUrl) await savePhotoSoon(itemId, p.imageUrl);
   const linked = await autoLink({ itemIds: [itemId] }, ctx);
   refresh();
   return { message: linked ? `Linked the product. ${linkMessage(linked)}` : "Linked the product." };

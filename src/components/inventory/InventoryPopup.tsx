@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useState, useTransition } from "react";
 import {
   adjustStock,
@@ -66,7 +65,6 @@ function setUrlItem(id: string | null, push: boolean) {
 }
 
 export function InventoryPopupProvider({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
   const [state, setState] = useState<State>(null);
   const [, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -125,7 +123,6 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
     if (r.error) setError(r.error);
     if (state?.kind === "item") loadItem(state.id);
     else if (state?.kind === "material") loadMaterial(state.name);
-    router.refresh();
   };
   const step = (itemId: string, delta: number) =>
     startTransition(async () => {
@@ -323,7 +320,6 @@ function ItemBody({
   onSaved: () => void;
   onClose: () => void;
 }) {
-  const router = useRouter();
   const [mode, setMode] = useState<"view" | "edit" | "toBom">("view");
   const [draft, setDraft] = useState(() => draftOf(item));
   const [message, setMessage] = useState<string | null>(null);
@@ -639,7 +635,6 @@ function ItemBody({
               startDelete(async () => {
                 await deleteItem(item.id);
                 onClose();
-                router.refresh();
               });
             }}
           >

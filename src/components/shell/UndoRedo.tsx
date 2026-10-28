@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { redoAction, undoAction } from "@/app/(app)/undo-actions";
 import { Icon } from "@/components/ui/Icon";
@@ -35,7 +34,6 @@ function save(s: Stacks) {
 // so. This tab remembers what it undid (sessionStorage), so two tabs never fight.
 export function UndoRedo() {
   const edit = useEditMode();
-  const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const busyRef = useRef(false);
@@ -69,7 +67,6 @@ export function UndoRedo() {
       }
       save(s);
       setCanRedo(s.redo.length > 0);
-      router.refresh();
     } finally {
       busyRef.current = false;
       setBusy(false);

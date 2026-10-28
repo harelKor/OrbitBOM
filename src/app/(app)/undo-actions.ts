@@ -41,7 +41,7 @@ export async function reapplyAction(kind: "edit" | "system", id: string, batchId
 export async function undoAction(exclude: string[]): Promise<ActionResult> {
   const member = await requireMember();
   const r = await undoLatest(member.id, exclude.filter(isUuid).slice(-200));
-  if (r.batchId) revalidatePath("/robots", "layout");
+  if (r.batchId || r.undone) revalidatePath("/robots", "layout");
   return r;
 }
 

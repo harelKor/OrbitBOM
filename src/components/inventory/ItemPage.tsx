@@ -293,7 +293,6 @@ export function ItemPage({
             onSaved={(_, message) => {
               setOpen(null);
               if (message) setResult({ message });
-              router.refresh();
             }}
           />
         )}
