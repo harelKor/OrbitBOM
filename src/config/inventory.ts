@@ -72,6 +72,9 @@ const BORES = [
   "5mm",
 ];
 const PITCHES = ["GT2 3mm", "HTD 5mm"];
+// Motor shafts, for pinion gears and motor pulleys (Harel, 2026-10-28: they live in Gears and
+// Pulleys, not a category of their own).
+const MOTOR_BORES = ["8mm SplineXS", "Falcon", "Kraken", "RS775", "CIM"];
 
 const teeth: CategoryField = {
   id: "teeth",
@@ -120,8 +123,13 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     match: /\bgears?\b/i,
     fields: [
       teeth,
-      { id: "dp", label: "DP", kind: "options", options: ["20 DP", "32 DP"] },
-      { ...bore, options: [...BORES, "SIM shaft", '1.125" Bearing'] },
+      {
+        id: "dp",
+        label: "DP",
+        kind: "options",
+        options: ["10 DP", "12 DP", "20 DP", "32 DP"],
+      },
+      { ...bore, options: [...BORES, ...MOTOR_BORES, '1.125" Bearing'] },
       {
         id: "type",
         label: "Type",
@@ -149,7 +157,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
       teeth,
       { id: "pitch", label: "Pitch", kind: "options", options: PITCHES },
       { id: "width", label: "Width (mm)", kind: "number", name: "{}mm wide" },
-      { ...bore, options: [...BORES, "Kraken spline", "Falcon spline"] },
+      { ...bore, options: [...BORES, ...MOTOR_BORES] },
     ],
   },
   {
@@ -530,42 +538,49 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     fields: [],
   },
   // Added 2026-10-27 for the shop spreadsheet; 0035 inserts them for teams already seeded.
+  // Hubs & adapters replaced Pinions & adapters and Hubs & spacers on 2026-10-28 (Harel); the
+  // pinions moved to Gears and the motor pulleys to Pulleys.
   {
-    id: "pinions-adapters",
+    id: "hubs-adapters",
     group: "cots",
-    label: "Pinions & adapters",
-    image: "/categories/pinions-adapters.png",
+    label: "Hubs & adapters",
+    image: "/categories/hubs-adapters.png",
     noun: "",
-    match:
-      /pinion|spline\s*(xs|xl)?\s*adapter|falcon\s*(spline|shaft)|motor\s*(gear|pulley)/i,
+    match: /\bhubs?\b|spacer|shaft\s*collar|collar|adapter|775\s*connect/i,
     fields: [
-      teeth,
-      {
-        id: "dp",
-        label: "DP / pitch",
-        kind: "options",
-        options: ["10 DP", "20 DP", "32 DP", "HTD 5mm", "GT2 3mm"],
-      },
       {
         id: "kind",
         label: "Kind",
         kind: "options",
-        options: ["Pinion", "Pulley", "Adapter"],
+        options: [
+          "Hub",
+          "Shaft adapter",
+          "3D-print adapter",
+          "Spacer",
+          "Shaft collar",
+          "Other",
+        ],
         name: "",
       },
       {
-        id: "spline",
-        label: "Spline",
+        id: "from",
+        label: "From",
+        kind: "options",
+        options: [...MOTOR_BORES, ...BORES],
+      },
+      {
+        id: "to",
+        label: "To",
         kind: "options",
         options: [
-          "SplineXS",
-          "Falcon",
-          "Kraken",
-          "RS775",
           '1/2" Hex',
           '3/8" Hex',
+          '1/2" ThunderHex',
+          "3D print",
+          "Other",
         ],
       },
+      { id: "length", label: "Length", kind: "text", name: "{} long" },
     ],
   },
   {
@@ -593,14 +608,6 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     fields: [
       { id: "chain", label: "Chain", kind: "options", options: ["#25", "#35"] },
     ],
-  },
-  {
-    id: "hubs-spacers",
-    group: "cots",
-    label: "Hubs & spacers",
-    noun: "",
-    match: /\bhubs?\b|spacer|shaft\s*collar|collar/i,
-    fields: [],
   },
   {
     id: "fasteners",

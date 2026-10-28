@@ -1,5 +1,5 @@
 import "server-only";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { DEFAULT_CATEGORIES } from "@/config/inventory";
 import { db, schema } from "@/db";
 import type { CategoryField } from "@/db/schema";
@@ -11,7 +11,7 @@ import { recordItemChanges } from "./history";
 // filled in from names and notes, notes that only said the unit or repeated a size dropped.
 // Runs from /api/cron/inventory-seed (?step=audit, ?step=specs&dry=1, ?step=specs).
 
-const { inventoryItems, inventoryCategories, onshapeCache } = schema;
+const { inventoryItems, inventoryCategories, onshapeCache, parts } = schema;
 const BACKUP = "inventory-seed:specs-backup-2026-10-28";
 const ctx = { memberId: null, via: "sync" as const };
 
@@ -123,7 +123,7 @@ function readItem(cat: string, name: string, note: string): Specs {
           : "Spur";
       if (/steel/i.test(n)) s.material = "Steel";
       else if (/alumin/i.test(n)) s.material = "Aluminum";
-      if (/SIM shaft/i.test(n)) s.bore = "SIM shaft";
+      if (/SIM shaft/i.test(n)) s.bore = "CIM";
       if (/1\.125" Bearing/i.test(n)) s.bore = '1.125" Bearing';
       const t = m(/(\d+)T\b/);
       if (t) s.teeth = t[1];
@@ -134,8 +134,8 @@ function readItem(cat: string, name: string, note: string): Specs {
       break;
     }
     case "pulleys": {
-      if (/kraken spline/i.test(n)) s.bore = "Kraken spline";
-      if (/falcon spline/i.test(n)) s.bore = "Falcon spline";
+      if (/kraken spline/i.test(n)) s.bore = "Kraken";
+      if (/falcon spline/i.test(n)) s.bore = "Falcon";
       const t = m(/(\d+)T\b/);
       if (t && !/\+/.test(n)) s.teeth = t[1];
       if (/GT2/.test(n)) s.pitch = "GT2 3mm";
@@ -420,4 +420,223 @@ export async function backfillSpecs(dry: boolean) {
     }
   });
   return { categoriesUpdated: fieldChanges, itemsUpdated: changes.length };
+}
+
+// Round 3 (Harel, 2026-10-28): motor pinions to Gears, motor pulleys to Pulleys, adapters and
+// everything in Hubs & spacers to the new Hubs & adapters; both old categories are deleted.
+// Bore values renamed with it: "SIM shaft" is "CIM", "Kraken spline" / "Falcon spline" are
+// "Kraken" / "Falcon".
+const OLD = ["pinions-adapters", "hubs-spacers"];
+const HUBS = "hubs-adapters";
+const BORE_RENAMES: Record<string, string> = {
+  "SIM shaft": "CIM",
+  "Kraken spline": "Kraken",
+  "Falcon spline": "Falcon",
+};
+const SPLINE_BORE: Record<string, string> = {
+  SplineXS: "8mm SplineXS",
+  Falcon: "Falcon",
+  Kraken: "Kraken",
+  RS775: "RS775",
+  '1/2" Hex': '1/2" Hex',
+  '3/8" Hex': '3/8" Hex',
+};
+const HUBS_BACKUP = "inventory-seed:hubs-backup-2026-10-28";
+
+function moveItem(item: Item): { category: string; specs: Specs } {
+  const n = item.name;
+  const sp = item.specs;
+  const bore = sp.spline ? SPLINE_BORE[sp.spline] : undefined;
+  const pick = (o: Specs) =>
+    Object.fromEntries(Object.entries(o).filter(([, v]) => v)) as Specs;
+  if (item.category === "pinions-adapters" && /pulley/i.test(n)) {
+    const w = /(\d+)mm belt|\b(9|15)mm\b/.exec(n);
+    return {
+      category: "pulleys",
+      specs: pick({
+        teeth: sp.teeth,
+        pitch: /^GT2/.test(n) ? "GT2 3mm" : /^HTD/.test(n) ? "HTD 5mm" : "",
+        width: w ? (w[1] ?? w[2]) : "",
+        bore: bore ?? "",
+      }),
+    };
+  }
+  if (item.category === "pinions-adapters" && /pinion|gear/i.test(n))
+    return {
+      category: "gears",
+      specs: pick({
+        teeth: sp.teeth,
+        dp: ["10 DP", "20 DP", "32 DP"].includes(sp.dp) ? sp.dp : "",
+        bore: bore ?? "",
+        type: "Spur",
+        material: /steel/i.test(n) ? "Steel" : "",
+      }),
+    };
+  const from =
+    /^(SplineXS|Falcon|Kraken|775|RS775|1\/2" Hex|3\/8")/i.exec(n)?.[1] ?? "";
+  const fromBore =
+    {
+      splinexs: "8mm SplineXS",
+      falcon: "Falcon",
+      kraken: "Kraken",
+      "775": "RS775",
+      rs775: "RS775",
+      '1/2" hex': '1/2" Hex',
+      '3/8"': '3/8" Hex',
+    }[from.toLowerCase()] ?? "";
+  return {
+    category: HUBS,
+    specs: pick({
+      kind: /3d-print/i.test(n)
+        ? "3D-print adapter"
+        : /spacer/i.test(n)
+          ? "Spacer"
+          : /collar/i.test(n)
+            ? "Shaft collar"
+            : /\bhub\b/i.test(n)
+              ? "Hub"
+              : "Shaft adapter",
+      from: fromBore,
+      to: /to 3d-print/i.test(n)
+        ? "3D print"
+        : /to 1\/2" hex/i.test(n)
+          ? '1/2" Hex'
+          : "",
+    }),
+  };
+}
+
+export async function reorganizeHubs(dry: boolean) {
+  const live = await listCategories();
+  const seed = DEFAULT_CATEGORIES.find((c) => c.id === HUBS)!;
+  const old = live.find((c) => c.id === "pinions-adapters");
+  const items = await db.select().from(inventoryItems);
+  const moving = items.filter((i) => i.category && OLD.includes(i.category));
+  const renaming = items.filter(
+    (i) =>
+      (i.category === "gears" || i.category === "pulleys") &&
+      BORE_RENAMES[i.specs.bore],
+  );
+  const moves = moving.map((item) => ({ item, ...moveItem(item) }));
+  const cats = ["gears", "pulleys"].map((id) => {
+    const c = live.find((x) => x.id === id)!;
+    return {
+      id,
+      fields: mergeFields(id, c.fields).map((f) =>
+        f.id === "bore" && f.options
+          ? { ...f, options: f.options.filter((o) => !BORE_RENAMES[o]) }
+          : f,
+      ),
+    };
+  });
+  const cards = await db
+    .select({
+      id: parts.id,
+      name: parts.displayName,
+      cotsCategory: parts.cotsCategory,
+      itemId: parts.inventoryItemId,
+    })
+    .from(parts)
+    .where(inArray(parts.cotsCategory, OLD));
+  const cardMoves = cards.map((p) => {
+    const linked = moves.find((m) => m.item.id === p.itemId);
+    const category =
+      linked?.category ??
+      (/pulley/i.test(p.name ?? "")
+        ? "pulleys"
+        : /pinion|gear/i.test(p.name ?? "")
+          ? "gears"
+          : HUBS);
+    return { id: p.id, category };
+  });
+  if (dry)
+    return {
+      items: moves.map(
+        (m) => `${m.item.name} → ${m.category} ${JSON.stringify(m.specs)}`,
+      ),
+      boreRenames: renaming.map(
+        (i) => `${i.name}: ${i.specs.bore} → ${BORE_RENAMES[i.specs.bore]}`,
+      ),
+      cards: cardMoves.length,
+      fields: cats.map(
+        (c) =>
+          `${c.id}: ${c.fields.find((f) => f.id === "bore")?.options?.join(", ")}`,
+      ),
+    };
+
+  await db.transaction(async (tx) => {
+    const [had] = await tx
+      .select()
+      .from(onshapeCache)
+      .where(eq(onshapeCache.key, HUBS_BACKUP));
+    if (!had)
+      await tx.insert(onshapeCache).values({
+        key: HUBS_BACKUP,
+        payload: {
+          categories: live.filter((c) =>
+            [...OLD, "gears", "pulleys"].includes(c.id),
+          ),
+          items: [...moving, ...renaming].map((i) => ({
+            id: i.id,
+            category: i.category,
+            specs: i.specs,
+          })),
+          cards,
+        },
+      });
+    await tx
+      .insert(inventoryCategories)
+      .values({
+        id: HUBS,
+        label: seed.label,
+        noun: seed.noun,
+        group: seed.group,
+        sheet: false,
+        position:
+          live.findIndex((c) => c.id === "pinions-adapters") >= 0
+            ? live.findIndex((c) => c.id === "pinions-adapters")
+            : live.length,
+        image: seed.image ?? null,
+        defaultLocationId: old?.defaultLocationId ?? null,
+        fields: seed.fields,
+      })
+      .onConflictDoNothing();
+    for (const c of cats)
+      await tx
+        .update(inventoryCategories)
+        .set({ fields: c.fields })
+        .where(eq(inventoryCategories.id, c.id));
+    for (const m of moves) {
+      const values = { category: m.category, specs: m.specs };
+      await tx
+        .update(inventoryItems)
+        .set(values)
+        .where(eq(inventoryItems.id, m.item.id));
+      await recordItemChanges(tx, m.item.id, m.item, values, ctx);
+    }
+    for (const i of renaming) {
+      const values = {
+        specs: { ...i.specs, bore: BORE_RENAMES[i.specs.bore] },
+      };
+      await tx
+        .update(inventoryItems)
+        .set(values)
+        .where(eq(inventoryItems.id, i.id));
+      await recordItemChanges(tx, i.id, i, values, ctx);
+    }
+    for (const c of cardMoves)
+      await tx
+        .update(parts)
+        .set({ cotsCategory: c.category })
+        .where(eq(parts.id, c.id));
+    await tx
+      .delete(inventoryCategories)
+      .where(inArray(inventoryCategories.id, OLD));
+  });
+  return {
+    itemsMoved: moves.length,
+    boreRenamed: renaming.length,
+    cardsMoved: cardMoves.length,
+    deleted: OLD,
+  };
 }
