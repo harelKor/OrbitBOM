@@ -117,7 +117,8 @@ export function Shell({
 
 // The wide-screen collapse handle: a bright accent tab with a big arrow on the column's inner
 // edge, at the middle of the screen. It sits in the page's side gutter (main pads for it), so it
-// never covers content. It points the way the column will move.
+// never covers content. It points the way the column will move. On touch screens (tablets, a
+// phone showing the desktop site) it shrinks to a slim, see-through tab.
 function EdgeArrow({ side, collapsed, onClick }: { side: "left" | "right"; collapsed: boolean; onClick: () => void }) {
   const pointsLeft = side === "left" ? !collapsed : collapsed;
   return (
@@ -125,13 +126,13 @@ function EdgeArrow({ side, collapsed, onClick }: { side: "left" | "right"; colla
       onClick={onClick}
       aria-label={`${collapsed ? "Show" : "Hide"} ${side === "left" ? "pages" : "robots and systems"}`}
       title={`${collapsed ? "Show" : "Hide"} ${side === "left" ? "pages" : "robots and systems"}`}
-      className={`press fixed top-1/2 z-50 hidden h-20 w-7 -translate-y-1/2 items-center justify-center bg-accent text-white shadow-[0_6px_18px_-4px_var(--color-accent)] hover:bg-accent-hover ${
+      className={`press fixed top-1/2 z-50 hidden h-20 w-7 -translate-y-1/2 items-center justify-center bg-accent text-white shadow-[0_6px_18px_-4px_var(--color-accent)] hover:bg-accent-hover pointer-coarse:h-12 pointer-coarse:w-4 pointer-coarse:bg-accent/45 pointer-coarse:shadow-none ${
         side === "left"
           ? "left-[calc(var(--shell-left)-1px)] rounded-r-xl lg:flex"
           : "right-[calc(var(--shell-right)-1px)] rounded-l-xl xl:flex"
       }`}
     >
-      <Icon name="chevron" className={`h-6 w-6 stroke-[2.5] transition-transform duration-150 ${pointsLeft ? "rotate-180" : ""}`} />
+      <Icon name="chevron" className={`h-6 w-6 stroke-[2.5] pointer-coarse:h-3.5 pointer-coarse:w-3.5 transition-transform duration-150 ${pointsLeft ? "rotate-180" : ""}`} />
     </button>
   );
 }

@@ -231,8 +231,8 @@ export function CotsCard({
             <div className="-mt-1.5 truncate text-xs text-subtle">{part.systemName}</div>
           ))}
 
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="flex min-w-0 flex-1">{order ? <OrderStatusButton part={part} save={save} /> : <StatusField part={part} save={save} />}</div>
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
+          <div className="flex min-w-0 max-w-full grow">{order ? <OrderStatusButton part={part} save={save} /> : <StatusField part={part} save={save} />}</div>
           <Price part={part} big={order} />
         </div>
 
@@ -355,12 +355,12 @@ function Price({ part, big }: { part: CardPart; big: boolean }) {
   const currency = useCurrency();
   const total = cotsTotal(part);
   return (
-    <div className="flex shrink-0 items-center gap-1.5">
+    <div className="ml-auto flex shrink-0 items-center gap-1.5">
       {total == null ? (
         <span className="text-xs whitespace-nowrap text-faint">No price yet</span>
       ) : (
         <span
-          className={`font-mono font-bold text-emerald-500 tabular-nums ${big ? "text-xl" : "text-base"}`}
+          className={`font-mono font-bold text-emerald-500 tabular-nums ${big ? "text-lg sm:text-xl" : "text-sm sm:text-base"}`}
           title={part.quantity > 1 ? `${formatPrice(part.unitPrice!, currency)} each` : undefined}
         >
           {formatPrice(total, currency)}

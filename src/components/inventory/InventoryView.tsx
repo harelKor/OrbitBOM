@@ -253,12 +253,13 @@ export function InventoryView({
     },
   ];
 
+  // Phones: the two selects share their own row, half each.
   const filters = (
-    <>
+    <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
       <select
         value={conditionId}
         onChange={(e) => setConditionId(e.target.value)}
-        className="input min-h-12 w-auto self-start"
+        className="input min-h-12 w-full min-w-0 self-start sm:w-auto"
       >
         <option value="">Any condition</option>
         {conditions.map((c) => (
@@ -270,7 +271,7 @@ export function InventoryView({
       <select
         value={locationId}
         onChange={(e) => setLocationId(e.target.value)}
-        className="input min-h-12 w-auto self-start"
+        className="input min-h-12 w-full min-w-0 self-start sm:w-auto"
       >
         <option value="">Any location</option>
         {locations.map((l) => (
@@ -279,7 +280,7 @@ export function InventoryView({
           </option>
         ))}
       </select>
-    </>
+    </div>
   );
   const pick = (m: "move" | "delete") => {
     setPicking((cur) => (cur === m ? null : m));
@@ -454,25 +455,28 @@ export function InventoryView({
       </EditOnly>
 
       {/* The search row stays under the top bar while the list scrolls. */}
+      {/* On phones the box and Scan get the whole first row and the filters the next. */}
       <div className="sticky top-[var(--topbar-h)] z-20 -mx-2 flex flex-wrap gap-2 bg-ink/95 px-2 py-2 backdrop-blur">
-        <AddBox
-          q={q}
-          setQ={setQ}
-          items={items}
-          categories={categories}
-          locations={locations}
-          conditions={conditions}
-          defaultCategory={scope.kind === "category" ? scope.id : null}
-          defaultLocationId={
-            scope.kind === "location" ? scope.id : locationId || null
-          }
-          placeholder={
-            scope.kind === "home"
-              ? "Do we have it? Name, size, bore, vendor, location…"
-              : "Filter by name, size, vendor, location…"
-          }
-        />
-        <ScanButton onCode={setQ} />
+        <div className="flex w-full min-w-0 gap-2 sm:contents">
+          <AddBox
+            q={q}
+            setQ={setQ}
+            items={items}
+            categories={categories}
+            locations={locations}
+            conditions={conditions}
+            defaultCategory={scope.kind === "category" ? scope.id : null}
+            defaultLocationId={
+              scope.kind === "location" ? scope.id : locationId || null
+            }
+            placeholder={
+              scope.kind === "home"
+                ? "Do we have it? Name, size, bore, vendor, location…"
+                : "Filter by name, size, vendor, location…"
+            }
+          />
+          <ScanButton onCode={setQ} />
+        </div>
         {!boxes && !showBoxes && filters}
       </div>
 

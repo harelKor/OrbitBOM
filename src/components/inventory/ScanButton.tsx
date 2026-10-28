@@ -9,7 +9,7 @@ export function ScanButton({ onCode }: { onCode: (code: string) => void }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className="btn min-h-12 self-start" title="Scan a barcode or SKU with the camera">
+      <button type="button" onClick={() => setOpen(true)} className="btn min-h-12 shrink-0 self-start" title="Scan a barcode or SKU with the camera">
         <span aria-hidden>▥</span> Scan
       </button>
       <Dialog open={open} onClose={() => setOpen(false)} title="Scan a barcode">
