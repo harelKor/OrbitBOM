@@ -12,8 +12,8 @@ const { parts } = schema;
 // Results are kept a day per search, so typing the same thing again doesn't ask the stores again.
 const DAY = 24 * 60 * 60 * 1000;
 const cache = new Map<string, { at: number; offers: Offer[] }>();
-// A store slower than this is left out, so the box answers in about a second and a half.
-const STORE_MS = 1500;
+// A store slower than this is left out, so the box answers in about a second.
+const STORE_MS = 1200;
 
 type Suggest = { resources?: { results?: { products?: { title?: string; url?: string; image?: string; featured_image?: { url?: string }; price?: string; price_min?: string; vendor?: string }[] } } };
 
@@ -30,6 +30,27 @@ async function searchShopify(v: Vendor, q: string): Promise<Offer[]> {
       const image = p.featured_image?.url ?? p.image ?? null;
       const price = Number(p.price ?? p.price_min);
       return [{ vendor: v.name, url: link.toString(), title: p.title, image: image ? new URL(image, `https://${v.host}`).toString() : null, price: Number.isFinite(price) && price > 0 ? price : null }];
+    });
+  } catch {
+    return [];
+  }
+}
+
+type Woo = { name?: string; permalink?: string; sku?: string; images?: { src?: string }[]; prices?: { price?: string; currency_code?: string; currency_minor_unit?: number } }[];
+
+const unescape = (s: string) => s.replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n))).replace(/&amp;/g, "&").replace(/&quot;/g, '"');
+
+async function searchWoo(v: Vendor, q: string): Promise<Offer[]> {
+  const url = `https://${v.host}/wp-json/wc/store/v1/products?search=${encodeURIComponent(q)}&per_page=6`;
+  try {
+    const res = await fetch(url, { headers: { "user-agent": UA, accept: "application/json" }, signal: AbortSignal.timeout(STORE_MS), cache: "no-store" });
+    if (!res.ok) return [];
+    const data = (await res.json()) as Woo;
+    return (Array.isArray(data) ? data : []).flatMap((p) => {
+      if (!p.name || !p.permalink) return [];
+      // Prices come in cents (or the currency's smallest unit).
+      const price = Number(p.prices?.price) / 10 ** (p.prices?.currency_minor_unit ?? 2);
+      return [{ vendor: v.name, url: p.permalink, title: unescape(p.name), image: p.images?.[0]?.src ?? null, price: price > 0 ? toUsd(price, p.prices?.currency_code ?? "USD") : null, sku: p.sku || null }];
     });
   } catch {
     return [];
@@ -111,10 +132,11 @@ export async function searchWebProducts(q: string): Promise<Offer[]> {
   return [...offers.slice(0, 8), ...read.flat()];
 }
 
-// How much of the query a product's name has: the closest matches come first.
+// How much of the query a product's name has: the closest matches come first. Whole words (or
+// their start, for "taps" and "tapered"), so "ca" doesn't match "polycarbonate".
 function relevance(title: string, words: string[]) {
-  const t = title.toLowerCase();
-  return words.filter((w) => t.includes(w)).length / (words.length || 1);
+  const t = title.toLowerCase().split(/[^a-z0-9.#]+/);
+  return words.filter((w) => t.some((x) => x === w || (w.length > 2 && x.startsWith(w)))).length / (words.length || 1);
 }
 
 export async function searchProducts(query: string): Promise<{ groups: ProductGroup[]; elsewhere: { name: string; url: string }[]; english: string | null }> {
@@ -123,12 +145,12 @@ export async function searchProducts(query: string): Promise<{ groups: ProductGr
   // BOM is searched with what was typed).
   const english = toEnglishQuery(q);
   const eq = english ?? q;
-  const elsewhere = VENDORS.filter((v) => !v.shopify).map((v) => ({ name: v.name, url: v.searchUrl(eq) }));
+  const elsewhere = VENDORS.filter((v) => !v.api).map((v) => ({ name: v.name, url: v.searchUrl(v.hebrew ? q : eq) }));
   if (q.length < 3) return { groups: [], elsewhere, english };
   const key = q.toLowerCase();
   let hit = cache.get(key);
   if (!hit || Date.now() - hit.at > DAY) {
-    const stores = await Promise.all([searchBom(q), ...(english ? [searchBom(english)] : []), ...VENDORS.filter((v) => v.shopify).map((v) => searchShopify(v, eq))]);
+    const stores = await Promise.all([searchBom(q), ...(english ? [searchBom(english)] : []), ...VENDORS.filter((v) => v.api).map((v) => (v.api === "woo" ? searchWoo : searchShopify)(v, eq))]);
     // Few store results (shop supplies, tools): look on the wider web too.
     const words = eq.toLowerCase().split(/\s+/).filter((w) => w.length > 1);
     const good = stores.flat().filter((o) => relevance(o.title, words) >= 0.5).length;
