@@ -17,6 +17,7 @@ import { Checkbox } from "@/components/ui/Checkbox";
 import { FilesField } from "./FilesField";
 import { Thumb } from "./Thumb";
 import { partIds, partTitle, type CardPart } from "./types";
+import { SheetViewport } from "@/components/ui/SheetViewport";
 
 // FRCBOM's table (ref §3): the same popover editors in the cells. Order-mode columns are off.
 export function TableView({
@@ -34,7 +35,7 @@ export function TableView({
   const sorted = [...parts].sort((a, b) => partTitle(a).localeCompare(partTitle(b), undefined, { numeric: true }) * (desc ? -1 : 1));
 
   return (
-    <div className="panel overflow-x-auto">
+    <SheetViewport id="bom" pin={selection ? 3 : 2}>
       <table className="data-table">
         <thead>
           <tr>
@@ -95,6 +96,6 @@ export function TableView({
           })}
         </tbody>
       </table>
-    </div>
+    </SheetViewport>
   );
 }

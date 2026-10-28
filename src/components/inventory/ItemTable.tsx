@@ -26,6 +26,7 @@ import {
 } from "./ItemCard";
 import { useInventoryPopup } from "./InventoryPopup";
 import type { Condition, InvCategory, Item, Location } from "./types";
+import { SheetViewport } from "@/components/ui/SheetViewport";
 
 const TINT = {
   short: "Reproduction",
@@ -67,7 +68,7 @@ export function ItemTable({
   const edit = useEditMode();
   const stop = (e: React.SyntheticEvent) => e.stopPropagation();
   return (
-    <div className="panel overflow-x-auto">
+    <SheetViewport id="inventory" pin={onToggleSelect ? 2 : 1}>
       <table className="data-table inv-table">
         <thead>
           <tr>
@@ -229,7 +230,7 @@ export function ItemTable({
           })}
         </tbody>
       </table>
-    </div>
+    </SheetViewport>
   );
 }
 

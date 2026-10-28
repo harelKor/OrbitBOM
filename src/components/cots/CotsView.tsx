@@ -23,6 +23,7 @@ import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { computeStatus } from "@/lib/status";
 import { CotsCard, OrderStatusButton } from "./CotsCard";
 import { formatPrice, useCurrency } from "./currency";
+import { SheetViewport } from "@/components/ui/SheetViewport";
 
 // robotId null: the General section (a card added on the COTS page for no robot).
 export type CotsViewPart = CardPart & { robotId: string | null; robotName: string | null; cotsInStockAt: Date | null; cotsClearedAt: Date | null; category: string };
@@ -628,7 +629,7 @@ function CotsTable({
 }) {
   const currency = useCurrency();
   return (
-    <div className="panel overflow-x-auto">
+    <SheetViewport id={orderList ? "cots-order" : "cots"} pin={2}>
       <table className="data-table cots-table">
         <thead>
           <tr>
@@ -696,7 +697,7 @@ function CotsTable({
           })}
         </tbody>
       </table>
-    </div>
+    </SheetViewport>
   );
 }
 

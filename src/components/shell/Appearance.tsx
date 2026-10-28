@@ -6,8 +6,9 @@ import { APPEARANCE_KEY as KEY, DEFAULT_HUE } from "./boot-scripts";
 
 // Card size and site colour, set from the right panel and kept in this browser, so every page
 // opens the way the member left it. Both live on <html>: --card-scale sizes the part card
-// grids (.card-grid) and zooms the tables (.data-table), and data-hue + --hue turn the accent colours (globals.css).
-// Ctrl + mouse wheel (or a trackpad pinch) over a card grid or a table moves the card size too.
+// grids (.card-grid), and data-hue + --hue turn the accent colours (globals.css).
+// Ctrl + mouse wheel (or a trackpad pinch) over a card grid moves the card size too; over a table
+// it zooms that table instead (SheetViewport).
 
 type Prefs = { scale: number; hue: number };
 const DEFAULTS: Prefs = { scale: 1, hue: DEFAULT_HUE };
@@ -50,11 +51,11 @@ export function AppearanceControls() {
     persist(p);
   };
 
-  // Ctrl + wheel over cards or a table: a notch is about 8%, a pinch moves smoothly. Elsewhere
+  // Ctrl + wheel over cards: a notch is about 8%, a pinch moves smoothly. Elsewhere
   // the browser's own zoom keeps working.
   useEffect(() => {
     const onWheel = (e: WheelEvent) => {
-      if (!e.ctrlKey || !(e.target as Element | null)?.closest?.(".card-grid, .data-table")) return;
+      if (!e.ctrlKey || !(e.target as Element | null)?.closest?.(".card-grid")) return;
       e.preventDefault();
       const step = Math.max(-0.15, Math.min(0.15, -e.deltaY * (e.deltaMode === 1 ? 0.03 : 0.0008)));
       const scale = Math.round(Math.min(MAX_SCALE, Math.max(MIN_SCALE, latest.current.scale * (1 + step))) * 1000) / 1000;

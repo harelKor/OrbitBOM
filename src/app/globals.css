@@ -291,12 +291,11 @@ body {
     @apply grid gap-3;
     grid-template-columns: repeat(auto-fill, minmax(min(max(calc(var(--card-min, 400px) * var(--card-scale, 1)), 110px), 100%), 1fr));
   }
-  /* Part and COTS tables: roomy cells, lines between rows and columns, a banded body and a
-     highlighted row under the pointer. The card size slider (or Ctrl + wheel over the table)
-     zooms the whole table too, kept in a range where the text stays readable. */
+  /* Part, COTS and inventory tables: roomy cells, lines between rows and columns, a banded body
+     and a highlighted row under the pointer. Rows are opaque (banding and hover are mixed in, not
+     see-through) so pinned columns can scroll over the rest. Zoom comes from .sheet. */
   .data-table {
     @apply w-full border-separate border-spacing-0 text-sm;
-    zoom: clamp(0.65, var(--card-scale, 1), 2.2);
   }
   .data-table th {
     @apply border-b-2 border-line-strong bg-raised px-3 py-2.5 text-left text-[11px] font-semibold tracking-wide whitespace-nowrap text-muted uppercase;
@@ -307,14 +306,20 @@ body {
   .data-table :is(th, td) + :is(th, td) {
     @apply border-l border-l-line/70;
   }
+  .data-table tbody tr {
+    background-color: var(--color-surface);
+  }
   .data-table tbody tr:nth-child(even):not([style]) {
-    @apply bg-raised/40;
+    background-color: color-mix(in srgb, var(--color-raised) 40%, var(--color-surface));
   }
   .data-table tbody tr:hover > td:first-child {
     box-shadow: inset 3px 0 0 var(--color-accent);
   }
   .data-table tbody tr:hover > td {
-    @apply bg-accent/5;
+    background-image: linear-gradient(
+      color-mix(in srgb, var(--color-accent) 5%, transparent),
+      color-mix(in srgb, var(--color-accent) 5%, transparent)
+    );
   }
   .data-table tbody tr:last-child > td {
     @apply border-b-0;
@@ -336,6 +341,56 @@ body {
   }
   .data-table.inv-table :is(th, td) + :is(th, td) {
     @apply border-l border-l-line-strong;
+  }
+  /* A table that handles like a sheet (SheetViewport): scrolls both ways inside the page, zooms
+     (--sheet-zoom), keeps the header row and the first data-pin columns in view, and once a
+     column has been sized lays out at exactly the set widths (data-fixed), clipping long cells. */
+  .sheet {
+    @apply overflow-auto overscroll-contain;
+    max-height: max(18rem, calc(100dvh - 8rem));
+    touch-action: pan-x pan-y;
+  }
+  .sheet > .data-table {
+    zoom: var(--sheet-zoom, 1);
+  }
+  .sheet > .data-table > thead th {
+    @apply sticky top-0 z-10;
+  }
+  .sheet > .data-table > thead th:hover {
+    box-shadow: inset -2px 0 0 color-mix(in srgb, var(--color-accent) 35%, transparent);
+  }
+  .sheet[data-fixed] > .data-table :is(th, td) {
+    @apply overflow-hidden text-ellipsis;
+  }
+  .sheet[data-pin] > .data-table tr > :first-child,
+  .sheet:is([data-pin="2"], [data-pin="3"]) > .data-table tr > :nth-child(2),
+  .sheet[data-pin="3"] > .data-table tr > :nth-child(3) {
+    @apply sticky z-[5];
+  }
+  .sheet[data-pin] > .data-table > tbody td {
+    background-color: inherit;
+  }
+  .sheet[data-pin] > .data-table tr > :first-child {
+    left: var(--pin-0, 0px);
+  }
+  .sheet:is([data-pin="2"], [data-pin="3"]) > .data-table tr > :nth-child(2) {
+    left: var(--pin-1, 0px);
+  }
+  .sheet[data-pin="3"] > .data-table tr > :nth-child(3) {
+    left: var(--pin-2, 0px);
+  }
+  .sheet[data-pin="1"] > .data-table tr > :nth-child(1),
+  .sheet[data-pin="2"] > .data-table tr > :nth-child(2),
+  .sheet[data-pin="3"] > .data-table tr > :nth-child(3) {
+    border-right: 2px solid var(--color-line-strong);
+  }
+  /* The header's pinned corner stays above both the header row and the pinned columns. */
+  .sheet[data-pin] > .data-table > thead tr > :is(:first-child, :nth-child(2), :nth-child(3)) {
+    @apply z-20;
+  }
+  .sheet[data-pin="1"] > .data-table > thead tr > :is(:nth-child(2), :nth-child(3)),
+  .sheet[data-pin="2"] > .data-table > thead tr > :nth-child(3) {
+    @apply z-10;
   }
   /* An inventory row's picture: none at small card sizes, growing with the slider from 75%. */
   .table-thumb {
