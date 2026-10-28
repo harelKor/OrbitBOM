@@ -4,10 +4,12 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { addCondition, addLocation, deleteCondition, deleteLocation } from "@/app/(app)/inventory/actions";
 import { CategorySettings } from "@/components/inventory/CategorySettings";
+import { BackupsSettings, type ScopeInfo } from "@/components/settings/BackupsSettings";
 import type { Condition, InvCategory, Location } from "@/components/inventory/types";
 import { pushQuery } from "@/components/ui/CategoryBoxes";
 import { DEFAULT_MATERIAL_COLORS, NO_MATERIAL, OTHER_MATERIAL } from "@/config/materialColors";
 import type { MaterialList } from "@/config/materials";
+import type { BackupFile } from "@/lib/storage/backup";
 import {
   addMaterial,
   addMaterialGroup,
@@ -29,6 +31,7 @@ const TABS = [
   { id: "categories", label: "Inventory categories" },
   { id: "locations", label: "Locations" },
   { id: "conditions", label: "Conditions" },
+  { id: "backups", label: "Backups" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
@@ -40,6 +43,9 @@ export function SettingsView({
   conditions,
   locations,
   items,
+  backups,
+  restoreScopes,
+  isAdmin,
 }: {
   materials: MaterialList;
   colors: Record<string, string>;
@@ -48,6 +54,9 @@ export function SettingsView({
   conditions: Condition[];
   locations: Location[];
   items: { category: string; specs: Record<string, string> }[];
+  backups: BackupFile[];
+  restoreScopes: ScopeInfo[];
+  isAdmin: boolean;
 }) {
   const params = useSearchParams();
   const raw = params.get("tab");
@@ -75,6 +84,7 @@ export function SettingsView({
       {tab === "categories" && <CategorySettings categories={categories} locations={locations} items={items} />}
       {tab === "locations" && <LocationsSettings locations={locations} />}
       {tab === "conditions" && <ConditionsSettings conditions={conditions} />}
+      {tab === "backups" && <BackupsSettings backups={backups} scopes={restoreScopes} isAdmin={isAdmin} />}
     </div>
   );
 }

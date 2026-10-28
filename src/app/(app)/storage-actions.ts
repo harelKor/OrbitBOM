@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { requireMember } from "@/lib/auth";
-import { latestBackupUrl, saveNightlyBackup } from "@/lib/storage/backup";
+import { backupUrl, latestBackupUrl, saveNightlyBackup } from "@/lib/storage/backup";
+import { RESTORE_SCOPES, restoreBackup, type RestoreScope } from "@/lib/storage/restore";
 import { cleanUpStorage, deleteVersionPreviews, recountStorage, storageUsage, type StorageUsage } from "@/lib/storage/usage";
 import { isUuid } from "@/lib/uuid";
 
@@ -46,4 +47,30 @@ export async function backUpNow(): Promise<{ message?: string; error?: string }>
   if ("error" in r) return { error: r.error };
   if ("skipped" in r) return { error: `Not saved: ${r.skipped}.` };
   return { message: `Backed up ${r.rows} rows (${mb(r.bytes)}).` };
+}
+
+// Settings → Backups: a short-lived link to one backup file.
+export async function downloadBackup(key: string): Promise<{ url?: string; error?: string }> {
+  await requireMember();
+  const url = await backupUrl(key).catch(() => null);
+  return url ? { url } : { error: "That backup is gone." };
+}
+
+// Settings → Backups → Restore (admins): the chosen parts of the app go back to the backup. A
+// copy of how things are now is saved first, so the restore can be undone the same way.
+export async function restoreFromBackup(key: string, scopes: string[]): Promise<{ message?: string; error?: string }> {
+  const member = await requireMember();
+  if (!member.isAdmin) return { error: "Only admins can restore a backup." };
+  const chosen = scopes.filter((s): s is RestoreScope => s in RESTORE_SCOPES);
+  try {
+    const r = await restoreBackup(key, chosen);
+    const restored = r.tables.reduce((n, t) => n + t.restored, 0);
+    const removed = r.tables.reduce((n, t) => n + t.removed, 0);
+    revalidatePath("/", "layout");
+    return {
+      message: `Restored ${chosen.map((s) => RESTORE_SCOPES[s].label).join(" and ")}: ${restored} rows back${removed ? `, ${removed} added since removed` : ""}. To undo, restore ${r.safetyCopy?.replace("backups/", "")}.`,
+    };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
 }

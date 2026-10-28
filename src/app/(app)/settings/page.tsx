@@ -4,15 +4,17 @@ import { requireMember } from "@/lib/auth";
 import { listCategories } from "@/lib/data/categories";
 import { listMaterialColors } from "@/lib/data/materialColors";
 import { listMaterials } from "@/lib/data/materials";
+import { backupInfo } from "@/lib/storage/backup";
+import { RESTORE_SCOPES } from "@/lib/storage/restore";
 import { SettingsView } from "./SettingsView";
 
 const { parts, inventoryItems, inventoryConditions, inventoryLocations } = schema;
 
 // The team's lists in one place: materials (with their 3D colours), inventory categories,
-// locations and conditions.
+// locations, conditions and the nightly backups.
 export default async function SettingsPage() {
-  await requireMember();
-  const [materials, colors, categories, conditions, locations, items, partUses, itemUses] = await Promise.all([
+  const member = await requireMember();
+  const [materials, colors, categories, conditions, locations, items, partUses, itemUses, backups] = await Promise.all([
     listMaterials(),
     listMaterialColors(),
     listCategories(),
@@ -29,6 +31,7 @@ export default async function SettingsPage() {
       .from(inventoryItems)
       .where(sql`${inventoryItems.specs} ->> 'material' is not null`)
       .groupBy(sql`${inventoryItems.specs} ->> 'material'`),
+    backupInfo(),
   ]);
 
   const uses: Record<string, { parts: number; items: number }> = {};
@@ -51,6 +54,9 @@ export default async function SettingsPage() {
         conditions={conditions}
         locations={locations}
         items={items.map((i) => ({ category: i.category ?? "", specs: i.specs }))}
+        backups={backups.all}
+        restoreScopes={Object.entries(RESTORE_SCOPES).map(([id, s]) => ({ id, label: s.label, text: s.text }))}
+        isAdmin={member.isAdmin}
       />
     </div>
   );
