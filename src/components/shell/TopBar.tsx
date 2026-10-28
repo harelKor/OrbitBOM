@@ -61,8 +61,22 @@ export function TopBar({ onMenu, onRobots, navHidden }: { onMenu: () => void; on
               value={filters.q}
               onChange={(e) => setFilters({ q: e.target.value })}
               placeholder="Search part name"
-              className="input border-white bg-white pr-14 text-[#111318]"
+              className={`input border-white bg-white text-[#111318] ${filters.q ? "pr-20" : "pr-14"}`}
             />
+            {filters.q && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFilters({ q: "" });
+                  search.current?.focus();
+                }}
+                aria-label="Clear search"
+                title="Clear search"
+                className="press absolute top-1/2 right-14 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-subtle hover:bg-line hover:text-[#111318]"
+              >
+                ✕
+              </button>
+            )}
             <kbd className="absolute top-1.5 right-2 rounded border border-line-strong px-1.5 text-[11px] text-subtle">Ctrl K</kbd>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">

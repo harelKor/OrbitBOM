@@ -107,3 +107,6 @@ export async function listShellRobots(): Promise<ShellRobot[]> {
     }),
   );
 }
+
+// An inventory category as the left panel's group folders list it.
+export type ShellCategory = { id: string; label: string; group: string };
