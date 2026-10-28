@@ -25,7 +25,8 @@ import { Chevron } from "@/components/ui/Chevron";
 import { Icon } from "@/components/ui/Icon";
 import { ShallowLink } from "@/components/ui/FastLink";
 import { StatusPill } from "@/components/ui/StatusPill";
-import { FINISHED_STATUS, IN_PROCESS_STATUS, READY_STATUS, fabStage, isFabFinished, machinesOf } from "@/lib/fab";
+import { useEscape } from "@/components/ui/useEscape";
+import { FINISHED_STATUS, IN_PROCESS_STATUS, READY_STATUS, fabBatchName, fabStage, isFabFinished, machinesOf } from "@/lib/fab";
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { computeStatus, statusMachine } from "@/lib/status";
 
@@ -191,6 +192,7 @@ export function FabView({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pickedMachine, setPickedMachine] = useState("");
   const [target, setTarget] = useState(""); // the batch the Fab button adds to ("" = a new one)
+  const [batchName, setBatchName] = useState<string | null>(null); // typed in the Fab bar; null = the default
   // Long-pressing a Released card on a phone turns on Fab with that card picked.
   const press = useRef<{ timer: number | null; fired: boolean }>({ timer: null, fired: false });
   const endPress = () => {
@@ -292,37 +294,29 @@ export function FabView({
     (!b.machine || !machinesOf(p).length || machinesOf(p).includes(b.machine)) && (!p.material || !batchMaterial(b) || p.material === batchMaterial(b));
   const targetOptions = openBatches.filter((b) => (!machine || !b.machine || b.machine === machine) && picked.every((p) => fitsBatch(p, b)));
   const targetBatch = targetOptions.find((b) => b.id === target) ?? null;
-  // Adding to a batch also takes parts with no machine or material yet: they inherit them there.
+  const batchOf = (p: CardPart) => batches.find((b) => p.groups.some((g) => g.id === b.id))?.id ?? null;
+  // Only loose parts can be picked: a part already in a batch stays there. Adding to a batch also
+  // takes parts with no machine or material yet: they inherit them there.
   const canPick = (p: CardPart) =>
     selected.has(p.id) ||
-    (targetBatch
-      ? fitsBatch(p, targetBatch)
-      : machinesOf(p).some((m) => (picked.length ? sharedMachines : machine ? [machine] : MACHINES.map((x) => x.id as string)).includes(m)) &&
-        (material === null || (p.material ?? "") === material));
+    (!batchOf(p) &&
+      (targetBatch
+        ? fitsBatch(p, targetBatch)
+        : machinesOf(p).some((m) => (picked.length ? sharedMachines : machine ? [machine] : MACHINES.map((x) => x.id as string)).includes(m)) &&
+          (material === null || (p.material ?? "") === material)));
   const startFab = (on: boolean) => {
     setFab(on);
     setSelected(new Set());
     setTarget("");
+    setBatchName(null);
   };
-  const batchOf = (p: CardPart) => batches.find((b) => p.groups.some((g) => g.id === b.id))?.id ?? null;
+  useEscape(fab, () => startFab(false));
+  const defaultBatchName = fabMachine ? fabBatchName(getMachine(fabMachine)?.name ?? "Batch") : "";
   const submitFab = () =>
     startTransition(async () => {
       let r: { error?: string };
-      if (targetBatch) {
-        // Parts picked inside another batch move out of it.
-        const from = new Map<string | null, string[]>();
-        for (const id of selected) {
-          const p = optimistic.find((x) => x.id === id);
-          const b = p ? batchOf(p) : null;
-          if (b === targetBatch.id) continue;
-          from.set(b, [...(from.get(b) ?? []), id]);
-        }
-        r = {};
-        for (const [b, ids] of from) {
-          const res = await moveToFabBatch(targetBatch.id, ids, b, batchStatus(targetBatch.members));
-          if (res.error) r = res;
-        }
-      } else r = await createFabBatch(robotId, [...selected], fabMachine!);
+      if (targetBatch) r = await moveToFabBatch(targetBatch.id, [...selected], null, batchStatus(targetBatch.members));
+      else r = await createFabBatch(robotId, [...selected], fabMachine!, undefined, batchName ?? undefined);
       setError(r.error ?? null);
       if (!r.error) startFab(false);
     });
@@ -576,14 +570,24 @@ export function FabView({
                   </select>
                 )
               )}
+              {!targetBatch && (
+                <input
+                  className="input w-40 py-1 font-mono tabular-nums sm:w-44"
+                  value={batchName ?? defaultBatchName}
+                  onChange={(e) => setBatchName(e.target.value)}
+                  placeholder={defaultBatchName || "Batch name"}
+                  aria-label="Name of the new batch"
+                  maxLength={80}
+                />
+              )}
               <button
-                className="btn-primary"
+                className="btn-primary active:scale-[0.98]"
                 disabled={pending || selected.size === 0 || (!targetBatch && !fabMachine)}
                 onClick={submitFab}
               >
-                {targetBatch ? `✓ Add to ${targetBatch.name}` : "✓ Create fab"}
+                {targetBatch ? `✓ Add to ${targetBatch.name}` : "✓ Create batch"}
               </button>
-              <button className="btn" onClick={() => setSelected(new Set())} disabled={selected.size === 0}>
+              <button className="btn active:scale-[0.98]" onClick={() => setSelected(new Set())} disabled={selected.size === 0}>
                 Clear
               </button>
             </div>
@@ -844,7 +848,7 @@ function BatchCard({
       }}
       aria-label={`Who makes ${batch.name}`}
       title={mine ? "You make this batch" : undefined}
-      className={`press max-w-full min-w-0 cursor-pointer truncate rounded-full border bg-surface/90 px-2.5 py-1 text-xs font-bold shadow-sm backdrop-blur-md transition-shadow hover:border-accent focus:outline-none ${
+      className={`press max-w-full min-w-0 cursor-pointer truncate rounded-full border bg-surface/90 px-2 py-0.5 text-[11px] font-bold shadow-sm backdrop-blur-md transition-shadow hover:border-accent focus:outline-none ${
         mine ? "border-sky-400 text-sky-600 shadow-[0_0_10px_2px_rgba(56,189,248,0.55)] dark:text-sky-300" : "border-line-strong text-fg"
       }`}
     >

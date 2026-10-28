@@ -15,6 +15,7 @@ import {
   countStock,
 } from "@/app/(app)/inventory/actions";
 import { EditOnly, useEditMode } from "@/components/shell/ModeContext";
+import { useEscape } from "@/components/ui/useEscape";
 import {
   CategoryBoxes,
   pushQuery,
@@ -287,6 +288,10 @@ export function InventoryView({
     setMoveLoc("");
     setNotice(null);
   };
+  useEscape(selecting !== null, () => {
+    setPicking(null);
+    setSelected(new Set());
+  });
   const toggleSelected = (id: string) =>
     setSelected((s) => {
       const next = new Set(s);

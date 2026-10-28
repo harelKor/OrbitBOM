@@ -9,6 +9,7 @@ import { updatePart, updateParts } from "@/app/(app)/parts-actions";
 import { BulkEditBar } from "./BulkEditBar";
 import { useFilters } from "@/components/shell/FilterContext";
 import { useEditMode } from "@/components/shell/ModeContext";
+import { useEscape } from "@/components/ui/useEscape";
 import { DrawingsBar } from "./DrawingsBar";
 import { MergeBar, type MergeInfo } from "./MergeBar";
 import { RELEASED_STATUS, ReleaseBar } from "./ReleaseBar";
@@ -137,6 +138,10 @@ export function BomView({
   const mode = edit || chosenMode === "release" ? chosenMode : null;
   const selecting = mode !== null;
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  useEscape(selecting, () => {
+    setMode(null);
+    setSelected(new Set());
+  });
 
   const shown = useMemo(
     () =>

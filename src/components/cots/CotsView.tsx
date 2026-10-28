@@ -10,6 +10,7 @@ import { PartStage, type StageView } from "@/components/dashboard/PartStage";
 import { AddBox } from "@/components/inventory/AddBox";
 import type { Condition, InvCategory, Item, Location } from "@/components/inventory/types";
 import { useEditMode } from "@/components/shell/ModeContext";
+import { useEscape } from "@/components/ui/useEscape";
 import { statusTint } from "@/components/ui/statusTint";
 import { StatusField } from "@/components/bom/fields";
 import { Thumb } from "@/components/bom/Thumb";
@@ -301,6 +302,10 @@ export function CotsView({
     setSelecting((cur) => (cur === m ? null : m));
     setSelected(new Set());
   };
+  useEscape(ordering, () => {
+    setSelecting(null);
+    setSelected(new Set());
+  });
 
   return (
     <div className={`space-y-5 ${ordering ? "pb-20" : ""}`}>

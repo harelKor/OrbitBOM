@@ -198,7 +198,13 @@ export async function recoverMembers(groupId: string): Promise<ActionResult> {
 // and the day ("Laser 21/10"). Every part must go through that machine and share one material.
 // The batch waits in Ready to Fab (its parts in Released, or Reproduction) unless `status` puts it
 // elsewhere, and is marked as made by whoever created it.
-export async function createFabBatch(robotId: string, partIds: string[], machineId: string, status?: StatusName): Promise<ActionResult> {
+export async function createFabBatch(
+  robotId: string,
+  partIds: string[],
+  machineId: string,
+  status?: StatusName,
+  customName?: string,
+): Promise<ActionResult> {
   if (status && !statusNames.includes(status)) return { error: "Unknown status." };
   const member = await requireMember();
   if (!isUuid(robotId)) return { error: "Unknown robot." };
@@ -217,7 +223,8 @@ export async function createFabBatch(robotId: string, partIds: string[], machine
   const names = new Set(
     (await db.select({ name: partGroups.name }).from(partGroups).where(eq(partGroups.robotId, robotId))).map((g) => g.name),
   );
-  const base = fabBatchName(machine.name);
+  // The name typed in the Fab bar, else "<machine> D/M".
+  const base = customName?.trim().slice(0, 80) || fabBatchName(machine.name);
   let name = base;
   for (let n = 2; names.has(name); n++) name = `${base} (${n})`;
 
