@@ -293,7 +293,7 @@ body {
   }
   /* Part, COTS and inventory tables: roomy cells, lines between rows and columns, a banded body
      and a highlighted row under the pointer. Rows are opaque (banding and hover are mixed in, not
-     see-through) so pinned columns can scroll over the rest. Zoom comes from .sheet. */
+     see-through). Zoom comes from .sheet. */
   .data-table {
     @apply w-full border-separate border-spacing-0 text-sm;
   }
@@ -342,9 +342,11 @@ body {
   .data-table.inv-table :is(th, td) + :is(th, td) {
     @apply border-l border-l-line-strong;
   }
-  /* A table that handles like a sheet (SheetViewport): scrolls both ways inside the page, zooms
-     (--sheet-zoom), keeps the header row and the first data-pin columns in view, and once a
-     column has been sized lays out at exactly the set widths (data-fixed), clipping long cells. */
+  /* A table that handles like a sheet (SheetViewport): scrolls both ways inside the page as one
+     piece, zooms (--sheet-zoom), keeps the header row at the top of its own box (the panel is
+     isolated, so the header never rises over the page's sticky bars), and once a column has been
+     sized lays out at exactly the set widths (data-fixed), clipping long cells.
+     Name columns carry .sheet-name so the next columns show beside them on a phone. */
   .sheet {
     @apply overflow-auto overscroll-contain;
     max-height: max(18rem, calc(100dvh - 8rem));
@@ -356,41 +358,14 @@ body {
   .sheet > .data-table > thead th {
     @apply sticky top-0 z-10;
   }
+  .sheet:not([data-fixed]) .sheet-name {
+    @apply max-w-[16rem] min-w-[10rem];
+  }
   .sheet > .data-table > thead th:hover {
     box-shadow: inset -2px 0 0 color-mix(in srgb, var(--color-accent) 35%, transparent);
   }
   .sheet[data-fixed] > .data-table :is(th, td) {
     @apply overflow-hidden text-ellipsis;
-  }
-  .sheet[data-pin] > .data-table tr > :first-child,
-  .sheet:is([data-pin="2"], [data-pin="3"]) > .data-table tr > :nth-child(2),
-  .sheet[data-pin="3"] > .data-table tr > :nth-child(3) {
-    @apply sticky z-[5];
-  }
-  .sheet[data-pin] > .data-table > tbody td {
-    background-color: inherit;
-  }
-  .sheet[data-pin] > .data-table tr > :first-child {
-    left: var(--pin-0, 0px);
-  }
-  .sheet:is([data-pin="2"], [data-pin="3"]) > .data-table tr > :nth-child(2) {
-    left: var(--pin-1, 0px);
-  }
-  .sheet[data-pin="3"] > .data-table tr > :nth-child(3) {
-    left: var(--pin-2, 0px);
-  }
-  .sheet[data-pin="1"] > .data-table tr > :nth-child(1),
-  .sheet[data-pin="2"] > .data-table tr > :nth-child(2),
-  .sheet[data-pin="3"] > .data-table tr > :nth-child(3) {
-    border-right: 2px solid var(--color-line-strong);
-  }
-  /* The header's pinned corner stays above both the header row and the pinned columns. */
-  .sheet[data-pin] > .data-table > thead tr > :is(:first-child, :nth-child(2), :nth-child(3)) {
-    @apply z-20;
-  }
-  .sheet[data-pin="1"] > .data-table > thead tr > :is(:nth-child(2), :nth-child(3)),
-  .sheet[data-pin="2"] > .data-table > thead tr > :nth-child(3) {
-    @apply z-10;
   }
   /* An inventory row's picture: none at small card sizes, growing with the slider from 75%. */
   .table-thumb {

@@ -634,12 +634,12 @@ function CotsTable({
 }) {
   const currency = useCurrency();
   return (
-    <SheetViewport id={orderList ? "cots-order" : "cots"} pin={2}>
+    <SheetViewport id={orderList ? "cots-order" : "cots"}>
       <table className="data-table cots-table">
         <thead>
           <tr>
             <th />
-            <th>Part</th>
+            <th className="sheet-name">Part</th>
             <th>Systems</th>
             <th className="text-right">Qty</th>
             <th className="text-right">In stock</th>
@@ -662,7 +662,7 @@ function CotsTable({
                 <td>
                   <ThumbLocate part={p} />
                 </td>
-                <td className={`font-semibold ${crossed ? "line-through" : ""} ${row.members.length > 1 ? "text-amber-500" : ""}`}>
+                <td className={`sheet-name font-semibold ${crossed ? "line-through" : ""} ${row.members.length > 1 ? "text-amber-500" : ""}`}>
                   {link ? (
                     <a href={link.url} target="_blank" rel="noreferrer" className="text-sky-500 underline-offset-2 hover:underline dark:text-sky-400">
                       {partTitle(p)}

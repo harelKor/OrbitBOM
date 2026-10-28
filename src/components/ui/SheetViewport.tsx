@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
-// A table that handles like Google Sheets (Harel, 2026-10-28): it scrolls on its own both ways
-// with the header row and the first `pin` columns stuck in place, Ctrl + wheel (or a trackpad or
+// A table that handles like Google Sheets (Harel, 2026-10-28): it scrolls on its own both ways as
+// one sheet (no pinned columns: on a phone they ate the screen) with the header row stuck to the
+// top of its own box, Ctrl + wheel (or a trackpad or
 // two-finger pinch) zooms it around the pointer, and dragging a header's right edge sizes that
 // column (double-click the edge to fit it to its contents). Zoom and column widths are kept in
 // this browser per table (`id`). The table inside must be a .data-table.
@@ -34,12 +35,10 @@ const headCells = (table: HTMLTableElement | null) =>
 
 export function SheetViewport({
   id,
-  pin = 1,
   className = "",
   children,
 }: {
   id: string;
-  pin?: number;
   className?: string;
   children: React.ReactNode;
 }) {
@@ -48,22 +47,19 @@ export function SheetViewport({
   const widths = useRef<number[] | null>(null);
   const [shownZoom, setShownZoom] = useState(1);
   const [sized, setSized] = useState(false);
+  // The zoom pill shows while the pointer is over the table, or for 1.5 s after a zoom.
+  const [flashing, setFlashing] = useState(false);
+  const flashTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const flash = () => {
+    setFlashing(true);
+    clearTimeout(flashTimer.current);
+    flashTimer.current = setTimeout(() => setFlashing(false), 1500);
+  };
+  useEffect(() => () => clearTimeout(flashTimer.current), []);
 
   const table = () => box.current?.querySelector<HTMLTableElement>("table.data-table") ?? null;
   const widthKey = (cols: number) => `orbit-sheet:${id}:cols:${cols}`;
   const zoomKey = `orbit-sheet:${id}:zoom`;
-
-  // Where the pinned columns stick: each one's left is the width of those before it.
-  const placePins = useCallback(() => {
-    const t = table();
-    if (!t) return;
-    const cells = headCells(t);
-    let left = 0;
-    for (let k = 0; k < Math.min(pin, cells.length); k++) {
-      t.style.setProperty(`--pin-${k}`, `${left}px`);
-      left += cells[k].getBoundingClientRect().width / zoom.current;
-    }
-  }, [pin]);
 
   // Fixed column widths (once the member has sized one) go on the header cells, and the table
   // switches to a fixed layout of exactly their sum, like a sheet.
@@ -83,8 +79,7 @@ export function SheetViewport({
       t.style.width = "";
       box.current?.removeAttribute("data-fixed");
     }
-    placePins();
-  }, [placePins]);
+  }, []);
 
   // Each column's natural width (what it takes with nothing set), for double-click to fit.
   const naturalWidths = () => {
@@ -115,10 +110,11 @@ export function SheetViewport({
     el.scrollLeft = cx * z - ax;
     el.scrollTop = cy * z - ay;
     setShownZoom(z);
+    flash();
     save(zoomKey, z === 1 ? null : z);
   };
 
-  // Saved zoom and widths, and keep widths/pins right as rows and columns come and go.
+  // Saved zoom and widths, and keep widths right as rows and columns come and go.
   useLayoutEffect(() => {
     const z = load<number>(zoomKey);
     if (z) {
@@ -139,13 +135,6 @@ export function SheetViewport({
     }
     applyWidths();
   });
-  useEffect(() => {
-    const t = table();
-    if (!t) return;
-    const ro = new ResizeObserver(() => placePins());
-    ro.observe(t);
-    return () => ro.disconnect();
-  }, [placePins]);
 
   // Ctrl + wheel and pinches zoom the table, not the page or the card size.
   useEffect(() => {
@@ -265,11 +254,10 @@ export function SheetViewport({
   };
 
   return (
-    <div className={`panel group/sheet relative overflow-hidden ${className}`}>
+    <div className={`panel group/sheet relative isolate overflow-hidden ${className}`}>
       <div
         ref={box}
         className="sheet"
-        data-pin={pin || undefined}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -287,7 +275,7 @@ export function SheetViewport({
       </div>
       <div
         className={`absolute right-3 bottom-3 z-30 flex items-center gap-0.5 rounded-lg border border-line bg-surface/90 p-0.5 text-xs shadow-sm backdrop-blur-md transition-opacity duration-150 ${
-          shownZoom !== 1 || sized ? "opacity-100" : "pointer-events-none opacity-0 group-hover/sheet:pointer-events-auto group-hover/sheet:opacity-100"
+          flashing ? "opacity-100" : "pointer-events-none opacity-0 group-hover/sheet:pointer-events-auto group-hover/sheet:opacity-100"
         }`}
       >
         <button type="button" onClick={() => setZoom(zoom.current / 1.15)} className="press h-7 w-7 rounded-md font-bold text-fg-2 hover:bg-raised active:scale-[0.98]" aria-label="Zoom out">

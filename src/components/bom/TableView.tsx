@@ -35,13 +35,13 @@ export function TableView({
   const sorted = [...parts].sort((a, b) => partTitle(a).localeCompare(partTitle(b), undefined, { numeric: true }) * (desc ? -1 : 1));
 
   return (
-    <SheetViewport id="bom" pin={selection ? 3 : 2}>
+    <SheetViewport id="bom">
       <table className="data-table">
         <thead>
           <tr>
             {selection && <th />}
             <th />
-            <th>
+            <th className="sheet-name">
               <button onClick={() => setDesc((d) => !d)} className="uppercase hover:text-fg">
                 Part name {desc ? "▼" : "▲"}
               </button>
@@ -78,7 +78,7 @@ export function TableView({
                   </td>
                 )}
                 <td><Thumb part={p} size={44} /></td>
-                <td><NameField part={p} save={save} /></td>
+                <td className="sheet-name"><NameField part={p} save={save} /></td>
                 {showSystem && <td className="text-muted">{p.systemName}</td>}
                 <td><TypeField part={p} save={save} /></td>
                 <td><QuantityField part={p} save={save} /></td>

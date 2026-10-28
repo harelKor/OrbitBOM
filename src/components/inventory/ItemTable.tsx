@@ -61,12 +61,12 @@ export function ItemTable({
   const edit = useEditMode();
   const stop = (e: React.SyntheticEvent) => e.stopPropagation();
   return (
-    <SheetViewport id="inventory" pin={onToggleSelect ? 2 : 1}>
+    <SheetViewport id="inventory">
       <table className="data-table inv-table">
         <thead>
           <tr>
             {onToggleSelect && <th aria-label="Select" />}
-            <th>Item</th>
+            <th className="sheet-name">Item</th>
             {!hideCategory && <th>Category</th>}
             <th className="text-center">In stock</th>
             <th>Specs</th>
@@ -104,7 +104,7 @@ export function ItemTable({
                     )}
                   </td>
                 )}
-                <td className="min-w-56">
+                <td className="sheet-name">
                   <span className="flex items-center">
                     <span className="table-thumb thumb-well rounded-md">
                       {picture && (
