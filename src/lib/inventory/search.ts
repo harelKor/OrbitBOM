@@ -77,7 +77,8 @@ export async function searchProducts(query: string): Promise<{ groups: ProductGr
         offers.push(o);
       }
     hit = { at: Date.now(), offers };
-    cache.set(key, hit);
+    // An empty answer may be a store that stopped answering: ask again next time.
+    if (offers.length) cache.set(key, hit);
     if (cache.size > 500) cache.delete(cache.keys().next().value!);
   }
   return { groups: groupOffers(hit.offers).slice(0, 12), elsewhere };

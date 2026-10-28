@@ -507,9 +507,17 @@ export async function searchPreview(q: string) {
 
 // Step 4: every COTS, electrical and tool item missing a link, price or photo gets them from its
 // link, or from the store search for its English name. A member's own values are kept. With
-// dry, it only says what it would pick.
-export async function relinkInventory(deadline: number, dry = false) {
+// dry, it only says what it would pick; retry tries the not-found ones again. One item at a
+// time, with a pause, because the stores stop answering a burst of searches.
+export async function relinkInventory(
+  deadline: number,
+  dry = false,
+  retry = false,
+) {
   const state = await readState();
+  if (retry)
+    for (const [id, r] of Object.entries(state.relinked!))
+      if (r !== "linked") delete state.relinked![id];
   const groups = new Map(
     (await listCategories()).map((c) => [c.id, c.group as string]),
   );
@@ -525,9 +533,10 @@ export async function relinkInventory(deadline: number, dry = false) {
   );
   const picks: string[] = [];
   let done = 0;
-  for (let i = 0; i < items.length && Date.now() < deadline - 12_000; i += 4) {
+  for (let i = 0; i < items.length && Date.now() < deadline - 12_000; i++) {
+    if (i) await new Promise((r) => setTimeout(r, 700));
     await Promise.all(
-      items.slice(i, i + 4).map(async (item) => {
+      items.slice(i, i + 1).map(async (item) => {
         try {
           let found: Found | null = null;
           const link = item.cotsLinks[0];

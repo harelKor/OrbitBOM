@@ -13,7 +13,8 @@ export const maxDuration = 60;
 // The one-off import of the shop spreadsheet (lib/inventory/shopSeed.ts). ?step=import adds the
 // items, ?step=enrich (call it until remaining is 0) links products and saves their pictures.
 // Round 2 (2026-10-28): ?step=cleanup empties Released and the Order List and shortens names,
-// ?step=relink (until remaining is 0; &dry=1 only lists its picks) links COTS, electrical and tool
+// ?step=relink (until remaining is 0; &dry=1 only lists its picks, &retry=1
+// tries the not-found ones again) links COTS, electrical and tool
 // items, ?step=search&q= shows what a store search returns. All are safe to call again.
 // Callers send CRON_SECRET, or the import key whose hash is below.
 const KEY_SHA256 =
@@ -56,6 +57,7 @@ export async function GET(request: NextRequest) {
       ...(await relinkInventory(
         started + 55_000,
         request.nextUrl.searchParams.get("dry") === "1",
+        request.nextUrl.searchParams.get("retry") === "1",
       )),
       ms: Date.now() - started,
     });
