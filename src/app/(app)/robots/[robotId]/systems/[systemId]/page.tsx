@@ -19,7 +19,7 @@ import { listSystemMerges, listSystemParts } from "@/lib/data/parts";
 import { getSystem } from "@/lib/data/robots";
 import { fabStage } from "@/lib/fab";
 import { robotModelBuiltAt } from "@/lib/model/build";
-import { isEditMode } from "@/lib/mode";
+import { hasCapability } from "@/lib/mode";
 import { isUuid } from "@/lib/uuid";
 import { loadDraft } from "@/lib/versions/detect";
 import { listVersions } from "@/lib/versions/history";
@@ -42,7 +42,7 @@ export default async function SystemPage({
     listSystemParts(systemId),
     listSystemMerges(systemId),
     listInventoryNames(),
-    isEditMode(),
+    hasCapability("sync"),
     robotModelBuiltAt(robotId),
     listRecentActions({ robotId, memberId: member.id, systemId, fabOnly: true }, 30),
     listRecentActions({ robotId, memberId: member.id, systemId }, 30),
@@ -126,8 +126,8 @@ export default async function SystemPage({
           {system.assemblyUrl
             ? edit
               ? "No parts yet. Click Update System to pull this system\u2019s parts from Onshape."
-              : "No parts yet. Switch to Edit and click Update System to pull this system\u2019s parts from Onshape."
-            : "No parts yet. Add manual parts in Edit mode, or give this system an Onshape assembly."}
+              : "No parts yet. The CAD Team clicks Update System to pull this system\u2019s parts from Onshape."
+            : "No parts yet. An admin adds manual parts in Edit mode, or gives this system an Onshape assembly."}
         </p>
       )}
     </div>

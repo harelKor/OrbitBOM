@@ -25,7 +25,7 @@ export function RobotInventory({ robotId, items }: { robotId: string; items: Rob
     return (
       <div className="panel p-6 text-sm text-muted">
         No parts of this robot are linked to inventory yet. On a COTS card, use the inventory pill to link the part to an
-        item (or add it to the inventory in Edit mode).
+        item (or add it to the inventory).
       </div>
     );
 

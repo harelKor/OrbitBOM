@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireMember } from "@/lib/auth";
+import { requireCapability } from "@/lib/mode";
 import { reapplySystemUpdate, redoBatch, revertSystemUpdate, revertVisit, undoLatest } from "@/lib/actions/revert";
 import { isUuid } from "@/lib/uuid";
 import { VersionError } from "@/lib/versions/commit";
@@ -10,7 +10,7 @@ export type ActionResult = { message?: string; error?: string; batchId?: string 
 
 // Revert on a Recent actions box: a page visit's part edits, or a System Update.
 export async function revertAction(kind: "edit" | "system", id: string): Promise<ActionResult> {
-  const member = await requireMember();
+  const member = await requireCapability("manage");
   if (!isUuid(id)) return { error: "Unknown action." };
   try {
     const r = kind === "system" ? await revertSystemUpdate(id, member.id) : await revertVisit(id, member.id);
@@ -25,7 +25,7 @@ export async function revertAction(kind: "edit" | "system", id: string): Promise
 // The flipped arrow after a Revert: re-applies the action. A visit's edits come back by undoing
 // the revert's batch; a System Update puts the system back on its version.
 export async function reapplyAction(kind: "edit" | "system", id: string, batchId: string | null): Promise<ActionResult> {
-  const member = await requireMember();
+  const member = await requireCapability("manage");
   if (!isUuid(id) || (kind === "edit" && (!batchId || !isUuid(batchId)))) return { error: "Nothing to re-apply." };
   try {
     const r = kind === "system" ? await reapplySystemUpdate(id, member.id) : await redoBatch(batchId!, member.id);
@@ -39,7 +39,7 @@ export async function reapplyAction(kind: "edit" | "system", id: string, batchId
 
 // Undo (Ctrl+Z): this member's newest part edit that this tab hasn't undone yet.
 export async function undoAction(exclude: string[]): Promise<ActionResult> {
-  const member = await requireMember();
+  const member = await requireCapability("work");
   const r = await undoLatest(member.id, exclude.filter(isUuid).slice(-200));
   if (r.batchId || r.undone) revalidatePath("/robots", "layout");
   return r;
@@ -47,7 +47,7 @@ export async function undoAction(exclude: string[]): Promise<ActionResult> {
 
 // Redo (Ctrl+Shift+Z): undoes an undo.
 export async function redoAction(batchId: string): Promise<ActionResult> {
-  const member = await requireMember();
+  const member = await requireCapability("work");
   if (!isUuid(batchId)) return { error: "Nothing to redo." };
   const r = await redoBatch(batchId, member.id);
   if (r.batchId) revalidatePath("/robots", "layout");

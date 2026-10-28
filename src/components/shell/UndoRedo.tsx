@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { redoAction, undoAction } from "@/app/(app)/undo-actions";
 import { Icon } from "@/components/ui/Icon";
 import { toast } from "@/components/ui/Toaster";
-import { useEditMode } from "./ModeContext";
+import { useCan } from "./ModeContext";
 
 const KEY = "orbit-undo";
 type Stacks = { exclude: string[]; redo: string[] };
@@ -33,7 +33,7 @@ function save(s: Stacks) {
 // edit; it is a new change, so a field someone changed since is left alone and the toast says
 // so. This tab remembers what it undid (sessionStorage), so two tabs never fight.
 export function UndoRedo() {
-  const edit = useEditMode();
+  const edit = useCan("work");
   const [busy, setBusy] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const busyRef = useRef(false);

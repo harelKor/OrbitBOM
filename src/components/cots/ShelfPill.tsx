@@ -6,7 +6,7 @@ import type { SaveFn } from "@/components/bom/fields";
 import { Popover } from "@/components/bom/Popover";
 import type { CardPart, Shelf } from "@/components/bom/types";
 import { useInventoryPopup } from "@/components/inventory/InventoryPopup";
-import { useEditMode } from "@/components/shell/ModeContext";
+import { useCan } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
 import { formatStock } from "@/lib/inventory/stock";
 import { computeStatus } from "@/lib/status";
@@ -17,7 +17,7 @@ const REASONS = { onshape: "the same Onshape part", link: "the same product page
 // A COTS card's link to the team inventory: how much of it the shelf covers and how many to
 // order, or the item it most likely is. Linking it to a new item happens in the part's details window.
 export function ShelfPill({ part, shelf, save }: { part: CardPart; shelf: Shelf | null; save: SaveFn }) {
-  const edit = useEditMode();
+  const edit = useCan("work");
   const { openItem } = useInventoryPopup();
   if (shelf) {
     const missing = Math.max(0, part.quantity - shelf.covered);
@@ -108,7 +108,7 @@ export function ShelfPill({ part, shelf, save }: { part: CardPart; shelf: Shelf 
               <button type="button" className="btn" onClick={close}>
                 Not this
               </button>
-              <button
+              {edit && <button
                 type="button"
                 className="btn-primary"
                 onClick={() => {
@@ -117,7 +117,7 @@ export function ShelfPill({ part, shelf, save }: { part: CardPart; shelf: Shelf 
                 }}
               >
                 Link
-              </button>
+              </button>}
             </div>
           </div>
         )}
@@ -165,8 +165,9 @@ function useDismissed(id: string) {
 // suggestion, never automatic). A card Inventory sent to refill the shelf asks once the shelf has
 // the item's whole need (its season count). Dismissing hides it in this browser.
 export function ShelfCoversPrompt({ part, shelf, save }: { part: CardPart; shelf: Shelf | null; save: SaveFn }) {
+  const work = useCan("work");
   const dismissed = useDismissed(part.id);
-  if (!shelf || dismissed || computeStatus(part) === COTS_IN_STOCK) return null;
+  if (!work || !shelf || dismissed || computeStatus(part) === COTS_IN_STOCK) return null;
   if (shelf.restock ? !shelf.met : shelf.sheet || shelf.covered < Math.max(part.quantity, 1)) return null;
   return (
     <div className="flex items-center gap-2 rounded-lg border border-emerald-500/50 bg-emerald-500/10 px-2 py-1.5 text-xs">

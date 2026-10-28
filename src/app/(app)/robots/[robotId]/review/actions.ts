@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireMember } from "@/lib/auth";
+import { requireCapability } from "@/lib/mode";
 import { approveInventoryReviews, dismissInventoryReviews, rejectInventoryReviews } from "@/lib/review/inventory";
 import { approveReviews, dismissReviews, rejectReviews, suggestRobotSetups } from "@/lib/review/review";
 import { isUuid } from "@/lib/uuid";
@@ -15,7 +15,7 @@ function refresh() {
 }
 
 export async function approveParts(partIds: string[]): Promise<ActionResult> {
-  const member = await requireMember();
+  const member = await requireCapability("review");
   if (partIds.some((id) => !isUuid(id))) return { error: "Unknown part." };
   await approveReviews(partIds, member.id);
   refresh();
@@ -23,7 +23,7 @@ export async function approveParts(partIds: string[]): Promise<ActionResult> {
 }
 
 export async function rejectParts(partIds: string[]): Promise<ActionResult> {
-  const member = await requireMember();
+  const member = await requireCapability("review");
   if (partIds.some((id) => !isUuid(id))) return { error: "Unknown part." };
   const { keptEdits } = await rejectReviews(partIds, member.id);
   refresh();
@@ -33,7 +33,7 @@ export async function rejectParts(partIds: string[]): Promise<ActionResult> {
 // The card's X: the part leaves To Review as it is now. A link waiting for Approve isn't made,
 // and isn't remembered as rejected either.
 export async function dismissParts(partIds: string[]): Promise<ActionResult> {
-  await requireMember();
+  await requireCapability("review");
   if (partIds.some((id) => !isUuid(id))) return { error: "Unknown part." };
   await dismissReviews(partIds);
   refresh();
@@ -41,7 +41,7 @@ export async function dismissParts(partIds: string[]): Promise<ActionResult> {
 }
 
 export async function dismissInventory(ids: string[]): Promise<ActionResult> {
-  await requireMember();
+  await requireCapability("review");
   if (ids.some((id) => !isUuid(id))) return { error: "Unknown change." };
   await dismissInventoryReviews(ids);
   refresh();
@@ -50,7 +50,7 @@ export async function dismissInventory(ids: string[]): Promise<ActionResult> {
 
 // To Review's Inventory section: a Claude's edits to items and new categories.
 export async function approveInventory(ids: string[]): Promise<ActionResult> {
-  await requireMember();
+  await requireCapability("review");
   if (ids.some((id) => !isUuid(id))) return { error: "Unknown change." };
   await approveInventoryReviews(ids);
   refresh();
@@ -58,7 +58,7 @@ export async function approveInventory(ids: string[]): Promise<ActionResult> {
 }
 
 export async function rejectInventory(ids: string[]): Promise<ActionResult> {
-  const member = await requireMember();
+  const member = await requireCapability("review");
   if (ids.some((id) => !isUuid(id))) return { error: "Unknown change." };
   const { keptEdits } = await rejectInventoryReviews(ids, member.id);
   refresh();
@@ -69,7 +69,7 @@ export async function rejectInventory(ids: string[]): Promise<ActionResult> {
 // Runs the site's rules over the robot's parts that have no material or processes. Reads the
 // 3D model's files for part sizes; never calls Onshape.
 export async function suggestSetup(robotId: string): Promise<ActionResult> {
-  const member = await requireMember();
+  const member = await requireCapability("review");
   if (!isUuid(robotId)) return { error: "Unknown robot." };
   const { checked, suggested } = await suggestRobotSetups(robotId, member.id);
   refresh();

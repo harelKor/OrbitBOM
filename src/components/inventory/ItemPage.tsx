@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useOptimistic, useState, useTransition } from "react";
 import { adjustStock, deleteItem, linkPartsToItem } from "@/app/(app)/inventory/actions";
 import { textOn } from "@/components/bom/options";
-import { EditOnly } from "@/components/shell/ModeContext";
+import { EditOnly, useCan } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
 import { Dialog } from "@/components/Dialog";
 import { activeFields, getCategory, specLine } from "@/lib/inventory/categories";
@@ -43,6 +43,7 @@ export function ItemPage({
   history: ItemHistoryEntry[];
   targets: BomTarget[];
 }) {
+  const work = useCan("work");
   const router = useRouter();
   const [item, step] = useOptimistic(initial, (s, d: number) => ({ ...s, inStock: snapStock(s.inStock + d, s.sheet) }));
   const [pending, startTransition] = useTransition();
@@ -100,7 +101,7 @@ export function ItemPage({
             {spec && <div className="font-mono text-sm text-muted tabular-nums">{spec}</div>}
           </div>
           <div className="flex items-center gap-3">
-            <button
+            {work && (<button
               type="button"
               onClick={() => onStep(-1)}
               disabled={item.inStock < 1}
@@ -108,7 +109,7 @@ export function ItemPage({
               aria-label="One less"
             >
               −
-            </button>
+            </button>)}
             <div className="min-w-0 flex-1 text-center">
               <div className="display font-mono text-5xl text-fg tabular-nums">{formatStock(item.inStock, item.sheet)}</div>
               <div className="text-xs text-muted">
@@ -116,14 +117,14 @@ export function ItemPage({
                 {!!usage?.short && <span className="font-semibold text-amber-600"> · {usage.short} short</span>}
               </div>
             </div>
-            <button
+            {work && (<button
               type="button"
               onClick={() => onStep(1)}
               className="press flex h-12 w-12 items-center justify-center rounded-lg bg-emerald-500 text-2xl font-bold text-white hover:bg-emerald-400"
               aria-label="One more"
             >
               +
-            </button>
+            </button>)}
           </div>
           {item.sheet && (
             <div className="flex justify-center">

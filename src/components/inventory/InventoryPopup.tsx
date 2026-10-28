@@ -24,7 +24,7 @@ import {
 } from "@/app/(app)/inventory/actions";
 import { textOn } from "@/components/bom/options";
 import { Dialog } from "@/components/Dialog";
-import { EditOnly, useEditMode } from "@/components/shell/ModeContext";
+import { EditOnly, useCan, useEditMode } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
 import { materialCategory } from "@/config/materials";
 import { useMaterials } from "@/components/shell/MaterialColors";
@@ -177,18 +177,19 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
 }
 
 function Stepper({ item, onStep, onCount, big = false }: { item: Pick<Item, "inStock" | "sheet">; onStep: (d: number) => void; onCount?: (n: number) => void; big?: boolean }) {
+  const work = useCan("work");
   const size = big ? "h-12 w-12 text-2xl" : "h-10 w-10 text-xl";
   return (
     <div className="flex items-center gap-2">
-      <button type="button" onClick={() => onStep(-1)} disabled={item.inStock < 1} className={`press flex ${size} items-center justify-center rounded-lg bg-rose-500 font-bold text-white hover:bg-rose-400 disabled:opacity-30`} aria-label="One less">
+      {work && (<button type="button" onClick={() => onStep(-1)} disabled={item.inStock < 1} className={`press flex ${size} items-center justify-center rounded-lg bg-rose-500 font-bold text-white hover:bg-rose-400 disabled:opacity-30`} aria-label="One less">
         −
-      </button>
+      </button>)}
       <span className={`min-w-14 text-center font-mono font-semibold tabular-nums ${big ? "display text-4xl" : "text-xl"}`}>
         {onCount ? <CountBox item={item} onCount={onCount} big={big} /> : formatStock(item.inStock, item.sheet)}
       </span>
-      <button type="button" onClick={() => onStep(1)} className={`press flex ${size} items-center justify-center rounded-lg bg-emerald-500 font-bold text-white hover:bg-emerald-400`} aria-label="One more">
+      {work && (<button type="button" onClick={() => onStep(1)} className={`press flex ${size} items-center justify-center rounded-lg bg-emerald-500 font-bold text-white hover:bg-emerald-400`} aria-label="One more">
         +
-      </button>
+      </button>)}
       {item.sheet && (
         <span className="rounded-full bg-[#111318]/80 px-2 py-1 text-xs text-white">
           <PieceStepper onStep={onStep} max={item.inStock} />
@@ -201,6 +202,7 @@ function Stepper({ item, onStep, onCount, big = false }: { item: Pick<Item, "inS
 // The item's note, like a part's Notes box: typed in place, saved when the box loses focus.
 function ItemNotesBox({ item, onSaved, onError }: { item: Item; onSaved: () => void; onError: (m: string | null) => void }) {
   const [text, setText] = useState(item.note ?? "");
+  const work = useCan("work");
   const [focused, setFocused] = useState(false);
   const [seen, setSeen] = useState(item.note);
   const [, start] = useTransition();
@@ -218,6 +220,7 @@ function ItemNotesBox({ item, onSaved, onError }: { item: Item; onSaved: () => v
       <textarea
         value={text}
         rows={2}
+        readOnly={!work}
         onChange={(e) => setText(e.target.value)}
         onFocus={() => setFocused(true)}
         onBlur={() => {
@@ -230,7 +233,7 @@ function ItemNotesBox({ item, onSaved, onError }: { item: Item; onSaved: () => v
             if (!r.error) onSaved();
           });
         }}
-        placeholder="Add a note for whoever takes or orders this…"
+        placeholder={work ? "Add a note for whoever takes or orders this…" : "No note"}
         className="mt-0.5 block w-full resize-y bg-transparent text-sm leading-snug font-semibold text-fg outline-none placeholder:font-normal placeholder:text-amber-700/50 dark:placeholder:text-amber-300/40"
       />
     </label>
@@ -240,6 +243,7 @@ function ItemNotesBox({ item, onSaved, onError }: { item: Item; onSaved: () => v
 // "Needed for Season": how many the team wants on the shelf for the season, typed in place under
 // the count. Blank or 0 clears it. Saves on Enter or when the box loses focus.
 function SeasonBox({ item, onSaved, onError }: { item: Item; onSaved: () => void; onError: (m: string | null) => void }) {
+  const work = useCan("work");
   const current = hasSeasonNeed(item) ? formatStock(item.seasonNeed!, item.sheet) : "";
   const [text, setText] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -264,7 +268,7 @@ function SeasonBox({ item, onSaved, onError }: { item: Item; onSaved: () => void
           if (e.key === "Enter") e.currentTarget.blur();
           if (e.key === "Escape") setText(null);
         }}
-        disabled={pending}
+        disabled={pending || !work}
         inputMode={item.sheet ? "text" : "numeric"}
         placeholder="—"
         aria-label="Needed for Season"

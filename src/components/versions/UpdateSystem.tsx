@@ -3,7 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { checkForChanges, commitChanges, revertToVersion } from "@/app/(app)/versions-actions";
-import { useEditMode } from "@/components/shell/ModeContext";
+import { useCan } from "@/components/shell/ModeContext";
 import type { Draft } from "@/lib/versions/detect";
 import { PARTS_UPDATING_EVENT, afterPartsUpdate } from "./afterUpdate";
 import { CommitWindow } from "./CommitWindow";
@@ -27,7 +27,7 @@ export function UpdateSystem({
   latest: { id: string; label: string } | null; // set while a Revert holds the system behind it
 }) {
   const router = useRouter();
-  const edit = useEditMode();
+  const edit = useCan("sync");
   const params = useSearchParams();
   const pathname = usePathname();
   const [draft, setDraft] = useState(initial);

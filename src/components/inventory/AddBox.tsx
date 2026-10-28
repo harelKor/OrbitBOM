@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { findProducts, readProductLink, saveItem } from "@/app/(app)/inventory/actions";
-import { useEditMode } from "@/components/shell/ModeContext";
+import { useCan } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
 import { guessCategory } from "@/config/inventory";
 import { buildName, getCategory } from "@/lib/inventory/categories";
@@ -51,7 +51,8 @@ export function AddBox({
   floating?: boolean; // the results float over the window the box is in (a part's details window), not inside it
   newStock?: string; // what a new item starts with in stock (the COTS page adds items still to buy: "0")
 }) {
-  const edit = useEditMode();
+  // Any team adds items; without a team it is only a search box.
+  const edit = useCan("work");
   const { openItem } = useInventoryPopup();
   const [focus, setFocus] = useState(false);
   const [found, setFound] = useState<Found | null>(null);

@@ -6,6 +6,8 @@ import { z } from "zod";
 import { MACHINES } from "@/config/machines";
 import { db, schema } from "@/db";
 import { requireMember } from "@/lib/auth";
+import { partChangesCapability } from "@/components/shell/mode";
+import { requireCapability } from "@/lib/mode";
 import { OnshapeError } from "@/lib/onshape/client";
 import { MERGE_PREFIX, fanOutChanges, isMergeId, mergedRow } from "@/lib/merges/merge";
 import { applyEachPartChanges, applyPartChanges } from "@/lib/parts/apply";
@@ -18,9 +20,11 @@ import { isUuid } from "@/lib/uuid";
 export type ActionResult = { error?: string; message?: string };
 
 export async function updatePart(partId: string, changes: unknown): Promise<ActionResult> {
-  const member = await requireMember();
+  await requireMember();
   const parsed = partChangesSchema.safeParse(changes);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
+  // Status, machines, material and counts are any team's; other fields need Edit mode.
+  const member = await requireCapability(partChangesCapability(parsed.data));
   if (isMergeId(partId)) return updateMergedRow(partId.slice(MERGE_PREFIX.length), parsed.data, member.id);
   if (!isUuid(partId)) return { error: "Unknown part." };
   await applyPartChanges([partId], parsed.data, { memberId: member.id, via: "ui" });
@@ -46,7 +50,7 @@ export async function addManualPart(
   _: ActionResult | undefined,
   formData: FormData,
 ): Promise<ActionResult> {
-  const member = await requireMember();
+  const member = await requireCapability("manage");
   const parsed = manualPart.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const d = parsed.data;
@@ -70,7 +74,7 @@ export async function addManualPart(
 
 // Only manual parts can be deleted; Onshape parts come back on the next sync.
 export async function deleteManualPart(partId: string): Promise<ActionResult> {
-  await requireMember();
+  await requireCapability("manage");
   if (!isUuid(partId)) return { error: "Unknown part." };
   const keys = await fileKeysFor({ partId });
   const deleted = await db
@@ -86,7 +90,7 @@ export async function deleteManualPart(partId: string): Promise<ActionResult> {
 export type SyncResult = { error?: string; message?: string };
 
 export async function syncSystem(systemId: string): Promise<SyncResult> {
-  const member = await requireMember();
+  const member = await requireCapability("sync");
   if (!isUuid(systemId)) return { error: "Unknown system." };
   if (!member.onshapeConnected) return { error: "Connect your Onshape account first (Profile → Connect Onshape)." };
   try {
@@ -126,11 +130,12 @@ export async function refreshIfDue(systemId: string): Promise<{ changed: boolean
 
 // Bulk edit and Kanban moves: the same changes on many parts, one history batch.
 export async function updateParts(ids: string[], changes: unknown): Promise<ActionResult> {
-  const member = await requireMember();
+  await requireMember();
   const partIds = await expandMerges(ids);
   if (!partIds.length || partIds.some((id) => !isUuid(id))) return { error: "Unknown part." };
   const parsed = partChangesSchema.safeParse(changes);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const member = await requireCapability(partChangesCapability(parsed.data));
   await applyPartChanges(partIds, parsed.data, { memberId: member.id, via: "ui" });
   revalidatePath("/robots", "layout");
   return {};
@@ -178,7 +183,7 @@ async function updateMergedRow(mergeId: string, changes: PartChanges, memberId: 
 }
 
 export async function mergeParts(systemId: string, name: string, ids: string[]): Promise<ActionResult> {
-  await requireMember();
+  await requireCapability("manage");
   if (!isUuid(systemId) || !name.trim()) return { error: "Give the merged part a name." };
   const partIds = await expandMerges(ids);
   if (partIds.length < 2 || partIds.some((id) => !isUuid(id))) return { error: "Pick two or more parts to merge." };
@@ -202,7 +207,7 @@ export async function mergeParts(systemId: string, name: string, ids: string[]):
 }
 
 export async function unmergeParts(mergeRowId: string): Promise<ActionResult> {
-  await requireMember();
+  await requireCapability("manage");
   const mergeId = mergeRowId.replace(MERGE_PREFIX, "");
   if (!isUuid(mergeId)) return { error: "Unknown merged part." };
   await db.delete(schema.merges).where(eq(schema.merges.id, mergeId));

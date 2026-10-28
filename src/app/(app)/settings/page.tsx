@@ -1,6 +1,8 @@
 import { asc, isNotNull, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { redirect } from "next/navigation";
 import { requireMember } from "@/lib/auth";
+import { isEditMode } from "@/lib/mode";
 import { listCategories } from "@/lib/data/categories";
 import { listMaterialColors } from "@/lib/data/materialColors";
 import { listMaterials } from "@/lib/data/materials";
@@ -14,6 +16,8 @@ const { parts, inventoryItems, inventoryConditions, inventoryLocations } = schem
 // locations, conditions and the nightly backups.
 export default async function SettingsPage() {
   const member = await requireMember();
+  // Settings is for admins in Edit mode; the teams land back on their home page.
+  if (!(await isEditMode())) redirect("/");
   const [materials, colors, categories, conditions, locations, items, partUses, itemUses, backups] = await Promise.all([
     listMaterials(),
     listMaterialColors(),

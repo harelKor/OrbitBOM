@@ -20,7 +20,7 @@ import { partTitle, type CardPart } from "@/components/bom/types";
 import { useFilters } from "@/components/shell/FilterContext";
 import { useMaterialColors, useMaterials } from "@/components/shell/MaterialColors";
 import { pushQuery } from "@/components/ui/CategoryBoxes";
-import { useEditMode } from "@/components/shell/ModeContext";
+import { useCan } from "@/components/shell/ModeContext";
 import { Chevron } from "@/components/ui/Chevron";
 import { Icon } from "@/components/ui/Icon";
 import { ShallowLink } from "@/components/ui/FastLink";
@@ -129,6 +129,8 @@ export function FabView({
   memberNames: string[];
   me: string;
 }) {
+  // Any team works the To Fab page; without a team (read only) nothing moves or changes.
+  const work = useCan("work");
   const [optimistic, addOptimistic] = useOptimistic(parts, (state, { ids, changes }: { ids: string[]; changes: PartChanges }) =>
     state.map((p) => (ids.includes(p.id) ? { ...p, ...planPartUpdate(p, changes, "ui").set } : p)),
   );
@@ -327,11 +329,11 @@ export function FabView({
     const pickable = fab && canPick(p);
     const inherit = inBatch && (!p.material || !machinesOf(p).length) ? inheritFromBatch(p, inBatch.batch, inBatch.members) : null;
     // A loose Released card: a long press on a phone starts the Fab picking with it.
-    const longPress = !fab && !inBatch && partStage(p) === "ready";
+    const longPress = work && !fab && !inBatch && partStage(p) === "ready";
     return (
       <div
         key={p.id}
-        draggable={!fab}
+        draggable={!fab && work}
         onDragStart={(e) => {
           endPress();
           e.stopPropagation(); // a card inside an open batch moves alone
@@ -377,7 +379,7 @@ export function FabView({
           selected={selected.has(p.id)}
           onToggleSelect={pickable ? () => toggle(p.id) : undefined}
           thumbBadge={
-            inherit && (
+            inherit && work && (
               <button
                 type="button"
                 onClick={() => save([p.id], inherit)}
@@ -400,10 +402,10 @@ export function FabView({
       members={b.members}
       save={save}
       card={card}
-      draggable={!fab}
+      draggable={!fab && work}
       memberNames={memberNames}
       me={me}
-      onDropParts={fab ? undefined : (load) => run(() => moveToFabBatch(b.id, load.ids, load.batch, batchStatus(b.members)))}
+      onDropParts={fab || !work ? undefined : (load) => run(() => moveToFabBatch(b.id, load.ids, load.batch, batchStatus(b.members)))}
     />
   );
   const machinesWithParts = MACHINES.filter((m) => counts.byMachine.has(m.id));
@@ -450,7 +452,7 @@ export function FabView({
           >
             My batches
           </button>
-          <button
+          {work && <button
             onClick={() => startFab(!fab)}
             aria-pressed={fab}
             className={`press self-center rounded-xl px-7 py-3 text-lg font-bold shadow-lg transition-colors ${
@@ -458,7 +460,7 @@ export function FabView({
             }`}
           >
             {fab ? "Cancel" : "＋ Fab"}
-          </button>
+          </button>}
         </div>
 
         {error && <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">Couldn&apos;t save: {error}</p>}
@@ -493,14 +495,14 @@ export function FabView({
             </Section>
           </div>
         )}
-        <Section title="Released" count={view.ready.length} empty="No parts are waiting to be made." onDropParts={fab ? undefined : drop("ready")}>
+        <Section title="Released" count={view.ready.length} empty="No parts are waiting to be made." onDropParts={fab || !work ? undefined : drop("ready")}>
           {view.ready.map((p) => card(p))}
         </Section>
         <Section
           title="Ready to Fab"
           count={view.batches.readyToFab.length}
           empty="Drag a Released part here, or use ＋ Fab, to make a batch."
-          onDropParts={fab ? undefined : drop("readyToFab")}
+          onDropParts={fab || !work ? undefined : drop("readyToFab")}
         >
           {view.batches.readyToFab.map(batchCard)}
         </Section>
@@ -508,7 +510,7 @@ export function FabView({
           title="In process"
           count={view.batches.inProcess.length + view.inProcess.length}
           empty="Nothing is being made right now."
-          onDropParts={fab ? undefined : drop("inProcess")}
+          onDropParts={fab || !work ? undefined : drop("inProcess")}
         >
           {view.batches.inProcess.map(batchCard)}
           {view.inProcess.map((p) => card(p))}
@@ -517,7 +519,7 @@ export function FabView({
           title="Finished"
           count={view.batches.finished.length + view.finished.length}
           empty="Parts land here once all of them are made."
-          onDropParts={fab ? undefined : drop("finished")}
+          onDropParts={fab || !work ? undefined : drop("finished")}
         >
           {view.batches.finished.map(batchCard)}
           {view.finished.map((p) => card(p))}
@@ -782,7 +784,8 @@ function BatchCard({
   me: string;
   onDropParts?: (load: DragLoad) => void;
 }) {
-  const edit = useEditMode();
+  // Fab batches are Build Team work: any team renames, deletes and re-statuses them.
+  const edit = useCan("work");
   const section = useContext(OpenBatchContext);
   const [ownOpen, setOwnOpen] = useState(false);
   const open = section ? section.id === batch.id : ownOpen;
@@ -841,6 +844,7 @@ function BatchCard({
   const userBox = (
     <select
       value={madeBy}
+      disabled={!edit}
       onClick={(e) => e.stopPropagation()}
       onChange={(e) => {
         setMadeBy(e.target.value);
@@ -973,7 +977,7 @@ function BatchCard({
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2" onClick={stop}>
-            <Popover trigger={<StatusPill status={shared ?? "Mixed"} label={shared ? label(shared) : undefined} size="md" />}>
+            <Popover locked={!edit} trigger={<StatusPill status={shared ?? "Mixed"} label={shared ? label(shared) : undefined} size="md" />}>
               {(close) => (
                 <OptionList
                   options={statusOptions}
@@ -989,6 +993,7 @@ function BatchCard({
             {open && (
               <select
                 value={priority}
+                disabled={!edit}
                 onChange={(e) => {
                   const next = e.target.value as Priority;
                   setPriority(next);
@@ -1064,6 +1069,7 @@ function BatchCard({
 // An open batch's G-code: Upload G-code, or the file with Replace and Remove. Uploading moves the
 // batch's parts that haven't started to Gcoded.
 function GcodeRow({ batch }: { batch: Batch }) {
+  const work = useCan("work");
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1092,7 +1098,7 @@ function GcodeRow({ batch }: { batch: Batch }) {
             <Icon name="gcode" className="h-4 w-4 shrink-0" />
             <span className="truncate">{batch.gcode.filename}</span>
           </a>
-          <button className={btn} disabled={busy} onClick={() => input.current?.click()}>
+          {work && <><button className={btn} disabled={busy} onClick={() => input.current?.click()}>
             {busy ? "Uploading…" : "Replace"}
           </button>
           <button
@@ -1103,9 +1109,9 @@ function GcodeRow({ batch }: { batch: Batch }) {
             }}
           >
             Remove
-          </button>
+          </button></>}
         </>
-      ) : (
+      ) : !work ? null : (
         <button className={`${btn} flex items-center gap-1`} disabled={busy} onClick={() => input.current?.click()}>
           <Icon name="gcode" className="h-4 w-4" />
           {busy ? "Uploading…" : "Upload G-code"}

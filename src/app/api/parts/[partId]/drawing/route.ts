@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { db, schema } from "@/db";
 import { getMember } from "@/lib/auth";
+import { DENIED, hasCapability } from "@/lib/mode";
 import { loadDrawing, makeDrawings } from "@/lib/drawing/make";
 import { OnshapeError } from "@/lib/onshape/client";
 import { isUuid } from "@/lib/uuid";
@@ -37,6 +38,7 @@ const Edits = z.object({
 export async function PUT(request: Request, { params }: { params: Promise<{ partId: string }> }) {
   const member = await getMember();
   if (!member) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
+  if (!(await hasCapability("draw"))) return NextResponse.json({ error: DENIED.draw }, { status: 403 });
   const { partId } = await params;
   if (!isUuid(partId)) return NextResponse.json({ error: "Unknown part." }, { status: 404 });
   const edits = Edits.safeParse(await request.json().catch(() => null));
@@ -57,6 +59,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ par
   const started = Date.now();
   const member = await getMember();
   if (!member) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
+  if (!(await hasCapability("draw"))) return NextResponse.json({ error: DENIED.draw }, { status: 403 });
   const { partId } = await params;
   if (!isUuid(partId)) return NextResponse.json({ error: "Unknown part." }, { status: 404 });
   const force = z.object({ force: z.boolean().optional() }).safeParse(await request.json().catch(() => ({}))).data?.force ?? false;
@@ -85,6 +88,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ par
 export async function DELETE(_: Request, { params }: { params: Promise<{ partId: string }> }) {
   const member = await getMember();
   if (!member) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
+  if (!(await hasCapability("draw"))) return NextResponse.json({ error: DENIED.draw }, { status: 403 });
   const { partId } = await params;
   if (!isUuid(partId)) return NextResponse.json({ error: "Unknown part." }, { status: 404 });
   await db.delete(schema.partDrawings).where(eq(schema.partDrawings.partId, partId));

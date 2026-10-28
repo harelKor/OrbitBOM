@@ -18,7 +18,7 @@ import {
   machineOptions,
 } from "./options";
 import { useInventoryPopup } from "@/components/inventory/InventoryPopup";
-import { useEditMode } from "@/components/shell/ModeContext";
+import { useCan, useEditMode } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
 import { StatusPill } from "@/components/ui/StatusPill";
 export { StatusPill };
@@ -122,7 +122,8 @@ export function TextField({
   type = "text",
   empty,
 }: Props & { field: "description" | "drawingUrl"; type?: "text" | "url"; empty?: string }) {
-  const locked = !useEditMode();
+  const canDraw = useCan("draw");
+  const locked = !useEditMode() && !(field === "drawingUrl" && canDraw);
   return (
     <Popover locked={locked} trigger={part[field] ?? <Empty text={empty} />}>
       {(close) => (
@@ -142,7 +143,7 @@ export function TextField({
 
 // Materials, then the team's inventory items: picking an item ties the part to it (ref §5).
 export function MaterialField({ part, save, className }: Props & { className?: string }) {
-  const locked = !useEditMode();
+  const locked = !useCan("work");
   const { inventory } = useBom();
   const materials = useMaterials();
   const { openItem, openMaterial } = useInventoryPopup();
@@ -193,7 +194,7 @@ export function MaterialField({ part, save, className }: Props & { className?: s
 }
 
 export function QuantityField({ part, save }: Props) {
-  const locked = !useEditMode();
+  const locked = !useCan("work");
   return (
     <Popover locked={locked} trigger={part.quantity}>
       {(close) => (
@@ -213,6 +214,7 @@ export function QuantityField({ part, save }: Props) {
 
 // The status menu names each status as the part's machine calls it ("Printing" on a 3D printer).
 export function StatusField({ part, save, size = "md" }: Props & { size?: "sm" | "md" }) {
+  const locked = !useCan("work");
   const status = computeStatus(part);
   const machine = part.classification === "cots" ? null : statusMachine(part);
   const options =
@@ -222,7 +224,7 @@ export function StatusField({ part, save, size = "md" }: Props & { size?: "sm" |
         ? STATUSES.map((s) => ({ value: s.name, label: statusLabel(s.name, machine), color: s.color }))
         : STATUS_OPTIONS;
   return (
-    <Popover trigger={<StatusPill status={status} label={partStatusLabel(part)} size={size} />}>
+    <Popover locked={locked} trigger={<StatusPill status={status} label={partStatusLabel(part)} size={size} />}>
       {(close) => (
         <OptionList
           options={options}
@@ -263,7 +265,7 @@ export function PriorityField({ part, save }: Props) {
 }
 
 export function MachineField({ part, save, slot, placeholder, className }: Props & { slot: Slot; placeholder?: string; className?: string }) {
-  const locked = !useEditMode();
+  const locked = !useCan("work");
   const machineId = part[slot.key];
   const name = machineId ? (getMachine(machineId)?.name ?? machineId) : null;
   return (
@@ -310,8 +312,9 @@ export function PersonField({
 }
 
 export function NoteField({ part, save }: Props) {
+  const locked = !useCan("work");
   return (
-    <Popover trigger={part.note ? <span className="line-clamp-2 max-w-48">{part.note}</span> : <Empty text="Add a note" />}>
+    <Popover locked={locked} trigger={part.note ? <span className="line-clamp-2 max-w-48">{part.note}</span> : <Empty text="Add a note" />}>
       {(close) => (
         <InputEditor
           multiline

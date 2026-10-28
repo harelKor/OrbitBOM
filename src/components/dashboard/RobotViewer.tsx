@@ -263,7 +263,7 @@ export function RobotViewer({
                         : "The robot model shows here once its systems are linked to Onshape."
                       : edit
                         ? "Press Update 3D model to export the robot from Onshape."
-                        : "The robot model shows here once it's exported from Onshape in Edit mode."}
+                        : "The robot model shows here once it's exported from Onshape by the CAD Team."}
                 </p>
               </div>
             </>
@@ -314,7 +314,7 @@ export function RobotViewer({
               <p className="max-w-72 rounded-md bg-surface/90 p-3 text-sm text-muted">
                 {edit
                   ? "This subsystem isn't in the robot's 3D model yet. Press Update 3D model."
-                  : "This subsystem shows here once the robot's 3D model is updated in Edit mode."}
+                  : "This subsystem shows here once the robot's 3D model is updated by the CAD Team."}
               </p>
             </div>
           )}

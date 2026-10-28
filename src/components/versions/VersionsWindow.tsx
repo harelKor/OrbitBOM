@@ -4,7 +4,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { revertToVersion } from "@/app/(app)/versions-actions";
 import { Dialog } from "@/components/Dialog";
-import { useEditMode } from "@/components/shell/ModeContext";
+import { useCan } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
 import type { VersionEntry, VersionList } from "@/lib/versions/history";
 import { afterPartsUpdate } from "./afterUpdate";
@@ -22,7 +22,7 @@ export function VersionsWindow({ systemId, list, thumbs }: { systemId: string; l
   const [expanded, setExpanded] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
   const [pending, start] = useTransition();
-  const edit = useEditMode();
+  const edit = useCan("sync");
   const router = useRouter();
   const params = useSearchParams();
   const pathname = usePathname();

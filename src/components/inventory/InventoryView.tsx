@@ -637,7 +637,7 @@ export function InventoryView({
         <div className="space-y-4">
           {items.length === 0 && (
             <div className="panel p-6 text-sm text-muted">
-              No inventory yet. In Edit mode, add items one by one or import a
+              No inventory yet. Add items one by one or import a
               spreadsheet.
             </div>
           )}

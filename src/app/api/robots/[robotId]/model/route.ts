@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getMember } from "@/lib/auth";
+import { DENIED, hasCapability } from "@/lib/mode";
 import { buildRobotModel, robotModel } from "@/lib/model/build";
 import { OnshapeError } from "@/lib/onshape/client";
 import { StorageNotConfiguredError } from "@/lib/storage/r2";
@@ -24,6 +25,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ robotId: 
   const started = Date.now();
   const member = await getMember();
   if (!member) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
+  if (!(await hasCapability("sync"))) return NextResponse.json({ error: DENIED.sync }, { status: 403 });
   const { robotId } = await params;
   if (!isUuid(robotId)) return NextResponse.json({ error: "Unknown robot." }, { status: 404 });
   if (!member.onshapeConnected) {

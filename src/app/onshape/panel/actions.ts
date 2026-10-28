@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { syncSystem } from "@/app/(app)/parts-actions";
-import { requireMember } from "@/lib/auth";
+import { requireCapability } from "@/lib/mode";
 import { onshapeUrl, parseOnshapeUrl } from "@/lib/onshape/url";
 
 const linkForm = z.object({
@@ -16,7 +16,7 @@ const linkForm = z.object({
 
 // Creates a system for the assembly the panel is open on, pulls its BOM, and shows it.
 export async function linkAssembly(assemblyUrl: string, _: { error?: string } | undefined, formData: FormData) {
-  const member = await requireMember();
+  const member = await requireCapability("sync");
   const ref = parseOnshapeUrl(assemblyUrl);
   const parsed = linkForm.safeParse(Object.fromEntries(formData));
   if (!ref?.eid) return { error: "Open this panel from an Onshape assembly." };
@@ -32,7 +32,7 @@ export async function linkAssembly(assemblyUrl: string, _: { error?: string } | 
 
 // Makes the assembly the panel is open on the robot's main assembly: the 3D view's source.
 export async function linkMainAssembly(assemblyUrl: string, _: { error?: string } | undefined, formData: FormData) {
-  await requireMember();
+  await requireCapability("sync");
   const ref = parseOnshapeUrl(assemblyUrl);
   const robotId = z.uuid().safeParse(formData.get("robotId"));
   if (!ref?.eid) return { error: "Open this panel from an Onshape assembly." };

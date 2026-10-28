@@ -69,7 +69,7 @@ export function Shell({
   };
 
   return (
-    <ModeProvider initial={mode}>
+    <ModeProvider initial={mode} isAdmin={member.isAdmin}>
       <FilterProvider>
         <MaterialColorsProvider initial={materialColors} materials={materials}>
           <InventoryPopupProvider>

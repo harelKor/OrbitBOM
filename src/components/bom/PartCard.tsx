@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { getMachine } from "@/config/machines";
 import { IN_PROCESS_STATUS, READY_STATUS, fabStage, isFabFinished } from "@/lib/fab";
 import { deleteManualPart, unmergeParts } from "@/app/(app)/parts-actions";
-import { useEditMode } from "@/components/shell/ModeContext";
+import { useCan, usePermissions } from "@/components/shell/ModeContext";
 import { computeStatus, partStatusLabel } from "@/lib/status";
 import { statusTint } from "@/components/ui/statusTint";
 import { CheckBadge, CheckIcon } from "@/components/ui/CheckBadge";
@@ -78,7 +78,8 @@ function MadePartCard({
   post?: { done: number; onChange: (n: number) => void };
   thumbBadge?: React.ReactNode; // To Fab, inside a batch: a control at the very start of the thumbnail's top-left
 }) {
-  const edit = useEditMode();
+  // Edit: name, type and the manual part menu. Work (any team): status, amount, material, counters.
+  const { canManage: edit, canWork: work } = usePermissions();
   const { versions } = useBom();
   const machines = SLOTS.filter((s) => part[s.key]);
   // The process being worked on: the first slot whose done counter hasn't reached the quantity.
@@ -93,7 +94,7 @@ function MadePartCard({
     if (counted && left > 0) save({ add: { [counted.done]: -1 } });
     else save({ status: finished ? IN_PROCESS_STATUS : READY_STATUS });
   };
-  const fabControls = fabCounter && part.classification !== "cots" && machines.length > 0;
+  const fabControls = fabCounter && work && part.classification !== "cots" && machines.length > 0;
   const format = cadFormat(part);
   const showDetails = usePartDetails(part, save);
   const openDetails = (e: React.MouseEvent) => {
@@ -150,14 +151,14 @@ function MadePartCard({
           )}
           {!fabCounter && !post && (
             <span className="rounded-full bg-[#111318]/85 px-2 py-0.5 text-[11px] font-bold text-white tabular-nums">
-              {edit ? <QuantityField part={part} save={save} /> : `×${part.quantity}`}
+              {work ? <QuantityField part={part} save={save} /> : `×${part.quantity}`}
             </span>
           )}
           {!fabCounter && !post && (edit ? <TypeField part={part} save={save} badge /> : <TypeBadge part={part} />)}
           <MergedBadge part={part} />
         </div>
         <div className="absolute top-2 right-2 flex gap-1.5">
-          {onCheck ? (
+          {onCheck && work ? (
             <button
               type="button"
               onClick={onCheck}
@@ -182,7 +183,7 @@ function MadePartCard({
           )}
         </div>
         {part.note && <NoteCloud note={part.note} raised={fabControls || !!post} />}
-        {post && (
+        {post && work && (
           <div className="absolute inset-x-2 bottom-2 flex items-center justify-between gap-2">
             <button type="button" onClick={() => post.onChange(post.done - 1)} disabled={post.done === 0} className="overlay-btn text-lg font-bold disabled:opacity-30" aria-label="One less post-processed">
               −
@@ -231,7 +232,7 @@ function MadePartCard({
         )}
       </div>
       {fabCounter ? (
-        <FabFooter part={part} save={save} current={current ?? machines.at(-1)} editStatus={fabStatusEditable} />
+        <FabFooter part={part} save={save} current={current ?? machines.at(-1)} editStatus={fabStatusEditable && work} />
       ) : (
         <div className="flex min-w-0 flex-col gap-1.5 px-2.5 py-2">
           <div className="flex min-w-0 items-center gap-1">
@@ -245,7 +246,7 @@ function MadePartCard({
 
           <div className="flex min-w-0 flex-wrap items-center gap-1">
             <StatusField part={part} save={save} size="sm" />
-            {!post && (part.material || part.inventoryItemId || edit) && <MaterialField part={part} save={save} className={pill} />}
+            {!post && (part.material || part.inventoryItemId || work) && <MaterialField part={part} save={save} className={pill} />}
             {!post && machines.map((slot) => (
               <span key={slot.key} className="contents">
                 <span className="text-[10px] text-faint">→</span>
@@ -352,21 +353,22 @@ export function DownloadMenu({ part, format }: { part: CardPart; format: ExportF
   );
 }
 
-// How many are done at the current machine, with − / + in both modes (it moves the status).
+// How many are done at the current machine, with − / + for any team (it moves the status).
 export function DoneCounter({ part, save, slot }: { part: CardPart; save: SaveFn; slot: (typeof SLOTS)[number] }) {
+  const work = useCan("work");
   const done = part[slot.done];
   const step = (d: number) => save({ [slot.done]: Math.max(0, done + d) });
   return (
     <span className="ml-auto inline-flex shrink-0 items-center rounded-full border border-line-strong bg-ink text-[11px] tabular-nums">
-      <button onClick={() => step(-1)} disabled={done === 0} className="press px-1.5 text-muted hover:text-fg disabled:opacity-30" aria-label="One less done">
+      {work && <button onClick={() => step(-1)} disabled={done === 0} className="press px-1.5 text-muted hover:text-fg disabled:opacity-30" aria-label="One less done">
         −
-      </button>
-      <span className="font-semibold text-fg" title={`Done at ${getMachine(part[slot.key]!)?.name}`}>
+      </button>}
+      <span className={`font-semibold text-fg ${work ? "" : "px-1.5"}`} title={`Done at ${getMachine(part[slot.key]!)?.name}`}>
         {done}/{part.quantity}
       </span>
-      <button onClick={() => step(1)} className="press px-1.5 text-muted hover:text-fg" aria-label="One more done">
+      {work && <button onClick={() => step(1)} className="press px-1.5 text-muted hover:text-fg" aria-label="One more done">
         +
-      </button>
+      </button>}
     </span>
   );
 }

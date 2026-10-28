@@ -100,7 +100,7 @@ export function CommitWindow({
             </button>
           </form>
         ) : (
-          <p className="rounded-md border border-line bg-raised px-3 py-2 text-sm text-muted">Switch to Edit to commit these changes to the BOM.</p>
+          <p className="rounded-md border border-line bg-raised px-3 py-2 text-sm text-muted">The CAD Team commits these changes to the BOM.</p>
         )}
         {error && <p className="text-sm text-rose-600">{error}</p>}
 

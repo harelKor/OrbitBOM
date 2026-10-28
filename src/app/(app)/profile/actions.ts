@@ -46,6 +46,6 @@ export async function renameSelf(name: string): Promise<{ error?: string }> {
 export async function setOwnTeam(team: Team | null, systemId: string | null) {
   const member = await requireMember();
   await saveTeam(member.id, team, systemId);
-  revalidatePath("/profile");
-  revalidatePath("/members");
+  // The team is the member's mode, so every page's controls change with it.
+  revalidatePath("/", "layout");
 }

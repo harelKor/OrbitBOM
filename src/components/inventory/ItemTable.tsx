@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { Popover } from "@/components/bom/Popover";
 import { Icon } from "@/components/ui/Icon";
 import { setItemLocation, setSeasonNeed } from "@/app/(app)/inventory/actions";
-import { useEditMode } from "@/components/shell/ModeContext";
+import { useCan, useEditMode } from "@/components/shell/ModeContext";
 import { CheckBadge } from "@/components/ui/CheckBadge";
 import { getCategory } from "@/lib/inventory/categories";
 import {
@@ -60,6 +60,7 @@ export function ItemTable({
 }) {
   const { openItem } = useInventoryPopup();
   const edit = useEditMode();
+  const work = useCan("work");
   const stop = (e: React.SyntheticEvent) => e.stopPropagation();
   return (
     <SheetViewport id="inventory">
@@ -145,7 +146,7 @@ export function ItemTable({
                 )}
                 <td onClick={stop}>
                   <span className="flex items-center justify-center gap-1.5">
-                    <button
+                    {work && (<button
                       type="button"
                       onClick={() => onStep(item.id, -1)}
                       disabled={item.inStock < 1}
@@ -153,7 +154,7 @@ export function ItemTable({
                       aria-label={`One less ${item.name}`}
                     >
                       −
-                    </button>
+                    </button>)}
                     <span
                       className={`min-w-10 text-center font-mono font-semibold tabular-nums ${gap > 0 ? "text-rose-500" : ""}`}
                     >
@@ -174,14 +175,14 @@ export function ItemTable({
                         max={item.inStock}
                       />
                     )}
-                    <button
+                    {work && (<button
                       type="button"
                       onClick={() => onStep(item.id, 1)}
                       className="press flex h-8 w-8 items-center justify-center rounded-md bg-emerald-500 font-bold text-white hover:bg-emerald-400 active:scale-[0.98]"
                       aria-label={`One more ${item.name}`}
                     >
                       +
-                    </button>
+                    </button>)}
                   </span>
                 </td>
                 <td>
@@ -264,6 +265,7 @@ function LocationCell({
 
 // Needed for Season, typed in the row. Blank or 0 clears it; saves on Enter or leaving the box.
 function SeasonCell({ item }: { item: Item }) {
+  const work = useCan("work");
   const current = hasSeasonNeed(item)
     ? formatStock(item.seasonNeed!, item.sheet)
     : "";
@@ -288,7 +290,7 @@ function SeasonCell({ item }: { item: Item }) {
         if (e.key === "Enter") e.currentTarget.blur();
         if (e.key === "Escape") setText(null);
       }}
-      disabled={pending}
+      disabled={pending || !work}
       inputMode={item.sheet ? "text" : "numeric"}
       placeholder="—"
       title={error ?? undefined}

@@ -12,7 +12,7 @@ import { textOn } from "@/components/bom/options";
 import { Popover } from "@/components/bom/Popover";
 import { partIds, partTitle, type CardPart } from "@/components/bom/types";
 import { VersionTag } from "@/components/versions/VersionTag";
-import { useEditMode } from "@/components/shell/ModeContext";
+import { useCan, useEditMode } from "@/components/shell/ModeContext";
 import { CheckBadge } from "@/components/ui/CheckBadge";
 import { Icon } from "@/components/ui/Icon";
 import { cotsTotal, siteOf } from "@/lib/cots";
@@ -64,6 +64,7 @@ export function CotsCard({
   origin?: "General" | "Robot";
 }) {
   const edit = useEditMode();
+  const work = useCan("work");
   const { versions } = useBom();
   const showDetails = usePartDetails(part, save);
   const order = variant === "order";
@@ -136,7 +137,7 @@ export function CotsCard({
         <div className="flex h-full w-full items-center justify-center">{thumb}</div>
         <div className="absolute top-2 left-2 flex items-center gap-1">
           <span className={`rounded-full bg-[#111318]/85 font-bold text-white tabular-nums ${order ? "px-3 py-1 text-base" : "px-2 py-0.5 text-[11px]"}`}>
-            {edit && !order ? <QuantityField part={part} save={save} /> : `×${part.quantity}`}
+            {work && !order ? <QuantityField part={part} save={save} /> : `×${part.quantity}`}
           </span>
           {!order && (edit ? <TypeField part={part} save={save} badge /> : <TypeBadge part={part} />)}
           {!group && <MergedBadge part={part} />}
@@ -174,7 +175,7 @@ export function CotsCard({
         )}
         {!order && (
           <>
-            <button
+            {work && <button
               type="button"
               onClick={() => addStock(-1)}
               disabled={onShelf ? shelf.inStock === 0 : stock === 0}
@@ -182,7 +183,7 @@ export function CotsCard({
               aria-label="One less in stock"
             >
               −
-            </button>
+            </button>}
             <span
               className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-[#111318]/80 px-2 py-0.5 font-mono text-[11px] font-semibold whitespace-nowrap text-white tabular-nums"
               title={onShelf ? (wholeShelf ? `${shelf.itemName} on the shelf / everything needed` : `Covered by ${shelf.itemName} on the shelf`) : "In stock"}
@@ -191,14 +192,14 @@ export function CotsCard({
                 ? `${formatStock(shelf.inStock)} / ${formatStock(shelf.total || part.quantity)} on shelf`
                 : `${stock}/${part.quantity} ${onShelf ? "on shelf" : "in stock"}`}
             </span>
-            <button
+            {work && <button
               type="button"
               onClick={() => addStock(1)}
               className="press absolute right-2 bottom-2 flex h-9 w-9 items-center justify-center rounded-md bg-emerald-500 text-lg font-bold text-white shadow-sm hover:bg-emerald-400"
               aria-label="One more in stock"
             >
               +
-            </button>
+            </button>}
           </>
         )}
       </div>
@@ -221,7 +222,7 @@ export function CotsCard({
             )}
           </div>
           {links.length > 1 && <LinksMenu links={links} />}
-          <LinksEditor part={part} save={save} />
+          {work && <LinksEditor part={part} save={save} />}
           {edit && !order && !group && <EditMenu part={part} />}
         </div>
         {showSystem &&
@@ -393,10 +394,12 @@ export function OrderStatusButton({ part, save, compact = false }: { part: CardP
   const color = getCotsStatus(status)?.color ?? "#cbd5e1";
   const [sendingBack, setSendingBack] = useState(false);
   const [reason, setReason] = useState("");
+  const locked = !useCan("work");
   const option = "press flex w-full items-center justify-center rounded-xl border-2 border-black/25 py-3 text-base font-bold shadow-sm";
   return (
     <>
       <Popover
+        locked={locked}
         hideCaret
         triggerClassName={compact ? "" : "w-full"}
         trigger={

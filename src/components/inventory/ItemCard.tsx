@@ -15,7 +15,7 @@ import { softStatusTint } from "@/components/ui/statusTint";
 import { getCategory } from "@/lib/inventory/categories";
 import { hasSeasonNeed, missing, neededFor, orderHref, standing, type NeedView, type Standing } from "@/lib/inventory/season";
 import { SHEET_PIECES, formatStock, parseStock } from "@/lib/inventory/stock";
-import { useEditMode } from "@/components/shell/ModeContext";
+import { useCan, useEditMode } from "@/components/shell/ModeContext";
 import { useInventoryPopup } from "./InventoryPopup";
 import { LocationPicker } from "./LocationPicker";
 import type { InvCategory, Item, Location } from "./types";
@@ -116,6 +116,7 @@ export function ItemCard({
   onStep: (delta: number) => void;
   onCount: (amount: number) => void;
 }) {
+  const work = useCan("work");
   const { openItem } = useInventoryPopup();
   const category = getCategory(categories, item.category);
   const short = item.usage?.short ?? 0;
@@ -234,7 +235,7 @@ export function ItemCard({
       </div>
 
       <div className="card-overlay -mt-12 flex items-center justify-between gap-2 px-2 pb-2" onClick={stop}>
-        <button
+        {work && (<button
           type="button"
           onClick={() => onStep(-1)}
           disabled={item.inStock < 1}
@@ -242,7 +243,7 @@ export function ItemCard({
           aria-label={item.sheet ? "One sheet less" : "One less"}
         >
           −
-        </button>
+        </button>)}
         <span className="z-10 flex items-center gap-1 rounded-full bg-[#111318]/80 px-2.5 py-1 font-mono text-xs font-semibold whitespace-nowrap text-white tabular-nums">
           <span className={gap > 0 ? "text-rose-300" : undefined}>
             <CountBox item={item} onCount={onCount} />
@@ -250,14 +251,14 @@ export function ItemCard({
           {needed != null && <span className="text-white/70">/ {formatStock(needed, item.sheet)}</span>}
           {item.sheet && <PieceStepper onStep={onStep} max={item.inStock} />}
         </span>
-        <button
+        {work && (<button
           type="button"
           onClick={() => onStep(1)}
           className="press z-10 flex h-11 w-11 items-center justify-center rounded-md bg-emerald-500 text-xl font-bold text-white shadow-sm hover:bg-emerald-400"
           aria-label={item.sheet ? "One sheet more" : "One more"}
         >
           +
-        </button>
+        </button>)}
       </div>
 
       <div className="flex min-w-0 flex-col gap-1.5 p-3 pt-2">
@@ -310,11 +311,13 @@ export function ItemPrice({ price, suffix = "" }: { price: number; suffix?: stri
 // The cart on a card's picture. Short with nothing on order: sends what's missing to Released.
 // On order: orange, and opens that COTS card.
 export function CartButton({ item, gap }: { item: Item; gap: number }) {
+  const work = useCan("work");
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const order = item.openOrder;
   const label = order ? `${order.status}: open it on the COTS page` : `Send ${formatStock(gap, false)} to Released`;
+  if (!order && !work) return null;
   return (
     <button
       type="button"
@@ -342,12 +345,14 @@ export function CartButton({ item, gap }: { item: Item; gap: number }) {
 // The count on a card or in the item window: tap it to type the real count. Saving moves the
 // stock by the difference (a "Counted" move), so the history shows "Set to 12 (was 9)".
 export function CountBox({ item, onCount, big = false }: { item: Pick<Item, "inStock" | "sheet">; onCount: (amount: number) => void; big?: boolean }) {
+  const work = useCan("work");
   const [text, setText] = useState<string | null>(null);
   const done = () => {
     const n = text === null ? null : parseStock(text, item.sheet);
     if (n != null && n >= 0 && Math.abs(n - item.inStock) > 1e-9) onCount(n);
     setText(null);
   };
+  if (!work) return <span className={big ? "text-2xl" : ""}>{formatStock(item.inStock, item.sheet)}</span>;
   if (text === null)
     return (
       <button
@@ -384,6 +389,8 @@ export function CountBox({ item, onCount, big = false }: { item: Pick<Item, "inS
 
 // A sheet item's pieces: add or take ¼ ⅓ ½ ⅔ ¾ of a sheet.
 export function PieceStepper({ onStep, max }: { onStep: (delta: number) => void; max: number }) {
+  const work = useCan("work");
+  if (!work) return null;
   return (
     <Popover hideCaret align="right" triggerClassName="ml-1 rounded-full bg-white/20 px-1.5 text-[10px] hover:bg-white/30" trigger={<span>pieces ▾</span>}>
       {(close) => (

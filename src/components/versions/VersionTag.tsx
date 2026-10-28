@@ -5,7 +5,7 @@ import { useState, useTransition } from "react";
 import { commitChanges, updateToLatest } from "@/app/(app)/versions-actions";
 import { Popover } from "@/components/bom/Popover";
 import { Dialog } from "@/components/Dialog";
-import { useEditMode } from "@/components/shell/ModeContext";
+import { useCan } from "@/components/shell/ModeContext";
 import { CheckIcon } from "@/components/ui/CheckBadge";
 import { Icon } from "@/components/ui/Icon";
 import type { OutdatedTag as OutdatedInfo, PartVersionTag, VersionTags } from "@/lib/versions/tags";
@@ -70,7 +70,7 @@ function OutdatedTag({ partId, tag, tags, outdated }: { partId: string; tag: Par
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const edit = useEditMode();
+  const edit = useCan("sync");
   const router = useRouter();
   const update = () =>
     start(async () => {
@@ -125,7 +125,7 @@ function OutdatedTag({ partId, tag, tags, outdated }: { partId: string; tag: Par
               {pending ? "Updating…" : "Update"}
             </button>
           ) : (
-            <p className="text-xs text-subtle">Switch to Edit to update this part.</p>
+            <p className="text-xs text-subtle">The CAD Team updates parts from Onshape.</p>
           )}
         </div>
       </Dialog>

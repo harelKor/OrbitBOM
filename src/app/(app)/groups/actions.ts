@@ -7,7 +7,7 @@ import { getMachine } from "@/config/machines";
 import { PRIORITIES } from "@/config/priorities";
 import { STATUSES, type StatusName } from "@/config/statuses";
 import { db, schema } from "@/db";
-import { requireMember } from "@/lib/auth";
+import { requireCapability } from "@/lib/mode";
 import { READY_STATUS, READY_STATUSES, fabBatchName, machinesOf } from "@/lib/fab";
 import { analyseMissing } from "@/lib/groups/missing";
 import { applyPartChanges } from "@/lib/parts/apply";
@@ -51,7 +51,7 @@ const COLOR = /^#[0-9a-f]{6}$/i;
 
 // "Group parts" (ref §3): a new group needs two or more parts.
 export async function createGroup(robotId: string, name: string, color: string, partIds: string[]): Promise<ActionResult> {
-  await requireMember();
+  await requireCapability("work");
   if (!isUuid(robotId)) return { error: "Unknown robot." };
   if (!name.trim()) return { error: "Give the group a name." };
   const rows = await robotParts(robotId, partIds);
@@ -68,7 +68,7 @@ export async function createGroup(robotId: string, name: string, color: string, 
 }
 
 export async function addToGroup(groupId: string, partIds: string[]): Promise<ActionResult> {
-  await requireMember();
+  await requireCapability("work");
   if (!isUuid(groupId)) return { error: "Unknown group." };
   const [group] = await db.select().from(partGroups).where(eq(partGroups.id, groupId));
   if (!group) return { error: "Unknown group." };
@@ -83,7 +83,7 @@ export async function addToGroup(groupId: string, partIds: string[]): Promise<Ac
 }
 
 export async function removeFromGroup(groupId: string, partId: string) {
-  await requireMember();
+  await requireCapability("work");
   if (!isUuid(groupId) || !isUuid(partId)) return;
   await db.delete(groupMembers).where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.partId, partId)));
   refresh();
@@ -104,7 +104,7 @@ const groupDetails = z.object({
 });
 
 export async function updateGroup(groupId: string, details: unknown): Promise<ActionResult> {
-  await requireMember();
+  await requireCapability("work");
   if (!isUuid(groupId)) return { error: "Unknown group." };
   const parsed = groupDetails.safeParse(details);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
@@ -114,7 +114,7 @@ export async function updateGroup(groupId: string, details: unknown): Promise<Ac
 }
 
 export async function deleteGroup(groupId: string) {
-  await requireMember();
+  await requireCapability("work");
   if (!isUuid(groupId)) return;
   const keys = await fileKeysForGroup(groupId);
   await db.delete(partGroups).where(eq(partGroups.id, groupId));
@@ -126,7 +126,7 @@ const statusNames = STATUSES.map((s) => s.name) as string[];
 
 // "Set status for all": every member still on the BOM, in one history batch.
 export async function setGroupStatus(groupId: string, status: string): Promise<ActionResult> {
-  const member = await requireMember();
+  const member = await requireCapability("work");
   if (!isUuid(groupId) || !statusNames.includes(status)) return { error: "Unknown status." };
   const rows = await db
     .select({ id: parts.id })
@@ -144,7 +144,7 @@ export async function setGroupStatus(groupId: string, status: string): Promise<A
 
 // "Recover": re-link missing members to the live part with the same name in their system.
 export async function recoverMembers(groupId: string): Promise<ActionResult> {
-  await requireMember();
+  await requireCapability("work");
   if (!isUuid(groupId)) return { error: "Unknown group." };
   const rows = await db
     .select({ part: parts, systemName: systems.name })
@@ -206,7 +206,7 @@ export async function createFabBatch(
   customName?: string,
 ): Promise<ActionResult> {
   if (status && !statusNames.includes(status)) return { error: "Unknown status." };
-  const member = await requireMember();
+  const member = await requireCapability("work");
   if (!isUuid(robotId)) return { error: "Unknown robot." };
   const machine = getMachine(machineId);
   if (!machine) return { error: "Pick the machine for this fab." };
@@ -247,7 +247,7 @@ export async function createFabBatch(
 // Dragging cards onto a fab batch on To Fab: they join it (leaving the batch they came from) and
 // take its status.
 export async function moveToFabBatch(groupId: string, partIds: string[], fromGroupId: string | null, status: StatusName | null): Promise<ActionResult> {
-  const member = await requireMember();
+  const member = await requireCapability("work");
   if (!isUuid(groupId) || (fromGroupId && !isUuid(fromGroupId))) return { error: "Unknown fab." };
   if (status && !statusNames.includes(status)) return { error: "Unknown status." };
   const [group] = await db.select().from(partGroups).where(eq(partGroups.id, groupId));

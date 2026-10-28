@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { COTS_RELEASED } from "@/config/cots";
 import { db, schema } from "@/db";
 import { requireMember } from "@/lib/auth";
+import { partChangesCapability } from "@/components/shell/mode";
+import { requireCapability } from "@/lib/mode";
 import { applyEachPartChanges } from "@/lib/parts/apply";
 import { partChangesSchema, type PartChanges } from "@/lib/parts/changes";
 import { isUuid } from "@/lib/uuid";
@@ -21,6 +23,7 @@ export async function updateCotsParts(edits: { id: string; changes: unknown }[])
     if (!r.success) return { error: r.error.issues[0].message };
     parsed.push({ id: e.id, changes: r.data });
   }
+  for (const e of parsed) await requireCapability(partChangesCapability(e.changes));
   await applyEachPartChanges(parsed, { memberId: member.id, via: "ui" });
   revalidatePath("/cots", "layout");
   revalidatePath("/robots", "layout");
@@ -30,7 +33,7 @@ export async function updateCotsParts(edits: { id: string; changes: unknown }[])
 // The search box on Released: an inventory item becomes a COTS card linked to it, in a robot's
 // section (no system) or in General (no robot), ready to be ordered.
 export async function addCotsFromItem(itemId: string, robotId: string | null): Promise<ActionResult> {
-  const member = await requireMember();
+  const member = await requireCapability("manage");
   if (!isUuid(itemId) || (robotId !== null && !isUuid(robotId))) return { error: "Unknown item." };
   const [item] = await db.select().from(schema.inventoryItems).where(eq(schema.inventoryItems.id, itemId));
   if (!item) return { error: "That item was deleted." };
@@ -59,7 +62,7 @@ export async function addCotsFromItem(itemId: string, robotId: string | null): P
 
 // The X on a card in an In Stock section: it leaves those sections (the part itself stays).
 export async function clearInStock(ids: string[]): Promise<ActionResult> {
-  await requireMember();
+  await requireCapability("work");
   if (!ids.length || ids.some((id) => !isUuid(id))) return { error: "Unknown part." };
   await db.update(schema.parts).set({ cotsClearedAt: new Date() }).where(inArray(schema.parts.id, ids));
   revalidatePath("/cots", "layout");

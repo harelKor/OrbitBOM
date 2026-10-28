@@ -10,6 +10,7 @@ import { guessCategory, isCategoryGroup } from "@/config/inventory";
 import { vendorOfUrl } from "@/config/vendors";
 import { db, schema } from "@/db";
 import { requireMember } from "@/lib/auth";
+import { requireCapability } from "@/lib/mode";
 import { listBomTargets } from "@/lib/data/robots";
 import { listCategories } from "@/lib/data/categories";
 import { inventoryItemDetail, listInventory, robotInventory, usageOf } from "@/lib/data/inventory";
@@ -72,7 +73,8 @@ export type ItemInput = z.input<typeof itemInput>;
 // move. Returns the item's id. A product picture is saved once, then parts with the same product
 // link or Onshape part are auto-linked (into To Review).
 export async function saveItem(itemId: string | null, input: ItemInput): Promise<ActionResult & { id?: string }> {
-  const member = await requireMember();
+  // Any team adds items; editing one is Edit mode's.
+  const member = await requireCapability(itemId ? "manage" : "work");
   const parsed = itemInput.safeParse(input);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   if (itemId && !isUuid(itemId)) return { error: "Unknown item." };
@@ -133,7 +135,7 @@ const linkMessage = (n: number) => `${n} BOM part${n === 1 ? " looks" : "s look"
 
 // The item window's "Find BOM parts": auto-link for this one item.
 export async function findBomParts(itemId: string): Promise<ActionResult> {
-  const member = await requireMember();
+  const member = await requireCapability("work");
   if (!isUuid(itemId)) return { error: "Unknown item." };
   const n = await autoLink({ itemIds: [itemId] }, { memberId: member.id, via: "ui" });
   refresh();
@@ -142,7 +144,7 @@ export async function findBomParts(itemId: string): Promise<ActionResult> {
 
 // Step 1 of a photo: a presigned PUT for the browser's shrunk JPEG.
 export async function startPhotoUpload(): Promise<{ url: string; key: string } | { error: string }> {
-  await requireMember();
+  await requireCapability("work");
   try {
     const key = `inventory/photos/${randomUUID()}.jpg`;
     return { url: await presignUpload(key), key };
@@ -154,7 +156,7 @@ export async function startPhotoUpload(): Promise<{ url: string; key: string } |
 
 // Step 2, from the item window: the uploaded photo becomes the item's picture.
 export async function setItemPhoto(itemId: string, key: string): Promise<ActionResult> {
-  const member = await requireMember();
+  const member = await requireCapability("manage");
   if (!isUuid(itemId) || !PHOTO_KEY.test(key)) return { error: "Unknown photo." };
   const error = await applyPhoto(itemId, key, { memberId: member.id, via: "ui" });
   refresh();
@@ -172,7 +174,7 @@ async function applyPhoto(itemId: string, key: string, ctx: { memberId: string; 
 }
 
 export async function deleteItem(itemId: string) {
-  await requireMember();
+  await requireCapability("manage");
   if (!isUuid(itemId)) return;
   await db.delete(inventoryItems).where(eq(inventoryItems.id, itemId));
   refresh();
@@ -180,7 +182,7 @@ export async function deleteItem(itemId: string) {
 
 // The Inventory page's Delete mode.
 export async function bulkDeleteItems(itemIds: string[]): Promise<ActionResult> {
-  await requireMember();
+  await requireCapability("manage");
   if (!itemIds.length || itemIds.some((id) => !isUuid(id))) return { error: "Unknown item." };
   await db.delete(inventoryItems).where(inArray(inventoryItems.id, itemIds));
   refresh();
@@ -190,7 +192,7 @@ export async function bulkDeleteItems(itemIds: string[]): Promise<ActionResult> 
 // The Inventory page's Move mode: a new category and / or location for every selected item.
 // A field left out stays as it is; null clears the location.
 export async function bulkMoveItems(itemIds: string[], target: { category?: string | null; locationId?: string | null }): Promise<ActionResult> {
-  const member = await requireMember();
+  const member = await requireCapability("manage");
   if (!itemIds.length || itemIds.some((id) => !isUuid(id))) return { error: "Unknown item." };
   const values: { category?: string | null; locationId?: string | null } = {};
   if (target.category !== undefined) {
@@ -226,14 +228,14 @@ export async function setItemLocation(itemId: string, locationId: string | null)
 
 // The item window's condition pill in Edit mode; null clears it.
 export async function setItemCondition(itemId: string, conditionId: string | null): Promise<ActionResult> {
-  const member = await requireMember();
+  const member = await requireCapability("manage");
   if (!isUuid(itemId) || (conditionId !== null && !isUuid(conditionId))) return { error: "Unknown condition." };
   return saveFields(itemId, () => ({ conditionId }), member.id);
 }
 
 // The item window's specs in Edit mode: only the category's own fields are kept, blanks dropped.
 export async function setItemSpecs(itemId: string, specs: Record<string, string>): Promise<ActionResult> {
-  const member = await requireMember();
+  const member = await requireCapability("manage");
   if (!isUuid(itemId)) return { error: "Unknown item." };
   const cats = await listCategories();
   return saveFields(
@@ -249,7 +251,7 @@ export async function setItemSpecs(itemId: string, specs: Record<string, string>
 // The ✕ next to a "Buy at" link in Edit mode: the link goes; with no link left the price goes too.
 // Linked COTS cards show the same.
 export async function unlinkItemProduct(itemId: string, url: string): Promise<ActionResult> {
-  const member = await requireMember();
+  const member = await requireCapability("manage");
   if (!isUuid(itemId)) return { error: "Unknown item." };
   return saveFields(
     itemId,
@@ -292,7 +294,7 @@ const productSchema = z.object({
   imageUrl: z.string().nullable().optional(),
 });
 export async function linkItemToProduct(itemId: string, product: z.input<typeof productSchema>): Promise<ActionResult> {
-  const member = await requireMember();
+  const member = await requireCapability("manage");
   if (!isUuid(itemId)) return { error: "Unknown item." };
   const parsed = productSchema.safeParse(product);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
@@ -318,7 +320,7 @@ export async function linkItemToProduct(itemId: string, product: z.input<typeof 
 
 // The − / + stepper (a sheet item also steps by pieces of a sheet).
 export async function adjustStock(itemId: string, delta: number): Promise<ActionResult> {
-  const member = await requireMember();
+  const member = await requireCapability("work");
   if (!isUuid(itemId) || !Number.isFinite(delta) || !delta) return { error: "Unknown item." };
   await db.transaction((tx) => moveStock(tx, { itemId, delta, reason: delta > 0 ? "received" : "used" }, { memberId: member.id, via: "ui" }));
   refresh();
@@ -327,7 +329,7 @@ export async function adjustStock(itemId: string, delta: number): Promise<Action
 
 // The count typed on a card or in the item window: a "Counted" move of the difference.
 export async function countStock(itemId: string, amount: number): Promise<ActionResult> {
-  const member = await requireMember();
+  const member = await requireCapability("work");
   if (!isUuid(itemId) || !Number.isFinite(amount) || amount < 0) return { error: "Type a count of 0 or more." };
   await db.transaction((tx) => setStock(tx, itemId, amount, { memberId: member.id, via: "ui" }));
   refresh();
@@ -336,7 +338,7 @@ export async function countStock(itemId: string, amount: number): Promise<Action
 
 // The item window's title in Edit mode: a new name, kept in the item's history.
 export async function setItemName(itemId: string, name: string): Promise<ActionResult> {
-  const member = await requireMember();
+  const member = await requireCapability("manage");
   if (!isUuid(itemId)) return { error: "Unknown item." };
   const value = name.replace(/\s+/g, " ").trim().slice(0, 200);
   if (!value) return { error: "An item needs a name." };
@@ -345,7 +347,7 @@ export async function setItemName(itemId: string, name: string): Promise<ActionR
 
 // The item window's Notes box: blank clears the note.
 export async function setItemNote(itemId: string, note: string): Promise<ActionResult> {
-  const member = await requireMember();
+  const member = await requireCapability("work");
   if (!isUuid(itemId)) return { error: "Unknown item." };
   const value = note.trim().slice(0, 2000) || null;
   const [item] = await db.select().from(inventoryItems).where(eq(inventoryItems.id, itemId));
@@ -361,7 +363,7 @@ export async function setItemNote(itemId: string, note: string): Promise<ActionR
 
 // The item window's "Needed for season": blank or 0 clears it (the item leaves the Season view).
 export async function setSeasonNeed(itemId: string, text: string): Promise<ActionResult> {
-  const member = await requireMember();
+  const member = await requireCapability("work");
   if (!isUuid(itemId)) return { error: "Unknown item." };
   const [item] = await db.select().from(inventoryItems).where(eq(inventoryItems.id, itemId));
   if (!item) return { error: "That item was deleted." };
@@ -383,7 +385,7 @@ export async function setSeasonNeed(itemId: string, text: string): Promise<Actio
 // List, what the shelf still misses (up to its quantity) goes on the shelf.
 // List its whole quantity goes on the shelf.
 export async function sendItemToReleased(itemId: string): Promise<ActionResult & { href?: string }> {
-  const member = await requireMember();
+  const member = await requireCapability("work");
   if (!isUuid(itemId)) return { error: "Unknown item." };
   const { items } = await listInventory();
   const item = items.find((i) => i.id === itemId);
@@ -429,7 +431,7 @@ export async function sendItemToReleased(itemId: string): Promise<ActionResult &
 // A linked COTS card's − / +: the units go on or come off its item's shelf. Like the card's own
 // count, reaching the quantity sets the part In Stock (parts the new unit now fully covers).
 export async function stepShelfStock(partIds: string[], delta: number): Promise<ActionResult> {
-  const member = await requireMember();
+  const member = await requireCapability("work");
   if (!partIds.length || partIds.some((id) => !isUuid(id)) || (delta !== 1 && delta !== -1)) return { error: "Unknown part." };
   const rows = await db.select().from(parts).where(inArray(parts.id, partIds));
   const itemId = rows.find((p) => p.inventoryItemId)?.inventoryItemId;
@@ -450,7 +452,7 @@ export async function stepShelfStock(partIds: string[], delta: number): Promise<
 // "Add to inventory" on a COTS card with no item: a new item named after the part, with its
 // product link and price, and the part (or every part the card stands for) linked to it.
 export async function createItemFromPart(partIds: string[]): Promise<ActionResult> {
-  const member = await requireMember();
+  const member = await requireCapability("work");
   if (!partIds.length || partIds.some((id) => !isUuid(id))) return { error: "Unknown part." };
   const rows = await db.select().from(parts).where(inArray(parts.id, partIds));
   const [first] = rows;
@@ -470,7 +472,7 @@ export async function createItemFromPart(partIds: string[]): Promise<ActionResul
 // The robot inventory page's button: this robot's COTS parts the shelf can't cover, still in
 // Not Started or Released, go to the Order List.
 export async function sendShortagesToOrder(robotId: string): Promise<ActionResult> {
-  const member = await requireMember();
+  const member = await requireCapability("work");
   if (!isUuid(robotId)) return { error: "Unknown robot." };
   const items = await robotInventory(robotId);
   const short = items.flatMap((i) => (i.sheet ? [] : i.parts.filter((p) => p.covered < p.quantity && (p.status === COTS_DEFAULT_STATUS || p.status === COTS_RELEASED))));
@@ -485,7 +487,7 @@ export async function sendShortagesToOrder(robotId: string): Promise<ActionResul
 
 // "Add to a BOM": the item becomes an ordinary COTS part tied to the item.
 export async function addItemToBom(itemId: string, systemId: string, quantity: number): Promise<ActionResult> {
-  const member = await requireMember();
+  const member = await requireCapability("manage");
   if (!isUuid(itemId) || !isUuid(systemId)) return { error: "Choose a robot and a system." };
   if (!Number.isInteger(quantity) || quantity < 1) return { error: "Quantity must be at least 1." };
   const [item] = await db.select().from(inventoryItems).where(eq(inventoryItems.id, itemId));
@@ -509,7 +511,7 @@ export async function addItemToBom(itemId: string, systemId: string, quantity: n
 // ---------- Conditions and locations (editable from the toolbar, like FRCBOM) ----------
 
 export async function addCondition(label: string, color: string): Promise<ActionResult> {
-  await requireMember();
+  await requireCapability("manage");
   label = label.trim();
   if (!label) return { error: "Condition name is required." };
   if (!/^#[0-9a-f]{6}$/i.test(color)) return { error: "Pick a color." };
@@ -519,13 +521,13 @@ export async function addCondition(label: string, color: string): Promise<Action
 }
 
 export async function deleteCondition(id: string) {
-  await requireMember();
+  await requireCapability("manage");
   if (isUuid(id)) await db.delete(inventoryConditions).where(eq(inventoryConditions.id, id));
   refresh();
 }
 
 export async function addLocation(name: string): Promise<ActionResult> {
-  await requireMember();
+  await requireCapability("manage");
   name = name.trim();
   if (!name) return { error: "Location name is required." };
   await db.insert(inventoryLocations).values({ name }).onConflictDoNothing();
@@ -534,7 +536,7 @@ export async function addLocation(name: string): Promise<ActionResult> {
 }
 
 export async function deleteLocation(id: string) {
-  await requireMember();
+  await requireCapability("manage");
   if (isUuid(id)) await db.delete(inventoryLocations).where(eq(inventoryLocations.id, id));
   refresh();
 }
@@ -542,7 +544,7 @@ export async function deleteLocation(id: string) {
 // Edit mode's workshop map: a dragged pin saves its spot (map units, 0..1000 x 0..560); null takes
 // the location off the map.
 export async function setLocationSpot(id: string, spot: { x: number; y: number } | null): Promise<ActionResult> {
-  await requireMember();
+  await requireCapability("manage");
   if (!isUuid(id)) return { error: "Unknown location." };
   const ok = (v: number, max: number) => Number.isFinite(v) && v >= 0 && v <= max;
   if (spot && !(ok(spot.x, 1000) && ok(spot.y, 560))) return { error: "That spot is off the map." };
@@ -576,7 +578,7 @@ const importRows = z
 // A row whose name and category match an item already here updates it (stock as a counted move,
 // and only the fields the row fills in); every other row is a new item.
 export async function importItems(rows: ImportRow[]): Promise<ActionResult> {
-  const member = await requireMember();
+  const member = await requireCapability("manage");
   const parsed = importRows.safeParse(rows);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const key = (s: string) => s.toLowerCase();
@@ -707,7 +709,7 @@ function importCategory(row: { name: string; groupPath: string[] }, cats: InvCat
 
 // The item page's Possible matches: link COTS parts to this item.
 export async function linkPartsToItem(itemId: string, partIds: string[]): Promise<ActionResult> {
-  const member = await requireMember();
+  const member = await requireCapability("manage");
   if (!isUuid(itemId) || !partIds.length || partIds.some((id) => !isUuid(id))) return { error: "Unknown part." };
   const { changed } = await applyEachPartChanges(partIds.map((id) => ({ id, changes: { inventoryItemId: itemId } })), { memberId: member.id, via: "ui" });
   refresh();
@@ -738,7 +740,7 @@ const categorySchema = z.object({
 
 // Saves a category as edited in place. Field ids are kept, so values already on items stay theirs.
 export async function saveCategory(cat: InvCategory): Promise<ActionResult> {
-  await requireMember();
+  await requireCapability("manage");
   const parsed = categorySchema.safeParse(cat);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const { id, ...values } = parsed.data;
@@ -750,7 +752,7 @@ export async function saveCategory(cat: InvCategory): Promise<ActionResult> {
 }
 
 export async function addCategory(label: string): Promise<ActionResult & { id?: string }> {
-  await requireMember();
+  await requireCapability("manage");
   label = label.trim();
   if (!label) return { error: "A category needs a name." };
   const cats = await listCategories();
@@ -763,7 +765,7 @@ export async function addCategory(label: string): Promise<ActionResult & { id?: 
 
 // A category with items can't go; its items would lose their fields.
 export async function deleteCategory(id: string): Promise<ActionResult> {
-  await requireMember();
+  await requireCapability("manage");
   const { items } = await listInventory();
   const n = items.filter((i) => i.category === id).length;
   if (n) return { error: `${n} item${n === 1 ? " is" : "s are"} in this category. Move ${n === 1 ? "it" : "them"} first.` };
@@ -773,7 +775,7 @@ export async function deleteCategory(id: string): Promise<ActionResult> {
 }
 
 export async function moveCategory(id: string, by: -1 | 1): Promise<ActionResult> {
-  await requireMember();
+  await requireCapability("manage");
   const cats = await listCategories();
   const from = cats.findIndex((c) => c.id === id);
   const to = from + by;

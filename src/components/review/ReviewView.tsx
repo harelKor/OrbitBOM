@@ -20,7 +20,7 @@ import { useInventoryPopup } from "@/components/inventory/InventoryPopup";
 import { matchesTopBar } from "@/components/bom/filter";
 import { partTitle, type CardPart } from "@/components/bom/types";
 import { useFilters } from "@/components/shell/FilterContext";
-import { useEditMode } from "@/components/shell/ModeContext";
+import { useCan } from "@/components/shell/ModeContext";
 import { Chevron } from "@/components/ui/Chevron";
 import { Icon } from "@/components/ui/Icon";
 import { statusTint } from "@/components/ui/statusTint";
@@ -155,7 +155,8 @@ const machinesOf = (p: CardPart) => [p.preProcess, p.process1, p.process2].filte
 // puts the old values back (also for a whole batch or subsystem). Both work in View mode too,
 // since reviewing is what the page is for; Suggest setup (the site's rules) is Edit mode only.
 export function ReviewView({ robotId, items, inventory }: { robotId: string; items: ReviewItem[]; inventory: InventoryReview[] }) {
-  const edit = useEditMode();
+  // The CAD Team (and Edit) reviews; everyone else sees what waits here, read only.
+  const edit = useCan("review");
   const { filters } = useFilters();
   const [pending, startTransition] = useTransition();
   const [note, setNote] = useState<ActionResult | null>(null);
@@ -277,7 +278,9 @@ function BulkButtons({
   filtered?: boolean;
   undoes?: string;
 }) {
+  const canReview = useCan("review");
   const word = filtered ? "shown" : "all";
+  if (!canReview) return null;
   return (
     // Inside a <summary>: keep a click on the buttons from folding the box.
     <div className="flex gap-2" onClick={(e) => e.preventDefault()}>
@@ -365,6 +368,7 @@ const pill = "max-w-full truncate rounded-full border px-2 py-0.5 text-[11px] fo
 
 // The card's X: takes the request off To Review, neither approving nor rejecting it.
 function DismissButton({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
+  if (!useCan("review")) return null;
   return (
     <button
       type="button"
@@ -381,6 +385,7 @@ function DismissButton({ onClick, disabled }: { onClick: () => void; disabled?: 
 
 // A click anywhere but its buttons opens the part's details window, as it is now (with the change).
 function ReviewCard({ item, disabled, onDecide }: { item: ReviewItem; disabled: boolean; onDecide: (approve: Decision) => void }) {
+  const canReview = useCan("review");
   const { part } = item;
   const fields = ORDER.filter((f) => f in item.changes);
   const [, startSave] = useTransition();
@@ -450,14 +455,14 @@ function ReviewCard({ item, disabled, onDecide }: { item: ReviewItem; disabled: 
           </p>
         )}
 
-        <div className="mt-auto flex gap-2 pt-1">
+        {canReview && <div className="mt-auto flex gap-2 pt-1">
           <button type="button" onClick={() => onDecide(true)} disabled={disabled} className="btn-primary flex-1 justify-center">
             Approve
           </button>
           <button type="button" onClick={() => onDecide(false)} disabled={disabled} className="btn flex-1 justify-center">
             Reject
           </button>
-        </div>
+        </div>}
       </div>
     </div>
   );
@@ -537,6 +542,7 @@ function InventoryCategory({ label, reviews, onDecide }: { label: string; review
 
 // An item's card opens the item's window (its values now, with the change) from anywhere but its buttons.
 function InventoryCard({ review, onDecide }: { review: InventoryReview; onDecide: (approve: Decision) => void }) {
+  const canReview = useCan("review");
   const { openItem } = useInventoryPopup();
   const open = () => review.itemId && openItem(review.itemId);
   return (
@@ -576,6 +582,7 @@ function InventoryCard({ review, onDecide }: { review: InventoryReview; onDecide
         {when(review.at)}
         {review.memberName ? `, ${review.memberName}` : ""}
       </div>
+{canReview && (
       <div className="mt-auto flex gap-2 pt-1">
         <button type="button" onClick={() => onDecide(true)} className="btn-primary flex-1 justify-center">
           Approve
@@ -584,6 +591,7 @@ function InventoryCard({ review, onDecide }: { review: InventoryReview; onDecide
           Reject
         </button>
       </div>
+      )}
     </div>
   );
 }

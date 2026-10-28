@@ -10,7 +10,7 @@ import { PartModel, type StageView } from "@/components/dashboard/PartStage";
 import { DrawingEditor } from "@/components/drawing/DrawingEditor";
 import { AddBox } from "@/components/inventory/AddBox";
 import { useInventoryPopup } from "@/components/inventory/InventoryPopup";
-import { EditScope, useEditMode } from "@/components/shell/ModeContext";
+import { useCan, useEditMode } from "@/components/shell/ModeContext";
 import { formatPrice, useCurrency } from "@/components/cots/currency";
 import { ShelfPill } from "@/components/cots/ShelfPill";
 import { Icon } from "@/components/ui/Icon";
@@ -25,10 +25,12 @@ type Stage = StageView | "thumb";
 
 // Everything about one part in a roomy window, opened by a click anywhere on its card. On the
 // left the live 3D part (Locate in robot and the 2D thumbnail on it) and the notes right under it;
-// on the right its properties, its inventory link and, under the inventory search, the drawing. Its fields edit in either page
-// mode; deleting a manual part still needs Edit mode.
+// on the right its properties, its inventory link and, under the inventory search, the drawing. Its
+// fields edit by the member's mode (fields.tsx): any team sets status, material and machines, the
+// CAD Team makes drawings, and Edit mode does the rest (name, type, deleting a manual part).
 export function PartDetails({ part, save, onClose }: { part: CardPart; save: SaveFn; onClose: () => void }) {
   const edit = useEditMode();
+  const canDraw = useCan("draw");
   const { robotId } = useBom();
   const [stage, setStage] = useState<Stage>(part.isManual ? "thumb" : "part");
   const [, startTransition] = useTransition();
@@ -40,7 +42,6 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
 
   return (
     <Dialog open onClose={onClose} title={title} width="w-[min(74rem,calc(100vw-2rem))]">
-      <EditScope>
         <div className="grid gap-5 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
           <div className="space-y-3">
             <div className="relative aspect-[4/3] overflow-hidden rounded-xl border border-line">
@@ -139,7 +140,7 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
               </Row>
             </dl>
             <InventoryLink part={part} save={save} />
-            {!cots && (
+            {!cots && canDraw && (
               <div className="flex flex-wrap items-center gap-2">
                 {!part.isManual && <DrawingAction partId={ownerPartId(part)} hasDrawing={!!part.hasDrawing} />}
                 <DrawingFileButton part={part} />
@@ -147,7 +148,6 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
             )}
           </div>
         </div>
-      </EditScope>
     </Dialog>
   );
 }
@@ -164,6 +164,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 // The part's note, always open to type in: it saves when the box loses focus. The card shows it
 // as the yellow cloud on its thumbnail.
 function NotesBox({ part, save }: { part: CardPart; save: SaveFn }) {
+  const work = useCan("work");
   const [text, setText] = useState(part.note ?? "");
   const [focused, setFocused] = useState(false);
   const [seen, setSeen] = useState(part.note);
@@ -181,13 +182,14 @@ function NotesBox({ part, save }: { part: CardPart; save: SaveFn }) {
       <textarea
         value={text}
         rows={2}
+        readOnly={!work}
         onChange={(e) => setText(e.target.value)}
         onFocus={() => setFocused(true)}
         onBlur={() => {
           setFocused(false);
           if (text.trim() !== (part.note ?? "").trim()) save({ note: text.trim() });
         }}
-        placeholder="Add a note for whoever makes or orders this part…"
+        placeholder={work ? "Add a note for whoever makes or orders this part…" : "No note"}
         className="mt-0.5 block w-full resize-y bg-transparent text-sm leading-snug font-semibold text-fg outline-none placeholder:font-normal placeholder:text-amber-700/50 dark:placeholder:text-amber-300/40"
       />
     </label>
@@ -278,6 +280,7 @@ export function DrawingFileButton({ part, compact = false }: { part: CardPart; c
 // The inventory item the part is linked to, and the Inventory page's search box to link it: an
 // item on the shelf, a store product or a custom item, added and linked in one go.
 function InventoryLink({ part, save }: { part: CardPart; save: SaveFn }) {
+  const work = useCan("work");
   const { inventory } = useBom();
   const { openItem } = useInventoryPopup();
   const [q, setQ] = useState("");
@@ -306,12 +309,15 @@ function InventoryLink({ part, save }: { part: CardPart; save: SaveFn }) {
           <button type="button" className="btn h-8 text-xs" onClick={() => openItem(itemId)}>
             Open
           </button>
-          <button type="button" className="btn h-8 text-xs" onClick={() => save({ inventoryItemId: null })}>
-            Unlink
-          </button>
+          {work && (
+            <button type="button" className="btn h-8 text-xs" onClick={() => save({ inventoryItemId: null })}>
+              Unlink
+            </button>
+          )}
         </div>
       )}
-      <AddBox
+      {!itemId && !work && <p className="text-sm text-subtle">Not linked to an inventory item.</p>}
+      {work && <AddBox
         q={q}
         setQ={setQ}
         items={data?.items ?? []}
@@ -322,7 +328,7 @@ function InventoryLink({ part, save }: { part: CardPart; save: SaveFn }) {
         placeholder={itemId ? "Link another item: search, paste a link or add one" : "Link an inventory item: search, paste a link or add one"}
         onPick={(id) => save({ inventoryItemId: id })}
         floating
-      />
+      />}
     </section>
   );
 }

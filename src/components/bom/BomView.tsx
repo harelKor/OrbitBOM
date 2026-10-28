@@ -8,7 +8,7 @@ import { computeStatus } from "@/lib/status";
 import { updatePart, updateParts } from "@/app/(app)/parts-actions";
 import { BulkEditBar } from "./BulkEditBar";
 import { useFilters } from "@/components/shell/FilterContext";
-import { useEditMode } from "@/components/shell/ModeContext";
+import { usePermissions } from "@/components/shell/ModeContext";
 import { useEscape } from "@/components/ui/useEscape";
 import { DrawingsBar } from "./DrawingsBar";
 import { MergeBar, type MergeInfo } from "./MergeBar";
@@ -67,7 +67,7 @@ export function BomView({
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const edit = useEditMode();
+  const { canManage: edit, canWork, canDraw } = usePermissions();
   // View mode always shows cards; Table and Kanban are Edit-mode views.
   const view = edit ? (searchParams.get("view") as View) || "card" : "card";
   const setView = (v: View) => {
@@ -135,7 +135,7 @@ export function BomView({
   const [status, setStatus] = useState("");
   const [chosenMode, setMode] = useState<"bulk" | "merge" | "drawings" | "release" | null>(null);
   // Leaving Edit mode ends Bulk edit and Merge; Release works in both modes.
-  const mode = edit || chosenMode === "release" ? chosenMode : null;
+  const mode = edit || (chosenMode === "release" && canWork) || (chosenMode === "drawings" && canDraw) ? chosenMode : null;
   const selecting = mode !== null;
   const [selected, setSelected] = useState<Set<string>>(new Set());
   useEscape(selecting, () => {
@@ -226,7 +226,7 @@ export function BomView({
               <option key={s.name}>{s.name}</option>
             ))}
           </select>
-          {allowRelease && view !== "kanban" && (
+          {allowRelease && canWork && view !== "kanban" && (
             <button className={mode === "release" ? "btn-primary" : "btn"} onClick={() => setMode((m) => (m === "release" ? null : "release"))}>
               Release
             </button>
@@ -241,7 +241,7 @@ export function BomView({
               Merge parts
             </button>
           )}
-          {edit && mergeSystemId && view !== "kanban" && (
+          {canDraw && mergeSystemId && view !== "kanban" && (
             <button className={mode === "drawings" ? "btn-primary" : "btn"} onClick={() => setMode((m) => (m === "drawings" ? null : "drawings"))}>
               Drawings
             </button>

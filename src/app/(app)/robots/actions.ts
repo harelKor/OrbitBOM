@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db, schema } from "@/db";
-import { requireAdmin, requireMember } from "@/lib/auth";
+import { requireAdmin } from "@/lib/auth";
+import { requireCapability } from "@/lib/mode";
 import { deleteObjects, fileKeysFor } from "@/lib/storage/cleanup";
 import { deleteRobotModel } from "@/lib/model/build";
 import { onshapeUrl, parseOnshapeUrl } from "@/lib/onshape/url";
@@ -32,7 +33,7 @@ const robotForm = z.object({
 
 
 export async function createRobot(_: FormState, formData: FormData): Promise<FormState> {
-  await requireMember();
+  await requireCapability("manage");
   const parsed = robotForm.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const [robot] = await db
@@ -54,7 +55,7 @@ const robotDetails = z.object({
 });
 
 export async function updateRobot(robotId: string, formData: FormData): Promise<FormState> {
-  await requireMember();
+  await requireCapability("manage");
   const parsed = robotDetails.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const { mainAssemblyUrl, ...data } = parsed.data;
@@ -67,7 +68,7 @@ export async function updateRobot(robotId: string, formData: FormData): Promise<
 }
 
 export async function setRobotArchived(robotId: string, archived: boolean) {
-  await requireMember();
+  await requireCapability("manage");
   await db.update(schema.robots).set({ archived }).where(eq(schema.robots.id, robotId));
   revalidatePath("/", "layout");
 }
@@ -92,7 +93,7 @@ export async function createSystem(
   _: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  await requireMember();
+  await requireCapability("manage");
   const parsed = systemForm.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   // Subassembly and part-studio discovery runs once Onshape is connected (sync milestone).
@@ -109,7 +110,7 @@ export async function createSystem(
 }
 
 export async function updateSystem(systemId: string, _: FormState, formData: FormData): Promise<FormState> {
-  await requireMember();
+  await requireCapability("manage");
   const parsed = systemForm.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const assemblyUrl = normaliseUrl(parsed.data.assemblyUrl);

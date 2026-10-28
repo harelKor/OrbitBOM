@@ -97,7 +97,7 @@ export function PartModel({
             ...e,
             [view]:
               body.error ??
-              (view === "locate" ? "The robot's 3D model isn't exported yet. Press Update 3D model on the robot page in Edit mode." : `The 3D preview failed (${res.status}).`),
+              (view === "locate" ? "The robot's 3D model isn't exported yet. Press Update 3D model on the robot page (CAD Team)." : `The 3D preview failed (${res.status}).`),
           }));
       })
       .catch(() => !cancelled && setErrors((e) => ({ ...e, [view]: "The 3D preview couldn't load. Try again." })));

@@ -9,7 +9,7 @@ import { BomProvider, useBom } from "@/components/bom/BomContext";
 import { PartStage, type StageView } from "@/components/dashboard/PartStage";
 import { AddBox } from "@/components/inventory/AddBox";
 import type { Condition, InvCategory, Item, Location } from "@/components/inventory/types";
-import { useEditMode } from "@/components/shell/ModeContext";
+import { useCan, useEditMode } from "@/components/shell/ModeContext";
 import { useEscape } from "@/components/ui/useEscape";
 import { statusTint } from "@/components/ui/statusTint";
 import { StatusField } from "@/components/bom/fields";
@@ -77,6 +77,7 @@ export function CotsView({
   shelf?: CotsShelf;
 }) {
   const edit = useEditMode();
+  const work = useCan("work");
   const [optimistic, addOptimistic] = useOptimistic(parts, (state, edits: Edit[]) =>
     state.map((p) => {
       const e = edits.find((x) => x.id === p.id);
@@ -210,7 +211,7 @@ export function CotsView({
   };
 
   // On Released, cards slide between the robot sections and the In order list section.
-  const draggable = list === "released" && !ordering;
+  const draggable = work && list === "released" && !ordering;
   const dragProps = (ids: string[], from: DragLoad["from"]) =>
     draggable
       ? {
@@ -226,7 +227,9 @@ export function CotsView({
     save(load.ids.map((id) => ({ id, changes: to === "ordered" ? { status: COTS_ORDERED, cotsSentBack: null } : { status: COTS_RELEASED } })));
   };
 
-  const renderRows = (rows: Row[], { small = false, from = "list", clearable = false }: { small?: boolean; from?: DragLoad["from"]; clearable?: boolean } = {}) =>
+  const renderRows = (rows: Row[], { small = false, from = "list", clearable: canClear = false }: { small?: boolean; from?: DragLoad["from"]; clearable?: boolean } = {}) => {
+    const clearable = canClear && work;
+    return (
     view === "table" ? (
       <CotsTable rows={rows} saveRow={saveRow} struck={struck} orderList={list === "order" && !small} onClear={clearable ? clear : undefined} />
     ) : (
@@ -264,7 +267,8 @@ export function CotsView({
           );
         })}
       </div>
-    );
+    ));
+  };
 
   // A list split by General and robot, each with a small heading (for the small sections and
   // the vendor sections).
@@ -339,7 +343,7 @@ export function CotsView({
         >
           Vendors
         </button>
-        <button
+        {work && <button
           type="button"
           onClick={() => toggleSelecting("status")}
           aria-pressed={selecting === "status"}
@@ -348,7 +352,7 @@ export function CotsView({
           }`}
         >
           Status
-        </button>
+        </button>}
         {list === "order" &&
           ORDERING.map((s) => {
             const color = getCotsStatus(s)?.color ?? "#94a3b8";
@@ -388,7 +392,7 @@ export function CotsView({
                 <AddBoxSlot shelf={shelf} onPick={addItem} />
               </>
             )}
-            <button
+            {work && <button
               onClick={() => toggleSelecting("order")}
               aria-pressed={selecting === "order"}
               className={`press shrink-0 rounded-xl px-7 py-3 text-lg font-bold shadow-lg transition-colors active:scale-[0.98] ${
@@ -396,7 +400,7 @@ export function CotsView({
               }`}
             >
               {selecting === "order" ? "Cancel" : "🛒 Send to order"}
-            </button>
+            </button>}
           </div>
         )}
       </div>

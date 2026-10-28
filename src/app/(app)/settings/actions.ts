@@ -3,7 +3,7 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db, schema } from "@/db";
-import { requireMember } from "@/lib/auth";
+import { requireCapability } from "@/lib/mode";
 import { listMaterials } from "@/lib/data/materials";
 import { applyEachPartChanges } from "@/lib/parts/apply";
 import { isUuid } from "@/lib/uuid";
@@ -32,7 +32,7 @@ const whereIs = (groups: { name: string; materials: string[] }[], material: stri
 // ---------- Material groups ----------
 
 export async function addMaterialGroup(name: string): Promise<ActionResult> {
-  await requireMember();
+  await requireCapability("manage");
   name = cleanName(name);
   if (!name) return { error: "A group needs a name." };
   if (name.length > 60) return { error: "Keep the name under 60 characters." };
@@ -48,7 +48,7 @@ export async function addMaterialGroup(name: string): Promise<ActionResult> {
 
 // A group's name also keys its 3D colour and the inventory fields that offer its materials.
 export async function renameMaterialGroup(from: string, to: string): Promise<ActionResult> {
-  await requireMember();
+  await requireCapability("manage");
   to = cleanName(to);
   if (!to) return { error: "A group needs a name." };
   if (to === from) return {};
@@ -68,7 +68,7 @@ export async function renameMaterialGroup(from: string, to: string): Promise<Act
 
 // Parts keep the material names they have; they just aren't on the list any more.
 export async function deleteMaterialGroup(name: string): Promise<ActionResult> {
-  await requireMember();
+  await requireCapability("manage");
   await db.transaction(async (tx) => {
     const groups = await lockedGroups(tx);
     await tx.delete(materialGroups).where(eq(materialGroups.name, name));
@@ -82,7 +82,7 @@ export async function deleteMaterialGroup(name: string): Promise<ActionResult> {
 }
 
 export async function moveMaterialGroup(name: string, by: -1 | 1): Promise<ActionResult> {
-  await requireMember();
+  await requireCapability("manage");
   await db.transaction(async (tx) => {
     const order = [...(await lockedGroups(tx))];
     const from = order.findIndex((g) => g.name === name);
@@ -114,7 +114,7 @@ async function renameInCategoryFields(tx: Tx, change: (groups: string[]) => stri
 // ---------- Materials ----------
 
 export async function addMaterial(group: string, name: string): Promise<ActionResult> {
-  await requireMember();
+  await requireCapability("manage");
   name = cleanName(name);
   if (!name) return { error: "Type the material's name." };
   if (name.length > 80) return { error: "Keep the name under 80 characters." };
@@ -132,7 +132,7 @@ export async function addMaterial(group: string, name: string): Promise<ActionRe
 }
 
 export async function removeMaterial(group: string, name: string): Promise<ActionResult> {
-  await requireMember();
+  await requireCapability("manage");
   await db.transaction(async (tx) => {
     const g = (await lockedGroups(tx)).find((x) => x.name === group);
     if (g) await tx.update(materialGroups).set({ materials: g.materials.filter((m) => m !== name), updatedAt: new Date() }).where(eq(materialGroups.name, group));
@@ -144,7 +144,7 @@ export async function removeMaterial(group: string, name: string): Promise<Actio
 // Renames a material on the list; with `updateUses`, the BOM parts and inventory items that use
 // the old name take the new one too (parts through part history, so Undo can put them back).
 export async function renameMaterial(group: string, from: string, to: string, updateUses: boolean): Promise<ActionResult> {
-  const member = await requireMember();
+  const member = await requireCapability("manage");
   to = cleanName(to);
   if (!to) return { error: "Type the material's name." };
   if (to === from) return {};
@@ -190,7 +190,7 @@ async function renameInItems(from: string, to: string): Promise<number> {
 
 // A group's colour in the 3D viewer's Material mode; null puts the default back.
 export async function setMaterialColor(group: string, color: string | null): Promise<ActionResult> {
-  const member = await requireMember();
+  const member = await requireCapability("manage");
   if (color === null) {
     await db.delete(materialColors).where(eq(materialColors.category, group));
   } else {
@@ -207,7 +207,7 @@ export async function setMaterialColor(group: string, color: string | null): Pro
 // ---------- Inventory locations and conditions ----------
 
 export async function renameLocation(id: string, name: string): Promise<ActionResult> {
-  await requireMember();
+  await requireCapability("manage");
   name = cleanName(name);
   if (!isUuid(id)) return { error: "Unknown location." };
   if (!name) return { error: "Location name is required." };
@@ -219,7 +219,7 @@ export async function renameLocation(id: string, name: string): Promise<ActionRe
 }
 
 export async function updateCondition(id: string, values: { label?: string; color?: string }): Promise<ActionResult> {
-  await requireMember();
+  await requireCapability("manage");
   if (!isUuid(id)) return { error: "Unknown condition." };
   const set: { label?: string; color?: string } = {};
   if (values.label !== undefined) {

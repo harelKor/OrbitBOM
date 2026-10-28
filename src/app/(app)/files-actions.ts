@@ -4,7 +4,8 @@ import { and, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { PART_FILE_TYPES, type PartFileType } from "@/config/fileTypes";
 import { db, schema } from "@/db";
-import { requireAdmin, requireMember } from "@/lib/auth";
+import { requireAdmin } from "@/lib/auth";
+import { requireCapability } from "@/lib/mode";
 import { READY_STATUSES } from "@/lib/fab";
 import { applyPartChanges } from "@/lib/parts/apply";
 import { computeStatus } from "@/lib/status";
@@ -29,8 +30,9 @@ export type UploadStart = { error: string } | { url: string; key: string };
 
 // Step 1 of an upload: a presigned PUT the browser sends the file to.
 export async function startUpload(owner: FileOwner, type: string, filename: string, size: number): Promise<UploadStart> {
-  await requireMember();
   if (!validOwner(owner) || !isType(type)) return { error: "Unknown file type." };
+  // A part's files (its drawing) are the CAD Team's; a fab batch's G-code is any team's.
+  await requireCapability(owner.kind === "part" ? "draw" : "work");
   if (!filename.trim()) return { error: "The file has no name." };
   if (size > MAX_BYTES) return { error: "Files can be at most 200 MB." };
   const table = owner.kind === "part" ? parts : partGroups;
@@ -53,8 +55,9 @@ export async function finishUpload(
   filename: string,
   contentType: string,
 ): Promise<{ error?: string }> {
-  const member = await requireMember();
-  if (!validOwner(owner) || !isType(type) || !key.startsWith(`${prefix(owner, type)}/`)) {
+  if (!validOwner(owner)) return { error: "Unknown upload." };
+  const member = await requireCapability(owner.kind === "part" ? "draw" : "work");
+  if (!isType(type) || !key.startsWith(`${prefix(owner, type)}/`)) {
     return { error: "Unknown upload." };
   }
   if (!(await objectExists(key))) return { error: "The upload didn't reach file storage. Try again." };
@@ -109,7 +112,7 @@ async function markGcoded(groupId: string, memberId: string) {
 
 // Remove a fab batch's G-code (any member: it's the shop's working file, not a part's record).
 export async function removeBatchGcode(groupId: string): Promise<{ error?: string }> {
-  await requireMember();
+  await requireCapability("work");
   if (!isUuid(groupId)) return { error: "Unknown fab." };
   const removed = await db
     .delete(groupFiles)

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getMember } from "@/lib/auth";
+import { DENIED, hasCapability } from "@/lib/mode";
 import { makeDrawings } from "@/lib/drawing/make";
 import { OnshapeError } from "@/lib/onshape/client";
 import { isUuid } from "@/lib/uuid";
@@ -17,6 +18,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ sys
   const started = Date.now();
   const member = await getMember();
   if (!member) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
+  if (!(await hasCapability("draw"))) return NextResponse.json({ error: DENIED.draw }, { status: 403 });
   const { systemId } = await params;
   if (!isUuid(systemId)) return NextResponse.json({ error: "Unknown system." }, { status: 404 });
   const body = Body.safeParse(await request.json().catch(() => null));

@@ -19,7 +19,8 @@ import { DONE_STATUSES, STATUSES } from "@/config/statuses";
 import { robotModelBuiltAt } from "@/lib/model/build";
 import { getRobot } from "@/lib/data/robots";
 import { fabStage } from "@/lib/fab";
-import { isEditMode } from "@/lib/mode";
+import { can } from "@/components/shell/mode";
+import { getMode } from "@/lib/mode";
 import { isUuid } from "@/lib/uuid";
 import { listRobotReviews } from "@/lib/review/review";
 import { processBreakdown } from "@/lib/stats";
@@ -34,14 +35,16 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
   const { robotId } = await params;
   if (!isUuid(robotId)) notFound();
   // Everything in one parallel round: the page waits for the slowest query, not their sum.
-  const member = await requireMember();
-  const build = member.team === "build";
-  const [data, parts, inventoryNames, inventory, edit, modelBuiltAt, reviews, actions, sync, stored, groups] = await Promise.all([
+  // The effective mode, so an admin previewing Build sees the Build Team layout.
+  const [member, mode] = await Promise.all([requireMember(), getMode()]);
+  const build = mode === "build";
+  // Update 3D model is an Onshape sync: CAD Team and Edit.
+  const edit = can(mode, "sync");
+  const [data, parts, inventoryNames, inventory, modelBuiltAt, reviews, actions, sync, stored, groups] = await Promise.all([
     getRobot(robotId),
     listRobotParts(robotId),
     listInventoryNames(),
     robotInventory(robotId),
-    isEditMode(),
     robotModelBuiltAt(robotId),
     listRobotReviews(robotId),
     listRecentActions({ robotId, memberId: member.id }),
