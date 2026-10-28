@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useId, useLayoutEffect, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
+import { createContext, useContext, useId, useLayoutEffect, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
 import { flushSync } from "react-dom";
 import { MACHINES, getMachine } from "@/config/machines";
 import type { Priority } from "@/config/priorities";
@@ -652,6 +652,7 @@ function Section({
 }) {
   const [over, setOver] = useState(false);
   const [open, setOpen] = useState(defaultOpen);
+  const [openBatch, setOpenBatch] = useState<string | null>(null);
   const dropProps = onDropParts && {
     onDragOver: (e: React.DragEvent) => {
       if (!e.dataTransfer.types.includes(DRAG_TYPE)) return;
@@ -681,7 +682,9 @@ function Section({
       {!open ? null : count === 0 && empty ? (
         <p className={`text-sm text-subtle ${onDropParts ? "rounded-lg border border-dashed border-line py-6 text-center" : ""}`}>{empty}</p>
       ) : (
-        <div className="card-grid" style={{ "--card-min": small ? "150px" : "200px" } as React.CSSProperties}>{children}</div>
+        <OpenBatchContext.Provider value={{ id: openBatch, set: setOpenBatch }}>
+          <div className="card-grid" style={{ "--card-min": small ? "150px" : "200px" } as React.CSSProperties}>{children}</div>
+        </OpenBatchContext.Provider>
       )}
     </section>
   );
@@ -702,26 +705,26 @@ function collageGrid(count: number): React.CSSProperties {
   return { gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))` };
 }
 
-// Where an open batch sits in its section's grid: the column it was in when closed, spanning as
-// many columns to the right as it has parts (and room for).
-type Place = { start: number; span: number; colWidth: number };
+// One open batch per section: opening a batch closes the one that was open.
+const OpenBatchContext = createContext<{ id: string | null; set: (id: string | null) => void } | null>(null);
+
+// How wide an open batch is: as many of the section grid's columns as it has parts, at least two
+// so its header has room, never more than the grid has. The grid places it (span only): in the
+// slot it had when closed if it fits there, else at the start of the next row.
+type Place = { span: number; colWidth: number };
 function measurePlace(el: HTMLElement | null, parts: number): Place | null {
   const grid = el?.parentElement;
   if (!el || !grid) return null;
-  const style = getComputedStyle(grid);
-  const cols = style.gridTemplateColumns.split(" ").filter(Boolean);
+  const cols = getComputedStyle(grid).gridTemplateColumns.split(" ").filter(Boolean);
   const colWidth = parseFloat(cols[0]) || 0;
-  const step = colWidth + (parseFloat(style.columnGap) || 0);
-  const index = step ? Math.round((el.getBoundingClientRect().left - grid.getBoundingClientRect().left) / step) : 0;
-  const start = Math.min(Math.max(index, 0), cols.length - 1);
-  return { start: start + 1, span: Math.max(1, Math.min(cols.length - start, parts)), colWidth };
+  return { span: Math.max(1, Math.min(cols.length, Math.max(parts, 2))), colWidth };
 }
 
 // Runs a layout change as a short view transition where the browser has them, so the eye can
-// follow a batch as it opens or closes.
+// follow a batch as it opens or closes. The change does its own flushSync.
 function withTransition(change: () => void) {
   const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown };
-  if (doc.startViewTransition && !matchMedia("(prefers-reduced-motion: reduce)").matches) doc.startViewTransition(() => flushSync(change));
+  if (doc.startViewTransition && !matchMedia("(prefers-reduced-motion: reduce)").matches) doc.startViewTransition(change);
   else change();
 }
 
@@ -749,7 +752,10 @@ function BatchCard({
   onDropParts?: (load: DragLoad) => void;
 }) {
   const edit = useEditMode();
-  const [open, setOpen] = useState(false);
+  const section = useContext(OpenBatchContext);
+  const [ownOpen, setOwnOpen] = useState(false);
+  const open = section ? section.id === batch.id : ownOpen;
+  const setOpen = (next: boolean) => (section ? section.set(next ? batch.id : null) : setOwnOpen(next));
   const [renaming, setRenaming] = useState(false);
   const [over, setOver] = useState(false);
   const [madeBy, setMadeBy] = useState(batch.madeBy ?? "");
@@ -775,17 +781,22 @@ function BatchCard({
   const thumbs = members.slice(0, 9);
 
   const mine = !!madeBy && madeBy === me;
-  // Opened, the batch stays where it was and grows to the right and down, laying its parts out at
-  // the grid's card width, as many across as it has parts and room for. Closed cards beside it
-  // keep their own height (self-start).
+  // Opened, the batch grows to the right and down from its slot (or from the next row's start when
+  // it doesn't fit there), laying its parts out at the grid's card width, as many across as it has
+  // parts and room for. Closed cards beside it keep their own height (self-start).
   const ref = useRef<HTMLDivElement>(null);
   const [place, setPlace] = useState<Place | null>(null);
   const transitionName = `batch-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const toggle = () => {
     const next = !open;
     withTransition(() => {
-      setPlace(next ? measurePlace(ref.current, members.length) : null);
-      setOpen(next);
+      // Close the section's other open batch first, so this one is measured in a settled grid.
+      if (next && section?.id) flushSync(() => section.set(null));
+      const nextPlace = next ? measurePlace(ref.current, members.length) : null;
+      flushSync(() => {
+        setPlace(nextPlace);
+        setOpen(next);
+      });
     });
   };
   useLayoutEffect(() => {
@@ -795,6 +806,7 @@ function BatchCard({
     observer.observe(grid);
     return () => observer.disconnect();
   }, [open, members.length]);
+  const wide = open && (place?.span ?? 1) >= 2;
   const userBox = (
     <select
       value={madeBy}
@@ -859,18 +871,21 @@ function BatchCard({
       onClick={toggle}
       style={{
         ...(stage === "finished" || isFabFinished(lowest) ? tint(FINISHED_COLOR) : statusTint(computeStatus(lowest))),
-        ...(open && place && { gridColumn: `${place.start} / span ${place.span}` }),
+        ...(open && place && { gridColumn: `span ${place.span}` }),
         ...(mine && { boxShadow: "0 0 0 2px rgba(56,189,248,0.75), 0 0 22px 4px rgba(56,189,248,0.4)" }),
         viewTransitionName: transitionName,
+        viewTransitionClass: "fab-batch",
       }}
       className={`card-interactive flex cursor-pointer flex-col self-start text-sm ${over ? "ring-2 ring-accent" : ""}`}
     >
-      <div className={open ? "flex flex-wrap gap-4 p-3" : "flex flex-col"}>
-        <div className={`relative shrink-0 ${open ? "w-40" : "w-full"}`}>
+      {/* Open and at least two columns wide, the collage sits beside the details (which wrap below
+          it if they'd get narrower than 12rem); one column wide, it stacks like a closed card. */}
+      <div className={wide ? "flex flex-wrap gap-x-4 p-3" : "flex flex-col"}>
+        <div className={`relative shrink-0 ${wide ? "w-40" : "w-full"}`}>
           <button
             aria-expanded={open}
             aria-label={open ? `Close ${batch.name}` : `Open ${batch.name}`}
-            className={`thumb-well grid aspect-[4/3] w-full gap-px overflow-hidden ${open ? "rounded-lg" : ""}`}
+            className={`thumb-well grid aspect-[4/3] w-full gap-px overflow-hidden ${wide ? "rounded-lg" : ""}`}
             style={collageGrid(thumbs.length)}
           >
             {thumbs.map((p) => (
@@ -888,7 +903,7 @@ function BatchCard({
             {userBox}
           </div>
         </div>
-        <div className="flex min-w-0 flex-1 flex-col gap-2 p-3">
+        <div className={`flex flex-1 flex-col gap-2 ${wide ? "min-w-[12rem] py-3 pl-1" : "min-w-0 p-3"}`}>
           <div className="min-w-0" style={textColor ? { color: textColor } : undefined}>
             {renaming ? (
               <input
@@ -991,7 +1006,9 @@ function BatchCard({
       {open && (
         <div
           className="batch-open grid cursor-default gap-3 border-t border-line p-3"
-          style={{ gridTemplateColumns: `repeat(${place?.span ?? 1}, ${place?.colWidth ? `minmax(0, ${place.colWidth}px)` : "minmax(0, 1fr)"})` }}
+          style={{
+            gridTemplateColumns: `repeat(${Math.max(1, Math.min(members.length, place?.span ?? 1))}, ${place?.colWidth ? `minmax(0, ${place.colWidth}px)` : "minmax(0, 1fr)"})`,
+          }}
           onClick={stop}
         >
           {members.map((p) => (

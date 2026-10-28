@@ -407,6 +407,14 @@ body {
   animation-duration: 240ms;
   animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
+/* A batch's snapshots keep their own size, pinned top-left, while its box grows or shrinks
+   around them, so the cards don't stretch mid-morph. */
+::view-transition-old(*.fab-batch),
+::view-transition-new(*.fab-batch) {
+  height: 100%;
+  object-fit: none;
+  object-position: left top;
+}
 .batch-open {
   animation: batch-open 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
