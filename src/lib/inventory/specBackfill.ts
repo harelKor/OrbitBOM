@@ -72,6 +72,7 @@ function mergeFields(id: string, live: CategoryField[]): CategoryField[] {
       ...f,
       label: mine.label,
       hidden: mine.hidden,
+      name: mine.name ?? f.name,
       ...(options && { options }),
     };
   });
@@ -80,6 +81,20 @@ function mergeFields(id: string, live: CategoryField[]): CategoryField[] {
     ...own.filter((o) => !seed.fields.some((f) => f.id === o.id)),
   ];
 }
+
+// What a field change means to the team: ids, kinds, choices, names and labels.
+const shape = (fields: CategoryField[]) =>
+  JSON.stringify(
+    fields.map((f) => [
+      f.id,
+      f.kind,
+      f.label,
+      f.name ?? null,
+      !!f.hidden,
+      f.options ?? null,
+      f.materials ?? null,
+    ]),
+  );
 
 type Item = typeof inventoryItems.$inferSelect;
 type Specs = Record<string, string>;
@@ -326,9 +341,7 @@ export async function backfillSpecs(dry: boolean) {
     fields: mergeFields(c.id, c.fields),
   }));
   const fieldChanges = cats
-    .filter(
-      (c, i) => JSON.stringify(c.fields) !== JSON.stringify(live[i].fields),
-    )
+    .filter((c, i) => shape(c.fields) !== shape(live[i].fields))
     .map((c) => c.id);
   const items = await db.select().from(inventoryItems);
   const changes: { item: Item; values: Partial<Item> }[] = [];
