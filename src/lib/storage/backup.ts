@@ -9,21 +9,28 @@ const { storedFiles } = schema;
 
 export const BACKUP_PREFIX = "backups/";
 
-// The tables a nightly backup holds: the BOM and the inventory. Members and Onshape tokens stay
-// out of it.
+// The tables a nightly backup holds: the BOM (with which files and drawings belong to which
+// part), the material list from Settings, and the inventory with its stock moves. Members and
+// Onshape tokens stay out of it.
 const TABLES = {
   robots: schema.robots,
   systems: schema.systems,
   parts: schema.parts,
+  partFiles: schema.partFiles,
+  partDrawings: schema.partDrawings,
   partGroups: schema.partGroups,
   groupMembers: schema.groupMembers,
+  groupFiles: schema.groupFiles,
   merges: schema.merges,
   mergeMembers: schema.mergeMembers,
+  materialGroups: schema.materialGroups,
+  materialColors: schema.materialColors,
   inventoryCategories: schema.inventoryCategories,
   inventoryLocations: schema.inventoryLocations,
   inventoryConditions: schema.inventoryConditions,
   inventoryGroups: schema.inventoryGroups,
   inventoryItems: schema.inventoryItems,
+  inventoryMoves: schema.inventoryMoves,
 };
 
 // Every row of those tables as one gzipped JSON file, backups/orbitparts-YYYY-MM-DD.json.gz

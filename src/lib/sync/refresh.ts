@@ -83,7 +83,9 @@ export async function refreshSystem(
       if (account !== memberId) await db.update(systems).set({ refreshMemberId: account }).where(eq(systems.id, systemId));
       return { systemId, changed: !c.unchanged, calls };
     } catch (err) {
-      if (err instanceof NotConnectedError || err instanceof BudgetError) {
+      // A refused account (token Onshape no longer takes, or no access to the document) is like a
+      // missing one: another member's account may still read the document.
+      if (err instanceof NotConnectedError || err instanceof BudgetError || (err instanceof OnshapeError && (err.status === 401 || err.status === 403))) {
         lastError = err.message;
         continue;
       }

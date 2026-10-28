@@ -171,13 +171,15 @@ export function FabView({
     const need = Math.max(p.quantity, 1);
     const done = Math.min(Math.max(n, 0), need);
     const wasChecked = postChecked.has(p.id);
+    // Sent as a step from the saved count, so two phones counting the same part both count.
+    const add = { postDone: done - p.postDone };
     if (done >= need && !wasChecked) {
       markPost(p.id, true);
-      save([p.id], { postDone: done, status: FINISHED_STATUS });
+      save([p.id], { add, status: FINISHED_STATUS });
     } else if (done < need && wasChecked) {
       markPost(p.id, false);
-      save([p.id], { postDone: done, status: POST_PROCESSING });
-    } else save([p.id], { postDone: done });
+      save([p.id], { add, status: POST_PROCESSING });
+    } else save([p.id], { add });
   };
 
   const machine = useFabMachine();

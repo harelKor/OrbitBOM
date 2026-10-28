@@ -60,6 +60,9 @@ export async function finishUpload(
   if (!(await objectExists(key))) return { error: "The upload didn't reach file storage. Try again." };
   const name = filename.slice(0, 255);
   const old = await db.transaction(async (tx) => {
+    // Locks the owner, so two uploads of the same file at once replace each other in turn.
+    const ownerTable = owner.kind === "part" ? parts : partGroups;
+    await tx.select({ id: ownerTable.id }).from(ownerTable).where(eq(ownerTable.id, owner.id)).for("update");
     if (owner.kind === "part") {
       const previous = await tx
         .delete(partFiles)
@@ -98,7 +101,10 @@ async function markGcoded(groupId: string, memberId: string) {
     .innerJoin(parts, eq(parts.id, groupMembers.partId))
     .where(and(eq(groupMembers.groupId, groupId), isNull(parts.removedFromCadAt)));
   const ids = rows.filter(({ part }) => NOT_STARTED.includes(computeStatus(part))).map(({ part }) => part.id);
-  if (ids.length) await applyPartChanges(ids, { status: "Gcoded" }, { memberId, via: "ui" });
+  // Checked again on the locked row: a piece counted meanwhile keeps its count.
+  if (ids.length) {
+    await applyPartChanges(ids, { status: "Gcoded" }, { memberId, via: "ui", onlyIf: (part) => NOT_STARTED.includes(computeStatus(part)) });
+  }
 }
 
 // Remove a fab batch's G-code (any member: it's the shop's working file, not a part's record).

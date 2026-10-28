@@ -68,6 +68,9 @@ export const partChangesSchema = z
     cotsCategory: z.string().trim().min(1).max(60).nullable(), // an inventory category id
     stockCount: count,
     cotsSentBack: text,
+    // Counts one more (or takes one back) from the saved count rather than the page's copy, so
+    // two people counting the same part at once never lose a piece (resolveCounterAdds).
+    add: z.partialRecord(z.enum(["donePreprocess", "doneProcess1", "doneProcess2", "postDone"]), z.number().int().min(-1000).max(1000)),
   })
   .partial();
 
@@ -121,11 +124,25 @@ export type Plan = { set: Partial<PartRow>; history: HistoryEntry[] };
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
+// Turns `add` into counts from the part as it is saved now, between 0 and the quantity. Counts
+// the same change also sets keep their value.
+export function resolveCounterAdds(part: PartRow, changes: PartChanges): PartChanges {
+  const { add, ...rest } = changes;
+  if (!add) return changes;
+  const out: PartChanges = { ...rest };
+  for (const [field, delta] of Object.entries(add) as [keyof typeof add, number][]) {
+    if (out[field] !== undefined || !delta) continue;
+    out[field] = Math.min(Math.max(part[field] + delta, 0), Math.max(part.quantity, 1));
+  }
+  return out;
+}
+
 export function planPartUpdate(
   part: PartRow,
-  changes: PartChanges,
+  input: PartChanges,
   via: "ui" | "sync" | "mcp",
 ): Plan {
+  const changes = resolveCounterAdds(part, input);
   const { status, donePreprocess, doneProcess1, doneProcess2, fabricators, ...rest } = changes;
   const next: Partial<PartRow> = { ...rest };
 

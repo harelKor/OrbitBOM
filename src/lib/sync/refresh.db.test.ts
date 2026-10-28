@@ -27,7 +27,11 @@ else
     let names = ["Plate"];
     let microversion = "mv1";
     const calls: string[] = [];
-    vi.stubGlobal("fetch", async (input: string) => {
+    // Accounts whose token Onshape refuses (403) while the test runs.
+    const refused = new Set<string>();
+    vi.stubGlobal("fetch", async (input: string, init?: RequestInit) => {
+      const auth = (init?.headers as Record<string, string> | undefined)?.Authorization ?? "";
+      if (refused.has(auth.replace("Bearer ", ""))) return new Response("{}", { status: 403 });
       calls.push(input);
       const body = input.includes("currentmicroversion")
         ? { microversion }
@@ -106,6 +110,40 @@ else
       expect(parts.map((p) => p.onshapeName)).toEqual(["Plate"]);
       const [draft] = await db.select().from(schema.systemVersions).where(and(eq(schema.systemVersions.systemId, system.id), eq(schema.systemVersions.state, "draft")));
       expect(draft.changes.map((c) => [c.change, c.name])).toEqual([["added", "Spacer"]]);
+    });
+
+    it("moves to another connected member when the refresh account is out of calls or refused", async () => {
+      const { DAILY_CALL_BUDGET } = await import("@/lib/onshape/client");
+      const backupUser = randomUUID();
+      const [backup] = await db
+        .insert(schema.members)
+        .values({ userId: backupUser, email: `${backupUser}@t.org`, name: "Backup Tester", onshapeConnected: true })
+        .returning();
+      await db.insert(schema.onshapeTokens).values({
+        memberId: backup.id,
+        accessTokenEnc: encrypt("backup-access"),
+        refreshTokenEnc: encrypt("backup-refresh"),
+        expiresAt: new Date(Date.now() + 3600_000),
+      });
+      try {
+        const today = new Date().toISOString().slice(0, 10);
+        await db.update(schema.onshapeTokens).set({ callsToday: DAILY_CALL_BUDGET, callsDay: today }).where(eq(schema.onshapeTokens.memberId, member.id));
+        await db.update(schema.systems).set({ lastCheckedAt: null, refreshMemberId: member.id }).where(eq(schema.systems.id, system.id));
+        const spent = await refreshSystem(system.id, member.id, later, 10);
+        expect(spent?.error).toBeUndefined();
+        expect((await getSystem()).refreshMemberId).toBe(backup.id);
+
+        await db.update(schema.onshapeTokens).set({ callsToday: 0 }).where(eq(schema.onshapeTokens.memberId, member.id));
+        await db.update(schema.systems).set({ lastCheckedAt: null, refreshMemberId: member.id }).where(eq(schema.systems.id, system.id));
+        refused.add("access");
+        const denied = await refreshSystem(system.id, member.id, later, 10);
+        expect(denied?.error).toBeUndefined();
+        expect((await getSystem()).refreshMemberId).toBe(backup.id);
+      } finally {
+        refused.clear();
+        await db.update(schema.systems).set({ refreshMemberId: member.id }).where(eq(schema.systems.id, system.id));
+        await db.delete(schema.members).where(eq(schema.members.id, backup.id));
+      }
     });
 
     it("skips archived robots", async () => {

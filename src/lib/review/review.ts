@@ -9,7 +9,7 @@ import { decodeMeshes } from "@/lib/model/mesh";
 import { undoMoves } from "@/lib/inventory/moves";
 import { applyEachPartChanges } from "@/lib/parts/apply";
 import type { PartChanges } from "@/lib/parts/changes";
-import { applyUndo, planUndo } from "@/lib/parts/undo";
+import { applyUndo, planUndo, restorable as restoreValue } from "@/lib/parts/undo";
 import { getObject, storageConfigured } from "@/lib/storage/r2";
 import { currentVisit } from "@/lib/visits";
 import { itemFieldLabel, itemValueText, locationNames, revertInventoryBatch } from "./inventory";
@@ -405,11 +405,8 @@ async function liveItems(ids: unknown[], exec: Tx | typeof db = db) {
 // The value Reject writes back: never null into a column that can't hold it, never a link to an
 // item deleted since.
 function restorable(field: string, from: unknown, live: Set<string>) {
-  if (field === "cotsLinks") return from ?? [];
-  if (field === "classification") return from ?? "undefined";
-  if (field === "priority") return from ?? "normal";
   if (field === "inventoryItemId") return typeof from === "string" && live.has(from) ? from : null;
-  return from ?? null;
+  return restoreValue(field, from);
 }
 
 // Reject puts every suggested field back, except one someone edited since, and takes the part

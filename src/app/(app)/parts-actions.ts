@@ -7,9 +7,9 @@ import { MACHINES } from "@/config/machines";
 import { db, schema } from "@/db";
 import { requireMember } from "@/lib/auth";
 import { OnshapeError } from "@/lib/onshape/client";
-import { MERGE_PREFIX, fanOutChanges, isMergeId } from "@/lib/merges/merge";
+import { MERGE_PREFIX, fanOutChanges, isMergeId, mergedRow } from "@/lib/merges/merge";
 import { applyEachPartChanges, applyPartChanges } from "@/lib/parts/apply";
-import { partChangesSchema, type PartChanges } from "@/lib/parts/changes";
+import { partChangesSchema, resolveCounterAdds, type PartChanges } from "@/lib/parts/changes";
 import { refreshSystem } from "@/lib/sync/refresh";
 import { updateBomFromOnshape } from "@/lib/sync/updateBom";
 import { deleteObjects, fileKeysFor } from "@/lib/storage/cleanup";
@@ -161,6 +161,12 @@ async function expandMerges(ids: string[]) {
 async function updateMergedRow(mergeId: string, changes: PartChanges, memberId: string): Promise<ActionResult> {
   const members = await mergeMemberRows(mergeId);
   if (!members.length) return { error: "Unknown merged part." };
+  // A counted piece on a merged row is added to the members' saved counts.
+  if (changes.add) {
+    const rows = await db.select().from(schema.parts).where(inArray(schema.parts.id, members.map((m) => m.id)));
+    const ordered = members.map((m) => rows.find((r) => r.id === m.id)!).filter(Boolean);
+    changes = resolveCounterAdds(mergedRow({ id: mergeId, name: "" }, ordered), changes);
+  }
   const { rename, perMember } = fanOutChanges(members, changes);
   if (rename !== undefined) {
     if (!rename) return { error: "A merged part needs a name." };

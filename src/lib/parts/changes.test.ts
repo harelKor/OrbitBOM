@@ -93,6 +93,22 @@ describe("planPartUpdate", () => {
   });
 });
 
+describe("counter steps", () => {
+  it("counts from the saved part, not the page's copy", () => {
+    // Two phones both saw 0 made and pressed +: each step lands on what is saved by then.
+    const first = planPartUpdate(part, { add: { doneProcess1: 1 } }, "ui");
+    expect(first.set).toMatchObject({ doneProcess1: 1, designState: null });
+    const second = planPartUpdate({ ...part, ...first.set }, { add: { doneProcess1: 1 } }, "ui");
+    expect(second.set).toEqual({ doneProcess1: 2 });
+  });
+
+  it("stays between 0 and the quantity", () => {
+    expect(planPartUpdate({ ...part, designState: null, doneProcess1: 2 }, { add: { doneProcess1: 1 } }, "ui").history).toEqual([]);
+    expect(planPartUpdate(part, { add: { postDone: -1 } }, "ui").history).toEqual([]);
+    expect(planPartUpdate({ ...part, postDone: 1 }, { add: { postDone: 1 } }, "ui").set).toEqual({ postDone: 2 });
+  });
+});
+
 describe("partChangesSchema", () => {
   it("rejects unknown machines and statuses", () => {
     expect(partChangesSchema.safeParse({ process1: "plasma" }).success).toBe(false);

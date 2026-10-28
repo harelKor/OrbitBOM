@@ -406,7 +406,9 @@ export const partHistory = pgTable(
     at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    index("part_history_part_idx").on(t.partId),
+    // A part's history newest first, and Recent actions / Undo, which look at the last days only.
+    index("part_history_part_at_idx").on(t.partId, t.at),
+    index("part_history_at_idx").on(t.at),
     index("part_history_batch_idx").on(t.batchId),
     index("part_history_visit_idx").on(t.visitId),
   ],

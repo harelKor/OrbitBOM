@@ -1,6 +1,6 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { eq, inArray } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { COTS_IN_STOCK, ORDER_STATUSES, cotsStatusOf } from "@/config/cots";
 import { usageOf } from "@/lib/data/inventory";
@@ -26,6 +26,8 @@ type Ctx = {
   receive?: boolean;
   // Runs in the same transaction for each part that changed (To Review records its rows here).
   afterEach?: (tx: Tx, row: typeof parts.$inferSelect, plan: Plan) => Promise<void>;
+  // Leaves a part alone unless its locked, current row passes (a change meant for a status it had).
+  onlyIf?: (row: typeof parts.$inferSelect) => boolean;
 };
 
 // Applies the same changes to each part in one transaction and records every field change in
@@ -54,9 +56,11 @@ export async function applyEachPartChanges(
   const visit = ctx.via === "ui" ? await currentVisit() : null;
 
   return db.transaction(async (tx) => {
-    const rows = await tx.select().from(parts).where(inArray(parts.id, [...byId.keys()])).for("update");
+    // Locked in id order, so two bulk edits over the same parts wait for each other instead of deadlocking.
+    const rows = await tx.select().from(parts).where(inArray(parts.id, [...byId.keys()])).orderBy(asc(parts.id)).for("update");
     let changed = 0;
     for (const row of rows) {
+      if (ctx.onlyIf && !ctx.onlyIf(row)) continue;
       const plan = planPartUpdate(row, byId.get(row.id)!, ctx.via);
       const { set, history } = plan;
       if (!history.length) continue;

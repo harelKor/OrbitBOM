@@ -1,7 +1,7 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { COTS_DEFAULT_STATUS, COTS_IN_STOCK, COTS_ORDERED, COTS_RELEASED, cotsStatusOf } from "@/config/cots";
@@ -20,7 +20,7 @@ import { recordItemChanges } from "@/lib/inventory/history";
 import { moveStock, setStock } from "@/lib/inventory/moves";
 import { readProduct, saveProductPhoto, toUsd } from "@/lib/inventory/product";
 import { searchProducts } from "@/lib/inventory/search";
-import { missing, orderHref } from "@/lib/inventory/season";
+import { missing, newestOpenOrders, orderHref } from "@/lib/inventory/season";
 import { parseStock, snapStock } from "@/lib/inventory/stock";
 import { applyEachPartChanges } from "@/lib/parts/apply";
 import { StorageNotConfiguredError, deleteObject, objectExists, presignUpload } from "@/lib/storage/r2";
@@ -373,27 +373,39 @@ export async function sendItemToReleased(itemId: string): Promise<ActionResult &
   if (item.openOrder) return { href: orderHref(item.openOrder) };
   const quantity = missing(item, "any");
   if (!quantity) return { error: "Nothing is missing: the shelf already has what's needed." };
-  const [card] = await db
-    .insert(parts)
-    .values({
-      systemId: null,
-      robotId: null,
-      isManual: true,
-      displayName: item.name,
-      classification: "cots",
-      classSource: "manual",
-      inventoryItemId: item.id,
-      cotsLinks: item.cotsLinks,
-      unitPrice: item.price,
-      cotsCategory: item.category,
-      quantity,
-      restock: true,
-      designState: COTS_RELEASED,
-      lastModifiedBy: member.id,
-    })
-    .returning({ id: parts.id });
+  // Two quick presses: the item stays locked until the first card is in, so the second finds it.
+  const sent = await db.transaction(async (tx) => {
+    await tx.select({ id: inventoryItems.id }).from(inventoryItems).where(eq(inventoryItems.id, item.id)).for("update");
+    const cards = await tx
+      .select({ partId: parts.id, designState: parts.designState, systemId: parts.systemId, restock: parts.restock, at: parts.createdAt })
+      .from(parts)
+      .where(and(eq(parts.inventoryItemId, item.id), isNull(parts.removedFromCadAt), eq(parts.classification, "cots")));
+    const open = newestOpenOrders(cards.map((c) => ({ ...c, itemId: item.id, status: cotsStatusOf(c.designState) }))).get(item.id);
+    if (open) return { open };
+    const [card] = await tx
+      .insert(parts)
+      .values({
+        systemId: null,
+        robotId: null,
+        isManual: true,
+        displayName: item.name,
+        classification: "cots",
+        classSource: "manual",
+        inventoryItemId: item.id,
+        cotsLinks: item.cotsLinks,
+        unitPrice: item.price,
+        cotsCategory: item.category,
+        quantity,
+        restock: true,
+        designState: COTS_RELEASED,
+        lastModifiedBy: member.id,
+      })
+      .returning({ id: parts.id });
+    return { card };
+  });
+  if (sent.open) return { href: orderHref(sent.open) };
   refresh();
-  return { message: `Sent ${quantity} ${item.name} to Released.`, href: orderHref({ partId: card.id, status: COTS_RELEASED }) };
+  return { message: `Sent ${quantity} ${item.name} to Released.`, href: orderHref({ partId: sent.card.id, status: COTS_RELEASED }) };
 }
 
 // A linked COTS card's − / +: the units go on or come off its item's shelf. Like the card's own

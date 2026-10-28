@@ -90,7 +90,7 @@ function MadePartCard({
   const finished = isFabFinished(part);
   const takeBack = () => {
     const left = part.donePreprocess + part.doneProcess1 + part.doneProcess2 - 1;
-    if (counted && left > 0) save({ [counted.done]: part[counted.done] - 1 });
+    if (counted && left > 0) save({ add: { [counted.done]: -1 } });
     else save({ status: finished ? IN_PROCESS_STATUS : READY_STATUS });
   };
   const fabControls = fabCounter && part.classification !== "cots" && machines.length > 0;
@@ -220,7 +220,7 @@ function MadePartCard({
             </button>
             <button
               type="button"
-              onClick={() => current && save({ [current.done]: part[current.done] + 1 })}
+              onClick={() => current && save({ add: { [current.done]: 1 } })}
               disabled={!current}
               className="overlay-btn absolute right-2 bottom-2 text-lg font-bold disabled:opacity-30"
               aria-label="One more made"

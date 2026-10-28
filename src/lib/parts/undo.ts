@@ -1,6 +1,6 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { asc, eq, inArray } from "drizzle-orm";
+import { SQL, asc, eq, getTableColumns, inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { currentVisit } from "@/lib/visits";
 
@@ -47,6 +47,16 @@ async function planUndoRows(rows: (typeof partHistory.$inferSelect)[]) {
   return { reverts, skipped };
 }
 
+// The value an undo writes back: a field recorded as empty that can't be empty gets its default
+// (no links, no fabricators, 0) instead of breaking the whole undo.
+const columns = getTableColumns(parts) as Record<string, { notNull: boolean; hasDefault: boolean; default: unknown }>;
+export function restorable(field: string, to: unknown) {
+  if (to !== null && to !== undefined) return to;
+  if (field === "classification") return "undefined"; // nobody has said yet, not In-house
+  const col = columns[field];
+  return col?.notNull && col.hasDefault && !(col.default instanceof SQL) ? col.default : null;
+}
+
 export async function applyUndo(reverts: Revert[], memberId: string, via: "ui" | "mcp") {
   const batchId = randomUUID();
   const visit = via === "ui" ? await currentVisit() : null;
@@ -55,10 +65,10 @@ export async function applyUndo(reverts: Revert[], memberId: string, via: "ui" |
       const mine = reverts.filter((r) => r.partId === partId);
       await tx
         .update(parts)
-        .set({ ...Object.fromEntries(mine.map((r) => [r.field, r.to])), lastModifiedAt: new Date(), lastModifiedBy: memberId })
+        .set({ ...Object.fromEntries(mine.map((r) => [r.field, restorable(r.field, r.to)])), lastModifiedAt: new Date(), lastModifiedBy: memberId })
         .where(eq(parts.id, partId));
       await tx.insert(partHistory).values(
-        mine.map((r) => ({ partId, field: r.field, oldValue: r.from, newValue: r.to, memberId, via, batchId, visitId: visit?.id, page: visit?.page })),
+        mine.map((r) => ({ partId, field: r.field, oldValue: r.from, newValue: restorable(r.field, r.to), memberId, via, batchId, visitId: visit?.id, page: visit?.page })),
       );
     }
   });
