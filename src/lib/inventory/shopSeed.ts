@@ -469,7 +469,7 @@ const tokens = (s: string) =>
     .filter((w) => w.length > 1 && !/^(with|for|and|the|of|x|×)$/.test(w));
 
 // The offer whose title holds every number of the query (sizes, teeth, amps) and most of its
-// words, best first.
+// words (three in four), best first.
 export function bestOffer<O extends { title: string }>(
   query: string,
   offers: O[],
@@ -481,7 +481,7 @@ export function bestOffer<O extends { title: string }>(
     const have = new Set(tokens(o.title));
     if (!want.filter((w) => /\d/.test(w)).every((w) => have.has(w))) continue;
     const score = want.filter((w) => have.has(w)).length / want.length;
-    if (score >= 0.5 && (!best || score > best.score))
+    if (score >= 0.75 && (!best || score > best.score))
       best = { offer: o, score };
   }
   return best;
