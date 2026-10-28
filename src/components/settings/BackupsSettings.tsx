@@ -10,7 +10,7 @@ import type { BackupFile } from "@/lib/storage/backup";
 export type ScopeInfo = { id: string; label: string; text: string };
 
 const size = (n: number) => (n >= 1024 ** 2 ? `${(n / 1024 ** 2).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
-const when = (at: string) => new Date(at).toLocaleString(undefined, { weekday: "short", dateStyle: "medium", timeStyle: "short" });
+const when = (at: string) => new Date(at).toLocaleString(undefined, { dateStyle: "full", timeStyle: "short" });
 // "before-restore" copies are the ones a restore saved first.
 const isSafetyCopy = (b: BackupFile) => b.name.includes("-before-restore-");
 
