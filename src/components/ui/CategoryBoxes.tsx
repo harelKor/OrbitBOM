@@ -18,6 +18,22 @@ export function pushQuery(changes: Record<string, string | null>) {
   window.history.pushState(null, "", url.pathname + url.search);
 }
 
+// A soft blurred patch in one corner of a picture box, under its count, name or short tag,
+// fading into the picture. Only the patch is masked, so the text on it stays crisp.
+function Frost({ at, className, children }: { at: "top left" | "top right" | "bottom left"; className: string; children: React.ReactNode }) {
+  const fade = `radial-gradient(ellipse at ${at}, black 45%, transparent 72%)`;
+  const tint = at.startsWith("bottom") ? "var(--color-well-2)" : "var(--color-well)"; // the stage's gradient at that edge
+  return (
+    <span className={`absolute ${className}`}>
+      <span
+        className="absolute inset-0 backdrop-blur-[4px]"
+        style={{ maskImage: fade, background: `radial-gradient(ellipse at ${at}, color-mix(in srgb, ${tint} 85%, transparent) 30%, transparent 72%)` }}
+      />
+      <span className="relative block">{children}</span>
+    </span>
+  );
+}
+
 // The group boxes over the category boxes (Inventory and COTS share them). The top level shows one
 // box per group; a group swaps the row for its categories, with a route line back up
 // ("All categories / Electrical / Motors"). A category either opens its page (`categoryHref`) or
@@ -111,18 +127,25 @@ export function CategoryBoxes({
               </span>
             </>
           ) : b.imageUrl ? (
-            // A picture box is a product tile: the picture fills a studio stage, name and count under it.
-            <>
-              <span className="thumb-well relative block aspect-[16/10] w-full">
-                {/* eslint-disable-next-line @next/next/no-img-element -- static or short-lived R2 links, not optimisable */}
-                <img src={b.imageUrl} alt="" className="pointer-events-none absolute inset-0 h-full w-full object-contain px-3 pt-3 pb-1.5" />
-                {shortPill && <span className="absolute top-2 right-2">{shortPill}</span>}
+            // A picture box is one whole picture; the count and name float over it on soft blurred
+            // fades. The stage is light in both themes, so their text stays dark.
+            <span className="thumb-well relative block aspect-[16/9] w-full">
+              {/* eslint-disable-next-line @next/next/no-img-element -- static or short-lived R2 links, not optimisable */}
+              <img src={b.imageUrl} alt="" className="pointer-events-none absolute inset-0 h-full w-full object-contain pt-2 pr-1.5 pb-1.5 pl-[22%]" />
+              <span className="pointer-events-none absolute inset-0">
+                <Frost at="top left" className="top-0 left-0 pt-2.5 pr-10 pb-5 pl-3.5">
+                  <span className="display text-4xl leading-none">{number}</span>
+                </Frost>
+                {shortPill && (
+                  <Frost at="top right" className="top-0 right-0 pt-2 pr-2.5 pb-4 pl-7">
+                    {shortPill}
+                  </Frost>
+                )}
+                <Frost at="bottom left" className="bottom-0 left-0 max-w-full pt-5 pr-12 pb-2.5 pl-3.5">
+                  <span className="block truncate text-base font-semibold text-[#111318] group-hover:text-accent">{b.label}</span>
+                </Frost>
               </span>
-              <span className="flex items-baseline justify-between gap-2 px-3.5 py-2.5">
-                <span className="min-w-0 truncate text-sm font-semibold text-fg group-hover:text-accent">{b.label}</span>
-                <span className="text-xl font-bold">{number}</span>
-              </span>
-            </>
+            </span>
           ) : (
             <>
               <span className="flex items-start justify-between gap-2">
