@@ -207,6 +207,70 @@ export async function setItemCategory(itemId: string, categoryId: string): Promi
   return bulkMoveItems([itemId], { category: categoryId });
 }
 
+// The item window's location pill and the table's Location cell in Edit mode; null clears it.
+export async function setItemLocation(itemId: string, locationId: string | null): Promise<ActionResult> {
+  return bulkMoveItems([itemId], { locationId });
+}
+
+// The item window's condition pill in Edit mode; null clears it.
+export async function setItemCondition(itemId: string, conditionId: string | null): Promise<ActionResult> {
+  const member = await requireMember();
+  if (!isUuid(itemId) || (conditionId !== null && !isUuid(conditionId))) return { error: "Unknown condition." };
+  return saveFields(itemId, () => ({ conditionId }), member.id);
+}
+
+// The item window's specs in Edit mode: only the category's own fields are kept, blanks dropped.
+export async function setItemSpecs(itemId: string, specs: Record<string, string>): Promise<ActionResult> {
+  const member = await requireMember();
+  if (!isUuid(itemId)) return { error: "Unknown item." };
+  const cats = await listCategories();
+  return saveFields(
+    itemId,
+    (before) => {
+      const ids = new Set(getCategory(cats, before.category)?.fields.map((f) => f.id) ?? []);
+      return { specs: Object.fromEntries(Object.entries(specs).flatMap(([k, v]) => (ids.has(k) && v.trim() ? [[k, v.trim().slice(0, 200)]] : []))) };
+    },
+    member.id,
+  );
+}
+
+// The ✕ next to a "Buy at" link in Edit mode: the link goes; with no link left the price goes too.
+// Linked COTS cards show the same.
+export async function unlinkItemProduct(itemId: string, url: string): Promise<ActionResult> {
+  const member = await requireMember();
+  if (!isUuid(itemId)) return { error: "Unknown item." };
+  return saveFields(
+    itemId,
+    (before) => {
+      const cotsLinks = before.cotsLinks.filter((l) => l.url !== url);
+      return { cotsLinks, ...(!cotsLinks.length && { price: null }) };
+    },
+    member.id,
+    true,
+  );
+}
+
+// One item's fields changed in place, with its history (and its COTS cards when asked).
+async function saveFields(
+  itemId: string,
+  change: (before: typeof inventoryItems.$inferSelect) => Partial<typeof inventoryItems.$inferInsert>,
+  memberId: string,
+  cards = false,
+): Promise<ActionResult> {
+  const ok = await db.transaction(async (tx) => {
+    const [before] = await tx.select().from(inventoryItems).where(eq(inventoryItems.id, itemId)).for("update");
+    if (!before) return false;
+    const values = change(before);
+    await tx.update(inventoryItems).set(values).where(eq(inventoryItems.id, itemId));
+    await recordItemChanges(tx, itemId, before, values, { memberId, via: "ui" });
+    if (cards) await pushItemToCards(tx, itemId, values);
+    return true;
+  });
+  if (!ok) return { error: "That item was deleted." };
+  refresh();
+  return {};
+}
+
 // The item window's product search: the product becomes the item's first link, its price the
 // item's, its picture the item's photo; linked COTS cards show the same product.
 const productSchema = z.object({

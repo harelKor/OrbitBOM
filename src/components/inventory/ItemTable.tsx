@@ -3,7 +3,8 @@
 import { useState, useTransition } from "react";
 import { Popover } from "@/components/bom/Popover";
 import { Icon } from "@/components/ui/Icon";
-import { setSeasonNeed } from "@/app/(app)/inventory/actions";
+import { setItemLocation, setSeasonNeed } from "@/app/(app)/inventory/actions";
+import { useEditMode } from "@/components/shell/ModeContext";
 import { CheckBadge } from "@/components/ui/CheckBadge";
 import { statusTint } from "@/components/ui/statusTint";
 import { getCategory } from "@/lib/inventory/categories";
@@ -34,8 +35,9 @@ const TINT = {
 
 // The Table side of the Cards | Table switch (Harel, 2026-10-27): one row per item, for long
 // lists of screws, belts, gears and drills. The count ("3 / 6", like a card), − / +, Needed for
-// Season and the cart work in place like on a card; the row opens the item's window. The item's
-// picture shows at the left of its name once the card size slider is big enough (.table-thumb).
+// Season and the cart (beside the name) work in place like on a card, and in Edit mode the
+// Location cell is a menu; the row opens the item's window. The item's picture shows at the left
+// of its name once the card size slider is big enough (.table-thumb).
 export function ItemTable({
   items,
   categories,
@@ -62,6 +64,7 @@ export function ItemTable({
   onToggleSelect?: (id: string) => void;
 }) {
   const { openItem } = useInventoryPopup();
+  const edit = useEditMode();
   const stop = (e: React.SyntheticEvent) => e.stopPropagation();
   return (
     <div className="panel overflow-x-auto">
@@ -76,7 +79,6 @@ export function ItemTable({
             <th>Location</th>
             <th className="text-center">Needed for Season</th>
             <th>Price</th>
-            <th aria-label="Order" />
           </tr>
         </thead>
         <tbody>
@@ -137,6 +139,11 @@ export function ItemTable({
                       )}
                       <ProductName item={item} className="font-semibold" />
                       {item.note && <NoteButton note={item.note} />}
+                      {(gap > 0 || item.openOrder) && (
+                        <span onClick={stop} className="shrink-0">
+                          <CartButton item={item} gap={gap} />
+                        </span>
+                      )}
                     </span>
                   </span>
                 </td>
@@ -198,19 +205,24 @@ export function ItemTable({
                     ))}
                   </span>
                 </td>
-                <td className="text-xs whitespace-nowrap text-muted">
-                  {location ? `📍 ${location.name}` : ""}
-                </td>
+                {edit ? (
+                  <td onClick={stop}>
+                    <LocationCell
+                      item={item}
+                      locations={locations}
+                      inherited={item.locationId ? null : (location ?? null)}
+                    />
+                  </td>
+                ) : (
+                  <td className="text-xs whitespace-nowrap text-muted">
+                    {location ? `📍 ${location.name}` : ""}
+                  </td>
+                )}
                 <td onClick={stop} className="text-center">
                   <SeasonCell item={item} />
                 </td>
                 <td className="whitespace-nowrap" onClick={stop}>
                   {item.price != null && <ItemPrice price={item.price} />}
-                </td>
-                <td onClick={stop} className="w-12">
-                  {(gap > 0 || item.openOrder) && (
-                    <CartButton item={item} gap={gap} />
-                  )}
                 </td>
               </tr>
             );
@@ -218,6 +230,49 @@ export function ItemTable({
         </tbody>
       </table>
     </div>
+  );
+}
+
+// The row's location in Edit mode: picking one moves the item there at once. An item with no
+// location of its own shows its group's, as the first choice.
+function LocationCell({
+  item,
+  locations,
+  inherited,
+}: {
+  item: Item;
+  locations: Location[];
+  inherited: Location | null;
+}) {
+  const [value, setValue] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  return (
+    <select
+      value={value ?? item.locationId ?? ""}
+      disabled={pending}
+      onChange={(e) => {
+        const id = e.target.value;
+        setValue(id);
+        start(async () => {
+          const r = await setItemLocation(item.id, id || null);
+          setError(r.error ?? null);
+          setValue(null);
+        });
+      }}
+      title={error ?? undefined}
+      aria-label={`Location: ${item.name}`}
+      className={`input min-h-9 w-auto py-1 text-xs ${error ? "border-rose-500" : ""}`}
+    >
+      <option value="">
+        {inherited ? `📍 ${inherited.name} (group)` : "No location"}
+      </option>
+      {locations.map((l) => (
+        <option key={l.id} value={l.id}>
+          📍 {l.name}
+        </option>
+      ))}
+    </select>
   );
 }
 

@@ -181,9 +181,9 @@ export function InventoryView({
       view ? RANK[standing(a, view)] - RANK[standing(b, view)] : 0,
     );
   const boxes = home && !view && !query && !locationId;
-  // The view's own items, filtered only by condition and location (not by the boxes).
   // In a view, the cards up top are only the ones still short or on order; every other item of
-  // the view (covered, or outside the picked box) is in the folded All items, so none shows twice.
+  // the view in the picked group / category box (all of them when none is picked) is in the
+  // folded All items, so none shows twice (Harel, 2026-10-28).
   const shownMain = view
     ? shown.filter((i) => standing(i, view) !== "ok")
     : shown;
@@ -192,6 +192,7 @@ export function InventoryView({
     ? optimistic.filter(
         (i) =>
           inView(i) &&
+          inBox(i) &&
           !mainIds.has(i.id) &&
           (!conditionId || i.conditionId === conditionId) &&
           (!locationId || locationOf(i) === locationId),
@@ -519,24 +520,31 @@ export function InventoryView({
           {toggles.map((t) => {
             const on = view === t.id;
             const urgent = t.items.some((i) => standing(i, t.id) === "short");
+            // Shorter than the group boxes and tinted, so the two toggles read apart from them:
+            // Season turns amber when on, Robots rose (Harel, 2026-10-28).
+            const tint = on
+              ? t.id === "season"
+                ? "border-amber-400/70 bg-amber-500/15 ring-1 ring-amber-400/40 hover:border-amber-400"
+                : "border-rose-400/70 bg-rose-500/15 ring-1 ring-rose-400/40 hover:border-rose-400"
+              : "border-line-strong bg-raised/70 hover:border-sky-400/40";
             return (
               <button
                 key={t.id}
                 type="button"
                 onClick={() => pushQuery({ view: on ? null : t.id })}
                 aria-pressed={on}
-                className={`card-interactive group flex min-w-0 items-center gap-3 p-4 text-left active:scale-[0.98] sm:gap-5 sm:p-5 ${on ? "border-sky-400/60 bg-sky-500/10 ring-1 ring-sky-400/40" : ""}`}
+                className={`card-interactive group flex min-w-0 items-center gap-3 p-3 text-left active:scale-[0.98] sm:gap-4 sm:px-4 sm:py-3 ${tint}`}
               >
                 <span
-                  className={`display font-mono text-4xl tabular-nums sm:text-5xl ${urgent ? "text-rose-500" : "text-accent"}`}
+                  className={`display font-mono text-3xl tabular-nums sm:text-4xl ${urgent ? "text-rose-500" : "text-accent"}`}
                 >
                   {t.items.length}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block display text-lg leading-tight text-fg sm:text-2xl">
+                  <span className="block display text-base leading-tight text-fg sm:text-xl">
                     {t.title}
                   </span>
-                  <span className="hidden text-sm text-muted sm:block">
+                  <span className="hidden text-xs text-muted sm:block">
                     {on
                       ? "Showing every item in this view · tap to close"
                       : t.text}
@@ -649,7 +657,7 @@ export function InventoryView({
             grid(shownMain)
           )}
           {view && inViewAll.length > 0 && (
-            // Every item of this view stays one tap away, folded, whatever box is picked (Harel, 2026-10-27).
+            // The rest of this view in the picked box stays one tap away, folded (Harel, 2026-10-27).
             <div className="pt-2">
               <Fold
                 id={`all-in-${view}`}

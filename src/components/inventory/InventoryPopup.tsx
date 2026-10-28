@@ -14,20 +14,25 @@ import {
   materialPopup,
   readProductLink,
   setItemCategory,
+  setItemCondition,
+  setItemLocation,
   setItemPhoto,
   setItemNote,
+  setItemSpecs,
   setSeasonNeed,
+  unlinkItemProduct,
 } from "@/app/(app)/inventory/actions";
 import { textOn } from "@/components/bom/options";
 import { Dialog } from "@/components/Dialog";
 import { EditOnly, useEditMode } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
 import { materialCategory } from "@/config/materials";
-import { getCategory } from "@/lib/inventory/categories";
+import { fieldChoices, getCategory, type CategoryField } from "@/lib/inventory/categories";
 import { hasSeasonNeed, missing } from "@/lib/inventory/season";
 import type { Offer, ProductGroup } from "@/lib/inventory/productGroups";
 import { formatStock, snapStock } from "@/lib/inventory/stock";
 import { bestOffer, isLink } from "./AddBox";
+import { FieldInput } from "./fields";
 import { CountBox, ItemPrice, PieceStepper, conditionColor, hostOf } from "./ItemCard";
 import { ItemForm, draftOf } from "./ItemForm";
 import { ItemHistory } from "./ItemHistory";
@@ -283,12 +288,14 @@ function ItemBody({
   const [, startPhoto] = useTransition();
   const edit = useEditMode();
   const [moving, startMove] = useTransition();
-  const moveTo = (categoryId: string) =>
+  // Edit mode's pills, specs and ✕ save at once, then the window reloads.
+  const save = (run: () => Promise<{ error?: string }>) =>
     startMove(async () => {
-      const r = await setItemCategory(item.id, categoryId);
+      const r = await run();
       setMessage(r.error ?? null);
       if (!r.error) onSaved();
     });
+  const moveTo = (categoryId: string) => save(() => setItemCategory(item.id, categoryId));
   const find = () =>
     startFind(async () => {
       const r = await findBomParts(item.id);
@@ -324,6 +331,9 @@ function ItemBody({
     );
 
   const tag = "rounded-full px-2.5 py-0.5 text-xs font-semibold";
+  const caret = { backgroundPosition: "right 10px center, right 6px center", backgroundSize: "4px 4px", backgroundRepeat: "no-repeat" } as const;
+  const caretOf = (c: string) => ({ ...caret, backgroundImage: `linear-gradient(45deg, transparent 50%, ${c} 50%), linear-gradient(135deg, ${c} 50%, transparent 50%)` });
+  const specFields = edit && data ? (cat?.fields.filter((f) => !f.hidden) ?? []) : [];
   return (
     <div className="space-y-4">
       <div className="flex gap-4">
@@ -376,6 +386,46 @@ function ItemBody({
                 </Link>
               )
             )}
+            {edit && data ? (
+              // Edit mode: condition and location pills are menus that save at once.
+              <>
+                <select
+                  value={item.conditionId ?? ""}
+                  disabled={moving}
+                  onChange={(e) => save(() => setItemCondition(item.id, e.target.value || null))}
+                  aria-label="Condition"
+                  className={`${tag} press cursor-pointer appearance-none border pr-6 disabled:opacity-60 ${condition ? "border-transparent hover:brightness-110" : "border-dashed border-line-strong bg-transparent text-muted hover:border-sky-400/40"}`}
+                  style={condition ? { ...caretOf(textOn(color!)), backgroundColor: color, color: textOn(color!) } : caretOf("currentColor")}
+                >
+                  <option value="" className="bg-surface text-fg">
+                    {condition ? "No condition" : "Add condition"}
+                  </option>
+                  {conditions.map((c) => (
+                    <option key={c.id} value={c.id} className="bg-surface text-fg">
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={item.locationId ?? ""}
+                  disabled={moving}
+                  onChange={(e) => save(() => setItemLocation(item.id, e.target.value || null))}
+                  aria-label="Location"
+                  className={`${tag} press cursor-pointer appearance-none border bg-transparent pr-6 hover:border-sky-400/40 disabled:opacity-60 ${location ? "border-line text-fg-2" : "border-dashed border-line-strong text-muted"}`}
+                  style={caretOf("currentColor")}
+                >
+                  <option value="" className="bg-surface text-fg">
+                    {location ? "No location" : "📍 Add location"}
+                  </option>
+                  {locations.map((l) => (
+                    <option key={l.id} value={l.id} className="bg-surface text-fg">
+                      📍 {l.name}
+                    </option>
+                  ))}
+                </select>
+              </>
+            ) : (
+              <>
             {condition && (
               <Link href={`/inventory/condition/${condition.id}`} onClick={onClose} className={`${tag} hover:brightness-110`} style={{ background: color, color: textOn(color!) }}>
                 {condition.label}
@@ -385,6 +435,8 @@ function ItemBody({
               <Link href={`/inventory?loc=${location.id}`} onClick={onClose} className={`${tag} border border-line text-fg-2 hover:border-accent hover:text-accent`}>
                 📍 {location.name}
               </Link>
+            )}
+              </>
             )}
           </div>
           <Stepper item={item} onStep={onStep} onCount={onCount} big />
@@ -404,24 +456,57 @@ function ItemBody({
 
       <ItemNotesBox item={item} onSaved={onSaved} onError={setMessage} />
 
-      {(cat?.fields.some((f) => item.specs[f.id]) || item.cotsLinks.length > 0 || item.price != null) && (
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-          {(cat?.fields ?? [])
-            .filter((f) => item.specs[f.id])
-            .map((f) => (
-              <div key={f.id} className="contents">
-                <dt className="text-muted">{f.label}</dt>
-                <dd>{item.specs[f.id]}</dd>
-              </div>
-            ))}
+      {(specFields.length > 0 || cat?.fields.some((f) => item.specs[f.id]) || item.cotsLinks.length > 0 || item.price != null) && (
+        <dl className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-1 text-sm">
+          {specFields.length
+            ? // Edit mode: every shown field of the category, saved as it's picked or typed.
+              specFields.map((f) => (
+                <div key={`${f.id}:${item.specs[f.id] ?? ""}`} className="contents">
+                  <dt className="text-muted">{f.label}</dt>
+                  <dd>
+                    <SpecField
+                      field={f}
+                      categoryId={cat!.id}
+                      value={item.specs[f.id] ?? ""}
+                      onSave={(v) => v !== (item.specs[f.id] ?? "") && save(() => setItemSpecs(item.id, { ...item.specs, [f.id]: v }))}
+                    />
+                  </dd>
+                </div>
+              ))
+            : (cat?.fields ?? [])
+                .filter((f) => item.specs[f.id])
+                .map((f) => (
+                  <div key={f.id} className="contents">
+                    <dt className="text-muted">{f.label}</dt>
+                    <dd>{item.specs[f.id]}</dd>
+                  </div>
+                ))}
           {item.cotsLinks.length > 0 && (
             <>
               <dt className="text-muted">Buy at</dt>
-              <dd className="flex flex-wrap gap-x-3">
+              <dd className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 {item.cotsLinks.map((l) => (
-                  <a key={l.url} href={l.url} target="_blank" rel="noreferrer" className="text-sky-600 hover:underline dark:text-sky-400">
-                    {l.site || hostOf(l.url)} ↗
-                  </a>
+                  <span key={l.url} className="inline-flex items-center gap-1">
+                    <a href={l.url} target="_blank" rel="noreferrer" className="text-sky-600 hover:underline dark:text-sky-400">
+                      {l.site || hostOf(l.url)} ↗
+                    </a>
+                    {edit && (
+                      <button
+                        type="button"
+                        disabled={moving}
+                        onClick={() => {
+                          const last = item.cotsLinks.length === 1 && item.price != null;
+                          if (!confirm(`Remove the ${l.site || hostOf(l.url)} link from this item?${last ? " It's the last link, so the price goes too." : ""}`)) return;
+                          save(() => unlinkItemProduct(item.id, l.url));
+                        }}
+                        aria-label={`Remove the ${l.site || hostOf(l.url)} link`}
+                        title="Remove this link"
+                        className="press flex h-6 w-6 items-center justify-center rounded-full text-subtle hover:bg-rose-500/10 hover:text-rose-500 active:scale-[0.98] disabled:opacity-50"
+                      >
+                        <Icon name="close" className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </span>
                 ))}
               </dd>
             </>
@@ -528,6 +613,30 @@ function ItemBody({
         )}
       </div>
       {data && <ToBomDialog key={mode === "toBom" ? "bom" : "closed-bom"} item={mode === "toBom" ? item : null} targets={data.targets} onClose={() => setMode("view")} />}
+    </div>
+  );
+}
+
+// One spec in the item window's Edit mode: chips and menus save when picked, a typed value when
+// the box loses focus.
+function SpecField({ field, categoryId, value, onSave }: { field: CategoryField; categoryId: string; value: string; onSave: (v: string) => void }) {
+  const [text, setText] = useState(value);
+  const typed = !fieldChoices(field).length;
+  return (
+    <div
+      onBlur={typed ? () => onSave(text.trim()) : undefined}
+      onKeyDown={typed ? (e) => e.key === "Enter" && (e.target as HTMLElement).blur() : undefined}
+      className="py-0.5"
+    >
+      <FieldInput
+        field={field}
+        categoryId={categoryId}
+        value={text}
+        onChange={(v) => {
+          setText(v);
+          if (!typed) onSave(v);
+        }}
+      />
     </div>
   );
 }
