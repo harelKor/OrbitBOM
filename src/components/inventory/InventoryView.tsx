@@ -27,7 +27,7 @@ import {
   isCategoryGroup,
   type CategoryGroupId,
 } from "@/config/inventory";
-import { activeFields, getCategory } from "@/lib/inventory/categories";
+import { getCategory } from "@/lib/inventory/categories";
 import {
   hasSeasonNeed,
   missing,
@@ -36,6 +36,7 @@ import {
   type NeedView,
 } from "@/lib/inventory/season";
 import { matchesSearch } from "@/lib/inventory/searchWords";
+import { keepPicks, matchesPicks, specGroups, type SpecPicks } from "@/lib/inventory/specFilters";
 import { snapStock } from "@/lib/inventory/stock";
 import { AddBox } from "./AddBox";
 import { ImportDialog } from "./ImportDialog";
@@ -74,8 +75,8 @@ export function InventoryView({
   const [open, setOpen] = useState<Open>(null);
   const [q, setQ] = useState("");
   const [conditionId, setConditionId] = useState("");
-  // Sub-type pills inside a category (Glue, Tape...), and one more row of the type's own choices.
-  const [subPick, setSubPick] = useState<{ cat: string; type: string | null; more: string | null } | null>(null);
+  // A category's spec filter picks (Bore (ID) 8mm, Type Flanged...), forgotten on another category.
+  const [specPick, setSpecPick] = useState<{ cat: string; picks: SpecPicks } | null>(null);
   // The location filter lives in the URL (?loc=), so the 📍 pills, the card tags and the
   // Any location menu share it on every Inventory page, and Back steps out of it.
   const params = useSearchParams();
@@ -166,21 +167,20 @@ export function InventoryView({
     (!cat || i.category === cat);
   const red = (i: Item) => standing(i, need) === "short";
 
-  // In a category whose first field has options: All plus each option some item has, and after a
-  // "|" the choices of the next options field (for the picked type) that items have.
+  // In a category: a labeled row of pills per spec field (Bearings: Bore (ID), OD, Width, Type),
+  // each showing only the values the other picks leave (Harel, 2026-10-28).
   const focusCat = getCategory(categories, scope.kind === "category" ? scope.id : cat);
-  const typeField = focusCat?.fields[0]?.kind === "options" ? focusCat.fields[0] : undefined;
-  const pickNow = subPick && subPick.cat === focusCat?.id ? subPick : null;
+  const picks = specPick && specPick.cat === focusCat?.id ? specPick.picks : {};
   const catItems = focusCat ? optimistic.filter((i) => i.category === focusCat.id) : [];
-  const typePills = typeField ? (typeField.options ?? []).filter((o) => catItems.some((i) => i.specs[typeField.id] === o)) : [];
-  const moreField =
-    focusCat && typeField
-      ? activeFields(focusCat, pickNow?.type ? { [typeField.id]: pickNow.type } : {}).find((f) => f !== typeField && f.kind === "options")
-      : undefined;
-  const ofType = catItems.filter((i) => !pickNow?.type || i.specs[typeField!.id] === pickNow.type);
-  const morePills = moreField ? (moreField.options ?? []).filter((o) => ofType.some((i) => i.specs[moreField.id] === o)) : [];
-  const inSub = (i: Item) =>
-    !pickNow || ((!pickNow.type || i.specs[typeField!.id] === pickNow.type) && (!pickNow.more || !moreField || i.specs[moreField.id] === pickNow.more));
+  const specRows = focusCat ? specGroups(focusCat, catItems, picks) : [];
+  const togglePick = (fieldId: string, key: string) => {
+    if (!focusCat) return;
+    const next = { ...picks };
+    if (next[fieldId] === key) delete next[fieldId];
+    else next[fieldId] = key;
+    setSpecPick({ cat: focusCat.id, picks: keepPicks(focusCat, next) });
+  };
+  const inSub = (i: Item) => !focusCat || i.category !== focusCat.id || matchesPicks(i, picks);
 
   const RANK = { short: 0, ordered: 1, ok: 2 } as const;
   const shown = optimistic
@@ -622,26 +622,23 @@ export function InventoryView({
         </div>
       ) : (
         <div className="space-y-2">
-          {focusCat && typePills.length + morePills.length > 1 && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              {[null, ...typePills].map((t) => (
-                <SubPill key={t ?? ""} on={(pickNow?.type ?? null) === t} onClick={() => setSubPick({ cat: focusCat.id, type: t, more: null })}>
-                  {t ?? "All"}
-                </SubPill>
-              ))}
-              {morePills.length > 1 && (
-                <>
-                  <span className="px-1 text-subtle">|</span>
-                  {morePills.map((m) => (
-                    <SubPill
-                      key={m}
-                      on={pickNow?.more === m}
-                      onClick={() => setSubPick({ cat: focusCat.id, type: pickNow?.type ?? null, more: pickNow?.more === m ? null : m })}
-                    >
-                      {m}
+          {focusCat && specRows.length > 0 && (
+            <div className="space-y-1.5">
+              {specRows.map((g) => (
+                <div key={g.field.id} className="flex flex-wrap items-center gap-1.5">
+                  <span className="w-full shrink-0 text-[10px] font-semibold tracking-wider text-subtle uppercase sm:w-20">{g.label}</span>
+                  {g.values.map((v) => (
+                    <SubPill key={v.key} on={picks[g.field.id] === v.key} onClick={() => togglePick(g.field.id, v.key)}>
+                      {v.label}
+                      <span className="ml-1.5 font-mono text-[10px] tabular-nums opacity-60">{v.count}</span>
                     </SubPill>
                   ))}
-                </>
+                </div>
+              ))}
+              {Object.keys(picks).length > 0 && (
+                <button type="button" onClick={() => setSpecPick(null)} className="press text-xs font-semibold text-accent hover:underline sm:ml-[5.375rem]">
+                  Clear filters
+                </button>
               )}
             </div>
           )}
@@ -852,7 +849,7 @@ function SubPill({ on, onClick, children }: { on: boolean; onClick: () => void; 
       type="button"
       onClick={onClick}
       aria-pressed={on}
-      className={`press min-h-9 rounded-full border px-3 text-xs font-semibold ${on ? "border-accent bg-accent text-white" : "border-line-strong text-fg-2"}`}
+      className={`press inline-flex min-h-9 items-center rounded-full border px-3 text-xs font-semibold transition-colors duration-150 ${on ? "border-accent bg-accent text-white" : "border-line-strong text-fg-2 hover:border-sky-400/40 hover:text-fg"}`}
     >
       {children}
     </button>

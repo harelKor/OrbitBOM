@@ -16,6 +16,7 @@ import {
   setItemCategory,
   setItemCondition,
   setItemLocation,
+  setItemName,
   setItemPhoto,
   setItemNote,
   setItemSpecs,
@@ -69,6 +70,7 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
   const [state, setState] = useState<State>(null);
   const [, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const edit = useEditMode();
 
   const loadItem = (id: string) =>
     startTransition(async () => {
@@ -137,7 +139,18 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
     });
 
   const item = state?.kind === "item" ? (state.data?.item ?? state.preview) : null;
-  const title = state?.kind === "item" ? (item?.name ?? "Inventory item") : state?.kind === "material" ? state.name : "";
+  const title =
+    state?.kind === "item" ? (
+      item && edit ? (
+        <ItemName key={`${item.id}:${item.name}`} name={item.name} onSave={(name) => startTransition(async () => after(await setItemName(item.id, name)))} />
+      ) : (
+        (item?.name ?? "Inventory item")
+      )
+    ) : state?.kind === "material" ? (
+      state.name
+    ) : (
+      ""
+    );
   return (
     <Ctx.Provider value={{ openItem, openMaterial }}>
       {children}
@@ -264,6 +277,37 @@ function SeasonBox({ item, onSaved, onError }: { item: Item; onSaved: () => void
 
 // The item window: picture and tags (each opens its page), the count, the details, the parts
 // that use it, Edit / To BOM / Delete in Edit mode, and the history.
+// The item window's title in Edit mode: click and type, it saves on Enter or when it loses focus
+// (Escape puts the old name back).
+function ItemName({ name, onSave }: { name: string; onSave: (name: string) => void }) {
+  const [text, setText] = useState(name);
+  const commit = () => {
+    const next = text.replace(/\s+/g, " ").trim();
+    if (!next) return setText(name);
+    if (next !== name) onSave(next);
+  };
+  return (
+    <input
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          e.currentTarget.blur();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          setText(name);
+          requestAnimationFrame(() => (e.target as HTMLInputElement).blur());
+        }
+      }}
+      aria-label="Item name"
+      title="Click to rename"
+      className="-mx-1.5 w-full min-w-0 rounded-md border border-transparent bg-transparent px-1.5 py-0.5 font-semibold text-fg transition-colors duration-150 outline-none hover:border-line-strong focus:border-sky-400/60 focus:bg-raised"
+    />
+  );
+}
+
 function ItemBody({
   item,
   data,

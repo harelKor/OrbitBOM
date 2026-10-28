@@ -325,6 +325,15 @@ export async function countStock(itemId: string, amount: number): Promise<Action
   return {};
 }
 
+// The item window's title in Edit mode: a new name, kept in the item's history.
+export async function setItemName(itemId: string, name: string): Promise<ActionResult> {
+  const member = await requireMember();
+  if (!isUuid(itemId)) return { error: "Unknown item." };
+  const value = name.replace(/\s+/g, " ").trim().slice(0, 200);
+  if (!value) return { error: "An item needs a name." };
+  return saveFields(itemId, () => ({ name: value }), member.id, true);
+}
+
 // The item window's Notes box: blank clears the note.
 export async function setItemNote(itemId: string, note: string): Promise<ActionResult> {
   const member = await requireMember();

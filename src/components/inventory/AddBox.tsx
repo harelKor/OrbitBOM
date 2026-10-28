@@ -21,8 +21,8 @@ export const isLink = (s: string) => /^https?:\/\/\S+\.\S+/i.test(s.trim());
 // The one box at the top of Inventory. In View mode it filters the shelf ("Do we have it?"). In
 // Edit mode it also adds: as you type, items already on the shelf, products from the team's
 // stores (the same product from several stores is one row, pick the store), smart typing
-// ("36t htd 1/2 hex pulley"; when every word was understood, Enter saves it straight away), and a
-// chip per category for a custom item. A pasted product link is read from the page. The add form
+// ("36t htd 1/2 hex pulley"; when every word was understood, one click saves it), "+ Create" for
+// the typed name, and a chip per category for a custom item. Enter only confirms the search. A pasted product link is read from the page. The add form
 // opens under the box and stays put for the next item.
 export function AddBox({
   q,
@@ -119,6 +119,9 @@ export function AddBox({
   const custom = (categoryId: string) =>
     start(quick?.categoryId === categoryId ? { category: categoryId, specs: quick.specs } : { category: categoryId, name: query, nameTouched: !!query });
 
+  // The results' "+ Create" button: the add form with what was typed (and what it understood).
+  const createNew = () => (quick ? custom(quick.categoryId) : start({ category: defaultCategory, name: query, nameTouched: true }));
+
   const open = edit && focus && !!query && !draft;
 
   // Floating results: fixed in the window's top layer, under the box (or over it when there's
@@ -161,7 +164,7 @@ export function AddBox({
           onClick={() => (quickWhole ? quickSave() : custom(quick!.categoryId))}
           icon="spark"
           title={quickSaving ? "Adding…" : `Add “${quickName}”`}
-          detail={quickWhole ? `${quickCat!.label} · Enter adds it, ${newStock} in stock` : `${quickCat!.label} · Enter to finish the details`}
+          detail={quickWhole ? `${quickCat!.label} · adds it, ${newStock} in stock` : `${quickCat!.label} · finish the details`}
         />
       )}
 
@@ -171,6 +174,17 @@ export function AddBox({
             <Row key={i.id} onClick={() => (onPick ? onPick(i.id) : openItem(i.id, i))} img={i.thumbUrl} icon="box" title={i.name} detail={`${formatStock(i.inStock, i.sheet)} ${i.sheet ? "sheets" : "in stock"}`} />
           ))}
         </Section>
+      )}
+
+      {!link && (
+        <button
+          type="button"
+          onClick={createNew}
+          className="press flex min-h-11 w-full items-center gap-2 rounded-xl border border-dashed border-sky-400/50 bg-sky-500/5 px-3 text-left text-sm font-semibold text-sky-600 transition-colors duration-150 hover:border-sky-400 hover:bg-sky-500/10 active:scale-[0.98] dark:text-sky-400"
+        >
+          <span aria-hidden className="text-base leading-none">+</span>
+          <span className="min-w-0 truncate">Create “{query}” as new item</span>
+        </button>
       )}
 
       {!link && query.length >= 3 && (
@@ -265,11 +279,13 @@ export function AddBox({
           onFocus={() => setFocus(true)}
           onBlur={() => setTimeout(() => setFocus(false), 150)}
           onKeyDown={(e) => {
-            if (e.key !== "Enter" || !edit || !query) return;
+            if (e.key !== "Enter") return;
             e.preventDefault();
-            if (link) readLink();
-            else if (quickWhole) quickSave();
-            else if (quick) custom(quick.categoryId);
+            // A pasted link is read; anything else is a search: Enter keeps the filter and
+            // closes the results (Harel, 2026-10-28). "+ Create" in the results adds it.
+            if (edit && link) return readLink();
+            setFocus(false);
+            box.current?.blur();
           }}
           placeholder={onPick ? placeholder : edit ? "Add an item: type a name or paste a link" : placeholder}
           className="input min-h-12 py-3 pr-10 pl-11 text-base"

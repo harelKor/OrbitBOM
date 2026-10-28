@@ -75,8 +75,17 @@ const BORES = [
 const PITCHES = ["GT2 3mm", "HTD 5mm"];
 // Motor shafts, for pinion gears and motor pulleys (they live in Gears and Pulleys).
 const MOTOR_BORES = ["8mm SplineXS", "Falcon", "Kraken", "RS775", "CIM"];
-// Metric bearing bores, as the shop's bearings are sized.
+// Bearing bores: the inch hex and round ones first, then the shop's metric sizes, each once.
 const BEARING_BORES = [
+  '1/2" Hex',
+  '3/8" Hex',
+  '1/2" ThunderHex',
+  '3/8" ThunderHex',
+  '1/2" Round',
+  '3/8" Round',
+  '1/4" Round',
+  '3/4" Round',
+  '0.6" Round',
   "4mm",
   "5mm",
   "6mm",
@@ -226,17 +235,18 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     noun: "Bearing",
     match: /bearing|bushing/i,
     fields: [
+      // Filters read Bore (ID) → OD → Width → Type (Harel, 2026-10-28).
       {
         id: "bore",
-        label: "Bore",
+        label: "Bore (ID)",
         kind: "options",
-        options: [...BORES, '3/8" Round', '1/4" Round', ...BEARING_BORES],
+        options: BEARING_BORES,
       },
       { id: "od", label: "OD", kind: "text", name: "{} OD" },
       { id: "width", label: "Width", kind: "text", name: "{} wide" },
       {
         id: "flanged",
-        label: "Flanged",
+        label: "Type",
         kind: "options",
         options: ["Flanged", "Radial"],
       },
