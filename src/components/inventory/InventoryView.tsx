@@ -21,6 +21,7 @@ import {
   pushQuery,
   type BoxCount,
 } from "@/components/ui/CategoryBoxes";
+import { Chevron } from "@/components/ui/Chevron";
 import { Icon } from "@/components/ui/Icon";
 import { Segmented } from "@/components/ui/Segmented";
 import {
@@ -37,7 +38,7 @@ import {
   type NeedView,
 } from "@/lib/inventory/season";
 import { matchesSearch } from "@/lib/inventory/searchWords";
-import { keepPicks, matchesPicks, specGroups, type SpecPicks } from "@/lib/inventory/specFilters";
+import { keepPicks, matchesPicks, specGroups, type SpecGroup, type SpecPicks } from "@/lib/inventory/specFilters";
 import { snapStock } from "@/lib/inventory/stock";
 import { AddBox } from "./AddBox";
 import { ImportDialog } from "./ImportDialog";
@@ -181,6 +182,8 @@ export function InventoryView({
     else next[fieldId] = key;
     setSpecPick({ cat: focusCat.id, picks: keepPicks(focusCat, next) });
   };
+  // The rows fold behind a Filters toggle, closed at first, so the cards start near the top.
+  const [filtersOpen, toggleFilters] = useFold("spec-filters", false);
   const inSub = (i: Item) => !focusCat || i.category !== focusCat.id || matchesPicks(i, picks);
 
   const RANK = { short: 0, ordered: 1, ok: 2 } as const;
@@ -631,35 +634,17 @@ export function InventoryView({
         </div>
       ) : (
         <div className="space-y-2">
-          {focusCat && specRows.length > 0 && (
-            <div className="space-y-1.5">
-              {specRows.map((g) => (
-                <div key={g.field.id} className="flex flex-wrap items-center gap-1.5">
-                  <span className="w-full shrink-0 text-[10px] font-semibold tracking-wider text-subtle uppercase sm:w-20">{g.label}</span>
-                  {g.values.map((v) => (
-                    <SubPill key={v.key} on={picks[g.field.id] === v.key} onClick={() => togglePick(g.field.id, v.key)}>
-                      {v.label}
-                      <span className="ml-1.5 font-mono text-[10px] tabular-nums opacity-60">{v.count}</span>
-                    </SubPill>
-                  ))}
-                </div>
-              ))}
-              {Object.keys(picks).length > 0 && (
-                <button type="button" onClick={() => setSpecPick(null)} className="press text-xs font-semibold text-accent hover:underline sm:ml-[5.375rem]">
-                  Clear filters
-                </button>
-              )}
-            </div>
-          )}
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
             <span className="font-mono tabular-nums">
               {shownMain.length} item{shownMain.length === 1 ? "" : "s"}
             </span>
+            {specRows.length > 0 && <SpecFilterBar rows={specRows} picks={picks} open={filtersOpen} onToggle={toggleFilters} onPick={togglePick} onClear={() => setSpecPick(null)} />}
             {showBoxes && filters}
             <span className="ml-auto" />
             {!edit && exportButton}
             {layoutSwitch}
           </div>
+          {filtersOpen && specRows.length > 0 && <SpecFilterRows rows={specRows} picks={picks} onPick={togglePick} />}
           {shownMain.length === 0 ? (
             <div className="panel p-6 text-sm text-muted">
               {query
@@ -808,17 +793,8 @@ const foldStore = {
   },
 };
 
-function Fold({
-  id,
-  title,
-  defaultOpen = false,
-  children,
-}: {
-  id: string;
-  title: string;
-  defaultOpen?: boolean;
-  children: React.ReactNode;
-}) {
+// Open or closed, remembered by this browser under `orbit-inventory-fold-<id>`.
+function useFold(id: string, defaultOpen: boolean): [boolean, () => void] {
   const key = `orbit-inventory-fold-${id}`;
   const saved = useSyncExternalStore(
     foldStore.subscribe,
@@ -833,6 +809,21 @@ function Fold({
     } catch {}
     foldListeners.forEach((fn) => fn());
   };
+  return [open, toggle];
+}
+
+function Fold({
+  id,
+  title,
+  defaultOpen = false,
+  children,
+}: {
+  id: string;
+  title: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, toggle] = useFold(id, defaultOpen);
   return (
     <section className="panel">
       <button
@@ -849,6 +840,113 @@ function Fold({
       </button>
       {open && <div className="px-4 pb-4">{children}</div>}
     </section>
+  );
+}
+
+// The Filters toggle on the item count row. Closed, the picks in use sit next to it (✕ removes
+// one) with Clear, so the list never filters without showing why (Harel, 2026-10-28).
+function SpecFilterBar({
+  rows,
+  picks,
+  open,
+  onToggle,
+  onPick,
+  onClear,
+}: {
+  rows: SpecGroup[];
+  picks: SpecPicks;
+  open: boolean;
+  onToggle: () => void;
+  onPick: (fieldId: string, key: string) => void;
+  onClear: () => void;
+}) {
+  const active = rows.flatMap((g) => {
+    const v = g.values.find((x) => x.key === picks[g.field.id]);
+    return v ? [{ g, v }] : [];
+  });
+  return (
+    <>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className={`press inline-flex min-h-9 items-center gap-1 rounded-full border pr-3 pl-1.5 text-xs font-semibold transition-colors duration-150 hover:border-sky-400/40 ${active.length ? "border-accent text-accent" : "border-line-strong text-fg-2"}`}
+      >
+        <Chevron open={open} small className="hover:bg-transparent" />
+        Filters
+        {active.length > 0 && <span className="ml-0.5 rounded-full bg-accent px-1.5 font-mono text-[10px] text-white tabular-nums">{active.length}</span>}
+      </button>
+      {!open &&
+        active.map(({ g, v }) => (
+          <button
+            key={g.field.id}
+            type="button"
+            onClick={() => onPick(g.field.id, v.key)}
+            title={`Remove ${g.label}: ${v.label}`}
+            className="press inline-flex min-h-9 items-center gap-1.5 rounded-full border border-accent bg-accent px-3 text-xs font-semibold text-white"
+          >
+            <span className="text-[10px] tracking-wider uppercase opacity-75">{g.label}</span>
+            {v.label}
+            <Icon name="close" className="h-3 w-3" />
+          </button>
+        ))}
+      {active.length > 0 && (
+        <button type="button" onClick={onClear} className="press min-h-9 px-1 text-xs font-semibold text-accent hover:underline">
+          Clear
+        </button>
+      )}
+    </>
+  );
+}
+
+// The open filters: a labeled row per field. A row with more than ROW_MAX values shows the
+// first ones (and its pick) with "+N more"; its label folds it back.
+const ROW_MAX = 10;
+function SpecFilterRows({ rows, picks, onPick }: { rows: SpecGroup[]; picks: SpecPicks; onPick: (fieldId: string, key: string) => void }) {
+  const [wide, setWide] = useState<Set<string>>(new Set());
+  const flip = (id: string) =>
+    setWide((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  return (
+    <div className="space-y-1.5">
+      {rows.map((g) => {
+        const long = g.values.length > ROW_MAX;
+        const all = !long || wide.has(g.field.id);
+        const shown = all ? g.values : g.values.filter((v, i) => i < ROW_MAX || v.key === picks[g.field.id]);
+        return (
+          <div key={g.field.id} className="flex flex-wrap items-center gap-1.5">
+            {long ? (
+              <button
+                type="button"
+                onClick={() => flip(g.field.id)}
+                aria-expanded={all}
+                className="press flex w-full shrink-0 items-center gap-0.5 text-left text-[10px] font-semibold tracking-wider text-subtle uppercase hover:text-fg sm:w-20"
+              >
+                {g.label}
+                <Icon name="chevron" className={`h-3 w-3 transition-transform duration-150 ${all ? "rotate-90" : ""}`} />
+              </button>
+            ) : (
+              <span className="w-full shrink-0 text-[10px] font-semibold tracking-wider text-subtle uppercase sm:w-20">{g.label}</span>
+            )}
+            {shown.map((v) => (
+              <SubPill key={v.key} on={picks[g.field.id] === v.key} onClick={() => onPick(g.field.id, v.key)}>
+                {v.label}
+                <span className="ml-1.5 font-mono text-[10px] tabular-nums opacity-60">{v.count}</span>
+              </SubPill>
+            ))}
+            {long && (
+              <button type="button" onClick={() => flip(g.field.id)} className="press min-h-9 px-2 font-mono text-xs font-semibold text-accent tabular-nums hover:underline">
+                {all ? "Show less" : `+${g.values.length - shown.length} more`}
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
