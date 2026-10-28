@@ -463,6 +463,7 @@ const tokens = (s: string) =>
   s
     .toLowerCase()
     .replace(/(\d)\s*(″|”|"|inch\b|in\b)/g, "$1in")
+    .replace(/(\d)\s*(tooth|teeth)\b/g, "$1t")
     .replace(/(\d)\s*(t|mm|dp|a|v)\b/g, "$1$2")
     .replace(/["'”″]/g, "")
     .split(/[\s,()|/\-–]+/)
