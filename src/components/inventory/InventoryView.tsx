@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
   useMemo,
@@ -77,7 +76,11 @@ export function InventoryView({
   const [open, setOpen] = useState<Open>(null);
   const [q, setQ] = useState("");
   const [conditionId, setConditionId] = useState("");
-  const [locationId, setLocationId] = useState("");
+  // The location filter lives in the URL (?loc=), so the 📍 pills, the card tags and the
+  // Any location menu share it on every Inventory page, and Back steps out of it.
+  const params = useSearchParams();
+  const locationId = params.get("loc") ?? "";
+  const setLocationId = (id: string) => pushQuery({ loc: id || null });
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   // Move / Delete: taps select cards, the bar at the bottom acts on them.
@@ -142,7 +145,6 @@ export function InventoryView({
           : true;
 
   // Home's place, kept in the URL: the Short toggle, and the group and category boxes.
-  const params = useSearchParams();
   const home = scope.kind === "home";
   const rawView = params.get("view");
   const view: NeedView | null =
@@ -178,7 +180,7 @@ export function InventoryView({
     .sort((a, b) =>
       view ? RANK[standing(a, view)] - RANK[standing(b, view)] : 0,
     );
-  const boxes = home && !view && !query;
+  const boxes = home && !view && !query && !locationId;
   // The view's own items, filtered only by condition and location (not by the boxes).
   // In a view, the cards up top are only the ones still short or on order; every other item of
   // the view (covered, or outside the picked box) is in the folded All items, so none shows twice.
@@ -432,7 +434,8 @@ export function InventoryView({
         </div>
       </EditOnly>
 
-      <div className="flex flex-wrap gap-2">
+      {/* The search row stays under the top bar while the list scrolls. */}
+      <div className="sticky top-[var(--topbar-h)] z-20 -mx-2 flex flex-wrap gap-2 bg-ink/95 px-2 py-2 backdrop-blur">
         <AddBox
           q={q}
           setQ={setQ}
@@ -441,7 +444,9 @@ export function InventoryView({
           locations={locations}
           conditions={conditions}
           defaultCategory={scope.kind === "category" ? scope.id : null}
-          defaultLocationId={scope.kind === "location" ? scope.id : null}
+          defaultLocationId={
+            scope.kind === "location" ? scope.id : locationId || null
+          }
           placeholder={
             scope.kind === "home"
               ? "Do we have it? Name, size, bore, vendor, location…"
@@ -455,23 +460,24 @@ export function InventoryView({
       {locations.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-xs font-semibold text-subtle">📍</span>
-          {locations.map((l) => (
-            <Link
-              key={l.id}
-              href={
-                scope.kind === "location" && scope.id === l.id
-                  ? "/inventory"
-                  : `/inventory/location/${l.id}`
-              }
-              className={`press min-h-9 rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                scope.kind === "location" && scope.id === l.id
-                  ? "border-accent bg-accent text-white"
-                  : "border-line-strong bg-surface text-fg-2 hover:border-accent hover:text-accent"
-              }`}
-            >
-              {l.name}
-            </Link>
-          ))}
+          {locations.map((l) => {
+            const on = locationId === l.id;
+            return (
+              <button
+                key={l.id}
+                type="button"
+                onClick={() => setLocationId(on ? "" : l.id)}
+                aria-pressed={on}
+                className={`press min-h-9 rounded-full border px-3 py-1.5 text-xs font-semibold active:scale-[0.98] ${
+                  on
+                    ? "border-accent bg-accent text-white"
+                    : "border-line-strong bg-surface text-fg-2 hover:border-accent hover:text-accent"
+                }`}
+              >
+                {l.name}
+              </button>
+            );
+          })}
         </div>
       )}
 
@@ -536,7 +542,13 @@ export function InventoryView({
           category={cat}
           onGroup={(g) => pushQuery({ group: g, cat: null })}
           onCategory={(c) => pushQuery({ cat: c })}
-          categoryHref={view ? undefined : (id) => `/inventory/c/${id}`}
+          categoryHref={
+            view
+              ? undefined
+              : (id) =>
+                  `/inventory/c/${id}${locationId ? `?loc=${locationId}` : ""}`
+          }
+          route={false}
         />
       )}
 
@@ -606,6 +618,15 @@ export function InventoryView({
                       ? "No item here is used by an active robot."
                       : "No items here yet."}
             </div>
+          ) : view ? (
+            // The short and on-order items fold like All items below, closed at first (Harel, 2026-10-28).
+            <Fold
+              id={`short-in-${view}`}
+              title={`${view === "season" ? "Short for Season" : "Short for Robots"} (${shownMain.length})`}
+              defaultOpen={false}
+            >
+              {grid(shownMain)}
+            </Fold>
           ) : (
             grid(shownMain)
           )}

@@ -8,6 +8,7 @@ import { getCategory } from "@/lib/inventory/categories";
 import {
   hasSeasonNeed,
   missing,
+  neededFor,
   standing,
   type NeedView,
 } from "@/lib/inventory/season";
@@ -30,8 +31,9 @@ const TINT = {
 } as const;
 
 // The Table side of the Cards | Table switch (Harel, 2026-10-27): one row per item, for long
-// lists of screws, belts, gears and drills. The count, − / +, Needed for Season and the cart
-// work in place like on a card; the row opens the item's window.
+// lists of screws, belts, gears and drills. The count ("3 / 6", like a card), − / +, Needed for
+// Season and the cart work in place like on a card; the row opens the item's window. The item's
+// picture shows at the left of its name once the card size slider is big enough (.table-thumb).
 export function ItemTable({
   items,
   categories,
@@ -61,15 +63,15 @@ export function ItemTable({
   const stop = (e: React.SyntheticEvent) => e.stopPropagation();
   return (
     <div className="panel overflow-x-auto">
-      <table className="data-table">
+      <table className="data-table inv-table">
         <thead>
           <tr>
             {onToggleSelect && <th aria-label="Select" />}
             <th>Item</th>
             {!hideCategory && <th>Category</th>}
+            <th className="text-center">In stock</th>
             <th>Specs</th>
             <th>Location</th>
-            <th className="text-center">In stock</th>
             <th className="text-center">Needed for Season</th>
             <th>Price</th>
             <th aria-label="Order" />
@@ -81,6 +83,8 @@ export function ItemTable({
             const condition = conditions.find((c) => c.id === item.conditionId);
             const location = locations.find((l) => l.id === locationOf(item));
             const gap = missing(item, view);
+            const needed = neededFor(item, view);
+            const picture = item.thumbUrl ?? category?.imageUrl ?? null;
             const state = standing(item, view);
             const tint =
               view !== "any" || state === "ordered"
@@ -107,15 +111,30 @@ export function ItemTable({
                   </td>
                 )}
                 <td className="min-w-56">
-                  <span className="flex items-center gap-2">
-                    {condition && (
-                      <span
-                        className="h-2.5 w-2.5 shrink-0 rounded-full"
-                        style={{ background: conditionColor(condition.color) }}
-                        title={condition.label}
-                      />
-                    )}
-                    <ProductName item={item} className="font-semibold" />
+                  <span className="flex items-center">
+                    <span className="table-thumb thumb-well rounded-md">
+                      {picture && (
+                        // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
+                        <img
+                          src={picture}
+                          alt=""
+                          loading="lazy"
+                          className={`h-full w-full object-contain p-0.5 ${item.thumbUrl ? "" : "opacity-60"}`}
+                        />
+                      )}
+                    </span>
+                    <span className="flex min-w-0 items-center gap-2">
+                      {condition && (
+                        <span
+                          className="h-2.5 w-2.5 shrink-0 rounded-full"
+                          style={{
+                            background: conditionColor(condition.color),
+                          }}
+                          title={condition.label}
+                        />
+                      )}
+                      <ProductName item={item} className="font-semibold" />
+                    </span>
                   </span>
                 </td>
                 {!hideCategory && (
@@ -123,21 +142,6 @@ export function ItemTable({
                     {category?.label}
                   </td>
                 )}
-                <td>
-                  <span className="flex flex-wrap gap-1">
-                    {Object.entries(item.specs).map(([k, v]) => (
-                      <span
-                        key={k}
-                        className="rounded-full bg-raised px-2 py-0.5 font-mono text-[11px] whitespace-nowrap text-fg-2 tabular-nums"
-                      >
-                        {v}
-                      </span>
-                    ))}
-                  </span>
-                </td>
-                <td className="text-xs whitespace-nowrap text-muted">
-                  {location ? `📍 ${location.name}` : ""}
-                </td>
                 <td onClick={stop}>
                   <span className="flex items-center justify-center gap-1.5">
                     <button
@@ -156,6 +160,12 @@ export function ItemTable({
                         item={item}
                         onCount={(n) => onCount(item.id, n)}
                       />
+                      {needed != null && (
+                        <span className="font-normal text-subtle">
+                          {" "}
+                          / {formatStock(needed, item.sheet)}
+                        </span>
+                      )}
                     </span>
                     {item.sheet && (
                       <PieceStepper
@@ -172,6 +182,21 @@ export function ItemTable({
                       +
                     </button>
                   </span>
+                </td>
+                <td>
+                  <span className="flex flex-wrap gap-1">
+                    {Object.entries(item.specs).map(([k, v]) => (
+                      <span
+                        key={k}
+                        className="rounded-full bg-raised px-2 py-0.5 font-mono text-[11px] whitespace-nowrap text-fg-2 tabular-nums"
+                      >
+                        {v}
+                      </span>
+                    ))}
+                  </span>
+                </td>
+                <td className="text-xs whitespace-nowrap text-muted">
+                  {location ? `📍 ${location.name}` : ""}
                 </td>
                 <td onClick={stop} className="text-center">
                   <SeasonCell item={item} />

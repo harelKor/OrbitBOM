@@ -1,15 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ShadeSlider } from "./ShadeSlider";
 import { APPEARANCE_KEY as KEY, DEFAULT_HUE } from "./boot-scripts";
 
 // Card size and site colour, set from the right panel and kept in this browser, so every page
 // opens the way the member left it. Both live on <html>: --card-scale sizes the part card
 // grids (.card-grid) and zooms the tables (.data-table), and data-hue + --hue turn the accent colours (globals.css).
+// Ctrl + mouse wheel (or a trackpad pinch) over a card grid or a table moves the card size too.
 
 type Prefs = { scale: number; hue: number };
 const DEFAULTS: Prefs = { scale: 1, hue: DEFAULT_HUE };
+const MIN_SCALE = 0.3;
+const MAX_SCALE = 2.5;
 
 function apply({ scale, hue }: Prefs) {
   const root = document.documentElement;
@@ -23,23 +26,46 @@ function apply({ scale, hue }: Prefs) {
   }
 }
 
+function persist(p: Prefs) {
+  apply(p);
+  try {
+    localStorage.setItem(KEY, JSON.stringify(p));
+  } catch {}
+}
+
 export function AppearanceControls() {
   const [prefs, setPrefs] = useState<Prefs>(DEFAULTS);
+  // The prefs as last set, for the wheel listener (state would be stale inside it).
+  const latest = useRef(DEFAULTS);
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(KEY) ?? "null");
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- browser-only preference
-      if (saved) setPrefs({ ...DEFAULTS, ...saved });
+      if (saved) setPrefs((latest.current = { ...DEFAULTS, ...saved }));
     } catch {}
   }, []);
   const update = (next: Partial<Prefs>) => {
-    const p = { ...prefs, ...next };
+    const p = { ...latest.current, ...next };
+    latest.current = p;
     setPrefs(p);
-    apply(p);
-    try {
-      localStorage.setItem(KEY, JSON.stringify(p));
-    } catch {}
+    persist(p);
   };
+
+  // Ctrl + wheel over cards or a table: a notch is about 8%, a pinch moves smoothly. Elsewhere
+  // the browser's own zoom keeps working.
+  useEffect(() => {
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey || !(e.target as Element | null)?.closest?.(".card-grid, .data-table")) return;
+      e.preventDefault();
+      const step = Math.max(-0.15, Math.min(0.15, -e.deltaY * (e.deltaMode === 1 ? 0.03 : 0.0008)));
+      const scale = Math.round(Math.min(MAX_SCALE, Math.max(MIN_SCALE, latest.current.scale * (1 + step))) * 1000) / 1000;
+      if (scale === latest.current.scale) return;
+      latest.current = { ...latest.current, scale };
+      setPrefs(latest.current);
+      persist(latest.current);
+    };
+    window.addEventListener("wheel", onWheel, { passive: false });
+    return () => window.removeEventListener("wheel", onWheel);
+  }, []);
 
   return (
     <div className="space-y-3 border-t border-line p-3">
@@ -50,8 +76,8 @@ export function AppearanceControls() {
         </span>
         <input
           type="range"
-          min={0.3}
-          max={2.5}
+          min={MIN_SCALE}
+          max={MAX_SCALE}
           step={0.01}
           value={prefs.scale}
           onChange={(e) => update({ scale: Number(e.target.value) })}

@@ -1,3 +1,4 @@
+import { InventoryCrumbs } from "@/components/inventory/InventoryCrumbs";
 import { InventoryView } from "@/components/inventory/InventoryView";
 import { requireMember } from "@/lib/auth";
 import { listInventory } from "@/lib/data/inventory";
@@ -11,7 +12,7 @@ export default async function InventoryPage() {
   return (
     <div className="space-y-4">
       <div>
-        <div className="text-xs font-semibold tracking-wide text-subtle uppercase">Shop</div>
+        <InventoryCrumbs categories={inventory.categories} />
         <h1 className="display text-3xl text-accent">Inventory</h1>
         <p className="mt-1 max-w-3xl text-sm text-muted">
           What the team owns. Every active robot shares the same shelf: the parts linked to an item draw on its stock

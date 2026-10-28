@@ -84,6 +84,7 @@ export type InventoryReviewChange = { field: string; label: string; from: string
 export type InventoryReview = {
   id: string;
   kind: "item" | "category";
+  itemId: string | null; // the item a change is on (null for a new category)
   name: string;
   categoryId: string;
   categoryLabel: string;
@@ -149,6 +150,7 @@ export async function listInventoryReviews(): Promise<InventoryReview[]> {
         {
           ...base,
           kind: "category" as const,
+          itemId: null,
           name: cat.label,
           categoryId: cat.id,
           categoryLabel: cat.label,
@@ -163,7 +165,7 @@ export async function listInventoryReviews(): Promise<InventoryReview[]> {
       const ctx = { cats, locations, category: field === "specs" ? category : null };
       return { field, label: itemFieldLabel(field), from: itemValueText(field, c.from, ctx), to: itemValueText(field, c.to, ctx) };
     });
-    return [{ ...base, kind: "item" as const, name: item.name, categoryId: category, categoryLabel: getCategory(cats, category)?.label ?? "Other", changes }];
+    return [{ ...base, kind: "item" as const, itemId: item.id, name: item.name, categoryId: category, categoryLabel: getCategory(cats, category)?.label ?? "Other", changes }];
   });
 }
 

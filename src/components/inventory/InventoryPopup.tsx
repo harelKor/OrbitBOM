@@ -342,7 +342,7 @@ function ItemBody({
               </Link>
             )}
             {location && (
-              <Link href={`/inventory/location/${location.id}`} onClick={onClose} className={`${tag} border border-line text-fg-2 hover:border-accent hover:text-accent`}>
+              <Link href={`/inventory?loc=${location.id}`} onClick={onClose} className={`${tag} border border-line text-fg-2 hover:border-accent hover:text-accent`}>
                 📍 {location.name}
               </Link>
             )}

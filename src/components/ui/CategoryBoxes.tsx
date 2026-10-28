@@ -21,7 +21,8 @@ export function pushQuery(changes: Record<string, string | null>) {
 // The group boxes over the category boxes (Inventory and COTS share them). The top level shows one
 // box per group; a group swaps the row for its categories, with a route line back up
 // ("All categories / Electrical / Motors"). A category either opens its page (`categoryHref`) or
-// filters in place (`onCategory`). A count turns red when something in the box is short.
+// filters in place (`onCategory`). A count turns red when something in the box is short. With
+// route={false} the page shows that line itself, once, at the top (Inventory).
 export function CategoryBoxes({
   categories,
   counts,
@@ -32,6 +33,7 @@ export function CategoryBoxes({
   categoryHref,
   root = "All categories",
   compact = false,
+  route = true,
 }: {
   categories: Category[];
   counts: Map<string, BoxCount>; // by group id and by category id
@@ -42,6 +44,7 @@ export function CategoryBoxes({
   categoryHref?: (id: string) => string;
   root?: string;
   compact?: boolean;
+  route?: boolean;
 }) {
   const g = CATEGORY_GROUPS.find((x) => x.id === group);
   const cat = categories.find((c) => c.id === category);
@@ -52,7 +55,7 @@ export function CategoryBoxes({
   const crumb = "press rounded px-1 font-semibold hover:text-accent active:scale-[0.98]";
   return (
     <div className="space-y-2">
-      {g && (
+      {g && route && (
         <nav aria-label="Category route" className="flex flex-wrap items-center gap-1 text-xs text-subtle">
           <button type="button" onClick={() => onGroup(null)} className={crumb}>
             {root}

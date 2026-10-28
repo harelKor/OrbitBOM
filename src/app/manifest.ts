@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 
-// Added to a phone's home screen, the app opens on its own without the browser's address bar.
+// Added to a phone's home screen, the app opens full screen (no address bar or status bar), or on
+// its own without the address bar where full screen isn't offered.
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "OrbitParts",
@@ -8,7 +9,7 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "Team 1690 bill of materials, inventory and Onshape integration",
     start_url: "/",
     scope: "/",
-    display: "standalone",
+    display: "fullscreen",
     display_override: ["fullscreen", "standalone"],
     background_color: "#f2f2f2",
     theme_color: "#0000cc",

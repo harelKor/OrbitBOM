@@ -12,6 +12,11 @@ import {
   suggestSetup,
   type ActionResult,
 } from "@/app/(app)/robots/[robotId]/review/actions";
+import { updatePart } from "@/app/(app)/parts-actions";
+import { isCardBodyClick } from "@/components/bom/PartCard";
+import { usePartDetails } from "@/components/bom/PartDetailsHost";
+import type { PartChanges } from "@/lib/parts/changes";
+import { useInventoryPopup } from "@/components/inventory/InventoryPopup";
 import { matchesTopBar } from "@/components/bom/filter";
 import { partTitle, type CardPart } from "@/components/bom/types";
 import { useFilters } from "@/components/shell/FilterContext";
@@ -374,11 +379,27 @@ function DismissButton({ onClick, disabled }: { onClick: () => void; disabled?: 
   );
 }
 
+// A click anywhere but its buttons opens the part's details window, as it is now (with the change).
 function ReviewCard({ item, disabled, onDecide }: { item: ReviewItem; disabled: boolean; onDecide: (approve: Decision) => void }) {
   const { part } = item;
   const fields = ORDER.filter((f) => f in item.changes);
+  const [, startSave] = useTransition();
+  const save = (changes: PartChanges) =>
+    startSave(async () => {
+      const r = await updatePart(part.id, changes);
+      if (r.error) alert(r.error);
+    });
+  const showDetails = usePartDetails(part, save);
   return (
-    <div className="card-interactive group flex flex-col text-sm" style={statusTint(computeStatus(part))}>
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={(e) => isCardBodyClick(e) && showDetails()}
+      onKeyDown={(e) => e.key === "Enter" && e.target === e.currentTarget && showDetails()}
+      aria-label={`Open ${partTitle(part)}`}
+      className="card-interactive group flex cursor-pointer flex-col text-sm"
+      style={statusTint(computeStatus(part))}
+    >
       <div className={`thumb-well ${part.classification === "cots" ? "thumb-cots" : "thumb-made"} relative flex aspect-[4/3] items-center justify-center`}>
         {part.thumbUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
@@ -514,9 +535,18 @@ function InventoryCategory({ label, reviews, onDecide }: { label: string; review
   );
 }
 
+// An item's card opens the item's window (its values now, with the change) from anywhere but its buttons.
 function InventoryCard({ review, onDecide }: { review: InventoryReview; onDecide: (approve: Decision) => void }) {
+  const { openItem } = useInventoryPopup();
+  const open = () => review.itemId && openItem(review.itemId);
   return (
-    <div className="card-interactive flex flex-col gap-2 p-3 text-sm">
+    <div
+      role={review.itemId ? "button" : undefined}
+      tabIndex={review.itemId ? 0 : undefined}
+      onClick={(e) => isCardBodyClick(e) && open()}
+      onKeyDown={(e) => e.key === "Enter" && e.target === e.currentTarget && open()}
+      className={`card-interactive flex flex-col gap-2 p-3 text-sm ${review.itemId ? "cursor-pointer" : ""}`}
+    >
       <div className="flex min-w-0 items-center gap-2">
         <div className="min-w-0 flex-1 truncate font-semibold text-fg" title={review.name}>
           {review.name}

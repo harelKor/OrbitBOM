@@ -253,6 +253,13 @@
       "when": 1793133092692,
       "tag": "0035_inventory_shop_categories",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1793185231594,
+      "tag": "0036_inventory_conditions_cleanup",
+      "breakpoints": true
     }
   ]
 }

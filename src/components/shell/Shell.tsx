@@ -70,10 +70,10 @@ export function Shell({
           <InventoryPopupProvider>
             <PartDetailsProvider>
               <div
-                className={`flex min-h-screen [--shell-left:0px] [--shell-right:0px] ${collapsed.left ? "" : "lg:[--shell-left:14rem]"} ${collapsed.right ? "" : "xl:[--shell-right:18rem]"}`}
+                className={`flex min-h-dvh [--shell-left:0px] [--shell-right:0px] ${collapsed.left ? "" : "lg:[--shell-left:14rem]"} ${collapsed.right ? "" : "xl:[--shell-right:18rem]"}`}
               >
                 <aside
-                  className={`fixed inset-y-0 left-0 z-40 w-56 shrink-0 border-r border-line bg-surface lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${collapsed.left ? "lg:hidden" : ""} ${
+                  className={`fixed inset-y-0 left-0 z-40 w-56 shrink-0 border-r border-line bg-surface lg:sticky lg:top-0 lg:h-dvh lg:translate-x-0 ${collapsed.left ? "lg:hidden" : ""} ${
                     open === "left" ? "translate-x-0" : "-translate-x-full"
                   } transition-transform duration-150`}
                 >
@@ -89,7 +89,7 @@ export function Shell({
                   <Shortcuts robots={robots} lastRobotId={lastRobotId} />
                 </div>
                 <aside
-                  className={`fixed inset-y-0 right-0 z-40 w-72 shrink-0 border-l border-line bg-surface xl:sticky xl:top-0 xl:h-screen xl:translate-x-0 ${collapsed.right ? "xl:hidden" : ""} ${
+                  className={`fixed inset-y-0 right-0 z-40 w-72 shrink-0 border-l border-line bg-surface xl:sticky xl:top-0 xl:h-dvh xl:translate-x-0 ${collapsed.right ? "xl:hidden" : ""} ${
                     open === "right" ? "translate-x-0" : "translate-x-full"
                   } transition-transform duration-150`}
                 >

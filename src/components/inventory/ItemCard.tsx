@@ -7,6 +7,7 @@ import { sendItemToReleased } from "@/app/(app)/inventory/actions";
 import { textOn } from "@/components/bom/options";
 import { formatPrice, setCurrency, useCurrency } from "@/components/cots/currency";
 import { Popover } from "@/components/bom/Popover";
+import { pushQuery } from "@/components/ui/CategoryBoxes";
 import { CheckBadge } from "@/components/ui/CheckBadge";
 import { Icon } from "@/components/ui/Icon";
 import { statusTint } from "@/components/ui/statusTint";
@@ -68,7 +69,8 @@ export function ProductName({ item, className = "", wrap = false }: { item: Pick
 
 // An inventory item as a compact 4:3 card, like the part cards: the picture (its product photo,
 // else a linked part's Onshape thumbnail, else the category's picture) with the category,
-// condition and location tags on it (each opens its page), big red − / green + and the count
+// condition and location tags on it (category and condition open their page, the location filters
+// the page in place), big red − / green + and the count
 // (tap it to type the real count) over what's needed ("3 / 6": the view's need, the bigger of the
 // season's and the robots' elsewhere), then the name and how the robots use it. The left edge
 // takes the condition's colour. A short item gets a cart on its picture that sends what's missing
@@ -146,7 +148,7 @@ export function ItemCard({
           </span>
         )}
       </div>
-      <div className="absolute top-2 left-2 flex max-w-[60%] flex-wrap gap-1">
+      <div className="card-overlay absolute top-2 left-2 flex max-w-[60%] flex-wrap gap-1">
         {category && !hideCategory && (
           <Link href={`/inventory/c/${category.id}`} onClick={stop} className="truncate rounded-full bg-[#111318]/85 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-accent">
             {category.label}
@@ -163,20 +165,24 @@ export function ItemCard({
           </Link>
         )}
       </div>
-      <div className="absolute top-2 right-2 flex max-w-[38%] flex-col items-end gap-1">
+      <div className="card-overlay absolute top-2 right-2 flex max-w-[38%] flex-col items-end gap-1">
         {(gap > 0 || item.openOrder) && <CartButton item={item} gap={gap} />}
         {location && (
-          <Link
-            href={`/inventory/location/${location.id}`}
-            onClick={stop}
-            className="max-w-full truncate rounded-full border border-line bg-surface/90 px-2 py-0.5 text-[11px] font-semibold text-fg-2 backdrop-blur-md hover:border-accent hover:text-accent"
+          // Filters the page to this location in place, like the 📍 pills over the cards.
+          <button
+            type="button"
+            onClick={(e) => {
+              stop(e);
+              pushQuery({ loc: location.id });
+            }}
+            className="max-w-full truncate rounded-full border border-line bg-surface/90 px-2 py-0.5 text-[11px] font-semibold text-fg-2 backdrop-blur-md hover:border-accent hover:text-accent active:scale-[0.98]"
           >
             📍 {location.name}
-          </Link>
+          </button>
         )}
       </div>
 
-      <div className="-mt-12 flex items-center justify-between gap-2 px-2 pb-2" onClick={stop}>
+      <div className="card-overlay -mt-12 flex items-center justify-between gap-2 px-2 pb-2" onClick={stop}>
         <button
           type="button"
           onClick={() => onStep(-1)}

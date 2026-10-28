@@ -21,9 +21,10 @@ export const metadata: Metadata = {
   applicationName: "OrbitParts",
   icons: { icon: [{ url: "/orbit-icon.png", type: "image/png" }, { url: "/favicon.ico" }], apple: "/apple-icon.png" },
   description: "Team 1690 bill of materials, inventory and Onshape integration",
-  // Opened from the home screen, phones run the app without the browser's address bar.
+  // Opened from the home screen, phones run the app without the browser's address bar. Next writes
+  // mobile-web-app-capable from appleWebApp; older iPhones still read the apple- one.
   appleWebApp: { capable: true, title: "OrbitParts", statusBarStyle: "default" },
-  other: { "mobile-web-app-capable": "yes" },
+  other: { "apple-mobile-web-app-capable": "yes" },
 };
 
 export const viewport: Viewport = {
@@ -42,7 +43,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <head>
         <script dangerouslySetInnerHTML={{ __html: SHADE_SCRIPT + APPEARANCE_SCRIPT }} />
       </head>
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="flex min-h-dvh flex-col">{children}</body>
     </html>
   );
 }

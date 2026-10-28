@@ -274,6 +274,12 @@ body {
   .group:hover .thumb-well img {
     transform: scale(1.03);
   }
+  /* What floats over a card's picture (counts, badges, − / +, download, cart) shrinks with the card
+     size slider, so small cards still show their picture: full size from 100%, about ⅔ at 50%. */
+  .card-interactive > .thumb-well > .absolute:not(.inset-0),
+  .card-overlay {
+    zoom: clamp(0.55, calc(0.3 + var(--card-scale, 1) * 0.7), 1);
+  }
   /* Frosted buttons floating over a thumbnail (Download, Locate). */
   .overlay-btn {
     @apply press flex h-9 w-9 items-center justify-center rounded-md border border-line bg-surface/90 text-fg-2 shadow-sm backdrop-blur-md hover:border-accent hover:bg-accent hover:text-white;
@@ -286,11 +292,11 @@ body {
     grid-template-columns: repeat(auto-fill, minmax(min(max(calc(var(--card-min, 400px) * var(--card-scale, 1)), 110px), 100%), 1fr));
   }
   /* Part and COTS tables: roomy cells, lines between rows and columns, a banded body and a
-     highlighted row under the pointer. The card size slider zooms the whole table too, kept in a
-     readable range so the smallest card size doesn't shrink the text away. */
+     highlighted row under the pointer. The card size slider (or Ctrl + wheel over the table)
+     zooms the whole table too, kept in a range where the text stays readable. */
   .data-table {
     @apply w-full border-separate border-spacing-0 text-sm;
-    zoom: clamp(0.8, var(--card-scale, 1), 1.6);
+    zoom: clamp(0.65, var(--card-scale, 1), 2.2);
   }
   .data-table th {
     @apply border-b-2 border-line-strong bg-raised px-3 py-2.5 text-left text-[11px] font-semibold tracking-wide whitespace-nowrap text-muted uppercase;
@@ -319,6 +325,25 @@ body {
   }
   .data-table.cots-table td + td {
     @apply border-l-line-strong;
+  }
+  /* Inventory rows: a full grid of strong lines, so long lists of look-alike items read row by row
+     and column by column. */
+  .data-table.inv-table :is(th, td) {
+    @apply border-b border-line-strong;
+  }
+  .data-table.inv-table th {
+    @apply border-b-2;
+  }
+  .data-table.inv-table :is(th, td) + :is(th, td) {
+    @apply border-l border-l-line-strong;
+  }
+  /* An inventory row's picture: none at small card sizes, growing with the slider from 75%. */
+  .table-thumb {
+    --thumb: clamp(0px, calc((var(--card-scale, 1) - 0.75) * 160px), 80px);
+    @apply block shrink-0;
+    width: var(--thumb);
+    height: var(--thumb);
+    margin-right: min(var(--thumb), 0.5rem);
   }
   /* The colour slider's track shows every colour it can pick. */
   /* The greyscale slider's track runs from the light theme's page to the dark one's. */
