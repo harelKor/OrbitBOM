@@ -14,6 +14,7 @@ import {
   bulkMoveItems,
   countStock,
 } from "@/app/(app)/inventory/actions";
+import { Dialog } from "@/components/Dialog";
 import { EditOnly, useEditMode } from "@/components/shell/ModeContext";
 import { useEscape } from "@/components/ui/useEscape";
 import {
@@ -127,8 +128,8 @@ export function InventoryView({
     i.locationId ??
     lookups.groups.find((g) => g.id === i.groupId)?.locationId ??
     null;
-  // The workshop map (closed at first, remembered): each pin's items and how many are short.
-  const [mapOpen, toggleMap] = useFold("map", false);
+  // The workshop map window: each pin's items and how many are short.
+  const [mapOpen, setMapOpen] = useState(false);
   const activeLocation = locations.find((l) => l.id === locationId);
   const pinStats = useMemo(() => {
     const m: PinStats = new Map();
@@ -146,12 +147,11 @@ export function InventoryView({
   const mapButton = (
     <button
       type="button"
-      onClick={toggleMap}
-      aria-expanded={mapOpen}
-      className={`btn shrink-0 self-start active:scale-[0.98] ${mapOpen ? "min-h-8 border-sky-400/50 text-sky-300" : "min-h-12"}`}
-      title={mapOpen ? "Close the workshop map" : "Open the workshop map"}
+      onClick={() => setMapOpen(true)}
+      className="btn min-h-12 shrink-0 self-start active:scale-[0.98]"
+      title="Open the workshop map"
     >
-      <span aria-hidden>{mapOpen ? "✕" : "🗺️"}</span> {mapOpen ? "Close" : "Map"}
+      <span aria-hidden>🗺️</span> Map
     </button>
   );
   const query = q.trim().toLowerCase();
@@ -487,12 +487,7 @@ export function InventoryView({
 
       {/* The search row stays under the top bar while the list scrolls. */}
       {/* On phones the box and Scan get the whole first row and the filters the next. */}
-      {/* The open map grows out of its button at the top right, narrowing the search beside it and
-          pushing the rest down (Harel, 2026-10-28); the row stops sticking while it's open. */}
-      <div
-        className={`${mapOpen ? "" : "sticky top-[var(--topbar-h)] z-20"} -mx-2 flex flex-col gap-2 bg-ink/95 px-2 py-2 backdrop-blur sm:flex-row sm:items-start`}
-      >
-      <div className="flex min-w-0 flex-1 flex-wrap gap-2">
+      <div className="sticky top-[var(--topbar-h)] z-20 -mx-2 flex flex-wrap gap-2 bg-ink/95 px-2 py-2 backdrop-blur">
         <div className="flex w-full min-w-0 gap-2 sm:contents">
           <AddBox
             q={q}
@@ -512,10 +507,10 @@ export function InventoryView({
             }
           />
           <ScanButton onCode={setQ} />
-          {!mapOpen && mapButton}
+          {mapButton}
         </div>
         {!boxes && !showBoxes && filters}
-        {!mapOpen && activeLocation && (
+        {activeLocation && (
           <button
             type="button"
             onClick={() => setLocationId("")}
@@ -526,10 +521,16 @@ export function InventoryView({
           </button>
         )}
       </div>
-      {mapOpen && (
-        <div className="map-unfold w-full self-end sm:w-[58%] sm:max-w-[720px]">
-          <div className="mb-1.5 flex items-center gap-2">
-            <span className="text-xs font-semibold text-fg-2">🗺️ Workshop map</span>
+
+      {/* The workshop map opens as a window over the page; a pin picked there stays as the
+          location filter after it closes (Harel, 2026-10-28). */}
+      <Dialog
+        open={mapOpen}
+        onClose={() => setMapOpen(false)}
+        width="w-[min(72rem,calc(100vw-2rem))]"
+        title={
+          <span className="flex items-center gap-2">
+            🗺️ Workshop map
             {activeLocation && (
               <button
                 type="button"
@@ -540,9 +541,10 @@ export function InventoryView({
                 📍 {activeLocation.name} ✕
               </button>
             )}
-            <span className="ml-auto" />
-            {mapButton}
-          </div>
+          </span>
+        }
+      >
+        <div className="p-3 sm:p-4">
           <WorkshopMap
             locations={locations}
             stats={pinStats}
@@ -551,8 +553,7 @@ export function InventoryView({
             editable={edit}
           />
         </div>
-      )}
-      </div>
+      </Dialog>
 
       {error && (
         <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">

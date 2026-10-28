@@ -352,13 +352,10 @@ export function WorkshopMap({
                   }
                 }}
               >
-                <circle r={lit ? 6 : 4.5} fill={lit ? BLUE : "rgba(56,189,248,0.25)"} className="transition-all duration-150" />
-                <circle r={2.2} fill={lit ? "#fff" : "#38BDF8"} />
-                <line y1={-3} y2={-8} stroke={lit ? BLUE : "rgba(148,163,184,0.6)"} strokeWidth={1.5} />
                 <g filter={lit ? "url(#wm-pin-glow)" : undefined}>
                   <rect
                     x={-bw / 2}
-                    y={-28}
+                    y={-10}
                     width={bw}
                     height={20}
                     rx={7}
@@ -367,7 +364,7 @@ export function WorkshopMap({
                     strokeWidth={1}
                   />
                   <text
-                    y={-17.5}
+                    y={0.5}
                     textAnchor="middle"
                     dominantBaseline="middle"
                     fontSize={11}
@@ -378,16 +375,8 @@ export function WorkshopMap({
                     {label}
                   </text>
                 </g>
-                {st && st.count > 0 && (
-                  <g transform={`translate(${bw / 2} -28)`}>
-                    <rect x={-8} y={-6} width={Math.max(16, String(st.count).length * 6 + 8)} height={12} rx={6} fill="#F59E0B" />
-                    <text x={Math.max(16, String(st.count).length * 6 + 8) / 2 - 8} y={0.5} textAnchor="middle" dominantBaseline="middle" fontSize={8} fontWeight={800} fill="#07090E" className="font-mono tabular-nums">
-                      {st.count}
-                    </text>
-                  </g>
-                )}
                 {st && st.short > 0 && (
-                  <g transform={`translate(${-bw / 2} -28)`}>
+                  <g transform={`translate(${-bw / 2} -10)`}>
                     <circle r={3.5} fill="#F43F5E">
                       <animate attributeName="r" values="3.5;8;3.5" dur="1.8s" repeatCount="indefinite" />
                       <animate attributeName="opacity" values="0.6;0;0.6" dur="1.8s" repeatCount="indefinite" />
@@ -396,7 +385,7 @@ export function WorkshopMap({
                   </g>
                 )}
                 {(hover === p.id || dragging === p.id) && (
-                  <g transform="translate(0 12)" pointerEvents="none">
+                  <g transform="translate(0 14)" pointerEvents="none">
                     <rect x={-(tip.length * 3.3 + 10)} y={0} width={tip.length * 6.6 + 20} height={18} rx={6} fill="rgba(13,17,26,0.96)" stroke="rgba(37,99,235,0.7)" />
                     <text y={9.5} textAnchor="middle" dominantBaseline="middle" fontSize={10} fill="#E2E8F0" className="tabular-nums">
                       {dragging === p.id ? "Release to save" : tip}
