@@ -24,6 +24,7 @@ import {
   standingTint,
 } from "./ItemCard";
 import { useInventoryPopup } from "./InventoryPopup";
+import { LocationPicker } from "./LocationPicker";
 import type { Condition, InvCategory, Item, Location } from "./types";
 import { SheetViewport } from "@/components/ui/SheetViewport";
 
@@ -238,31 +239,26 @@ function LocationCell({
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   return (
-    <select
-      value={value ?? item.locationId ?? ""}
+    <LocationPicker
+      locations={locations}
+      value={value ?? item.locationId}
       disabled={pending}
-      onChange={(e) => {
-        const id = e.target.value;
-        setValue(id);
+      onChange={(id) => {
+        setValue(id ?? "");
         start(async () => {
-          const r = await setItemLocation(item.id, id || null);
+          const r = await setItemLocation(item.id, id);
           setError(r.error ?? null);
           setValue(null);
         });
       }}
-      title={error ?? undefined}
-      aria-label={`Location: ${item.name}`}
-      className={`input min-h-9 w-auto py-1 text-xs ${error ? "border-rose-500" : ""}`}
+      ariaLabel={`Location: ${item.name}`}
+      className={`input min-h-9 w-auto py-1 text-left text-xs active:scale-[0.98] ${error ? "border-rose-500" : ""}`}
     >
-      <option value="">
-        {inherited ? `📍 ${inherited.name} (group)` : "No location"}
-      </option>
-      {locations.map((l) => (
-        <option key={l.id} value={l.id}>
-          📍 {l.name}
-        </option>
-      ))}
-    </select>
+      {(() => {
+        const at = locations.find((l) => l.id === (value ?? item.locationId));
+        return at ? `📍 ${at.name}` : inherited ? `📍 ${inherited.name} (group)` : "No location";
+      })()}
+    </LocationPicker>
   );
 }
 

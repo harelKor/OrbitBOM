@@ -6,6 +6,7 @@ import { activeFields, buildName, dropInactive, getCategory } from "@/lib/invent
 import { formatStock, parseStock } from "@/lib/inventory/stock";
 import { Chips, FieldInput } from "./fields";
 import { hostOf } from "./ItemCard";
+import { LocationPicker } from "./LocationPicker";
 import { PhotoButtons } from "./photo";
 import type { Condition, InvCategory, Item, Location } from "./types";
 
@@ -192,17 +193,18 @@ export function ItemForm({
           </div>
         </div>
         <div className="min-w-40 flex-1">
-          <label className="label" htmlFor="item-location">
+          <label className="label">
             Location
           </label>
-          <select id="item-location" value={d.locationId ?? ""} onChange={(e) => setDraft({ ...d, locationId: e.target.value || null, locationTouched: true })} className="input min-h-11">
-            <option value="">Not set</option>
-            {locations.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.name}
-              </option>
-            ))}
-          </select>
+          <LocationPicker
+            locations={locations}
+            value={d.locationId}
+            onChange={(id) => setDraft({ ...d, locationId: id, locationTouched: true })}
+            className="input min-h-11 w-full text-left active:scale-[0.98]"
+            choices={d.locationId ? [{ value: null, label: "Not set" }] : []}
+          >
+            {locations.find((l) => l.id === d.locationId)?.name ?? "Not set"}
+          </LocationPicker>
         </div>
         <div className="min-w-36">
           <label className="label" htmlFor="item-condition">

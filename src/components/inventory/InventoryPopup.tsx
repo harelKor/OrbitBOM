@@ -39,6 +39,7 @@ import { ItemForm, draftOf } from "./ItemForm";
 import { ItemHistory } from "./ItemHistory";
 import { PhotoButtons } from "./photo";
 import { ToBomDialog } from "./ToBomDialog";
+import { LocationPicker } from "./LocationPicker";
 import { WorkshopMap } from "./WorkshopMap";
 import type { InvCategory, Item, Location } from "./types";
 
@@ -451,23 +452,13 @@ function ItemBody({
                     </option>
                   ))}
                 </select>
-                <select
-                  value={item.locationId ?? ""}
+                <LocationPicker
+                  locations={locations}
+                  value={item.locationId}
                   disabled={moving}
-                  onChange={(e) => save(() => setItemLocation(item.id, e.target.value || null))}
-                  aria-label="Location"
-                  className={`${tag} press cursor-pointer appearance-none border bg-transparent pr-6 hover:border-sky-400/40 disabled:opacity-60 ${location ? "border-line text-fg-2" : "border-dashed border-line-strong text-muted"}`}
-                  style={caretOf("currentColor")}
-                >
-                  <option value="" className="bg-surface text-fg">
-                    {location ? "No location" : "📍 Add location"}
-                  </option>
-                  {locations.map((l) => (
-                    <option key={l.id} value={l.id} className="bg-surface text-fg">
-                      📍 {l.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(id) => save(() => setItemLocation(item.id, id))}
+                  className={`${tag} press border bg-transparent hover:border-sky-400/40 active:scale-[0.98] disabled:opacity-60 ${location ? "border-line text-fg-2" : "border-dashed border-line-strong text-muted"}`}
+                />
               </>
             ) : (
               <>

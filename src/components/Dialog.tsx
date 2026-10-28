@@ -33,7 +33,7 @@ export function Dialog({
     >
       <div className="flex items-center justify-between border-b border-line px-5 py-3">
         <h2 className="min-w-0 flex-1 font-semibold">{title}</h2>
-        <button onClick={onClose} className="press rounded p-1 text-muted hover:text-fg" aria-label="Close">
+        <button type="button" onClick={onClose} className="press rounded p-1 text-muted hover:text-fg" aria-label="Close">
           ✕
         </button>
       </div>

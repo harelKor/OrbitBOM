@@ -49,6 +49,7 @@ import { useInventoryPopup } from "./InventoryPopup";
 import { ItemCard } from "./ItemCard";
 import { ItemTable } from "./ItemTable";
 import { ScanButton } from "./ScanButton";
+import { LocationPicker } from "./LocationPicker";
 import { WorkshopMap, type PinStats } from "./WorkshopMap";
 import type { Item, Lookups } from "./types";
 
@@ -544,15 +545,13 @@ export function InventoryView({
           </span>
         }
       >
-        <div className="p-3 sm:p-4">
-          <WorkshopMap
-            locations={locations}
-            stats={pinStats}
-            selectedId={locationId || undefined}
-            onPick={(id) => setLocationId(locationId === id ? "" : id)}
-            editable={edit}
-          />
-        </div>
+        <WorkshopMap
+          locations={locations}
+          stats={pinStats}
+          selectedId={locationId || undefined}
+          onPick={(id) => setLocationId(locationId === id ? "" : id)}
+          editable={edit}
+        />
       </Dialog>
 
       {error && (
@@ -753,20 +752,21 @@ export function InventoryView({
                     </option>
                   ))}
                 </select>
-                <select
-                  value={moveLoc}
-                  onChange={(e) => setMoveLoc(e.target.value)}
-                  className="input min-h-11 w-auto py-1.5 text-sm"
-                  aria-label="Move to location"
+                <LocationPicker
+                  locations={locations}
+                  value={moveLoc && moveLoc !== "none" ? moveLoc : null}
+                  onChange={(id) => setMoveLoc(id ?? "")}
+                  choices={[
+                    { value: "", label: "Keep location" },
+                    { value: "none", label: "No location" },
+                  ]}
+                  ariaLabel="Move to location"
+                  className="input min-h-11 w-auto py-1.5 text-left text-sm active:scale-[0.98]"
                 >
-                  <option value="">Location: keep</option>
-                  <option value="none">No location</option>
-                  {locations.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.name}
-                    </option>
-                  ))}
-                </select>
+                  {moveLoc === "none"
+                    ? "No location"
+                    : (locations.find((l) => l.id === moveLoc)?.name ?? "Location: keep")}
+                </LocationPicker>
                 <span className="ml-auto" />
                 <button
                   className="btn-primary min-h-11 active:scale-[0.98]"
