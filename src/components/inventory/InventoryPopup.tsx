@@ -27,6 +27,7 @@ import { Dialog } from "@/components/Dialog";
 import { EditOnly, useEditMode } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
 import { materialCategory } from "@/config/materials";
+import { useMaterials } from "@/components/shell/MaterialColors";
 import { fieldChoices, getCategory, type CategoryField } from "@/lib/inventory/categories";
 import { hasSeasonNeed, missing } from "@/lib/inventory/season";
 import type { Offer, ProductGroup } from "@/lib/inventory/productGroups";
@@ -755,7 +756,7 @@ function ProductSearch({ itemId, initial, onLinked, onMessage }: { itemId: strin
 
 function MaterialBody({ data, onStep, onOpen, onClose }: { data: MaterialData; onStep: (id: string, d: number) => void; onOpen: (id: string) => void; onClose: () => void }) {
   const { items, categories, locations } = data;
-  const group = materialCategory(data.material);
+  const group = materialCategory(data.material, useMaterials());
   const home = categories.find((c: InvCategory) => c.fields.some((f) => f.kind === "material" && group && f.materials?.includes(group)));
   if (!items.length)
     return (

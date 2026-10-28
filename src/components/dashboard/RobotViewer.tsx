@@ -6,8 +6,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StatusCount } from "@/lib/stats";
 import { Segmented } from "@/components/ui/Segmented";
 import { Icon } from "@/components/ui/Icon";
-import { useMaterialColors } from "@/components/shell/MaterialColors";
-import { DEFAULT_MATERIAL_COLORS, MATERIAL_COLOR_GROUPS, materialColor, materialColorGroup } from "@/config/materialColors";
+import { useMaterialColors, useMaterials } from "@/components/shell/MaterialColors";
+import { DEFAULT_MATERIAL_COLORS, OTHER_MATERIAL, materialColor, materialColorGroup, materialColorGroups } from "@/config/materialColors";
 import type { ViewerModel } from "./ModelCanvas";
 import { MODEL_STALE_EVENT, OPEN_PART_EVENT, OPEN_PART_PENDING, type ModelStaleDetail, type OpenPartDetail } from "./modelEvents";
 
@@ -58,15 +58,18 @@ export function RobotViewer({
   const [building, setBuilding] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
   const materialOverrides = useMaterialColors();
+  const materialList = useMaterials();
   const colorMap = useMemo(
-    () => new Map(parts.map((p) => [p.key, colors === "material" ? materialColor(p.material, materialOverrides, p.onshapeMaterial) : p.color])),
-    [parts, colors, materialOverrides],
+    () => new Map(parts.map((p) => [p.key, colors === "material" ? materialColor(p.material, materialOverrides, p.onshapeMaterial, materialList) : p.color])),
+    [parts, colors, materialOverrides, materialList],
   );
   // Material mode's legend: the categories this view's parts are in, in the panel's order.
   const materials = useMemo(() => {
-    const present = new Set(parts.map((p) => materialColorGroup(p.material, p.onshapeMaterial)));
-    return MATERIAL_COLOR_GROUPS.filter((m) => present.has(m)).map((name) => ({ name, color: materialOverrides[name] ?? DEFAULT_MATERIAL_COLORS[name] }));
-  }, [parts, materialOverrides]);
+    const present = new Set(parts.map((p) => materialColorGroup(p.material, p.onshapeMaterial, materialList)));
+    return materialColorGroups(materialList)
+      .filter((m) => present.has(m))
+      .map((name) => ({ name, color: materialOverrides[name] ?? DEFAULT_MATERIAL_COLORS[name] ?? DEFAULT_MATERIAL_COLORS[OTHER_MATERIAL] }));
+  }, [parts, materialOverrides, materialList]);
   const legend = colors === "status" ? statuses : colors === "material" ? materials : [];
   const onLocated = useCallback(() => {}, []);
   const partByKey = useMemo(() => new Map(parts.map((p) => [p.key, p])), [parts]);

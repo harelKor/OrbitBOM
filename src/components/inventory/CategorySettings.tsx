@@ -3,8 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { addCategory, deleteCategory, moveCategory, saveCategory } from "@/app/(app)/inventory/actions";
 import { CATEGORY_GROUPS } from "@/config/inventory";
-import { MATERIALS } from "@/config/materials";
-import { Icon } from "@/components/ui/Icon";
+import { useMaterials } from "@/components/shell/MaterialColors";
 import type { CategoryField } from "@/lib/inventory/categories";
 import type { InvCategory, Item, Location } from "./types";
 
@@ -15,10 +14,11 @@ const KINDS: { id: CategoryField["kind"]; label: string }[] = [
   { id: "material", label: "BOM material" },
 ];
 
-// Category settings (Harel, 2026-10-23): a panel that slides in over Inventory. Each change saves
+// Category settings (Harel, 2026-10-23), on the Settings page since 2026-10-28. Each change saves
 // by itself a moment later; there is no Save button and nothing jumps. A field that items use can
 // be hidden but not deleted, so their values aren't lost.
-export function CategorySettings({ open, onClose, categories, locations, items }: { open: boolean; onClose: () => void; categories: InvCategory[]; locations: Location[]; items: Item[] }) {
+export function CategorySettings({ categories, locations, items }: { categories: InvCategory[]; locations: Location[]; items: Pick<Item, "category" | "specs">[] }) {
+  const materials = useMaterials();
   const [selected, setSelected] = useState<string | null>(categories[0]?.id ?? null);
   const [drafts, setDrafts] = useState<Record<string, InvCategory>>({});
   const [status, setStatus] = useState<{ error?: string; saving?: boolean; saved?: boolean }>({});
@@ -67,21 +67,12 @@ export function CategorySettings({ open, onClose, categories, locations, items }
     });
 
   return (
-    <>
-      {open && <button aria-label="Close settings" onClick={onClose} className="modal-backdrop fixed inset-0 z-[65]" />}
-      <aside
-        aria-hidden={!open}
-        className={`fixed inset-y-0 right-0 z-[70] flex w-[min(40rem,100vw)] flex-col border-l border-[color-mix(in_oklab,var(--color-accent)_38%,var(--color-line-strong))] bg-raised shadow-2xl transition-transform duration-200 ${open ? "translate-x-0" : "pointer-events-none translate-x-full"}`}
-      >
-        <div className="flex items-center gap-3 border-b border-line bg-surface px-4 py-3">
-          <Icon name="gear" className="h-5 w-5 text-accent" />
-          <h2 className="display flex-1 text-2xl text-accent">Category settings</h2>
-          <span className="text-xs text-muted">{status.error ? <span className="text-rose-600">{status.error}</span> : status.saving ? "Saving…" : status.saved ? "Saved" : ""}</span>
-          <button type="button" onClick={onClose} className="press flex h-10 w-10 items-center justify-center rounded-lg hover:bg-raised" aria-label="Close">
-            <Icon name="close" className="h-5 w-5" />
-          </button>
-        </div>
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <p className="flex-1 text-sm text-muted">Each category&apos;s fields build its items&apos; names. Changes save by themselves.</p>
+        <span className="text-xs text-muted">{status.error ? <span className="text-rose-600">{status.error}</span> : status.saving ? "Saving…" : status.saved ? "Saved" : ""}</span>
+      </div>
+      <div className="space-y-4">
           <div className="flex flex-wrap gap-1.5">
             {categories.map((c) => (
               <button
@@ -213,8 +204,7 @@ export function CategorySettings({ open, onClose, categories, locations, items }
                       <div>
                         <div className="mb-1 text-xs text-muted">From the BOM&apos;s materials:</div>
                         <div className="flex flex-wrap gap-1.5">
-                          {Object.keys(MATERIALS)
-                            .filter((g) => MATERIALS[g].length)
+                          {[...new Set([...Object.keys(materials).filter((g) => materials[g].length), ...(f.materials ?? [])])]
                             .map((g) => {
                               const on = f.materials?.includes(g);
                               return (
@@ -266,9 +256,8 @@ export function CategorySettings({ open, onClose, categories, locations, items }
               </div>
             </div>
           )}
-        </div>
-      </aside>
-    </>
+      </div>
+    </div>
   );
 }
 

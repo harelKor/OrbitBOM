@@ -30,7 +30,7 @@ export function categoryOf(item: { category: string | null; name: string }, cats
 // The choices a field offers: its options, or the BOM materials of its groups.
 export function fieldChoices(field: CategoryField): string[] {
   if (field.kind === "options") return field.options ?? [];
-  if (field.kind === "material") return (field.materials ?? []).flatMap((g) => MATERIALS[g] ?? []);
+  if (field.kind === "material") return field.materialChoices ?? (field.materials ?? []).flatMap((g) => MATERIALS[g] ?? []);
   return [];
 }
 

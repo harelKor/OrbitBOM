@@ -1,4 +1,4 @@
-import { MATERIALS, materialCategory } from "./materials";
+import { MATERIALS, materialCategory, type MaterialList } from "./materials";
 
 // The 3D colour of each material category, for Material mode and a thumbnail's material
 // button (rows in material_colors override them). Parts whose material isn't on the list
@@ -23,7 +23,7 @@ export const DEFAULT_MATERIAL_COLORS: Record<string, string> = {
   [NO_MATERIAL]: "#e2e5ea",
 };
 
-export const MATERIAL_COLOR_GROUPS = [...Object.keys(MATERIALS), OTHER_MATERIAL, NO_MATERIAL];
+export const materialColorGroups = (list: MaterialList = MATERIALS) => [...Object.keys(list), OTHER_MATERIAL, NO_MATERIAL];
 
 // Onshape's own material names (and BOM materials typed off the list) by the category whose
 // colour they take.
@@ -38,9 +38,9 @@ const ONSHAPE_MATERIALS: [RegExp, string][] = [
 
 // The colour group a part's material falls in. With no BOM material, Onshape's material
 // decides.
-export function materialColorGroup(material: string | null | undefined, onshapeMaterial?: string | null): string {
+export function materialColorGroup(material: string | null | undefined, onshapeMaterial?: string | null, list: MaterialList = MATERIALS): string {
   if (!material && !onshapeMaterial) return NO_MATERIAL;
-  const listed = material && (materialCategory(material) ?? (material in MATERIALS ? material : undefined));
+  const listed = material && (materialCategory(material, list) ?? (material in list ? material : undefined));
   if (listed) return listed;
   for (const name of [material, onshapeMaterial]) {
     const match = name && ONSHAPE_MATERIALS.find(([re]) => re.test(name));
@@ -49,7 +49,7 @@ export function materialColorGroup(material: string | null | undefined, onshapeM
   return OTHER_MATERIAL;
 }
 
-export function materialColor(material: string | null | undefined, overrides: Record<string, string>, onshapeMaterial?: string | null): string {
-  const group = materialColorGroup(material, onshapeMaterial);
+export function materialColor(material: string | null | undefined, overrides: Record<string, string>, onshapeMaterial?: string | null, list: MaterialList = MATERIALS): string {
+  const group = materialColorGroup(material, onshapeMaterial, list);
   return overrides[group] ?? DEFAULT_MATERIAL_COLORS[group] ?? DEFAULT_MATERIAL_COLORS[OTHER_MATERIAL];
 }

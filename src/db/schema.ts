@@ -434,6 +434,15 @@ export const materialColors = pgTable("material_colors", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// The team's BOM and inventory materials, one row per material category in list order. Seeded
+// from src/config/materials.ts the first time they're read; edited on the Settings page.
+export const materialGroups = pgTable("material_groups", {
+  name: text("name").primaryKey(),
+  position: integer("position").notNull().default(0),
+  materials: jsonb("materials").$type<string[]>().notNull().default([]),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ---------- System versions (plan/system-versioning.md) ----------
 
 // Changes from Onshape reach a system's BOM only when a member commits them. Each check keeps
@@ -572,12 +581,14 @@ export type CategoryField = {
   kind: "number" | "text" | "options" | "material";
   options?: string[];
   materials?: string[];
+  // A material field's choices from the team's current material list, filled in when categories
+  // are read (never stored).
+  materialChoices?: string[];
   name?: string;
   hidden?: boolean;
 };
 
-// Inventory categories with their own fields, edited on the Inventory settings panel (the one
-// exception to "no settings UI"). Seeded from config/inventory.ts the first time they're read.
+// Inventory categories with their own fields, edited on the Settings page. Seeded from config/inventory.ts the first time they're read.
 export const inventoryCategories = pgTable("inventory_categories", {
   id: text("id").primaryKey(),
   label: text("label").notNull(),

@@ -3,21 +3,23 @@
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { getMachine, MACHINES } from "@/config/machines";
-import { MATERIAL_OPTIONS } from "@/components/bom/options";
+import { materialOptions } from "@/components/bom/options";
 import { OptionList, Popover, type Option } from "@/components/bom/Popover";
 import { DATE_OPTIONS, useFilters, type DateFilter, type Filters } from "./FilterContext";
 import { Icon } from "@/components/ui/Icon";
 import { Brand } from "./Brand";
+import { useMaterials } from "./MaterialColors";
 import { ModeToggle } from "./ModeContext";
 import { UndoRedo } from "./UndoRedo";
 
 const PROCESS_OPTIONS: Option[] = [{ value: null, label: "Any process" }, ...MACHINES.map((m) => ({ value: m.id, label: m.name }))];
 const DATE_PICK: Option[] = [{ value: null, label: "Any time" }, ...DATE_OPTIONS.map((d) => ({ value: d.value, label: d.label }))];
-const MATERIAL_PICK: Option[] = [{ value: null, label: "Any material" }, ...MATERIAL_OPTIONS.filter((o) => o.value)];
 
 export function TopBar({ onMenu, onRobots, navHidden }: { onMenu: () => void; onRobots: () => void; navHidden: boolean }) {
   const pathname = usePathname();
   const { filters, setFilters } = useFilters();
+  const materials = useMaterials();
+  const materialPick: Option[] = [{ value: null, label: "Any material" }, ...materialOptions(materials).filter((o) => o.value)];
   const search = useRef<HTMLInputElement>(null);
   const header = useRef<HTMLElement>(null);
   // Part search and filters apply to the robot pages; Inventory has its own.
@@ -84,7 +86,7 @@ export function TopBar({ onMenu, onRobots, navHidden }: { onMenu: () => void; on
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
-            <Pill label="Material" value={filters.material || null} options={MATERIAL_PICK} pick={(v) => setFilters({ material: v ?? "" })} />
+            <Pill label="Material" value={filters.material || null} options={materialPick} pick={(v) => setFilters({ material: v ?? "" })} />
             <Pill
               label="Process"
               value={filters.process || null}

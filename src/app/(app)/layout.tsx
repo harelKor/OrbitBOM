@@ -4,17 +4,19 @@ import { Shell } from "@/components/shell/Shell";
 import { requireMember } from "@/lib/auth";
 import { listCategories } from "@/lib/data/categories";
 import { listMaterialColors } from "@/lib/data/materialColors";
+import { listMaterials } from "@/lib/data/materials";
 import { listShellRobots } from "@/lib/data/shell";
 import { getMode } from "@/lib/mode";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const member = await requireMember();
-  const [robots, mode, jar, materialColors, categories] = await Promise.all([
+  const [robots, mode, jar, materialColors, categories, materials] = await Promise.all([
     listShellRobots(),
     getMode(),
     cookies(),
     listMaterialColors(),
     listCategories(),
+    listMaterials(),
   ]);
 
   return (
@@ -24,6 +26,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       categories={categories.map((c) => ({ id: c.id, label: c.label, group: c.group }))}
       mode={mode}
       materialColors={materialColors}
+      materials={materials}
       member={{ name: member.name, email: member.email, isAdmin: member.isAdmin }}
     >
       {children}

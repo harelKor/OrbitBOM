@@ -4,14 +4,20 @@ import { db, schema } from "@/db";
 import { imageUrl } from "@/lib/storage/r2";
 import { DEFAULT_CATEGORIES, groupOf } from "@/config/inventory";
 import type { InvCategory } from "@/lib/inventory/categories";
+import { listMaterials } from "./materials";
 
 const { inventoryCategories } = schema;
 
 type Exec = Pick<typeof db, "select" | "insert">;
 
-// The inventory's categories in their order. The first read seeds them from config/inventory.ts.
+// The inventory's categories in their order, material fields carrying the team's current
+// materials. The first read seeds them from config/inventory.ts.
 export async function listCategories(exec: Exec = db): Promise<InvCategory[]> {
-  let rows = await exec.select().from(inventoryCategories).orderBy(asc(inventoryCategories.position), asc(inventoryCategories.label));
+  const [read, list] = await Promise.all([
+    exec.select().from(inventoryCategories).orderBy(asc(inventoryCategories.position), asc(inventoryCategories.label)),
+    listMaterials(exec),
+  ]);
+  let rows = read;
   if (!rows.length) {
     await exec
       .insert(inventoryCategories)
@@ -19,7 +25,16 @@ export async function listCategories(exec: Exec = db): Promise<InvCategory[]> {
       .onConflictDoNothing();
     rows = await exec.select().from(inventoryCategories).orderBy(asc(inventoryCategories.position), asc(inventoryCategories.label));
   }
-  return rows.map((r) => ({ id: r.id, label: r.label, noun: r.noun, group: groupOf(r.group), sheet: r.sheet, image: r.image, defaultLocationId: r.defaultLocationId, fields: r.fields }));
+  return rows.map((r) => ({
+    id: r.id,
+    label: r.label,
+    noun: r.noun,
+    group: groupOf(r.group),
+    sheet: r.sheet,
+    image: r.image,
+    defaultLocationId: r.defaultLocationId,
+    fields: r.fields.map((f) => (f.kind === "material" ? { ...f, materialChoices: (f.materials ?? []).flatMap((g) => list[g] ?? []) } : f)),
+  }));
 }
 
 // A category picture's link. One in public/categories/ ("/categories/gears.png") is used as is, so

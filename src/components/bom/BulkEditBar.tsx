@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { MACHINES } from "@/config/machines";
-import { MATERIALS } from "@/config/materials";
+import type { MaterialList } from "@/config/materials";
+import { useMaterials } from "@/components/shell/MaterialColors";
 import { STATUSES } from "@/config/statuses";
 import type { PartChanges } from "@/lib/parts/changes";
 
@@ -19,7 +20,7 @@ type FieldId = (typeof FIELDS)[number]["id"];
 
 const NONE = "__none__";
 
-function valueOptions(field: FieldId) {
+function valueOptions(field: FieldId, materials: MaterialList) {
   switch (field) {
     case "classification":
       return [
@@ -29,7 +30,7 @@ function valueOptions(field: FieldId) {
     case "material":
       return [
         <option key={NONE} value={NONE}>— None —</option>,
-        ...Object.entries(MATERIALS).map(([group, list]) => (
+        ...Object.entries(materials).map(([group, list]) => (
           <optgroup key={group} label={group}>
             {list.map((m) => <option key={m}>{m}</option>)}
           </optgroup>
@@ -62,6 +63,7 @@ export function BulkEditBar({
   onSelectAll: () => void;
   onDone: () => void;
 }) {
+  const materials = useMaterials();
   const [field, setField] = useState<FieldId>("status");
   const [value, setValue] = useState("");
 
@@ -89,7 +91,7 @@ export function BulkEditBar({
         </select>
         <select value={value} onChange={(e) => setValue(e.target.value)} className="input w-auto" aria-label="Value">
           <option value="">— Value —</option>
-          {valueOptions(field)}
+          {valueOptions(field, materials)}
         </select>
         <button className="btn-primary" disabled={!value || !count} onClick={apply}>
           Apply

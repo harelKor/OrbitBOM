@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { and, asc, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { findMachineByName, getMachine, MACHINES } from "@/config/machines";
-import { ALL_MATERIALS, MATERIALS } from "@/config/materials";
+import { allMaterials } from "@/config/materials";
 import { COTS_STATUSES } from "@/config/cots";
 import { STATUSES } from "@/config/statuses";
 import { PRIORITIES } from "@/config/priorities";
@@ -17,6 +17,7 @@ import { recordItemChanges } from "@/lib/inventory/history";
 import { CATEGORY_GROUPS, isCategoryGroup } from "@/config/inventory";
 import { addCategoryForReview, applyItemEdits } from "@/lib/review/inventory";
 import { listCategories } from "@/lib/data/categories";
+import { listMaterials } from "@/lib/data/materials";
 import { cotsCategories } from "@/lib/data/parts";
 import { moveStock } from "@/lib/inventory/moves";
 import { hasSeasonNeed, missing } from "@/lib/inventory/season";
@@ -181,7 +182,7 @@ read("list_statuses", "The part statuses, in board order, with which count as do
 read("list_machines", "The team's machines with their stage and the CAD file each needs.", z.object({}), async () =>
   MACHINES.map((m) => ({ id: m.id, name: m.name, stage: m.stage, cad_format: m.cadFormat })),
 );
-read("list_materials", "The team's materials by category. Use these exact names.", z.object({}), async () => MATERIALS);
+read("list_materials", "The team's materials by category. Use these exact names.", z.object({}), async () => listMaterials());
 
 // ---------- read ----------
 
@@ -424,8 +425,9 @@ write(
   "Set the material, processes and type you worked out for parts (each part can differ). The parts change at once and wait in To Review, where their designer approves or rejects each one; Reject puts the old values back. Use this, not update_parts, for setups you inferred yourself.",
   z.object({ parts: z.array(setupInput).min(1).max(500) }),
   async ({ parts: input }, { member, aiName }) => {
+    const known = allMaterials(await listMaterials());
     const edits = input.map((e) => {
-      if (e.material !== undefined && !ALL_MATERIALS.includes(e.material)) {
+      if (e.material !== undefined && !known.includes(e.material)) {
         throw new ToolError(`Unknown material "${e.material}". Use list_materials for the exact names.`);
       }
       const changes = normaliseChanges(
@@ -658,7 +660,7 @@ write(
 
 read(
   "list_inventory_categories",
-  "The inventory's categories and each one's fields (number, text, options, or a BOM material), with the allowed choices. Use the ids with add_inventory_items and set_inventory_info. Sheet categories count sheets and pieces of a sheet. The team edits these on the Inventory settings panel.",
+  "The inventory's categories and each one's fields (number, text, options, or a BOM material), with the allowed choices. Use the ids with add_inventory_items and set_inventory_info. Sheet categories count sheets and pieces of a sheet. The team edits these on the Settings page.",
   z.object({}),
   async () => ({
     categories: (await listCategories()).map((c) => ({

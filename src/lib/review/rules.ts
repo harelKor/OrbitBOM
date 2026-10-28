@@ -5,7 +5,7 @@
 
 import { BENDING_MACHINE, DEFAULT_PROCESSES, PLATE_TOLERANCE_MM, type ProcessSet } from "@/config/autoSetup";
 import { getMachine } from "@/config/machines";
-import { MATERIALS, materialCategory, plateThicknessMm } from "@/config/materials";
+import { MATERIALS, materialCategory, plateThicknessMm, type MaterialList } from "@/config/materials";
 import type { PartGeometry } from "@/db/schema";
 
 export type SetupInput = {
@@ -50,25 +50,25 @@ function sheetThickness(g: PartGeometry | null | undefined): number | undefined 
 }
 
 // The plate of `category` whose thickness matches `t`.
-function plateFor(category: string, t: number | undefined) {
+function plateFor(category: string, t: number | undefined, list: MaterialList) {
   if (t === undefined) return undefined;
-  return MATERIALS[category].find((m) => {
+  return (list[category] ?? []).find((m) => {
     const thk = plateThicknessMm(m);
     return thk !== undefined && Math.abs(thk - t) <= PLATE_TOLERANCE_MM;
   });
 }
 
-export function materialGuess(part: SetupInput): { material: string; why: string } | undefined {
+export function materialGuess(part: SetupInput, list: MaterialList = MATERIALS): { material: string; why: string } | undefined {
   const om = part.geometry?.onshapeMaterial ?? "";
   const t = sheetThickness(part.geometry);
   const shape = isBent(part.geometry) ? `bent ${part.geometry?.sheetMetal ? "sheet metal" : "sheet"}` : "flat";
   const thick = t !== undefined ? `${fmt(t)} mm thick` : "";
   if (/alumin/i.test(om)) {
-    const m = plateFor("Aluminum Plates", t);
+    const m = plateFor("Aluminum Plates", t, list);
     if (m) return { material: m, why: `Onshape material ${om}, ${shape} and ${thick}` };
   }
   if (/polycarb/i.test(om)) {
-    const m = plateFor("Polycarbonate Plates", t);
+    const m = plateFor("Polycarbonate Plates", t, list);
     if (m) return { material: m, why: `Onshape material ${om}, ${shape} and ${thick}` };
   }
   for (const [re, material] of PRINTED) {
@@ -77,10 +77,10 @@ export function materialGuess(part: SetupInput): { material: string; why: string
   return undefined;
 }
 
-function processesFor(material: string, learned: Learned): { set: ProcessSet; why: string } | undefined {
+function processesFor(material: string, learned: Learned, list: MaterialList): { set: ProcessSet; why: string } | undefined {
   const team = learned.get(material);
   if (team && team.count >= 2) return { set: team, why: `as on ${team.count} other ${material} parts` };
-  const set = DEFAULT_PROCESSES[material] ?? DEFAULT_PROCESSES[materialCategory(material) ?? ""];
+  const set = DEFAULT_PROCESSES[material] ?? DEFAULT_PROCESSES[materialCategory(material, list) ?? ""];
   return set ? { set, why: "the team default" } : undefined;
 }
 
@@ -99,14 +99,14 @@ const names = (s: ProcessSet) =>
     .join(" → ");
 
 // What the rules would set on a part, and why, or null when they can't tell.
-export function suggestSetup(part: SetupInput, learned: Learned): { changes: SetupChanges; reason: string } | null {
+export function suggestSetup(part: SetupInput, learned: Learned, list: MaterialList = MATERIALS): { changes: SetupChanges; reason: string } | null {
   if (part.classification === "external") return null;
   const changes: SetupChanges = {};
   const why: string[] = [];
 
   let material = part.material;
   if (!material) {
-    const guess = materialGuess(part);
+    const guess = materialGuess(part, list);
     if (!guess) return null;
     material = guess.material;
     changes.material = material;
@@ -114,7 +114,7 @@ export function suggestSetup(part: SetupInput, learned: Learned): { changes: Set
   }
 
   if (!part.preProcess && !part.process1 && !part.process2) {
-    const p = processesFor(material, learned);
+    const p = processesFor(material, learned, list);
     if (p) {
       const set = isBent(part.geometry) ? withBending(p.set) : p.set;
       Object.assign(changes, { preProcess: set.preProcess ?? null, process1: set.process1 ?? null, process2: set.process2 ?? null });

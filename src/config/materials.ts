@@ -1,7 +1,10 @@
 // Team 1690's materials by category, copied from FRCBOM (ref §4), with the "1.5mmm" typo fixed.
-// Edit here; there is no settings UI.
+// These are only the first list: the team edits it on the Settings page (table material_groups),
+// and pages read it from useMaterials() (client) or listMaterials() (server).
 
-export const MATERIALS: Record<string, string[]> = {
+export type MaterialList = Record<string, string[]>;
+
+export const MATERIALS: MaterialList = {
   "3D Printed": ["PLA", "PA612", "Onyx", "SLS", "Steel"],
   "Aluminum Extrusions": [
     "(20*20*1.5)mm",
@@ -67,11 +70,11 @@ export const MATERIALS: Record<string, string[]> = {
   "Wood Plates": [],
 };
 
-export const ALL_MATERIALS: string[] = Object.values(MATERIALS).flat();
+export const allMaterials = (list: MaterialList = MATERIALS): string[] => Object.values(list).flat();
 
-export function materialCategory(material: string): string | undefined {
-  for (const [category, list] of Object.entries(MATERIALS)) {
-    if (list.includes(material)) return category;
+export function materialCategory(material: string, list: MaterialList = MATERIALS): string | undefined {
+  for (const [category, names] of Object.entries(list)) {
+    if (names.includes(material)) return category;
   }
   return undefined;
 }

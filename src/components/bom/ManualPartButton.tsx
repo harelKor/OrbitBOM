@@ -3,11 +3,13 @@
 import { useActionState, useState } from "react";
 import { Dialog } from "@/components/Dialog";
 import { MACHINES } from "@/config/machines";
-import { ALL_MATERIALS } from "@/config/materials";
+import { allMaterials } from "@/config/materials";
+import { useMaterials } from "@/components/shell/MaterialColors";
 import { addManualPart } from "@/app/(app)/parts-actions";
 
 // FRCBOM's "Add Manual Part" dialog (ref §2b).
 export function ManualPartButton({ systemId }: { systemId: string }) {
+  const materials = useMaterials();
   const [open, setOpen] = useState(false);
   const [formKey, setFormKey] = useState(0);
   const [state, action, pending] = useActionState(
@@ -45,7 +47,7 @@ export function ManualPartButton({ systemId }: { systemId: string }) {
             <input name="quantity" type="number" min={0} required defaultValue={1} className="input" aria-label="Quantity" />
             <input name="material" placeholder="Material" list="manual-materials" className="input" />
             <datalist id="manual-materials">
-              {ALL_MATERIALS.map((m) => (
+              {allMaterials(materials).map((m) => (
                 <option key={m} value={m} />
               ))}
             </datalist>

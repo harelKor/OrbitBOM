@@ -231,6 +231,9 @@ export function LeftNav({
           <Item href="/profile" icon="user" active={pathname.startsWith("/profile")}>
             Profile
           </Item>
+          <Item href="/settings" icon="gear" active={pathname.startsWith("/settings")}>
+            Settings
+          </Item>
           <div className="px-3 pt-2">
             <div className="truncate text-xs font-medium text-fg-2">{member.name}</div>
             <div className="truncate text-[11px] text-subtle">

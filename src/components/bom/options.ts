@@ -1,5 +1,5 @@
 import { MACHINES, type MachineStage } from "@/config/machines";
-import { MATERIALS } from "@/config/materials";
+import type { MaterialList } from "@/config/materials";
 import { PRIORITIES } from "@/config/priorities";
 import { COTS_STATUSES } from "@/config/cots";
 import { STATUSES } from "@/config/statuses";
@@ -8,10 +8,13 @@ import type { Option } from "./Popover";
 export const STATUS_OPTIONS: Option[] = STATUSES.map((s) => ({ value: s.name, label: s.name, color: s.color }));
 export const COTS_STATUS_OPTIONS: Option[] = COTS_STATUSES.map((s) => ({ value: s.name, label: s.name, color: s.color }));
 
-export const MATERIAL_OPTIONS: Option[] = [
-  { value: null, label: "— None —" },
-  ...Object.entries(MATERIALS).flatMap(([group, list]) => list.map((m) => ({ value: m, label: m, group }))),
-];
+// The team's materials (useMaterials()) as menu options, grouped by category.
+export function materialOptions(materials: MaterialList): Option[] {
+  return [
+    { value: null, label: "— None —" },
+    ...Object.entries(materials).flatMap(([group, list]) => list.map((m) => ({ value: m, label: m, group }))),
+  ];
+}
 
 export function machineOptions(stage: MachineStage): Option[] {
   return [

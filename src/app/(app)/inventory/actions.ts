@@ -669,7 +669,7 @@ export async function linkPartsToItem(itemId: string, partIds: string[]): Promis
   return { message: `Linked ${changed} part${changed === 1 ? "" : "s"}.` };
 }
 
-// ---------- Category settings (the panel inside Inventory) ----------
+// ---------- Category settings (on the Settings page) ----------
 
 const fieldSchema = z.object({
   id: z.string().trim().min(1).max(40),

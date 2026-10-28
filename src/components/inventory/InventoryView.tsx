@@ -38,7 +38,6 @@ import {
 import { matchesSearch } from "@/lib/inventory/searchWords";
 import { snapStock } from "@/lib/inventory/stock";
 import { AddBox } from "./AddBox";
-import { CategorySettings } from "./CategorySettings";
 import { ImportDialog } from "./ImportDialog";
 import { RecentActions } from "@/components/actions/RecentActions";
 import type { RecentAction } from "@/lib/data/actions";
@@ -46,21 +45,20 @@ import { useInventoryPopup } from "./InventoryPopup";
 import { ItemCard } from "./ItemCard";
 import { ItemTable } from "./ItemTable";
 import { ScanButton } from "./ScanButton";
-import { ConditionsDialog, LocationsDialog } from "./ListDialogs";
 import type { Item, Lookups } from "./types";
 
 export type InventoryScope =
   | { kind: "home" }
   | { kind: "category" | "location" | "condition"; id: string };
 
-type Open = { kind: "settings" | "conditions" | "locations" | "import" } | null;
+type Open = { kind: "import" } | null;
 
 // The Inventory pages' body. Home: the add / search box, the Short for Season / Short for Robots
 // toggles, then the group boxes (a group opens its category boxes). A toggle (?view=) turns home
 // into that view's cards in place, coloured red / orange / green and narrowed by the boxes. A
 // category, location or condition page: the item cards, filtered by the same box (which also
-// knows location names) and by condition and location. Edit mode adds the toolbar, the add flow
-// and the category settings panel.
+// knows location names) and by condition and location. Edit mode adds the toolbar (import,
+// Move, Delete); categories, locations and conditions are edited on the Settings page.
 export function InventoryView({
   items,
   scope,
@@ -411,24 +409,6 @@ export function InventoryView({
         <div className="panel flex flex-wrap items-center gap-2 p-3">
           <button
             className="btn min-h-11"
-            onClick={() => setOpen({ kind: "settings" })}
-          >
-            <Icon name="gear" className="h-4 w-4" /> Categories
-          </button>
-          <button
-            className="btn min-h-11"
-            onClick={() => setOpen({ kind: "conditions" })}
-          >
-            Conditions
-          </button>
-          <button
-            className="btn min-h-11"
-            onClick={() => setOpen({ kind: "locations" })}
-          >
-            Locations
-          </button>
-          <button
-            className="btn min-h-11"
             onClick={() => setOpen({ kind: "import" })}
           >
             Import spreadsheet
@@ -747,23 +727,6 @@ export function InventoryView({
         </div>
       )}
 
-      <CategorySettings
-        open={open?.kind === "settings"}
-        onClose={() => setOpen(null)}
-        categories={categories}
-        locations={locations}
-        items={items}
-      />
-      <ConditionsDialog
-        open={open?.kind === "conditions"}
-        conditions={conditions}
-        onClose={() => setOpen(null)}
-      />
-      <LocationsDialog
-        open={open?.kind === "locations"}
-        locations={locations}
-        onClose={() => setOpen(null)}
-      />
       <ImportDialog
         open={open?.kind === "import"}
         onClose={() => setOpen(null)}

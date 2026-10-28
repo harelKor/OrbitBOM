@@ -10,7 +10,7 @@ import { computeStatus, partStatusLabel, statusMachine } from "@/lib/status";
 import { STATUSES, statusLabel } from "@/config/statuses";
 import {
   COTS_STATUS_OPTIONS,
-  MATERIAL_OPTIONS,
+  materialOptions,
   PRIORITY_COLORS,
   PRIORITY_OPTIONS,
   STATUS_OPTIONS,
@@ -22,6 +22,7 @@ import { useEditMode } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
 import { StatusPill } from "@/components/ui/StatusPill";
 export { StatusPill };
+import { useMaterials } from "@/components/shell/MaterialColors";
 import { useBom } from "./BomContext";
 import { InputEditor, OptionList, Popover } from "./Popover";
 import { partTitle, type CardPart } from "./types";
@@ -143,10 +144,11 @@ export function TextField({
 export function MaterialField({ part, save, className }: Props & { className?: string }) {
   const locked = !useEditMode();
   const { inventory } = useBom();
+  const materials = useMaterials();
   const { openItem, openMaterial } = useInventoryPopup();
   const linked = part.inventoryItemId ? inventory.find((i) => i.id === part.inventoryItemId) : undefined;
   const options = [
-    ...MATERIAL_OPTIONS,
+    ...materialOptions(materials),
     ...inventory.map((i) => ({ value: `inv:${i.id}`, label: i.name, group: "Inventory" })),
   ];
   const label = linked ? (

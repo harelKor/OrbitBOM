@@ -1,8 +1,7 @@
 // The inventory's starting categories and their fields (Harel, 2026-10-23: categories replace
 // part types and material). They seed the inventory_categories table the first time it's read;
-// after that the team edits them on the Inventory settings panel, the one exception to "no
-// settings UI". `match` guesses an item's category from its name while none is set; it stays here
-// because names are matched in code. Screws are tracked again, by size, head and length (Harel,
+// after that the team edits them on the Settings page. `match` guesses an item's category from
+// its name while none is set; it stays here because names are matched in code. Screws are tracked again, by size, head and length (Harel,
 // 2026-10-27).
 
 import type { CategoryField } from "@/db/schema";

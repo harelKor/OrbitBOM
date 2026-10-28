@@ -6,7 +6,7 @@ import { flushSync } from "react-dom";
 import { MACHINES, getMachine } from "@/config/machines";
 import type { Priority } from "@/config/priorities";
 import { materialColor } from "@/config/materialColors";
-import { ALL_MATERIALS } from "@/config/materials";
+import { allMaterials } from "@/config/materials";
 import { DONE_STATUSES, STATUSES, getStatus, statusLabel, type StatusName } from "@/config/statuses";
 import { removeBatchGcode } from "@/app/(app)/files-actions";
 import { createFabBatch, deleteGroup, moveToFabBatch, removeFromGroup, updateGroup } from "@/app/(app)/groups/actions";
@@ -18,7 +18,7 @@ import { OptionList, Popover } from "@/components/bom/Popover";
 import { PartCard, cadFormat } from "@/components/bom/PartCard";
 import { partTitle, type CardPart } from "@/components/bom/types";
 import { useFilters } from "@/components/shell/FilterContext";
-import { useMaterialColors } from "@/components/shell/MaterialColors";
+import { useMaterialColors, useMaterials } from "@/components/shell/MaterialColors";
 import { pushQuery } from "@/components/ui/CategoryBoxes";
 import { useEditMode } from "@/components/shell/ModeContext";
 import { Chevron } from "@/components/ui/Chevron";
@@ -626,7 +626,9 @@ function MachineBox({ href, name, count, active }: { href: string; name: string;
 // boxes' row (it wraps when there are many); ?mat= keeps the pick and a second click clears it.
 function MaterialBoxes({ counts, active }: { counts: Map<string, number>; active: string | null }) {
   const colors = useMaterialColors();
-  const order = (m: string) => (m === NO_MATERIAL_KEY ? Infinity : ALL_MATERIALS.indexOf(m) === -1 ? ALL_MATERIALS.length : ALL_MATERIALS.indexOf(m));
+  const materials = useMaterials();
+  const all = allMaterials(materials);
+  const order = (m: string) => (m === NO_MATERIAL_KEY ? Infinity : all.indexOf(m) === -1 ? all.length : all.indexOf(m));
   const keys = [...counts.keys()].sort((a, b) => order(a) - order(b) || a.localeCompare(b));
   if (keys.length < 2 && !active) return null;
   return keys.map((m) => {
@@ -644,7 +646,7 @@ function MaterialBoxes({ counts, active }: { counts: Map<string, number>; active
         <span className="relative flex h-full w-12 shrink-0 items-center justify-center bg-gradient-to-br from-sky-500/25 via-raised to-amber-400/20">
           <span
             className="h-6 w-6 rounded-md border border-white/20 shadow-sm transition-transform duration-150 group-hover:scale-[1.03]"
-            style={{ backgroundColor: materialColor(none ? null : m, colors) }}
+            style={{ backgroundColor: materialColor(none ? null : m, colors, null, materials) }}
           />
         </span>
         <span className="min-w-0">
