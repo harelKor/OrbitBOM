@@ -14,11 +14,6 @@ export default async function InventoryPage() {
       <div>
         <InventoryCrumbs categories={inventory.categories} />
         <h1 className="display text-3xl text-accent">Inventory</h1>
-        <p className="mt-1 max-w-3xl text-sm text-muted">
-          What the team owns. Every active robot shares the same shelf: the parts linked to an item draw on its stock
-          together, and the COTS cards show what&apos;s covered and what to order. Plates count in sheets and pieces of a
-          sheet.
-        </p>
       </div>
       <InventoryView {...inventory} actions={actions} scope={{ kind: "home" }} />
     </div>

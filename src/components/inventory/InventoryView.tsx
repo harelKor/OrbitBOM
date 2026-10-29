@@ -302,6 +302,11 @@ export function InventoryView({
       )
     : [];
   const showBoxes = home && (!query || !!view);
+  // "Other" gets no box here; its items fold above Recent actions instead (Harel, 2026-10-29).
+  const noOther = useMemo(() => categories.filter((c) => c.id !== "other"), [categories]);
+  const otherItems = boxes
+    ? optimistic.filter((i) => i.category === "other" && inBox(i))
+    : [];
 
   // Each group's and category's items (in the view, when one is on) and how many are short.
   const counts = useMemo(() => {
@@ -653,7 +658,7 @@ export function InventoryView({
 
       {showBoxes && (
         <CategoryBoxes
-          categories={categories}
+          categories={noOther}
           counts={counts}
           group={group}
           category={cat}
@@ -678,6 +683,15 @@ export function InventoryView({
             </div>
           )}
 
+          {otherItems.length > 0 && (
+            <Fold
+              id="other-items"
+              title={`Other (${otherItems.length})`}
+              defaultOpen={false}
+            >
+              {grid(otherItems)}
+            </Fold>
+          )}
           <Fold id="recent" title="Recent actions" defaultOpen>
             {recent.length ? (
               <RecentActions
