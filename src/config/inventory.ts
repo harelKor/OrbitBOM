@@ -434,6 +434,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     id: "round-tubes",
     group: "consumables",
     label: "Round tubes",
+    image: "/categories/round-tubes.png",
     noun: "Tube",
     match: /round\s*tube|\btube\b.*\bod\b|\bod\b.*\btube\b|\bpipe\b/i,
     fields: [
@@ -456,6 +457,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     id: "carbon-tubes",
     group: "consumables",
     label: "Carbon fiber tubes",
+    image: "/categories/carbon-tubes.png",
     noun: "Carbon tube",
     match: /carbon|קרבון/i,
     fields: [
@@ -652,6 +654,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     id: "motors",
     group: "electrical",
     label: "Motors & servos",
+    image: "/categories/motors.png",
     noun: "",
     match: /motor|servo|\bneo\b|vortex|falcon|kraken|\bcim\b|\b775\b|minion|\bbag\b/i,
     fields: [

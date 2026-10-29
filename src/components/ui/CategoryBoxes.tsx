@@ -91,8 +91,8 @@ export function CategoryBoxes({
         </nav>
       )}
       <div
-        className={compact ? "-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible" : g ? "card-grid" : "grid gap-3 sm:grid-cols-2 lg:grid-cols-5"}
-        style={compact || !g ? undefined : ({ "--card-min": "185px" } as React.CSSProperties)}
+        className={compact ? "-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible" : g ? "card-grid gap-3.5 sm:gap-4" : "grid gap-3 sm:grid-cols-2 lg:grid-cols-5"}
+        style={compact || !g ? undefined : ({ "--card-min": "220px" } as React.CSSProperties)}
       >
         {boxes.map((b) => {
           const n = counts.get(b.id) ?? { count: 0 };
@@ -133,7 +133,7 @@ export function CategoryBoxes({
             <span className="thumb-well relative flex h-full min-h-36 w-full flex-1 flex-col justify-between">
               {b.imageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element -- static or short-lived R2 links, not optimisable
-                <img src={b.imageUrl} alt="" className="pointer-events-none absolute inset-x-0 top-0 bottom-9 h-[calc(100%-2.25rem)] w-full object-contain pt-2 pr-2 pb-1 pl-[24%]" />
+                <img src={b.imageUrl} alt="" className="pointer-events-none absolute inset-x-0 top-0 bottom-9 h-[calc(100%-2.25rem)] w-full object-contain pt-3 pr-3 pb-2 pl-[24%]" />
               ) : (
                 <Icon name={g.icon as IconName} className="pointer-events-none absolute top-[calc(50%-1.125rem)] right-6 h-14 w-14 -translate-y-1/2 text-slate-400/70" />
               )}
@@ -146,6 +146,8 @@ export function CategoryBoxes({
                   {b.label}
                 </span>
               </span>
+              {/* The rim sits over the picture, so each box's edge stays crisp against its neighbours. */}
+              <span className="pointer-events-none absolute inset-0 z-20 rounded-[inherit] ring-1 ring-white/25 ring-inset group-hover:ring-accent/50" />
             </span>
           ) : (
             <>
@@ -163,7 +165,7 @@ export function CategoryBoxes({
           const cls = compact
             ? "card-interactive group flex h-12 shrink-0 items-center gap-2.5 overflow-hidden pr-3 text-left active:scale-[0.98]"
             : g
-              ? "card-interactive group relative flex aspect-[16/10] min-h-36 flex-col text-left active:scale-[0.98]"
+              ? "card-interactive group relative flex aspect-[16/10] min-h-36 flex-col border-line-strong text-left shadow-md hover:border-accent active:scale-[0.98]"
               : "card-interactive group relative flex min-h-32 flex-col justify-between p-4 text-left active:scale-[0.98]";
           return g && categoryHref ? (
             <Link key={b.id} href={categoryHref(b.id)} className={cls}>
