@@ -29,7 +29,7 @@ import { useMaterials } from "@/components/shell/MaterialColors";
 import { activeFields, getCategory } from "@/lib/inventory/categories";
 import { hasSeasonNeed, missing } from "@/lib/inventory/season";
 import type { Offer, ProductGroup } from "@/lib/inventory/productGroups";
-import { formatStock, snapStock } from "@/lib/inventory/stock";
+import { formatStock, parseStock, snapStock } from "@/lib/inventory/stock";
 import { bestOffer, isLink } from "./AddBox";
 import { CountBox, ItemPrice, PieceStepper, conditionColor, hostOf } from "./ItemCard";
 import { ItemForm, draftOf } from "./ItemForm";
@@ -46,6 +46,8 @@ import type { Condition, InvCategory, Item, Location } from "./types";
 // behind it, and its history only when History is opened. The address gets ?item=<id>, so Back
 // closes it and the link can be shared. − / + and the typed count show at once and save behind.
 
+// A change shown in the window at once, and the save that follows it.
+type ChangeItem = (change: (i: Item) => Partial<Item>, run: () => Promise<{ error?: string }>) => void;
 type ItemData = NonNullable<Awaited<ReturnType<typeof itemPopup>>>;
 type MaterialData = Awaited<ReturnType<typeof materialPopup>>;
 type State = { kind: "item"; id: string; preview: Item | null; data: ItemData | null } | { kind: "material"; name: string; data: MaterialData | null } | null;
@@ -110,32 +112,34 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on mount
   }, []);
 
-  // − / + and a typed count show the new count at once; the window doesn't reload after them
-  // (only a failed save says so).
-  const bump = (itemId: string, to: (n: number) => number) =>
+  // Every control in the window shows its change at once (outside the transition, so React
+  // paints it before the save answers) and saves behind it; only a failed save reloads.
+  const patchItem = (itemId: string, change: (i: Item) => Partial<Item>) =>
     setState((s) => {
-      const patch = <T extends Pick<Item, "id" | "inStock" | "sheet">>(i: T): T => (i.id === itemId ? { ...i, inStock: snapStock(to(i.inStock), i.sheet) } : i);
+      const patch = <T extends Item>(i: T): T => (i.id === itemId ? { ...i, ...change(i) } : i);
       if (s?.kind === "material") return { ...s, data: s.data && { ...s.data, items: s.data.items.map(patch) } };
       if (s?.kind !== "item" || s.id !== itemId) return s;
       return { ...s, preview: s.preview && patch(s.preview), data: s.data && { ...s.data, item: patch(s.data.item) } };
     });
-  const after = (r: { error?: string }) => {
-    if (r.error) setError(r.error);
+  const reload = () => {
     if (state?.kind === "item") loadItem(state.id);
     else if (state?.kind === "material") loadMaterial(state.name);
   };
-  const step = (itemId: string, delta: number) =>
+  const after = (r: { error?: string }) => {
+    if (r.error) setError(r.error);
+    reload();
+  };
+  // Patch now, save in the background.
+  const saveNow = (itemId: string, change: (i: Item) => Partial<Item>, run: () => Promise<{ error?: string }>) => {
+    setError(null);
+    patchItem(itemId, change);
     startTransition(async () => {
-      bump(itemId, (n) => n + delta);
-      const r = await adjustStock(itemId, delta);
-      if (r.error) setError(r.error);
+      const r = await run();
+      if (r.error) after(r);
     });
-  const count = (itemId: string, amount: number) =>
-    startTransition(async () => {
-      bump(itemId, () => amount);
-      const r = await countStock(itemId, amount);
-      if (r.error) setError(r.error);
-    });
+  };
+  const step = (itemId: string, delta: number) => saveNow(itemId, (i) => ({ inStock: snapStock(i.inStock + delta, i.sheet) }), () => adjustStock(itemId, delta));
+  const count = (itemId: string, amount: number) => saveNow(itemId, (i) => ({ inStock: snapStock(amount, i.sheet) }), () => countStock(itemId, amount));
 
   const item = state?.kind === "item" ? (state.data?.item ?? state.preview) : null;
   const title = state?.kind === "item" ? (item?.name ?? "Inventory item") : state?.kind === "material" ? state.name : "";
@@ -153,6 +157,7 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
             onStep={(d) => step(state.id, d)}
             onCount={(n) => count(state.id, n)}
             onSaved={() => after({})}
+            onChange={(change, run) => saveNow(state.id, change, run)}
             onClose={close}
           />
         )}
@@ -231,20 +236,20 @@ function ItemNotesBox({ item, onSaved, onError }: { item: Item; onSaved: () => v
 
 // "Needed for Season": how many the team wants on the shelf for the season, typed in place under
 // the count. Blank or 0 clears it. Saves on Enter or when the box loses focus.
-function SeasonBox({ item, onSaved, onError }: { item: Item; onSaved: () => void; onError: (m: string | null) => void }) {
+function SeasonBox({ item, onChange, onError }: { item: Item; onChange: ChangeItem; onError: (m: string | null) => void }) {
   const work = useCan("work");
   const current = hasSeasonNeed(item) ? formatStock(item.seasonNeed!, item.sheet) : "";
   const [text, setText] = useState<string | null>(null);
-  const [pending, start] = useTransition();
+  // The new need shows at once ("Season needs 10 · 7 short"); the save follows.
   const save = () => {
     if (text === null || text.trim() === current) return setText(null);
     const value = text;
-    start(async () => {
-      const r = await setSeasonNeed(item.id, value);
-      onError(r.error ?? null);
-      setText(null);
-      if (!r.error) onSaved();
-    });
+    const n = parseStock(value, item.sheet);
+    setText(null);
+    if (n === null) return onError(item.sheet ? 'Needed for season is sheets, like "2" or "1 3/4".' : "Needed for season is a whole number.");
+    onError(null);
+    const seasonNeed = n > 0 ? snapStock(n, item.sheet) : null;
+    onChange(() => ({ seasonNeed }), () => setSeasonNeed(item.id, value));
   };
   return (
     <label className="inline-flex items-center gap-2.5 rounded-xl border border-line bg-raised py-1.5 pr-1.5 pl-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]">
@@ -257,7 +262,7 @@ function SeasonBox({ item, onSaved, onError }: { item: Item; onSaved: () => void
           if (e.key === "Enter") e.currentTarget.blur();
           if (e.key === "Escape") setText(null);
         }}
-        disabled={pending || !work}
+        disabled={!work}
         inputMode={item.sheet ? "text" : "numeric"}
         placeholder="—"
         aria-label="Needed for Season"
@@ -276,6 +281,7 @@ function ItemBody({
   onStep,
   onCount,
   onSaved,
+  onChange,
   onClose,
 }: {
   item: Item;
@@ -283,6 +289,7 @@ function ItemBody({
   onStep: (d: number) => void;
   onCount: (n: number) => void;
   onSaved: () => void;
+  onChange: ChangeItem;
   onClose: () => void;
 }) {
   const [mode, setMode] = useState<"view" | "edit" | "toBom">("view");
@@ -294,7 +301,7 @@ function ItemBody({
   const [, startPhoto] = useTransition();
   const work = useCan("work");
   const [moving, startMove] = useTransition();
-  // The condition and location pills and a link's ✕ save at once, then the window reloads.
+  // A link's ✕ saves, then the window reloads.
   const save = (run: () => Promise<{ error?: string }>) =>
     startMove(async () => {
       const r = await run();
@@ -381,8 +388,10 @@ function ItemBody({
               <>
                 <select
                   value={item.conditionId ?? ""}
-                  disabled={moving}
-                  onChange={(e) => save(() => setItemCondition(item.id, e.target.value || null))}
+                  onChange={(e) => {
+                    const conditionId = e.target.value || null;
+                    onChange(() => ({ conditionId }), () => setItemCondition(item.id, conditionId));
+                  }}
                   aria-label="Condition"
                   className={`${tag} press cursor-pointer appearance-none border pr-6 disabled:opacity-60 ${condition ? "border-transparent hover:brightness-110" : "border-dashed border-line-strong bg-transparent text-muted hover:border-sky-400/40"}`}
                   style={condition ? { ...caretOf(textOn(color!)), backgroundColor: color, color: textOn(color!) } : caretOf("currentColor")}
@@ -399,8 +408,7 @@ function ItemBody({
                 <LocationPicker
                   locations={locations}
                   value={item.locationId}
-                  disabled={moving}
-                  onChange={(id) => save(() => setItemLocation(item.id, id))}
+                  onChange={(id) => onChange(() => ({ locationId: id }), () => setItemLocation(item.id, id))}
                   className={`${tag} press border bg-transparent hover:border-sky-400/40 active:scale-[0.98] disabled:opacity-60 ${location ? "border-line text-fg-2" : "border-dashed border-line-strong text-muted"}`}
                 />
               </>
@@ -445,7 +453,7 @@ function ItemBody({
               .join(" · ") || "Tap the number to type the count"}
             {missing(item, "any") > 0 && <span className="font-mono font-semibold text-rose-500 tabular-nums"> · {missing(item, "any")} short</span>}
           </div>
-          <SeasonBox item={item} onSaved={onSaved} onError={setMessage} />
+          <SeasonBox item={item} onChange={onChange} onError={setMessage} />
         </div>
       </div>
 
