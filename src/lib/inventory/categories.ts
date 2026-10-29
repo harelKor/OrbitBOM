@@ -109,8 +109,13 @@ export function specLine(cat: InvCategory | undefined, specs: Record<string, str
     .join(" · ");
 }
 
+// Options that include bare sizes (bearing IDs "8", "10") take any other size too ("11").
+export const isSize = (v: string) => /^\d+(\.\d+)?$/.test(v.trim());
+export const takesSizes = (choices: string[]) => choices.some(isSize);
+
 // Keeps only the category's own fields; a field with choices takes one of them (case-insensitive,
-// stored with the option's own spelling). Field ids or labels both work as keys.
+// stored with the option's own spelling), or another size when its options are sizes. Field ids
+// or labels both work as keys.
 export function checkSpecs(cat: InvCategory, specs: Record<string, unknown>): { values: Record<string, string> } | { error: string } {
   const values: Record<string, string> = {};
   for (const [key, raw] of Object.entries(specs)) {
@@ -125,7 +130,7 @@ export function checkSpecs(cat: InvCategory, specs: Record<string, unknown>): { 
     if (!value) continue;
     const choices = fieldChoices(field);
     if (choices.length) {
-      const hit = choices.find((c) => c.toLowerCase() === value.toLowerCase());
+      const hit = choices.find((c) => c.toLowerCase() === value.toLowerCase()) ?? (takesSizes(choices) && isSize(value) ? value : undefined);
       if (!hit) return { error: `${cat.label} ${field.label} is one of: ${choices.join(", ")}.` };
       values[field.id] = hit;
     } else if (field.kind === "number" && !/^\d+(\.\d+)?$/.test(value)) {

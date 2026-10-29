@@ -4,7 +4,7 @@
 // Shop words go first: "5 min epoxy" is a Glue, Epoxy, 5 Min; "Loctite 243" is Blue; "M5 tap" a Tap.
 
 import { guessCategory } from "@/config/inventory";
-import { activeFields, fieldChoices, type InvCategory } from "./categories";
+import { activeFields, fieldChoices, isSize, takesSizes, type InvCategory } from "./categories";
 
 const UNIT = /^\d+(\.\d+)?(mm|in|t)?$/;
 const FRACTIONS: Record<string, string> = { "½": "1/2", "⅜": "3/8", "¼": "1/4", "¾": "3/4", "⅝": "5/8" };
@@ -61,7 +61,8 @@ export const parseSpecs = (text: string, cat: InvCategory) => {
 type Rule = [RegExp, (m: RegExpExecArray) => Record<string, string>];
 const mm = (n: string) => `${n}mm`;
 // Words the shop uses for a category's sub-types and values, by category id. A rule's values
-// that the category doesn't offer are left out, and the words it matched are used up.
+// that the category doesn't offer are left out (a size like a bearing's "11" ID is kept as typed
+// when the field's options are sizes), and the words it matched are used up.
 const SHOP_WORDS: Record<string, Rule[]> = {
   // "8x16x5", "8×16×5mm", "6.35*17.46*7.9 flanged": ID, OD and thickness in mm.
   bearings: [
@@ -174,7 +175,7 @@ function shopWords(text: string, cat: InvCategory) {
       const field = cat.fields.find((f) => f.id === id);
       if (!field || !value || specs[id]) continue;
       const choices = fieldChoices(field);
-      const hit = choices.length ? choices.find((c) => c.toLowerCase() === value.toLowerCase()) : value;
+      const hit = choices.length ? (choices.find((c) => c.toLowerCase() === value.toLowerCase()) ?? (takesSizes(choices) && isSize(value) ? value : undefined)) : value;
       if (!hit) continue;
       specs[id] = hit;
       took = true;

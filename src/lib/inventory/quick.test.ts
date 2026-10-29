@@ -12,6 +12,8 @@ describe("parseQuick", () => {
     expect(parseQuick("8x16x5", cats)).toEqual({ categoryId: "bearings", specs: { bore: "8", od: "16", width: "5" }, left: [] });
     expect(parseQuick("8×16×5mm flanged", cats)).toEqual({ categoryId: "bearings", specs: { bore: "8", od: "16", width: "5", flanged: "Flanged" }, left: [] });
     expect(parseQuick("8*16*5 radial bearing", cats)?.specs).toEqual({ bore: "8", od: "16", width: "5", flanged: "Radial" });
+    expect(parseQuick("11x18x7", cats)).toEqual({ categoryId: "bearings", specs: { bore: "11", od: "18", width: "7" }, left: [] });
+    expect(parseQuick("11x17x8mm", cats)?.specs).toEqual({ bore: "11", od: "17", width: "8" });
     expect(parseQuick("6.35x17.46x7.9", cats)?.specs).toEqual({ bore: "6.35", od: "17.46", width: "7.9" });
     expect(parseQuick("מיסב 8x16x5 פלאנג", cats)?.specs).toEqual({ bore: "8", od: "16", width: "5", flanged: "Flanged" });
   });
@@ -62,6 +64,8 @@ describe("buildName", () => {
     const b = cats.find((c) => c.id === "bearings")!;
     expect(buildName(b, { bore: "8", od: "16", width: "5", flanged: "Flanged" })).toBe("8x16x5 Flanged Bearing");
     expect(buildName(b, { bore: "8", od: "16", width: "5", flanged: "Radial" })).toBe("8x16x5 Bearing");
+    expect(buildName(b, { bore: "11", od: "18", width: "7" })).toBe("11x18x7 Bearing");
+    expect(buildName(b, { bore: "10mm", od: "15mm", width: "4mm" })).toBe("10x15x4 Bearing");
     expect(buildName(b, { bore: '1/2" Hex', flanged: "Flanged" })).toBe('1/2" Hex Flanged Bearing');
     expect(buildName(b, { bore: '1/2" Hex' })).toBe('1/2" Hex Bearing');
     expect(specLine(b, { bore: "8", od: "16", width: "5", flanged: "Flanged" })).toBe("8x16x5 · Flanged");

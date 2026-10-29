@@ -330,6 +330,13 @@
       "when": 1793266813895,
       "tag": "0046_bearing_sizes",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1793269767627,
+      "tag": "0047_bearing_11x18x7",
+      "breakpoints": true
     }
   ]
 }
