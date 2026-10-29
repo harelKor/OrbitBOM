@@ -351,6 +351,13 @@
       "when": 1793284728676,
       "tag": "0049_more_category_pictures",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1793291959197,
+      "tag": "0050_fraction_stock_categories",
+      "breakpoints": true
     }
   ]
 }

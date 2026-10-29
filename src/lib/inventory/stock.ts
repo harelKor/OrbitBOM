@@ -46,3 +46,8 @@ export function parseStock(text: string, sheet: boolean): number | null {
   if (!sheet && !Number.isInteger(total)) return null;
   return snapStock(total, sheet);
 }
+
+// Plates and sheets say "sheets"; other fraction items (tubes, shafts, filament) say plain quantities.
+export function isSheetGoods(label: string): boolean {
+  return /plate|sheet|polycarb|wood/i.test(label);
+}

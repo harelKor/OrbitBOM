@@ -14,7 +14,7 @@ import { Icon } from "@/components/ui/Icon";
 import { softStatusTint } from "@/components/ui/statusTint";
 import { getCategory } from "@/lib/inventory/categories";
 import { hasSeasonNeed, missing, neededFor, orderHref, standing, type NeedView, type Standing } from "@/lib/inventory/season";
-import { SHEET_PIECES, formatStock, parseStock } from "@/lib/inventory/stock";
+import { SHEET_PIECES, formatStock, isSheetGoods, parseStock } from "@/lib/inventory/stock";
 import { useCan } from "@/components/shell/ModeContext";
 import { useInventoryPopup } from "./InventoryPopup";
 import { LocationPicker } from "./LocationPicker";
@@ -243,7 +243,7 @@ export function ItemCard({
           onClick={() => onStep(-1)}
           disabled={item.inStock < 1}
           className="press z-10 flex h-11 w-11 items-center justify-center rounded-md bg-rose-500 text-xl font-bold text-white shadow-sm hover:bg-rose-400 disabled:opacity-30"
-          aria-label={item.sheet ? "One sheet less" : "One less"}
+          aria-label={item.sheet && isSheetGoods(category?.label ?? item.name) ? "One sheet less" : "One less"}
         >
           −
         </button>)}
@@ -258,7 +258,7 @@ export function ItemCard({
           type="button"
           onClick={() => onStep(1)}
           className="press z-10 flex h-11 w-11 items-center justify-center rounded-md bg-emerald-500 text-xl font-bold text-white shadow-sm hover:bg-emerald-400"
-          aria-label={item.sheet ? "One sheet more" : "One more"}
+          aria-label={item.sheet && isSheetGoods(category?.label ?? item.name) ? "One sheet more" : "One more"}
         >
           +
         </button>)}

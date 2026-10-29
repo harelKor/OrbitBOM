@@ -138,7 +138,7 @@ export function CategorySettings({ categories, locations, items }: { categories:
                 </label>
                 <label className="flex items-center gap-2 self-end pb-2 text-sm">
                   <input type="checkbox" checked={cat.sheet} onChange={(e) => change({ ...cat, sheet: e.target.checked })} className="h-5 w-5" />
-                  Counted in sheets and pieces (¼ ⅓ ½)
+                  Allow fractions / pieces (¼ ⅓ ½ ⅔ ¾)
                 </label>
               </div>
 

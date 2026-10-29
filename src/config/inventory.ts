@@ -416,6 +416,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     label: "Box tubes & extrusions",
     image: "/categories/square-tubes.png",
     noun: "Box tube",
+    sheet: true,
     match:
       /(box|square|rect\w*)\s*tube|\btube\b.*\d+\s*x\s*\d+|\d+\s*x\s*\d+.*\btube\b|extrusion/i,
     fields: [
@@ -436,6 +437,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     label: "Round tubes",
     image: "/categories/round-tubes.png",
     noun: "Tube",
+    sheet: true,
     match: /round\s*tube|\btube\b.*\bod\b|\bod\b.*\btube\b|\bpipe\b/i,
     fields: [
       {
@@ -459,6 +461,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     label: "Carbon fiber tubes",
     image: "/categories/carbon-tubes.png",
     noun: "Carbon tube",
+    sheet: true,
     match: /carbon|קרבון/i,
     fields: [
       { id: "od", label: "OD", kind: "text", name: "Ø{}" },
@@ -477,6 +480,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     label: "Shaft stock",
     image: "/categories/shafts.png",
     noun: "Shaft",
+    sheet: true,
     match: /shaft|hex\s*stock|axle/i,
     fields: [
       {
@@ -500,6 +504,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     label: "3D printing & filament",
     image: "/categories/filament.png",
     noun: "Filament",
+    sheet: true,
     match: /filament|\bpla\b|petg|\babs\b|onyx|\btpu\b/i,
     fields: [
       {

@@ -10,7 +10,7 @@ import { Icon } from "@/components/ui/Icon";
 import { Dialog } from "@/components/Dialog";
 import { activeFields, getCategory, specLine } from "@/lib/inventory/categories";
 import type { ItemHistoryEntry } from "@/lib/data/inventory";
-import { formatStock, snapStock } from "@/lib/inventory/stock";
+import { formatStock, isSheetGoods, snapStock } from "@/lib/inventory/stock";
 import { PieceStepper, ProductName, conditionColor, hostOf } from "./ItemCard";
 import { ItemForm, draftOf } from "./ItemForm";
 import { ItemHistory } from "./ItemHistory";
@@ -113,7 +113,7 @@ export function ItemPage({
             <div className="min-w-0 flex-1 text-center">
               <div className="display font-mono text-5xl text-fg tabular-nums">{formatStock(item.inStock, item.sheet)}</div>
               <div className="text-xs text-muted">
-                {item.sheet ? "sheets on the shelf" : usage?.need ? `on the shelf · robots need ${usage.need}` : "on the shelf"}
+                {item.sheet && isSheetGoods(category?.label ?? item.name) ? "sheets on the shelf" : usage?.need ? `on the shelf · robots need ${usage.need}` : "on the shelf"}
                 {!!usage?.short && <span className="font-semibold text-amber-600"> · {usage.short} short</span>}
               </div>
             </div>
@@ -129,7 +129,7 @@ export function ItemPage({
           {item.sheet && (
             <div className="flex justify-center">
               <span className="rounded-full bg-[#111318]/80 px-3 py-1 text-xs text-white">
-                Pieces of a sheet <PieceStepper onStep={onStep} max={item.inStock} />
+                {isSheetGoods(category?.label ?? item.name) ? "Pieces of a sheet" : "Pieces"} <PieceStepper onStep={onStep} max={item.inStock} />
               </span>
             </div>
           )}

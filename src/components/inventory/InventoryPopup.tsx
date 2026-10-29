@@ -28,7 +28,7 @@ import { useMaterials } from "@/components/shell/MaterialColors";
 import { activeFields, getCategory } from "@/lib/inventory/categories";
 import { hasSeasonNeed, missing } from "@/lib/inventory/season";
 import type { Offer, ProductGroup } from "@/lib/inventory/productGroups";
-import { formatStock, parseStock, snapStock } from "@/lib/inventory/stock";
+import { formatStock, isSheetGoods, parseStock, snapStock } from "@/lib/inventory/stock";
 import { bestOffer, isLink, searchStores } from "./AddBox";
 import { CountBox, ItemPrice, PieceStepper, conditionColor, hostOf } from "./ItemCard";
 import { ItemForm, draftOf } from "./ItemForm";
@@ -257,7 +257,7 @@ function SeasonBox({ item, onChange, onError }: { item: Item; onChange: ChangeIt
     const value = text;
     const n = parseStock(value, item.sheet);
     setText(null);
-    if (n === null) return onError(item.sheet ? 'Needed for season is sheets, like "2" or "1 3/4".' : "Needed for season is a whole number.");
+    if (n === null) return onError(item.sheet ? 'Needed for season is a number or fraction, like "2" or "1 3/4".' : "Needed for season is a whole number.");
     onError(null);
     const seasonNeed = n > 0 ? snapStock(n, item.sheet) : null;
     onChange(() => ({ seasonNeed }), () => setSeasonNeed(item.id, value));
@@ -459,7 +459,7 @@ function ItemBody({
           <Stepper item={item} onStep={onStep} onCount={onCount} big />
           <div className="text-xs text-muted">
             {[
-              item.sheet ? "sheets on the shelf" : null,
+              item.sheet ? (isSheetGoods(cat?.label ?? item.name) ? "sheets on the shelf" : "on the shelf") : null,
               hasSeasonNeed(item) ? `Season needs ${formatStock(item.seasonNeed!, item.sheet)}` : null,
               usage?.need ? `Robots need ${usage.need}` : null,
             ]

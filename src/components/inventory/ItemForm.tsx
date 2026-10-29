@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { saveItem, type ItemInput } from "@/app/(app)/inventory/actions";
 import { CATEGORY_GROUPS, type CategoryGroupId } from "@/config/inventory";
 import { activeFields, buildName, dropInactive, getCategory } from "@/lib/inventory/categories";
-import { formatStock, parseStock } from "@/lib/inventory/stock";
+import { formatStock, isSheetGoods, parseStock } from "@/lib/inventory/stock";
 import { FieldInput } from "./fields";
 import { hostOf } from "./ItemCard";
 import { LocationPicker } from "./LocationPicker";
@@ -178,7 +178,7 @@ export function ItemForm({
 
       <div className="flex flex-wrap items-end gap-3">
         <div>
-          <div className="label">{sheet ? "Sheets" : "Quantity"}</div>
+          <div className="label">{sheet && isSheetGoods(cat?.label ?? d.name) ? "Sheets" : "Quantity"}</div>
           <div className="flex items-center gap-1.5">
             <button type="button" onClick={() => step(-1)} className="press flex h-11 w-11 items-center justify-center rounded-lg bg-rose-500 text-xl font-bold text-white hover:bg-rose-400" aria-label="One less">
               −
