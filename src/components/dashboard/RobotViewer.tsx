@@ -6,9 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StatusCount } from "@/lib/stats";
 import { Segmented } from "@/components/ui/Segmented";
 import { Icon } from "@/components/ui/Icon";
-import { useMaterialColors, useMaterials } from "@/components/shell/MaterialColors";
-import { DEFAULT_MATERIAL_COLORS, OTHER_MATERIAL, materialColor, materialColorGroup, materialColorGroups } from "@/config/materialColors";
-import type { ViewerModel } from "./ModelCanvas";
+import type { ViewerMode, ViewerModel } from "./ModelCanvas";
 import { MODEL_STALE_EVENT, OPEN_PART_EVENT, OPEN_PART_PENDING, type ModelStaleDetail, type OpenPartDetail } from "./modelEvents";
 
 const ModelCanvas = dynamic(() => import("./ModelCanvas").then((m) => m.ModelCanvas), { ssr: false });
@@ -19,7 +17,7 @@ type BuildAnswer =
   | { error: string };
 
 // A BOM part as the viewer knows it: its key in the model, status colour, and where its card is.
-export type ViewerPart = { key: string; color: string; id: string; systemId: string; name: string; fab: boolean; material: string | null; onshapeMaterial: string | null };
+export type ViewerPart = { key: string; color: string; id: string; systemId: string; name: string; fab: boolean };
 
 // The 3D robot stage. The model is built from the systems' Onshape assemblies on demand
 // (Edit mode's Update 3D model) and kept in R2; viewing it costs no Onshape calls. The expand
@@ -46,7 +44,8 @@ export function RobotViewer({
   hasAssembly: boolean;
   edit: boolean;
 }) {
-  const [colors, setColors] = useState<"status" | "material" | "plain">("status");
+  // Status colours parts by their BOM status; CAD shows them as Onshape draws the assembly.
+  const [colors, setColors] = useState<ViewerMode>("status");
   const router = useRouter();
   const [large, setLarge] = useState(false);
   const [bar, setBar] = useState(false);
@@ -57,20 +56,8 @@ export function RobotViewer({
   const [model, setModel] = useState<ViewerModel | null | undefined>(builtAt ? undefined : null);
   const [building, setBuilding] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
-  const materialOverrides = useMaterialColors();
-  const materialList = useMaterials();
-  const colorMap = useMemo(
-    () => new Map(parts.map((p) => [p.key, colors === "material" ? materialColor(p.material, materialOverrides, p.onshapeMaterial, materialList) : p.color])),
-    [parts, colors, materialOverrides, materialList],
-  );
-  // Material mode's legend: the categories this view's parts are in, in the panel's order.
-  const materials = useMemo(() => {
-    const present = new Set(parts.map((p) => materialColorGroup(p.material, p.onshapeMaterial, materialList)));
-    return materialColorGroups(materialList)
-      .filter((m) => present.has(m))
-      .map((name) => ({ name, color: materialOverrides[name] ?? DEFAULT_MATERIAL_COLORS[name] ?? DEFAULT_MATERIAL_COLORS[OTHER_MATERIAL] }));
-  }, [parts, materialOverrides, materialList]);
-  const legend = colors === "status" ? statuses : colors === "material" ? materials : [];
+  const colorMap = useMemo(() => new Map(parts.map((p) => [p.key, p.color])), [parts]);
+  const legend = colors === "status" ? statuses.filter((s) => s.count > 0) : [];
   const onLocated = useCallback(() => {}, []);
   const partByKey = useMemo(() => new Map(parts.map((p) => [p.key, p])), [parts]);
   const picked = selected ? partByKey.get(selected) : undefined;
@@ -205,8 +192,7 @@ export function RobotViewer({
               onChange={setColors}
               options={[
                 { value: "status", label: "Status" },
-                { value: "material", label: "Material" },
-                { value: "plain", label: "Plain" },
+                { value: "cad", label: "CAD" },
               ]}
             />
             {!systemId && groups.length > 1 && (
@@ -232,7 +218,7 @@ export function RobotViewer({
             <ModelCanvas
               model={model}
               colors={colorMap}
-              mode={colors === "plain" ? "plain" : "status"}
+              mode={colors}
               locateKey={null}
               onLocated={onLocated}
               hidden={hidden}

@@ -124,13 +124,16 @@ export async function buildRobotModel(robotId: string, memberId: string, deadlin
   const client = onshapeClient(memberId, sources[0].baseUrl);
   const state = await loadState(robotId);
 
-  // 1. Change check: one microversion call per workspace document. Version links never change.
-  const mvs = new Map<string, string>();
-  for (const ref of sources) {
-    if (ref.wvm !== "w" || mvs.has(ref.wvmid)) continue;
-    const mv = await client.json<{ microversion: string }>(`documents/d/${ref.did}/w/${ref.wvmid}/currentmicroversion`);
-    mvs.set(ref.wvmid, mv.microversion);
-  }
+  // 1. Change check: one microversion call per workspace document, all at once. Version links never change.
+  const workspaces = new Map(sources.filter((ref) => ref.wvm === "w").map((ref) => [ref.wvmid, ref.did]));
+  const mvs = new Map(
+    await Promise.all(
+      [...workspaces].map(async ([wvmid, did]) => {
+        const mv = await client.json<{ microversion: string }>(`documents/d/${did}/w/${wvmid}/currentmicroversion`);
+        return [wvmid, mv.microversion] as const;
+      }),
+    ),
+  );
   const rev = [PLAN_VERSION, TESS_VERSION, ...sources.map((ref) => `${ref.wvm}:${ref.wvmid}:${ref.eid}:${mvs.get(ref.wvmid) ?? ""}:${ref.group.systemIds.join(",")}`)].join("|");
   if (state.built?.rev === rev) {
     return { state: "done", unchanged: true, parts: state.built.placements.length, calls: client.calls };
@@ -143,7 +146,7 @@ export async function buildRobotModel(robotId: string, memberId: string, deadlin
     await saveState(robotId, { ...state, draft });
   }
 
-  // 3. Part Studio meshes, a few at a time. A job only starts while there is time left to
+  // 3. Part Studio meshes, eight at a time. A job only starts while there is time left to
   // finish it inside the request; the rest waits for the browser's next call.
   const queue = draft.jobs.filter((j) => !j.done);
   const worker = async () => {
@@ -159,7 +162,7 @@ export async function buildRobotModel(robotId: string, memberId: string, deadlin
     }
   };
   try {
-    await Promise.all(Array.from({ length: 4 }, worker));
+    await Promise.all(Array.from({ length: 8 }, worker));
   } finally {
     await saveState(robotId, { ...state, draft });
   }
@@ -182,24 +185,38 @@ async function planModel(client: OnshapeClient, sources: Source[], rev: string):
   const jobs: Job[] = [];
   const jobIndex = new Map<string, number>();
   const placements: ModelPlacement[] = [];
-  const elementRevs = new Map<string, Map<string, string>>(); // workspace → element → microversion
+
+  // Every system's assembly definition at once.
+  const defs = await Promise.all(
+    sources.map(async (ref) =>
+      flattenAssembly(
+        await client.json<AssemblyDefinition>(
+          `assemblies/${apiPath(ref)}?includeMateFeatures=false&includeNonSolids=false&includeMateConnectors=false`,
+        ),
+      ),
+    ),
+  );
+
+  // Part Studios in an assembly's own workspace are keyed by their element microversion
+  // (1 call per document, all at once), so editing one Part Studio doesn't re-export the rest.
+  const lists = new Map<string, string>(); // workspace → document, for the workspaces that need one
+  sources.forEach((ref, g) => {
+    if (ref.wvm === "w" && defs[g].some((p) => p.studio.did === ref.did && !p.studio.version)) lists.set(ref.wvmid, ref.did);
+  });
+  const elementRevs = new Map( // workspace → element → microversion
+    await Promise.all(
+      [...lists].map(async ([wvmid, did]) => {
+        const elements = await client.json<{ id: string; microversionId?: string }[]>(
+          `documents/d/${did}/w/${wvmid}/elements?elementType=PARTSTUDIO&withThumbnails=false`,
+        );
+        return [wvmid, new Map(elements.flatMap((e) => (e.microversionId ? [[e.id, e.microversionId] as const] : [])))] as const;
+      }),
+    ),
+  );
 
   for (const [g, ref] of sources.entries()) {
-    const def = await client.json<AssemblyDefinition>(
-      `assemblies/${apiPath(ref)}?includeMateFeatures=false&includeNonSolids=false&includeMateConnectors=false`,
-    );
-    const placed = flattenAssembly(def);
-
-    // Part Studios in the assembly's own workspace are keyed by their element microversion
-    // (1 call per document), so editing one Part Studio doesn't re-export the rest.
-    let elementRev = elementRevs.get(ref.wvmid);
-    if (!elementRev && ref.wvm === "w" && placed.some((p) => p.studio.did === ref.did && !p.studio.version)) {
-      const elements = await client.json<{ id: string; microversionId?: string }[]>(
-        `documents/d/${ref.did}/w/${ref.wvmid}/elements?elementType=PARTSTUDIO&withThumbnails=false`,
-      );
-      elementRev = new Map(elements.flatMap((e) => (e.microversionId ? [[e.id, e.microversionId] as const] : [])));
-      elementRevs.set(ref.wvmid, elementRev);
-    }
+    const placed = defs[g];
+    const elementRev = elementRevs.get(ref.wvmid);
 
     const jobFor = (s: StudioRef): number => {
       let path: string;

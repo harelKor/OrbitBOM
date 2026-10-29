@@ -44,6 +44,6 @@ export async function shapeFingerprints(client: OnshapeClient, studios: Map<stri
       }
     }
   };
-  await Promise.all(Array.from({ length: 4 }, worker));
+  await Promise.all(Array.from({ length: 8 }, worker));
   return out;
 }

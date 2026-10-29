@@ -97,7 +97,10 @@ export async function checkSystem(systemId: string, memberId: string, { force = 
     if (p.isManual || p.shapeSig || !path || p.sourceWvm === "w" || fresh.has(path) || !names.has(p.onshapeName ?? "")) continue;
     old.set(path, [...(old.get(path) ?? []), p.onshapePartId!]);
   }
-  const [sigs, oldSigs] = await Promise.all([shapeFingerprints(client, fresh), shapeFingerprints(client, old)]);
+  // A first sync has no committed parts to compare shapes with, so it skips the calls; the next
+  // check stores the fingerprints (same parts, same place: taken as they are).
+  const firstSync = !existing.some((p) => !p.isManual);
+  const [sigs, oldSigs] = firstSync ? [{}, {}] : await Promise.all([shapeFingerprints(client, fresh), shapeFingerprints(client, old)]);
   const partSigs: Record<string, string> = {};
   for (const p of existing) {
     const sig = !p.shapeSig && oldSigs[sigKey(p)];

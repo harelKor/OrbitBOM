@@ -110,7 +110,7 @@ export function PartModel({
 
   return (
     <div className={`relative bg-[radial-gradient(ellipse_at_50%_35%,var(--color-surface)_0%,var(--color-raised)_75%)] ${className}`}>
-      {model && <ModelCanvas key={view} model={model} colors={NO_COLORS} mode="plain" locateKey={view === "locate" ? modelKey : null} onLocated={onLocated} />}
+      {model && <ModelCanvas key={view} model={model} colors={NO_COLORS} mode="cad" locateKey={view === "locate" ? modelKey : null} onLocated={onLocated} />}
       {(error || !model || missing) && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">
           {error ?? (missing ? "This part isn't in the robot's linked Onshape assemblies." : view === "part" ? "Loading the part…" : "Loading the robot…")}

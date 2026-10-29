@@ -6,8 +6,8 @@ import { onshapeUrl, parseOnshapeUrl } from "@/lib/onshape/url";
 import { LinkAssemblyForm } from "./LinkAssemblyForm";
 import { PanelSignIn } from "./PanelSignIn";
 
-// Linking runs the first Update BOM in the same request.
-export const maxDuration = 60;
+// Linking runs the first Update BOM in the same request, then the new system's thumbnails in after().
+export const maxDuration = 300;
 
 // The right panel of an Onshape assembly (plan §4). Onshape opens it as
 // /onshape/panel?server={$server}&documentId={$documentId}&workspaceId={$workspaceId}&elementId={$elementId}

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { decodeMeshes, type Appearance, type Mesh } from "@/lib/model/mesh";
 
 export type ViewerModel = {
@@ -22,8 +23,10 @@ async function loadStudio(url: string): Promise<Mesh[]> {
   return decodeMeshes(buf);
 }
 
-// The three.js stage: one instanced mesh per part shape, coloured by status (or plain: Onshape's
-// own appearance, see-through parts included). While
+export type ViewerMode = "status" | "cad";
+
+// The three.js stage: one instanced mesh per part shape, coloured by status (or CAD: Onshape's
+// own appearance, see-through parts included, lit by a studio environment like Onshape's). While
 // locating, the robot turns see-through and the located part is drawn solid in bright green.
 // Like Onshape: right drag rotates, middle drag moves, the wheel zooms (left drag also rotates,
 // for touchpads).
@@ -40,7 +43,7 @@ export function ModelCanvas({
 }: {
   model: ViewerModel;
   colors: Map<string, string>; // part key → status colour
-  mode: "status" | "plain";
+  mode: ViewerMode;
   locateKey: string | null;
   onLocated: (found: boolean) => void;
   hidden?: Set<number>; // subsystem groups not drawn
@@ -51,7 +54,7 @@ export function ModelCanvas({
   const host = useRef<HTMLDivElement>(null);
   // Recolours the parts and frames the located one; true when it is in the model.
   const scene = useRef<{
-    paint: (colors: Map<string, string>, mode: "status" | "plain", locateKey: string | null) => boolean;
+    paint: (colors: Map<string, string>, mode: ViewerMode, locateKey: string | null) => boolean;
     hide: (hidden: Set<number>) => void;
     select: (key: string | null) => void;
   } | null>(null);
@@ -80,6 +83,11 @@ export function ModelCanvas({
     const sun = new THREE.DirectionalLight(0xffffff, 1.6);
     sun.position.set(2, 4, 3);
     world.add(sun);
+    // CAD mode's studio reflections, so metal parts read as metal.
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const studio = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    pmrem.dispose();
+    world.environmentIntensity = 0.7;
     const camera = new THREE.PerspectiveCamera(40, 1, 0.005, 200);
     camera.position.set(1.4, 1, 1.4);
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -117,6 +125,7 @@ export function ModelCanvas({
     };
 
     const material = new THREE.MeshStandardMaterial({ roughness: 0.55, metalness: 0.15 });
+    const cad = new THREE.MeshStandardMaterial({ roughness: 0.42, metalness: 0.35 });
     const ghost = new THREE.MeshStandardMaterial({ roughness: 0.6, transparent: true, opacity: 0.14, depthWrite: false });
     const glow = new THREE.MeshStandardMaterial({ color: LOCATED, emissive: LOCATED, emissiveIntensity: 0.55, roughness: 0.4 });
     const geometries: THREE.BufferGeometry[] = [];
@@ -126,7 +135,7 @@ export function ModelCanvas({
     const seeThrough = (opacity: number) => {
       let m = clear.get(opacity);
       if (!m) {
-        m = new THREE.MeshStandardMaterial({ roughness: 0.55, metalness: 0.15, transparent: true, opacity, depthWrite: false });
+        m = new THREE.MeshStandardMaterial({ roughness: 0.3, metalness: 0.1, transparent: true, opacity, depthWrite: false });
         clear.set(opacity, m);
       }
       return m;
@@ -134,14 +143,15 @@ export function ModelCanvas({
     const highlights = new THREE.Group();
     const picks = new THREE.Group();
     root.add(highlights, picks);
-    const paint = (colors: Map<string, string>, mode: "status" | "plain", locateKey: string | null) => {
+    const paint = (colors: Map<string, string>, mode: ViewerMode, locateKey: string | null) => {
       highlights.clear();
+      world.environment = mode === "cad" && !locateKey ? studio : null;
       const plain = new THREE.Color(PLAIN);
       const box = new THREE.Box3();
       const piece = new THREE.Box3();
       for (const { mesh, keys, look } of meshes) {
-        const own = mode === "plain" && look;
-        mesh.material = locateKey ? ghost : own && look.opacity < 1 ? seeThrough(look.opacity) : material;
+        const own = mode === "cad" && look;
+        mesh.material = locateKey ? ghost : own && look.opacity < 1 ? seeThrough(look.opacity) : mode === "cad" ? cad : material;
         const onshape = own ? new THREE.Color(...look.color) : plain;
         keys.forEach((k, i) => {
           mesh.setColorAt(i, locateKey ? plain : mode === "status" ? new THREE.Color(colors.get(k) ?? UNKNOWN) : onshape);
@@ -285,6 +295,8 @@ export function ModelCanvas({
       geometries.forEach((g) => g.dispose());
       meshes.forEach(({ mesh }) => mesh.dispose());
       material.dispose();
+      cad.dispose();
+      studio.dispose();
       clear.forEach((m) => m.dispose());
       ghost.dispose();
       glow.dispose();

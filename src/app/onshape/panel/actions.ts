@@ -2,11 +2,13 @@
 
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { syncSystem } from "@/app/(app)/parts-actions";
 import { requireCapability } from "@/lib/mode";
+import { refreshThumbnails } from "@/lib/onshape/thumbnails";
 import { onshapeUrl, parseOnshapeUrl } from "@/lib/onshape/url";
 
 const linkForm = z.object({
@@ -26,7 +28,16 @@ export async function linkAssembly(assemblyUrl: string, _: { error?: string } | 
     .values({ robotId: parsed.data.robotId, name: parsed.data.name, assemblyUrl: onshapeUrl(ref) })
     .returning({ id: schema.systems.id });
   // A failed first sync still links; the system page shows Update System to retry.
-  if (member.onshapeConnected) await syncSystem(system.id);
+  if (member.onshapeConnected) {
+    const started = Date.now();
+    await syncSystem(system.id);
+    // The new system's thumbnails, after the system page is on its way; what's left is
+    // fetched on the next Update System.
+    after(async () => {
+      const t = await refreshThumbnails(system.id, member.id, started + 240_000).catch((err) => console.error("Thumbnails failed", err));
+      if (t?.fetched) revalidatePath("/robots", "layout");
+    });
+  }
   redirect(`/robots/${parsed.data.robotId}/systems/${system.id}`);
 }
 

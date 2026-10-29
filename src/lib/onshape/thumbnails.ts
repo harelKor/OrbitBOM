@@ -89,7 +89,7 @@ export async function refreshThumbnails(systemId: string, memberId: string, dead
       }
     }
   };
-  await Promise.all(Array.from({ length: 4 }, listWorker));
+  await Promise.all(Array.from({ length: 8 }, listWorker));
 
   // A few at a time, to be quick without hammering Onshape.
   const worker = async () => {
@@ -111,7 +111,7 @@ export async function refreshThumbnails(systemId: string, memberId: string, dead
       }
     }
   };
-  await Promise.all(Array.from({ length: 4 }, worker));
+  await Promise.all(Array.from({ length: 8 }, worker));
 
   if (Date.now() < deadline) await assemblyThumbnails(client, system);
   summary.calls = client.calls;
