@@ -267,6 +267,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     id: "wheels",
     group: "cots",
     label: "Wheels & rollers",
+    image: "/categories/wheels.png",
     noun: "Wheel",
     match:
       /wheel|omni|mecanum|colson|traction|compliant|stealth|tread|roller|silicone\s*tubing/i,
@@ -336,6 +337,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     id: "gearboxes",
     group: "cots",
     label: "Gearboxes & planetaries",
+    image: "/categories/gearboxes.png",
     noun: "",
     match: /gearbox|planetary|cycloid|versa\s*planetary|maxplanetary/i,
     fields: [
@@ -363,6 +365,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     id: "aluminum-plates",
     group: "consumables",
     label: "Aluminum plates",
+    image: "/categories/aluminum-plates.png",
     noun: "Plate",
     sheet: true,
     match:
@@ -382,6 +385,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     id: "polycarbonate",
     group: "consumables",
     label: "Polycarbonate plates",
+    image: "/categories/polycarbonate.png",
     noun: "Plate",
     sheet: true,
     match: /polycarb|lexan|\bpoly\b|\bpc\b/i,
@@ -391,6 +395,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     id: "wood-composites",
     group: "consumables",
     label: "Wood & composite sheets",
+    image: "/categories/wood-composites.png",
     noun: "Sheet",
     sheet: true,
     match: /plywood|birch|\bmdf\b|srpp|sandwich|בירץ|סנדוויץ/i,
@@ -409,6 +414,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     id: "square-tubes",
     group: "consumables",
     label: "Box tubes & extrusions",
+    image: "/categories/square-tubes.png",
     noun: "Box tube",
     match:
       /(box|square|rect\w*)\s*tube|\btube\b.*\d+\s*x\s*\d+|\d+\s*x\s*\d+.*\btube\b|extrusion/i,
@@ -467,6 +473,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     id: "shafts",
     group: "consumables",
     label: "Shaft stock",
+    image: "/categories/shafts.png",
     noun: "Shaft",
     match: /shaft|hex\s*stock|axle/i,
     fields: [
@@ -489,6 +496,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     id: "filament",
     group: "consumables",
     label: "3D printing & filament",
+    image: "/categories/filament.png",
     noun: "Filament",
     match: /filament|\bpla\b|petg|\babs\b|onyx|\btpu\b/i,
     fields: [
@@ -507,6 +515,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     id: "rivets",
     group: "hardware",
     label: "Rivets",
+    image: "/categories/rivets.png",
     noun: "Rivet",
     match: /rivet|ניט/i,
     fields: [
@@ -530,6 +539,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     id: "fasteners",
     group: "hardware",
     label: "Screws & nuts",
+    image: "/categories/fasteners.png",
     noun: "",
     match:
       /screw|bolt|\bnuts?\b|washer|standoff|\bshcs\b|\bbhcs\b|בורג|ברגי|\bm[3-8]\s*[x×]\s*\d+/i,
@@ -555,6 +565,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     id: "adhesives-tapes",
     group: "hardware",
     label: "Tapes, glues & chemicals",
+    image: "/categories/adhesives-tapes.png",
     noun: "",
     match:
       /tape|glue|epoxy|loctite|\bca\b|acetone|alcohol|lubric|grease|solvent|spray|אפוקסי|דבק|טייפ|איזו/i,
@@ -607,6 +618,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     id: "rigging-ties",
     group: "hardware",
     label: "Zip ties, rope & rigging",
+    image: "/categories/rigging-ties.png",
     noun: "",
     match: /zip\s*tie|rope|dyneema|velcro|elastic|surgical\s*tub|אזיקון|חוט/i,
     fields: [
@@ -665,6 +677,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     id: "controllers",
     group: "electrical",
     label: "Controllers & modules",
+    image: "/categories/controllers.png",
     noun: "",
     match:
       /spark\s*(max|flex)|talon|victor|controller|roborio|\bpdh\b|\bpdp\b|\bvrm\b|\brsl\b|radio|canivore|candi|canifier|candle|switch|orange\s*pi|led/i,
@@ -683,6 +696,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     id: "power-distribution",
     group: "electrical",
     label: "Breakers, fuses & batteries",
+    image: "/categories/power-distribution.png",
     noun: "",
     match: /breaker|fuse|batter|פיוז|מצבר/i,
     fields: [
@@ -700,6 +714,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     id: "wiring",
     group: "electrical",
     label: "Wires, connectors & terminals",
+    image: "/categories/wiring.png",
     noun: "",
     match:
       /wire|cable|connector|wago|anderson|ferrule|heat\s*shrink|\bawg\b|terminal|lug|כבל|סופי/i,
@@ -740,6 +755,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     id: "cnc-bits",
     group: "tools",
     label: "CNC & router bits",
+    image: "/categories/cnc-bits.png",
     noun: "",
     match: /end\s*mill|chamfer|thread\s*mill|collet|\bflute\b|כרסום|קולט/i,
     fields: [
@@ -764,6 +780,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     id: "lathe-tools",
     group: "tools",
     label: "Lathe cutters & inserts",
+    image: "/categories/lathe-tools.png",
     noun: "",
     match: /lathe|insert|boring\s*bar|parting|tailstock|מחרטה|גודעת/i,
     fields: [
@@ -795,6 +812,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     id: "drills-taps",
     group: "tools",
     label: "Drills & taps",
+    image: "/categories/drills-taps.png",
     noun: "",
     match: /drill|\btaps?\b|מקדח|מברז/i,
     fields: [
@@ -819,6 +837,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     id: "hand-tools",
     group: "tools",
     label: "Hand, power & measuring tools",
+    image: "/categories/hand-tools.png",
     noun: "",
     match:
       /wrench|allen|hex\s*key|torx|plier|screwdriver|crimper|stripper|cutter|\bfiles?\b|hammer|caliper|socket|measure|scale|level|multimeter|riveter|dremel|heat\s*gun|soldering|אלן|מפתח|קליבר/i,

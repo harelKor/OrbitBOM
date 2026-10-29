@@ -92,7 +92,7 @@ export function CategoryBoxes({
       )}
       <div
         className={compact ? "-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible" : g ? "card-grid" : "grid gap-3 sm:grid-cols-2 lg:grid-cols-5"}
-        style={compact || !g ? undefined : ({ "--card-min": "165px" } as React.CSSProperties)}
+        style={compact || !g ? undefined : ({ "--card-min": "185px" } as React.CSSProperties)}
       >
         {boxes.map((b) => {
           const n = counts.get(b.id) ?? { count: 0 };
@@ -126,24 +126,25 @@ export function CategoryBoxes({
                 </span>
               </span>
             </>
-          ) : b.imageUrl ? (
-            // A picture box is one whole picture; the count and name float over it on soft blurred
-            // fades. The stage is light in both themes, so their text stays dark.
-            <span className="thumb-well relative block aspect-[16/9] w-full">
-              {/* eslint-disable-next-line @next/next/no-img-element -- static or short-lived R2 links, not optimisable */}
-              <img src={b.imageUrl} alt="" className="pointer-events-none absolute inset-0 h-full w-full object-contain pt-2 pr-1.5 pb-1.5 pl-[22%]" />
-              <span className="pointer-events-none absolute inset-0">
-                <Frost at="top left" className="top-0 left-0 pt-2.5 pr-10 pb-5 pl-3.5">
-                  <span className="display text-4xl leading-none">{number}</span>
-                </Frost>
-                {shortPill && (
-                  <Frost at="top right" className="top-0 right-0 pt-2 pr-2.5 pb-4 pl-7">
-                    {shortPill}
-                  </Frost>
-                )}
-                <Frost at="bottom left" className="bottom-0 left-0 max-w-full pt-5 pr-12 pb-2.5 pl-3.5">
-                  <span className="block truncate text-base font-semibold text-[#111318] group-hover:text-accent">{b.label}</span>
-                </Frost>
+          ) : g ? (
+            // A category box is one full studio card: the picture (or the group's icon, until it has
+            // one) above a frosted dock with the name, the count on a soft blurred fade over the top
+            // left. The stage is light in both themes; the dock keeps the name white on dark.
+            <span className="thumb-well relative flex h-full min-h-36 w-full flex-1 flex-col justify-between">
+              {b.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element -- static or short-lived R2 links, not optimisable
+                <img src={b.imageUrl} alt="" className="pointer-events-none absolute inset-x-0 top-0 bottom-9 h-[calc(100%-2.25rem)] w-full object-contain pt-2 pr-2 pb-1 pl-[24%]" />
+              ) : (
+                <Icon name={g.icon as IconName} className="pointer-events-none absolute top-[calc(50%-1.125rem)] right-6 h-14 w-14 -translate-y-1/2 text-slate-400/70" />
+              )}
+              <Frost at="top left" className="top-0 left-0 pt-2.5 pr-10 pb-5 pl-3.5">
+                <span className="display text-4xl leading-none">{number}</span>
+              </Frost>
+              {shortPill && <span className="absolute top-2 right-2.5">{shortPill}</span>}
+              <span className="relative z-10 mt-auto flex min-h-9 w-full items-center bg-[#111318]/78 px-3 py-1.5 backdrop-blur-md">
+                <span className={`line-clamp-1 leading-tight font-semibold text-white group-hover:text-sky-300 ${b.label.length > 16 ? "text-xs" : "text-sm"}`}>
+                  {b.label}
+                </span>
               </span>
             </span>
           ) : (
@@ -161,8 +162,8 @@ export function CategoryBoxes({
           );
           const cls = compact
             ? "card-interactive group flex h-12 shrink-0 items-center gap-2.5 overflow-hidden pr-3 text-left active:scale-[0.98]"
-            : b.imageUrl
-              ? "card-interactive group relative flex flex-col text-left active:scale-[0.98]"
+            : g
+              ? "card-interactive group relative flex aspect-[16/10] min-h-36 flex-col text-left active:scale-[0.98]"
               : "card-interactive group relative flex min-h-32 flex-col justify-between p-4 text-left active:scale-[0.98]";
           return g && categoryHref ? (
             <Link key={b.id} href={categoryHref(b.id)} className={cls}>
