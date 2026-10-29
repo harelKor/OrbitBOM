@@ -133,7 +133,7 @@ export function CategoryBoxes({
             <span className="thumb-well relative flex h-full min-h-36 w-full flex-1 flex-col justify-between">
               {b.imageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element -- static or short-lived R2 links, not optimisable
-                <img src={b.imageUrl} alt="" className="pointer-events-none absolute inset-x-0 top-0 bottom-9 h-[calc(100%-2.25rem)] w-full object-contain pt-3 pr-3 pb-2 pl-[24%]" />
+                <img src={b.imageUrl} alt="" className="pointer-events-none absolute inset-x-0 top-0 bottom-9 h-[calc(100%-2.25rem)] w-full object-contain pt-3 pr-3 pb-2 pl-[14%]" />
               ) : (
                 <Icon name={g.icon as IconName} className="pointer-events-none absolute top-[calc(50%-1.125rem)] right-6 h-14 w-14 -translate-y-1/2 text-slate-400/70" />
               )}
