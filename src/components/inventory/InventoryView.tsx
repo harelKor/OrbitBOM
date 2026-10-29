@@ -105,7 +105,8 @@ export function InventoryView({
       window.removeEventListener("pointerdown", off);
     };
   }, [lit]);
-  const glowOf = (id: string) => (lit.includes(id) ? "lit" : fading.includes(id) ? "fade" : undefined);
+  const saving = (id: string) => id.startsWith("new:");
+  const glowOf = (id: string) => (lit.includes(id) || saving(id) ? "lit" : fading.includes(id) ? "fade" : undefined);
   // Scan is for phones, and shows only while the add box is focused (Harel, 2026-10-29).
   const phone = usePhone();
   const [boxFocus, setBoxFocus] = useState(false);
@@ -127,14 +128,17 @@ export function InventoryView({
   const [moveLoc, setMoveLoc] = useState(""); // "" keep, "none" clear, else a location id
   const selecting = edit ? picking : null;
 
+  // Stock steps, and an item being added (on top, glowing, until its save comes back).
   const [optimistic, addOptimistic] = useOptimistic(
     items,
-    (state, { id, delta }: { id: string; delta: number }) =>
-      state.map((i) =>
-        i.id === id
-          ? { ...i, inStock: snapStock(i.inStock + delta, i.sheet) }
-          : i,
-      ),
+    (state, change: { id: string; delta: number } | { add: Item }) =>
+      "add" in change
+        ? [change.add, ...state]
+        : state.map((i) =>
+            i.id === change.id
+              ? { ...i, inStock: snapStock(i.inStock + change.delta, i.sheet) }
+              : i,
+          ),
   );
   const [busy, startTransition] = useTransition();
   const step = (id: string, delta: number) =>
@@ -247,6 +251,7 @@ export function InventoryView({
 
   const RANK = { short: 0, ordered: 1, ok: 2 } as const;
   const rankAdded = (i: Item) => {
+    if (saving(i.id)) return -1;
     const n = added.indexOf(i.id);
     return n < 0 ? added.length : n;
   };
@@ -545,6 +550,7 @@ export function InventoryView({
                 : "Filter by name, size, vendor, location…"
             }
             onAdded={onAdded}
+            onAdding={(item) => addOptimistic({ add: item })}
             onFocusChange={setBoxFocus}
           />
           <ScanButton onCode={setQ} show={phone && boxFocus} />

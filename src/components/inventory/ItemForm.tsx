@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { saveItem } from "@/app/(app)/inventory/actions";
+import { saveItem, type ItemInput } from "@/app/(app)/inventory/actions";
 import { CATEGORY_GROUPS, type CategoryGroupId } from "@/config/inventory";
 import { activeFields, buildName, dropInactive, getCategory } from "@/lib/inventory/categories";
 import { formatStock, parseStock } from "@/lib/inventory/stock";
@@ -77,6 +77,7 @@ export function ItemForm({
   conditions,
   items,
   onSaved,
+  onSubmit,
   onCancel,
 }: {
   itemId: string | null;
@@ -87,6 +88,7 @@ export function ItemForm({
   conditions: Condition[];
   items: Pick<Item, "category" | "locationId">[];
   onSaved: (id: string, message?: string) => void;
+  onSubmit?: (input: ItemInput) => void; // the add box saves it itself, so the form closes at once
   onCancel: () => void;
 }) {
   const [error, setError] = useState<string | null>(null);
@@ -111,25 +113,28 @@ export function ItemForm({
     const n = parseStock(d.inStock, sheet) ?? 0;
     setDraft({ ...d, inStock: formatStock(Math.max(0, n + by), sheet) });
   };
-  const submit = () =>
+  const submit = () => {
+    const links = linkText.trim() ? [...d.links, { url: linkText.trim() }] : d.links;
+    const input: ItemInput = {
+      name: name.trim(),
+      category: d.category,
+      specs: d.specs,
+      inStock: d.inStock,
+      conditionId: d.conditionId,
+      locationId: d.locationId,
+      links,
+      price: d.price,
+      imageUrl: d.imageUrl,
+      photoKey: d.photo?.key ?? null,
+    };
+    if (onSubmit) return onSubmit(input);
     startTransition(async () => {
       setError(null);
-      const links = linkText.trim() ? [...d.links, { url: linkText.trim() }] : d.links;
-      const r = await saveItem(itemId, {
-        name: name.trim(),
-        category: d.category,
-        specs: d.specs,
-        inStock: d.inStock,
-        conditionId: d.conditionId,
-        locationId: d.locationId,
-        links,
-        price: d.price,
-        imageUrl: d.imageUrl,
-        photoKey: d.photo?.key ?? null,
-      });
+      const r = await saveItem(itemId, input);
       if (r.error || !r.id) setError(r.error ?? "Couldn't save.");
       else onSaved(r.id, r.message);
     });
+  };
 
   return (
     <form

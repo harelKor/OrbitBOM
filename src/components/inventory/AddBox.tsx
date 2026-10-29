@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { findProducts, readProductLink, saveItem } from "@/app/(app)/inventory/actions";
+import { readProductLink, saveItem, type ItemInput } from "@/app/(app)/inventory/actions";
 import { Dialog } from "@/components/Dialog";
 import { useCan } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
@@ -11,7 +11,7 @@ import { guessCategory } from "@/config/inventory";
 import { buildName, getCategory } from "@/lib/inventory/categories";
 import type { Offer, ProductGroup } from "@/lib/inventory/productGroups";
 import { parseQuick } from "@/lib/inventory/quick";
-import { formatStock } from "@/lib/inventory/stock";
+import { formatStock, parseStock } from "@/lib/inventory/stock";
 import { useInventoryPopup } from "./InventoryPopup";
 import { ItemForm, categoryLocation, emptyDraft, type Draft } from "./ItemForm";
 import type { Condition, InvCategory, Item, Location } from "./types";
@@ -19,6 +19,14 @@ import type { Condition, InvCategory, Item, Location } from "./types";
 type Found = { q: string; groups: ProductGroup[]; elsewhere: { name: string; url: string }[] };
 
 export const isLink = (s: string) => /^https?:\/\/\S+\.\S+/i.test(s.trim());
+
+// The stores, asked through a GET route rather than a server action: the browser runs server
+// actions one at a time, so a slow store search held up saving an item for seconds.
+export async function searchStores(q: string, signal: AbortSignal): Promise<Omit<Found, "q">> {
+  const res = await fetch(`/api/inventory/search?q=${encodeURIComponent(q)}`, { signal });
+  if (!res.ok) return { groups: [], elsewhere: [] };
+  return res.json();
+}
 
 // The one box at the top of Inventory. In View mode it filters the shelf ("Do we have it?"). In
 // Edit mode it also adds: as you type, items already on the shelf, products from the team's
@@ -41,6 +49,7 @@ export function AddBox({
   newStock = "0",
   floating = false,
   onAdded,
+  onAdding,
   onFocusChange,
 }: {
   q: string;
@@ -56,6 +65,7 @@ export function AddBox({
   floating?: boolean; // the results float over the window the box is in (a part's details window), not inside it
   newStock?: string; // what a new item starts with in stock ("0", Harel 2026-10-29)
   onAdded?: (itemId: string) => void; // Inventory: a new item goes to the top of the list with a glow (the banner's jump icon lights it again)
+  onAdding?: (item: Item) => void; // Inventory: shows the item at once while it saves (call it inside the save's transition)
   onFocusChange?: (focused: boolean) => void; // Inventory on phones: Scan shows only while the box is focused
 }) {
   // Any team adds items; without a team it is only a search box.
@@ -63,12 +73,18 @@ export function AddBox({
   const { openItem } = useInventoryPopup();
   const [focus, setFocus] = useState(false);
   const [found, setFound] = useState<Found | null>(null);
-  const [searching, startSearch] = useTransition();
+  const [searching, setSearching] = useState(false);
+  const search = useRef<AbortController | null>(null);
+  const stopSearch = () => {
+    search.current?.abort();
+    search.current = null;
+    setSearching(false);
+  };
   const [reading, startRead] = useTransition();
   const [readError, setReadError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saved, setSaved] = useState<{ id: string; name: string; draft: Draft; message?: string } | null>(null);
-  const [quickSaving, startQuickSave] = useTransition();
+  const [, startSave] = useTransition();
   const box = useRef<HTMLInputElement>(null);
   const phone = usePhone();
   const focusChanged = useRef(onFocusChange);
@@ -86,15 +102,34 @@ export function AddBox({
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   const onShelf = query && !link ? items.filter((i) => words.every((w) => `${i.name} ${Object.values(i.specs).join(" ")}`.toLowerCase().includes(w))).slice(0, 4) : [];
 
-  // Stores are asked only after a pause in typing, never while the page renders.
+  // Stores are asked only after a pause in typing, never while the page renders. A search still
+  // running is dropped when the typing changes or an item is added.
   useEffect(() => {
     if (!edit || link || query.length < 3 || draft) return;
-    const t = setTimeout(() => startSearch(async () => setFound({ q: query, ...(await findProducts(query)) })), 450);
-    return () => clearTimeout(t);
+    const t = setTimeout(() => {
+      search.current?.abort();
+      const c = new AbortController();
+      search.current = c;
+      setSearching(true);
+      searchStores(query, c.signal)
+        .then((r) => setFound({ q: query, ...r }))
+        .catch(() => {})
+        .finally(() => {
+          if (search.current === c) {
+            search.current = null;
+            setSearching(false);
+          }
+        });
+    }, 450);
+    return () => {
+      clearTimeout(t);
+      search.current?.abort();
+    };
   }, [edit, link, query, draft]);
   const products = found?.q === query ? found : null;
 
   const start = (over: Partial<Draft>) => {
+    stopSearch();
     const cat = getCategory(categories, over.category ?? null);
     setDraft(emptyDraft({ inStock: newStock, locationId: defaultLocationId ?? categoryLocation(cat, items), locationTouched: !!defaultLocationId, ...over }));
     setSaved(null);
@@ -117,20 +152,53 @@ export function AddBox({
         start({ category: defaultCategory, links: [{ url: query }] });
       }
     });
-  // The whole line was understood: save it as it is, 1 in stock, on the category's shelf.
-  const quickSave = () =>
-    startQuickSave(async () => {
-      const draft = emptyDraft({ category: quickCat!.id, specs: quick!.specs, locationId: defaultLocationId ?? categoryLocation(quickCat, items) });
-      const r = await saveItem(null, { name: quickName, category: draft.category, specs: draft.specs, inStock: newStock, conditionId: null, locationId: draft.locationId, links: [], price: null, imageUrl: null });
-      if (r.error || !r.id) return setReadError(r.error ?? "Couldn't save.");
-      if (onPick) {
-        onPick(r.id);
-        return setQ("");
+  // Adding is instant: the results close, the box clears and the item shows at the top of the list
+  // with its glow while it saves; a failed save puts the form back with the error.
+  const add = (input: ItemInput, draft: Draft, retry: Draft | null) => {
+    stopSearch();
+    setReadError(null);
+    setDraft(null);
+    setFocus(false);
+    setQ("");
+    const cat = getCategory(categories, input.category ?? null);
+    const sheet = !!cat?.sheet;
+    startSave(async () => {
+      onAdding?.({
+        id: `new:${Date.now()}`,
+        name: input.name,
+        groupId: null,
+        category: input.category ?? "",
+        categorySet: input.category ?? null,
+        specs: input.specs ?? {},
+        cotsLinks: input.links ?? [],
+        conditionId: input.conditionId ?? null,
+        locationId: input.locationId ?? null,
+        inStock: parseStock(input.inStock ?? "0", sheet) ?? 0,
+        seasonNeed: null,
+        note: null,
+        price: input.price ?? null,
+        imagePath: null,
+        usage: null,
+        openOrder: null,
+        sheet,
+        thumbUrl: draft.photo?.preview ?? input.imageUrl ?? null,
+      });
+      const r = await saveItem(null, input);
+      if (r.error || !r.id) {
+        setReadError(r.error ?? "Couldn't save.");
+        if (retry) setDraft(retry);
+        return;
       }
-      setSaved({ id: r.id, name: quickName, draft, message: r.message });
+      if (onPick) return onPick(r.id);
+      setSaved({ id: r.id, name: input.name, draft, message: r.message });
       onAdded?.(r.id);
-      setQ("");
     });
+  };
+  // The whole line was understood: save it as it is, on the category's shelf.
+  const quickSave = () => {
+    const draft = emptyDraft({ category: quickCat!.id, specs: quick!.specs, locationId: defaultLocationId ?? categoryLocation(quickCat, items) });
+    add({ name: quickName, category: draft.category, specs: draft.specs, inStock: newStock, conditionId: null, locationId: draft.locationId, links: [], price: null, imageUrl: null }, draft, null);
+  };
   // The add form with what was typed and what it understood; else the page's category.
   const custom = (categoryId: string) =>
     start(Object.keys(quick!.specs).length ? { category: categoryId, specs: quick!.specs } : { category: categoryId, name: query, nameTouched: !!query });
@@ -185,7 +253,7 @@ export function AddBox({
             <Row
               onClick={() => (quickWhole ? quickSave() : custom(quick!.categoryId))}
               icon="spark"
-              title={quickSaving ? "Adding…" : `Add “${quickName}”`}
+              title={`Add “${quickName}”`}
               detail={quickWhole ? `${quickCat!.label} · adds it, ${newStock} in stock` : `${quickCat!.label} · finish the details`}
             />
           </div>
@@ -336,19 +404,8 @@ export function AddBox({
       conditions={conditions}
       items={items}
       onCancel={() => setDraft(null)}
-      onSaved={(id, message) => {
-        if (onPick) {
-          onPick(id);
-          setDraft(null);
-          return setQ("");
-        }
-        const cat = getCategory(categories, draft.category);
-        const name = draft.nameTouched || !cat ? draft.name : buildName(cat, draft.specs) || draft.name;
-        setSaved({ id, name, draft, message });
-        onAdded?.(id);
-        setDraft(null);
-        setQ("");
-      }}
+      onSubmit={(input) => add(input, draft, draft)}
+      onSaved={() => setDraft(null)}
     />
   );
   const panel = "space-y-3 overflow-y-auto rounded-2xl border border-line-strong bg-surface p-3 shadow-[0_16px_40px_-12px_rgba(17,19,24,0.35)]";

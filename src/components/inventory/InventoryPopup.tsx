@@ -7,7 +7,6 @@ import {
   countStock,
   deleteItem,
   findBomParts,
-  findProducts,
   itemPopup,
   linkItemToProduct,
   loadItemHistory,
@@ -30,7 +29,7 @@ import { activeFields, getCategory } from "@/lib/inventory/categories";
 import { hasSeasonNeed, missing } from "@/lib/inventory/season";
 import type { Offer, ProductGroup } from "@/lib/inventory/productGroups";
 import { formatStock, parseStock, snapStock } from "@/lib/inventory/stock";
-import { bestOffer, isLink } from "./AddBox";
+import { bestOffer, isLink, searchStores } from "./AddBox";
 import { CountBox, ItemPrice, PieceStepper, conditionColor, hostOf } from "./ItemCard";
 import { ItemForm, draftOf } from "./ItemForm";
 import { ItemHistory } from "./ItemHistory";
@@ -649,7 +648,7 @@ function ProductSearch({
 }) {
   const [q, setQ] = useState("");
   const [found, setFound] = useState<{ q: string; groups: ProductGroup[] } | null>(null);
-  const [searching, startSearch] = useTransition();
+  const [searching, setSearching] = useState(false);
   const [linking, startLink] = useTransition();
   const query = q.trim();
   const link = isLink(query);
@@ -657,8 +656,19 @@ function ProductSearch({
   // Stores are asked only after a pause in typing.
   useEffect(() => {
     if (link || query.length < 3) return;
-    const t = setTimeout(() => startSearch(async () => setFound({ q: query, groups: (await findProducts(query)).groups })), 450);
-    return () => clearTimeout(t);
+    const c = new AbortController();
+    const t = setTimeout(() => {
+      setSearching(true);
+      searchStores(query, c.signal)
+        .then((r) => setFound({ q: query, groups: r.groups }))
+        .catch(() => {})
+        .finally(() => !c.signal.aborted && setSearching(false));
+    }, 450);
+    return () => {
+      clearTimeout(t);
+      c.abort();
+      setSearching(false);
+    };
   }, [link, query]);
   const groups = found?.q === query ? found.groups : null;
 

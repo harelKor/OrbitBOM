@@ -155,20 +155,6 @@ export function LeftNav({
             </div>
             {inventoryOpen && (
               <div className="mt-0.5 mb-1 ml-5 space-y-px border-l border-line pl-2">
-                {[
-                  { href: "/inventory?view=season", name: "Short for season", view: "season" },
-                  { href: "/inventory?view=robots", name: "Short for robots", view: "robots" },
-                ].map((l) => (
-                  <ShallowLink
-                    key={l.href}
-                    href={l.href}
-                    className={`press flex items-center gap-2 rounded-md px-2 py-1 text-xs ${
-                      pathname === "/inventory" && query.get("view") === l.view ? "bg-accent/15 text-white" : "text-fg-2 hover:bg-raised hover:text-fg"
-                    }`}
-                  >
-                    {l.name}
-                  </ShallowLink>
-                ))}
                 {CATEGORY_GROUPS.map((g) => {
                   const children = categories.filter((c) => c.group === g.id);
                   const open = groupToggled[g.id] ?? shownGroup === g.id;

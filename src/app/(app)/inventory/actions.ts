@@ -21,7 +21,6 @@ import { pushItemToCards } from "@/lib/inventory/cotsSync";
 import { recordItemChanges } from "@/lib/inventory/history";
 import { moveStock, setStock } from "@/lib/inventory/moves";
 import { readProduct, saveProductPhoto, toUsd } from "@/lib/inventory/product";
-import { searchProducts } from "@/lib/inventory/search";
 import { missing, newestOpenOrders, orderHref } from "@/lib/inventory/season";
 import { parseStock, snapStock } from "@/lib/inventory/stock";
 import { applyEachPartChanges } from "@/lib/parts/apply";
@@ -792,12 +791,6 @@ export async function moveCategory(id: string, by: -1 | 1): Promise<ActionResult
 }
 
 // ---------- Products and popups ----------
-
-// The add box: products from the team's stores and the BOM's own COTS links.
-export async function findProducts(query: string) {
-  await requireMember();
-  return searchProducts(query);
-}
 
 // A pasted product link, read from the page's product tags.
 export async function readProductLink(url: string) {
