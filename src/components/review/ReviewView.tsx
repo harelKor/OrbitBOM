@@ -14,6 +14,7 @@ import {
 } from "@/app/(app)/robots/[robotId]/review/actions";
 import { updatePart } from "@/app/(app)/parts-actions";
 import { isCardBodyClick } from "@/components/bom/PartCard";
+import { OptionList, Popover } from "@/components/bom/Popover";
 import { usePartDetails } from "@/components/bom/PartDetailsHost";
 import type { PartChanges } from "@/lib/parts/changes";
 import { useInventoryPopup } from "@/components/inventory/InventoryPopup";
@@ -153,8 +154,19 @@ const machinesOf = (p: CardPart) => [p.preProcess, p.process1, p.process2].filte
 // Each subsystem is a big box, split into batches (one per suggestion run) that fold from their
 // title; inside a batch the cards filter by material and machine. Approve keeps the change, Reject
 // puts the old values back (also for a whole batch or subsystem). Both work in View mode too,
-// since reviewing is what the page is for; Suggest setup (the site's rules) is Edit mode only.
-export function ReviewView({ robotId, items, inventory }: { robotId: string; items: ReviewItem[]; inventory: InventoryReview[] }) {
+// since reviewing is what the page is for; Suggest setup (the site's rules) is Edit mode only, and
+// runs on the whole robot or one subsystem picked from its menu.
+export function ReviewView({
+  robotId,
+  systems: robotSystems,
+  items,
+  inventory,
+}: {
+  robotId: string;
+  systems: { id: string; name: string }[];
+  items: ReviewItem[];
+  inventory: InventoryReview[];
+}) {
   // The CAD Team (and Edit) reviews; everyone else sees what waits here, read only.
   const edit = useCan("review");
   const { filters } = useFilters();
@@ -180,10 +192,15 @@ export function ReviewView({ robotId, items, inventory }: { robotId: string; ite
 
   const matching = optimistic.filter((i) => matchesTopBar(i.part, filters));
   const systems = groupItems(matching);
-  const suggest = () => {
+  const suggest = (systemId?: string) => {
     setNote(null);
-    startTransition(async () => setNote(await suggestSetup(robotId)));
+    startTransition(async () => setNote(await suggestSetup(robotId, systemId)));
   };
+  const ALL = "all";
+  const suggestOptions = [
+    { value: ALL, label: "All systems" },
+    ...[...robotSystems].sort((a, b) => a.name.localeCompare(b.name)).map((s) => ({ value: s.id, label: s.name, group: "Subsystem" })),
+  ];
 
   return (
     <div className="space-y-4">
@@ -199,10 +216,28 @@ export function ReviewView({ robotId, items, inventory }: { robotId: string; ite
           )}
         </div>
         {edit && (
-          <button type="button" onClick={suggest} disabled={pending} className="btn" title="Material from Onshape and the 3D model's sizes, processes from what the team usually does">
-            <Icon name="gear" />
-            Suggest setup
-          </button>
+          <Popover
+            align="right"
+            triggerClassName={`btn ${pending ? "pointer-events-none opacity-60" : ""}`}
+            trigger={
+              <span className="inline-flex items-center gap-1.5" title="Material from Onshape and the 3D model's sizes, processes from what the team usually does">
+                <Icon name="gear" />
+                {pending ? "Setting up…" : "Suggest setup"}
+              </span>
+            }
+          >
+            {(close) => (
+              <OptionList
+                options={suggestOptions}
+                value={null}
+                placeholder="Run on…"
+                onPick={(v) => {
+                  close();
+                  suggest(v && v !== ALL ? v : undefined);
+                }}
+              />
+            )}
+          </Popover>
         )}
       </div>
 

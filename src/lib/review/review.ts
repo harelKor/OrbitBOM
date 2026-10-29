@@ -189,8 +189,8 @@ export async function partsToSetUp(robotId: string, systemId?: string) {
 }
 
 // Suggest setup on To Review: the rules' guess for every part that needs one.
-export async function suggestRobotSetups(robotId: string, memberId: string) {
-  const todo = await partsToSetUp(robotId);
+export async function suggestRobotSetups(robotId: string, memberId: string, systemId?: string) {
+  const todo = await partsToSetUp(robotId, systemId);
   const edits = todo.flatMap((t) => (t.guess ? [{ id: t.part.id, ...t.guess }] : []));
   const { changed, batchId } = await applySuggestions(edits, { memberId, source: "rule", via: "ui" });
   if (changed) {

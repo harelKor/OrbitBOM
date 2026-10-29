@@ -67,13 +67,13 @@ export async function rejectInventory(ids: string[]): Promise<ActionResult> {
 }
 
 // Runs the site's rules over the robot's parts that have no material or processes. Reads the
-// 3D model's files for part sizes; never calls Onshape.
-export async function suggestSetup(robotId: string): Promise<ActionResult> {
+// 3D model's files for part sizes; never calls Onshape. With a systemId, only that subsystem's parts.
+export async function suggestSetup(robotId: string, systemId?: string): Promise<ActionResult> {
   const member = await requireCapability("review");
-  if (!isUuid(robotId)) return { error: "Unknown robot." };
-  const { checked, suggested } = await suggestRobotSetups(robotId, member.id);
+  if (!isUuid(robotId) || (systemId && !isUuid(systemId))) return { error: "Unknown robot." };
+  const { checked, suggested } = await suggestRobotSetups(robotId, member.id, systemId);
   refresh();
-  if (!checked) return { message: "Every part already has a material and processes." };
+  if (!checked) return { message: `Every part${systemId ? " in this subsystem" : ""} already has a material and processes.` };
   const left = checked - suggested;
   return {
     message:

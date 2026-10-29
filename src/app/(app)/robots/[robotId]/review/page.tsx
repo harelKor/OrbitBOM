@@ -45,7 +45,7 @@ export default async function ReviewPage({ params }: { params: Promise<{ robotId
         <div className="text-xs font-semibold tracking-wide text-subtle uppercase">{data.robot.name}</div>
         <h1 className="display text-3xl text-accent">To Review</h1>
       </div>
-      <ReviewView robotId={data.robot.id} items={items} inventory={inventoryReviews} />
+      <ReviewView robotId={data.robot.id} systems={data.systems.map((s) => ({ id: s.id, name: s.name }))} items={items} inventory={inventoryReviews} />
     </div>
   );
 }
