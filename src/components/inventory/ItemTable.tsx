@@ -54,7 +54,7 @@ export function ItemTable({
   locationOf: (i: Item) => string | null;
   view: NeedView;
   hideCategory: boolean;
-  onStep: (id: string, delta: number) => void;
+  onStep: (id: string, delta: number, bucket?: number) => void;
   onCount: (id: string, amount: number) => void;
   selected: Set<string>;
   onToggleSelect?: (id: string) => void;
@@ -152,7 +152,7 @@ export function ItemTable({
                     {work && (<button
                       type="button"
                       onClick={() => onStep(item.id, -1)}
-                      disabled={item.inStock < 1}
+                      disabled={item.sheet ? item.inStock <= 0 : item.inStock < 1}
                       className="press flex h-8 w-8 items-center justify-center rounded-md bg-rose-500 font-bold text-white hover:bg-rose-400 active:scale-[0.98] disabled:opacity-30"
                       aria-label={`One less ${item.name}`}
                     >
@@ -174,8 +174,8 @@ export function ItemTable({
                     </span>
                     {item.sheet && (
                       <PieceStepper
-                        onStep={(d) => onStep(item.id, d)}
-                        max={item.inStock}
+                        item={item}
+                        onStep={(d, b) => onStep(item.id, d, b)}
                       />
                     )}
                     {work && (<button

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { createContext, useContext, useEffect, useState, useTransition } from "react";
 import {
   adjustStock,
+  setItemPieces,
   countStock,
   deleteItem,
   findBomParts,
@@ -22,13 +23,14 @@ import {
 import { textOn } from "@/components/bom/options";
 import { Dialog } from "@/components/Dialog";
 import { Can, EditOnly, useCan } from "@/components/shell/ModeContext";
+import { Chevron } from "@/components/ui/Chevron";
 import { Icon } from "@/components/ui/Icon";
 import { materialCategory } from "@/config/materials";
 import { useMaterials } from "@/components/shell/MaterialColors";
 import { activeFields, getCategory } from "@/lib/inventory/categories";
 import { hasSeasonNeed, missing } from "@/lib/inventory/season";
 import type { Offer, ProductGroup } from "@/lib/inventory/productGroups";
-import { formatStock, isSheetGoods, parseStock, snapStock } from "@/lib/inventory/stock";
+import { ALL_PIECES, countPieces, formatStock, isSheetGoods, normalizePieces, parseStock, pieceSizeLabel, setPieceCount, snapStock, stepStock } from "@/lib/inventory/stock";
 import { bestOffer, isLink, searchStores } from "./AddBox";
 import { CountBox, ItemPrice, PieceStepper, conditionColor, hostOf } from "./ItemCard";
 import { ItemForm, draftOf } from "./ItemForm";
@@ -137,8 +139,8 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
       if (r.error) after(r);
     });
   };
-  const step = (itemId: string, delta: number) => saveNow(itemId, (i) => ({ inStock: snapStock(i.inStock + delta, i.sheet) }), () => adjustStock(itemId, delta));
-  const count = (itemId: string, amount: number) => saveNow(itemId, (i) => ({ inStock: snapStock(amount, i.sheet) }), () => countStock(itemId, amount));
+  const step = (itemId: string, delta: number, bucket?: number) => saveNow(itemId, (i) => stepStock(i, delta, bucket), () => adjustStock(itemId, delta, bucket));
+  const count = (itemId: string, amount: number) => saveNow(itemId, (i) => countPieces(i, amount), () => countStock(itemId, amount));
 
   const item = state?.kind === "item" ? (state.data?.item ?? state.preview) : null;
   // An item without its own photo has no picture box, so its name anchors the window instead.
@@ -165,7 +167,7 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
             key={state.id}
             item={item}
             data={state.data}
-            onStep={(d) => step(state.id, d)}
+            onStep={(d, b) => step(state.id, d, b)}
             onCount={(n) => count(state.id, n)}
             onSaved={() => after({})}
             onChange={(change, run) => saveNow(state.id, change, run)}
@@ -181,12 +183,24 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
   );
 }
 
-function Stepper({ item, onStep, onCount, big = false }: { item: Pick<Item, "inStock" | "sheet">; onStep: (d: number) => void; onCount?: (n: number) => void; big?: boolean }) {
+function Stepper({
+  item,
+  onStep,
+  onCount,
+  big = false,
+  children,
+}: {
+  item: Pick<Item, "inStock" | "sheet" | "pieces" | "specs" | "name">;
+  onStep: (d: number, bucket?: number) => void;
+  onCount?: (n: number) => void;
+  big?: boolean;
+  children?: React.ReactNode;
+}) {
   const work = useCan("work");
   const size = big ? "h-12 w-12 text-2xl" : "h-10 w-10 text-xl";
   return (
     <div className="flex items-center gap-2">
-      {work && (<button type="button" onClick={() => onStep(-1)} disabled={item.inStock < 1} className={`press flex ${size} items-center justify-center rounded-lg bg-rose-500 font-bold text-white hover:bg-rose-400 disabled:opacity-30`} aria-label="One less">
+      {work && (<button type="button" onClick={() => onStep(-1)} disabled={item.sheet ? item.inStock <= 0 : item.inStock < 1} className={`press flex ${size} items-center justify-center rounded-lg bg-rose-500 font-bold text-white hover:bg-rose-400 disabled:opacity-30`} aria-label="One less">
         −
       </button>)}
       <span className={`min-w-14 text-center font-mono font-semibold tabular-nums ${big ? "display text-4xl" : "text-xl"}`}>
@@ -197,9 +211,10 @@ function Stepper({ item, onStep, onCount, big = false }: { item: Pick<Item, "inS
       </button>)}
       {item.sheet && (
         <span className="rounded-full bg-[#111318]/80 px-2 py-1 text-xs text-white">
-          <PieceStepper onStep={onStep} max={item.inStock} />
+          <PieceStepper item={item} onStep={onStep} />
         </span>
       )}
+      {children}
     </div>
   );
 }
@@ -283,6 +298,86 @@ function SeasonBox({ item, onChange, onError }: { item: Item; onChange: ChangeIt
   );
 }
 
+// Spread: the item's pieces by real size (Full, ¾ … ¼), each with its count, − / + and a tap to
+// type it. Odd offcuts (like 5/12) show at the end without buttons.
+function SpreadPanel({ item, onSet }: { item: Item; onSet: (twelfths: number, count: number) => void }) {
+  const work = useCan("work");
+  const pieces = normalizePieces(item.inStock, item.pieces);
+  const odd = Object.keys(pieces)
+    .map(Number)
+    .filter((k) => !ALL_PIECES.some((p) => p.twelfths === k))
+    .sort((a, b) => b - a);
+  return (
+    <div className="w-full max-w-md rounded-lg border border-line bg-[#0D111A] p-2 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]">
+      <ul className="divide-y divide-line">
+        {ALL_PIECES.map((p) => {
+          const n = pieces[String(p.twelfths)] ?? 0;
+          const size = pieceSizeLabel(p, item.specs, item.name);
+          return (
+            <li key={p.twelfths} className="flex items-center gap-2 py-1.5">
+              <span className={`min-w-0 flex-1 truncate font-mono text-sm tabular-nums ${n > 0 ? "text-fg" : "text-subtle"}`}>
+                {size.primary}
+                {size.primary !== "Full" && <span className="ml-1 text-xs text-muted">({size.sub ?? "Full"})</span>}
+              </span>
+              {work && (
+                <button type="button" onClick={() => onSet(p.twelfths, n - 1)} disabled={n <= 0} className="press flex h-7 w-7 items-center justify-center rounded-md bg-rose-500 font-bold text-white hover:bg-rose-400 active:scale-[0.98] disabled:opacity-30" aria-label={`One less ${size.primary}`}>
+                  −
+                </button>
+              )}
+              <PieceCount count={n} onCount={(c) => onSet(p.twelfths, c)} />
+              {work && (
+                <button type="button" onClick={() => onSet(p.twelfths, n + 1)} className="press flex h-7 w-7 items-center justify-center rounded-md bg-emerald-500 font-bold text-white hover:bg-emerald-400 active:scale-[0.98]" aria-label={`One more ${size.primary}`}>
+                  +
+                </button>
+              )}
+            </li>
+          );
+        })}
+        {odd.map((k) => (
+          <li key={k} className="flex items-center gap-2 py-1.5 text-sm text-muted">
+            <span className="flex-1 font-mono tabular-nums">{k}/12 offcut</span>
+            <span className="w-10 text-center font-mono font-semibold text-fg tabular-nums">{pieces[String(k)]}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// A Spread row's count: tap to type how many pieces of that size there are.
+function PieceCount({ count, onCount }: { count: number; onCount: (n: number) => void }) {
+  const work = useCan("work");
+  const [text, setText] = useState<string | null>(null);
+  const tone = count > 0 ? "text-sky-300" : "text-subtle";
+  if (!work || text === null)
+    return (
+      <button type="button" disabled={!work} onClick={() => setText(String(count))} className={`w-10 text-center font-mono font-semibold tabular-nums ${tone} ${work ? "underline decoration-dotted underline-offset-4" : ""}`} aria-label="Type how many pieces">
+        {count}
+      </button>
+    );
+  const done = () => {
+    const n = Number(text);
+    if (Number.isInteger(n) && n >= 0 && n !== count) onCount(n);
+    setText(null);
+  };
+  return (
+    <input
+      autoFocus
+      value={text}
+      inputMode="numeric"
+      onFocus={(e) => e.currentTarget.select()}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={done}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") done();
+        if (e.key === "Escape") setText(null);
+      }}
+      aria-label="Pieces of this size"
+      className="w-10 rounded bg-white px-1 text-center font-mono text-fg tabular-nums outline-none"
+    />
+  );
+}
+
 // The item window, kept simple: picture and tags, the count, the details, the parts that use it.
 // Condition and location save as they're picked; the pencil opens the full form (name, category,
 // specs). Admins in Edit also get To BOM and Delete. History opens on demand.
@@ -297,13 +392,14 @@ function ItemBody({
 }: {
   item: Item;
   data: ItemData | null;
-  onStep: (d: number) => void;
+  onStep: (d: number, bucket?: number) => void;
   onCount: (n: number) => void;
   onSaved: () => void;
   onChange: ChangeItem;
   onClose: () => void;
 }) {
   const [mode, setMode] = useState<"view" | "edit" | "toBom">("view");
+  const [spreadOpen, setSpreadOpen] = useState(false);
   const [draft, setDraft] = useState(() => draftOf(item));
   const [message, setMessage] = useState<string | null>(null);
   const [deleting, startDelete] = useTransition();
@@ -456,7 +552,21 @@ function ItemBody({
             </div>
           )}
           {!picture && photoButtons}
-          <Stepper item={item} onStep={onStep} onCount={onCount} big />
+          <Stepper item={item} onStep={onStep} onCount={onCount} big>
+            {item.sheet && (
+              <button
+                type="button"
+                onClick={() => setSpreadOpen((o) => !o)}
+                aria-expanded={spreadOpen}
+                className={`press flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold active:scale-[0.98] ${spreadOpen ? "border-sky-400/60 bg-sky-500/15 text-sky-300" : "border-line text-fg-2 hover:border-sky-400/40 hover:text-accent"}`}
+              >
+                Spread <Chevron open={spreadOpen} small />
+              </button>
+            )}
+          </Stepper>
+          {item.sheet && spreadOpen && (
+            <SpreadPanel item={item} onSet={(twelfths, n) => onChange((i) => setPieceCount(i, twelfths, n), () => setItemPieces(item.id, twelfths, n))} />
+          )}
           <div className="text-xs text-muted">
             {[
               item.sheet ? (isSheetGoods(cat?.label ?? item.name) ? "sheets on the shelf" : "on the shelf") : null,
@@ -783,7 +893,7 @@ function ProductSearch({
   );
 }
 
-function MaterialBody({ data, onStep, onOpen, onClose }: { data: MaterialData; onStep: (id: string, d: number) => void; onOpen: (id: string) => void; onClose: () => void }) {
+function MaterialBody({ data, onStep, onOpen, onClose }: { data: MaterialData; onStep: (id: string, d: number, bucket?: number) => void; onOpen: (id: string) => void; onClose: () => void }) {
   const { items, categories, locations } = data;
   const group = materialCategory(data.material, useMaterials());
   const home = categories.find((c: InvCategory) => c.fields.some((f) => f.kind === "material" && group && f.materials?.includes(group)));
@@ -815,7 +925,7 @@ function MaterialBody({ data, onStep, onOpen, onClose }: { data: MaterialData; o
               {locations.find((l: Location) => l.id === i.locationId) && <> · 📍 {locations.find((l: Location) => l.id === i.locationId)!.name}</>}
             </div>
           </button>
-          <Stepper item={i} onStep={(d) => onStep(i.id, d)} />
+          <Stepper item={i} onStep={(d, b) => onStep(i.id, d, b)} />
         </li>
       ))}
     </ul>

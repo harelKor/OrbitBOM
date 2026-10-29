@@ -14,7 +14,7 @@ import { Icon } from "@/components/ui/Icon";
 import { softStatusTint } from "@/components/ui/statusTint";
 import { getCategory } from "@/lib/inventory/categories";
 import { hasSeasonNeed, missing, neededFor, orderHref, standing, type NeedView, type Standing } from "@/lib/inventory/season";
-import { SHEET_PIECES, formatStock, isSheetGoods, parseStock } from "@/lib/inventory/stock";
+import { SHEET_PIECES, canTakePiece, formatStock, isSheetGoods, parseStock, pieceSizeLabel } from "@/lib/inventory/stock";
 import { useCan } from "@/components/shell/ModeContext";
 import { useInventoryPopup } from "./InventoryPopup";
 import { LocationPicker } from "./LocationPicker";
@@ -115,7 +115,7 @@ export function ItemCard({
   location?: { id: string; name: string };
   // With every location, the card's 📍 tag opens the workshop map window.
   locations?: Location[];
-  onStep: (delta: number) => void;
+  onStep: (delta: number, bucket?: number) => void;
   onCount: (amount: number) => void;
 }) {
   const work = useCan("work");
@@ -241,7 +241,7 @@ export function ItemCard({
         {work && (<button
           type="button"
           onClick={() => onStep(-1)}
-          disabled={item.inStock < 1}
+          disabled={item.sheet ? item.inStock <= 0 : item.inStock < 1}
           className="press z-10 flex h-11 w-11 items-center justify-center rounded-md bg-rose-500 text-xl font-bold text-white shadow-sm hover:bg-rose-400 disabled:opacity-30"
           aria-label={item.sheet && isSheetGoods(category?.label ?? item.name) ? "One sheet less" : "One less"}
         >
@@ -252,7 +252,7 @@ export function ItemCard({
             <CountBox item={item} onCount={onCount} />
           </span>
           {needed != null && <span className="text-white/70">/ {formatStock(needed, item.sheet)}</span>}
-          {item.sheet && <PieceStepper onStep={onStep} max={item.inStock} />}
+          {item.sheet && <PieceStepper item={item} onStep={onStep} />}
         </span>
         {work && (<button
           type="button"
@@ -390,8 +390,9 @@ export function CountBox({ item, onCount, big = false }: { item: Pick<Item, "inS
   );
 }
 
-// A sheet item's pieces: add or take ¼ ⅓ ½ ⅔ ¾ of a sheet.
-export function PieceStepper({ onStep, max }: { onStep: (delta: number) => void; max: number }) {
+// A fraction item's pieces: add or take one piece of a size, each button showing its real size
+// ("450mm ½", "500×450 ½") when the item's length or sheet size is known.
+export function PieceStepper({ item, onStep }: { item: Pick<Item, "inStock" | "pieces" | "specs" | "name">; onStep: (delta: number, bucket?: number) => void }) {
   const work = useCan("work");
   if (!work) return null;
   return (
@@ -401,20 +402,26 @@ export function PieceStepper({ onStep, max }: { onStep: (delta: number) => void;
           {(["add", "take"] as const).map((way) => (
             <div key={way} className="flex items-center gap-1">
               <span className="w-10 text-[11px] font-semibold text-subtle">{way === "add" ? "Add" : "Take"}</span>
-              {SHEET_PIECES.map((p) => (
-                <button
-                  key={p.label}
-                  type="button"
-                  disabled={way === "take" && p.value > max + 1e-9}
-                  onClick={() => {
-                    onStep(way === "add" ? p.value : -p.value);
-                    close();
-                  }}
-                  className={`press rounded-md px-2.5 py-1.5 font-semibold text-white disabled:opacity-30 ${way === "add" ? "bg-emerald-500 hover:bg-emerald-400" : "bg-rose-500 hover:bg-rose-400"}`}
-                >
-                  {p.label}
-                </button>
-              ))}
+              {SHEET_PIECES.map((p) => {
+                const twelfths = Math.round(p.value * 12);
+                const size = pieceSizeLabel(p, item.specs, item.name);
+                return (
+                  <button
+                    key={p.label}
+                    type="button"
+                    disabled={way === "take" && (p.value > item.inStock + 1e-9 || !canTakePiece(item.inStock, item.pieces, twelfths))}
+                    onClick={() => {
+                      onStep(way === "add" ? p.value : -p.value, twelfths);
+                      close();
+                    }}
+                    title={size.sub ? `${size.primary} (${size.sub})` : size.primary}
+                    className={`press flex flex-col items-center rounded-md px-2 py-1 leading-tight font-semibold text-white disabled:opacity-30 ${way === "add" ? "bg-emerald-500 hover:bg-emerald-400" : "bg-rose-500 hover:bg-rose-400"}`}
+                  >
+                    <span className="font-mono tabular-nums">{size.primary}</span>
+                    {size.sub && <span className="text-[10px] font-normal text-white/75">{size.sub}</span>}
+                  </button>
+                );
+              })}
             </div>
           ))}
         </div>

@@ -167,6 +167,7 @@ export function AddBox({
         id: `new:${Date.now()}`,
         name: input.name,
         groupId: null,
+        pieces: {},
         category: input.category ?? "",
         categorySet: input.category ?? null,
         specs: input.specs ?? {},

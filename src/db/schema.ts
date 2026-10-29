@@ -625,6 +625,9 @@ export const inventoryItems = pgTable("inventory_items", {
   locationId: uuid("location_id").references(() => inventoryLocations.id, { onDelete: "set null" }),
   // Whole units; an item in a sheet category also holds pieces, in twelfths of a sheet.
   inStock: doublePrecision("in_stock").notNull().default(0),
+  // A fraction item's pieces by size: twelfths ("12" full, "6" half) → how many. Sums to in_stock;
+  // empty or out of step (older rows) means the difference is full pieces (lib/inventory/stock.ts).
+  pieces: jsonb("pieces").$type<Record<string, number>>().notNull().default({}),
   // How many the team wants on the shelf for the season, whatever the robots use (Harel,
   // 2026-10-27). Null: no season need. Sheet items take pieces like in_stock.
   seasonNeed: doublePrecision("season_need"),

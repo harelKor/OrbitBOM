@@ -10,7 +10,7 @@ import { Icon } from "@/components/ui/Icon";
 import { Dialog } from "@/components/Dialog";
 import { activeFields, getCategory, specLine } from "@/lib/inventory/categories";
 import type { ItemHistoryEntry } from "@/lib/data/inventory";
-import { formatStock, isSheetGoods, snapStock } from "@/lib/inventory/stock";
+import { formatStock, isSheetGoods, stepStock } from "@/lib/inventory/stock";
 import { PieceStepper, ProductName, conditionColor, hostOf } from "./ItemCard";
 import { ItemForm, draftOf } from "./ItemForm";
 import { ItemHistory } from "./ItemHistory";
@@ -45,16 +45,16 @@ export function ItemPage({
 }) {
   const work = useCan("work");
   const router = useRouter();
-  const [item, step] = useOptimistic(initial, (s, d: number) => ({ ...s, inStock: snapStock(s.inStock + d, s.sheet) }));
+  const [item, step] = useOptimistic(initial, (s, [d, b]: [number, number | undefined]) => ({ ...s, ...stepStock(s, d, b) }));
   const [pending, startTransition] = useTransition();
   const [open, setOpen] = useState<"edit" | "toBom" | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [result, setResult] = useState<{ error?: string; message?: string } | null>(null);
 
-  const onStep = (d: number) =>
+  const onStep = (d: number, b?: number) =>
     startTransition(async () => {
-      step(d);
-      const r = await adjustStock(item.id, d);
+      step([d, b]);
+      const r = await adjustStock(item.id, d, b);
       if (r.error) setResult(r);
     });
   const link = (ids: string[]) =>
@@ -129,7 +129,7 @@ export function ItemPage({
           {item.sheet && (
             <div className="flex justify-center">
               <span className="rounded-full bg-[#111318]/80 px-3 py-1 text-xs text-white">
-                {isSheetGoods(category?.label ?? item.name) ? "Pieces of a sheet" : "Pieces"} <PieceStepper onStep={onStep} max={item.inStock} />
+                {isSheetGoods(category?.label ?? item.name) ? "Pieces of a sheet" : "Pieces"} <PieceStepper item={item} onStep={onStep} />
               </span>
             </div>
           )}

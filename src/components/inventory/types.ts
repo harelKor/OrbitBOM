@@ -16,6 +16,7 @@ export type Item = {
   conditionId: string | null;
   locationId: string | null;
   inStock: number;
+  pieces: Record<string, number>; // a fraction item's pieces by size, in twelfths (lib/inventory/stock.ts)
   seasonNeed: number | null;
   note: string | null;
   price: number | null;

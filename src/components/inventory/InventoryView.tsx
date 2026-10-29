@@ -41,7 +41,7 @@ import {
 } from "@/lib/inventory/season";
 import { matchesSearch } from "@/lib/inventory/searchWords";
 import { keepPicks, matchesPicks, specGroups, type SpecGroup, type SpecPicks } from "@/lib/inventory/specFilters";
-import { snapStock } from "@/lib/inventory/stock";
+import { countPieces, stepStock } from "@/lib/inventory/stock";
 import { AddBox } from "./AddBox";
 import { ImportDialog } from "./ImportDialog";
 import { RecentActions } from "@/components/actions/RecentActions";
@@ -131,29 +131,28 @@ export function InventoryView({
   // Stock steps, and an item being added (on top, glowing, until its save comes back).
   const [optimistic, addOptimistic] = useOptimistic(
     items,
-    (state, change: { id: string; delta: number } | { add: Item }) =>
+    (state, change: { id: string; delta: number; bucket?: number } | { id: string; count: number } | { add: Item }) =>
       "add" in change
         ? [change.add, ...state]
         : state.map((i) =>
             i.id === change.id
-              ? { ...i, inStock: snapStock(i.inStock + change.delta, i.sheet) }
+              ? { ...i, ...("count" in change ? countPieces(i, change.count) : stepStock(i, change.delta, change.bucket)) }
               : i,
           ),
   );
   const [busy, startTransition] = useTransition();
-  const step = (id: string, delta: number) =>
+  const step = (id: string, delta: number, bucket?: number) =>
     startTransition(async () => {
       setError(null);
-      addOptimistic({ id, delta });
-      const result = await adjustStock(id, delta);
+      addOptimistic({ id, delta, bucket });
+      const result = await adjustStock(id, delta, bucket);
       if (result.error) setError(result.error);
     });
 
   const count = (id: string, amount: number) =>
     startTransition(async () => {
       setError(null);
-      const item = optimistic.find((i) => i.id === id);
-      if (item) addOptimistic({ id, delta: amount - item.inStock });
+      addOptimistic({ id, count: amount });
       const result = await countStock(id, amount);
       if (result.error) setError(result.error);
     });
@@ -481,7 +480,7 @@ export function InventoryView({
             location={locations.find((l) => l.id === locationOf(item))}
             locations={locations}
             view={cardView}
-            onStep={(d) => step(item.id, d)}
+            onStep={(d, b) => step(item.id, d, b)}
             onCount={(n) => count(item.id, n)}
             hideCategory={scope.kind === "category" || !!cat}
             selected={selected.has(item.id)}

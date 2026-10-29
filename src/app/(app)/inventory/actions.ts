@@ -19,7 +19,7 @@ import { categoryOf, getCategory, slugify, type InvCategory } from "@/lib/invent
 import type { ImportRow } from "@/lib/inventory/import";
 import { pushItemToCards } from "@/lib/inventory/cotsSync";
 import { recordItemChanges } from "@/lib/inventory/history";
-import { moveStock, setStock } from "@/lib/inventory/moves";
+import { moveStock, setPieceStock, setStock } from "@/lib/inventory/moves";
 import { readProduct, saveProductPhoto, toUsd } from "@/lib/inventory/product";
 import { missing, newestOpenOrders, orderHref } from "@/lib/inventory/season";
 import { parseStock, snapStock } from "@/lib/inventory/stock";
@@ -319,11 +319,24 @@ export async function linkItemToProduct(itemId: string, product: z.input<typeof 
   return { message: "Linked the product." };
 }
 
-// The − / + stepper (a sheet item also steps by pieces of a sheet).
-export async function adjustStock(itemId: string, delta: number): Promise<ActionResult> {
+const PIECE_SIZES = [3, 4, 6, 8, 9, 12];
+
+// The − / + stepper (a fraction item also steps one piece of a size: `bucket` in twelfths).
+export async function adjustStock(itemId: string, delta: number, bucket?: number): Promise<ActionResult> {
   const member = await requireCapability("work");
   if (!isUuid(itemId) || !Number.isFinite(delta) || !delta) return { error: "Unknown item." };
-  await db.transaction((tx) => moveStock(tx, { itemId, delta, reason: delta > 0 ? "received" : "used" }, { memberId: member.id, via: "ui" }));
+  if (bucket !== undefined && !PIECE_SIZES.includes(bucket)) return { error: "Unknown piece size." };
+  await db.transaction((tx) => moveStock(tx, { itemId, delta, reason: delta > 0 ? "received" : "used", bucket }, { memberId: member.id, via: "ui" }));
+  refresh();
+  return {};
+}
+
+// How many pieces of one size a fraction item has, typed or stepped in the item window's Spread.
+export async function setItemPieces(itemId: string, twelfths: number, count: number): Promise<ActionResult> {
+  const member = await requireCapability("work");
+  if (!isUuid(itemId) || !PIECE_SIZES.includes(twelfths)) return { error: "Unknown item." };
+  if (!Number.isInteger(count) || count < 0 || count > 100000) return { error: "Type a whole number of pieces." };
+  await db.transaction((tx) => setPieceStock(tx, itemId, twelfths, count, { memberId: member.id, via: "ui" }));
   refresh();
   return {};
 }

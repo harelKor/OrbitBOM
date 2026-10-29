@@ -4,7 +4,7 @@ import { db, schema } from "@/db";
 import { categoryOf, getCategory } from "./categories";
 import { listCategories } from "@/lib/data/categories";
 import { currentVisit } from "@/lib/visits";
-import { snapStock } from "./stock";
+import { type Pieces, setPieceCount, snapStock, stepStock } from "./stock";
 
 const { inventoryItems, inventoryMoves } = schema;
 
@@ -14,24 +14,46 @@ export type MoveCtx = { memberId: string | null; via: "ui" | "sync" | "mcp"; aiN
 
 // The one way stock changes: the item's count and a line in inventory_moves, together. The amount
 // is snapped (whole units, or twelfths of a sheet) and never goes below zero; the move records
-// what actually changed. Returns the stock before and after.
+// what actually changed. A fraction item's pieces move too: `bucket` (twelfths) steps one piece of
+// that size. Returns the stock before and after.
 export async function moveStock(
   tx: Tx,
-  move: { itemId: string; delta: number; reason: StockReason; partId?: string | null },
+  move: { itemId: string; delta: number; reason: StockReason; partId?: string | null; bucket?: number },
   ctx: MoveCtx,
 ): Promise<{ name: string; from: number; to: number } | null> {
-  const [item] = await tx.select().from(inventoryItems).where(eq(inventoryItems.id, move.itemId)).for("update");
+  return changeStock(tx, move.itemId, (item) => stepStock(item, move.delta, move.bucket), move.reason, move.partId ?? null, ctx);
+}
+
+// One piece size's count set directly (the item window's Spread rows): a "Counted" move.
+export async function setPieceStock(tx: Tx, itemId: string, twelfths: number, count: number, ctx: MoveCtx) {
+  return changeStock(tx, itemId, (item) => (item.sheet ? setPieceCount(item, twelfths, count) : { inStock: item.inStock }), "counted", null, ctx);
+}
+
+async function changeStock(
+  tx: Tx,
+  itemId: string,
+  next: (item: { inStock: number; sheet: boolean; pieces: Pieces }) => { inStock: number; pieces?: Pieces },
+  reason: StockReason,
+  partId: string | null,
+  ctx: MoveCtx,
+) {
+  const [item] = await tx.select().from(inventoryItems).where(eq(inventoryItems.id, itemId)).for("update");
   if (!item) return null;
   const cats = await listCategories(tx);
-  const to = snapStock(item.inStock + move.delta, !!getCategory(cats, categoryOf(item, cats))?.sheet);
+  const sheet = !!getCategory(cats, categoryOf(item, cats))?.sheet;
+  const after = next({ inStock: item.inStock, sheet, pieces: item.pieces });
+  const to = snapStock(after.inStock, sheet);
+  const pieces = after.pieces ?? item.pieces;
+  if (to !== item.inStock || JSON.stringify(pieces) !== JSON.stringify(item.pieces)) {
+    await tx.update(inventoryItems).set({ inStock: to, pieces }).where(eq(inventoryItems.id, item.id));
+  }
   if (to !== item.inStock) {
-    await tx.update(inventoryItems).set({ inStock: to }).where(eq(inventoryItems.id, item.id));
     const visit = ctx.via === "ui" ? await currentVisit() : null;
     await tx.insert(inventoryMoves).values({
       itemId: item.id,
       delta: to - item.inStock,
-      reason: move.reason,
-      partId: move.partId ?? null,
+      reason,
+      partId,
       memberId: ctx.memberId,
       via: ctx.via,
       aiName: ctx.aiName ?? null,
