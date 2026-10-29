@@ -149,16 +149,38 @@ async function itemThumbs(items: { id: string; imagePath: string | null }[]) {
 // The item page: the item, every part on it, unlinked COTS parts that look like it, and its
 // latest stock changes.
 export async function inventoryItemDetail(itemId: string) {
-  const { items, conditions, locations, groups, categories } = await listInventory();
-  const item = items.find((i) => i.id === itemId);
-  if (!item) return null;
-  const [candidates, moves, edits] = await Promise.all([
+  const base = await inventoryItemWithLists(itemId);
+  if (!base) return null;
+  const { item } = base;
+  const [candidates, { moves, history }] = await Promise.all([
     db
       .select({ part: parts, systemName: systems.name, robotId: robots.id, robotName: robots.name })
       .from(parts)
       .innerJoin(systems, eq(systems.id, parts.systemId))
       .innerJoin(robots, eq(robots.id, systems.robotId))
       .where(and(isNull(parts.inventoryItemId), isNull(parts.removedFromCadAt), eq(parts.classification, "cots"), eq(robots.archived, false))),
+    itemHistory(itemId, item.inStock),
+  ]);
+  const matches = candidates.flatMap((c) => {
+    const hit = suggestItem(c.part, [item]);
+    return hit
+      ? [{ partId: c.part.id, name: c.part.displayName ?? c.part.onshapeName ?? "Unnamed part", quantity: c.part.quantity, robotName: c.robotName, systemName: c.systemName, reason: hit.reason }]
+      : [];
+  });
+  return { ...base, matches, moves, history };
+}
+
+// One item as the shelf list has it, with the lists its pills need (the item window).
+export async function inventoryItemWithLists(itemId: string) {
+  const { items, conditions, locations, groups, categories } = await listInventory();
+  const item = items.find((i) => i.id === itemId);
+  return item ? { item, conditions, locations, groups, categories } : null;
+}
+
+// An item's last 30 stock moves and 30 edits, newest first. `inStock` is today's count (read
+// here when left out), from which each move's count after it is worked out.
+export async function itemHistory(itemId: string, inStock?: number) {
+  const [moves, edits, [current]] = await Promise.all([
     db
       .select({ id: inventoryMoves.id, delta: inventoryMoves.delta, reason: inventoryMoves.reason, at: inventoryMoves.at, via: inventoryMoves.via, memberName: members.name, aiName: inventoryMoves.aiName, partName: parts.displayName, onshapeName: parts.onshapeName })
       .from(inventoryMoves)
@@ -174,15 +196,10 @@ export async function inventoryItemDetail(itemId: string) {
       .where(eq(inventoryItemHistory.itemId, itemId))
       .orderBy(desc(inventoryItemHistory.at))
       .limit(30),
+    inStock === undefined ? db.select({ inStock: inventoryItems.inStock }).from(inventoryItems).where(eq(inventoryItems.id, itemId)) : [{ inStock }],
   ]);
-  const matches = candidates.flatMap((c) => {
-    const hit = suggestItem(c.part, [item]);
-    return hit
-      ? [{ partId: c.part.id, name: c.part.displayName ?? c.part.onshapeName ?? "Unnamed part", quantity: c.part.quantity, robotName: c.robotName, systemName: c.systemName, reason: hit.reason }]
-      : [];
-  });
   // Each move's count after it: today's stock less every newer move.
-  let after = item.inStock;
+  let after = current?.inStock ?? 0;
   const stock = moves.map((m) => {
     const row = { ...m, partName: m.partName ?? m.onshapeName, after };
     after -= m.delta;
@@ -192,7 +209,7 @@ export async function inventoryItemDetail(itemId: string) {
     ...stock.map((m) => ({ kind: "move" as const, id: m.id, at: m.at, who: m.aiName ?? m.memberName, reason: m.reason, delta: m.delta, after: m.after, partName: m.partName })),
     ...edits.map((e) => ({ kind: "edit" as const, id: e.id, at: e.at, who: e.aiName ?? e.memberName, field: e.field, from: e.oldValue, to: e.newValue })),
   ].sort((a, b) => +new Date(b.at) - +new Date(a.at));
-  return { item, conditions, locations, groups, categories, matches, moves: stock, history };
+  return { moves: stock, history };
 }
 
 export type ItemHistoryEntry =

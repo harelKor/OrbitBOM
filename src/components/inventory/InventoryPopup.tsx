@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { createContext, useContext, useEffect, useRef, useState, useTransition } from "react";
+import { createContext, useContext, useEffect, useState, useTransition } from "react";
 import {
   adjustStock,
   countStock,
@@ -10,30 +10,27 @@ import {
   findProducts,
   itemPopup,
   linkItemToProduct,
+  loadItemHistory,
   materialPopup,
   readProductLink,
-  setItemCategory,
   setItemCondition,
   setItemLocation,
-  setItemName,
   setItemPhoto,
   setItemNote,
-  setItemSpecs,
   setSeasonNeed,
   unlinkItemProduct,
 } from "@/app/(app)/inventory/actions";
 import { textOn } from "@/components/bom/options";
 import { Dialog } from "@/components/Dialog";
-import { Can, EditOnly, useCan, useEditMode } from "@/components/shell/ModeContext";
+import { Can, EditOnly, useCan } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
 import { materialCategory } from "@/config/materials";
 import { useMaterials } from "@/components/shell/MaterialColors";
-import { activeFields, dropInactive, fieldChoices, getCategory, type CategoryField } from "@/lib/inventory/categories";
+import { activeFields, getCategory } from "@/lib/inventory/categories";
 import { hasSeasonNeed, missing } from "@/lib/inventory/season";
 import type { Offer, ProductGroup } from "@/lib/inventory/productGroups";
 import { formatStock, snapStock } from "@/lib/inventory/stock";
 import { bestOffer, isLink } from "./AddBox";
-import { FieldInput } from "./fields";
 import { CountBox, ItemPrice, PieceStepper, conditionColor, hostOf } from "./ItemCard";
 import { ItemForm, draftOf } from "./ItemForm";
 import { ItemHistory } from "./ItemHistory";
@@ -41,13 +38,13 @@ import { PhotoButtons } from "./photo";
 import { ToBomDialog } from "./ToBomDialog";
 import { LocationPicker } from "./LocationPicker";
 import { WorkshopMap } from "./WorkshopMap";
-import type { InvCategory, Item, Location } from "./types";
+import type { Condition, InvCategory, Item, Location } from "./types";
 
 // Anything connected to the inventory (a part card's material or inventory pill, a robot's
 // inventory, an item card) opens this closable window instead of leaving the page (Harel,
-// 2026-10-23). An item opens at once from what the page already has; its history and the rest
-// load behind it. The address gets ?item=<id>, so Back closes it and the link can be shared.
-// − / + and the typed count work in place.
+// 2026-10-23). An item opens at once from what the page already has; the lists its pills need load
+// behind it, and its history only when History is opened. The address gets ?item=<id>, so Back
+// closes it and the link can be shared. − / + and the typed count show at once and save behind.
 
 type ItemData = NonNullable<Awaited<ReturnType<typeof itemPopup>>>;
 type MaterialData = Awaited<ReturnType<typeof materialPopup>>;
@@ -70,7 +67,6 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
   const [state, setState] = useState<State>(null);
   const [, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const edit = useEditMode();
 
   const loadItem = (id: string) =>
     startTransition(async () => {
@@ -114,11 +110,13 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on mount
   }, []);
 
-  // Show the new count at once, then reload.
+  // − / + and a typed count show the new count at once; the window doesn't reload after them
+  // (only a failed save says so).
   const bump = (itemId: string, to: (n: number) => number) =>
     setState((s) => {
+      const patch = <T extends Pick<Item, "id" | "inStock" | "sheet">>(i: T): T => (i.id === itemId ? { ...i, inStock: snapStock(to(i.inStock), i.sheet) } : i);
+      if (s?.kind === "material") return { ...s, data: s.data && { ...s.data, items: s.data.items.map(patch) } };
       if (s?.kind !== "item" || s.id !== itemId) return s;
-      const patch = <T extends Pick<Item, "inStock" | "sheet">>(i: T): T => ({ ...i, inStock: snapStock(to(i.inStock), i.sheet) });
       return { ...s, preview: s.preview && patch(s.preview), data: s.data && { ...s.data, item: patch(s.data.item) } };
     });
   const after = (r: { error?: string }) => {
@@ -129,27 +127,18 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
   const step = (itemId: string, delta: number) =>
     startTransition(async () => {
       bump(itemId, (n) => n + delta);
-      after(await adjustStock(itemId, delta));
+      const r = await adjustStock(itemId, delta);
+      if (r.error) setError(r.error);
     });
   const count = (itemId: string, amount: number) =>
     startTransition(async () => {
       bump(itemId, () => amount);
-      after(await countStock(itemId, amount));
+      const r = await countStock(itemId, amount);
+      if (r.error) setError(r.error);
     });
 
   const item = state?.kind === "item" ? (state.data?.item ?? state.preview) : null;
-  const title =
-    state?.kind === "item" ? (
-      item && edit ? (
-        <ItemName key={`${item.id}:${item.name}`} name={item.name} onSave={(name) => startTransition(async () => after(await setItemName(item.id, name)))} />
-      ) : (
-        (item?.name ?? "Inventory item")
-      )
-    ) : state?.kind === "material" ? (
-      state.name
-    ) : (
-      ""
-    );
+  const title = state?.kind === "item" ? (item?.name ?? "Inventory item") : state?.kind === "material" ? state.name : "";
   return (
     <Ctx.Provider value={{ openItem, openMaterial }}>
       {children}
@@ -278,61 +267,9 @@ function SeasonBox({ item, onSaved, onError }: { item: Item; onSaved: () => void
   );
 }
 
-// The item window: picture and tags (each opens its page), the count, the details, the parts
-// that use it, Edit / To BOM / Delete in Edit mode, and the history.
-// The item window's title in Edit mode: the name shows as text, a tap turns it into a box that
-// saves on Enter or when it loses focus (Escape puts the old name back). The box only appears on
-// a tap, so opening the window never pops a phone's keyboard open (Harel, 2026-10-29).
-function ItemName({ name, onSave }: { name: string; onSave: (name: string) => void }) {
-  const [text, setText] = useState(name);
-  const [editing, setEditing] = useState(false);
-  const dropped = useRef(false); // Escape: the box closes without saving
-  const commit = () => {
-    setEditing(false);
-    if (dropped.current) return;
-    const next = text.replace(/\s+/g, " ").trim();
-    if (!next) return setText(name);
-    if (next !== name) onSave(next);
-  };
-  const look = "-mx-1.5 w-full min-w-0 rounded-md border px-1.5 py-0.5 font-semibold text-fg transition-colors duration-150";
-  if (!editing)
-    return (
-      <button
-        type="button"
-        onClick={() => {
-          dropped.current = false;
-          setEditing(true);
-        }}
-        title="Tap to rename"
-        aria-label={`Rename ${text}`}
-        className={`${look} block truncate border-transparent text-left hover:border-line-strong`}
-      >
-        {text}
-      </button>
-    );
-  return (
-    <input
-      autoFocus
-      value={text}
-      onChange={(e) => setText(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          e.currentTarget.blur();
-        } else if (e.key === "Escape") {
-          e.preventDefault();
-          dropped.current = true;
-          setText(name);
-          setEditing(false);
-        }
-      }}
-      aria-label="Item name"
-      className={`${look} border-sky-400/60 bg-raised outline-none`}
-    />
-  );
-}
-
+// The item window, kept simple: picture and tags, the count, the details, the parts that use it.
+// Condition and location save as they're picked; the pencil opens the full form (name, category,
+// specs). Admins in Edit also get To BOM and Delete. History opens on demand.
 function ItemBody({
   item,
   data,
@@ -355,16 +292,15 @@ function ItemBody({
   const [finding, startFind] = useTransition();
   const [photo, setPhoto] = useState<string | null>(null);
   const [, startPhoto] = useTransition();
-  const edit = useEditMode();
+  const work = useCan("work");
   const [moving, startMove] = useTransition();
-  // Edit mode's pills, specs and ✕ save at once, then the window reloads.
+  // The condition and location pills and a link's ✕ save at once, then the window reloads.
   const save = (run: () => Promise<{ error?: string }>) =>
     startMove(async () => {
       const r = await run();
       setMessage(r.error ?? null);
       if (!r.error) onSaved();
     });
-  const moveTo = (categoryId: string) => save(() => setItemCategory(item.id, categoryId));
   const find = () =>
     startFind(async () => {
       const r = await findBomParts(item.id);
@@ -406,7 +342,6 @@ function ItemBody({
   const caret = { backgroundPosition: "right 10px center, right 6px center", backgroundSize: "4px 4px", backgroundRepeat: "no-repeat" } as const;
   const caretOf = (c: string) => ({ ...caret, backgroundImage: `linear-gradient(45deg, transparent 50%, ${c} 50%), linear-gradient(135deg, ${c} 50%, transparent 50%)` });
   const shownFields = cat ? activeFields(cat, item.specs) : [];
-  const specFields = edit && data ? shownFields : [];
   return (
     <div className="space-y-4">
       {/* On phones the picture sits above the count and pills, each the whole width. */}
@@ -420,7 +355,7 @@ function ItemBody({
               <Icon name="box" className="h-12 w-12 text-subtle" />
             )}
           </div>
-          <Can cap="edit">
+          <Can cap="work">
             <PhotoButtons
               compact
               onPhoto={(p) =>
@@ -436,32 +371,13 @@ function ItemBody({
         </div>
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap gap-1">
-            {edit && data ? (
-              // Edit mode: the pill moves the item to another category at once.
-              <select
-                value={item.category ?? ""}
-                disabled={moving}
-                onChange={(e) => e.target.value && moveTo(e.target.value)}
-                aria-label="Category"
-                className={`${tag} press cursor-pointer appearance-none border border-transparent bg-[#111318]/85 pr-6 text-white hover:border-sky-400/40 disabled:opacity-60`}
-                style={{ backgroundImage: "linear-gradient(45deg, transparent 50%, #fff 50%), linear-gradient(135deg, #fff 50%, transparent 50%)", backgroundPosition: "right 10px center, right 6px center", backgroundSize: "4px 4px", backgroundRepeat: "no-repeat" }}
-              >
-                {!cat && <option value="">No category</option>}
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id} className="bg-surface text-fg">
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              cat && (
-                <Link href={`/inventory/c/${cat.id}`} onClick={onClose} className={`${tag} bg-[#111318]/85 text-white hover:bg-accent`}>
-                  {cat.label}
-                </Link>
-              )
+            {cat && (
+              <Link href={`/inventory/c/${cat.id}`} onClick={onClose} className={`${tag} bg-[#111318]/85 text-white hover:bg-accent`}>
+                {cat.label}
+              </Link>
             )}
-            {edit && data ? (
-              // Edit mode: condition and location pills are menus that save at once.
+            {work && data ? (
+              // Condition and location pills are menus that save at once.
               <>
                 <select
                   value={item.conditionId ?? ""}
@@ -535,31 +451,16 @@ function ItemBody({
 
       <ItemNotesBox item={item} onSaved={onSaved} onError={setMessage} />
 
-      {(specFields.length > 0 || shownFields.some((f) => item.specs[f.id]) || item.cotsLinks.length > 0 || item.price != null) && (
+      {(shownFields.some((f) => item.specs[f.id]) || item.cotsLinks.length > 0 || item.price != null) && (
         <dl className="grid grid-cols-1 gap-x-4 gap-y-1 text-sm sm:grid-cols-[auto_1fr] sm:items-center">
-          {specFields.length
-            ? // Edit mode: every shown field of the category, saved as it's picked or typed.
-              specFields.map((f) => (
-                <div key={`${f.id}:${item.specs[f.id] ?? ""}`} className="contents">
-                  <dt className="text-muted max-sm:pt-1">{f.label}</dt>
-                  <dd className="min-w-0">
-                    <SpecField
-                      field={f}
-                      categoryId={cat!.id}
-                      value={item.specs[f.id] ?? ""}
-                      onSave={(v) => v !== (item.specs[f.id] ?? "") && save(() => setItemSpecs(item.id, f === cat!.fields[0] ? dropInactive(cat!, { ...item.specs, [f.id]: v }) : { ...item.specs, [f.id]: v }))}
-                    />
-                  </dd>
-                </div>
-              ))
-            : shownFields
-                .filter((f) => item.specs[f.id])
-                .map((f) => (
-                  <div key={f.id} className="contents">
-                    <dt className="text-muted">{f.label}</dt>
-                    <dd>{item.specs[f.id]}</dd>
-                  </div>
-                ))}
+          {shownFields
+            .filter((f) => item.specs[f.id])
+            .map((f) => (
+              <div key={f.id} className="contents">
+                <dt className="text-muted">{f.label}</dt>
+                <dd>{item.specs[f.id]}</dd>
+              </div>
+            ))}
           {item.cotsLinks.length > 0 && (
             <>
               <dt className="text-muted">Buy at</dt>
@@ -569,7 +470,7 @@ function ItemBody({
                     <a href={l.url} target="_blank" rel="noreferrer" className="text-sky-600 hover:underline dark:text-sky-400">
                       {l.site || hostOf(l.url)} ↗
                     </a>
-                    {edit && (
+                    {work && (
                       <button
                         type="button"
                         disabled={moving}
@@ -634,96 +535,110 @@ function ItemBody({
       )}
 
       {message && <p className="text-sm text-emerald-700">{message}</p>}
-      <Can cap="edit">
+      <div className="space-y-2 border-t border-line pt-3">
+        {/* BOM, the pencil and the product search share one row. */}
         <ProductSearch
           itemId={item.id}
           initial={item.name}
+          enabled={work}
           onMessage={setMessage}
           onLinked={(m) => {
             setMessage(m);
             onSaved();
           }}
-        />
-      </Can>
-      <div className="flex flex-wrap gap-2 border-t border-line pt-3">
-        <button className="btn min-h-11" disabled={finding} onClick={find} title="Look for BOM parts that are this item; each one waits in To Review for Approve">
-          <Icon name="search" className="h-4 w-4" /> {finding ? "Looking…" : "Find BOM parts"}
-        </button>
-        <Can cap="edit">
-          <button
-            className="btn min-h-11"
-            disabled={!data}
-            onClick={() => {
-              setDraft(draftOf(item));
-              setMode("edit");
-            }}
-          >
-            <Icon name="pencil" className="h-4 w-4" /> Edit
+        >
+          <button className="btn min-h-11 shrink-0" disabled={finding} onClick={find} title="Find BOM parts that are this item; each one waits in To Review for Approve">
+            <Icon name="search" className="h-4 w-4" /> {finding ? "Looking…" : "BOM"}
           </button>
-        </Can>
+          {work && (
+            <button
+              type="button"
+              className="btn min-h-11 w-11 shrink-0 justify-center px-0"
+              disabled={!data}
+              onClick={() => {
+                setDraft(draftOf(item));
+                setMode("edit");
+              }}
+              title="Edit item"
+              aria-label="Edit item"
+            >
+              <Icon name="pencil" className="h-4 w-4" />
+            </button>
+          )}
+        </ProductSearch>
         <EditOnly>
-          <button className="btn min-h-11" disabled={!data} onClick={() => setMode("toBom")}>
-            To BOM
-          </button>
-          <button
-            className="btn ml-auto min-h-11 text-rose-700"
-            disabled={deleting}
-            onClick={() => {
-              const warn = usage?.parts.length ? ` ${usage.parts.length} BOM parts will no longer draw from it.` : "";
-              if (!confirm(`Delete "${item.name}" from the inventory?${warn}`)) return;
-              startDelete(async () => {
-                await deleteItem(item.id);
-                onClose();
-              });
-            }}
-          >
-            Delete
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button className="btn min-h-11" disabled={!data} onClick={() => setMode("toBom")}>
+              To BOM
+            </button>
+            <button
+              className="btn ml-auto min-h-11 text-rose-700"
+              disabled={deleting}
+              onClick={() => {
+                const warn = usage?.parts.length ? ` ${usage.parts.length} BOM parts will no longer draw from it.` : "";
+                if (!confirm(`Delete "${item.name}" from the inventory?${warn}`)) return;
+                startDelete(async () => {
+                  await deleteItem(item.id);
+                  onClose();
+                });
+              }}
+            >
+              Delete
+            </button>
+          </div>
         </EditOnly>
       </div>
 
-      <div>
-        <div className="label">History</div>
-        {data ? (
-          <div className="max-h-56 overflow-y-auto">
-            <ItemHistory history={data.history} sheet={item.sheet} categories={categories} locations={locations} conditions={conditions} />
-          </div>
-        ) : (
-          <p className="text-sm text-muted">Loading…</p>
-        )}
-      </div>
+      <HistorySection item={item} categories={categories} locations={locations} conditions={conditions} />
       {data && <ToBomDialog key={mode === "toBom" ? "bom" : "closed-bom"} item={mode === "toBom" ? item : null} targets={data.targets} onClose={() => setMode("view")} />}
     </div>
   );
 }
 
-// One spec in the item window's Edit mode: chips and menus save when picked, a typed value when
-// the box loses focus.
-function SpecField({ field, categoryId, value, onSave }: { field: CategoryField; categoryId: string; value: string; onSave: (v: string) => void }) {
-  const [text, setText] = useState(value);
-  const typed = !fieldChoices(field).length;
+// The item window's History, closed until opened; the first open loads it.
+function HistorySection({ item, categories, locations, conditions }: { item: Item; categories: InvCategory[]; locations: Location[]; conditions: Condition[] }) {
+  const [history, setHistory] = useState<Awaited<ReturnType<typeof loadItemHistory>> | null>(null);
+  const [loading, startLoad] = useTransition();
   return (
-    <div
-      onBlur={typed ? () => onSave(text.trim()) : undefined}
-      onKeyDown={typed ? (e) => e.key === "Enter" && (e.target as HTMLElement).blur() : undefined}
-      className="py-0.5"
+    <details
+      className="group"
+      onToggle={(e) => {
+        if (!e.currentTarget.open || history || loading) return;
+        startLoad(async () => setHistory(await loadItemHistory(item.id)));
+      }}
     >
-      <FieldInput
-        field={field}
-        categoryId={categoryId}
-        value={text}
-        onChange={(v) => {
-          setText(v);
-          if (!typed) onSave(v);
-        }}
-      />
-    </div>
+      <summary className="label flex min-h-10 cursor-pointer list-none items-center gap-1.5 select-none hover:text-accent [&::-webkit-details-marker]:hidden">
+        <span className="inline-block transition-transform duration-150 group-open:rotate-90">▸</span> History
+      </summary>
+      {history ? (
+        <div className="max-h-56 overflow-y-auto">
+          <ItemHistory history={history} sheet={item.sheet} categories={categories} locations={locations} conditions={conditions} />
+        </div>
+      ) : (
+        <p className="text-sm text-muted">Loading…</p>
+      )}
+    </details>
   );
 }
 
 // The item window's product bar: search the team's stores (like the add box) or paste a product
-// link; picking one links the item to it (link, price, photo) and the window reloads.
-function ProductSearch({ itemId, initial, onLinked, onMessage }: { itemId: string; initial: string; onLinked: (message: string | null) => void; onMessage: (m: string | null) => void }) {
+// link; picking one links the item to it (link, price, photo) and the window reloads. `children`
+// (the BOM and Edit buttons) sit before it on the same row; without `enabled` only they show.
+function ProductSearch({
+  itemId,
+  initial,
+  enabled,
+  onLinked,
+  onMessage,
+  children,
+}: {
+  itemId: string;
+  initial: string;
+  enabled: boolean;
+  onLinked: (message: string | null) => void;
+  onMessage: (m: string | null) => void;
+  children?: React.ReactNode;
+}) {
   const [q, setQ] = useState("");
   const [found, setFound] = useState<{ q: string; groups: ProductGroup[] } | null>(null);
   const [searching, startSearch] = useTransition();
@@ -756,22 +671,24 @@ function ProductSearch({ itemId, initial, onLinked, onMessage }: { itemId: strin
       onLinked(r.error ? `Linked the product. ${r.error}` : (res.message ?? null));
     });
 
+  if (!enabled) return <div className="flex gap-2">{children}</div>;
   return (
     <div className="space-y-2">
       <div className="flex gap-2">
-        <label className="flex min-h-11 flex-1 items-center gap-2 rounded-xl border border-line-strong bg-surface px-3 focus-within:border-sky-400">
+        {children}
+        <label className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-xl border border-line-strong bg-surface px-3 focus-within:border-sky-400">
           <Icon name="search" className="h-4 w-4 shrink-0 text-subtle" />
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && link && readLink()}
-            placeholder="Link to a product: search the stores or paste a link"
+            placeholder="Search stores or paste a product link"
             aria-label="Link to a product"
             className="min-w-0 flex-1 bg-transparent py-2 text-sm outline-none"
           />
         </label>
         {!query && (
-          <button type="button" className="btn min-h-11" onClick={() => setQ(initial)}>
+          <button type="button" className="btn min-h-11 shrink-0 max-sm:hidden" onClick={() => setQ(initial)}>
             Search “{initial.length > 18 ? `${initial.slice(0, 18)}…` : initial}”
           </button>
         )}

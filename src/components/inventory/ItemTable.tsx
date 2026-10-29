@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { Popover } from "@/components/bom/Popover";
 import { Icon } from "@/components/ui/Icon";
 import { setItemLocation, setSeasonNeed } from "@/app/(app)/inventory/actions";
-import { useCan, useEditMode } from "@/components/shell/ModeContext";
+import { useCan } from "@/components/shell/ModeContext";
 import { CheckBadge } from "@/components/ui/CheckBadge";
 import { getCategory } from "@/lib/inventory/categories";
 import {
@@ -61,8 +61,6 @@ export function ItemTable({
   glowIds?: Set<string>; // added on this visit: a soft glow until the page is left
 }) {
   const { openItem } = useInventoryPopup();
-  // The location pill moves the item in Edit (any team's Edit toggle).
-  const edit = useEditMode();
   const work = useCan("work");
   const stop = (e: React.SyntheticEvent) => e.stopPropagation();
   return (
@@ -201,7 +199,7 @@ export function ItemTable({
                     ))}
                   </span>
                 </td>
-                {edit ? (
+                {work ? (
                   <td onClick={stop}>
                     <LocationCell
                       item={item}

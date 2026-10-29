@@ -13,7 +13,7 @@ import { requireMember } from "@/lib/auth";
 import { requireCapability } from "@/lib/mode";
 import { listBomTargets } from "@/lib/data/robots";
 import { listCategories } from "@/lib/data/categories";
-import { inventoryItemDetail, listInventory, robotInventory, usageOf } from "@/lib/data/inventory";
+import { inventoryItemWithLists, itemHistory, listInventory, robotInventory, usageOf } from "@/lib/data/inventory";
 import { autoLink } from "@/lib/inventory/autolink";
 import { categoryOf, getCategory, slugify, type InvCategory } from "@/lib/inventory/categories";
 import type { ImportRow } from "@/lib/inventory/import";
@@ -32,22 +32,28 @@ const { inventoryItems, inventoryGroups, inventoryConditions, inventoryLocations
 
 export type ActionResult = { error?: string; message?: string };
 
-const refresh = () => {
+// Inventory edits refresh the Inventory pages only. An edit that changes COTS cards refreshes
+// /cots too, and one that changes BOM parts the robot pages (Harel, 2026-10-29).
+const refresh = (also: { cots?: boolean; robots?: boolean } = {}) => {
   revalidatePath("/inventory");
-  revalidatePath("/robots", "layout");
-  revalidatePath("/cots", "layout");
+  if (also.robots) revalidatePath("/robots", "layout");
+  if (also.cots) revalidatePath("/cots", "layout");
 };
 
-// A product picture is downloaded from the shop's site and copied to R2, which can take seconds.
-// The save waits for it only briefly: a slow picture finishes after the reply and shows on the
+// Work that can take seconds runs after the reply, so a save answers at once: a product's
+// picture is downloaded from the shop's site and copied to R2, then parts with the same product
+// link or Onshape part (or a matching picture) are auto-linked into To Review. Both show on the
 // item's next load.
-const PHOTO_WAIT_MS = 1200;
-async function savePhotoSoon(itemId: string, imageUrl: string) {
-  const job = saveProductPhoto(itemId, imageUrl).then(async (key) => {
-    if (key) await db.update(inventoryItems).set({ imagePath: key }).where(eq(inventoryItems.id, itemId));
+function finishLater(itemId: string, memberId: string, imageUrl?: string | null) {
+  after(async () => {
+    try {
+      if (imageUrl) {
+        const key = await saveProductPhoto(itemId, imageUrl);
+        if (key) await db.update(inventoryItems).set({ imagePath: key }).where(eq(inventoryItems.id, itemId));
+      }
+    } catch {}
+    await autoLink({ itemIds: [itemId] }, { memberId, via: "ui" }).catch(() => {});
   });
-  const done = await Promise.race([job.then(() => true), new Promise<false>((r) => setTimeout(r, PHOTO_WAIT_MS, false))]);
-  if (!done) after(() => job.catch(() => {}));
 }
 
 // Photos members take or upload go straight from the browser to R2 under this prefix.
@@ -70,11 +76,9 @@ const itemInput = z.object({
 export type ItemInput = z.input<typeof itemInput>;
 
 // Add or edit an item. Only the category's own fields are kept; the stock changes as a counted
-// move. Returns the item's id. A product picture is saved once, then parts with the same product
-// link or Onshape part are auto-linked (into To Review).
+// move. Returns the item's id. The product picture and auto-linking finish after the reply.
 export async function saveItem(itemId: string | null, input: ItemInput): Promise<ActionResult & { id?: string }> {
-  // Any team adds items; editing one needs the Edit toggle.
-  const member = await requireCapability(itemId ? "edit" : "work");
+  const member = await requireCapability("work");
   const parsed = itemInput.safeParse(input);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   if (itemId && !isUuid(itemId)) return { error: "Unknown item." };
@@ -120,15 +124,11 @@ export async function saveItem(itemId: string | null, input: ItemInput): Promise
     return id!;
   });
   if (!id) return { error: "That item was deleted." };
-  if (d.photoKey) {
-    const error = await applyPhoto(id, d.photoKey, ctx);
-    if (error) return { id, error };
-  } else if (d.imageUrl) {
-    await savePhotoSoon(id, d.imageUrl);
-  }
-  const linked = await autoLink({ itemIds: [id] }, { memberId: member.id, via: "ui" });
-  refresh();
-  return { id, message: linked ? linkMessage(linked) : undefined };
+  const error = d.photoKey ? await applyPhoto(id, d.photoKey, ctx) : null;
+  finishLater(id, member.id, d.photoKey ? null : d.imageUrl);
+  // An edit can change its COTS cards' name, links and price.
+  refresh({ cots: !!itemId });
+  return error ? { id, error } : { id };
 }
 
 const linkMessage = (n: number) => `${n} BOM part${n === 1 ? " looks" : "s look"} like this item; ${n === 1 ? "it waits" : "they wait"} in To Review for Approve.`;
@@ -138,7 +138,7 @@ export async function findBomParts(itemId: string): Promise<ActionResult> {
   const member = await requireCapability("work");
   if (!isUuid(itemId)) return { error: "Unknown item." };
   const n = await autoLink({ itemIds: [itemId] }, { memberId: member.id, via: "ui" });
-  refresh();
+  refresh({ robots: true });
   return { message: n ? linkMessage(n) : "No new BOM part looks like this item. Parts already waiting in To Review, and links someone rejected, aren't suggested again." };
 }
 
@@ -156,7 +156,7 @@ export async function startPhotoUpload(): Promise<{ url: string; key: string } |
 
 // Step 2, from the item window: the uploaded photo becomes the item's picture.
 export async function setItemPhoto(itemId: string, key: string): Promise<ActionResult> {
-  const member = await requireCapability("edit");
+  const member = await requireCapability("work");
   if (!isUuid(itemId) || !PHOTO_KEY.test(key)) return { error: "Unknown photo." };
   const error = await applyPhoto(itemId, key, { memberId: member.id, via: "ui" });
   refresh();
@@ -219,26 +219,26 @@ async function moveItems(member: { id: string }, itemIds: string[], target: { ca
   return { message: `Moved ${itemIds.length} item${itemIds.length === 1 ? "" : "s"}.` };
 }
 
-// The item window's category pill in Edit mode.
+// An item's category, on its own.
 export async function setItemCategory(itemId: string, categoryId: string): Promise<ActionResult> {
-  return moveItems(await requireCapability("edit"), [itemId], { category: categoryId });
+  return moveItems(await requireCapability("work"), [itemId], { category: categoryId });
 }
 
-// The item window's location pill and the table's Location cell in Edit mode; null clears it.
+// The item window's location pill and the card's and table's location; null clears it.
 export async function setItemLocation(itemId: string, locationId: string | null): Promise<ActionResult> {
-  return moveItems(await requireCapability("edit"), [itemId], { locationId });
+  return moveItems(await requireCapability("work"), [itemId], { locationId });
 }
 
-// The item window's condition pill in Edit mode; null clears it.
+// The item window's condition pill; null clears it.
 export async function setItemCondition(itemId: string, conditionId: string | null): Promise<ActionResult> {
-  const member = await requireCapability("edit");
+  const member = await requireCapability("work");
   if (!isUuid(itemId) || (conditionId !== null && !isUuid(conditionId))) return { error: "Unknown condition." };
   return saveFields(itemId, () => ({ conditionId }), member.id);
 }
 
-// The item window's specs in Edit mode: only the category's own fields are kept, blanks dropped.
+// An item's specs, on their own: only the category's own fields are kept, blanks dropped.
 export async function setItemSpecs(itemId: string, specs: Record<string, string>): Promise<ActionResult> {
-  const member = await requireCapability("edit");
+  const member = await requireCapability("work");
   if (!isUuid(itemId)) return { error: "Unknown item." };
   const cats = await listCategories();
   return saveFields(
@@ -251,10 +251,10 @@ export async function setItemSpecs(itemId: string, specs: Record<string, string>
   );
 }
 
-// The ✕ next to a "Buy at" link in Edit mode: the link goes; with no link left the price goes too.
+// The ✕ next to a "Buy at" link: the link goes; with no link left the price goes too.
 // Linked COTS cards show the same.
 export async function unlinkItemProduct(itemId: string, url: string): Promise<ActionResult> {
-  const member = await requireCapability("edit");
+  const member = await requireCapability("work");
   if (!isUuid(itemId)) return { error: "Unknown item." };
   return saveFields(
     itemId,
@@ -284,12 +284,12 @@ async function saveFields(
     return true;
   });
   if (!ok) return { error: "That item was deleted." };
-  refresh();
+  refresh({ cots: cards });
   return {};
 }
 
 // The item window's product search: the product becomes the item's first link, its price the
-// item's, its picture the item's photo; linked COTS cards show the same product.
+// item's, its picture the item's photo (after the reply); linked COTS cards show the same product.
 const productSchema = z.object({
   url: z.url("A product link must be a web link."),
   site: z.string().trim().max(80).optional(),
@@ -297,7 +297,7 @@ const productSchema = z.object({
   imageUrl: z.string().nullable().optional(),
 });
 export async function linkItemToProduct(itemId: string, product: z.input<typeof productSchema>): Promise<ActionResult> {
-  const member = await requireCapability("edit");
+  const member = await requireCapability("work");
   if (!isUuid(itemId)) return { error: "Unknown item." };
   const parsed = productSchema.safeParse(product);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
@@ -315,10 +315,9 @@ export async function linkItemToProduct(itemId: string, product: z.input<typeof 
     return true;
   });
   if (!ok) return { error: "That item was deleted." };
-  if (p.imageUrl) await savePhotoSoon(itemId, p.imageUrl);
-  const linked = await autoLink({ itemIds: [itemId] }, ctx);
-  refresh();
-  return { message: linked ? `Linked the product. ${linkMessage(linked)}` : "Linked the product." };
+  finishLater(itemId, member.id, p.imageUrl);
+  refresh({ cots: true });
+  return { message: "Linked the product." };
 }
 
 // The − / + stepper (a sheet item also steps by pieces of a sheet).
@@ -339,9 +338,9 @@ export async function countStock(itemId: string, amount: number): Promise<Action
   return {};
 }
 
-// The item window's title in Edit mode: a new name, kept in the item's history.
+// An item's new name on its own, kept in the item's history.
 export async function setItemName(itemId: string, name: string): Promise<ActionResult> {
-  const member = await requireCapability("edit");
+  const member = await requireCapability("work");
   if (!isUuid(itemId)) return { error: "Unknown item." };
   const value = name.replace(/\s+/g, " ").trim().slice(0, 200);
   if (!value) return { error: "An item needs a name." };
@@ -427,7 +426,7 @@ export async function sendItemToReleased(itemId: string): Promise<ActionResult &
     return { card };
   });
   if (sent.open) return { href: orderHref(sent.open) };
-  refresh();
+  refresh({ cots: true });
   return { message: `Sent ${quantity} ${item.name} to Released.`, href: orderHref({ partId: sent.card.id, status: COTS_RELEASED }) };
 }
 
@@ -448,7 +447,7 @@ export async function stepShelfStock(partIds: string[], delta: number): Promise<
     );
     await applyEachPartChanges(done.map((p) => ({ id: p.id, changes: { status: COTS_IN_STOCK } })), { memberId: member.id, via: "ui", receive: false });
   }
-  refresh();
+  refresh({ cots: true, robots: true });
   return {};
 }
 
@@ -468,7 +467,7 @@ export async function createItemFromPart(partIds: string[]): Promise<ActionResul
     .returning({ id: inventoryItems.id });
   await applyEachPartChanges(rows.map((p) => ({ id: p.id, changes: { inventoryItemId: item.id } })), { memberId: member.id, via: "ui" });
   await autoLink({ itemIds: [item.id] }, { memberId: member.id, via: "ui" });
-  refresh();
+  refresh({ cots: true, robots: true });
   return { message: `Added ${name} to the inventory.` };
 }
 
@@ -484,7 +483,7 @@ export async function sendShortagesToOrder(robotId: string): Promise<ActionResul
     short.map((p) => ({ id: p.partId, changes: { status: COTS_ORDERED, cotsSentBack: null } })),
     { memberId: member.id, via: "ui" },
   );
-  refresh();
+  refresh({ cots: true, robots: true });
   return { message: `Sent ${changed} part${changed === 1 ? "" : "s"} to the Order List.` };
 }
 
@@ -507,7 +506,7 @@ export async function addItemToBom(itemId: string, systemId: string, quantity: n
     quantity,
     lastModifiedBy: member.id,
   });
-  refresh();
+  refresh({ cots: true, robots: true });
   return { message: `Added ${quantity} × ${item.name} to the BOM.` };
 }
 
@@ -691,7 +690,7 @@ export async function importItems(rows: ImportRow[]): Promise<ActionResult> {
     return counts;
   });
 
-  refresh();
+  refresh({ cots: true });
   const extra = [
     created.groups && `${created.groups} groups`,
     created.locations && `${created.locations} locations`,
@@ -715,7 +714,7 @@ export async function linkPartsToItem(itemId: string, partIds: string[]): Promis
   const member = await requireCapability("manage");
   if (!isUuid(itemId) || !partIds.length || partIds.some((id) => !isUuid(id))) return { error: "Unknown part." };
   const { changed } = await applyEachPartChanges(partIds.map((id) => ({ id, changes: { inventoryItemId: itemId } })), { memberId: member.id, via: "ui" });
-  refresh();
+  refresh({ cots: true, robots: true });
   return { message: `Linked ${changed} part${changed === 1 ? "" : "s"}.` };
 }
 
@@ -811,12 +810,19 @@ export async function readProductLink(url: string) {
   }
 }
 
-// The closable window anything inventory opens (an item, or a material's stock).
+// The closable window anything inventory opens (an item, or a material's stock). An item's
+// history loads only when its History section is opened (loadItemHistory).
 export async function itemPopup(itemId: string) {
   await requireMember();
   if (!isUuid(itemId)) return null;
-  const [detail, targets] = await Promise.all([inventoryItemDetail(itemId), listBomTargets()]);
+  const [detail, targets] = await Promise.all([inventoryItemWithLists(itemId), listBomTargets()]);
   return detail && { ...detail, targets };
+}
+
+export async function loadItemHistory(itemId: string) {
+  await requireMember();
+  if (!isUuid(itemId)) return [];
+  return (await itemHistory(itemId)).history;
 }
 
 export async function materialPopup(material: string) {

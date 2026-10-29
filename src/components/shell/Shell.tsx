@@ -30,7 +30,6 @@ export function Shell({
   lastRobotId,
   categories,
   mode,
-  editing,
   materialColors,
   materials,
   member,
@@ -40,7 +39,6 @@ export function Shell({
   lastRobotId: string | null;
   categories: ShellCategory[];
   mode: Mode;
-  editing: boolean;
   materialColors: Record<string, string>;
   materials: MaterialList;
   member: { name: string; email: string; isAdmin: boolean };
@@ -71,7 +69,7 @@ export function Shell({
   };
 
   return (
-    <ModeProvider initial={mode} editing={editing} isAdmin={member.isAdmin}>
+    <ModeProvider initial={mode} isAdmin={member.isAdmin}>
       <FilterProvider>
         <MaterialColorsProvider initial={materialColors} materials={materials}>
           <InventoryPopupProvider>

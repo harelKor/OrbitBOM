@@ -15,7 +15,7 @@ import { softStatusTint } from "@/components/ui/statusTint";
 import { getCategory } from "@/lib/inventory/categories";
 import { hasSeasonNeed, missing, neededFor, orderHref, standing, type NeedView, type Standing } from "@/lib/inventory/season";
 import { SHEET_PIECES, formatStock, parseStock } from "@/lib/inventory/stock";
-import { useCan, useEditMode } from "@/components/shell/ModeContext";
+import { useCan } from "@/components/shell/ModeContext";
 import { useInventoryPopup } from "./InventoryPopup";
 import { LocationPicker } from "./LocationPicker";
 import type { InvCategory, Item, Location } from "./types";
@@ -129,8 +129,6 @@ export function ItemCard({
   const color = condition ? conditionColor(condition.color) : undefined;
   const picture = item.thumbUrl ?? category?.imageUrl ?? null;
   const stop = (e: React.SyntheticEvent) => e.stopPropagation();
-  // The location pill moves the item in Edit (any team's Edit toggle).
-  const edit = useEditMode();
   const [movingLocation, startLocation] = useTransition();
 
   return (
@@ -190,13 +188,13 @@ export function ItemCard({
       <div className="card-overlay absolute top-2 right-2 flex max-w-[38%] flex-col items-end gap-1">
         {(gap > 0 || item.openOrder) && <CartButton item={item} gap={gap} />}
         {location && locations ? (
-          // Opens the workshop map with this item's spot lit: Edit mode moves the item to the pin
-          // tapped, View mode can filter the page to it (Harel, 2026-10-28).
+          // Opens the workshop map with this item's spot lit: a team member moves the item to the pin
+          // tapped; a member without a team can filter the page to it (Harel, 2026-10-28).
           <span onClick={stop} className="max-w-full">
             <LocationPicker
               locations={locations}
               value={item.locationId ?? location.id}
-              readOnly={!edit}
+              readOnly={!work}
               onChange={(id) =>
                 startLocation(async () => {
                   await setItemLocation(item.id, id);
