@@ -12,6 +12,7 @@ import { OnshapeError } from "@/lib/onshape/client";
 import { MERGE_PREFIX, fanOutChanges, isMergeId, mergedRow } from "@/lib/merges/merge";
 import { applyEachPartChanges, applyPartChanges } from "@/lib/parts/apply";
 import { partChangesSchema, resolveCounterAdds, type PartChanges } from "@/lib/parts/changes";
+import { settleSuggestedLink } from "@/lib/review/review";
 import { refreshSystem } from "@/lib/sync/refresh";
 import { updateBomFromOnshape } from "@/lib/sync/updateBom";
 import { deleteObjects, fileKeysFor } from "@/lib/storage/cleanup";
@@ -29,6 +30,17 @@ export async function updatePart(partId: string, changes: unknown): Promise<Acti
   if (!isUuid(partId)) return { error: "Unknown part." };
   await applyPartChanges([partId], parsed.data, { memberId: member.id, via: "ui" });
   revalidatePath("/robots", "layout");
+  return {};
+}
+
+// A card's suggested inventory link (the Link tag on its thumbnail): Link takes it off To Review
+// (the card links the part itself), ✕ rejects it so it isn't suggested again.
+export async function settleLinkSuggestion(partIds: string[], itemId: string, accept: boolean): Promise<ActionResult> {
+  const member = await requireCapability("work");
+  const ids = partIds.filter(isUuid);
+  if (!ids.length || !isUuid(itemId)) return { error: "Unknown part." };
+  await settleSuggestedLink(ids, itemId, accept, member.id);
+  revalidatePath("/", "layout");
   return {};
 }
 

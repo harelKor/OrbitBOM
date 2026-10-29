@@ -1,6 +1,7 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore, useTransition } from "react";
+import { settleLinkSuggestion } from "@/app/(app)/parts-actions";
 import { COTS_IN_STOCK } from "@/config/cots";
 import type { SaveFn } from "@/components/bom/fields";
 import { Popover } from "@/components/bom/Popover";
@@ -12,7 +13,7 @@ import { formatStock } from "@/lib/inventory/stock";
 import { computeStatus } from "@/lib/status";
 
 const pill = "press inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold";
-const REASONS = { onshape: "the same Onshape part", link: "the same product page", name: "the same name" } as const;
+const REASONS = { onshape: "the same Onshape part", link: "the same product page", name: "the same name", review: "a link waiting in To Review" } as const;
 
 // A COTS card's link to the team inventory: how much of it the shelf covers and how many to
 // order, or the item it most likely is. Linking it to a new item happens in the part's details window.
@@ -85,7 +86,8 @@ export function ShelfPill({ part, shelf, save }: { part: CardPart; shelf: Shelf 
     );
   }
 
-  const suggestion = part.shelfSuggestion;
+  // The suggestion sits on the thumbnail as the Link tag (LinkTag) for anyone who can link.
+  const suggestion = edit ? null : part.shelfSuggestion;
   if (suggestion)
     return (
       <Popover
@@ -125,6 +127,49 @@ export function ShelfPill({ part, shelf, save }: { part: CardPart; shelf: Shelf 
     );
 
   return null;
+}
+
+// The thumbnail's Link tag: the inventory item auto-link (or a member's Claude) suggested for a
+// part with no item, or the card's own guess. Link links the part to it (and takes it off To
+// Review); ✕ rejects it so it isn't suggested again. Only for those who can link.
+export function LinkTag({ part, save }: { part: CardPart; save: SaveFn }) {
+  const work = useCan("work");
+  const [gone, setGone] = useState(false);
+  const [, startTransition] = useTransition();
+  const s = part.shelfSuggestion;
+  if (!work || !s || part.inventoryItemId || gone) return null;
+  const ids = part.memberIds ?? [part.id];
+  const why = s.pending ? "Suggested link, waiting in To Review" : `Matched by ${REASONS[s.reason]}`;
+  return (
+    <span className="flex max-w-full min-w-0 items-center overflow-hidden rounded-full border border-accent/60 bg-surface/90 text-[11px] font-semibold text-accent shadow-sm backdrop-blur-md">
+      <button
+        type="button"
+        onClick={() => {
+          setGone(true);
+          save({ inventoryItemId: s.itemId });
+          if (s.pending) startTransition(() => void settleLinkSuggestion(ids, s.itemId, true));
+        }}
+        className="press flex min-w-0 items-center gap-1 py-0.5 pr-1 pl-2 hover:bg-accent hover:text-white"
+        title={`Link to ${s.itemName} (${formatStock(s.inStock, s.sheet)} on the shelf). ${why}.`}
+        aria-label={`Link to ${s.itemName}`}
+      >
+        <Icon name="link" className="h-3 w-3 shrink-0" />
+        <span className="truncate">Link: {s.itemName}</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          setGone(true);
+          startTransition(() => void settleLinkSuggestion(ids, s.itemId, false));
+        }}
+        className="press flex shrink-0 items-center self-stretch border-l border-accent/40 px-1 text-subtle hover:bg-rose-600 hover:text-white"
+        title={`Not ${s.itemName}: don't suggest it again`}
+        aria-label={`Reject the link to ${s.itemName}`}
+      >
+        <Icon name="close" className="h-3 w-3" />
+      </button>
+    </span>
+  );
 }
 
 // Parts whose "the shelf covers this" suggestion was dismissed, remembered in this browser.

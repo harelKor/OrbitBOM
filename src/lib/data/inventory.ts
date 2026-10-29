@@ -11,7 +11,7 @@ import { newestOpenOrders, type OpenOrder } from "@/lib/inventory/season";
 import { thumbKey } from "@/lib/onshape/thumbnails";
 import { imageUrl } from "@/lib/storage/r2";
 
-const { inventoryItems, inventoryGroups, inventoryConditions, inventoryLocations, inventoryMoves, inventoryItemHistory, members, parts, systems, robots } = schema;
+const { inventoryItems, inventoryLinkRejections, partReviews, inventoryGroups, inventoryConditions, inventoryLocations, inventoryMoves, inventoryItemHistory, members, parts, systems, robots } = schema;
 
 // `category` is resolved (set, or guessed from the name); `thumbUrl` is the item's own photo
 // (a product's picture saved to R2), else the Onshape thumbnail of a part linked to it.
@@ -262,7 +262,8 @@ export async function listInventoryNames() {
 }
 
 // What a part card shows about the shelf: its item's stock and how much of the part it covers,
-// or, for a COTS part with no item, the item it most likely is.
+// or, for a part with no item, the item it most likely is: a link waiting in To Review first,
+// else (COTS parts) a match by name, Onshape part or product page that nobody rejected.
 
 type ShelfPart = typeof parts.$inferSelect;
 
@@ -270,16 +271,26 @@ export async function shelfOfParts(rows: ShelfPart[]) {
   const shelf = new Map<string, Shelf>();
   const suggestion = new Map<string, ShelfSuggestion>();
   const linked = rows.filter((p) => p.inventoryItemId);
-  const unlinked = rows.filter((p) => !p.inventoryItemId && p.classification === "cots");
-  if (!linked.length && !unlinked.length) return { shelf, suggestion };
-  const [{ items, usage, cats }, all] = await Promise.all([
+  const open = rows.filter((p) => !p.inventoryItemId);
+  const unlinked = open.filter((p) => p.classification === "cots");
+  if (!linked.length && !open.length) return { shelf, suggestion };
+  const itemCols = { id: inventoryItems.id, name: inventoryItems.name, onshapeKey: inventoryItems.onshapeKey, aliases: inventoryItems.aliases, cotsLinks: inventoryItems.cotsLinks, inStock: inventoryItems.inStock, category: inventoryItems.category };
+  const [{ items, usage, cats }, all, waiting, rejected] = await Promise.all([
     usageOf([...new Set(linked.map((p) => p.inventoryItemId!))]),
-    unlinked.length
+    unlinked.length ? db.select(itemCols).from(inventoryItems) : [],
+    open.length
       ? db
-          .select({ id: inventoryItems.id, name: inventoryItems.name, onshapeKey: inventoryItems.onshapeKey, aliases: inventoryItems.aliases, cotsLinks: inventoryItems.cotsLinks, inStock: inventoryItems.inStock, category: inventoryItems.category })
-          .from(inventoryItems)
+          .select({ partId: partReviews.partId, itemId: sql<string>`${partReviews.pending}->>'inventoryItemId'` })
+          .from(partReviews)
+          .where(and(inArray(partReviews.partId, open.map((p) => p.id)), sql`${partReviews.pending} ? 'inventoryItemId'`))
+      : [],
+    unlinked.length
+      ? db.select({ partId: inventoryLinkRejections.partId, itemId: inventoryLinkRejections.itemId }).from(inventoryLinkRejections).where(inArray(inventoryLinkRejections.partId, unlinked.map((p) => p.id)))
       : [],
   ]);
+  // A waiting link's item, when the parts had no COTS part to load every item for.
+  const missing = [...new Set(waiting.map((w) => w.itemId))].filter((id) => !all.some((i) => i.id === id));
+  const known = missing.length ? [...all, ...(await db.select(itemCols).from(inventoryItems).where(inArray(inventoryItems.id, missing)))] : all;
   const thumbs = await itemThumbs(items);
   for (const p of linked) {
     const item = items.find((i) => i.id === p.inventoryItemId);
@@ -301,9 +312,15 @@ export async function shelfOfParts(rows: ShelfPart[]) {
       thumbUrl: thumbs.get(item.id) ?? null,
     });
   }
+  for (const w of waiting) {
+    const item = known.find((i) => i.id === w.itemId);
+    if (item) suggestion.set(w.partId, { itemId: item.id, itemName: item.name, inStock: item.inStock, sheet: isSheet(item, cats), reason: "review", pending: true });
+  }
+  const no = new Set(rejected.map((r) => `${r.partId}:${r.itemId}`));
   for (const p of unlinked) {
+    if (suggestion.has(p.id)) continue;
     const hit = suggestItem(p, all);
-    const item = hit && all.find((i) => i.id === hit.itemId);
+    const item = hit && !no.has(`${p.id}:${hit.itemId}`) && all.find((i) => i.id === hit.itemId);
     if (item) suggestion.set(p.id, { itemId: item.id, itemName: item.name, inStock: item.inStock, sheet: isSheet(item, cats), reason: hit.reason });
   }
   return { shelf, suggestion };

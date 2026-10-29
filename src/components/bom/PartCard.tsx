@@ -22,6 +22,7 @@ import { usePartDetails } from "./PartDetailsHost";
 import { useInventoryPopup } from "@/components/inventory/InventoryPopup";
 import { CotsCard } from "@/components/cots/CotsCard";
 import { NoteCloud } from "./NoteCloud";
+import { LinkTag } from "@/components/cots/ShelfPill";
 
 export { NoteCloud };
 
@@ -157,7 +158,8 @@ function MadePartCard({
           {!fabCounter && !post && (edit ? <TypeField part={part} save={save} badge /> : <TypeBadge part={part} />)}
           <MergedBadge part={part} />
         </div>
-        <div className="absolute top-2 right-2 flex gap-1.5">
+        <div className="absolute top-2 right-2 flex max-w-[60%] items-start gap-1.5">
+          {!onCheck && !fabCounter && !post && <LinkTag part={part} save={save} />}
           {onCheck && work ? (
             <button
               type="button"

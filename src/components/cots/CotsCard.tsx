@@ -20,7 +20,7 @@ import { formatStock } from "@/lib/inventory/stock";
 import type { PartChanges } from "@/lib/parts/changes";
 import { computeStatus } from "@/lib/status";
 import { stepShelfStock } from "@/app/(app)/inventory/actions";
-import { ShelfCoversPrompt, ShelfPill } from "./ShelfPill";
+import { LinkTag, ShelfCoversPrompt, ShelfPill } from "./ShelfPill";
 import { formatPrice, setCurrency, useCurrency } from "./currency";
 
 // A COTS part's card, on every page, washed in its status colour: the light-blue name links to the
@@ -79,7 +79,8 @@ export function CotsCard({
   );
   const [, startShelf] = useTransition();
   const onShelf = !!shelf && !shelf.sheet;
-  const hasShelfTag = !!shelf || !!part.shelfSuggestion;
+  // A suggested item shows as the Link tag on the thumbnail (the pill only for those who can't link).
+  const hasShelfTag = !!shelf || (!work && !!part.shelfSuggestion);
   const stock = onShelf ? shelf.covered : (part.stockCount ?? 0);
   const addStock = (d: number) => {
     if (onShelf) {
@@ -156,6 +157,7 @@ export function CotsCard({
               ⧉ {group.systems} systems
             </span>
           )}
+          {!order && <LinkTag part={part} save={save} />}
           {sentBack && (
             <span className="max-w-full truncate rounded-md bg-rose-600 px-2 py-0.5 text-[11px] font-bold text-white shadow-md" title={`Sent back: ${part.cotsSentBack}`}>
               ↩ {part.cotsSentBack}

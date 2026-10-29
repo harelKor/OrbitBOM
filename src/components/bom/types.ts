@@ -20,7 +20,9 @@ export type Shelf = {
   met: boolean;
   thumbUrl: string | null; // the item's picture
 };
-export type ShelfSuggestion = { itemId: string; itemName: string; inStock: number; sheet: boolean; reason: MatchReason };
+// `pending`: auto-link (or a member's Claude) suggested it and it waits in To Review; else the
+// card's own guess from the part's name, Onshape part or product page.
+export type ShelfSuggestion = { itemId: string; itemName: string; inStock: number; sheet: boolean; reason: MatchReason | "review"; pending?: boolean };
 
 // What the BOM views get for each part.
 export type CardPart = PartRow & {

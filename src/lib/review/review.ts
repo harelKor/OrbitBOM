@@ -392,6 +392,26 @@ export async function approveReviews(partIds: string[], memberId: string | null 
   return rows.length;
 }
 
+// The card's Link tag settles just the suggested link, leaving the rest of a part's review in To
+// Review. Link (`accept`) only takes it off the review: the card links the part through its own
+// save. ✕ drops it and remembers the pair, as To Review's Reject does, so it isn't suggested
+// again (also for the card's own guess, which has no review).
+export async function settleSuggestedLink(partIds: string[], itemId: string, accept: boolean, memberId: string) {
+  if (!partIds.length) return;
+  await db.transaction(async (tx) => {
+    const rows = await tx.select().from(partReviews).where(inArray(partReviews.partId, partIds)).for("update");
+    for (const r of rows) {
+      if (r.pending.inventoryItemId !== itemId) continue;
+      const pending = { ...r.pending };
+      delete pending.inventoryItemId;
+      if (!Object.keys(pending).length && !Object.keys(r.changes).length) await tx.delete(partReviews).where(eq(partReviews.partId, r.partId));
+      else await tx.update(partReviews).set({ pending }).where(eq(partReviews.partId, r.partId));
+    }
+    if (!accept && (await liveItems([itemId], tx)).has(itemId))
+      await tx.insert(schema.inventoryLinkRejections).values(partIds.map((partId) => ({ partId, itemId, memberId }))).onConflictDoNothing();
+  });
+}
+
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 // Which of these inventory item ids still exist.
