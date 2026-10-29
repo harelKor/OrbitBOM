@@ -366,13 +366,22 @@ body {
   .data-table.inv-table :is(th, td) + :is(th, td) {
     @apply border-l border-l-line-strong;
   }
-  /* An item added on this visit: on top, washed sky with a sky edge until the page is left. */
-  .data-table tbody tr[data-glow] > td {
-    background-image: linear-gradient(rgba(56, 189, 248, 0.12), rgba(56, 189, 248, 0.12));
-    box-shadow: inset 0 1px 0 rgba(56, 189, 248, 0.7), inset 0 -1px 0 rgba(56, 189, 248, 0.7);
+  /* A just-added item: a warm yellow light until the next click, then it fades (Harel, 2026-10-29). */
+  .card-interactive:is([data-new="lit"], [data-new="fade"]) {
+    @apply border-amber-300 ring-2 ring-amber-300/90 shadow-[0_0_28px_6px_rgba(250,204,21,0.55)];
   }
-  .data-table tbody tr[data-glow] > td:first-child {
-    box-shadow: inset 3px 0 0 #38bdf8, inset 0 1px 0 rgba(56, 189, 248, 0.7), inset 0 -1px 0 rgba(56, 189, 248, 0.7);
+  .data-table tbody tr:is([data-new="lit"], [data-new="fade"]) > td {
+    background-image: linear-gradient(rgba(250, 204, 21, 0.16), rgba(250, 204, 21, 0.16));
+    box-shadow: inset 0 1px 0 rgba(252, 211, 77, 0.9), inset 0 -1px 0 rgba(252, 211, 77, 0.9);
+  }
+  .data-table tbody tr:is([data-new="lit"], [data-new="fade"]) > td:first-child {
+    box-shadow: inset 3px 0 0 #fcd34d, inset 0 1px 0 rgba(252, 211, 77, 0.9), inset 0 -1px 0 rgba(252, 211, 77, 0.9);
+  }
+  .card-interactive[data-new="fade"] {
+    animation: new-glow-out 800ms ease-out forwards;
+  }
+  .data-table tbody tr[data-new="fade"] > td {
+    animation: new-row-out 800ms ease-out forwards;
   }
   /* A table that handles like a sheet (SheetViewport): scrolls both ways inside the page as one
      piece, zooms (--sheet-zoom), keeps the header row at the top of its own box (the panel is
@@ -489,5 +498,17 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .batch-open {
     animation: none;
+  }
+}
+
+@keyframes new-glow-out {
+  to {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+@keyframes new-row-out {
+  to {
+    box-shadow: inset 0 0 0 transparent;
+    background-image: linear-gradient(transparent, transparent);
   }
 }

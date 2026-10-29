@@ -45,7 +45,7 @@ export function ItemTable({
   onCount,
   selected,
   onToggleSelect,
-  glowIds,
+  glowOf,
 }: {
   items: Item[];
   categories: InvCategory[];
@@ -58,7 +58,7 @@ export function ItemTable({
   onCount: (id: string, amount: number) => void;
   selected: Set<string>;
   onToggleSelect?: (id: string) => void;
-  glowIds?: Set<string>; // added on this visit: a soft glow until the page is left
+  glowOf?: (id: string) => "lit" | "fade" | undefined; // just added: a warm light until the next click
 }) {
   const { openItem } = useInventoryPopup();
   const work = useCan("work");
@@ -96,7 +96,8 @@ export function ItemTable({
                     : openItem(item.id, item)
                 }
                 className="cursor-pointer"
-                data-glow={glowIds?.has(item.id) ? "1" : undefined}
+                data-item={item.id}
+                data-new={glowOf?.(item.id)}
                 style={tint}
               >
                 {onToggleSelect && (

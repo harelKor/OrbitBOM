@@ -102,11 +102,11 @@ export function ItemCard({
   hideCategory = false,
   selected,
   onToggleSelect,
-  glow = false,
+  glow,
 }: {
   item: Item;
   hideCategory?: boolean;
-  glow?: boolean; // added on this visit: kept on top with a soft glow until the page is left
+  glow?: "lit" | "fade"; // just added: a warm light until the next click, then it fades
   selected?: boolean;
   onToggleSelect?: () => void;
   view?: NeedView;
@@ -138,8 +138,9 @@ export function ItemCard({
       onClick={() => openItem(item.id, item)}
       onKeyDown={(e) => e.key === "Enter" && e.target === e.currentTarget && openItem(item.id, item)}
       aria-label={`Open ${item.name}`}
-      className={`card-interactive group flex cursor-pointer flex-col border-l-4 text-sm ${glow ? "ring-2 ring-sky-400/70 shadow-[0_0_20px_rgba(56,189,248,0.35)]" : ""}`}
-      data-glow={glow ? "1" : undefined}
+      className="card-interactive group flex cursor-pointer flex-col border-l-4 text-sm"
+      data-item={item.id}
+      data-new={glow}
       style={{ ...tinted, ...(color && { borderLeftColor: color }) }}
     >
       {onToggleSelect && (

@@ -2,6 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import {
+  useEffect,
   useMemo,
   useOptimistic,
   useState,
@@ -80,10 +81,31 @@ export function InventoryView({
   const { conditions, locations, categories } = lookups;
   const [open, setOpen] = useState<Open>(null);
   const [q, setQ] = useState("");
-  // Items added on this visit, newest first: on top of the list with a glow until the page is left.
+  // Items added on this visit, newest first, stay on top of the list until the page is left. A
+  // just-added item glows warm yellow until the next click or tap anywhere, then the light fades
+  // (Harel, 2026-10-29).
   const [added, setAdded] = useState<string[]>([]);
-  const addedSet = useMemo(() => new Set(added), [added]);
-  const onAdded = (id: string) => setAdded((a) => [id, ...a.filter((x) => x !== id)]);
+  const [lit, setLit] = useState<string[]>([]);
+  const [fading, setFading] = useState<string[]>([]);
+  const onAdded = (id: string) => {
+    setAdded((a) => [id, ...a.filter((x) => x !== id)]);
+    setLit((l) => [id, ...l.filter((x) => x !== id)]);
+  };
+  useEffect(() => {
+    if (!lit.length) return;
+    const off = () => {
+      setFading(lit);
+      setLit([]);
+      setTimeout(() => setFading((f) => (f === lit ? [] : f)), 800);
+    };
+    // Listening starts after the click that added the item.
+    const t = setTimeout(() => window.addEventListener("pointerdown", off, { once: true }), 0);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener("pointerdown", off);
+    };
+  }, [lit]);
+  const glowOf = (id: string) => (lit.includes(id) ? "lit" : fading.includes(id) ? "fade" : undefined);
   // Scan is for phones, and shows only while the add box is focused (Harel, 2026-10-29).
   const phone = usePhone();
   const [boxFocus, setBoxFocus] = useState(false);
@@ -432,7 +454,7 @@ export function InventoryView({
         onCount={count}
         selected={selected}
         onToggleSelect={selecting ? toggleSelected : undefined}
-        glowIds={addedSet}
+        glowOf={glowOf}
       />
     ) : (
       <div
@@ -455,7 +477,7 @@ export function InventoryView({
             onToggleSelect={
               selecting ? () => toggleSelected(item.id) : undefined
             }
-            glow={addedSet.has(item.id)}
+            glow={glowOf(item.id)}
           />
         ))}
       </div>

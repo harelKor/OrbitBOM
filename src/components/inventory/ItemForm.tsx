@@ -31,7 +31,7 @@ export const emptyDraft = (over: Partial<Draft> = {}): Draft => ({
   specs: {},
   name: "",
   nameTouched: false,
-  inStock: "1",
+  inStock: "0",
   locationId: null,
   locationTouched: false,
   conditionId: null,

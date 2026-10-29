@@ -38,7 +38,7 @@ export function AddBox({
   defaultLocationId = null,
   placeholder,
   onPick,
-  newStock = "1",
+  newStock = "0",
   floating = false,
   onAdded,
   onFocusChange,
@@ -54,8 +54,8 @@ export function AddBox({
   placeholder: string;
   onPick?: (itemId: string) => void; // a part's details window: an item picked or added links the part to it
   floating?: boolean; // the results float over the window the box is in (a part's details window), not inside it
-  newStock?: string; // what a new item starts with in stock (the COTS page adds items still to buy: "0")
-  onAdded?: (itemId: string) => void; // Inventory: a new item goes to the top of the list with a glow
+  newStock?: string; // what a new item starts with in stock ("0", Harel 2026-10-29)
+  onAdded?: (itemId: string) => void; // Inventory: a new item goes to the top of the list with a glow (the banner's jump icon lights it again)
   onFocusChange?: (focused: boolean) => void; // Inventory on phones: Scan shows only while the box is focused
 }) {
   // Any team adds items; without a team it is only a search box.
@@ -281,11 +281,27 @@ export function AddBox({
       )}
     </>
   );
+  // The banner's jump icon: closes the phone sheet, scrolls to the item's card or row and lights it
+  // up again; an item not shown on this page (home's group boxes) opens in its window instead.
+  const jumpTo = (id: string) => {
+    if (phone) setSaved(null);
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-item="${CSS.escape(id)}"]`);
+      if (!el) return openItem(id);
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      onAdded?.(id);
+    });
+  };
   const addedBanner = saved && (
     <div className={`flex flex-wrap items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-300 ${phone ? "" : "mt-2"}`}>
       <span className="min-w-0 flex-1">
         Added <span className="font-semibold">{saved.name}</span>.{saved.message && ` ${saved.message}`}
       </span>
+      {onAdded && (
+        <button type="button" className="btn min-h-10 px-3 active:scale-[0.98]" title="Go to item" aria-label="Go to item" onClick={() => jumpTo(saved.id)}>
+          <Icon name="arrow" className="h-4 w-4" />
+        </button>
+      )}
       <button
         type="button"
         className="btn min-h-10 active:scale-[0.98]"
@@ -296,7 +312,7 @@ export function AddBox({
       >
         Edit
       </button>
-      <button type="button" className="btn min-h-10 active:scale-[0.98]" onClick={() => setDraft({ ...saved.draft, inStock: "1", links: [], imageUrl: null, price: null, photo: null })}>
+      <button type="button" className="btn min-h-10 active:scale-[0.98]" onClick={() => setDraft({ ...saved.draft, inStock: newStock, links: [], imageUrl: null, price: null, photo: null })}>
         Add another like this
       </button>
       {phone ? (
