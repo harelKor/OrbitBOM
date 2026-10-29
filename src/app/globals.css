@@ -366,6 +366,14 @@ body {
   .data-table.inv-table :is(th, td) + :is(th, td) {
     @apply border-l border-l-line-strong;
   }
+  /* An item added on this visit: on top, washed sky with a sky edge until the page is left. */
+  .data-table tbody tr[data-glow] > td {
+    background-image: linear-gradient(rgba(56, 189, 248, 0.12), rgba(56, 189, 248, 0.12));
+    box-shadow: inset 0 1px 0 rgba(56, 189, 248, 0.7), inset 0 -1px 0 rgba(56, 189, 248, 0.7);
+  }
+  .data-table tbody tr[data-glow] > td:first-child {
+    box-shadow: inset 3px 0 0 #38bdf8, inset 0 1px 0 rgba(56, 189, 248, 0.7), inset 0 -1px 0 rgba(56, 189, 248, 0.7);
+  }
   /* A table that handles like a sheet (SheetViewport): scrolls both ways inside the page as one
      piece, zooms (--sheet-zoom), keeps the header row at the top of its own box (the panel is
      isolated, so the header never rises over the page's sticky bars), and once a column has been

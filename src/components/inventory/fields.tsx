@@ -70,16 +70,7 @@ export function Chips({ options, value, onPick, size = "md", recentKey }: { opti
   );
 }
 
-// A type-to-filter dropdown. Typing a value that isn't in the list keeps it as typed.
-export function Combo({
-  options,
-  value,
-  onPick,
-  recentKey,
-  placeholder,
-  autoFocus,
-  ariaLabel,
-}: {
+type ComboProps = {
   options: string[];
   value: string;
   onPick: (v: string) => void;
@@ -87,7 +78,125 @@ export function Combo({
   placeholder?: string;
   autoFocus?: boolean;
   ariaLabel?: string;
-}) {
+};
+
+const coarse = {
+  subscribe: (fn: () => void) => {
+    const m = matchMedia("(pointer: coarse)");
+    m.addEventListener("change", fn);
+    return () => m.removeEventListener("change", fn);
+  },
+  get: () => matchMedia("(pointer: coarse)").matches,
+  server: () => false,
+};
+
+// A type-to-filter dropdown. Typing a value that isn't in the list keeps it as typed. On touch
+// screens the closed field is a button, so tapping it opens the list without the keyboard; the
+// list's own search box opens the keyboard only when it's tapped (Harel, 2026-10-29).
+export function Combo(props: ComboProps) {
+  const touch = useSyncExternalStore(coarse.subscribe, coarse.get, coarse.server);
+  return touch ? <TapCombo {...props} /> : <TypeCombo {...props} />;
+}
+
+function TapCombo({ options, value, onPick, recentKey, placeholder, ariaLabel }: ComboProps) {
+  const recent = useRecent(recentKey ?? "");
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const listId = useId();
+  const root = useRef<HTMLDivElement>(null);
+  // A tap anywhere else closes the list.
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => {
+      if (!root.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", away);
+    return () => document.removeEventListener("pointerdown", away);
+  }, [open]);
+  const typed = text.trim();
+  const q = typed.toLowerCase();
+  const ordered = [...recent.filter((r) => options.includes(r)), ...options.filter((o) => !recent.includes(o))];
+  const shown = q ? ordered.filter((o) => o.toLowerCase().includes(q)) : ordered;
+  const pick = (v: string) => {
+    onPick(v);
+    if (v && recentKey) rememberPick(recentKey, v);
+    setText("");
+    setOpen(false);
+  };
+  const row = "flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm active:scale-[0.98]";
+  return (
+    <div ref={root} className="relative">
+      <button
+        type="button"
+        role="combobox"
+        aria-label={ariaLabel}
+        aria-expanded={open}
+        aria-controls={listId}
+        onClick={() => {
+          setText("");
+          setOpen((o) => !o);
+        }}
+        className="input flex min-h-11 w-full items-center gap-2 text-left"
+      >
+        <span className={`min-w-0 flex-1 truncate ${value ? "" : "text-subtle"}`}>{value || placeholder || "Pick…"}</span>
+        <span aria-hidden className="text-xs text-subtle">
+          ▾
+        </span>
+      </button>
+      {open && (
+        <div className="absolute top-full right-0 left-0 z-30 mt-1 rounded-xl border border-line-strong bg-surface p-1 shadow-lg">
+          <input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                pick(shown.find((o) => o.toLowerCase() === q) ?? shown[0] ?? typed);
+              }
+            }}
+            placeholder="Search or type a new one…"
+            aria-label={`Search ${ariaLabel ?? "options"}`}
+            className="input mb-1 min-h-10"
+          />
+          <ul id={listId} role="listbox" className="max-h-56 overflow-y-auto">
+            {typed && !options.some((o) => o.toLowerCase() === q) && (
+              <li>
+                <button type="button" onClick={() => pick(typed)} className={`${row} font-semibold text-accent`}>
+                  Use “{typed}”
+                </button>
+              </li>
+            )}
+            {shown.map((o) => (
+              <li key={o} role="option" aria-selected={o === value}>
+                <button type="button" onClick={() => pick(o)} className={`${row} ${o === value ? "bg-accent/10 font-semibold text-accent" : "text-fg-2"}`}>
+                  {o}
+                  {recent.includes(o) && <span className="ml-auto text-[10px] text-subtle">recent</span>}
+                </button>
+              </li>
+            ))}
+            {value && !typed && (
+              <li>
+                <button type="button" onClick={() => pick("")} className={`${row} text-muted`}>
+                  Clear
+                </button>
+              </li>
+            )}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TypeCombo({
+  options,
+  value,
+  onPick,
+  recentKey,
+  placeholder,
+  autoFocus,
+  ariaLabel,
+}: ComboProps) {
   const recent = useRecent(recentKey ?? "");
   const [text, setText] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -179,9 +288,19 @@ export function FieldInput({ field, categoryId, value, onChange, autoFocus }: { 
   const choices = fieldChoices(field);
   if (choices.length && choices.length <= CHIP_MAX && field.kind === "options") return <Chips options={choices} value={value} onPick={onChange} recentKey={`${categoryId}:${field.id}`} />;
   if (choices.length) return <Combo options={choices} value={value} onPick={onChange} recentKey={`${categoryId}:${field.id}`} ariaLabel={field.label} autoFocus={autoFocus} />;
+  return <SmallBox field={field} value={value} onChange={onChange} autoFocus={autoFocus} />;
+}
+
+// A free value. It takes the focus on its own only with a mouse, so a phone's keyboard stays shut.
+function SmallBox({ field, value, onChange, autoFocus }: { field: CategoryField; value: string; onChange: (v: string) => void; autoFocus?: boolean }) {
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (autoFocus) focusIfMouse(input.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when the field first shows
+  }, []);
   return (
     <input
-      autoFocus={autoFocus}
+      ref={input}
       aria-label={field.label}
       inputMode={field.kind === "number" ? "decimal" : undefined}
       value={value}

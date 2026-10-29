@@ -40,6 +40,8 @@ export function AddBox({
   onPick,
   newStock = "1",
   floating = false,
+  onAdded,
+  onFocusChange,
 }: {
   q: string;
   setQ: (q: string) => void;
@@ -53,6 +55,8 @@ export function AddBox({
   onPick?: (itemId: string) => void; // a part's details window: an item picked or added links the part to it
   floating?: boolean; // the results float over the window the box is in (a part's details window), not inside it
   newStock?: string; // what a new item starts with in stock (the COTS page adds items still to buy: "0")
+  onAdded?: (itemId: string) => void; // Inventory: a new item goes to the top of the list with a glow
+  onFocusChange?: (focused: boolean) => void; // Inventory on phones: Scan shows only while the box is focused
 }) {
   // Any team adds items; without a team it is only a search box.
   const edit = useCan("work");
@@ -67,6 +71,11 @@ export function AddBox({
   const [quickSaving, startQuickSave] = useTransition();
   const box = useRef<HTMLInputElement>(null);
   const phone = usePhone();
+  const focusChanged = useRef(onFocusChange);
+  useEffect(() => {
+    focusChanged.current = onFocusChange;
+  });
+  useEffect(() => focusChanged.current?.(focus), [focus]);
 
   const query = q.trim();
   const link = isLink(query);
@@ -119,6 +128,7 @@ export function AddBox({
         return setQ("");
       }
       setSaved({ id: r.id, name: quickName, draft, message: r.message });
+      onAdded?.(r.id);
       setQ("");
     });
   // The add form with what was typed and what it understood; else the page's category.
@@ -319,6 +329,7 @@ export function AddBox({
         const cat = getCategory(categories, draft.category);
         const name = draft.nameTouched || !cat ? draft.name : buildName(cat, draft.specs) || draft.name;
         setSaved({ id, name, draft, message });
+        onAdded?.(id);
         setDraft(null);
         setQ("");
       }}

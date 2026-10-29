@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { createContext, useContext, useEffect, useState, useTransition } from "react";
+import { createContext, useContext, useEffect, useRef, useState, useTransition } from "react";
 import {
   adjustStock,
   countStock,
@@ -280,17 +280,39 @@ function SeasonBox({ item, onSaved, onError }: { item: Item; onSaved: () => void
 
 // The item window: picture and tags (each opens its page), the count, the details, the parts
 // that use it, Edit / To BOM / Delete in Edit mode, and the history.
-// The item window's title in Edit mode: click and type, it saves on Enter or when it loses focus
-// (Escape puts the old name back).
+// The item window's title in Edit mode: the name shows as text, a tap turns it into a box that
+// saves on Enter or when it loses focus (Escape puts the old name back). The box only appears on
+// a tap, so opening the window never pops a phone's keyboard open (Harel, 2026-10-29).
 function ItemName({ name, onSave }: { name: string; onSave: (name: string) => void }) {
   const [text, setText] = useState(name);
+  const [editing, setEditing] = useState(false);
+  const dropped = useRef(false); // Escape: the box closes without saving
   const commit = () => {
+    setEditing(false);
+    if (dropped.current) return;
     const next = text.replace(/\s+/g, " ").trim();
     if (!next) return setText(name);
     if (next !== name) onSave(next);
   };
+  const look = "-mx-1.5 w-full min-w-0 rounded-md border px-1.5 py-0.5 font-semibold text-fg transition-colors duration-150";
+  if (!editing)
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          dropped.current = false;
+          setEditing(true);
+        }}
+        title="Tap to rename"
+        aria-label={`Rename ${text}`}
+        className={`${look} block truncate border-transparent text-left hover:border-line-strong`}
+      >
+        {text}
+      </button>
+    );
   return (
     <input
+      autoFocus
       value={text}
       onChange={(e) => setText(e.target.value)}
       onBlur={commit}
@@ -300,13 +322,13 @@ function ItemName({ name, onSave }: { name: string; onSave: (name: string) => vo
           e.currentTarget.blur();
         } else if (e.key === "Escape") {
           e.preventDefault();
+          dropped.current = true;
           setText(name);
-          requestAnimationFrame(() => (e.target as HTMLInputElement).blur());
+          setEditing(false);
         }
       }}
       aria-label="Item name"
-      title="Click to rename"
-      className="-mx-1.5 w-full min-w-0 rounded-md border border-transparent bg-transparent px-1.5 py-0.5 font-semibold text-fg transition-colors duration-150 outline-none hover:border-line-strong focus:border-sky-400/60 focus:bg-raised"
+      className={`${look} border-sky-400/60 bg-raised outline-none`}
     />
   );
 }

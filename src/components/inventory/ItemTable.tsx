@@ -45,6 +45,7 @@ export function ItemTable({
   onCount,
   selected,
   onToggleSelect,
+  glowIds,
 }: {
   items: Item[];
   categories: InvCategory[];
@@ -57,6 +58,7 @@ export function ItemTable({
   onCount: (id: string, amount: number) => void;
   selected: Set<string>;
   onToggleSelect?: (id: string) => void;
+  glowIds?: Set<string>; // added on this visit: a soft glow until the page is left
 }) {
   const { openItem } = useInventoryPopup();
   // The location pill moves the item in Edit (any team's Edit toggle).
@@ -96,6 +98,7 @@ export function ItemTable({
                     : openItem(item.id, item)
                 }
                 className="cursor-pointer"
+                data-glow={glowIds?.has(item.id) ? "1" : undefined}
                 style={tint}
               >
                 {onToggleSelect && (

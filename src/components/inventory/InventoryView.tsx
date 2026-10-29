@@ -48,6 +48,7 @@ import type { RecentAction } from "@/lib/data/actions";
 import { useInventoryPopup } from "./InventoryPopup";
 import { ItemCard } from "./ItemCard";
 import { ItemTable } from "./ItemTable";
+import { usePhone } from "@/components/ui/usePhone";
 import { ScanButton } from "./ScanButton";
 import { LocationPicker } from "./LocationPicker";
 import { WorkshopMap, type PinStats } from "./WorkshopMap";
@@ -79,6 +80,13 @@ export function InventoryView({
   const { conditions, locations, categories } = lookups;
   const [open, setOpen] = useState<Open>(null);
   const [q, setQ] = useState("");
+  // Items added on this visit, newest first: on top of the list with a glow until the page is left.
+  const [added, setAdded] = useState<string[]>([]);
+  const addedSet = useMemo(() => new Set(added), [added]);
+  const onAdded = (id: string) => setAdded((a) => [id, ...a.filter((x) => x !== id)]);
+  // Scan is for phones, and shows only while the add box is focused (Harel, 2026-10-29).
+  const phone = usePhone();
+  const [boxFocus, setBoxFocus] = useState(false);
   const [conditionId, setConditionId] = useState("");
   // A category's spec filter picks (Bore (ID) 8mm, Type Flanged...), forgotten on another category.
   const [specPick, setSpecPick] = useState<{ cat: string; picks: SpecPicks } | null>(null);
@@ -216,6 +224,10 @@ export function InventoryView({
   const inSub = (i: Item) => !focusCat || i.category !== focusCat.id || matchesPicks(i, picks);
 
   const RANK = { short: 0, ordered: 1, ok: 2 } as const;
+  const rankAdded = (i: Item) => {
+    const n = added.indexOf(i.id);
+    return n < 0 ? added.length : n;
+  };
   const shown = optimistic
     .filter(
       (i) =>
@@ -229,7 +241,8 @@ export function InventoryView({
     )
     .sort((a, b) =>
       view ? RANK[standing(a, view)] - RANK[standing(b, view)] : 0,
-    );
+    )
+    .sort((a, b) => rankAdded(a) - rankAdded(b));
   const boxes = home && !view && !query && !locationId;
   // In a view, the cards up top are only the ones still short or on order; every other item of
   // the view in the picked group / category box (all of them when none is picked) is in the
@@ -419,6 +432,7 @@ export function InventoryView({
         onCount={count}
         selected={selected}
         onToggleSelect={selecting ? toggleSelected : undefined}
+        glowIds={addedSet}
       />
     ) : (
       <div
@@ -441,6 +455,7 @@ export function InventoryView({
             onToggleSelect={
               selecting ? () => toggleSelected(item.id) : undefined
             }
+            glow={addedSet.has(item.id)}
           />
         ))}
       </div>
@@ -507,8 +522,10 @@ export function InventoryView({
                 ? "Do we have it? Name, size, bore, vendor, location…"
                 : "Filter by name, size, vendor, location…"
             }
+            onAdded={onAdded}
+            onFocusChange={setBoxFocus}
           />
-          <ScanButton onCode={setQ} />
+          <ScanButton onCode={setQ} show={phone && boxFocus} />
           {mapButton}
         </div>
         {!boxes && !showBoxes && filters}

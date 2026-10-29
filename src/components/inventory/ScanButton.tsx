@@ -5,13 +5,23 @@ import { Dialog } from "@/components/Dialog";
 
 // Scan a barcode or SKU off a vendor bag with the camera; the code goes into the add box, which
 // searches the shelf and the stores with it. The reader loads only when the camera opens.
-export function ScanButton({ onCode }: { onCode: (code: string) => void }) {
+// With show off only the button hides, so a scan already open stays open.
+export function ScanButton({ onCode, show = true }: { onCode: (code: string) => void; show?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className="btn min-h-12 shrink-0 self-start" title="Scan a barcode or SKU with the camera">
-        <span aria-hidden>▥</span> Scan
-      </button>
+      {show && (
+        <button
+          type="button"
+          // mousedown keeps the add box focused, so the button doesn't hide under the tap
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => setOpen(true)}
+          className="btn min-h-12 shrink-0 self-start active:scale-[0.98]"
+          title="Scan a barcode or SKU with the camera"
+        >
+          <span aria-hidden>▥</span> Scan
+        </button>
+      )}
       <Dialog open={open} onClose={() => setOpen(false)} title="Scan a barcode">
         {open && (
           <Scanner
