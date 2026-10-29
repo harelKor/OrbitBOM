@@ -153,7 +153,7 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
   return (
     <Ctx.Provider value={{ openItem, openMaterial }}>
       {children}
-      <Dialog open={!!state} onClose={close} title={title} width={state?.kind === "item" ? "w-[min(36rem,calc(100vw-1rem))]" : undefined} wide>
+      <Dialog open={!!state} onClose={close} title={title} width={state?.kind === "item" ? "w-[min(36rem,calc(100vw-1rem))]" : undefined} wide sheet>
         {error && <p className="mb-3 rounded-md bg-rose-50 p-2 text-sm text-rose-700">Couldn&apos;t save: {error}</p>}
         {state?.kind === "item" && !item && <p className="py-8 text-center text-sm text-muted">Loading…</p>}
         {state?.kind === "item" && item && (
@@ -272,7 +272,7 @@ function SeasonBox({ item, onSaved, onError }: { item: Item; onSaved: () => void
         inputMode={item.sheet ? "text" : "numeric"}
         placeholder="—"
         aria-label="Needed for Season"
-        className="w-20 rounded-md border border-line-strong bg-surface px-1 py-1 text-center font-mono text-lg font-semibold tabular-nums outline-none focus:border-sky-400"
+        className="min-h-10 w-20 rounded-md border border-line-strong bg-surface px-1 py-1 text-center font-mono text-lg font-semibold tabular-nums outline-none focus:border-sky-400"
       />
     </label>
   );
@@ -379,16 +379,18 @@ function ItemBody({
       />
     );
 
-  const tag = "rounded-full px-2.5 py-0.5 text-xs font-semibold";
+  // Pills are big enough to tap on phones.
+  const tag = "rounded-full px-2.5 py-0.5 text-xs font-semibold max-sm:inline-flex max-sm:min-h-10 max-sm:items-center max-sm:px-3.5 max-sm:text-sm";
   const caret = { backgroundPosition: "right 10px center, right 6px center", backgroundSize: "4px 4px", backgroundRepeat: "no-repeat" } as const;
   const caretOf = (c: string) => ({ ...caret, backgroundImage: `linear-gradient(45deg, transparent 50%, ${c} 50%), linear-gradient(135deg, ${c} 50%, transparent 50%)` });
   const shownFields = cat ? activeFields(cat, item.specs) : [];
   const specFields = edit && data ? shownFields : [];
   return (
     <div className="space-y-4">
-      <div className="flex gap-4">
+      {/* On phones the picture sits above the count and pills, each the whole width. */}
+      <div className="flex flex-col gap-4 sm:flex-row">
         <div className="shrink-0 space-y-1.5">
-          <div className="thumb-well flex h-44 w-44 items-center justify-center rounded-xl sm:h-56 sm:w-56">
+          <div className="thumb-well flex h-44 w-full items-center justify-center rounded-xl sm:h-56 sm:w-56">
             {photo || picture ? (
               // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
               <img src={photo ?? picture!} alt="" className="h-full w-full object-contain p-2" />
@@ -512,13 +514,13 @@ function ItemBody({
       <ItemNotesBox item={item} onSaved={onSaved} onError={setMessage} />
 
       {(specFields.length > 0 || shownFields.some((f) => item.specs[f.id]) || item.cotsLinks.length > 0 || item.price != null) && (
-        <dl className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-1 text-sm">
+        <dl className="grid grid-cols-1 gap-x-4 gap-y-1 text-sm sm:grid-cols-[auto_1fr] sm:items-center">
           {specFields.length
             ? // Edit mode: every shown field of the category, saved as it's picked or typed.
               specFields.map((f) => (
                 <div key={`${f.id}:${item.specs[f.id] ?? ""}`} className="contents">
-                  <dt className="text-muted">{f.label}</dt>
-                  <dd>
+                  <dt className="text-muted max-sm:pt-1">{f.label}</dt>
+                  <dd className="min-w-0">
                     <SpecField
                       field={f}
                       categoryId={cat!.id}
@@ -556,7 +558,7 @@ function ItemBody({
                         }}
                         aria-label={`Remove the ${l.site || hostOf(l.url)} link`}
                         title="Remove this link"
-                        className="press flex h-6 w-6 items-center justify-center rounded-full text-subtle hover:bg-rose-500/10 hover:text-rose-500 active:scale-[0.98] disabled:opacity-50"
+                        className="press flex h-10 w-10 items-center justify-center rounded-full text-subtle sm:h-6 sm:w-6 hover:bg-rose-500/10 hover:text-rose-500 active:scale-[0.98] disabled:opacity-50"
                       >
                         <Icon name="close" className="h-3.5 w-3.5" />
                       </button>

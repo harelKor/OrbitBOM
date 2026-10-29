@@ -2,9 +2,10 @@
 
 import { useState, useTransition } from "react";
 import { saveItem } from "@/app/(app)/inventory/actions";
+import { CATEGORY_GROUPS, type CategoryGroupId } from "@/config/inventory";
 import { activeFields, buildName, dropInactive, getCategory } from "@/lib/inventory/categories";
 import { formatStock, parseStock } from "@/lib/inventory/stock";
-import { Chips, FieldInput } from "./fields";
+import { FieldInput } from "./fields";
 import { hostOf } from "./ItemCard";
 import { LocationPicker } from "./LocationPicker";
 import { PhotoButtons } from "./photo";
@@ -138,10 +139,7 @@ export function ItemForm({
       }}
       className="space-y-4"
     >
-      <div>
-        <div className="label">Category</div>
-        <Chips size="lg" options={categories.map((c) => c.label)} value={cat?.label ?? ""} onPick={(label) => pickCategory(categories.find((c) => c.label === label)?.id ?? null)} />
-      </div>
+      <CategoryPicker categories={categories} value={cat} onPick={pickCategory} />
 
       {cat && fields.length > 0 && (
         <div className="grid gap-3 sm:grid-cols-2">
@@ -203,7 +201,7 @@ export function ItemForm({
             className="input min-h-11 w-full text-left active:scale-[0.98]"
             choices={d.locationId ? [{ value: null, label: "Not set" }] : []}
           >
-            {locations.find((l) => l.id === d.locationId)?.name ?? "Not set"}
+            📍 {locations.find((l) => l.id === d.locationId)?.name ?? "Not set"} <span className="text-subtle">▾</span>
           </LocationPicker>
         </div>
         <div className="min-w-36">
@@ -275,14 +273,79 @@ export function ItemForm({
       </div>
 
       {error && <p className="text-sm text-rose-700">{error}</p>}
-      <div className="flex justify-end gap-2">
-        <button type="button" className="btn min-h-11" onClick={onCancel}>
+      {/* On phones the buttons stay at the bottom of the sheet, Add full width. */}
+      <div className="flex justify-end gap-2 max-sm:sticky max-sm:bottom-0 max-sm:z-[1] max-sm:-mx-4 max-sm:border-t max-sm:border-line max-sm:bg-surface max-sm:px-4 max-sm:py-3">
+        <button type="button" className="btn min-h-11 active:scale-[0.98]" onClick={onCancel}>
           Cancel
         </button>
-        <button className="btn-primary min-h-11 px-5" disabled={pending || !name.trim()}>
+        <button className="btn-primary min-h-11 px-5 active:scale-[0.98] max-sm:flex-1" disabled={pending || !name.trim()}>
           {pending ? "Saving…" : itemId ? "Save" : "Add to inventory"}
         </button>
       </div>
     </form>
+  );
+}
+
+// The category, in two short rows instead of every category at once: the 5 groups, then the
+// categories of the open group. Once one is picked it's a single pill with "Change", so the
+// fields sit right under it (Harel, 2026-10-29: the form is filled on phones while counting).
+function CategoryPicker({ categories, value, onPick }: { categories: InvCategory[]; value: InvCategory | undefined; onPick: (id: string | null) => void }) {
+  const groups = CATEGORY_GROUPS.filter((g) => categories.some((c) => c.group === g.id));
+  const [changing, setChanging] = useState(!value);
+  const [group, setGroup] = useState<CategoryGroupId | undefined>(value?.group ?? groups[0]?.id);
+  const pill = "press min-h-10 rounded-full border px-3.5 text-sm font-semibold transition-colors duration-150 active:scale-[0.98]";
+  if (value && !changing)
+    return (
+      <div>
+        <div className="label">Category</div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`${pill} inline-flex items-center border-accent bg-accent text-white`}>{value.label}</span>
+          <button type="button" onClick={() => setChanging(true)} className={`${pill} border-line-strong text-fg-2 hover:border-sky-400/40 hover:text-accent`}>
+            Change category ▾
+          </button>
+        </div>
+      </div>
+    );
+  return (
+    <div className="space-y-2">
+      <div className="label">Category</div>
+      <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Category group">
+        {groups.map((g) => (
+          <button
+            key={g.id}
+            type="button"
+            role="tab"
+            aria-selected={g.id === group}
+            onClick={() => setGroup(g.id)}
+            className={`${pill} ${g.id === group ? "border-sky-400/60 bg-sky-500/15 text-accent" : "border-line-strong text-fg-2 hover:border-sky-400/40 hover:text-accent"}`}
+          >
+            {g.short}
+          </button>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-1.5 border-t border-line pt-2">
+        {categories
+          .filter((c) => c.group === group)
+          .map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              aria-pressed={c.id === value?.id}
+              onClick={() => {
+                onPick(c.id);
+                setChanging(false);
+              }}
+              className={`${pill} ${c.id === value?.id ? "border-accent bg-accent text-white" : "border-line-strong bg-surface text-fg-2 hover:border-sky-400/40 hover:text-accent"}`}
+            >
+              {c.label}
+            </button>
+          ))}
+        {value && (
+          <button type="button" onClick={() => setChanging(false)} className="press min-h-10 px-2 text-sm font-medium text-muted hover:text-fg">
+            Keep {value.label}
+          </button>
+        )}
+      </div>
+    </div>
   );
 }

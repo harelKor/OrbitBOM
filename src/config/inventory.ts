@@ -14,30 +14,35 @@ import type { CategoryField } from "@/db/schema";
 export const CATEGORY_GROUPS = [
   {
     id: "cots",
+    short: "COTS", // the add form's group pill
     label: "COTS & Motion",
     icon: "cog",
     text: "Gears, pulleys, belts, bearings, wheels, hubs, gearboxes",
   },
   {
     id: "consumables",
+    short: "Raw Stock", // the add form's group pill
     label: "Raw Stock",
     icon: "layers",
     text: "Plates, box & round tubes, carbon, shafts, 3D filament",
   },
   {
     id: "hardware",
+    short: "Hardware", // the add form's group pill
     label: "Hardware & Assembly",
     icon: "cube",
     text: "Screws, rivets, tapes, glues, zip ties, rigging",
   },
   {
     id: "electrical",
+    short: "Electrical", // the add form's group pill
     label: "Electrical & Control",
     icon: "bolt",
     text: "Motors, controllers, sensors, breakers, fuses, wiring",
   },
   {
     id: "tools",
+    short: "Tools", // the add form's group pill
     label: "Shop & Machining Tools",
     icon: "wrench",
     text: "CNC bits, lathe cutters, drills, taps, hand tools",

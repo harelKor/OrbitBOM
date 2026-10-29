@@ -209,6 +209,18 @@ body {
   animation: modal-pop 220ms var(--ease-snap) backwards;
 }
 
+/* A window that opens as a bottom sheet on phones slides up from the bottom edge. */
+@utility sheet-up {
+  animation: sheet-up 260ms var(--ease-snap) backwards;
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(40%);
+    opacity: 0.4;
+  }
+}
+
 @keyframes modal-pop {
   from {
     opacity: 0;

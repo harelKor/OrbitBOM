@@ -8,6 +8,7 @@ export function Dialog({
   title,
   wide = false,
   width,
+  sheet = false,
   children,
 }: {
   open: boolean;
@@ -15,6 +16,7 @@ export function Dialog({
   title: React.ReactNode;
   wide?: boolean;
   width?: string; // a width class, in place of the two standard widths
+  sheet?: boolean; // on phones: a full-width sheet up from the bottom, its title bar kept in view
   children: React.ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -32,15 +34,17 @@ export function Dialog({
       onClose={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
-      className={`m-auto ${width ?? (wide ? "w-[min(40rem,calc(100vw-2rem))]" : "w-[min(28rem,calc(100vw-2rem))]")} modal p-0`}
+      className={`m-auto ${width ?? (wide ? "w-[min(40rem,calc(100vw-2rem))]" : "w-[min(28rem,calc(100vw-2rem))]")} modal p-0 ${sheet ? SHEET : ""}`}
     >
-      <div className="flex items-center justify-between border-b border-line px-5 py-3">
+      <div className={`flex items-center justify-between border-b border-line px-5 py-3 ${sheet ? "sticky top-0 z-[2] bg-surface max-sm:px-4" : ""}`}>
         <h2 className="min-w-0 flex-1 font-semibold">{title}</h2>
         <button type="button" onClick={onClose} className="press rounded p-1 text-muted hover:text-fg" aria-label="Close">
           ✕
         </button>
       </div>
-      <div className="p-5">{children}</div>
+      <div className={sheet ? "p-5 max-sm:px-4 max-sm:pb-[max(1.25rem,env(safe-area-inset-bottom))]" : "p-5"}>{children}</div>
     </dialog>
   );
 }
+
+const SHEET = "max-sm:mx-0! max-sm:mt-auto! max-sm:mb-0! max-sm:w-full! max-sm:max-w-full! max-sm:max-h-[90dvh]! max-sm:rounded-b-none! max-sm:border-b-0! max-sm:sheet-up";

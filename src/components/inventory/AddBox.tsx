@@ -3,8 +3,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { findProducts, readProductLink, saveItem } from "@/app/(app)/inventory/actions";
+import { Dialog } from "@/components/Dialog";
 import { useCan } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
+import { usePhone } from "@/components/ui/usePhone";
 import { guessCategory } from "@/config/inventory";
 import { buildName, getCategory } from "@/lib/inventory/categories";
 import type { Offer, ProductGroup } from "@/lib/inventory/productGroups";
@@ -21,9 +23,10 @@ export const isLink = (s: string) => /^https?:\/\/\S+\.\S+/i.test(s.trim());
 // The one box at the top of Inventory. In View mode it filters the shelf ("Do we have it?"). In
 // Edit mode it also adds: as you type, items already on the shelf, products from the team's
 // stores (the same product from several stores is one row, pick the store), smart typing
-// ("36t htd 1/2 hex pulley"; when every word was understood, one click saves it), "+ Create" for
-// the typed name, and a chip per category for a custom item. Enter only confirms the search. A pasted product link is read from the page. The add form
-// opens under the box and stays put for the next item.
+// ("36t htd 1/2 hex pulley"; when every word was understood, one click saves it, "Customize specs…"
+// opens the form instead), else one "+ Create" for the typed name. Enter only confirms the search.
+// A pasted product link is read from the page. The add form opens under the box and stays put for
+// the next item; on phones the results take the whole width and the form is a bottom sheet.
 export function AddBox({
   q,
   setQ,
@@ -63,6 +66,7 @@ export function AddBox({
   const [saved, setSaved] = useState<{ id: string; name: string; draft: Draft; message?: string } | null>(null);
   const [quickSaving, startQuickSave] = useTransition();
   const box = useRef<HTMLInputElement>(null);
+  const phone = usePhone();
 
   const query = q.trim();
   const link = isLink(query);
@@ -117,43 +121,48 @@ export function AddBox({
       setSaved({ id: r.id, name: quickName, draft, message: r.message });
       setQ("");
     });
+  // The add form with what was typed and what it understood; else the page's category.
   const custom = (categoryId: string) =>
-    start(quick?.categoryId === categoryId ? { category: categoryId, specs: quick.specs } : { category: categoryId, name: query, nameTouched: !!query });
-
-  // The results' "+ Create" button: the add form with what was typed (and what it understood).
+    start(Object.keys(quick!.specs).length ? { category: categoryId, specs: quick!.specs } : { category: categoryId, name: query, nameTouched: !!query });
   const createNew = () => (quick ? custom(quick.categoryId) : start({ category: defaultCategory, name: query, nameTouched: true }));
 
   const open = edit && focus && !!query && !draft;
 
   // Floating results: fixed in the window's top layer, under the box (or over it when there's
-  // more room above), as wide as useful and as tall as the screen allows.
+  // more room above), as wide as useful and as tall as the screen allows. On phones the results
+  // always float, the whole width of the screen under the box (on Inventory the box shares its
+  // row with Scan and Map, Harel 2026-10-29), over a dimmed page that closes them when tapped.
   const label = useRef<HTMLLabelElement>(null);
+  const floats = floating || phone;
   const [float, setFloat] = useState<{ host: Element; style: React.CSSProperties } | null>(null);
   useLayoutEffect(() => {
-    if (!floating || !open) return;
+    if (!floats || !open) return;
     const place = () => {
       const el = label.current;
       if (!el) return;
       const r = el.getBoundingClientRect();
       const vw = window.innerWidth;
-      const vh = window.innerHeight;
-      const width = Math.min(Math.max(r.width, 448), vw - 16);
-      const left = Math.min(Math.max(8, r.right - width), vw - width - 8);
+      // The keyboard covers the bottom of a phone's screen.
+      const vh = window.visualViewport?.height ?? window.innerHeight;
+      const width = phone ? vw - 24 : Math.min(Math.max(r.width, 448), vw - 16);
+      const left = phone ? 12 : Math.min(Math.max(8, r.right - width), vw - width - 8);
       const below = vh - r.bottom - 14;
-      const up = below < 280 && r.top > below;
+      const up = !phone && below < 280 && r.top > below;
       const style: React.CSSProperties = up
         ? { left, width, bottom: vh - r.top + 6, maxHeight: r.top - 14 }
-        : { left, width, top: r.bottom + 6, maxHeight: below };
+        : { left, width, top: r.bottom + 6, maxHeight: Math.max(below, 200) };
       setFloat({ host: el.closest("dialog") ?? document.body, style });
     };
     place();
     window.addEventListener("resize", place);
     window.addEventListener("scroll", place, true);
+    window.visualViewport?.addEventListener("resize", place);
     return () => {
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
+      window.visualViewport?.removeEventListener("resize", place);
     };
-  }, [floating, open]);
+  }, [floats, open, phone]);
 
   const results = (
     <>
@@ -161,12 +170,25 @@ export function AddBox({
         <Row onClick={readLink} icon="download" title={reading ? "Reading the page…" : "Read this product link"} detail="Name, price and photo from the store's page" />
       )}
       {quickName && (
-        <Row
-          onClick={() => (quickWhole ? quickSave() : custom(quick!.categoryId))}
-          icon="spark"
-          title={quickSaving ? "Adding…" : `Add “${quickName}”`}
-          detail={quickWhole ? `${quickCat!.label} · adds it, ${newStock} in stock` : `${quickCat!.label} · finish the details`}
-        />
+        <div className="flex items-center gap-1">
+          <div className="min-w-0 flex-1">
+            <Row
+              onClick={() => (quickWhole ? quickSave() : custom(quick!.categoryId))}
+              icon="spark"
+              title={quickSaving ? "Adding…" : `Add “${quickName}”`}
+              detail={quickWhole ? `${quickCat!.label} · adds it, ${newStock} in stock` : `${quickCat!.label} · finish the details`}
+            />
+          </div>
+          {quickWhole && (
+            <button
+              type="button"
+              onClick={() => custom(quick!.categoryId)}
+              className="press min-h-10 shrink-0 rounded-full border border-line-strong px-3 text-xs font-semibold text-fg-2 transition-colors duration-150 hover:border-sky-400/40 hover:text-accent active:scale-[0.98]"
+            >
+              Customize specs…
+            </button>
+          )}
+        </div>
       )}
 
       {onShelf.length > 0 && (
@@ -177,7 +199,8 @@ export function AddBox({
         </Section>
       )}
 
-      {!link && (
+      {/* One way to create: the understood line above, else the typed name. */}
+      {!link && !quickName && (
         <button
           type="button"
           onClick={createNew}
@@ -246,24 +269,60 @@ export function AddBox({
           )}
         </Section>
       )}
-
-      {!link && (
-        <Section title="Make it custom">
-          <div className="flex flex-wrap gap-1.5 px-1">
-            {categories.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => custom(c.id)}
-                className={`press min-h-10 rounded-full border px-3.5 text-sm font-semibold ${c.id === quick?.categoryId ? "border-accent bg-accent text-white" : "border-line-strong text-fg-2 hover:border-accent hover:text-accent"}`}
-              >
-                {c.noun || c.label}
-              </button>
-            ))}
-          </div>
-        </Section>
-      )}
     </>
+  );
+  const addedBanner = saved && (
+    <div className={`flex flex-wrap items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-300 ${phone ? "" : "mt-2"}`}>
+      <span className="min-w-0 flex-1">
+        Added <span className="font-semibold">{saved.name}</span>.{saved.message && ` ${saved.message}`}
+      </span>
+      <button
+        type="button"
+        className="btn min-h-10 active:scale-[0.98]"
+        onClick={() => {
+          if (phone) setSaved(null);
+          openItem(saved.id);
+        }}
+      >
+        Edit
+      </button>
+      <button type="button" className="btn min-h-10 active:scale-[0.98]" onClick={() => setDraft({ ...saved.draft, inStock: "1", links: [], imageUrl: null, price: null, photo: null })}>
+        Add another like this
+      </button>
+      {phone ? (
+        <button type="button" className="btn-primary min-h-10 w-full active:scale-[0.98]" onClick={() => start({ category: saved.draft.category, locationId: saved.draft.locationId, locationTouched: true })}>
+          + Add a different item
+        </button>
+      ) : (
+        <button type="button" className="press text-emerald-700" aria-label="Dismiss" onClick={() => setSaved(null)}>
+          <Icon name="close" className="h-4 w-4" />
+        </button>
+      )}
+    </div>
+  );
+  const form = draft && (
+    <ItemForm
+      itemId={null}
+      draft={draft}
+      setDraft={setDraft}
+      categories={categories}
+      locations={locations}
+      conditions={conditions}
+      items={items}
+      onCancel={() => setDraft(null)}
+      onSaved={(id, message) => {
+        if (onPick) {
+          onPick(id);
+          setDraft(null);
+          return setQ("");
+        }
+        const cat = getCategory(categories, draft.category);
+        const name = draft.nameTouched || !cat ? draft.name : buildName(cat, draft.specs) || draft.name;
+        setSaved({ id, name, draft, message });
+        setDraft(null);
+        setQ("");
+      }}
+    />
   );
   const panel = "space-y-3 overflow-y-auto rounded-2xl border border-line-strong bg-surface p-3 shadow-[0_16px_40px_-12px_rgba(17,19,24,0.35)]";
   return (
@@ -305,12 +364,18 @@ export function AddBox({
       )}
 
       {open &&
-        (floating
+        (floats
           ? float &&
             createPortal(
-              <div style={float.style} className={`fixed z-[60] ${panel}`} onMouseDown={(e) => e.preventDefault()}>
-                {results}
-              </div>,
+              <>
+                {phone && float.style.top != null && (
+                  // Tapping the dimmed page blurs the box, which closes the results.
+                  <div aria-hidden style={{ top: float.style.top }} className="modal-backdrop fixed inset-x-0 bottom-0 z-[59]" />
+                )}
+                <div style={float.style} className={`fixed z-[60] ${panel}`} onMouseDown={(e) => e.preventDefault()}>
+                  {results}
+                </div>
+              </>,
               float.host,
             )
           : (
@@ -320,47 +385,17 @@ export function AddBox({
           ))}
 
       {readError && <p className="mt-2 text-sm text-amber-700">{readError}</p>}
-      {saved && !draft && (
-        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-300">
-          <span className="min-w-0 flex-1">
-            Added <span className="font-semibold">{saved.name}</span>.{saved.message && ` ${saved.message}`}
-          </span>
-          <button type="button" className="btn min-h-10" onClick={() => openItem(saved.id)}>
-            Edit
-          </button>
-          <button type="button" className="btn min-h-10" onClick={() => setDraft({ ...saved.draft, inStock: "1", links: [], imageUrl: null, price: null, photo: null })}>
-            Add another like this
-          </button>
-          <button type="button" className="press text-emerald-700" aria-label="Dismiss" onClick={() => setSaved(null)}>
-            <Icon name="close" className="h-4 w-4" />
-          </button>
-        </div>
-      )}
-      {draft && (
-        <div className="panel mt-3 p-4">
-          <ItemForm
-            itemId={null}
-            draft={draft}
-            setDraft={setDraft}
-            categories={categories}
-            locations={locations}
-            conditions={conditions}
-            items={items}
-            onCancel={() => setDraft(null)}
-            onSaved={(id, message) => {
-              if (onPick) {
-                onPick(id);
-                setDraft(null);
-                return setQ("");
-              }
-              const cat = getCategory(categories, draft.category);
-              const name = draft.nameTouched || !cat ? draft.name : buildName(cat, draft.specs) || draft.name;
-              setSaved({ id, name, draft, message });
-              setDraft(null);
-              setQ("");
-            }}
-          />
-        </div>
+      {phone ? (
+        // On phones the form is a sheet from the bottom, the whole width, its Add button always
+        // in view; after adding it stays open to add the next one.
+        <Dialog open={!!draft || !!saved} onClose={() => (setDraft(null), setSaved(null))} title={draft ? "Add an item" : "Added"} sheet>
+          {saved && !draft ? addedBanner : form}
+        </Dialog>
+      ) : (
+        <>
+          {saved && !draft && addedBanner}
+          {draft && <div className="panel mt-3 p-4">{form}</div>}
+        </>
       )}
     </div>
   );
