@@ -141,7 +141,19 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
   const count = (itemId: string, amount: number) => saveNow(itemId, (i) => ({ inStock: snapStock(amount, i.sheet) }), () => countStock(itemId, amount));
 
   const item = state?.kind === "item" ? (state.data?.item ?? state.preview) : null;
-  const title = state?.kind === "item" ? (item?.name ?? "Inventory item") : state?.kind === "material" ? state.name : "";
+  // An item without its own photo has no picture box, so its name anchors the window instead.
+  const title =
+    state?.kind === "item" ? (
+      item && !item.thumbUrl ? (
+        <span className="block text-2xl font-bold tracking-tight text-fg sm:text-3xl">{item.name}</span>
+      ) : (
+        (item?.name ?? "Inventory item")
+      )
+    ) : state?.kind === "material" ? (
+      state.name
+    ) : (
+      ""
+    );
   return (
     <Ctx.Provider value={{ openItem, openMaterial }}>
       {children}
@@ -322,7 +334,23 @@ function ItemBody({
   const onMap = location?.mapX != null && location?.mapY != null;
   const [showMap, setShowMap] = useState(false);
   const usage = item.usage;
-  const picture = item.thumbUrl ?? cat?.imageUrl ?? null;
+  // Only the item's own photo gets the picture box; the dimmed category drawing stays on the card.
+  const picture = photo ?? item.thumbUrl ?? null;
+  const photoButtons = (
+    <Can cap="work">
+      <PhotoButtons
+        compact
+        onPhoto={(p) =>
+          startPhoto(async () => {
+            setPhoto(p.preview);
+            const r = await setItemPhoto(item.id, p.key);
+            if (r.error) setMessage(r.error);
+            else onSaved();
+          })
+        }
+      />
+    </Can>
+  );
 
   if (mode === "edit" && data)
     return (
@@ -352,29 +380,15 @@ function ItemBody({
     <div className="space-y-4">
       {/* On phones the picture sits above the count and pills, each the whole width. */}
       <div className="flex flex-col gap-4 sm:flex-row">
-        <div className="shrink-0 space-y-1.5">
-          <div className="thumb-well flex h-44 w-full items-center justify-center rounded-xl sm:h-56 sm:w-56">
-            {photo || picture ? (
-              // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
-              <img src={photo ?? picture!} alt="" className="h-full w-full object-contain p-2" />
-            ) : (
-              <Icon name="box" className="h-12 w-12 text-subtle" />
-            )}
+        {picture && (
+          <div className="shrink-0 space-y-1.5">
+            <div className="thumb-well flex h-44 w-full items-center justify-center rounded-xl sm:h-56 sm:w-56">
+              {/* eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable */}
+              <img src={picture} alt="" className="h-full w-full object-contain p-2" />
+            </div>
+            {photoButtons}
           </div>
-          <Can cap="work">
-            <PhotoButtons
-              compact
-              onPhoto={(p) =>
-                startPhoto(async () => {
-                  setPhoto(p.preview);
-                  const r = await setItemPhoto(item.id, p.key);
-                  if (r.error) setMessage(r.error);
-                  else onSaved();
-                })
-              }
-            />
-          </Can>
-        </div>
+        )}
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap gap-1">
             {cat && (
@@ -441,6 +455,7 @@ function ItemBody({
               </Link>
             </div>
           )}
+          {!picture && photoButtons}
           <Stepper item={item} onStep={onStep} onCount={onCount} big />
           <div className="text-xs text-muted">
             {[

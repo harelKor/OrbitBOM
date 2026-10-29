@@ -113,8 +113,8 @@ export function InventoryView({
   const [conditionId, setConditionId] = useState("");
   // A category's spec filter picks (ID 8, Type Flanged...), forgotten on another category.
   const [specPick, setSpecPick] = useState<{ cat: string; picks: SpecPicks } | null>(null);
-  // The location filter lives in the URL (?loc=), so the 📍 pills, the card tags and the
-  // Any location menu share it on every Inventory page, and Back steps out of it.
+  // The location filter lives in the URL (?loc=), so the workshop map and the card tags share
+  // it on every Inventory page, and Back steps out of it.
   const params = useSearchParams();
   const locationId = params.get("loc") ?? "";
   const setLocationId = (id: string) => pushQuery({ loc: id || null });
@@ -179,15 +179,28 @@ export function InventoryView({
     return m;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- locationOf follows the groups
   }, [optimistic, lookups.groups]);
+  // The map is the only location filter; a pin picked there shows as a ✕ chip beside the button.
   const mapButton = (
-    <button
-      type="button"
-      onClick={() => setMapOpen(true)}
-      className="btn min-h-12 shrink-0 self-start active:scale-[0.98]"
-      title="Open the workshop map"
-    >
-      <span aria-hidden>🗺️</span> Map
-    </button>
+    <div className="flex shrink-0 items-center gap-1.5 self-start">
+      <button
+        type="button"
+        onClick={() => setMapOpen(true)}
+        className="btn min-h-12 active:scale-[0.98]"
+        title="Open the workshop map"
+      >
+        <span aria-hidden>🗺️</span> Map
+      </button>
+      {activeLocation && (
+        <button
+          type="button"
+          onClick={() => setLocationId("")}
+          className="press max-w-32 truncate rounded-full border border-accent bg-accent px-3 py-1.5 text-xs font-semibold text-white active:scale-[0.98]"
+          title="Clear the location filter"
+        >
+          📍 {activeLocation.name} ✕
+        </button>
+      )}
+    </div>
   );
   const query = q.trim().toLowerCase();
   const matches = (i: Item) => {
@@ -327,7 +340,7 @@ export function InventoryView({
 
   // Phones: the two selects share their own row, half each.
   const filters = (
-    <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
+    <div className="flex w-full gap-2 sm:w-auto">
       <select
         value={conditionId}
         onChange={(e) => setConditionId(e.target.value)}
@@ -337,18 +350,6 @@ export function InventoryView({
         {conditions.map((c) => (
           <option key={c.id} value={c.id}>
             {c.label}
-          </option>
-        ))}
-      </select>
-      <select
-        value={locationId}
-        onChange={(e) => setLocationId(e.target.value)}
-        className="input min-h-12 w-full min-w-0 self-start sm:w-auto"
-      >
-        <option value="">Any location</option>
-        {locations.map((l) => (
-          <option key={l.id} value={l.id}>
-            {l.name}
           </option>
         ))}
       </select>
@@ -557,16 +558,6 @@ export function InventoryView({
           {mapButton}
         </div>
         {!boxes && !showBoxes && filters}
-        {activeLocation && (
-          <button
-            type="button"
-            onClick={() => setLocationId("")}
-            className="press min-h-9 self-center rounded-full border border-accent bg-accent px-3 py-1.5 text-xs font-semibold text-white active:scale-[0.98]"
-            title="Clear the location filter"
-          >
-            📍 {activeLocation.name} ✕
-          </button>
-        )}
       </div>
 
       {/* The workshop map opens as a window over the page; a pin picked there stays as the
