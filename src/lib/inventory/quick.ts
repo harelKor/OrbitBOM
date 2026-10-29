@@ -63,6 +63,12 @@ const mm = (n: string) => `${n}mm`;
 // Words the shop uses for a category's sub-types and values, by category id. A rule's values
 // that the category doesn't offer are left out, and the words it matched are used up.
 const SHOP_WORDS: Record<string, Rule[]> = {
+  // "8x16x5", "8×16×5mm", "6.35*17.46*7.9 flanged": ID, OD and thickness in mm.
+  bearings: [
+    [/(\d+(?:\.\d+)?)\s*[x×*]\s*(\d+(?:\.\d+)?)\s*[x×*]\s*(\d+(?:\.\d+)?)(?:\s*mm\b)?/, (m) => ({ bore: m[1], od: m[2], width: m[3] })],
+    [/flange\w*|פלאנג\S*/, () => ({ flanged: "Flanged" })],
+    [/\bradial\b|רדיאל\S*/, () => ({ flanged: "Radial" })],
+  ],
   "adhesives-tapes": [
     [/\bepoxy\b|אפוקסי/, () => ({ type: "Glue", glue: "Epoxy" })],
     [/super\s*glue|\bca\b(\s*glue)?/, () => ({ type: "Glue", glue: "Super Glue (CA)" })],

@@ -323,6 +323,13 @@
       "when": 1793226167833,
       "tag": "0045_remove_c5",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1793266813895,
+      "tag": "0046_bearing_sizes",
+      "breakpoints": true
     }
   ]
 }

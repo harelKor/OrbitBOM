@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { DEFAULT_CATEGORIES } from "@/config/inventory";
 import { db, schema } from "@/db";
 import type { CategoryField } from "@/db/schema";
+import { bearingSize } from "./categories";
 import { recordItemChanges } from "./history";
 import { specKey } from "./specFilters";
 
@@ -11,9 +12,11 @@ import { specKey } from "./specFilters";
 // bearing gets clean bore / od / width / flanged values, read from its name where they're missing
 // ("Bearing 8×16×5mm flanged"); the old hidden "id" value becomes the bore. Runs from
 // /api/cron/inventory-seed (?step=bearings&dry=1, then ?step=bearings). Safe to run again.
+// 2026-10-29: metric values are bare millimetres ("8", not "8mm") and bearings with all three
+// sizes are named ID x OD x Thick: "Bearing 8×16×5mm flanged" → "8x16x5 Flanged Bearing".
 
 const { inventoryItems, inventoryCategories, onshapeCache } = schema;
-const BACKUP = "inventory-seed:bearings-backup-2026-10-28";
+const BACKUP = "inventory-seed:bearings-backup-2026-10-29";
 const ctx = { memberId: null, via: "sync" as const };
 
 type Specs = Record<string, string>;
@@ -23,20 +26,20 @@ const BORES = seed.fields.find((f) => f.id === "bore")!.options ?? [];
 const INCH_BORES = BORES.filter((b) => b.includes('"'));
 
 const tidy = (v: string | undefined) => (v ?? "").replace(/\s+/g, " ").trim();
-const mm = (v: string) => (/^\d+(\.\d+)?$/.test(v) ? `${v}mm` : v.replace(/\s+mm$/i, "mm"));
+const mm = (v: string) => v.replace(/^(\d+(?:\.\d+)?)\s*mm$/i, "$1");
 const optionOf = (v: string) => BORES.find((b) => specKey(b) === specKey(v));
 
 export function cleanBearing(name: string, specs: Specs): Specs {
   const out: Specs = {};
   for (const [k, v] of Object.entries(specs)) if (tidy(v)) out[k] = tidy(v);
 
-  // "Bearing 8×16×5mm", "Bearing 3/4" × 1 3/8" × 0.43" (odd)"
-  const metric = name.match(/(\d+(?:\.\d+)?)\s*[×x]\s*(\d+(?:\.\d+)?)\s*[×x]\s*(\d+(?:\.\d+)?)\s*mm/i);
+  // "Bearing 8×16×5mm", "8x16x5 Bearing", "Bearing 3/4" × 1 3/8" × 0.43" (odd)"
   const inch = name.match(/(\d+(?:[./]\d+)?)"\s*[×x]\s*(\d+(?:\s\d+\/\d+|[./]\d+)?)"\s*[×x]\s*(\d+(?:[./]\d+)?)"/i);
+  const metric = inch ? null : name.match(/(\d+(?:\.\d+)?)\s*[×x*]\s*(\d+(?:\.\d+)?)\s*[×x*]\s*(\d+(?:\.\d+)?)(?![\d."])/i);
   if (metric) {
-    out.bore ||= `${metric[1]}mm`;
-    out.od ||= `${metric[2]}mm`;
-    out.width ||= `${metric[3]}mm`;
+    out.bore ||= metric[1];
+    out.od ||= metric[2];
+    out.width ||= metric[3];
   } else if (inch) {
     out.bore ||= `${inch[1]}" Round`;
     out.od ||= `${inch[2]}"`;
@@ -60,13 +63,25 @@ export function cleanBearing(name: string, specs: Specs): Specs {
   return out;
 }
 
+// The name for a bearing with all three sizes: "8x16x5 Flanged Bearing", keeping a trailing note
+// like "(odd)". Other names stay.
+export function bearingName(name: string, specs: Specs): string {
+  const size = bearingSize(specs);
+  if (!size || !/\d\s*"?\s*[×x*]/i.test(name)) return name;
+  const note = name.match(/\s*\((?!radial)[^)]*\)\s*$/i)?.[0].trim();
+  return [size, specs.flanged === "Flanged" ? "Flanged" : "", "Bearing", note].filter(Boolean).join(" ");
+}
+
 export async function cleanBearings(dry: boolean) {
   const [live] = await db.select().from(inventoryCategories).where(eq(inventoryCategories.id, "bearings"));
   if (!live) return { error: "No Bearings category." };
   const items = await db.select().from(inventoryItems).where(eq(inventoryItems.category, "bearings"));
   const changed = items
-    .map((item) => ({ item, specs: cleanBearing(item.name, item.specs) }))
-    .filter((c) => JSON.stringify(c.specs) !== JSON.stringify(c.item.specs));
+    .map((item) => {
+      const specs = cleanBearing(item.name, item.specs);
+      return { item, specs, name: bearingName(item.name, specs) };
+    })
+    .filter((c) => c.name !== c.item.name || JSON.stringify(c.specs) !== JSON.stringify(c.item.specs));
 
   // The config's fields; a field the config doesn't have stays, hidden, while an item holds it.
   const ids = new Set(seed.fields.map((f) => f.id));
@@ -80,7 +95,7 @@ export async function cleanBearings(dry: boolean) {
 
   const preview = {
     fields: fields.map((f) => `${f.label}${f.hidden ? " (hidden)" : ""}`),
-    items: changed.map((c) => ({ name: c.item.name, before: c.item.specs, after: c.specs })),
+    items: changed.map((c) => ({ name: c.item.name, renamed: c.name, before: c.item.specs, after: c.specs })),
     untouched: items.length - changed.length,
   };
   if (dry) return { dry: true, ...preview };
@@ -90,12 +105,12 @@ export async function cleanBearings(dry: boolean) {
     if (!had)
       await tx.insert(onshapeCache).values({
         key: BACKUP,
-        payload: { category: live, items: changed.map((c) => ({ id: c.item.id, specs: c.item.specs })) },
+        payload: { category: live, items: changed.map((c) => ({ id: c.item.id, name: c.item.name, specs: c.item.specs })) },
       });
     await tx.update(inventoryCategories).set({ fields }).where(eq(inventoryCategories.id, "bearings"));
     for (const c of changed) {
-      await tx.update(inventoryItems).set({ specs: c.specs }).where(eq(inventoryItems.id, c.item.id));
-      await recordItemChanges(tx, c.item.id, c.item, { specs: c.specs }, ctx);
+      await tx.update(inventoryItems).set({ name: c.name, specs: c.specs }).where(eq(inventoryItems.id, c.item.id));
+      await recordItemChanges(tx, c.item.id, c.item, { name: c.name, specs: c.specs }, ctx);
     }
   });
   return { itemsChanged: changed.length, ...preview };

@@ -110,7 +110,7 @@ export function InventoryView({
   const phone = usePhone();
   const [boxFocus, setBoxFocus] = useState(false);
   const [conditionId, setConditionId] = useState("");
-  // A category's spec filter picks (Bore (ID) 8mm, Type Flanged...), forgotten on another category.
+  // A category's spec filter picks (ID 8, Type Flanged...), forgotten on another category.
   const [specPick, setSpecPick] = useState<{ cat: string; picks: SpecPicks } | null>(null);
   // The location filter lives in the URL (?loc=), so the 📍 pills, the card tags and the
   // Any location menu share it on every Inventory page, and Back steps out of it.
@@ -228,7 +228,7 @@ export function InventoryView({
     (!cat || i.category === cat);
   const red = (i: Item) => standing(i, need) === "short";
 
-  // In a category: a labeled row of pills per spec field (Bearings: Bore (ID), OD, Width, Type),
+  // In a category: a labeled row of pills per spec field (Bearings: ID, OD, Thick, Type),
   // each showing only the values the other picks leave (Harel, 2026-10-28).
   const focusCat = getCategory(categories, scope.kind === "category" ? scope.id : cat);
   const picks = specPick && specPick.cat === focusCat?.id ? specPick.picks : {};

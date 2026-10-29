@@ -1,5 +1,5 @@
-// A category page's spec filters: one labeled row of pills per field (Bearings: Bore (ID), OD,
-// Width, Type), each value once however it was typed ("8mm", "8 mm"), in a sensible order (inch
+// A category page's spec filters: one labeled row of pills per field (Bearings: ID, OD,
+// Thick, Type), each value once however it was typed ("8mm", "8 mm"), in a sensible order (inch
 // sizes, then metric smallest first, then words), and only the values the other picks leave.
 
 import { activeFields, typeFieldOf, type CategoryField, type InvCategory } from "./categories";

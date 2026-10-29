@@ -65,9 +65,24 @@ export function dropInactive(cat: InvCategory, specs: Record<string, string>): R
 
 const plain = (v: string) => v.replace(/\s*\([^)]*\)/g, "").trim();
 
+// A bearing's size as ID x OD x Thick: "8x16x5", "0.6\"x1.2\"x0.2\"", or spaced when a value has a
+// space ("3/4\" x 1 3/8\" x 0.43\""). Empty unless all three are set (Harel, 2026-10-29).
+export function bearingSize(specs: Record<string, string>): string {
+  const dims = [specs.bore, specs.od, specs.width].map((v) =>
+    (v ?? "")
+      .trim()
+      .replace(/\s+Round$/i, "")
+      .replace(/^(\d+(?:\.\d+)?)\s*mm$/i, "$1"),
+  );
+  if (dims.some((d) => !d)) return "";
+  return dims.join(dims.some((d) => d.includes(" ")) ? " x " : "x");
+}
+
 // "36T HTD 5mm 9mm wide 1/2" Hex Pulley": each value through its field's `name`, then the noun.
 // A sub-type ("M5 Tap") goes last like a noun, and neither repeats a word the name already has.
 export function buildName(cat: InvCategory, specs: Record<string, string>): string {
+  const size = cat.id === "bearings" ? bearingSize(specs) : "";
+  if (size) return [size, specs.flanged === "Flanged" ? "Flanged" : "", cat.noun].filter(Boolean).join(" ");
   const type = typeFieldOf(cat);
   const parts = activeFields(cat, specs).flatMap((f) => {
     const v = specs[f.id]?.trim();
@@ -86,6 +101,8 @@ export function buildName(cat: InvCategory, specs: Record<string, string>): stri
 // The values in one short line for a card: "36T · HTD 5mm · 1/2" Hex".
 export function specLine(cat: InvCategory | undefined, specs: Record<string, string>): string {
   if (!cat) return Object.values(specs).filter(Boolean).join(" · ");
+  const size = cat.id === "bearings" ? bearingSize(specs) : "";
+  if (size) return [size, specs.flanged].filter(Boolean).join(" · ");
   return activeFields(cat, specs)
     .filter((f) => specs[f.id])
     .map((f) => (f.id === "teeth" ? `${specs[f.id]}T` : specs[f.id]))

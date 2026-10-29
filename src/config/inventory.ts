@@ -81,6 +81,7 @@ const PITCHES = ["GT2 3mm", "HTD 5mm"];
 // Motor shafts, for pinion gears and motor pulleys (they live in Gears and Pulleys).
 const MOTOR_BORES = ["8mm SplineXS", "Falcon", "Kraken", "RS775", "CIM"];
 // Bearing bores: the inch hex and round ones first, then the shop's metric sizes, each once.
+// Metric sizes are bare millimetres, so a bearing reads "8x16x5" (Harel, 2026-10-29).
 const BEARING_BORES = [
   '1/2" Hex',
   '3/8" Hex',
@@ -91,20 +92,22 @@ const BEARING_BORES = [
   '1/4" Round',
   '3/4" Round',
   '0.6" Round',
-  "4mm",
-  "5mm",
-  "6mm",
-  "6.35mm",
-  "8mm",
-  "9mm",
-  "9.5mm",
-  "10mm",
-  "12mm",
-  "15mm",
-  "17mm",
-  "20mm",
-  "25mm",
-  "30mm",
+  "3",
+  "4",
+  "5",
+  "6",
+  "6.35",
+  "7",
+  "8",
+  "9",
+  "9.5",
+  "10",
+  "12",
+  "15",
+  "17",
+  "20",
+  "25",
+  "30",
 ];
 const THREADS = ["M3", "M4", "M5", "M6", "#10-32", "#8-32"];
 const AWG = [
@@ -238,17 +241,20 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     label: "Bearings",
     image: "/categories/bearings.png",
     noun: "Bearing",
-    match: /bearing|bushing/i,
+    // A bare size ("8x16x5", "8×16×5mm flanged") is a bearing too.
+    match:
+      /bearing|bushing|מיסב|^\s*\d+(?:\.\d+)?\s*[x×*]\s*\d+(?:\.\d+)?\s*[x×*]\s*\d+(?:\.\d+)?\s*(?:mm)?(?:\s+(?:flanged?|radial|פלאנג\S*))?\s*$/i,
     fields: [
-      // Filters read Bore (ID) → OD → Width → Type (Harel, 2026-10-28).
+      // Filters and names read ID x OD x Thick, then Type: "8x16x5 Flanged Bearing"
+      // (Harel, 2026-10-29). Metric values are bare millimetres, inch ones keep their ".
       {
         id: "bore",
-        label: "Bore (ID)",
+        label: "ID",
         kind: "options",
         options: BEARING_BORES,
       },
       { id: "od", label: "OD", kind: "text", name: "{} OD" },
-      { id: "width", label: "Width", kind: "text", name: "{} wide" },
+      { id: "width", label: "Thick", kind: "text", name: "{} thick" },
       {
         id: "flanged",
         label: "Type",

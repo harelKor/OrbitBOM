@@ -1,13 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_CATEGORIES } from "@/config/inventory";
 import type { InvCategory } from "./categories";
-import { buildName } from "./categories";
+import { buildName, specLine } from "./categories";
 import { parseQuick } from "./quick";
 
 const cats: InvCategory[] = DEFAULT_CATEGORIES.map((c) => ({ id: c.id, label: c.label, noun: c.noun, group: c.group, sheet: !!c.sheet, image: null, defaultLocationId: null, fields: c.fields }));
 const pulleys = cats.find((c) => c.id === "pulleys")!;
 
 describe("parseQuick", () => {
+  it("reads a bearing's ID x OD x thickness", () => {
+    expect(parseQuick("8x16x5", cats)).toEqual({ categoryId: "bearings", specs: { bore: "8", od: "16", width: "5" }, left: [] });
+    expect(parseQuick("8×16×5mm flanged", cats)).toEqual({ categoryId: "bearings", specs: { bore: "8", od: "16", width: "5", flanged: "Flanged" }, left: [] });
+    expect(parseQuick("8*16*5 radial bearing", cats)?.specs).toEqual({ bore: "8", od: "16", width: "5", flanged: "Radial" });
+    expect(parseQuick("6.35x17.46x7.9", cats)?.specs).toEqual({ bore: "6.35", od: "17.46", width: "7.9" });
+    expect(parseQuick("מיסב 8x16x5 פלאנג", cats)?.specs).toEqual({ bore: "8", od: "16", width: "5", flanged: "Flanged" });
+  });
   it("reads a pulley from plain typing", () => {
     expect(parseQuick("36t htd 1/2 hex pulley", cats)).toEqual({ categoryId: "pulleys", specs: { teeth: "36", pitch: "HTD 5mm", bore: '1/2" Hex' }, left: [] });
   });
@@ -51,6 +58,14 @@ describe("parseQuick with sub-types", () => {
 });
 
 describe("buildName", () => {
+  it("names bearings ID x OD x Thick", () => {
+    const b = cats.find((c) => c.id === "bearings")!;
+    expect(buildName(b, { bore: "8", od: "16", width: "5", flanged: "Flanged" })).toBe("8x16x5 Flanged Bearing");
+    expect(buildName(b, { bore: "8", od: "16", width: "5", flanged: "Radial" })).toBe("8x16x5 Bearing");
+    expect(buildName(b, { bore: '1/2" Hex', flanged: "Flanged" })).toBe('1/2" Hex Flanged Bearing');
+    expect(buildName(b, { bore: '1/2" Hex' })).toBe('1/2" Hex Bearing');
+    expect(specLine(b, { bore: "8", od: "16", width: "5", flanged: "Flanged" })).toBe("8x16x5 · Flanged");
+  });
   it("puts the sub-type last and doesn't repeat it", () => {
     const get = (id: string) => cats.find((c) => c.id === id)!;
     expect(buildName(get("drills-taps"), { type: "Tap", thread: "M5" })).toBe("M5 Tap");

@@ -53,7 +53,13 @@ const WORDS: string[][] = [
   ["spacer", "ספייסר", "ספייסרים"],
 ];
 
-const clean = (s: string) => s.toLowerCase().replace(/["'׳״”]/g, "");
+// "8×16×5mm" and "8*16*5" find "8x16x5".
+const clean = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/["'׳״”]/g, "")
+    .replace(/(\d)\s*[×*]\s*(?=\d)/g, "$1x")
+    .replace(/(\d+(?:\.\d+)?x\d+(?:\.\d+)?x\d+(?:\.\d+)?)\s*mm\b/g, "$1");
 const LISTS = WORDS.map((list) => list.map(clean));
 
 // What one typed word may match in an item's text: the word itself, plus every word listed with
