@@ -10,7 +10,7 @@ import { PartModel, type StageView } from "@/components/dashboard/PartStage";
 import { DrawingEditor } from "@/components/drawing/DrawingEditor";
 import { AddBox } from "@/components/inventory/AddBox";
 import { useInventoryPopup } from "@/components/inventory/InventoryPopup";
-import { useCan, useEditMode } from "@/components/shell/ModeContext";
+import { useCan, useManage } from "@/components/shell/ModeContext";
 import { formatPrice, useCurrency } from "@/components/cots/currency";
 import { ShelfPill } from "@/components/cots/ShelfPill";
 import { Icon } from "@/components/ui/Icon";
@@ -29,7 +29,7 @@ type Stage = StageView | "thumb";
 // fields edit by the member's mode (fields.tsx): any team sets status, material and machines, the
 // CAD Team makes drawings, and Edit mode does the rest (name, type, deleting a manual part).
 export function PartDetails({ part, save, onClose }: { part: CardPart; save: SaveFn; onClose: () => void }) {
-  const edit = useEditMode();
+  const edit = useManage();
   const canDraw = useCan("draw");
   const { robotId } = useBom();
   const [stage, setStage] = useState<Stage>(part.isManual ? "thumb" : "part");

@@ -12,7 +12,7 @@ import { textOn } from "@/components/bom/options";
 import { Popover } from "@/components/bom/Popover";
 import { partIds, partTitle, type CardPart } from "@/components/bom/types";
 import { VersionTag } from "@/components/versions/VersionTag";
-import { useCan, useEditMode } from "@/components/shell/ModeContext";
+import { useCan, useManage } from "@/components/shell/ModeContext";
 import { CheckBadge } from "@/components/ui/CheckBadge";
 import { Icon } from "@/components/ui/Icon";
 import { cotsTotal, siteOf } from "@/lib/cots";
@@ -63,7 +63,7 @@ export function CotsCard({
   shelfOnThumb?: boolean;
   origin?: "General" | "Robot";
 }) {
-  const edit = useEditMode();
+  const edit = useManage();
   const work = useCan("work");
   const { versions } = useBom();
   const showDetails = usePartDetails(part, save);
@@ -296,7 +296,7 @@ function LinksEditor({ part, save }: { part: CardPart; save: SaveFn }) {
 }
 
 function LinksForm({ part, onSave, onCancel }: { part: CardPart; onSave: (changes: PartChanges) => void; onCancel: () => void }) {
-  const canRename = useEditMode();
+  const canRename = useManage();
   const [name, setName] = useState(partTitle(part));
   const [rows, setRows] = useState(() => (part.cotsLinks?.length ? part.cotsLinks.map((l) => ({ url: l.url, site: l.site ?? "", priceUsd: l.priceUsd })) : [{ url: "", site: "", priceUsd: undefined }]));
   const [price, setPrice] = useState(part.unitPrice == null ? "" : String(part.unitPrice));

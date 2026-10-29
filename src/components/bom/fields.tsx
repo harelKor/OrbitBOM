@@ -18,7 +18,7 @@ import {
   machineOptions,
 } from "./options";
 import { useInventoryPopup } from "@/components/inventory/InventoryPopup";
-import { useCan, useEditMode } from "@/components/shell/ModeContext";
+import { useCan, useManage } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
 import { StatusPill } from "@/components/ui/StatusPill";
 export { StatusPill };
@@ -43,7 +43,7 @@ export function Empty({ text = "—" }: { text?: string }) {
 
 // `bare` is the part card's plain, truncating style.
 export function NameField({ part, save, bare = false }: Props & { bare?: boolean }) {
-  const locked = !useEditMode();
+  const locked = !useManage();
   const name = partTitle(part);
   return (
     <Popover
@@ -83,7 +83,7 @@ export function TypeBadge({ part }: { part: CardPart }) {
 }
 
 export function TypeField({ part, save, badge = false }: Props & { badge?: boolean }) {
-  const locked = !useEditMode();
+  const locked = !useManage();
   return (
     <Popover locked={locked}
       hideCaret={badge}
@@ -123,7 +123,7 @@ export function TextField({
   empty,
 }: Props & { field: "description" | "drawingUrl"; type?: "text" | "url"; empty?: string }) {
   const canDraw = useCan("draw");
-  const locked = !useEditMode() && !(field === "drawingUrl" && canDraw);
+  const locked = !useManage() && !(field === "drawingUrl" && canDraw);
   return (
     <Popover locked={locked} trigger={part[field] ?? <Empty text={empty} />}>
       {(close) => (
@@ -241,7 +241,7 @@ export function StatusField({ part, save, size = "md" }: Props & { size?: "sm" |
 }
 
 export function PriorityField({ part, save }: Props) {
-  const locked = !useEditMode();
+  const locked = !useManage();
   return (
     <Popover locked={locked}
       trigger={
@@ -293,7 +293,7 @@ export function PersonField({
   names: string[];
   onSave: (value: string | null) => void;
 }) {
-  const locked = !useEditMode();
+  const locked = !useManage();
   return (
     <Popover locked={locked} trigger={value ?? <span className="text-subtle italic">Unassigned</span>}>
       {(close) => (

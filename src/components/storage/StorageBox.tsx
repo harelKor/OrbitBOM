@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { backUpNow, deletePreviews, downloadLatestBackup, loadStorage, recountAndClean } from "@/app/(app)/storage-actions";
 import { Dialog } from "@/components/Dialog";
-import { useEditMode } from "@/components/shell/ModeContext";
+import { useManage } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
 import { BACKUP_DAYS, DATABASE_LIMIT, STORAGE_CLEAN_UP, STORAGE_CLEAN_UP_TO, STORAGE_LIMIT, STORAGE_WARN } from "@/config/storage";
 import type { StorageUsage } from "@/lib/storage/usage";
@@ -76,7 +76,7 @@ function StorageWindow({ onClose }: { onClose: () => void }) {
   const [usage, setUsage] = useState<StorageUsage | null>(null);
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
   const [pending, start] = useTransition();
-  const edit = useEditMode();
+  const edit = useManage();
   const router = useRouter();
   useEffect(() => {
     void loadStorage().then(setUsage);

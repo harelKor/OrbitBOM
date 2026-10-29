@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { dismissAction } from "@/app/(app)/actions-actions";
 import { reapplyAction, revertAction, type ActionResult } from "@/app/(app)/undo-actions";
-import { useEditMode } from "@/components/shell/ModeContext";
+import { useManage } from "@/components/shell/ModeContext";
 import { toast } from "@/components/ui/Toaster";
 import { afterPartsUpdate } from "@/components/versions/afterUpdate";
 import { useOpenVisit } from "@/components/shell/VisitTracker";
@@ -248,7 +248,7 @@ const SYSTEM_BOX = "border-sky-400/60 bg-sky-500/5 hover:border-sky-400";
 // Revert on an action (Edit mode): a page visit's part edits go back (fields changed again since
 // are left alone and listed), or a System Update's system goes back to the version before it.
 function RevertButton({ a, className }: { a: RecentAction; className: string }) {
-  const edit = useEditMode();
+  const edit = useManage();
   const router = useRouter();
   const [pending, start] = useTransition();
   const [reverted, setReverted] = useReverted(a.visitId);

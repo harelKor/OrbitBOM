@@ -127,6 +127,7 @@ export function ItemCard({
   const color = condition ? conditionColor(condition.color) : undefined;
   const picture = item.thumbUrl ?? category?.imageUrl ?? null;
   const stop = (e: React.SyntheticEvent) => e.stopPropagation();
+  // The location pill moves the item in Edit (any team's Edit toggle).
   const edit = useEditMode();
   const [movingLocation, startLocation] = useTransition();
 

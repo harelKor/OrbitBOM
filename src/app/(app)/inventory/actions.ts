@@ -73,8 +73,8 @@ export type ItemInput = z.input<typeof itemInput>;
 // move. Returns the item's id. A product picture is saved once, then parts with the same product
 // link or Onshape part are auto-linked (into To Review).
 export async function saveItem(itemId: string | null, input: ItemInput): Promise<ActionResult & { id?: string }> {
-  // Any team adds items; editing one is Edit mode's.
-  const member = await requireCapability(itemId ? "manage" : "work");
+  // Any team adds items; editing one needs the Edit toggle.
+  const member = await requireCapability(itemId ? "edit" : "work");
   const parsed = itemInput.safeParse(input);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   if (itemId && !isUuid(itemId)) return { error: "Unknown item." };
@@ -156,7 +156,7 @@ export async function startPhotoUpload(): Promise<{ url: string; key: string } |
 
 // Step 2, from the item window: the uploaded photo becomes the item's picture.
 export async function setItemPhoto(itemId: string, key: string): Promise<ActionResult> {
-  const member = await requireCapability("manage");
+  const member = await requireCapability("edit");
   if (!isUuid(itemId) || !PHOTO_KEY.test(key)) return { error: "Unknown photo." };
   const error = await applyPhoto(itemId, key, { memberId: member.id, via: "ui" });
   refresh();
@@ -192,7 +192,10 @@ export async function bulkDeleteItems(itemIds: string[]): Promise<ActionResult> 
 // The Inventory page's Move mode: a new category and / or location for every selected item.
 // A field left out stays as it is; null clears the location.
 export async function bulkMoveItems(itemIds: string[], target: { category?: string | null; locationId?: string | null }): Promise<ActionResult> {
-  const member = await requireCapability("manage");
+  return moveItems(await requireCapability("manage"), itemIds, target);
+}
+
+async function moveItems(member: { id: string }, itemIds: string[], target: { category?: string | null; locationId?: string | null }): Promise<ActionResult> {
   if (!itemIds.length || itemIds.some((id) => !isUuid(id))) return { error: "Unknown item." };
   const values: { category?: string | null; locationId?: string | null } = {};
   if (target.category !== undefined) {
@@ -218,24 +221,24 @@ export async function bulkMoveItems(itemIds: string[], target: { category?: stri
 
 // The item window's category pill in Edit mode.
 export async function setItemCategory(itemId: string, categoryId: string): Promise<ActionResult> {
-  return bulkMoveItems([itemId], { category: categoryId });
+  return moveItems(await requireCapability("edit"), [itemId], { category: categoryId });
 }
 
 // The item window's location pill and the table's Location cell in Edit mode; null clears it.
 export async function setItemLocation(itemId: string, locationId: string | null): Promise<ActionResult> {
-  return bulkMoveItems([itemId], { locationId });
+  return moveItems(await requireCapability("edit"), [itemId], { locationId });
 }
 
 // The item window's condition pill in Edit mode; null clears it.
 export async function setItemCondition(itemId: string, conditionId: string | null): Promise<ActionResult> {
-  const member = await requireCapability("manage");
+  const member = await requireCapability("edit");
   if (!isUuid(itemId) || (conditionId !== null && !isUuid(conditionId))) return { error: "Unknown condition." };
   return saveFields(itemId, () => ({ conditionId }), member.id);
 }
 
 // The item window's specs in Edit mode: only the category's own fields are kept, blanks dropped.
 export async function setItemSpecs(itemId: string, specs: Record<string, string>): Promise<ActionResult> {
-  const member = await requireCapability("manage");
+  const member = await requireCapability("edit");
   if (!isUuid(itemId)) return { error: "Unknown item." };
   const cats = await listCategories();
   return saveFields(
@@ -251,7 +254,7 @@ export async function setItemSpecs(itemId: string, specs: Record<string, string>
 // The ✕ next to a "Buy at" link in Edit mode: the link goes; with no link left the price goes too.
 // Linked COTS cards show the same.
 export async function unlinkItemProduct(itemId: string, url: string): Promise<ActionResult> {
-  const member = await requireCapability("manage");
+  const member = await requireCapability("edit");
   if (!isUuid(itemId)) return { error: "Unknown item." };
   return saveFields(
     itemId,
@@ -294,7 +297,7 @@ const productSchema = z.object({
   imageUrl: z.string().nullable().optional(),
 });
 export async function linkItemToProduct(itemId: string, product: z.input<typeof productSchema>): Promise<ActionResult> {
-  const member = await requireCapability("manage");
+  const member = await requireCapability("edit");
   if (!isUuid(itemId)) return { error: "Unknown item." };
   const parsed = productSchema.safeParse(product);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
@@ -338,7 +341,7 @@ export async function countStock(itemId: string, amount: number): Promise<Action
 
 // The item window's title in Edit mode: a new name, kept in the item's history.
 export async function setItemName(itemId: string, name: string): Promise<ActionResult> {
-  const member = await requireCapability("manage");
+  const member = await requireCapability("edit");
   if (!isUuid(itemId)) return { error: "Unknown item." };
   const value = name.replace(/\s+/g, " ").trim().slice(0, 200);
   if (!value) return { error: "An item needs a name." };

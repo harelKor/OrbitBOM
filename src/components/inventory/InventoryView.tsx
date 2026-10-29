@@ -15,7 +15,7 @@ import {
   countStock,
 } from "@/app/(app)/inventory/actions";
 import { Dialog } from "@/components/Dialog";
-import { EditOnly, useEditMode } from "@/components/shell/ModeContext";
+import { EditOnly, useManage } from "@/components/shell/ModeContext";
 import { useEscape } from "@/components/ui/useEscape";
 import {
   CategoryBoxes,
@@ -90,7 +90,7 @@ export function InventoryView({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   // Move / Delete: taps select cards, the bar at the bottom acts on them.
-  const edit = useEditMode();
+  const edit = useManage();
   const [picking, setPicking] = useState<"move" | "delete" | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [moveCat, setMoveCat] = useState("");

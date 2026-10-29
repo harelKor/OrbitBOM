@@ -59,6 +59,7 @@ export function ItemTable({
   onToggleSelect?: (id: string) => void;
 }) {
   const { openItem } = useInventoryPopup();
+  // The location pill moves the item in Edit (any team's Edit toggle).
   const edit = useEditMode();
   const work = useCan("work");
   const stop = (e: React.SyntheticEvent) => e.stopPropagation();

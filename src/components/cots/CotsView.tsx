@@ -9,7 +9,7 @@ import { BomProvider, useBom } from "@/components/bom/BomContext";
 import { PartStage, type StageView } from "@/components/dashboard/PartStage";
 import { AddBox } from "@/components/inventory/AddBox";
 import type { Condition, InvCategory, Item, Location } from "@/components/inventory/types";
-import { useCan, useEditMode } from "@/components/shell/ModeContext";
+import { useCan, useManage } from "@/components/shell/ModeContext";
 import { useEscape } from "@/components/ui/useEscape";
 import { statusTint } from "@/components/ui/statusTint";
 import { StatusField } from "@/components/bom/fields";
@@ -76,7 +76,7 @@ export function CotsView({
   categories: InvCategory[];
   shelf?: CotsShelf;
 }) {
-  const edit = useEditMode();
+  const edit = useManage();
   const work = useCan("work");
   const [optimistic, addOptimistic] = useOptimistic(parts, (state, edits: Edit[]) =>
     state.map((p) => {

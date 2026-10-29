@@ -9,7 +9,7 @@ import { Brand } from "./Brand";
 import { SignOutButton } from "@/components/SignOutButton";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { FastLink, ShallowLink } from "@/components/ui/FastLink";
-import { useEditMode } from "./ModeContext";
+import { useManage } from "./ModeContext";
 import { useRobotContext } from "./useRobotContext";
 
 export function LeftNav({
@@ -23,7 +23,7 @@ export function LeftNav({
   categories: ShellCategory[];
   member: { name: string; email: string; isAdmin: boolean };
 }) {
-  const canManage = useEditMode();
+  const canManage = useManage();
   const { pathname, robot } = useRobotContext(robots, lastRobotId);
   const query = useSearchParams();
   const machine = query.get("machine");

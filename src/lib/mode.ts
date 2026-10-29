@@ -1,6 +1,6 @@
 import "server-only";
 import { cookies } from "next/headers";
-import { can, effectiveMode, MODE_COOKIE, type Capability, type Mode } from "@/components/shell/mode";
+import { can, effectiveEditing, effectiveMode, MODE_COOKIE, type Capability, type Mode } from "@/components/shell/mode";
 import { getMember, requireMember, type Member } from "@/lib/auth";
 
 // The signed-in member's effective mode: an admin's Edit | CAD | Build pick (Edit without one),
@@ -11,18 +11,28 @@ export async function getMode(): Promise<Mode> {
   return effectiveMode(member, (await cookies()).get(MODE_COOKIE)?.value);
 }
 
+// The mode and, for team members, their View | Edit pick.
+export async function getAccess(): Promise<{ mode: Mode; editing: boolean }> {
+  const member = await getMember();
+  if (!member) return { mode: "none", editing: false };
+  const picked = (await cookies()).get(MODE_COOKIE)?.value;
+  return { mode: effectiveMode(member, picked), editing: effectiveEditing(member, picked) };
+}
+
 export async function isEditMode() {
   return (await getMode()) === "edit";
 }
 
 export async function hasCapability(cap: Capability) {
-  return can(await getMode(), cap);
+  const { mode, editing } = await getAccess();
+  return can(mode, cap, editing);
 }
 
 // For server actions: the member, if their mode allows `cap`; otherwise the action fails.
 export async function requireCapability(cap: Capability): Promise<Member> {
   const member = await requireMember();
-  if (!can(effectiveMode(member, (await cookies()).get(MODE_COOKIE)?.value), cap)) throw new Error(DENIED[cap]);
+  const picked = (await cookies()).get(MODE_COOKIE)?.value;
+  if (!can(effectiveMode(member, picked), cap, effectiveEditing(member, picked))) throw new Error(DENIED[cap]);
   return member;
 }
 
@@ -31,5 +41,6 @@ export const DENIED: Record<Capability, string> = {
   draw: "Only the CAD Team can make drawings.",
   review: "Only the CAD Team can review parts.",
   sync: "Only the CAD Team can sync from Onshape.",
+  edit: "Switch to Edit to change this.",
   manage: "Only an admin in Edit mode can do this.",
 };

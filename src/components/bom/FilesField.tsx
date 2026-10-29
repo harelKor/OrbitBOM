@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { PART_FILE_TYPES } from "@/config/fileTypes";
 import { deleteFile, finishUpload, startUpload, type FileOwner } from "@/app/(app)/files-actions";
 import { useBom } from "./BomContext";
-import { useEditMode } from "@/components/shell/ModeContext";
+import { useManage } from "@/components/shell/ModeContext";
 import { Popover } from "./Popover";
 import { ownerPartId, type CardPart } from "./types";
 
@@ -30,7 +30,7 @@ export const FILE_COLORS = COLORS;
 
 export function FilesField({ part }: { part: CardPart }) {
   const { isAdmin } = useBom();
-  const edit = useEditMode();
+  const edit = useManage();
   const byType = new Map(part.files.map((f) => [f.type, f]));
   const has = (t: string) => byType.has(t) || (t === "drawing" && !!part.drawingUrl);
 

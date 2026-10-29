@@ -24,7 +24,7 @@ import {
 } from "@/app/(app)/inventory/actions";
 import { textOn } from "@/components/bom/options";
 import { Dialog } from "@/components/Dialog";
-import { EditOnly, useCan, useEditMode } from "@/components/shell/ModeContext";
+import { Can, EditOnly, useCan, useEditMode } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
 import { materialCategory } from "@/config/materials";
 import { useMaterials } from "@/components/shell/MaterialColors";
@@ -396,7 +396,7 @@ function ItemBody({
               <Icon name="box" className="h-12 w-12 text-subtle" />
             )}
           </div>
-          <EditOnly>
+          <Can cap="edit">
             <PhotoButtons
               compact
               onPhoto={(p) =>
@@ -408,7 +408,7 @@ function ItemBody({
                 })
               }
             />
-          </EditOnly>
+          </Can>
         </div>
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap gap-1">
@@ -610,7 +610,7 @@ function ItemBody({
       )}
 
       {message && <p className="text-sm text-emerald-700">{message}</p>}
-      <EditOnly>
+      <Can cap="edit">
         <ProductSearch
           itemId={item.id}
           initial={item.name}
@@ -620,12 +620,12 @@ function ItemBody({
             onSaved();
           }}
         />
-      </EditOnly>
+      </Can>
       <div className="flex flex-wrap gap-2 border-t border-line pt-3">
         <button className="btn min-h-11" disabled={finding} onClick={find} title="Look for BOM parts that are this item; each one waits in To Review for Approve">
           <Icon name="search" className="h-4 w-4" /> {finding ? "Looking…" : "Find BOM parts"}
         </button>
-        <EditOnly>
+        <Can cap="edit">
           <button
             className="btn min-h-11"
             disabled={!data}
@@ -636,6 +636,8 @@ function ItemBody({
           >
             <Icon name="pencil" className="h-4 w-4" /> Edit
           </button>
+        </Can>
+        <EditOnly>
           <button className="btn min-h-11" disabled={!data} onClick={() => setMode("toBom")}>
             To BOM
           </button>
