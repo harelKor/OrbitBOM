@@ -398,32 +398,44 @@ export function PieceStepper({ item, onStep }: { item: Pick<Item, "inStock" | "p
   return (
     <Popover hideCaret align="right" triggerClassName="ml-1 rounded-full bg-white/20 px-1.5 text-[10px] hover:bg-white/30" trigger={<span>pieces ▾</span>}>
       {(close) => (
-        <div className="space-y-1.5 p-1 text-sm">
-          {(["add", "take"] as const).map((way) => (
-            <div key={way} className="flex items-center gap-1">
-              <span className="w-10 text-[11px] font-semibold text-subtle">{way === "add" ? "Add" : "Take"}</span>
-              {SHEET_PIECES.map((p) => {
-                const twelfths = Math.round(p.value * 12);
-                const size = pieceSizeLabel(p, item.specs, item.name);
-                return (
-                  <button
-                    key={p.label}
-                    type="button"
-                    disabled={way === "take" && (p.value > item.inStock + 1e-9 || !canTakePiece(item.inStock, item.pieces, twelfths))}
-                    onClick={() => {
-                      onStep(way === "add" ? p.value : -p.value, twelfths);
-                      close();
-                    }}
-                    title={size.sub ? `${size.primary} (${size.sub})` : size.primary}
-                    className={`press flex flex-col items-center rounded-md px-2 py-1 leading-tight font-semibold text-white disabled:opacity-30 ${way === "add" ? "bg-emerald-500 hover:bg-emerald-400" : "bg-rose-500 hover:bg-rose-400"}`}
-                  >
-                    <span className="font-mono tabular-nums">{size.primary}</span>
-                    {size.sub && <span className="text-[10px] font-normal text-white/75">{size.sub}</span>}
-                  </button>
-                );
-              })}
-            </div>
-          ))}
+        // One row per size (− take, + add), so the real sizes fit the narrow panel on a phone.
+        <div className="divide-y divide-line p-1 text-sm">
+          {SHEET_PIECES.map((p) => {
+            const twelfths = Math.round(p.value * 12);
+            const size = pieceSizeLabel(p, item.specs, item.name);
+            const canTake = p.value <= item.inStock + 1e-9 && canTakePiece(item.inStock, item.pieces, twelfths);
+            return (
+              <div key={p.label} className="flex items-center gap-2 py-1">
+                <span className="min-w-0 flex-1 truncate">
+                  <span className="font-mono font-semibold tabular-nums">{size.primary}</span>
+                  {size.sub && <span className="ml-1.5 text-xs text-muted">{size.sub}</span>}
+                </span>
+                <button
+                  type="button"
+                  disabled={!canTake}
+                  onClick={() => {
+                    onStep(-p.value, twelfths);
+                    close();
+                  }}
+                  aria-label={`Take ${size.primary}`}
+                  className="press flex h-9 w-11 shrink-0 items-center justify-center rounded-md bg-rose-500 text-lg font-bold text-white hover:bg-rose-400 active:scale-[0.98] disabled:opacity-30"
+                >
+                  −
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onStep(p.value, twelfths);
+                    close();
+                  }}
+                  aria-label={`Add ${size.primary}`}
+                  className="press flex h-9 w-11 shrink-0 items-center justify-center rounded-md bg-emerald-500 text-lg font-bold text-white hover:bg-emerald-400 active:scale-[0.98]"
+                >
+                  +
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
     </Popover>
