@@ -22,6 +22,7 @@ import { usePartDetails } from "./PartDetailsHost";
 import { useInventoryPopup } from "@/components/inventory/InventoryPopup";
 import { CotsCard } from "@/components/cots/CotsCard";
 import { NoteCloud } from "./NoteCloud";
+import { downloadExport } from "./downloadExport";
 import { LinkTag } from "@/components/cots/ShelfPill";
 
 export { NoteCloud };
@@ -320,7 +321,16 @@ export function DownloadMenu({ part, format }: { part: CardPart; format: ExportF
         <div className="space-y-0.5 text-sm">
           {exports.length > 0 && <div className="px-2 pb-1 text-[11px] font-semibold text-subtle">CAD from Onshape</div>}
           {exports.map((f, i) => (
-            <a key={f} href={`/api/parts/${ownerPartId(part)}/export?format=${f}`} onClick={close} className={item}>
+            <a
+              key={f}
+              href={`/api/parts/${ownerPartId(part)}/export?format=${f}`}
+              onClick={(e) => {
+                e.preventDefault();
+                close();
+                void downloadExport(e.currentTarget.href);
+              }}
+              className={item}
+            >
               <span className="font-medium text-fg">{label(f)}</span>
               {i === 0 && <span className="text-[11px] text-subtle">for its machine</span>}
             </a>

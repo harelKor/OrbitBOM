@@ -28,6 +28,7 @@ import { useEscape } from "@/components/ui/useEscape";
 import { FINISHED_STATUS, IN_PROCESS_STATUS, READY_STATUS, fabBatchName, fabStage, isFabFinished, machinesOf } from "@/lib/fab";
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { computeStatus, statusMachine } from "@/lib/status";
+import { prepareExport } from "@/components/bom/downloadExport";
 
 export type Batch = {
   id: string;
@@ -1012,7 +1013,7 @@ function BatchCard({
             )}
             <span className="ml-auto flex items-center gap-1.5">
               {downloads.length > 0 && !(batch.gcode && !open) && (
-                <button className="overlay-btn" onClick={() => downloadAll(downloads)} aria-label={`Download ${downloads.length} files`} title={`Download ${downloads.length} files`}>
+                <button className="overlay-btn" onClick={() => void downloadAll(downloads)} aria-label={`Download ${downloads.length} files`} title={`Download ${downloads.length} files`}>
                   <Icon name="download" />
                 </button>
               )}
@@ -1122,14 +1123,25 @@ function GcodeRow({ batch }: { batch: Batch }) {
 }
 
 // One file after another: each export can take a while the first time, so they are spaced out.
-function downloadAll(urls: string[]) {
-  urls.forEach((url, i) =>
-    setTimeout(() => {
-      const frame = document.createElement("iframe");
-      frame.hidden = true;
-      frame.src = url;
-      document.body.appendChild(frame);
-      setTimeout(() => frame.remove(), 120_000);
-    }, i * 1500),
-  );
+// One file after another; stops at the first part Onshape can't export (its reason shows as a
+// toast), since the rest would most likely fail the same way.
+async function downloadAll(urls: string[]) {
+  for (const [i, url] of urls.entries()) {
+    if (i > 0) await new Promise((r) => setTimeout(r, 1500));
+    const file = await prepareExport(url);
+    if (!file) return;
+    if (file.filename) {
+      const a = document.createElement("a");
+      a.href = file.href;
+      a.download = file.filename;
+      a.click();
+      continue;
+    }
+    // A hidden frame per file, so the browser doesn't stop a run of downloads.
+    const frame = document.createElement("iframe");
+    frame.hidden = true;
+    frame.src = file.href;
+    document.body.appendChild(frame);
+    setTimeout(() => frame.remove(), 120_000);
+  }
 }

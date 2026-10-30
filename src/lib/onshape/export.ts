@@ -40,9 +40,10 @@ export async function exportPart(
     method: "POST",
     body: JSON.stringify({ formatName, partIds: partId, storeInDocument: false }),
   });
-  while (t.requestState === "ACTIVE") {
+  // Every poll counts against the app's yearly API allowance, so wait longer between them.
+  for (let wait = 1500; t.requestState === "ACTIVE"; wait = Math.min(wait * 1.6, 8000)) {
     if (Date.now() > deadline) throw new OnshapeError("Onshape is still preparing this file. Try again in a minute.");
-    await new Promise((r) => setTimeout(r, 2000));
+    await new Promise((r) => setTimeout(r, wait));
     t = await client.json<Translation>(`translations/${t.id}`);
   }
   const dataId = t.resultExternalDataIds?.[0];

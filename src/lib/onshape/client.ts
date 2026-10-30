@@ -30,6 +30,17 @@ export class BudgetError extends OnshapeError {
   }
 }
 
+// Onshape answers 402 once the OAuth app's yearly API allowance is used up. A private app's calls
+// count against the account or company that owns the app, so every member's calls stop together.
+export class QuotaError extends OnshapeError {
+  constructor() {
+    super(
+      "Onshape stopped answering: OrbitBOM's Onshape app has used up its yearly API allowance. Files already downloaded once still work; new exports wait until an Onshape admin raises the allowance.",
+      402,
+    );
+  }
+}
+
 // The OAuth app's credentials from Vercel, with stray spaces or line breaks from pasting removed.
 export const onshapeClientId = () => process.env.ONSHAPE_CLIENT_ID?.trim() ?? "";
 const onshapeClientSecret = () => process.env.ONSHAPE_CLIENT_SECRET?.trim() ?? "";
@@ -150,6 +161,7 @@ export function onshapeClient(memberId: string, baseUrl: string): OnshapeClient 
       throw new OnshapeError("Onshape refused access to this document. Check that your account can open it.", res.status);
     }
     if (res.status === 429) throw new BudgetError();
+    if (res.status === 402) throw new QuotaError();
     if (!res.ok) throw new OnshapeError(`Onshape returned ${res.status} for ${name}`, res.status);
     return res;
   }

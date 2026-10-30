@@ -2,7 +2,7 @@ import "server-only";
 import { and, asc, eq, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { refreshIntervalMinutes } from "@/config/refresh";
-import { BudgetError, DAILY_CALL_BUDGET, NotConnectedError, OnshapeError } from "@/lib/onshape/client";
+import { BudgetError, DAILY_CALL_BUDGET, NotConnectedError, OnshapeError, QuotaError } from "@/lib/onshape/client";
 import { missingAssemblyThumbnails, refreshThumbnails } from "@/lib/onshape/thumbnails";
 import { checkSystem } from "@/lib/versions/detect";
 
@@ -36,7 +36,7 @@ async function poolAccounts(exclude: string | null): Promise<string[]> {
   return rows.map((r) => r.id);
 }
 
-export type RefreshResult = { systemId: string; changed: boolean; calls: number; error?: string };
+export type RefreshResult = { systemId: string; changed: boolean; calls: number; error?: string; outOfCalls?: boolean };
 
 // Claims a system for one check: moves last_checked_at forward only if the last check is older
 // than the interval, so the cron and a member's open page never check the same system twice.
@@ -89,7 +89,7 @@ export async function refreshSystem(
         lastError = err.message;
         continue;
       }
-      if (err instanceof OnshapeError) return { systemId, changed: false, calls: 0, error: err.message };
+      if (err instanceof OnshapeError) return { systemId, changed: false, calls: 0, error: err.message, outOfCalls: err instanceof QuotaError };
       throw err;
     }
   }
@@ -129,6 +129,8 @@ export async function refreshDueSystems(deadline: number): Promise<RefreshResult
     if (Date.now() > deadline - 20_000) break;
     const r = await refreshSystem(s.id, s.memberId, deadline, interval);
     if (r) results.push(r);
+    // Out of yearly API calls (402) on every account at once: the other systems would only fail too.
+    if (r?.outOfCalls) break;
   }
 
   // Sync jobs are only a log; keep two weeks of it.
