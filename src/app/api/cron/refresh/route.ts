@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { REFRESH } from "@/config/refresh";
 import { refreshDueSystems } from "@/lib/sync/refresh";
 
 export const maxDuration = 60;
@@ -10,6 +11,7 @@ export async function GET(request: NextRequest) {
   if (request.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+  if (!REFRESH.scheduled) return NextResponse.json({ disabled: true });
   const started = Date.now();
   const results = await refreshDueSystems(started + 55_000);
   return NextResponse.json({

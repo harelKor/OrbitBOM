@@ -2,6 +2,9 @@
 // changes. A check costs one Onshape call; a real BOM pull only happens when the document changed.
 
 export const REFRESH = {
+  // Off to save Onshape's yearly API allowance: /api/cron/refresh does nothing, so only an open
+  // system page (and Update BOM) checks Onshape.
+  scheduled: false,
   timeZone: "Asia/Jerusalem",
   // Build-season meeting hours, local time: checks every 10 minutes. Outside them, once an hour.
   activeHours: { from: 14, to: 23 },
