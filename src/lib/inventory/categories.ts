@@ -27,10 +27,12 @@ export function categoryOf(item: { category: string | null; name: string }, cats
   return guessCategory(item.name, ids) ?? (ids.includes("other") ? "other" : (ids.at(-1) ?? "other"));
 }
 
-// The choices a field offers: its options, or the BOM materials of its groups.
+// The choices a field offers: its options, or for a material field the base materials filled in
+// when categories are read (listCategories).
 export function fieldChoices(field: CategoryField): string[] {
   if (field.kind === "options") return field.options ?? [];
-  if (field.kind === "material") return field.materialChoices ?? (field.materials ?? []).flatMap((g) => MATERIALS[g] ?? []);
+  if (field.kind === "material")
+    return field.materialChoices ?? (field.options?.length ? field.options : (field.materials ?? []).flatMap((g) => MATERIALS[g] ?? []));
   return [];
 }
 
@@ -78,11 +80,42 @@ export function bearingSize(specs: Record<string, string>): string {
   return dims.join(dims.some((d) => d.includes(" ")) ? " x " : "x");
 }
 
+const bare = (v: string | undefined) => (v ?? "").trim().replace(/\s*mm$/i, "");
+
+// Sizes that read as one word (Harel, 2026-10-30): a round tube's OD x wall ("25x2", or "Ø25" with
+// no wall), a block's X x Y x Z ("50x50x100"), a cylinder's OD x length ("Ø30x150"). Empty when
+// the category has none or its values are missing.
+export function stockSize(cat: InvCategory, specs: Record<string, string>): string {
+  const [od, wall, length] = [bare(specs.od), bare(specs.wall), bare(specs.length)];
+  if (cat.id === "round-tubes") return od ? (wall ? `${od}x${wall}` : `Ø${od}`) : "";
+  if (cat.id !== "cylinders-blocks") return "";
+  if (specs.shape === "Block") {
+    const dims = [specs.x, specs.y, specs.z].map(bare);
+    return dims.every(Boolean) ? dims.join("x") : "";
+  }
+  if (specs.shape === "Cylinder" && od) return length ? `Ø${od}x${length}` : `Ø${od}`;
+  return "";
+}
+
+// "Aluminum 25x2 tube", "Brass Ø30x150 cylinder", "Aluminum 50x50x100 block".
+function stockName(cat: InvCategory, specs: Record<string, string>): string {
+  const material = specs.material?.trim() ?? "";
+  if (cat.id === "round-tubes") {
+    const size = stockSize(cat, specs);
+    return size ? [material, size, "tube"].filter(Boolean).join(" ") : "";
+  }
+  if (cat.id === "cylinders-blocks" && (specs.shape === "Block" || specs.shape === "Cylinder"))
+    return [material, stockSize(cat, specs), specs.shape.toLowerCase()].filter(Boolean).join(" ");
+  return "";
+}
+
 // "36T HTD 5mm 9mm wide 1/2" Hex Pulley": each value through its field's `name`, then the noun.
 // A sub-type ("M5 Tap") goes last like a noun, and neither repeats a word the name already has.
 export function buildName(cat: InvCategory, specs: Record<string, string>): string {
   const size = cat.id === "bearings" ? bearingSize(specs) : "";
   if (size) return [size, specs.flanged === "Flanged" ? "Flanged" : "", cat.noun].filter(Boolean).join(" ");
+  const stock = stockName(cat, specs);
+  if (stock) return stock;
   const type = typeFieldOf(cat);
   const parts = activeFields(cat, specs).flatMap((f) => {
     const v = specs[f.id]?.trim();
@@ -103,6 +136,9 @@ export function specLine(cat: InvCategory | undefined, specs: Record<string, str
   if (!cat) return Object.values(specs).filter(Boolean).join(" · ");
   const size = cat.id === "bearings" ? bearingSize(specs) : "";
   if (size) return [size, specs.flanged].filter(Boolean).join(" · ");
+  const stock = stockSize(cat, specs);
+  if (cat.id === "round-tubes" && stock) return [specs.material, stock, bare(specs.length) && `${bare(specs.length)}mm`].filter(Boolean).join(" · ");
+  if (cat.id === "cylinders-blocks" && stock) return [specs.shape, specs.material, stock].filter(Boolean).join(" · ");
   return activeFields(cat, specs)
     .filter((f) => specs[f.id])
     .map((f) => (f.id === "teeth" ? `${specs[f.id]}T` : specs[f.id]))

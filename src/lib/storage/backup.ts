@@ -28,6 +28,7 @@ export const BACKUP_TABLES = {
   inventoryCategories: schema.inventoryCategories,
   inventoryLocations: schema.inventoryLocations,
   inventoryConditions: schema.inventoryConditions,
+  baseMaterials: schema.baseMaterials,
   inventoryGroups: schema.inventoryGroups,
   inventoryItems: schema.inventoryItems,
   inventoryMoves: schema.inventoryMoves,

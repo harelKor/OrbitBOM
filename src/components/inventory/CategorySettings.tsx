@@ -3,7 +3,6 @@
 import { useRef, useState, useTransition } from "react";
 import { addCategory, deleteCategory, moveCategory, saveCategory } from "@/app/(app)/inventory/actions";
 import { CATEGORY_GROUPS } from "@/config/inventory";
-import { MATERIALS } from "@/config/materials";
 import type { CategoryField } from "@/lib/inventory/categories";
 import type { InvCategory, Item, Location } from "./types";
 
@@ -11,14 +10,23 @@ const KINDS: { id: CategoryField["kind"]; label: string }[] = [
   { id: "number", label: "Number" },
   { id: "text", label: "Text" },
   { id: "options", label: "Options" },
-  { id: "material", label: "BOM material" },
+  { id: "material", label: "Material" },
 ];
 
 // Category settings (Harel, 2026-10-23), on the Settings page since 2026-10-28. Each change saves
 // by itself a moment later; there is no Save button and nothing jumps. A field that items use can
 // be hidden but not deleted, so their values aren't lost.
-export function CategorySettings({ categories, locations, items }: { categories: InvCategory[]; locations: Location[]; items: Pick<Item, "category" | "specs">[] }) {
-  const materials = MATERIALS;
+export function CategorySettings({
+  categories,
+  baseMaterials,
+  locations,
+  items,
+}: {
+  categories: InvCategory[];
+  baseMaterials: string[];
+  locations: Location[];
+  items: Pick<Item, "category" | "specs">[];
+}) {
   const [selected, setSelected] = useState<string | null>(categories[0]?.id ?? null);
   const [drafts, setDrafts] = useState<Record<string, InvCategory>>({});
   const [status, setStatus] = useState<{ error?: string; saving?: boolean; saved?: boolean }>({});
@@ -203,22 +211,23 @@ export function CategorySettings({ categories, locations, items }: { categories:
                     {f.kind === "options" && <OptionsEditor options={f.options ?? []} onChange={(options) => setField(i, { options })} />}
                     {f.kind === "material" && (
                       <div>
-                        <div className="mb-1 text-xs text-muted">From the BOM&apos;s materials:</div>
+                        <div className="mb-1 text-xs text-muted">
+                          {f.options?.length ? "Offers only the picked materials:" : "Offers every material on the Materials tab, or pick a few:"}
+                        </div>
                         <div className="flex flex-wrap gap-1.5">
-                          {[...new Set([...Object.keys(materials).filter((g) => materials[g].length), ...(f.materials ?? [])])]
-                            .map((g) => {
-                              const on = f.materials?.includes(g);
-                              return (
-                                <button
-                                  key={g}
-                                  type="button"
-                                  onClick={() => setField(i, { materials: on ? f.materials!.filter((x) => x !== g) : [...(f.materials ?? []), g] })}
-                                  className={`press min-h-9 rounded-full border px-3 text-xs font-semibold ${on ? "border-accent bg-accent text-white" : "border-line-strong text-fg-2"}`}
-                                >
-                                  {g}
-                                </button>
-                              );
-                            })}
+                          {[...new Set([...baseMaterials, ...(f.options ?? [])])].map((m) => {
+                            const on = !!f.options?.includes(m);
+                            return (
+                              <button
+                                key={m}
+                                type="button"
+                                onClick={() => setField(i, { materials: undefined, materialChoices: undefined, options: on ? f.options!.filter((x) => x !== m) : [...(f.options ?? []), m] })}
+                                className={`press min-h-9 rounded-full border px-3 text-xs font-semibold active:scale-[0.98] ${on ? "border-accent bg-accent text-white" : "border-line-strong text-fg-2"}`}
+                              >
+                                {m}
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
                     )}

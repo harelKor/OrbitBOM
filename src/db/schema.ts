@@ -570,6 +570,15 @@ export const inventoryConditions = pgTable("inventory_conditions", {
   color: text("color").notNull(),
 });
 
+// The team's base materials (Aluminum, 6061-T6, Polycarbonate...), edited on the Settings page.
+// Inventory "material" fields offer them (Harel, 2026-10-30); seeded from BASE_MATERIALS in
+// src/config/materials.ts.
+export const baseMaterials = pgTable("base_materials", {
+  id: id(),
+  name: text("name").notNull().unique(),
+  position: integer("position").notNull().default(0),
+});
+
 export const inventoryGroups = pgTable("inventory_groups", {
   id: id(),
   name: text("name").notNull(),
@@ -587,9 +596,10 @@ export type CategoryField = {
   label: string;
   kind: "number" | "text" | "options" | "material";
   options?: string[];
+  // Old material fields named groups of config/materials.ts MATERIALS; since 2026-10-30 a material
+  // field offers the team's base materials (`options` narrows them).
   materials?: string[];
-  // A material field's choices from the team's current material list, filled in when categories
-  // are read (never stored).
+  // A material field's choices, filled in when categories are read (never stored).
   materialChoices?: string[];
   name?: string;
   hidden?: boolean;

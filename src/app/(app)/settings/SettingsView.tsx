@@ -8,18 +8,21 @@ import { BackupsSettings, type ScopeInfo } from "@/components/settings/BackupsSe
 import type { Condition, InvCategory, Location } from "@/components/inventory/types";
 import { pushQuery } from "@/components/ui/CategoryBoxes";
 import type { BackupFile } from "@/lib/storage/backup";
-import { renameLocation, updateCondition, type ActionResult } from "./actions";
+import { addBaseMaterial, deleteBaseMaterial, renameBaseMaterial, renameLocation, updateCondition, type ActionResult } from "./actions";
 
 const TABS = [
   { id: "categories", label: "Inventory categories" },
+  { id: "materials", label: "Materials" },
   { id: "locations", label: "Locations" },
   { id: "conditions", label: "Conditions" },
   { id: "backups", label: "Backups" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
+type BaseMaterial = { id: string; name: string };
 
 export function SettingsView({
   categories,
+  materials,
   conditions,
   locations,
   items,
@@ -28,6 +31,7 @@ export function SettingsView({
   isAdmin,
 }: {
   categories: InvCategory[];
+  materials: BaseMaterial[];
   conditions: Condition[];
   locations: Location[];
   items: { category: string; specs: Record<string, string> }[];
@@ -57,7 +61,8 @@ export function SettingsView({
           </button>
         ))}
       </div>
-      {tab === "categories" && <CategorySettings categories={categories} locations={locations} items={items} />}
+      {tab === "categories" && <CategorySettings categories={categories} baseMaterials={materials.map((m) => m.name)} locations={locations} items={items} />}
+      {tab === "materials" && <MaterialsSettings materials={materials} />}
       {tab === "locations" && <LocationsSettings locations={locations} />}
       {tab === "conditions" && <ConditionsSettings conditions={conditions} />}
       {tab === "backups" && <BackupsSettings backups={backups} scopes={restoreScopes} isAdmin={isAdmin} />}
@@ -95,6 +100,50 @@ function SmallButton({ label, onClick, disabled, danger, children }: { label: st
     >
       {children}
     </button>
+  );
+}
+
+// ---------- Base materials ----------
+
+function MaterialsSettings({ materials }: { materials: BaseMaterial[] }) {
+  const { run, pending, banner } = useRun();
+  const [name, setName] = useState("");
+  return (
+    <div className="space-y-4">
+      <p className="max-w-3xl text-sm text-muted">
+        What things are made of, like Aluminum, 7075-T6 or Delrin. Inventory material fields offer these; a field can narrow them to a few in its category&apos;s settings. Renaming one renames it on every item that has it.
+      </p>
+      {banner}
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {materials.map((m) => (
+          <div key={m.id} className="panel flex items-center gap-2 p-2 transition-colors duration-150 hover:border-sky-400/40">
+            <InlineName value={m.name} label="Material name" onSave={(v) => run(() => renameBaseMaterial(m.id, v))} />
+            <SmallButton
+              label={`Remove ${m.name}`}
+              danger
+              onClick={() => {
+                if (confirm(`Remove "${m.name}" from the list? Items that have it keep it.`)) run(() => deleteBaseMaterial(m.id));
+              }}
+            >
+              ✕
+            </SmallButton>
+          </div>
+        ))}
+        {!materials.length && <p className="text-sm text-muted">No materials yet.</p>}
+      </div>
+      <form
+        className="flex flex-wrap gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          run(() => addBaseMaterial(name), () => setName(""));
+        }}
+      >
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Material, e.g. Titanium" className="input min-h-11 w-64 max-w-full" />
+        <button className="btn min-h-11 active:scale-[0.98]" disabled={pending || !name.trim()}>
+          + Add material
+        </button>
+      </form>
+    </div>
   );
 }
 

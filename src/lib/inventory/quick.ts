@@ -63,7 +63,33 @@ const mm = (n: string) => `${n}mm`;
 // Words the shop uses for a category's sub-types and values, by category id. A rule's values
 // that the category doesn't offer are left out (a size like a bearing's "11" ID is kept as typed
 // when the field's options are sizes), and the words it matched are used up.
+// Base materials by the words people type for them (only those the field offers are kept).
+const MATERIAL_WORDS: Rule[] = [
+  [/carbon(\s*fib(er|re))?|קרבון/, () => ({ material: "Carbon Fiber" })],
+  [/polycarb\w*|\bpoly\b|lexan|פוליקרבונט/, () => ({ material: "Polycarbonate" })],
+  [/stainless|\bss\b|נירוסטה/, () => ({ material: "Stainless Steel" })],
+  [/\bsteel\b|פלדה/, () => ({ material: "Steel" })],
+  [/\bbrass\b|פליז/, () => ({ material: "Brass" })],
+  [/delrin|acetal|\bpom\b/, () => ({ material: "Delrin / Acetal" })],
+  [/\bnylon\b/, () => ({ material: "Nylon" })],
+  [/\b7075\b/, () => ({ material: "7075-T6" })],
+  [/\b6061\b/, () => ({ material: "6061-T6" })],
+  [/alumin?i?um|\balu\b|אלומיניום/, () => ({ material: "Aluminum" })],
+];
+const NUM = "(\\d+(?:\\.\\d+)?)";
+const BY = "\\s*(?:mm)?\\s*[x×*]\\s*";
 const SHOP_WORDS: Record<string, Rule[]> = {
+  // "aluminum 25x2 tube", "carbon Ø20×1.5": OD x wall in mm.
+  "round-tubes": [[new RegExp(`ø?\\s*${NUM}${BY}${NUM}(?:\\s*mm\\b)?`), (m) => ({ od: m[1], wall: m[2] })], ...MATERIAL_WORDS],
+  // "aluminum 50x50x100 block" (X x Y x Z), "brass Ø30x150 cylinder" (OD x length), "8mm standoff stock".
+  "cylinders-blocks": [
+    [new RegExp(`${NUM}${BY}${NUM}${BY}${NUM}(?:\\s*mm\\b)?`), (m) => ({ shape: "Block", x: m[1], y: m[2], z: m[3] })],
+    [new RegExp(`ø?\\s*${NUM}${BY}${NUM}(?:\\s*mm\\b)?`), (m) => ({ shape: "Cylinder", od: m[1], length: m[2] })],
+    [/\bblocks?\b|billet/, () => ({ shape: "Block" })],
+    [/cylinders?|standoffs?|\brods?\b|(round|lathe)\s*stock|גליל/, () => ({ shape: "Cylinder" })],
+    [new RegExp(`ø\\s*${NUM}|${NUM}\\s*mm\\b`), (m) => ({ shape: "Cylinder", od: m[1] ?? m[2] })],
+    ...MATERIAL_WORDS,
+  ],
   // "8x16x5", "8×16×5mm", "6.35*17.46*7.9 flanged": ID, OD and thickness in mm.
   bearings: [
     [/(\d+(?:\.\d+)?)\s*[x×*]\s*(\d+(?:\.\d+)?)\s*[x×*]\s*(\d+(?:\.\d+)?)(?:\s*mm\b)?/, (m) => ({ bore: m[1], od: m[2], width: m[3] })],

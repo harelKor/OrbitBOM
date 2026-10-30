@@ -693,7 +693,7 @@ write(
 
 read(
   "list_inventory_categories",
-  "The inventory's categories and each one's fields (number, text, options, or a BOM material), with the allowed choices. Use the ids with add_inventory_items and set_inventory_info. Sheet categories count sheets and pieces of a sheet. The team edits these on the Settings page.",
+  "The inventory's categories and each one's fields (number, text, options, or a base material from the Settings list), with the allowed choices. Use the ids with add_inventory_items and set_inventory_info. Sheet categories count sheets and pieces of a sheet. The team edits these on the Settings page.",
   z.object({}),
   async () => ({
     categories: (await listCategories()).map((c) => ({

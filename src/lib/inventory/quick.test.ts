@@ -26,8 +26,8 @@ describe("parseQuick", () => {
   it("doesn't take a size that several options share as a part match", () => {
     expect(parseQuick("pulley 5mm bore", cats)?.specs).toEqual({ bore: "5mm" });
   });
-  it("picks BOM materials and lengths", () => {
-    expect(parseQuick("3mm 6061 plate", cats)).toEqual({ categoryId: "aluminum-plates", specs: { material: "3mm 6061-T6" }, left: [] });
+  it("picks base materials and lengths", () => {
+    expect(parseQuick("3mm 6061 plate", cats)).toEqual({ categoryId: "aluminum-plates", specs: { material: "6061-T6", thickness: "3" }, left: [] });
     expect(parseQuick("1/2 hex shaft 300mm", cats)).toEqual({ categoryId: "shafts", specs: { profile: '1/2" Hex', length: "300" }, left: [] });
   });
   it("keeps the words it couldn't place", () => {

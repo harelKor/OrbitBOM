@@ -24,7 +24,7 @@ export const CATEGORY_GROUPS = [
     short: "Raw Stock", // the add form's group pill
     label: "Raw Stock",
     icon: "layers",
-    text: "Plates, box & round tubes, carbon, shafts, 3D filament",
+    text: "Plates, box & round tubes, shafts, blocks, 3D filament",
   },
   {
     id: "hardware",
@@ -375,7 +375,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
         id: "material",
         label: "Material",
         kind: "material",
-        materials: ["Aluminum Plates"],
+        options: ["Aluminum", "6061-T6", "7075-T6"],
       },
       thickness,
       sheetSize,
@@ -420,17 +420,14 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     match:
       /(box|square|rect\w*)\s*tube|\btube\b.*\d+\s*x\s*\d+|\d+\s*x\s*\d+.*\btube\b|extrusion/i,
     fields: [
-      {
-        id: "material",
-        label: "Material",
-        kind: "material",
-        materials: ["Aluminum Extrusions"],
-      },
+      { id: "material", label: "Material", kind: "material" },
       { id: "size", label: "Size (mm)", kind: "text", name: "{}mm" },
       wall,
       length,
     ],
   },
+  // "Aluminum 25x2 tube", "Carbon Fiber 22x1.5 tube": material, then OD x wall (Harel,
+  // 2026-10-30; carbon tubes joined this category). See buildName in lib/inventory/categories.ts.
   {
     id: "round-tubes",
     group: "consumables",
@@ -438,40 +435,12 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     image: "/categories/round-tubes.png",
     noun: "Tube",
     sheet: true,
-    match: /round\s*tube|\btube\b.*\bod\b|\bod\b.*\btube\b|\bpipe\b/i,
+    match: /round\s*tube|\btube\b.*\bod\b|\bod\b.*\btube\b|\bpipe\b|carbon|קרבון/i,
     fields: [
-      {
-        id: "material",
-        label: "Material",
-        kind: "material",
-        materials: [
-          "Aluminum Tubes",
-          "Polycarbonate Tubes",
-          "Carbon Fiber Tubes",
-        ],
-      },
-      { id: "od", label: "OD (mm)", kind: "number", name: "Ø{}mm" },
-      wall,
+      { id: "material", label: "Material", kind: "material" },
+      { id: "od", label: "OD (mm)", kind: "number" },
+      { id: "wall", label: "Wall (mm)", kind: "text" },
       length,
-    ],
-  },
-  {
-    id: "carbon-tubes",
-    group: "consumables",
-    label: "Carbon fiber tubes",
-    image: "/categories/carbon-tubes.png",
-    noun: "Carbon tube",
-    sheet: true,
-    match: /carbon|קרבון/i,
-    fields: [
-      { id: "od", label: "OD", kind: "text", name: "Ø{}" },
-      wall,
-      {
-        id: "length",
-        label: "Length",
-        kind: "options",
-        options: ["500mm", "700mm"],
-      },
     ],
   },
   {
@@ -511,9 +480,27 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
         id: "material",
         label: "Material",
         kind: "material",
-        materials: ["3D Printed"],
+        options: ["PLA", "PETG", "TPU", "Onyx", "PA612"],
       },
       { id: "color", label: "Color", kind: "text" },
+    ],
+  },
+  // Billet and lathe stock (Harel, 2026-10-30): "Aluminum 50x50x100 block", "Brass Ø30x150 cylinder".
+  {
+    id: "cylinders-blocks",
+    group: "consumables",
+    label: "Cylinders & blocks",
+    noun: "",
+    sheet: true,
+    match: /(?<!bearing\s)\bblocks?\b|billet|cylinder|standoff\s*stock|(round|lathe)\s*stock/i,
+    fields: [
+      { id: "shape", label: "Shape", kind: "options", options: ["Cylinder", "Block"] },
+      { id: "material", label: "Material", kind: "material" },
+      { id: "od", label: "OD (mm)", kind: "number", name: "Ø{}mm", when: "Cylinder" },
+      { id: "length", label: "Length (mm)", kind: "number", name: "{}mm", when: "Cylinder" },
+      { id: "x", label: "X (mm)", kind: "number", when: "Block" },
+      { id: "y", label: "Y (mm)", kind: "number", when: "Block" },
+      { id: "z", label: "Z (mm)", kind: "number", when: "Block" },
     ],
   },
 

@@ -1,6 +1,31 @@
 // Team 1690's materials by category, copied from FRCBOM (ref §4), with the "1.5mmm" typo fixed.
 // BOM parts now pick an inventory item as their material (lib/data/materials.ts); this list only
-// gives inventory "BOM material" spec fields their choices and the 3D colour groups.
+// gives old inventory material fields (ones still naming its groups) their choices and the 3D
+// colour groups.
+
+// The base materials inventory "material" fields offer (Harel, 2026-10-30): what a thing is made
+// of, never a shape or size. They seed the base_materials table; the team edits them in Settings.
+export const BASE_MATERIALS = [
+  "Aluminum",
+  "6061-T6",
+  "7075-T6",
+  "Polycarbonate",
+  "Carbon Fiber",
+  "Steel",
+  "Stainless Steel",
+  "Brass",
+  "Delrin / Acetal",
+  "Nylon",
+  "Birch",
+  "Plywood",
+  "MDF",
+  "SRPP",
+  "PLA",
+  "TPU",
+  "PETG",
+  "Onyx",
+  "PA612",
+];
 
 export type MaterialList = Record<string, string[]>;
 

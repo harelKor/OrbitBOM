@@ -5,13 +5,16 @@ import { imageUrl } from "@/lib/storage/r2";
 import { DEFAULT_CATEGORIES, groupOf } from "@/config/inventory";
 import type { InvCategory } from "@/lib/inventory/categories";
 import { MATERIALS } from "@/config/materials";
+import { listBaseMaterials } from "./baseMaterials";
 
 const { inventoryCategories } = schema;
 
 type Exec = Pick<typeof db, "select" | "insert">;
 
-// The inventory's categories in their order, material fields carrying their materials from
-// config/materials.ts. The first read seeds them from config/inventory.ts.
+// The inventory's categories in their order, material fields carrying their choices: the
+// field's own `options` (a few base materials), else the team's whole base material list (an old
+// field still naming config/materials.ts groups keeps those). The first read seeds them from
+// config/inventory.ts.
 export async function listCategories(exec: Exec = db): Promise<InvCategory[]> {
   let rows = await exec.select().from(inventoryCategories).orderBy(asc(inventoryCategories.position), asc(inventoryCategories.label));
   if (!rows.length) {
@@ -21,6 +24,9 @@ export async function listCategories(exec: Exec = db): Promise<InvCategory[]> {
       .onConflictDoNothing();
     rows = await exec.select().from(inventoryCategories).orderBy(asc(inventoryCategories.position), asc(inventoryCategories.label));
   }
+  const base = rows.some((r) => r.fields.some((f) => f.kind === "material")) ? (await listBaseMaterials(exec)).map((m) => m.name) : [];
+  const choices = (f: InvCategory["fields"][number]) =>
+    f.options?.length ? f.options : f.materials?.length ? f.materials.flatMap((g) => MATERIALS[g] ?? []) : base;
   return rows.map((r) => ({
     id: r.id,
     label: r.label,
@@ -29,7 +35,7 @@ export async function listCategories(exec: Exec = db): Promise<InvCategory[]> {
     sheet: r.sheet,
     image: r.image,
     defaultLocationId: r.defaultLocationId,
-    fields: r.fields.map((f) => (f.kind === "material" ? { ...f, materialChoices: (f.materials ?? []).flatMap((g) => MATERIALS[g] ?? []) } : f)),
+    fields: r.fields.map((f) => (f.kind === "material" ? { ...f, materialChoices: choices(f) } : f)),
   }));
 }
 
