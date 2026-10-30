@@ -3,7 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { addCategory, deleteCategory, moveCategory, saveCategory } from "@/app/(app)/inventory/actions";
 import { CATEGORY_GROUPS } from "@/config/inventory";
-import { useMaterials } from "@/components/shell/MaterialColors";
+import { MATERIALS } from "@/config/materials";
 import type { CategoryField } from "@/lib/inventory/categories";
 import type { InvCategory, Item, Location } from "./types";
 
@@ -18,7 +18,7 @@ const KINDS: { id: CategoryField["kind"]; label: string }[] = [
 // by itself a moment later; there is no Save button and nothing jumps. A field that items use can
 // be hidden but not deleted, so their values aren't lost.
 export function CategorySettings({ categories, locations, items }: { categories: InvCategory[]; locations: Location[]; items: Pick<Item, "category" | "specs">[] }) {
-  const materials = useMaterials();
+  const materials = MATERIALS;
   const [selected, setSelected] = useState<string | null>(categories[0]?.id ?? null);
   const [drafts, setDrafts] = useState<Record<string, InvCategory>>({});
   const [status, setStatus] = useState<{ error?: string; saving?: boolean; saved?: boolean }>({});

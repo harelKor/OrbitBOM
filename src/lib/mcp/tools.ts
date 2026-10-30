@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import { and, asc, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { findMachineByName, getMachine, MACHINES } from "@/config/machines";
-import { allMaterials } from "@/config/materials";
 import { COTS_STATUSES } from "@/config/cots";
 import { STATUSES } from "@/config/statuses";
 import { PRIORITIES } from "@/config/priorities";
@@ -18,7 +17,7 @@ import { readProduct, saveProductPhoto } from "@/lib/inventory/product";
 import { CATEGORY_GROUPS, isCategoryGroup } from "@/config/inventory";
 import { addCategoryForReview, applyItemEdits } from "@/lib/review/inventory";
 import { listCategories } from "@/lib/data/categories";
-import { listMaterials } from "@/lib/data/materials";
+import { listMaterialGroups, listRawStock } from "@/lib/data/materials";
 import { cotsCategories } from "@/lib/data/parts";
 import { moveStock } from "@/lib/inventory/moves";
 import { hasSeasonNeed, missing } from "@/lib/inventory/season";
@@ -183,7 +182,15 @@ read("list_statuses", "The part statuses, in board order, with which count as do
 read("list_machines", "The team's machines with their stage and the CAD file each needs.", z.object({}), async () =>
   MACHINES.map((m) => ({ id: m.id, name: m.name, stage: m.stage, cad_format: m.cadFormat })),
 );
-read("list_materials", "The team's materials by category. Use these exact names.", z.object({}), async () => listMaterials());
+read(
+  "list_materials",
+  "A part's material is an inventory item. These are the Raw Stock items (plates, tubes, shaft stock, filament) by inventory category, with their stock. Pass an item's id to set_up_parts as material_item_id. Other inventory items can be materials too: find them with search_inventory.",
+  z.object({}),
+  async () =>
+    (await listMaterialGroups())
+      .filter((g) => g.raw)
+      .map((g) => ({ category: g.id, label: g.label, items: g.items.map((i) => ({ id: i.id, name: i.name, label: i.label, in_stock: i.stock })) })),
+);
 
 // ---------- read ----------
 
@@ -414,7 +421,8 @@ read(
 const setupInput = z.object({
   part_id: uuid,
   type: z.enum(["inhouse", "cots", "external", "undefined"]).optional(),
-  material: z.string().optional().describe("An exact name from list_materials."),
+  material_item_id: uuid.optional().describe("The inventory item the part is made from: an id from list_materials (or search_inventory). Sets the part's material to its name."),
+  material: z.string().optional().describe("Instead of material_item_id: an exact item name from list_materials, when only one item has it."),
   pre_process: z.string().nullable().optional().describe("Machine name or id, or null."),
   process_1: z.string().nullable().optional().describe("Machine name or id, or null."),
   process_2: z.string().nullable().optional().describe("Machine name or id, or null."),
@@ -426,14 +434,38 @@ write(
   "Set the material, processes and type you worked out for parts (each part can differ). The parts change at once and wait in To Review, where their designer approves or rejects each one; Reject puts the old values back. Use this, not update_parts, for setups you inferred yourself.",
   z.object({ parts: z.array(setupInput).min(1).max(500) }),
   async ({ parts: input }, { member, aiName }) => {
-    const known = allMaterials(await listMaterials());
-    const edits = input.map((e) => {
-      if (e.material !== undefined && !known.includes(e.material)) {
-        throw new ToolError(`Unknown material "${e.material}". Use list_materials for the exact names.`);
+    const stock = await listRawStock();
+    const others = input.some((e) => e.material_item_id && !stock.some((i) => i.id === e.material_item_id))
+      ? await db.select({ id: inventoryItems.id, name: inventoryItems.name }).from(inventoryItems).where(inArray(inventoryItems.id, input.flatMap((e) => (e.material_item_id ? [e.material_item_id] : []))))
+      : [];
+    // The material is an inventory item: the part gets its name and its id.
+    const itemFor = (e: (typeof input)[number]) => {
+      if (e.material_item_id) {
+        const item = stock.find((i) => i.id === e.material_item_id) ?? others.find((i) => i.id === e.material_item_id);
+        if (!item) throw new ToolError(`No inventory item ${e.material_item_id}. Use list_materials or search_inventory.`);
+        return item;
       }
+      if (e.material === undefined) return undefined;
+      const named = stock.filter((i) => i.name === e.material);
+      if (named.length !== 1) {
+        throw new ToolError(
+          named.length ? `Several items are named "${e.material}"; pass material_item_id.` : `Unknown material "${e.material}". Use list_materials for the items and their ids.`,
+        );
+      }
+      return named[0];
+    };
+    const edits = input.map((e) => {
+      const item = itemFor(e);
       const changes = normaliseChanges(
         Object.fromEntries(
-          Object.entries({ classification: e.type, material: e.material, preProcess: e.pre_process, process1: e.process_1, process2: e.process_2 }).filter(
+          Object.entries({
+            classification: e.type,
+            material: item?.name,
+            inventoryItemId: item?.id,
+            preProcess: e.pre_process,
+            process1: e.process_1,
+            process2: e.process_2,
+          }).filter(
             ([, v]) => v !== undefined,
           ),
         ),

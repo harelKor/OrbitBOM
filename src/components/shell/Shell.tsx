@@ -2,7 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import type { MaterialList } from "@/config/materials";
+import type { MaterialGroup } from "@/lib/data/materials";
 import type { ShellCategory, ShellRobot } from "@/lib/data/shell";
 import { InventoryPopupProvider } from "@/components/inventory/InventoryPopup";
 import { PartDetailsProvider } from "@/components/bom/PartDetailsHost";
@@ -40,7 +40,7 @@ export function Shell({
   categories: ShellCategory[];
   mode: Mode;
   materialColors: Record<string, string>;
-  materials: MaterialList;
+  materials: MaterialGroup[];
   member: { name: string; email: string; isAdmin: boolean };
   children: React.ReactNode;
 }) {

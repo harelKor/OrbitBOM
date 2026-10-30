@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sizeOf, suggestSetup, wallThickness, type Learned, type SetupInput } from "./rules";
+import { sizeOf, suggestSetup as suggest, wallThickness, type Learned, type SetupInput, type StockItem } from "./rules";
 
 const part = (over: Partial<SetupInput> = {}): SetupInput => ({
   classification: "cots",
@@ -12,16 +12,31 @@ const part = (over: Partial<SetupInput> = {}): SetupInput => ({
 });
 const none: Learned = new Map();
 
+// Raw Stock items as the live inventory names them.
+const item = (name: string, category: string, specs: Record<string, string> = {}): StockItem => ({ id: name, name, category, specs });
+const STOCK: StockItem[] = [
+  item("Aluminum plate 5052 2mm", "aluminum-plates", { thickness: "2" }),
+  item("Aluminum plate 6061 2mm", "aluminum-plates", { thickness: "2", material: "2mm 6061-T6" }),
+  item("Aluminum plate 6061 3mm", "aluminum-plates", { thickness: "3", material: "3mm 6061-T6" }),
+  item("Aluminum plate 6061 6.35mm", "aluminum-plates", { thickness: "6.35" }),
+  item("Aluminum plate 6061 6.7mm", "aluminum-plates", { thickness: "6.7", material: "6.7mm 6061-T6" }),
+  item("Polycarbonate 2mm", "polycarbonate", { thickness: "2" }),
+  item("Polycarbonate 3mm", "polycarbonate", { thickness: "3" }),
+  item("Bambu PLA – Black filament", "filament", { material: "PLA" }),
+  item("Markforged Onyx filament", "filament", { material: "Onyx" }),
+];
+const suggestSetup = (p: SetupInput, learned: Learned) => suggest(p, learned, STOCK);
+
 describe("suggestSetup", () => {
   it("maps a flat aluminum part to the plate of its thickness and the default process", () => {
     const s = suggestSetup(part({ geometry: { onshapeMaterial: "Aluminum - 6061", bbox: [3.02, 120, 200] } }), none);
-    expect(s?.changes).toEqual({ material: "3mm 6061-T6", preProcess: null, process1: "cnc", process2: null, classification: "inhouse" });
+    expect(s?.changes).toEqual({ material: "Aluminum plate 6061 3mm", inventoryItemId: "Aluminum plate 6061 3mm", preProcess: null, process1: "cnc", process2: null, classification: "inhouse" });
     expect(s?.reason).toContain("3 mm thick");
   });
 
   it("tells 6.35 mm from 6.7 mm plates", () => {
     const s = suggestSetup(part({ geometry: { onshapeMaterial: "Aluminum - 6061", bbox: [6.7, 50, 80] } }), none);
-    expect(s?.changes.material).toBe("6.7mm 6061-T6");
+    expect(s?.changes.material).toBe("Aluminum plate 6061 6.7mm");
   });
 
   it("leaves a thick block or an unknown thickness alone", () => {
@@ -31,35 +46,35 @@ describe("suggestSetup", () => {
   });
 
   it("prefers what the team usually does with the material", () => {
-    const learned: Learned = new Map([["3mm Poly", { process1: "hadasas", count: 4 }]]);
+    const learned: Learned = new Map([["Polycarbonate 3mm", { process1: "hadasas", count: 4 }]]);
     const s = suggestSetup(part({ geometry: { onshapeMaterial: "Polycarbonate", bbox: [3, 100, 100] } }), learned);
     expect(s?.changes.process1).toBe("hadasas");
-    expect(s?.reason).toContain("as on 4 other 3mm Poly parts");
+    expect(s?.reason).toContain("as on 4 other Polycarbonate 3mm parts");
   });
 
   it("recognises 3D printed parts by their Onshape material", () => {
-    expect(suggestSetup(part({ geometry: { onshapeMaterial: "PLA" } }), none)?.changes).toMatchObject({ material: "PLA", process1: "3d-bambu" });
-    expect(suggestSetup(part({ geometry: { onshapeMaterial: "Onyx" } }), none)?.changes).toMatchObject({ material: "Onyx", process1: "3d-markforged" });
+    expect(suggestSetup(part({ geometry: { onshapeMaterial: "PLA" } }), none)?.changes).toMatchObject({ material: "Bambu PLA – Black filament", process1: "3d-bambu" });
+    expect(suggestSetup(part({ geometry: { onshapeMaterial: "Onyx" } }), none)?.changes).toMatchObject({ material: "Markforged Onyx filament", process1: "3d-markforged" });
   });
 
   it("only adds processes to a part that has a material, and keeps processes someone set", () => {
-    expect(suggestSetup(part({ classification: "inhouse", material: "2mm Poly" }), none)?.changes).toEqual({
+    expect(suggestSetup(part({ classification: "inhouse", material: "Polycarbonate 2mm" }), none)?.changes).toEqual({
       preProcess: null,
       process1: "laser",
       process2: null,
     });
-    expect(suggestSetup(part({ material: "2mm Poly", process1: "cnc" }), none)).toBeNull();
+    expect(suggestSetup(part({ material: "Polycarbonate 2mm", process1: "cnc" }), none)).toBeNull();
     expect(suggestSetup(part({ classification: "external", geometry: { onshapeMaterial: "PLA" } }), none)).toBeNull();
   });
 
   it("treats bent sheet as a plate of its wall thickness, then bending", () => {
     const s = suggestSetup(part({ geometry: { onshapeMaterial: "Aluminum - 6061", bbox: [19, 19, 200], wallMm: 2.01, sheetMetal: { flatPartId: "JFD" } } }), none);
-    expect(s?.changes).toMatchObject({ material: "2mm 6061-T6", process1: "cnc", process2: "bending" });
+    expect(s?.changes).toMatchObject({ material: "Aluminum plate 6061 2mm", process1: "cnc", process2: "bending" });
     expect(s?.reason).toContain("bent sheet metal and 2 mm thick");
   });
 
   it("does not add bending twice or to a flat plate", () => {
-    const learned: Learned = new Map([["2mm 6061-T6", { process1: "laser", process2: "bending", count: 3 }]]);
+    const learned: Learned = new Map([["Aluminum plate 6061 2mm", { process1: "laser", process2: "bending", count: 3 }]]);
     const bent = suggestSetup(part({ geometry: { onshapeMaterial: "Aluminum - 6061", bbox: [19, 19, 200], wallMm: 2 } }), learned);
     expect(bent?.changes).toMatchObject({ process1: "laser", process2: "bending" });
     const flat = suggestSetup(part({ geometry: { onshapeMaterial: "Aluminum - 6061", bbox: [2, 60, 200] } }), none);

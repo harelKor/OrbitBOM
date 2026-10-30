@@ -1,59 +1,38 @@
-import { asc, isNotNull, sql } from "drizzle-orm";
+import { asc } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { redirect } from "next/navigation";
 import { requireMember } from "@/lib/auth";
 import { isEditMode } from "@/lib/mode";
 import { listCategories } from "@/lib/data/categories";
-import { listMaterialColors } from "@/lib/data/materialColors";
-import { listMaterials } from "@/lib/data/materials";
 import { backupInfo } from "@/lib/storage/backup";
 import { RESTORE_SCOPES } from "@/lib/storage/restore";
 import { SettingsView } from "./SettingsView";
 
-const { parts, inventoryItems, inventoryConditions, inventoryLocations } = schema;
+const { inventoryItems, inventoryConditions, inventoryLocations } = schema;
 
-// The team's lists in one place: materials (with their 3D colours), inventory categories,
-// locations, conditions and the nightly backups.
+// The team's lists in one place: inventory categories, locations, conditions and the nightly
+// backups. BOM materials are inventory items now, so they're edited in Inventory.
 export default async function SettingsPage() {
   const member = await requireMember();
   // Settings is for admins in Edit mode; the teams land back on their home page.
   if (!(await isEditMode())) redirect("/");
-  const [materials, colors, categories, conditions, locations, items, partUses, itemUses, backups] = await Promise.all([
-    listMaterials(),
-    listMaterialColors(),
+  const [categories, conditions, locations, items, backups] = await Promise.all([
     listCategories(),
     db.select().from(inventoryConditions).orderBy(asc(inventoryConditions.label)),
     db.select().from(inventoryLocations).orderBy(asc(inventoryLocations.name)),
     db.select({ category: inventoryItems.category, specs: inventoryItems.specs }).from(inventoryItems),
-    db
-      .select({ material: parts.material, n: sql<number>`count(*)::int` })
-      .from(parts)
-      .where(isNotNull(parts.material))
-      .groupBy(parts.material),
-    db
-      .select({ material: sql<string>`${inventoryItems.specs} ->> 'material'`, n: sql<number>`count(*)::int` })
-      .from(inventoryItems)
-      .where(sql`${inventoryItems.specs} ->> 'material' is not null`)
-      .groupBy(sql`${inventoryItems.specs} ->> 'material'`),
     backupInfo(),
   ]);
-
-  const uses: Record<string, { parts: number; items: number }> = {};
-  for (const r of partUses) if (r.material) (uses[r.material] ??= { parts: 0, items: 0 }).parts = r.n;
-  for (const r of itemUses) if (r.material) (uses[r.material] ??= { parts: 0, items: 0 }).items = r.n;
 
   return (
     <div className="space-y-4">
       <div>
         <h1 className="display text-3xl text-accent">Settings</h1>
         <p className="mt-1 max-w-3xl text-sm text-muted">
-          The team&apos;s lists. Changes save at once and reach every picker, the 3D viewer and Claude&apos;s tools.
+          The team&apos;s lists. Changes save at once and reach every picker and Claude&apos;s tools. A part&apos;s material is an inventory item, so add materials in Inventory.
         </p>
       </div>
       <SettingsView
-        materials={materials}
-        colors={colors}
-        uses={uses}
         categories={categories}
         conditions={conditions}
         locations={locations}

@@ -49,8 +49,8 @@ const machine = z.union([z.literal(""), z.enum(MACHINES.map((m) => m.id) as [str
 const manualPart = z.object({
   name: z.string().trim().min(1, "Part name is required."),
   quantity: z.coerce.number().int().min(0),
-  material: z.string().trim(),
-  description: z.string().trim(),
+  inventoryItemId: z.union([z.literal(""), z.uuid()]).default(""),
+  description: z.string().trim().default(""),
   preProcess: machine,
   process1: machine,
   process2: machine,
@@ -67,12 +67,17 @@ export async function addManualPart(
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const d = parsed.data;
   const orNull = (v: string) => v || null;
+  // The material is an inventory item; the part keeps its name too.
+  const [item] = d.inventoryItemId
+    ? await db.select({ id: schema.inventoryItems.id, name: schema.inventoryItems.name }).from(schema.inventoryItems).where(eq(schema.inventoryItems.id, d.inventoryItemId))
+    : [];
   await db.insert(schema.parts).values({
     systemId,
     isManual: true,
     displayName: d.name,
     quantity: d.quantity,
-    material: orNull(d.material),
+    material: item?.name ?? null,
+    inventoryItemId: item?.id ?? null,
     description: orNull(d.description),
     preProcess: orNull(d.preProcess),
     process1: orNull(d.process1),

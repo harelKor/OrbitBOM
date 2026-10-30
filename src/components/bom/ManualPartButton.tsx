@@ -3,7 +3,6 @@
 import { useActionState, useState } from "react";
 import { Dialog } from "@/components/Dialog";
 import { MACHINES } from "@/config/machines";
-import { allMaterials } from "@/config/materials";
 import { useMaterials } from "@/components/shell/MaterialColors";
 import { addManualPart } from "@/app/(app)/parts-actions";
 
@@ -45,12 +44,17 @@ export function ManualPartButton({ systemId }: { systemId: string }) {
           <input name="name" required placeholder="Part Name *" className="input" />
           <div className="grid grid-cols-2 gap-3">
             <input name="quantity" type="number" min={0} required defaultValue={1} className="input" aria-label="Quantity" />
-            <input name="material" placeholder="Material" list="manual-materials" className="input" />
-            <datalist id="manual-materials">
-              {allMaterials(materials).map((m) => (
-                <option key={m} value={m} />
+            {/* An inventory item, Raw Stock first; the server saves its name as the material. */}
+            <select name="inventoryItemId" className="input" defaultValue="" aria-label="Material">
+              <option value="">Material (optional)</option>
+              {materials.map((g) => (
+                <optgroup key={g.id} label={g.label}>
+                  {g.items.map((i) => (
+                    <option key={i.id} value={i.id}>{`${i.label} (${i.stock})`}</option>
+                  ))}
+                </optgroup>
               ))}
-            </datalist>
+            </select>
           </div>
           <div className="grid grid-cols-2 gap-3">
             {machineSelect("preProcess", "Pre Process", "PreProcess")}

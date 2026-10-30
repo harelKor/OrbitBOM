@@ -1,25 +1,31 @@
-// Suggest setup's rules (plan §6, "Recognising part types"): material from Onshape's own
-// material and the part's measured size, processes from what the team usually does with that
-// material. No AI runs on the server; parts these rules can't place are left for the member's
+// Suggest setup's rules (plan §6, "Recognising part types"): material (a Raw Stock inventory
+// item) from Onshape's own material and the part's measured size, processes from what the team
+// usually does with that material. No AI runs on the server; parts these rules can't place are left for the member's
 // Claude, through the MCP server, or the designer.
 
 import { BENDING_MACHINE, DEFAULT_PROCESSES, PLATE_TOLERANCE_MM, type ProcessSet } from "@/config/autoSetup";
 import { getMachine } from "@/config/machines";
-import { MATERIALS, materialCategory, plateThicknessMm, type MaterialList } from "@/config/materials";
+import { plateThicknessMm } from "@/config/materials";
 import type { PartGeometry } from "@/db/schema";
 
 export type SetupInput = {
   classification: "inhouse" | "cots" | "external" | "undefined";
   material: string | null;
+  inventoryItemId?: string | null;
   preProcess: string | null;
   process1: string | null;
   process2: string | null;
   geometry: PartGeometry | null;
 };
 
+// A Raw Stock inventory item (lib/data/materials.ts listRawStock): `category` is its inventory
+// category id.
+export type StockItem = { id: string; name: string; category: string; specs: Record<string, string> };
+
 export type SetupChanges = {
   classification?: "inhouse";
   material?: string;
+  inventoryItemId?: string;
   preProcess?: string | null;
   process1?: string | null;
   process2?: string | null;
@@ -28,11 +34,7 @@ export type SetupChanges = {
 // Learned processes: the most common process set per material on the team's parts.
 export type Learned = Map<string, ProcessSet & { count: number }>;
 
-const PRINTED: [RegExp, string][] = [
-  [/\bpla\b/i, "PLA"],
-  [/\bonyx\b/i, "Onyx"],
-  [/\bpa ?6?12\b|nylon ?12/i, "PA612"],
-];
+const PRINTED: RegExp[] = [/\bpla\b/i, /\bonyx\b/i, /\bpa ?6?12\b|nylon ?12/i];
 
 const fmt = (n: number) => (Math.round(n * 10) / 10).toString();
 
@@ -49,38 +51,62 @@ function sheetThickness(g: PartGeometry | null | undefined): number | undefined 
   return isBent(g) ? g.wallMm : undefined;
 }
 
-// The plate of `category` whose thickness matches `t`.
-function plateFor(category: string, t: number | undefined, list: MaterialList) {
-  if (t === undefined) return undefined;
-  return (list[category] ?? []).find((m) => {
-    const thk = plateThicknessMm(m);
-    return thk !== undefined && Math.abs(thk - t) <= PLATE_TOLERANCE_MM;
-  });
+// An item's plate thickness in mm: its thickness spec, else its material spec ("3mm 6061-T6"),
+// else a "3mm" in its name.
+function itemThickness(i: StockItem): number | undefined {
+  const spec = Number(i.specs.thickness);
+  if (i.specs.thickness && Number.isFinite(spec)) return spec;
+  const fromMaterial = i.specs.material ? plateThicknessMm(i.specs.material) : undefined;
+  if (fromMaterial !== undefined) return fromMaterial;
+  const m = /(\d+(?:\.\d+)?)\s*mm\b/i.exec(i.name);
+  return m ? Number(m[1]) : undefined;
 }
 
-export function materialGuess(part: SetupInput, list: MaterialList = MATERIALS): { material: string; why: string } | undefined {
+// The plate in inventory category `category` whose thickness matches `t`; 6061 first for
+// aluminium.
+function plateFor(category: string, t: number | undefined, stock: StockItem[]) {
+  if (t === undefined) return undefined;
+  const fits = stock.filter((i) => {
+    const thk = i.category === category ? itemThickness(i) : undefined;
+    return thk !== undefined && Math.abs(thk - t) <= PLATE_TOLERANCE_MM;
+  });
+  return fits.find((i) => /6061/.test(`${i.name} ${i.specs.material ?? ""}`)) ?? fits[0];
+}
+
+export function materialGuess(part: SetupInput, stock: StockItem[]): { item: StockItem; why: string } | undefined {
   const om = part.geometry?.onshapeMaterial ?? "";
   const t = sheetThickness(part.geometry);
   const shape = isBent(part.geometry) ? `bent ${part.geometry?.sheetMetal ? "sheet metal" : "sheet"}` : "flat";
   const thick = t !== undefined ? `${fmt(t)} mm thick` : "";
   if (/alumin/i.test(om)) {
-    const m = plateFor("Aluminum Plates", t, list);
-    if (m) return { material: m, why: `Onshape material ${om}, ${shape} and ${thick}` };
+    const item = plateFor("aluminum-plates", t, stock);
+    if (item) return { item, why: `Onshape material ${om}, ${shape} and ${thick}` };
   }
   if (/polycarb/i.test(om)) {
-    const m = plateFor("Polycarbonate Plates", t, list);
-    if (m) return { material: m, why: `Onshape material ${om}, ${shape} and ${thick}` };
+    const item = plateFor("polycarbonate", t, stock);
+    if (item) return { item, why: `Onshape material ${om}, ${shape} and ${thick}` };
   }
-  for (const [re, material] of PRINTED) {
-    if (re.test(om)) return { material, why: `Onshape material ${om}` };
+  for (const re of PRINTED) {
+    if (!re.test(om)) continue;
+    const item = stock.find((i) => i.category === "filament" && re.test(`${i.specs.material ?? ""} ${i.name}`));
+    if (item) return { item, why: `Onshape material ${om}` };
   }
   return undefined;
 }
 
-function processesFor(material: string, learned: Learned, list: MaterialList): { set: ProcessSet; why: string } | undefined {
+// The team default for a material: by its item's name or material spec ("PLA" in "Bambu PLA –
+// Black filament"), else by its inventory category.
+function defaultProcesses(material: string, item: StockItem | undefined): ProcessSet | undefined {
+  if (DEFAULT_PROCESSES[material]) return DEFAULT_PROCESSES[material];
+  const text = `${material} ${item?.specs.material ?? ""}`;
+  const key = Object.keys(DEFAULT_PROCESSES).find((k) => new RegExp(`\\b${k}\\b`, "i").test(text));
+  return key ? DEFAULT_PROCESSES[key] : item ? DEFAULT_PROCESSES[item.category] : undefined;
+}
+
+function processesFor(material: string, item: StockItem | undefined, learned: Learned): { set: ProcessSet; why: string } | undefined {
   const team = learned.get(material);
   if (team && team.count >= 2) return { set: team, why: `as on ${team.count} other ${material} parts` };
-  const set = DEFAULT_PROCESSES[material] ?? DEFAULT_PROCESSES[materialCategory(material, list) ?? ""];
+  const set = defaultProcesses(material, item);
   return set ? { set, why: "the team default" } : undefined;
 }
 
@@ -99,22 +125,25 @@ const names = (s: ProcessSet) =>
     .join(" → ");
 
 // What the rules would set on a part, and why, or null when they can't tell.
-export function suggestSetup(part: SetupInput, learned: Learned, list: MaterialList = MATERIALS): { changes: SetupChanges; reason: string } | null {
+export function suggestSetup(part: SetupInput, learned: Learned, stock: StockItem[]): { changes: SetupChanges; reason: string } | null {
   if (part.classification === "external") return null;
   const changes: SetupChanges = {};
   const why: string[] = [];
 
   let material = part.material;
+  let item = stock.find((i) => i.id === part.inventoryItemId) ?? stock.find((i) => i.name === material);
   if (!material) {
-    const guess = materialGuess(part, list);
+    const guess = materialGuess(part, stock);
     if (!guess) return null;
-    material = guess.material;
+    item = guess.item;
+    material = item.name;
     changes.material = material;
+    changes.inventoryItemId = item.id;
     why.push(`${guess.why}: ${material}`);
   }
 
   if (!part.preProcess && !part.process1 && !part.process2) {
-    const p = processesFor(material, learned, list);
+    const p = processesFor(material, item, learned);
     if (p) {
       const set = isBent(part.geometry) ? withBending(p.set) : p.set;
       Object.assign(changes, { preProcess: set.preProcess ?? null, process1: set.process1 ?? null, process2: set.process2 ?? null });

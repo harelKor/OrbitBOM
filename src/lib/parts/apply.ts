@@ -112,7 +112,9 @@ export async function applyEachPartChanges(
       );
       if (received) await moveStock(tx, { itemId: after.inventoryItemId!, delta: received, reason: "received", partId: row.id }, { memberId: ctx.memberId, via: ctx.via, batchId });
       if (set.inventoryItemId) {
-        await rememberLink(tx, set.inventoryItemId, row);
+        // A made part's material item (a plate it's cut from) isn't the part: only COTS links teach
+        // the item a name and an Onshape part.
+        if (after.classification === "cots") await rememberLink(tx, set.inventoryItemId, row);
         await fillCardFromItem(tx, after, set.inventoryItemId);
       }
       // Onshape sync doesn't touch the COTS fields; an edit by a member or AI reaches the item.

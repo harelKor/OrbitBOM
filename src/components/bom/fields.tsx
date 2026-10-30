@@ -10,6 +10,7 @@ import { computeStatus, partStatusLabel, statusMachine } from "@/lib/status";
 import { STATUSES, statusLabel } from "@/config/statuses";
 import {
   COTS_STATUS_OPTIONS,
+  findMaterial,
   materialOptions,
   PRIORITY_COLORS,
   PRIORITY_OPTIONS,
@@ -141,24 +142,16 @@ export function TextField({
   );
 }
 
-// Materials, then the team's inventory items: picking an item ties the part to it (ref §5).
+// A part's material is an inventory item (Raw Stock first, then the rest): picking one saves its
+// name and ties the part to it.
 export function MaterialField({ part, save, className }: Props & { className?: string }) {
   const locked = !useCan("work");
   const { inventory } = useBom();
   const materials = useMaterials();
   const { openItem, openMaterial } = useInventoryPopup();
-  const linked = part.inventoryItemId ? inventory.find((i) => i.id === part.inventoryItemId) : undefined;
-  const options = [
-    ...materialOptions(materials),
-    ...inventory.map((i) => ({ value: `inv:${i.id}`, label: i.name, group: "Inventory" })),
-  ];
-  const label = linked ? (
-    <span className="text-emerald-700" title="Drawn from the team inventory">
-      {linked.name}
-    </span>
-  ) : (
-    (part.material ?? <Empty />)
-  );
+  const linked = findMaterial(materials, part.inventoryItemId) ?? (part.inventoryItemId ? inventory.find((i) => i.id === part.inventoryItemId) : undefined);
+  const options = materialOptions(materials);
+  const label = part.material ?? linked?.name ?? <Empty />;
   // The material's stock opens in a window over the page (View: tap the material; Edit: the box).
   const openStock = linked ? () => openItem(linked.id) : part.material ? () => openMaterial(part.material!) : null;
   if (locked)
@@ -175,10 +168,11 @@ export function MaterialField({ part, save, className }: Props & { className?: s
         {(close) => (
           <OptionList
             options={options}
-            value={linked ? `inv:${linked.id}` : part.material}
+            value={part.inventoryItemId}
+            placeholder="Search material…"
             onPick={(v) => {
-              if (v?.startsWith("inv:")) save({ inventoryItemId: v.slice(4) });
-              else save({ material: v, ...(part.inventoryItemId ? { inventoryItemId: null } : {}) });
+              const item = findMaterial(materials, v);
+              save(item ? { material: item.name, inventoryItemId: item.id } : { material: null, inventoryItemId: null });
               close();
             }}
           />

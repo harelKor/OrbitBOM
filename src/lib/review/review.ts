@@ -14,7 +14,7 @@ import { getObject, storageConfigured } from "@/lib/storage/r2";
 import { currentVisit } from "@/lib/visits";
 import { itemFieldLabel, itemValueText, locationNames, revertInventoryBatch } from "./inventory";
 import { listCategories } from "@/lib/data/categories";
-import { listMaterials } from "@/lib/data/materials";
+import { listRawStock } from "@/lib/data/materials";
 import { getCategory } from "@/lib/inventory/categories";
 import { sizeOf, suggestSetup, wallThickness, type Learned } from "./rules";
 
@@ -184,8 +184,8 @@ export async function partsToSetUp(robotId: string, systemId?: string) {
       ),
     );
   const measured = await measureParts(robotId, rows.map((r) => ({ ...r.part, systemName: r.systemName })));
-  const [learned, materials] = await Promise.all([learnedProcesses(), listMaterials()]);
-  return measured.map((p) => ({ part: p, guess: suggestSetup(p, learned, materials) }));
+  const [learned, stock] = await Promise.all([learnedProcesses(), listRawStock()]);
+  return measured.map((p) => ({ part: p, guess: suggestSetup(p, learned, stock) }));
 }
 
 // Suggest setup on To Review: the rules' guess for every part that needs one.

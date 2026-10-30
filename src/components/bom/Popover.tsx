@@ -129,7 +129,9 @@ export function focusIfMouse(el: HTMLInputElement | null) {
   if (el && matchMedia("(pointer: fine)").matches) el.focus({ preventScroll: true });
 }
 
-export type Option = { value: string | null; label: string; color?: string; group?: string };
+// `hint` shows muted on the right (a material's stock); `divider` draws a line above the option's
+// group header.
+export type Option = { value: string | null; label: string; color?: string; group?: string; hint?: string; divider?: boolean };
 
 // A searchable list, like FRCBOM's status and material menus.
 export function OptionList({
@@ -144,7 +146,8 @@ export function OptionList({
   placeholder?: string;
 }) {
   const [q, setQ] = useState("");
-  const filtered = options.filter((o) => o.label.toLowerCase().includes(q.trim().toLowerCase()));
+  const needle = q.trim().toLowerCase();
+  const filtered = options.filter((o) => o.label.toLowerCase().includes(needle) || (!!needle && !!o.group?.toLowerCase().includes(needle)));
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <input ref={focusIfMouse} value={q} onChange={(e) => setQ(e.target.value)} placeholder={placeholder} className="input mb-1.5 py-2" />
@@ -154,7 +157,7 @@ export function OptionList({
           return (
             <li key={`${o.group ?? ""}:${o.value ?? ""}`}>
               {header && (
-                <div className="px-2.5 pt-2.5 pb-1 text-xs font-semibold text-subtle">
+                <div className={`px-2.5 pt-2.5 pb-1 text-xs font-semibold text-subtle ${o.divider && i > 0 ? "mt-2 border-t border-line" : ""}`}>
                   {header}
                 </div>
               )}
@@ -166,7 +169,12 @@ export function OptionList({
                 }`}
               >
                 {o.color && <span className="h-3 w-3 shrink-0 rounded-full ring-1 ring-black/10" style={{ background: o.color }} />}
-                {o.label}
+                <span className="min-w-0 flex-1">{o.label}</span>
+                {o.hint !== undefined && (
+                  <span className="shrink-0 rounded-full bg-raised px-1.5 font-mono text-[11px] leading-5 text-subtle tabular-nums" title="In stock">
+                    {o.hint}
+                  </span>
+                )}
               </button>
             </li>
           );

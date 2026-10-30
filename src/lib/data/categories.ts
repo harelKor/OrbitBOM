@@ -4,20 +4,16 @@ import { db, schema } from "@/db";
 import { imageUrl } from "@/lib/storage/r2";
 import { DEFAULT_CATEGORIES, groupOf } from "@/config/inventory";
 import type { InvCategory } from "@/lib/inventory/categories";
-import { listMaterials } from "./materials";
+import { MATERIALS } from "@/config/materials";
 
 const { inventoryCategories } = schema;
 
 type Exec = Pick<typeof db, "select" | "insert">;
 
-// The inventory's categories in their order, material fields carrying the team's current
-// materials. The first read seeds them from config/inventory.ts.
+// The inventory's categories in their order, material fields carrying their materials from
+// config/materials.ts. The first read seeds them from config/inventory.ts.
 export async function listCategories(exec: Exec = db): Promise<InvCategory[]> {
-  const [read, list] = await Promise.all([
-    exec.select().from(inventoryCategories).orderBy(asc(inventoryCategories.position), asc(inventoryCategories.label)),
-    listMaterials(exec),
-  ]);
-  let rows = read;
+  let rows = await exec.select().from(inventoryCategories).orderBy(asc(inventoryCategories.position), asc(inventoryCategories.label));
   if (!rows.length) {
     await exec
       .insert(inventoryCategories)
@@ -33,7 +29,7 @@ export async function listCategories(exec: Exec = db): Promise<InvCategory[]> {
     sheet: r.sheet,
     image: r.image,
     defaultLocationId: r.defaultLocationId,
-    fields: r.fields.map((f) => (f.kind === "material" ? { ...f, materialChoices: (f.materials ?? []).flatMap((g) => list[g] ?? []) } : f)),
+    fields: r.fields.map((f) => (f.kind === "material" ? { ...f, materialChoices: (f.materials ?? []).flatMap((g) => MATERIALS[g] ?? []) } : f)),
   }));
 }
 

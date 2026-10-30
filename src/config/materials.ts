@@ -1,6 +1,6 @@
 // Team 1690's materials by category, copied from FRCBOM (ref §4), with the "1.5mmm" typo fixed.
-// These are only the first list: the team edits it on the Settings page (table material_groups),
-// and pages read it from useMaterials() (client) or listMaterials() (server).
+// BOM parts now pick an inventory item as their material (lib/data/materials.ts); this list only
+// gives inventory "BOM material" spec fields their choices and the 3D colour groups.
 
 export type MaterialList = Record<string, string[]>;
 

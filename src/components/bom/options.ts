@@ -1,5 +1,5 @@
 import { MACHINES, type MachineStage } from "@/config/machines";
-import type { MaterialList } from "@/config/materials";
+import type { MaterialGroup } from "@/lib/data/materials";
 import { PRIORITIES } from "@/config/priorities";
 import { COTS_STATUSES } from "@/config/cots";
 import { STATUSES } from "@/config/statuses";
@@ -8,12 +8,26 @@ import type { Option } from "./Popover";
 export const STATUS_OPTIONS: Option[] = STATUSES.map((s) => ({ value: s.name, label: s.name, color: s.color }));
 export const COTS_STATUS_OPTIONS: Option[] = COTS_STATUSES.map((s) => ({ value: s.name, label: s.name, color: s.color }));
 
-// The team's materials (useMaterials()) as menu options, grouped by category.
-export function materialOptions(materials: MaterialList): Option[] {
+// The inventory items a part's material can be (useMaterials()) as menu options by category:
+// Raw Stock first, then the other categories under a divider. Values are item ids.
+export function materialOptions(materials: MaterialGroup[]): Option[] {
+  const firstOther = materials.find((g) => !g.raw)?.id;
   return [
     { value: null, label: "— None —" },
-    ...Object.entries(materials).flatMap(([group, list]) => list.map((m) => ({ value: m, label: m, group }))),
+    ...materials.flatMap((g) =>
+      g.items.map((i, n) => ({ value: i.id, label: i.label, group: g.label, hint: i.stock, divider: n === 0 && g.id === firstOther })),
+    ),
   ];
+}
+
+// An item id's item, from useMaterials().
+export function findMaterial(materials: MaterialGroup[], id: string | null | undefined) {
+  if (!id) return undefined;
+  for (const g of materials) {
+    const item = g.items.find((i) => i.id === id);
+    if (item) return item;
+  }
+  return undefined;
 }
 
 export function machineOptions(stage: MachineStage): Option[] {

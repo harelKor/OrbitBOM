@@ -6,7 +6,6 @@ import { flushSync } from "react-dom";
 import { MACHINES, getMachine } from "@/config/machines";
 import type { Priority } from "@/config/priorities";
 import { materialColor } from "@/config/materialColors";
-import { allMaterials } from "@/config/materials";
 import { DONE_STATUSES, STATUSES, getStatus, statusLabel, type StatusName } from "@/config/statuses";
 import { removeBatchGcode } from "@/app/(app)/files-actions";
 import { createFabBatch, deleteGroup, moveToFabBatch, removeFromGroup, updateGroup } from "@/app/(app)/groups/actions";
@@ -635,7 +634,7 @@ function MachineBox({ href, name, count, active }: { href: string; name: string;
 function MaterialBoxes({ counts, active }: { counts: Map<string, number>; active: string | null }) {
   const colors = useMaterialColors();
   const materials = useMaterials();
-  const all = allMaterials(materials);
+  const all = materials.flatMap((g) => g.items.map((i) => i.name));
   const order = (m: string) => (m === NO_MATERIAL_KEY ? Infinity : all.indexOf(m) === -1 ? all.length : all.indexOf(m));
   const keys = [...counts.keys()].sort((a, b) => order(a) - order(b) || a.localeCompare(b));
   if (keys.length < 2 && !active) return null;
@@ -654,7 +653,7 @@ function MaterialBoxes({ counts, active }: { counts: Map<string, number>; active
         <span className="relative flex h-full w-12 shrink-0 items-center justify-center bg-gradient-to-br from-sky-500/25 via-raised to-amber-400/20">
           <span
             className="h-6 w-6 rounded-md border border-white/20 shadow-sm transition-transform duration-150 group-hover:scale-[1.03]"
-            style={{ backgroundColor: materialColor(none ? null : m, colors, null, materials) }}
+            style={{ backgroundColor: materialColor(none ? null : m, colors) }}
           />
         </span>
         <span className="min-w-0">

@@ -3,7 +3,6 @@
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { getMachine, MACHINES } from "@/config/machines";
-import { materialOptions } from "@/components/bom/options";
 import { OptionList, Popover, type Option } from "@/components/bom/Popover";
 import { DATE_OPTIONS, useFilters, type DateFilter, type Filters } from "./FilterContext";
 import { Icon } from "@/components/ui/Icon";
@@ -19,7 +18,15 @@ export function TopBar({ onMenu, onRobots, navHidden }: { onMenu: () => void; on
   const pathname = usePathname();
   const { filters, setFilters } = useFilters();
   const materials = useMaterials();
-  const materialPick: Option[] = [{ value: null, label: "Any material" }, ...materialOptions(materials).filter((o) => o.value)];
+  // Parts filter by their material's name; items that share a name are one choice.
+  const seen = new Set<string>();
+  const firstOther = materials.find((g) => !g.raw)?.id;
+  const materialPick: Option[] = [
+    { value: null, label: "Any material" },
+    ...materials.flatMap((g) =>
+      g.items.flatMap((i, n) => (seen.has(i.name) ? [] : (seen.add(i.name), [{ value: i.name, label: i.name, group: g.label, divider: n === 0 && g.id === firstOther }]))),
+    ),
+  ];
   const search = useRef<HTMLInputElement>(null);
   const header = useRef<HTMLElement>(null);
   // Part search and filters apply to the robot pages; Inventory has its own.
