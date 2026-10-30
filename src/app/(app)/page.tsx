@@ -33,9 +33,9 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   // The cards fill the space between the sidebars: the negative margins undo the shell's own
   // padding, and on md+ the row is exactly one screen tall under the top bar. Phones stack them.
   return (
-    <div className="-m-4 flex md:-m-6 md:h-[calc(100dvh-var(--topbar-h,3.5rem))] md:overflow-hidden lg:-ml-11 xl:-mr-11 p-4 sm:p-6 lg:p-8">
+    <div className="-m-4 flex md:-m-6 md:h-[calc(100dvh-var(--topbar-h,3.5rem))] md:overflow-hidden lg:-ml-11 xl:-mr-11 p-4 sm:p-8 lg:px-16 lg:py-10 xl:px-24">
       <h1 className="sr-only">OrbitParts</h1>
-      <div className="grid h-full w-full grid-cols-1 gap-4 sm:gap-6 md:grid-cols-3">
+      <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-4 self-center sm:gap-6 md:h-full md:max-h-[42rem] md:grid-cols-3">
         {tiles.map((t) => (
           <FastLink
             key={t.title}
