@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { memberForToken } from "@/lib/mcp/tokens";
 import { ToolError, callTool, listTools } from "@/lib/mcp/tools";
 
-export const maxDuration = 60;
+// link_inventory_products reads up to 40 store pages and pictures.
+export const maxDuration = 300;
 
 // OrbitParts's MCP server (plan §6), over Streamable HTTP without sessions: every POST is a
 // JSON-RPC message (or batch) answered with JSON. The member's personal token comes either as
@@ -17,7 +18,7 @@ const INSTRUCTIONS =
   "Every applied change returns a batch_id that undo_batch can revert. " +
   "To set up parts' material and processes yourself, read parts_to_set_up and apply with set_up_parts: those parts wait in To Review for their designer, as do parts changed with update_parts or set_cots_info. " +
   "To fill in COTS parts' official names, product links and prices, read cots_parts_to_look_up, search FRCDesign.org and the vendors' sites, and apply with set_cots_info. " +
-  "Inventory: every active robot shares one shelf. Link COTS parts to items with inventory_to_link and link_inventory, see what to buy with inventory_shortages, add items in bulk with add_inventory_items, and fill in specs with inventory_to_look_up and set_inventory_info (categories and their fields come from list_inventory_categories). " +
+  "Inventory: every active robot shares one shelf. Link COTS parts to items with inventory_to_link and link_inventory, see what to buy with inventory_shortages, add items in bulk with add_inventory_items, and fill in specs with inventory_to_look_up and set_inventory_info (categories and their fields come from list_inventory_categories). To link items to their exact product pages and pictures, find them with search_inventory (has_image) and search_online_products, and apply with link_inventory_products (applies at once, no To Review). " +
   "New items are added at once and show in AI logs. set_inventory_info also renames items and moves them to another category or location, so you can clean up a messy inventory; those edits to existing items wait in To Review's Inventory section until a member approves (Reject puts the old values back). " +
   "When items fit no category, add one with add_inventory_category (it waits in To Review too). " +
   "The site suggests links from BOM parts to items (auto-link); like yours, they wait in To Review until a member approves. " +

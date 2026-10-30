@@ -13,7 +13,9 @@ import { listInventory } from "@/lib/data/inventory";
 import { autoLink, findLinks, writePendingLinks } from "@/lib/inventory/autolink";
 import { checkSpecs, fieldChoices, getCategory, slugify, type InvCategory } from "@/lib/inventory/categories";
 import { recordItemChanges } from "@/lib/inventory/history";
+import { pushItemToCards } from "@/lib/inventory/cotsSync";
 import { readProduct, saveProductPhoto } from "@/lib/inventory/product";
+import { searchProducts } from "@/lib/inventory/search";
 import { CATEGORY_GROUPS, isCategoryGroup } from "@/config/inventory";
 import { addCategoryForReview, applyItemEdits } from "@/lib/review/inventory";
 import { listCategories } from "@/lib/data/categories";
@@ -341,8 +343,23 @@ read(
         category: i.category,
         specs: i.specs,
         product_link: i.cotsLinks[0]?.url ?? null,
+        has_image: Boolean(i.imagePath),
+        image_path: i.imagePath,
         per_robot: i.usage?.robots.map((r) => ({ robot: r.robotName, needed: r.needed, covered: r.allocated })) ?? [],
       }));
+  },
+);
+
+read(
+  "search_online_products",
+  "Search the vendors' stores (WCP, AndyMark, ThriftyBot, SDS, CTRE and more) and the wider web for a product, the same search as the inventory's product search. Each result is one store's offer with its page, price in US dollars and picture. Stores that can't be searched (REV, Redux, VEX...) come back as search links under elsewhere. Use the exact product or variant page with link_inventory_products.",
+  z.object({ query: z.string().trim().min(3).max(80).describe("In English works best, e.g. '4in Colson wheel 1/2 hex'.") }),
+  async ({ query }) => {
+    const { groups, elsewhere } = await searchProducts(query);
+    return {
+      results: groups.flatMap((g) => g.offers.map((o) => ({ title: o.title, url: o.url, site: o.vendor, price: o.price, imageUrl: o.image ?? g.image }))),
+      elsewhere,
+    };
   },
 );
 
@@ -988,6 +1005,86 @@ write(
         const photos = await saveLinkPhotos(linked.map((p) => ({ id: p.row.id, url: (p.values.cotsLinks as { url: string }[])[0].url, want: [p.values.name ?? p.row.name, ...Object.values((p.values.specs ?? p.row.specs) as Record<string, string>)].join(" ") })), { memberId: member.id, aiName: aiName ?? null, batchId });
         const auto_linked = await autoLink({ itemIds: linked.map((p) => p.row.id) }, { memberId: member.id, via: "mcp" });
         return { changed: n, waiting_in_to_review: n, batch_id: batchId, photos_updated: photos, auto_linked };
+      },
+    };
+  },
+);
+
+write(
+  "link_inventory_products",
+  "Link inventory items to their exact product page (one batch of up to 40). Applies at once, not through To Review, and shows in AI logs where it can be reverted. The link becomes the item's first product link (replacing the old link from the same store); image_url and price are read from the page when not given (a Shopify ?variant= link gives that variant's own picture and price). The picture is copied into the app as the item's thumbnail, official_name renames the item, and COTS cards linked to the item get the new link and price. Find items without pictures with search_inventory (has_image) and products with search_online_products. The preview shows the given values; what is read from the pages shows in the result.",
+  z.object({
+    items: z
+      .array(
+        z.object({
+          item_id: uuid,
+          product_url: z.url().describe("The exact product (or variant) page."),
+          image_url: z.url().optional().describe("The product's picture; read from the page when left out."),
+          price: z.number().min(0).optional().describe("US dollars for one; read from the page when left out."),
+          site: z.string().trim().min(1).max(60).optional().describe("The store's name; worked out from the link when left out."),
+          official_name: z.string().trim().min(1).max(200).optional().describe("The product's official name, to rename the item."),
+        }),
+      )
+      .min(1)
+      .max(40),
+  }),
+  async ({ items }, { member, aiName }) => {
+    const rows = await db.select().from(inventoryItems).where(inArray(inventoryItems.id, items.map((i) => i.item_id)));
+    const planned = items.map((i) => {
+      const row = rows.find((r) => r.id === i.item_id);
+      if (!row) throw new ToolError(`No inventory item ${i.item_id}.`);
+      return { input: i, row };
+    });
+    return {
+      count: planned.length,
+      summary: `Linked ${planned.length} inventory ${planned.length === 1 ? "item" : "items"} to their products`,
+      preview: planned.map(({ input: i, row }) => ({
+        item_id: row.id,
+        item: row.name,
+        product_url: i.product_url,
+        image: i.image_url ?? "read from the page",
+        price: i.price ?? (i.image_url ? row.price : "read from the page"),
+        ...(i.official_name && i.official_name !== row.name ? { rename_to: i.official_name } : {}),
+      })),
+      apply: async () => {
+        const batchId = randomUUID();
+        const ctx = { memberId: member.id, via: "mcp" as const, aiName: aiName ?? null, batchId };
+        const results: unknown[] = [];
+        // A few at a time, so 40 store pages and pictures fit in one call.
+        for (let n = 0; n < planned.length; n += 8)
+          await Promise.all(
+            planned.slice(n, n + 8).map(async ({ input: i, row }) => {
+              const want = [i.official_name ?? row.name, ...Object.values(row.specs ?? {})].join(" ");
+              const page = i.image_url && i.price != null ? null : await readProduct(i.product_url, 8000, want).catch(() => null);
+              // A Shopify family page comes back as the variant's own link.
+              const url = page?.url ?? i.product_url;
+              const imageUrl = i.image_url ?? page?.image ?? null;
+              const price = i.price ?? page?.price ?? undefined;
+              const key = imageUrl ? await saveProductPhoto(row.id, imageUrl) : null;
+              const link = { url, site: i.site ?? vendorOfUrl(url) };
+              const values = {
+                cotsLinks: [link, ...row.cotsLinks.filter((l) => l.url !== url && vendorOfUrl(l.url) !== vendorOfUrl(url))],
+                ...(price != null ? { price } : {}),
+                ...(key ? { imagePath: key } : {}),
+                ...(i.official_name && i.official_name !== row.name ? { name: i.official_name } : {}),
+              };
+              await db.transaction(async (tx) => {
+                await tx.update(inventoryItems).set(values).where(eq(inventoryItems.id, row.id));
+                await recordItemChanges(tx, row.id, row, values, ctx);
+                await pushItemToCards(tx, row.id, { cotsLinks: values.cotsLinks, ...(price != null && { price }), ...(values.name && { name: values.name }) });
+              });
+              results.push({
+                item_id: row.id,
+                product_url: url,
+                price: price ?? row.price,
+                image_saved: Boolean(key),
+                ...(!key ? { image_problem: imageUrl ? "The picture couldn't be downloaded." : "No picture found on the page; pass image_url." } : {}),
+                ...(i.price == null && price == null ? { price_problem: "No price found on the page; pass price." } : {}),
+              });
+            }),
+          );
+        const auto_linked = await autoLink({ itemIds: planned.map((p) => p.row.id) }, { memberId: member.id, via: "mcp" });
+        return { batch_id: batchId, linked: results.length, images_saved: results.filter((r) => (r as { image_saved: boolean }).image_saved).length, items: results, auto_linked };
       },
     };
   },
