@@ -7,7 +7,7 @@ import { onshapeClient, OnshapeError, type OnshapeClient } from "@/lib/onshape/c
 import { apiPath, onshapeUrl, parseOnshapeUrl } from "@/lib/onshape/url";
 import { imageUrl, objectExists, putObject, StorageNotConfiguredError, storageConfigured } from "@/lib/storage/r2";
 import { flattenAssembly, partKey, type AssemblyDefinition, type StudioRef } from "./assembly";
-import { encodeMeshes, meshesFromTessellation, type Tessellation } from "./mesh";
+import { encodeMeshes, lookOf, meshesFromTessellation, type Appearance, type Mesh, type Tessellation } from "./mesh";
 
 const { robots, systems, onshapeCache } = schema;
 
@@ -17,10 +17,12 @@ const { robots, systems, onshapeCache } = schema;
 //   2. the assembly definitions: every part and where it sits (1 call per system);
 //   3. one tessellation per Part Studio revision not already in R2 (1 call each). A Part
 //      Studio's file is keyed by its own revision, so an edit re-exports only what changed.
+//      When some bodies come without a colour, 1 more call reads the Part Studio's parts list
+//      for their appearances.
 // What's built is kept in onshape_cache under "robot-model:<robotId>"; nothing here runs
 // while a page renders.
 
-export const TESS_VERSION = "2"; // bump to re-export every mesh after changing the parameters below or the file format
+export const TESS_VERSION = "3"; // bump to re-export every mesh after changing the parameters below or the file format
 export const TESS_QUERY = "angleTolerance=0.35&chordTolerance=0.0005&outputFacetNormals=false&outputVertexNormals=false&outputFaceAppearances=true";
 
 export type ModelPlacement = { s: number; k: string; t: number[]; g?: number }; // studio index, part key, transform, group
@@ -84,6 +86,34 @@ export async function builtStudioFor(robotId: string, key: string): Promise<stri
   const { built } = await loadState(robotId);
   const placement = built?.placements.find((p) => p.k === key);
   return placement ? built!.studios[placement.s] : null;
+}
+
+// A Part Studio's meshes (1 call). Bodies the tessellation sent without a colour take the part's
+// appearance from the Part Studio's parts list (1 more call, only then). That call is best
+// effort: if it fails (Onshape's 402 included), those parts are drawn plain.
+// `extra` is the query's tail: "&configuration=...", "&partId=...".
+export async function studioMeshes(client: OnshapeClient, path: string, extra = ""): Promise<Mesh[]> {
+  const tess = await client.json<Tessellation>(`partstudios/${path}/tessellatedfaces?${TESS_QUERY}${extra}`);
+  let meshes = meshesFromTessellation(tess);
+  if (meshes.some((m) => !m.appearance)) {
+    const looks = await partAppearances(client, path, extra.replace(/&partId=[^&]*/g, ""));
+    if (looks.size) meshes = meshesFromTessellation(tess, looks);
+  }
+  return meshes;
+}
+
+async function partAppearances(client: OnshapeClient, path: string, extra: string): Promise<Map<string, Appearance>> {
+  try {
+    const parts = await client.json<{ partId?: string; appearance?: unknown }[]>(`parts/${path}?withThumbnails=false${extra}`);
+    return new Map(
+      parts.flatMap((p) => {
+        const look = p.partId ? lookOf(p.appearance) : undefined;
+        return look ? [[p.partId!, look] as const] : [];
+      }),
+    );
+  } catch {
+    return new Map();
+  }
 }
 
 export type BuildStep =
@@ -155,8 +185,8 @@ export async function buildRobotModel(robotId: string, memberId: string, deadlin
       if (!(await objectExists(job.key))) {
         const config = job.configuration ? `&configuration=${encodeURIComponent(job.configuration)}` : "";
         const link = job.linkDid ? `&linkDocumentId=${job.linkDid}` : "";
-        const tess = await client.json<Tessellation>(`partstudios/${job.path}/tessellatedfaces?${TESS_QUERY}${config}${link}`);
-        await putObject(job.key, gzipSync(encodeMeshes(meshesFromTessellation(tess))), "application/gzip");
+        const meshes = await studioMeshes(client, job.path, `${config}${link}`);
+        await putObject(job.key, gzipSync(encodeMeshes(meshes)), "application/gzip");
       }
       job.done = true;
     }

@@ -75,3 +75,22 @@ it("reads Onshape colours in any shape and never fails the export over one", () 
   const meshes = meshesFromTessellation(looks.map((appearance, i) => ({ id: `P${i}`, faces: [{ facets }], appearance })));
   expect(meshes.map((m) => m.appearance?.color)).toEqual([[1, 0, 0], [0, 1, 0], [0, 0, 1], undefined]);
 });
+
+it("reads Onshape's Base64 face colours and falls back to the Part Studio's appearances", () => {
+  const facets = [{ vertices: [[0, 0, 0], [1, 0, 0], [0, 1, 0]] }];
+  const b64 = (bytes: number[]) => btoa(String.fromCharCode(...bytes));
+  const floats = btoa(String.fromCharCode(...new Uint8Array(new Float64Array([0, 0, 1, 0.5]).buffer)));
+  const meshes = meshesFromTessellation(
+    [
+      { id: "A", faces: [{ facets, color: b64([255, 0, 0, 255]) }] },
+      { id: "B", faces: [{ facets, color: floats }] },
+      { id: "C", faces: [{ facets }] },
+    ],
+    new Map([["C", { color: [0, 1, 0] as [number, number, number], opacity: 1 }]]),
+  );
+  expect(meshes.map((m) => m.appearance)).toEqual([
+    { color: [1, 0, 0], opacity: 1 },
+    { color: [0, 0, 1], opacity: 0.5 },
+    { color: [0, 1, 0], opacity: 1 },
+  ]);
+});

@@ -3,8 +3,8 @@ import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { TESS_QUERY, TESS_VERSION } from "@/lib/model/build";
-import { encodeMeshes, meshesFromTessellation, type Tessellation } from "@/lib/model/mesh";
+import { studioMeshes, TESS_VERSION } from "@/lib/model/build";
+import { encodeMeshes } from "@/lib/model/mesh";
 import { NeedsOnshapeError } from "@/lib/model/part";
 import { partKey } from "@/lib/onshape/bom";
 import { onshapeClient, OnshapeError } from "@/lib/onshape/client";
@@ -71,8 +71,7 @@ export async function previewModel(systemId: string, member: { id: string; onsha
     if (!member.onshapeConnected) throw new NeedsOnshapeError("Connect your Onshape account first (Profile → Connect Onshape).");
     const ref = system.assemblyUrl ? parseOnshapeUrl(system.assemblyUrl) : null;
     const client = onshapeClient(member.id, ref?.baseUrl ?? "https://cad.onshape.com");
-    const tess = await client.json<Tessellation>(`partstudios/${studio}/tessellatedfaces?${TESS_QUERY}&partId=${encodeURIComponent(partId)}`);
-    const meshes = meshesFromTessellation(tess).filter((m) => m.partId === partId);
+    const meshes = (await studioMeshes(client, studio, `&partId=${encodeURIComponent(partId)}`)).filter((m) => m.partId === partId);
     if (!meshes.length) throw new OnshapeError("Onshape sent no shape for this part.");
     await putObject(key, gzipSync(encodeMeshes(meshes)), "application/gzip", owner);
   }
