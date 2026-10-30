@@ -19,7 +19,8 @@ import { partTitle, type CardPart } from "@/components/bom/types";
 import { useFilters } from "@/components/shell/FilterContext";
 import { useMaterialColors, useMaterials } from "@/components/shell/MaterialColors";
 import { pushQuery } from "@/components/ui/CategoryBoxes";
-import { useCan } from "@/components/shell/ModeContext";
+import { useCan, useMode } from "@/components/shell/ModeContext";
+import { pickableStatuses } from "@/components/shell/mode";
 import { Chevron } from "@/components/ui/Chevron";
 import { Icon } from "@/components/ui/Icon";
 import { ShallowLink } from "@/components/ui/FastLink";
@@ -786,6 +787,10 @@ function BatchCard({
 }) {
   // Fab batches are Build Team work: any team renames, deletes and re-statuses them.
   const edit = useCan("work");
+  // Setting one status for the whole batch: the CAD Team's statuses need a reason per part, so
+  // they set those on each card; the Build Team picks from its own.
+  const { mode } = useMode();
+  const pickable = pickableStatuses(mode);
   const section = useContext(OpenBatchContext);
   const [ownOpen, setOwnOpen] = useState(false);
   const open = section ? section.id === batch.id : ownOpen;
@@ -811,7 +816,7 @@ function BatchCard({
   const notDone = members.filter((p) => !isDone(p));
   // The batch's status as its machine names it; a batch waiting to start is Ready to Fab.
   const label = (status: string) => (stage === "readyToFab" && status === READY_STATUS ? "Ready to Fab" : statusLabel(status, batch.machine));
-  const statusOptions = STATUSES.map((s) => ({ value: s.name, label: s.name === READY_STATUS ? "Ready to Fab" : statusLabel(s.name, batch.machine), color: s.color }));
+  const statusOptions = STATUSES.filter((s) => !pickable || pickable.includes(s.name)).map((s) => ({ value: s.name, label: s.name === READY_STATUS ? "Ready to Fab" : statusLabel(s.name, batch.machine), color: s.color }));
   const thumbs = members.slice(0, 9);
 
   const mine = !!madeBy && madeBy === me;
@@ -977,7 +982,7 @@ function BatchCard({
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2" onClick={stop}>
-            <Popover locked={!edit} trigger={<StatusPill status={shared ?? "Mixed"} label={shared ? label(shared) : undefined} size="md" />}>
+            <Popover locked={!edit || mode === "cad"} trigger={<StatusPill status={shared ?? "Mixed"} label={shared ? label(shared) : undefined} size="md" />}>
               {(close) => (
                 <OptionList
                   options={statusOptions}

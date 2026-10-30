@@ -7,7 +7,10 @@ import { getMachine } from "@/config/machines";
 import type { PartChanges } from "@/lib/parts/changes";
 import { PART_TAG_LABELS, partTag, type PartTag } from "@/lib/partTag";
 import { computeStatus, partStatusLabel, statusMachine } from "@/lib/status";
-import { STATUSES, statusLabel } from "@/config/statuses";
+import { STATUSES, getStatus, statusLabel } from "@/config/statuses";
+import { COTS_ORDERED } from "@/config/cots";
+import { useState } from "react";
+import { Dialog } from "@/components/Dialog";
 import {
   COTS_STATUS_OPTIONS,
   findMaterial,
@@ -21,7 +24,8 @@ import {
   machineOptions,
 } from "./options";
 import { useInventoryPopup } from "@/components/inventory/InventoryPopup";
-import { useCan, useManage } from "@/components/shell/ModeContext";
+import { useCan, useManage, useMode } from "@/components/shell/ModeContext";
+import { NOTE_STATUSES, pickableStatuses } from "@/components/shell/mode";
 import { Icon } from "@/components/ui/Icon";
 import { StatusPill } from "@/components/ui/StatusPill";
 export { StatusPill };
@@ -230,30 +234,91 @@ export function QuantityField({ part, save }: Props) {
 }
 
 // The status menu names each status as the part's machine calls it ("Printing" on a 3D printer).
+// Each team sees only its own statuses (pickableStatuses in mode.ts); the CAD Team's Reproduction
+// and Secondary Production first ask why, and that reason joins the part's note.
 export function StatusField({ part, save, size = "md" }: Props & { size?: "sm" | "md" }) {
   const locked = !useCan("work");
+  const { mode } = useMode();
+  const [asking, setAsking] = useState<string | null>(null);
   const status = computeStatus(part);
-  const machine = part.classification === "cots" ? null : statusMachine(part);
-  const options =
-    part.classification === "cots"
-      ? COTS_STATUS_OPTIONS
-      : machine
-        ? STATUSES.map((s) => ({ value: s.name, label: statusLabel(s.name, machine), color: s.color }))
-        : STATUS_OPTIONS;
+  const cots = part.classification === "cots";
+  const machine = cots ? null : statusMachine(part);
+  const pickable = pickableStatuses(mode);
+  let options = cots
+    ? COTS_STATUS_OPTIONS
+    : machine
+      ? STATUSES.map((s) => ({ value: s.name, label: statusLabel(s.name, machine), color: s.color }))
+      : STATUS_OPTIONS;
+  if (mode === "cad") options = NOTE_STATUSES.map((name) => ({ value: name, label: name, color: getStatus(name)?.color }));
+  // Build: In Process is the part's current process, so Ready for Process 2 only with a second one.
+  else if (pickable && !cots) options = options.filter((o) => o.value !== null && pickable.includes(o.value) && (o.value !== "Ready for Process 2" || !!part.process2));
   return (
-    <Popover locked={locked} trigger={<StatusPill status={status} label={partStatusLabel(part)} size={size} />}>
-      {(close) => (
-        <OptionList
-          options={options}
-          value={status}
-          placeholder="Search status…"
-          onPick={(v) => {
-            if (v) save({ status: v });
-            close();
+    <>
+      <Popover locked={locked} trigger={<StatusPill status={status} label={partStatusLabel(part)} size={size} />}>
+        {(close) => (
+          <OptionList
+            options={options}
+            value={status}
+            placeholder="Search status…"
+            onPick={(v) => {
+              if (v && NOTE_STATUSES.includes(v) && mode === "cad") setAsking(v);
+              else if (v) save({ status: v });
+              close();
+            }}
+          />
+        )}
+      </Popover>
+      {asking && (
+        <StatusNoteDialog
+          part={part}
+          status={asking}
+          onClose={() => setAsking(null)}
+          onConfirm={(reason) => {
+            const line = `${asking}: ${reason}`;
+            const note = (part.note?.trim() ? `${part.note.trim()}\n\n${line}` : line).slice(-2000);
+            // A bought part that needs making again goes back on the Order List.
+            save(cots ? { status: COTS_ORDERED, cotsSentBack: null, note } : { status: asking, note });
+            setAsking(null);
           }}
         />
       )}
-    </Popover>
+    </>
+  );
+}
+
+// Why a part needs Reproduction or Secondary Production: Confirm stays off until there is a reason.
+function StatusNoteDialog({ part, status, onClose, onConfirm }: { part: CardPart; status: string; onClose: () => void; onConfirm: (reason: string) => void }) {
+  const [text, setText] = useState("");
+  return (
+    <Dialog open onClose={onClose} title={`${status}: ${partTitle(part)}`}>
+      <form
+        className="space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (text.trim()) onConfirm(text.trim());
+        }}
+      >
+        <p className="text-sm text-muted">Why does this part need {status}? It is saved in the part&apos;s note.</p>
+        <textarea
+          autoFocus
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={3}
+          maxLength={1000}
+          placeholder="e.g. the bearing bore came out oversize, need a spare for the second robot…"
+          className="input"
+          aria-label={`Why it needs ${status}`}
+        />
+        <div className="flex justify-end gap-2">
+          <button type="button" className="btn active:scale-[0.98]" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn-primary active:scale-[0.98]" disabled={text.trim().length === 0}>
+            Confirm
+          </button>
+        </div>
+      </form>
+    </Dialog>
   );
 }
 

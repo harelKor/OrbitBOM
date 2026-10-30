@@ -12,7 +12,7 @@ import { textOn } from "@/components/bom/options";
 import { Popover } from "@/components/bom/Popover";
 import { partIds, partTitle, type CardPart } from "@/components/bom/types";
 import { VersionTag } from "@/components/versions/VersionTag";
-import { useCan, useManage } from "@/components/shell/ModeContext";
+import { useCan, useManage, useMode } from "@/components/shell/ModeContext";
 import { CheckBadge } from "@/components/ui/CheckBadge";
 import { Icon } from "@/components/ui/Icon";
 import { cotsTotal, siteOf } from "@/lib/cots";
@@ -396,7 +396,9 @@ export function OrderStatusButton({ part, save, compact = false }: { part: CardP
   const color = getCotsStatus(status)?.color ?? "#cbd5e1";
   const [sendingBack, setSendingBack] = useState(false);
   const [reason, setReason] = useState("");
-  const locked = !useCan("work");
+  // The CAD Team sends a bought part back to ordering only from its status menu, with a reason.
+  const { mode } = useMode();
+  const locked = !useCan("work") || mode === "cad";
   const option = "press flex w-full items-center justify-center rounded-xl border-2 border-black/25 py-3 text-base font-bold shadow-sm";
   return (
     <>

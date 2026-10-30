@@ -6,7 +6,7 @@ import { COTS_RELEASED } from "@/config/cots";
 import { db, schema } from "@/db";
 import { requireMember } from "@/lib/auth";
 import { partChangesCapability } from "@/components/shell/mode";
-import { requireCapability } from "@/lib/mode";
+import { requireCapability, statusChangeDenied } from "@/lib/mode";
 import { applyEachPartChanges } from "@/lib/parts/apply";
 import { partChangesSchema, type PartChanges } from "@/lib/parts/changes";
 import { isUuid } from "@/lib/uuid";
@@ -23,7 +23,11 @@ export async function updateCotsParts(edits: { id: string; changes: unknown }[])
     if (!r.success) return { error: r.error.issues[0].message };
     parsed.push({ id: e.id, changes: r.data });
   }
-  for (const e of parsed) await requireCapability(partChangesCapability(e.changes));
+  for (const e of parsed) {
+    await requireCapability(partChangesCapability(e.changes));
+    const denied = await statusChangeDenied([e.id], e.changes);
+    if (denied) return { error: denied };
+  }
   await applyEachPartChanges(parsed, { memberId: member.id, via: "ui" });
   revalidatePath("/cots", "layout");
   revalidatePath("/robots", "layout");

@@ -7,7 +7,7 @@ import { getMachine } from "@/config/machines";
 import { PRIORITIES } from "@/config/priorities";
 import { STATUSES, type StatusName } from "@/config/statuses";
 import { db, schema } from "@/db";
-import { requireCapability } from "@/lib/mode";
+import { requireCapability, statusChangeDenied } from "@/lib/mode";
 import { READY_STATUS, READY_STATUSES, fabBatchName, machinesOf } from "@/lib/fab";
 import { analyseMissing } from "@/lib/groups/missing";
 import { applyPartChanges } from "@/lib/parts/apply";
@@ -133,6 +133,8 @@ export async function setGroupStatus(groupId: string, status: string): Promise<A
     .from(groupMembers)
     .innerJoin(parts, eq(parts.id, groupMembers.partId))
     .where(and(eq(groupMembers.groupId, groupId), isNull(parts.removedFromCadAt)));
+  const denied = await statusChangeDenied(rows.map((r) => r.id), { status });
+  if (denied) return { error: denied };
   const { changed } = await applyPartChanges(
     rows.map((r) => r.id),
     { status: status as (typeof STATUSES)[number]["name"] },
@@ -220,6 +222,10 @@ export async function createFabBatch(
   if (rows.some(({ part }) => !machinesOf(part).includes(machine.id))) return { error: `Every part in the fab must go through ${machine.name}.` };
   if (new Set(rows.map(({ part }) => part.material ?? "")).size > 1) return { error: "A fab can only hold parts of one material." };
 
+  const move = status ? rows : rows.filter(({ part }) => !(READY_STATUSES as string[]).includes(computeStatus(part)));
+  const denied = move.length ? await statusChangeDenied(move.map(({ part }) => part.id), { status: status ?? READY_STATUS }) : null;
+  if (denied) return { error: denied };
+
   const names = new Set(
     (await db.select({ name: partGroups.name }).from(partGroups).where(eq(partGroups.robotId, robotId))).map((g) => g.name),
   );
@@ -232,7 +238,6 @@ export async function createFabBatch(
     const [group] = await tx.insert(partGroups).values({ robotId, name, machine: machine.id, madeBy: member.name }).returning({ id: partGroups.id });
     await tx.insert(groupMembers).values(rows.map(({ part }) => ({ groupId: group.id, partId: part.id, keySnapshot: snapshot(part) })));
   });
-  const move = status ? rows : rows.filter(({ part }) => !(READY_STATUSES as string[]).includes(computeStatus(part)));
   if (move.length) {
     await applyPartChanges(
       move.map(({ part }) => part.id),
@@ -255,6 +260,8 @@ export async function moveToFabBatch(groupId: string, partIds: string[], fromGro
   const rows = await robotParts(group.robotId, partIds);
   if (!rows.length) return { error: "Choose parts from this robot." };
   const ids = rows.map((p) => p.id);
+  const denied = status ? await statusChangeDenied(ids, { status }) : null;
+  if (denied) return { error: denied };
   await db.transaction(async (tx) => {
     if (fromGroupId && fromGroupId !== groupId) {
       await tx.delete(groupMembers).where(and(eq(groupMembers.groupId, fromGroupId), inArray(groupMembers.partId, ids)));

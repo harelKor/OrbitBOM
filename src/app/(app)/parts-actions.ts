@@ -7,7 +7,7 @@ import { MACHINES } from "@/config/machines";
 import { db, schema } from "@/db";
 import { requireMember } from "@/lib/auth";
 import { partChangesCapability } from "@/components/shell/mode";
-import { requireCapability } from "@/lib/mode";
+import { requireCapability, statusChangeDenied } from "@/lib/mode";
 import { OnshapeError } from "@/lib/onshape/client";
 import { MERGE_PREFIX, fanOutChanges, isMergeId, mergedRow } from "@/lib/merges/merge";
 import { applyEachPartChanges, applyPartChanges } from "@/lib/parts/apply";
@@ -26,6 +26,8 @@ export async function updatePart(partId: string, changes: unknown): Promise<Acti
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   // Status, machines, material and counts are any team's; other fields need Edit mode.
   const member = await requireCapability(partChangesCapability(parsed.data));
+  const denied = await statusChangeDenied([partId], parsed.data);
+  if (denied) return { error: denied };
   if (isMergeId(partId)) return updateMergedRow(partId.slice(MERGE_PREFIX.length), parsed.data, member.id);
   if (!isUuid(partId)) return { error: "Unknown part." };
   await applyPartChanges([partId], parsed.data, { memberId: member.id, via: "ui" });
@@ -154,6 +156,8 @@ export async function updateParts(ids: string[], changes: unknown): Promise<Acti
   const parsed = partChangesSchema.safeParse(changes);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const member = await requireCapability(partChangesCapability(parsed.data));
+  const denied = await statusChangeDenied(partIds, parsed.data);
+  if (denied) return { error: denied };
   await applyPartChanges(partIds, parsed.data, { memberId: member.id, via: "ui" });
   revalidatePath("/robots", "layout");
   return {};

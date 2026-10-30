@@ -9,6 +9,7 @@ import { updatePart, updateParts } from "@/app/(app)/parts-actions";
 import { BulkEditBar } from "./BulkEditBar";
 import { useFilters } from "@/components/shell/FilterContext";
 import { usePermissions } from "@/components/shell/ModeContext";
+import { BUILD_STATUSES } from "@/components/shell/mode";
 import { useEscape } from "@/components/ui/useEscape";
 import { DrawingsBar } from "./DrawingsBar";
 import { MergeBar, type MergeInfo } from "./MergeBar";
@@ -67,7 +68,7 @@ export function BomView({
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { canManage: edit, canWork, canDraw } = usePermissions();
+  const { canManage: edit, canWork, canDraw, mode: role } = usePermissions();
   // View mode always shows cards; Table and Kanban are Edit-mode views.
   const view = edit ? (searchParams.get("view") as View) || "card" : "card";
   const setView = (v: View) => {
@@ -222,7 +223,7 @@ export function BomView({
           </div>}
           <select value={status} onChange={(e) => setStatus(e.target.value)} className="input w-auto rounded-full py-1 text-xs" aria-label="Status">
             <option value="">All statuses</option>
-            {STATUSES.map((s) => (
+            {STATUSES.filter((s) => role !== "build" || BUILD_STATUSES.includes(s.name)).map((s) => (
               <option key={s.name}>{s.name}</option>
             ))}
           </select>

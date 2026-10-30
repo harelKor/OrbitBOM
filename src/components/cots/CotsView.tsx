@@ -9,7 +9,8 @@ import { BomProvider, useBom } from "@/components/bom/BomContext";
 import { PartStage, type StageView } from "@/components/dashboard/PartStage";
 import { AddBox } from "@/components/inventory/AddBox";
 import type { Condition, InvCategory, Item, Location } from "@/components/inventory/types";
-import { useCan, useManage } from "@/components/shell/ModeContext";
+import { useCan, useManage, useMode } from "@/components/shell/ModeContext";
+import { statusDenied } from "@/components/shell/mode";
 import { useEscape } from "@/components/ui/useEscape";
 import { statusTint } from "@/components/ui/statusTint";
 import { StatusField } from "@/components/bom/fields";
@@ -78,6 +79,10 @@ export function CotsView({
 }) {
   const edit = useManage();
   const work = useCan("work");
+  const { mode } = useMode();
+  // The statuses this team may set on many cards at once, and whether it sends cards to order.
+  const bulkStatuses = BULK_STATUSES.filter((s) => !statusDenied(mode, s, { cots: true }));
+  const canOrder = !statusDenied(mode, COTS_ORDERED, { cots: true });
   const [optimistic, addOptimistic] = useOptimistic(parts, (state, edits: Edit[]) =>
     state.map((p) => {
       const e = edits.find((x) => x.id === p.id);
@@ -392,7 +397,7 @@ export function CotsView({
                 <AddBoxSlot shelf={shelf} onPick={addItem} />
               </>
             )}
-            {work && <button
+            {work && canOrder && <button
               onClick={() => toggleSelecting("order")}
               aria-pressed={selecting === "order"}
               className={`press shrink-0 rounded-xl px-7 py-3 text-lg font-bold shadow-lg transition-colors active:scale-[0.98] ${
@@ -464,7 +469,7 @@ export function CotsView({
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span className="font-mono font-semibold tabular-nums">{selected.size} selected</span>
             <span className="text-subtle">Set to:</span>
-            {BULK_STATUSES.map((s) => {
+            {bulkStatuses.map((s) => {
               const color = getCotsStatus(s)?.color ?? "#94a3b8";
               return (
                 <button

@@ -62,3 +62,41 @@ export function partChangesCapability(changes: object): Capability {
   if (keys.every((k) => k === "drawingUrl" || WORK_PART_FIELDS.has(k))) return "draw";
   return "manage";
 }
+
+// ---------- Status rules by team (Harel, 2026-10-30) ----------
+// Admins in Edit set any status. The CAD Team releases parts with the Release button (its
+// checklist) and otherwise only sends them to Reproduction or Secondary Production, with a note
+// saying why. The Build Team works parts through the shop: Released, In Process, Post Processing,
+// Ready for QA. On a COTS part the CAD Team's two statuses put it back in the Order List.
+export const RELEASE_STATUS = "Released";
+export const NOTE_STATUSES: readonly string[] = ["Reproduction", "Secondary Production"];
+// "In Process" is the part's current process: In Process 1, or Ready for Process 2 after it.
+export const BUILD_STATUSES: readonly string[] = ["Released", "In Process 1", "Ready for Process 2", "Post Processing", "Ready for QA"];
+const COTS_REORDER = "In Order List";
+// The Ready for QA check-off (QaSection, review capability) moves parts to In Stock and back.
+const QA_STATUSES: readonly string[] = ["Ready for QA", "In Stock"];
+
+// The made-part statuses a mode picks from a card, table, filter or To Fab menu; null = all.
+export function pickableStatuses(mode: Mode): readonly string[] | null {
+  if (mode === "cad") return NOTE_STATUSES;
+  if (mode === "build") return BUILD_STATUSES;
+  return null;
+}
+
+// Why the mode can't give these parts this status, or null when it can. `note` is the note sent
+// with the change: Reproduction and Secondary Production need one.
+export function statusDenied(mode: Mode, status: string | undefined, opts: { cots: boolean; note?: string | null }): string | null {
+  if (!status || mode === "edit") return null;
+  const noted = !!opts.note?.trim();
+  if (mode === "cad") {
+    if (status === RELEASE_STATUS || (!opts.cots && QA_STATUSES.includes(status))) return null;
+    const needsNote = opts.cots ? status === COTS_REORDER : NOTE_STATUSES.includes(status);
+    if (needsNote) return noted ? null : "Write why the part needs Reproduction or Secondary Production.";
+    return "The CAD Team releases parts with Release, or sends them to Reproduction or Secondary Production.";
+  }
+  if (mode === "build") {
+    if (opts.cots || BUILD_STATUSES.includes(status)) return null;
+    return "The Build Team can set Released, In Process, Post Processing or Ready for QA.";
+  }
+  return "Pick a team on your profile (Build or CAD) to make changes.";
+}
