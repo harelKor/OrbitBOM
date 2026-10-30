@@ -34,6 +34,8 @@ export function variantTokens(text: string): Set<string> {
     .replace(/(\d+)\.75in\b/g, "$1-3/4in");
   const out = new Set<string>();
   for (const m of t.matchAll(/\b(\d{2})\s?a\b/g)) out.add(`${m[1]}a`);
+  // Pulley and gear teeth: "24T", "24 tooth", "24 teeth".
+  for (const m of t.matchAll(/\b(\d{1,3})\s?(?:t|tooth|teeth)\b/g)) out.add(`${m[1]}t`);
   for (const c of COLORS) if (new RegExp(`(^|[^a-z])${c}([^a-z]|$)`).test(t)) out.add(c);
   // A bore: a size followed by hex or round ("1/2in hex", "5 mm hex", "nub bore").
   for (const m of t.matchAll(/(\d+(?:[-/.]\d+)*(?:\/\d+)?)(in|\s?mm)?\s+(hex|round)/g)) out.add(`${m[1]}${m[2]?.trim() === "mm" ? "mm" : ""} ${m[3]}`);
@@ -62,7 +64,7 @@ export function variantImage(p: ShopifyProduct, v: ShopifyVariant): ShopifyImage
 }
 
 // The variant a link or a wanted item names: ?variant=<id>, else the one sharing the most of the
-// item's colors, durometers, bores and sizes. A wanted size or durometer the variant lacks rules it
+// item's colors, durometers, teeth, bores and sizes. A wanted size or durometer the variant lacks rules it
 // out, so a 3" item never lands on the 2" wheel. Null when nothing fits or two fit equally well.
 export function pickVariant(p: ShopifyProduct, opts: { variantId?: string | null; want?: string | null }): ShopifyVariant | null {
   if (opts.variantId) {
@@ -77,10 +79,10 @@ export function pickVariant(p: ShopifyProduct, opts: { variantId?: string | null
   let tie = false;
   for (const v of p.variants) {
     const has = describe(p, v);
-    const kinds = (t: string) => (/^\d+a$/.test(t) ? "duro" : COLORS.includes(t) ? "color" : /(hex|round)$|^nub$/.test(t) ? "bore" : "size");
+    const kinds = (t: string) => (/^\d+a$/.test(t) ? "duro" : /^\d+t$/.test(t) ? "teeth" : COLORS.includes(t) ? "color" : /(hex|round)$|^nub$/.test(t) ? "bore" : "size");
     // Every kind the variant states and the item wants must agree (one of the item's sizes is
     // enough: a 2" wheel 1" wide still fits a "2 inch" variant).
-    const clash = ["duro", "color", "bore", "size"].some((k) => {
+    const clash = ["duro", "teeth", "color", "bore", "size"].some((k) => {
       const w = [...want].filter((t) => kinds(t) === k);
       const h = [...has].filter((t) => kinds(t) === k);
       return w.length > 0 && h.length > 0 && !w.some((t) => h.includes(t));

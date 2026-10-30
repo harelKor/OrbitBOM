@@ -912,22 +912,34 @@ read(
   },
 );
 
-// A new product link brings its picture (the variant's own, for a ?variant= link or an item whose
-// name names a color, durometer or bore), copied to R2 like a link pasted in the item window. The
-// old picture stays in R2, so reverting the batch can still show it. Returns how many changed.
-async function saveLinkPhotos(items: { id: string; url: string; want: string }[], ctx: { memberId: string; aiName: string | null; batchId: string }) {
+// The item's picture, copied to R2 like a link pasted in the item window: the exact image_url
+// given, or the product page's picture (the variant's own, for a ?variant= link or an item whose
+// name and specs name a color, durometer, teeth or bore). On a Shopify family page the item's link
+// also becomes that variant's ?variant= link. Applied at once (not To Review); the old picture
+// stays in R2, so reverting the batch can still show it. Returns how many pictures changed.
+type PhotoJob = { id: string; imageUrl?: string; pageUrl?: string; want: string };
+async function savePhotos(jobs: PhotoJob[], ctx: { memberId: string; aiName: string | null; batchId: string }) {
   let saved = 0;
-  for (let i = 0; i < items.length; i += 6)
+  for (let i = 0; i < jobs.length; i += 8)
     await Promise.all(
-      items.slice(i, i + 6).map(async (it) => {
-        const p = await readProduct(it.url, 8000, it.want).catch(() => null);
-        const key = p?.image ? await saveProductPhoto(it.id, p.image) : null;
-        if (!key) return;
-        const [before] = await db.select({ imagePath: inventoryItems.imagePath }).from(inventoryItems).where(eq(inventoryItems.id, it.id));
-        if (!before || before.imagePath === key) return;
-        await db.update(inventoryItems).set({ imagePath: key }).where(eq(inventoryItems.id, it.id));
-        await recordItemChanges(db, it.id, before, { imagePath: key }, { memberId: ctx.memberId, via: "mcp", aiName: ctx.aiName, batchId: ctx.batchId });
-        saved++;
+      jobs.slice(i, i + 8).map(async (job) => {
+        const page = !job.imageUrl && job.pageUrl ? await readProduct(job.pageUrl, 8000, job.want).catch(() => null) : null;
+        const image = job.imageUrl ?? page?.image;
+        const key = image ? await saveProductPhoto(job.id, image) : null;
+        await db.transaction(async (tx) => {
+          const [before] = await tx.select().from(inventoryItems).where(eq(inventoryItems.id, job.id)).for("update");
+          if (!before) return;
+          const values: { imagePath?: string; cotsLinks?: typeof before.cotsLinks } = {};
+          if (key && key !== before.imagePath) values.imagePath = key;
+          const old = before.cotsLinks.find((l) => l.url === job.pageUrl);
+          if (page && old && page.url !== old.url && vendorOfUrl(page.url) === vendorOfUrl(old.url))
+            values.cotsLinks = before.cotsLinks.map((l) => (l === old ? { ...l, url: page.url } : l));
+          if (!Object.keys(values).length) return;
+          await tx.update(inventoryItems).set(values).where(eq(inventoryItems.id, job.id));
+          await recordItemChanges(tx, job.id, before, values, { memberId: ctx.memberId, via: "mcp", aiName: ctx.aiName, batchId: ctx.batchId });
+          if (values.cotsLinks) await pushItemToCards(tx, job.id, { cotsLinks: values.cotsLinks });
+          if (values.imagePath) saved++;
+        });
       }),
     );
   return saved;
@@ -935,7 +947,7 @@ async function saveLinkPhotos(items: { id: string; url: string; want: string }[]
 
 write(
   "set_inventory_info",
-  "Edit existing inventory items (each item can differ): rename them (name), move them to another category or location, and fill in specs, product link, price and season need. A new product_url replaces the item's link from the same store and brings that product's picture; for a Shopify family page (AndyMark, WCP) give the exact ?variant= link, or the variant is picked from the item's name and specs. Use it to clean up messy items: clear names, the right category with its specs, one shelf per kind. Specs must use the category's fields and choices from list_inventory_categories. The changes apply at once and wait in To Review's Inventory section with your name until a member approves; Reject puts the old values back. BOM parts with the same product link are then linked to the item and wait in To Review.",
+  "Edit existing inventory items (each item can differ): rename them (name), move them to another category or location, and fill in specs, product link, price, picture and season need. Name, category, specs, location and season need apply at once and wait in To Review's Inventory section with your name until a member approves (Reject puts the old values back). Product link, price and picture apply at once without To Review, and linked COTS cards follow. A new product_url replaces the item's link from the same store. Any product_url, even one the item already has, re-reads the page for its picture: for a Shopify family page (AndyMark, WCP, ThriftyBot) the variant is picked from ?variant= or the item's name and specs (color, durometer, teeth, bore, size), and the link becomes that variant's. image_url saves that exact picture instead; refresh_photo: true re-reads the item's current link without giving one, false skips the picture. REV and Redux pages can't be read per variant: pass image_url for them. Specs must use the category's fields and choices from list_inventory_categories. BOM parts with the same product link are then linked to the item and wait in To Review.",
   z.object({
     items: z
       .array(
@@ -943,6 +955,8 @@ write(
           item_id: uuid,
           name: z.string().trim().min(1).max(200).optional().describe("A new name for the item."),
           location: z.string().trim().min(1).max(100).optional().describe("The shelf or bin it moves to; a new name is created."),
+          image_url: z.url().optional().describe("The exact picture to save as the item's thumbnail."),
+          refresh_photo: z.boolean().optional().describe("true: re-read the item's product page for its picture. false: leave the picture alone. Default: re-read when product_url is given."),
           reason: z.string().max(300).optional().describe("Why, shown on To Review."),
         }),
       )
@@ -973,17 +987,26 @@ write(
       const loc = i.location ? (locationId.get(i.location.toLowerCase()) ?? null) : undefined;
       const newLocation = i.location && loc === null ? i.location : null;
       if (loc && loc !== row.locationId) values.locationId = loc;
-      return { row, values, newLocation, reason: i.reason ?? null };
+      // Product link and price skip To Review; the rest waits there.
+      const { cotsLinks, price, ...review } = values;
+      const product = { ...(cotsLinks !== undefined && { cotsLinks: cotsLinks as typeof row.cotsLinks }), ...(price !== undefined && { price: price as number }) };
+      const pageUrl = i.product_url ?? (i.refresh_photo ? row.cotsLinks[0]?.url : undefined);
+      const want = [i.name ?? row.name, ...Object.values((values.specs ?? row.specs) as Record<string, string>)].join(" ");
+      const photo: PhotoJob | null =
+        i.refresh_photo === false ? null : i.image_url ? { id: row.id, imageUrl: i.image_url, want } : pageUrl ? { id: row.id, pageUrl, want } : null;
+      return { row, review, product, photo, newLocation, reason: i.reason ?? null };
     });
-    const changed = planned.filter((p) => Object.keys(p.values).length || p.newLocation);
+    const changed = planned.filter((p) => Object.keys(p.review).length || Object.keys(p.product).length || p.photo || p.newLocation);
+    const reviewed = changed.filter((p) => Object.keys(p.review).length || p.newLocation);
     return {
       count: changed.length,
-      summary: `Edited ${changed.length} inventory ${changed.length === 1 ? "item" : "items"}, waiting in To Review`,
+      summary: `Edited ${changed.length} inventory ${changed.length === 1 ? "item" : "items"}${reviewed.length ? `, ${reviewed.length} waiting in To Review` : ""}`,
       preview: changed.map((p) => ({
         item_id: p.row.id,
         item: p.row.name,
-        set: { ...p.values, ...("locationId" in p.values ? { locationId: undefined, location: locationName.get(p.values.locationId as string) } : {}) },
+        set: { ...p.review, ...p.product, ...("locationId" in p.review ? { locationId: undefined, location: locationName.get(p.review.locationId as string) } : {}) },
         ...(p.newLocation ? { new_location: p.newLocation } : {}),
+        ...(p.photo ? { picture: p.photo.imageUrl ?? `read from ${p.photo.pageUrl}` } : {}),
       })),
       apply: async () => {
         // New shelves first, so the items can move onto them.
@@ -994,17 +1017,27 @@ write(
             [{ id }] = await db.insert(inventoryLocations).values({ name: p.newLocation }).returning({ id: inventoryLocations.id });
             locationId.set(p.newLocation.toLowerCase(), id);
           }
-          if (id !== p.row.locationId) p.values.locationId = id;
+          if (id !== p.row.locationId) p.review.locationId = id;
         }
         const batchId = randomUUID();
+        const ctx = { memberId: member.id, aiName: aiName ?? null, batchId };
         const n = await applyItemEdits(
-          changed.map((p) => ({ itemId: p.row.id, values: p.values, reason: p.reason })),
-          { memberId: member.id, aiName: aiName ?? null, batchId },
+          changed.filter((p) => Object.keys(p.review).length).map((p) => ({ itemId: p.row.id, values: p.review, reason: p.reason })),
+          ctx,
         );
-        const linked = changed.filter((p) => "cotsLinks" in p.values);
-        const photos = await saveLinkPhotos(linked.map((p) => ({ id: p.row.id, url: (p.values.cotsLinks as { url: string }[])[0].url, want: [p.values.name ?? p.row.name, ...Object.values((p.values.specs ?? p.row.specs) as Record<string, string>)].join(" ") })), { memberId: member.id, aiName: aiName ?? null, batchId });
-        const auto_linked = await autoLink({ itemIds: linked.map((p) => p.row.id) }, { memberId: member.id, via: "mcp" });
-        return { changed: n, waiting_in_to_review: n, batch_id: batchId, photos_updated: photos, auto_linked };
+        const linked = changed.filter((p) => Object.keys(p.product).length);
+        await db.transaction(async (tx) => {
+          for (const p of linked) {
+            const [before] = await tx.select().from(inventoryItems).where(eq(inventoryItems.id, p.row.id)).for("update");
+            if (!before) continue;
+            await tx.update(inventoryItems).set(p.product).where(eq(inventoryItems.id, p.row.id));
+            await recordItemChanges(tx, p.row.id, before, p.product, { ...ctx, via: "mcp" });
+            await pushItemToCards(tx, p.row.id, p.product);
+          }
+        });
+        const photos = await savePhotos(changed.flatMap((p) => (p.photo ? [p.photo] : [])), ctx);
+        const auto_linked = await autoLink({ itemIds: linked.filter((p) => p.product.cotsLinks).map((p) => p.row.id) }, { memberId: member.id, via: "mcp" });
+        return { changed: changed.length, waiting_in_to_review: n, products_updated: linked.length, batch_id: batchId, photos_updated: photos, auto_linked };
       },
     };
   },

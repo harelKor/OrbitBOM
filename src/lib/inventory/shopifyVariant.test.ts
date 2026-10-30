@@ -28,6 +28,8 @@ describe("variantTokens", () => {
     expect([...variantTokens('2" Stealth wheel – blue, 1/2" Hex')].sort()).toEqual(["1/2 hex", "2in", "blue"]);
     expect([...variantTokens("1/2 in Hex / 2 1/4 inch / 35A")].sort()).toEqual(["1/2 hex", "2-1/4in", "35a"]);
     expect(variantTokens('2.25" compliant').has("2-1/4in")).toBe(true);
+    expect([...variantTokens("24T HTD pulley, 1/2 in Hex")].sort()).toEqual(["1/2 hex", "24t"]);
+    expect(variantTokens("Gear 36 tooth").has("36t")).toBe(true);
     expect(variantTokens("5 mm Hex").has("5mm hex")).toBe(true);
   });
 });
