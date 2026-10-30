@@ -14,6 +14,7 @@ import { listInventory } from "@/lib/data/inventory";
 import { autoLink, findLinks, writePendingLinks } from "@/lib/inventory/autolink";
 import { checkSpecs, fieldChoices, getCategory, slugify, type InvCategory } from "@/lib/inventory/categories";
 import { recordItemChanges } from "@/lib/inventory/history";
+import { readProduct, saveProductPhoto } from "@/lib/inventory/product";
 import { CATEGORY_GROUPS, isCategoryGroup } from "@/config/inventory";
 import { addCategoryForReview, applyItemEdits } from "@/lib/review/inventory";
 import { listCategories } from "@/lib/data/categories";
@@ -862,9 +863,30 @@ read(
   },
 );
 
+// A new product link brings its picture (the variant's own, for a ?variant= link or an item whose
+// name names a color, durometer or bore), copied to R2 like a link pasted in the item window. The
+// old picture stays in R2, so reverting the batch can still show it. Returns how many changed.
+async function saveLinkPhotos(items: { id: string; url: string; want: string }[], ctx: { memberId: string; aiName: string | null; batchId: string }) {
+  let saved = 0;
+  for (let i = 0; i < items.length; i += 6)
+    await Promise.all(
+      items.slice(i, i + 6).map(async (it) => {
+        const p = await readProduct(it.url, 8000, it.want).catch(() => null);
+        const key = p?.image ? await saveProductPhoto(it.id, p.image) : null;
+        if (!key) return;
+        const [before] = await db.select({ imagePath: inventoryItems.imagePath }).from(inventoryItems).where(eq(inventoryItems.id, it.id));
+        if (!before || before.imagePath === key) return;
+        await db.update(inventoryItems).set({ imagePath: key }).where(eq(inventoryItems.id, it.id));
+        await recordItemChanges(db, it.id, before, { imagePath: key }, { memberId: ctx.memberId, via: "mcp", aiName: ctx.aiName, batchId: ctx.batchId });
+        saved++;
+      }),
+    );
+  return saved;
+}
+
 write(
   "set_inventory_info",
-  "Edit existing inventory items (each item can differ): rename them (name), move them to another category or location, and fill in specs, product link, price and season need. Use it to clean up messy items: clear names, the right category with its specs, one shelf per kind. Specs must use the category's fields and choices from list_inventory_categories. The changes apply at once and wait in To Review's Inventory section with your name until a member approves; Reject puts the old values back. BOM parts with the same product link are then linked to the item and wait in To Review.",
+  "Edit existing inventory items (each item can differ): rename them (name), move them to another category or location, and fill in specs, product link, price and season need. A new product_url replaces the item's link from the same store and brings that product's picture; for a Shopify family page (AndyMark, WCP) give the exact ?variant= link, or the variant is picked from the item's name and specs. Use it to clean up messy items: clear names, the right category with its specs, one shelf per kind. Specs must use the category's fields and choices from list_inventory_categories. The changes apply at once and wait in To Review's Inventory section with your name until a member approves; Reject puts the old values back. BOM parts with the same product link are then linked to the item and wait in To Review.",
   z.object({
     items: z
       .array(
@@ -890,6 +912,14 @@ write(
       const row = rows.find((r) => r.id === i.item_id);
       if (!row) throw new ToolError(`No inventory item ${i.item_id}.`);
       const values: Record<string, unknown> = { ...checkItemInfo(i, row, cats) };
+      // A new product link replaces the old one from the same store (a family page swapped for the
+      // exact variant), so the card doesn't keep the wrong page as a second link.
+      if (values.cotsLinks) {
+        const [link, ...rest] = values.cotsLinks as typeof row.cotsLinks;
+        values.cotsLinks = [link, ...rest.filter((l) => vendorOfUrl(l.url) !== vendorOfUrl(link.url))];
+      }
+      // Specs are merged, so filling bore and durometer keeps the color and width already there.
+      if (values.specs) values.specs = { ...row.specs, ...(values.specs as Record<string, string>) };
       if (i.name && i.name !== row.name) values.name = i.name;
       const loc = i.location ? (locationId.get(i.location.toLowerCase()) ?? null) : undefined;
       const newLocation = i.location && loc === null ? i.location : null;
@@ -922,9 +952,10 @@ write(
           changed.map((p) => ({ itemId: p.row.id, values: p.values, reason: p.reason })),
           { memberId: member.id, aiName: aiName ?? null, batchId },
         );
-        const linked = changed.filter((p) => "cotsLinks" in p.values).map((p) => p.row.id);
-        const auto_linked = await autoLink({ itemIds: linked }, { memberId: member.id, via: "mcp" });
-        return { changed: n, waiting_in_to_review: n, batch_id: batchId, auto_linked };
+        const linked = changed.filter((p) => "cotsLinks" in p.values);
+        const photos = await saveLinkPhotos(linked.map((p) => ({ id: p.row.id, url: (p.values.cotsLinks as { url: string }[])[0].url, want: [p.values.name ?? p.row.name, ...Object.values((p.values.specs ?? p.row.specs) as Record<string, string>)].join(" ") })), { memberId: member.id, aiName: aiName ?? null, batchId });
+        const auto_linked = await autoLink({ itemIds: linked.map((p) => p.row.id) }, { memberId: member.id, via: "mcp" });
+        return { changed: n, waiting_in_to_review: n, batch_id: batchId, photos_updated: photos, auto_linked };
       },
     };
   },

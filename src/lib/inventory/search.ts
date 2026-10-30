@@ -5,6 +5,7 @@ import { VENDORS, vendorOfUrl, type Vendor } from "@/config/vendors";
 import { normUrl } from "./match";
 import { UA, publicUrl, readProduct, toUsd } from "./product";
 import { groupOffers, type Offer, type ProductGroup } from "./productGroups";
+import { variantTokens } from "./shopifyVariant";
 import { toEnglishQuery } from "./searchWords";
 
 const { parts } = schema;
@@ -23,7 +24,7 @@ async function searchShopify(v: Vendor, q: string): Promise<Offer[]> {
     const res = await fetch(url, { headers: { "user-agent": UA, accept: "application/json" }, signal: AbortSignal.timeout(STORE_MS), cache: "no-store" });
     if (!res.ok) return [];
     const data = (await res.json()) as Suggest;
-    return (data.resources?.results?.products ?? []).flatMap((p) => {
+    const offers: Offer[] = (data.resources?.results?.products ?? []).flatMap((p) => {
       if (!p.title || !p.url) return [];
       const link = new URL(p.url, `https://${v.host}`);
       link.search = "";
@@ -31,9 +32,27 @@ async function searchShopify(v: Vendor, q: string): Promise<Offer[]> {
       const price = Number(p.price ?? p.price_min);
       return [{ vendor: v.name, url: link.toString(), title: p.title, image: image ? new URL(image, `https://${v.host}`).toString() : null, price: Number.isFinite(price) && price > 0 ? price : null }];
     });
+    return await narrowToVariants(offers, q);
   } catch {
     return [];
   }
+}
+
+// A search naming a color, durometer or bore ("compliant wheel 3 inch blue 1/2 hex"): the first
+// few family pages are opened for the variant it names, so the result shows that wheel's own
+// picture, price and ?variant= link. Within the same time limit; a page that doesn't answer stays.
+const narrows = (q: string) => [...variantTokens(q)].some((t) => !t.endsWith("in"));
+async function narrowToVariants(offers: Offer[], q: string): Promise<Offer[]> {
+  if (!narrows(q)) return offers;
+  return Promise.all(
+    offers.map((o, i) =>
+      i >= 3
+        ? o
+        : readProduct(o.url, STORE_MS, q)
+            .then((p) => (p.url !== o.url ? { ...o, url: p.url, title: p.title, image: p.image ?? o.image, price: p.price ?? o.price, sku: p.sku } : o))
+            .catch(() => o),
+    ),
+  );
 }
 
 type Woo = { name?: string; permalink?: string; sku?: string; images?: { src?: string }[]; prices?: { price?: string; currency_code?: string; currency_minor_unit?: number } }[];
