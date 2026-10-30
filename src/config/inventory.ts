@@ -490,6 +490,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     id: "cylinders-blocks",
     group: "consumables",
     label: "Cylinders & blocks",
+    image: "/categories/cylinders-blocks.png",
     noun: "",
     sheet: true,
     match: /(?<!bearing\s)\bblocks?\b|billet|cylinder|standoff\s*stock|(round|lathe)\s*stock/i,
