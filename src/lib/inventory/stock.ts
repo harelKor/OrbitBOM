@@ -52,149 +52,247 @@ export function isSheetGoods(label: string): boolean {
   return /plate|sheet|polycarb|wood/i.test(label);
 }
 
-// Pieces by size (Harel, 2026-10-29): a fraction item keeps how many pieces of each size are on
-// the shelf, keyed by twelfths ("12" a full one, "6" a half), because two halves can't make a
-// long cut. in_stock stays their sum.
-export type Pieces = Record<string, number>;
+// Pieces by size (Harel, 2026-10-29/30): a fraction item keeps a list of piece sizes and how many
+// of each are on the shelf; in_stock is their sum, each piece counting as its share of a full one.
+// A size is "f6" (a preset fraction in twelfths: half the full length or sheet), "m450" (450mm of
+// a tube or shaft) or "p500x450" (a 500×450 plate). Older rows hold a { twelfths: count } map or
+// nothing; they read as the presets, with the stock as full pieces plus one for the rest.
+export type PieceRow = { size: string; count: number };
+export type StoredPieces = PieceRow[] | Record<string, number> | null | undefined;
+// What a full piece is: a length, a sheet size, or unknown (filament: fractions only).
+export type PieceBase = { kind: "mm"; length: number } | { kind: "xy"; x: number; y: number } | { kind: "none" };
 
-export const ALL_PIECES = [
-  { twelfths: 12, label: "Full", value: 1 },
-  ...SHEET_PIECES.map((p) => ({ twelfths: Math.round(p.value * 12), label: p.label as string, value: p.value as number })),
-].sort((a, b) => b.twelfths - a.twelfths);
+export const PRESET_TWELFTHS = [12, 9, 8, 6, 4, 3];
+export const SIZE_KEY = /^(f\d{1,3}|m\d{1,5}|p\d{1,5}x\d{1,5})$/;
+const EPS = 1e-3;
 
-// Twelfths that aren't a standard piece split into ones that are where they can (7 = ⅓ + ¼).
+// Twelfths that aren't a preset split into ones that are where they can (7 = ⅓ + ¼).
 const SPLIT: Record<number, number[]> = { 7: [4, 3], 10: [6, 4], 11: [8, 3] };
 
-const sumOf = (p: Pieces) => Object.entries(p).reduce((s, [k, n]) => s + Number(k) * n, 0);
-
-function addTwelfths(p: Pieces, twelfths: number) {
-  const bump = (k: number) => (p[String(k)] = (p[String(k)] ?? 0) + 1);
-  for (let i = 0; i < Math.floor(twelfths / 12); i++) bump(12);
-  const rest = twelfths % 12;
-  if (rest) (SPLIT[rest] ?? [rest]).forEach(bump);
-}
-
-function drop(p: Pieces, k: number) {
-  p[String(k)] -= 1;
-  if (p[String(k)] <= 0) delete p[String(k)];
-}
-
-const sizes = (p: Pieces) => Object.keys(p).map(Number).sort((a, b) => a - b);
-
-// Take `twelfths` of material: an exact piece first, else cut the smallest piece that's big
-// enough (the offcut goes back), else use up the biggest pieces.
-function takeTwelfths(p: Pieces, twelfths: number) {
-  let need = twelfths;
-  while (need > 0 && Object.keys(p).length) {
-    if (need <= 12 && p[String(need)]) {
-      drop(p, need);
-      return;
-    }
-    const cut = sizes(p).find((k) => k > need);
-    if (cut !== undefined) {
-      drop(p, cut);
-      addTwelfths(p, cut - need);
-      return;
-    }
-    const big = sizes(p).at(-1)!;
-    drop(p, big);
-    need -= big;
-  }
-}
-
-function clean(pieces?: Pieces | null): Pieces {
-  const out: Pieces = {};
-  for (const [k, n] of Object.entries(pieces ?? {})) {
-    const key = Number(k);
-    const count = Math.floor(Number(n));
-    if (Number.isInteger(key) && key > 0 && count > 0) out[String(key)] = count;
-  }
-  return out;
-}
-
-// The pieces, made to add up to the stock: items from before pieces (or a typed count) get the
-// difference as full pieces plus one piece for the rest.
-export function normalizePieces(inStock: number, pieces?: Pieces | null): Pieces {
-  const p = clean(pieces);
-  const total = Math.round(Math.max(0, inStock) * 12);
-  const have = sumOf(p);
-  if (have < total) addTwelfths(p, total - have);
-  if (have > total) takeTwelfths(p, have - total);
-  return p;
-}
-
-// One step on the stock. With a piece size, adds or takes one piece of that size per step
-// (taking a size there's none of cuts it from a bigger piece). A plain ±1 adds or takes a full
-// piece (no full left: the biggest piece). Any other amount adds full pieces or takes material.
-export function adjustPieceBucket(inStock: number, pieces: Pieces | null | undefined, delta: number, bucketTwelfths?: number): { inStock: number; pieces: Pieces } {
-  const p = normalizePieces(inStock, pieces);
-  const bucket = bucketTwelfths ?? (Math.abs(delta) === 1 ? 12 : undefined);
-  if (bucket) {
-    const count = Math.max(1, Math.round((Math.abs(delta) * 12) / bucket));
-    for (let i = 0; i < count; i++) {
-      if (delta > 0) addTwelfths(p, bucket);
-      else if (p[String(bucket)]) drop(p, bucket);
-      else if (bucket === 12) {
-        if (Object.keys(p).length) drop(p, sizes(p).at(-1)!);
-      } else if (sizes(p).some((k) => k > bucket)) takeTwelfths(p, bucket);
-    }
-  } else if (delta > 0) addTwelfths(p, Math.round(delta * 12));
-  else takeTwelfths(p, Math.round(-delta * 12));
-  return { inStock: sumOf(p) / 12, pieces: p };
-}
-
-// Can one piece of this size be taken: one on the shelf, or a bigger one to cut it from.
-export function canTakePiece(inStock: number, pieces: Pieces | null | undefined, twelfths: number): boolean {
-  const p = normalizePieces(inStock, pieces);
-  return !!p[String(twelfths)] || sizes(p).some((k) => k > twelfths) || (twelfths === 12 && Object.keys(p).length > 0);
-}
-
-const mm = (text: string | undefined) => {
+const num = (text: string | undefined) => {
   const m = /(\d+(?:\.\d+)?)/.exec(text ?? "");
   return m ? Number(m[1]) : null;
 };
+const SIZE_RE = /(\d+(?:\.\d+)?)\s*[x×*]\s*(\d+(?:\.\d+)?)/i;
 
-// A piece's real size from the item's length or sheet size: "450mm" for half a 900mm tube,
-// "500×450" for half a 500×900 plate (the long side is cut). No size known: the fraction.
-export function pieceSizeLabel(piece: { label: string; value: number }, specs: Record<string, string>, name = ""): { primary: string; sub?: string } {
-  const sub = piece.value === 1 ? undefined : piece.label;
-  const fallback = { primary: piece.label };
-  let length = mm(specs.length);
-  if (!length) {
-    // "… 900mm" in the name, but not a diameter, a wall or a cross-section like "40x20mm".
-    const hits = [...name.matchAll(/(?<![Ø\d.x×]\s*)(\d+(?:\.\d+)?)\s*mm(?!\s*wall)/gi)].map((m) => Number(m[1])).filter((n) => n >= 100);
-    length = hits.at(-1) ?? null;
+// The full piece from the item's specs or name: its Length spec, else a sheet size (both sides at
+// least 100mm, so a tube's "40x20" cross-section doesn't count), else a length in the name.
+export function pieceBase(specs: Record<string, string>, name = ""): PieceBase {
+  const length = num(specs.length);
+  if (length) return { kind: "mm", length };
+  const s = SIZE_RE.exec(specs.size ?? "") ?? SIZE_RE.exec(name);
+  if (s && Number(s[1]) >= 100 && Number(s[2]) >= 100) {
+    const [x, y] = [Number(s[1]), Number(s[2])].sort((a, b) => a - b);
+    return { kind: "xy", x, y };
   }
-  if (!specs.length) {
-    // A sheet size: both sides at least 100mm (a tube's "40x20" is its cross-section).
-    const s = /(\d+(?:\.\d+)?)\s*[x×*]\s*(\d+(?:\.\d+)?)/.exec(specs.size ?? "") ?? /(\d+(?:\.\d+)?)\s*[x×*]\s*(\d+(?:\.\d+)?)/.exec(name);
-    if (s && Number(s[1]) >= 100 && Number(s[2]) >= 100) {
-      const [w, l] = [Number(s[1]), Number(s[2])].sort((a, b) => a - b);
-      return { primary: `${w}×${Math.round(l * piece.value)}`, sub };
-    }
-  }
-  if (length) return { primary: `${Math.round(length * piece.value)}mm`, sub };
-  return piece.value === 1 ? { primary: "Full" } : fallback;
+  // "… 900mm" in the name, but not a diameter, a wall or a cross-section like "40x20mm".
+  const hits = [...name.matchAll(/(?<![Ø\d.x×]\s*)(\d+(?:\.\d+)?)\s*mm(?!\s*wall)/gi)].map((m) => Number(m[1])).filter((n) => n >= 100);
+  return hits.length ? { kind: "mm", length: hits.at(-1)! } : { kind: "none" };
 }
 
-// Stock after one step, for the optimistic view and the server alike: fraction items move their
-// pieces too.
-export function stepStock(item: { inStock: number; sheet: boolean; pieces?: Pieces | null }, delta: number, bucket?: number): { inStock: number; pieces?: Pieces } {
+// A size's share of a full piece. A length or plate the base can't measure counts as one.
+export function pieceRatio(size: string, base: PieceBase): number {
+  if (size[0] === "f") return Number(size.slice(1)) / 12;
+  if (size[0] === "m") return base.kind === "mm" ? Number(size.slice(1)) / base.length : 1;
+  const [x, y] = size.slice(1).split("x").map(Number);
+  return base.kind === "xy" ? (x * y) / (base.x * base.y) : 1;
+}
+
+const GLYPH: Record<string, string> = { "1/4": "¼", "1/3": "⅓", "1/2": "½", "2/3": "⅔", "3/4": "¾" };
+const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
+
+// A share as a short fraction: "½", "5/4", "3/1"; "Full" for one; "≈0.27" when nothing near fits.
+export function fractionText(r: number): string {
+  if (Math.abs(r - 1) < EPS) return "Full";
+  for (const d of [1, 2, 3, 4, 6, 8, 12]) {
+    const n = Math.round(r * d);
+    if (n > 0 && Math.abs(r - n / d) < 0.005) {
+      const g = gcd(n, d);
+      const text = `${n / g}/${d / g}`;
+      return GLYPH[text] ?? text;
+    }
+  }
+  return `≈${r.toFixed(2)}`;
+}
+
+// A size as it shows: the real length or plate ("450mm", "500×450") and its share ("½", "5/4").
+export function pieceLabel(size: string, base: PieceBase): { primary: string; sub: string } {
+  const r = pieceRatio(size, base);
+  const sub = fractionText(r);
+  if (size[0] === "m") return { primary: `${size.slice(1)}mm`, sub };
+  if (size[0] === "p") return { primary: size.slice(1).replace("x", "×"), sub };
+  if (base.kind === "mm") return { primary: `${Math.round(base.length * r)}mm`, sub };
+  if (base.kind === "xy") return { primary: `${base.x}×${Math.round(base.y * r)}`, sub };
+  return { primary: sub, sub: "" };
+}
+
+const sumRows = (rows: PieceRow[], base: PieceBase) => Math.round(rows.reduce((t, r) => t + r.count * pieceRatio(r.size, base), 0) * 1e4) / 1e4;
+
+function readRows(stored: StoredPieces): PieceRow[] {
+  const rows: PieceRow[] = [];
+  const put = (size: string, count: number) => {
+    if (!SIZE_KEY.test(size) || !(Number(size.slice(1).split("x")[0]) > 0)) return;
+    const n = Math.max(0, Math.floor(Number(count) || 0));
+    const row = rows.find((r) => r.size === size);
+    if (row) row.count += n;
+    else rows.push({ size, count: n });
+  };
+  if (Array.isArray(stored)) stored.forEach((r) => r && typeof r.size === "string" && put(r.size, r.count));
+  else {
+    // Nothing yet, or the first { twelfths: count } map: the presets, with what was counted.
+    PRESET_TWELFTHS.forEach((t) => put(`f${t}`, 0));
+    for (const [k, n] of Object.entries(stored ?? {})) if (/^\d+$/.test(k)) put(`f${k}`, n);
+  }
+  return rows;
+}
+
+// The row of this share, made if there's none: a preset fraction when it is one, else a length
+// or plate size off the base (a plate keeps `keepX` across and shortens the other side).
+function rowFor(rows: PieceRow[], ratio: number, base: PieceBase, keepX?: number): PieceRow {
+  const same = rows.find((r) => Math.abs(pieceRatio(r.size, base) - ratio) < EPS);
+  if (same) return same;
+  const t = Math.round(ratio * 12);
+  let size: string;
+  if (Math.abs(ratio - t / 12) < EPS && t > 0) size = `f${t}`;
+  else if (base.kind === "mm") size = `m${Math.max(1, Math.round(ratio * base.length))}`;
+  else if (base.kind === "xy") {
+    const x = keepX ?? base.x;
+    size = `p${x}x${Math.max(1, Math.round((ratio * base.x * base.y) / x))}`;
+  } else size = `f${Math.max(1, t)}`;
+  const row = rows.find((r) => r.size === size) ?? { size, count: 0 };
+  if (!rows.includes(row)) rows.push(row);
+  return row;
+}
+
+function addAmount(rows: PieceRow[], amount: number, base: PieceBase) {
+  const whole = Math.floor(amount + EPS);
+  if (whole > 0) rowFor(rows, 1, base).count += whole;
+  const rest = Math.round((amount - whole) * 12);
+  if (rest > 0) (SPLIT[rest] ?? [rest]).forEach((t) => rowFor(rows, t / 12, base).count++);
+}
+
+const xOf = (size: string) => (size[0] === "p" ? Number(size.slice(1).split("x")[0]) : undefined);
+
+// Take an amount of material: a piece that size first, else cut the smallest piece that's big
+// enough (the offcut goes back as its own size), else use up the biggest pieces.
+function takeAmount(rows: PieceRow[], amount: number, base: PieceBase) {
+  let need = amount;
+  while (need > EPS) {
+    const have = rows.filter((r) => r.count > 0).map((r) => ({ r, v: pieceRatio(r.size, base) }));
+    if (!have.length) return;
+    const exact = have.find((h) => Math.abs(h.v - need) < EPS);
+    if (exact) {
+      exact.r.count--;
+      return;
+    }
+    const bigger = have.filter((h) => h.v > need).sort((a, b) => a.v - b.v)[0];
+    if (bigger) {
+      bigger.r.count--;
+      rowFor(rows, bigger.v - need, base, xOf(bigger.r.size)).count++;
+      return;
+    }
+    const biggest = have.sort((a, b) => b.v - a.v)[0];
+    biggest.r.count--;
+    need -= biggest.v;
+  }
+}
+
+// The rows, made to add up to the stock (older items, a typed count, a move from elsewhere).
+export function pieceRows(inStock: number, stored: StoredPieces, base: PieceBase): PieceRow[] {
+  const rows = readRows(stored);
+  const diff = Math.max(0, inStock) - sumRows(rows, base);
+  if (diff > EPS) addAmount(rows, diff, base);
+  if (diff < -EPS) takeAmount(rows, -diff, base);
+  return rows;
+}
+
+// Biggest first, the way the Spread and the pieces menu list them.
+export function sortedRows(rows: PieceRow[], base: PieceBase): PieceRow[] {
+  return [...rows].sort((a, b) => pieceRatio(b.size, base) - pieceRatio(a.size, base));
+}
+
+type Stocked = { inStock: number; sheet: boolean; pieces?: StoredPieces; specs: Record<string, string>; name: string };
+type Result = { inStock: number; pieces?: PieceRow[] };
+const done = (rows: PieceRow[], base: PieceBase): { inStock: number; pieces: PieceRow[] } => ({ inStock: sumRows(rows, base), pieces: rows });
+
+// One step on the stock, for the optimistic view and the server alike. With a size, adds or takes
+// one piece of it (taking a size there's none of cuts it from a bigger piece). A plain ±1 adds or
+// takes a full piece (no full left: the biggest). Any other amount adds full pieces or takes material.
+export function stepStock(item: Stocked, delta: number, size?: string): Result {
   if (!item.sheet) return { inStock: snapStock(item.inStock + delta, false) };
-  return adjustPieceBucket(item.inStock, item.pieces, delta, bucket);
+  const base = pieceBase(item.specs, item.name);
+  const rows = pieceRows(item.inStock, item.pieces, base);
+  if (size || Math.abs(delta) === 1) {
+    const row = size ? (rows.find((r) => r.size === size) ?? rowFor(rows, pieceRatio(size, base), base)) : rowFor(rows, 1, base);
+    if (delta > 0) row.count++;
+    else if (row.count > 0) row.count--;
+    else if (!size) {
+      const biggest = sortedRows(rows, base).find((r) => r.count > 0);
+      if (biggest) biggest.count--;
+    } else if (canTake(rows, row.size, base)) takeAmount(rows, pieceRatio(row.size, base), base);
+  } else if (delta > 0) addAmount(rows, delta, base);
+  else takeAmount(rows, -delta, base);
+  return done(rows, base);
+}
+
+function canTake(rows: PieceRow[], size: string, base: PieceBase) {
+  const v = pieceRatio(size, base);
+  return rows.some((r) => r.count > 0 && (r.size === size || pieceRatio(r.size, base) > v + EPS));
+}
+
+// Can one piece of this size come off the shelf: one there, or a bigger one to cut it from.
+export function canTakePiece(item: Stocked, size: string): boolean {
+  const base = pieceBase(item.specs, item.name);
+  return canTake(pieceRows(item.inStock, item.pieces, base), size, base);
 }
 
 // Stock set to a typed count: the pieces follow (extra as full pieces, less taken as material).
-export function countPieces(item: { inStock: number; sheet: boolean; pieces?: Pieces | null }, amount: number): { inStock: number; pieces?: Pieces } {
+export function countPieces(item: Stocked, amount: number): Result {
   const inStock = snapStock(amount, item.sheet);
   if (!item.sheet) return { inStock };
-  return { inStock, pieces: normalizePieces(inStock, normalizePieces(item.inStock, item.pieces)) };
+  const base = pieceBase(item.specs, item.name);
+  return done(pieceRows(inStock, pieceRows(item.inStock, item.pieces, base), base), base);
 }
 
-// One size's count set directly (the Spread rows).
-export function setPieceCount(item: { inStock: number; pieces?: Pieces | null }, twelfths: number, count: number): { inStock: number; pieces: Pieces } {
-  const p = normalizePieces(item.inStock, item.pieces);
-  if (count > 0) p[String(twelfths)] = Math.floor(count);
-  else delete p[String(twelfths)];
-  return { inStock: sumOf(p) / 12, pieces: p };
+// The Spread's edits: a size's count, a size changed (✏, counts merge into an existing one), a
+// size removed (✕, its pieces leave the shelf), a new size (no pieces yet).
+export type PieceOp =
+  | { kind: "count"; size: string; count: number }
+  | { kind: "rename"; size: string; to: string }
+  | { kind: "remove"; size: string }
+  | { kind: "add"; size: string };
+
+export function applyPieceOp(item: Stocked, op: PieceOp): Result {
+  const base = pieceBase(item.specs, item.name);
+  let rows = pieceRows(item.inStock, item.pieces, base);
+  const row = rows.find((r) => r.size === op.size);
+  if (op.kind === "count") {
+    if (row) row.count = Math.max(0, Math.floor(op.count));
+    else rows.push({ size: op.size, count: Math.max(0, Math.floor(op.count)) });
+  } else if (op.kind === "add") {
+    if (!row) rows.push({ size: op.size, count: 0 });
+  } else if (op.kind === "remove") rows = rows.filter((r) => r !== row);
+  else if (row && op.to !== op.size) {
+    const into = rows.find((r) => r.size === op.to);
+    if (into) {
+      into.count += row.count;
+      rows = rows.filter((r) => r !== row);
+    } else row.size = op.to;
+  }
+  return done(rows, base);
+}
+
+// What someone typed for a new or changed size: "450" (mm) for a tube, "500x450" for a plate.
+export function parseSize(text: string, base: PieceBase): string | null {
+  if (base.kind === "xy") {
+    const s = SIZE_RE.exec(text);
+    if (!s) return null;
+    const [x, y] = [Math.round(Number(s[1])), Math.round(Number(s[2]))];
+    return x > 0 && y > 0 ? `p${x}x${y}` : null;
+  }
+  if (base.kind === "mm") {
+    const n = Math.round(num(text) ?? 0);
+    return n > 0 ? `m${n}` : null;
+  }
+  return null;
 }

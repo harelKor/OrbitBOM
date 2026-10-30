@@ -4,7 +4,7 @@ import Link from "next/link";
 import { createContext, useContext, useEffect, useState, useTransition } from "react";
 import {
   adjustStock,
-  setItemPieces,
+  editItemPieces,
   countStock,
   deleteItem,
   findBomParts,
@@ -30,9 +30,9 @@ import { useMaterials } from "@/components/shell/MaterialColors";
 import { activeFields, getCategory } from "@/lib/inventory/categories";
 import { hasSeasonNeed, missing } from "@/lib/inventory/season";
 import type { Offer, ProductGroup } from "@/lib/inventory/productGroups";
-import { ALL_PIECES, countPieces, formatStock, isSheetGoods, normalizePieces, parseStock, pieceSizeLabel, setPieceCount, snapStock, stepStock } from "@/lib/inventory/stock";
+import { type PieceOp, applyPieceOp, countPieces, formatStock, isSheetGoods, parseStock, pieceBase, pieceLabel, pieceRows, snapStock, sortedRows, stepStock } from "@/lib/inventory/stock";
 import { bestOffer, isLink, searchStores } from "./AddBox";
-import { CountBox, ItemPrice, PieceStepper, conditionColor, hostOf } from "./ItemCard";
+import { CountBox, ItemPrice, NewSize, PieceStepper, conditionColor, hostOf } from "./ItemCard";
 import { ItemForm, draftOf } from "./ItemForm";
 import { ItemHistory } from "./ItemHistory";
 import { PhotoButtons } from "./photo";
@@ -139,7 +139,7 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
       if (r.error) after(r);
     });
   };
-  const step = (itemId: string, delta: number, bucket?: number) => saveNow(itemId, (i) => stepStock(i, delta, bucket), () => adjustStock(itemId, delta, bucket));
+  const step = (itemId: string, delta: number, size?: string) => saveNow(itemId, (i) => stepStock(i, delta, size), () => adjustStock(itemId, delta, size));
   const count = (itemId: string, amount: number) => saveNow(itemId, (i) => countPieces(i, amount), () => countStock(itemId, amount));
 
   const item = state?.kind === "item" ? (state.data?.item ?? state.preview) : null;
@@ -188,12 +188,14 @@ function Stepper({
   onStep,
   onCount,
   big = false,
+  pieces = true,
   children,
 }: {
   item: Pick<Item, "inStock" | "sheet" | "pieces" | "specs" | "name">;
-  onStep: (d: number, bucket?: number) => void;
+  onStep: (d: number, size?: string) => void;
   onCount?: (n: number) => void;
   big?: boolean;
+  pieces?: boolean; // the item window has Spread instead of pieces ▾
   children?: React.ReactNode;
 }) {
   const work = useCan("work");
@@ -209,7 +211,7 @@ function Stepper({
       {work && (<button type="button" onClick={() => onStep(1)} className={`press flex ${size} items-center justify-center rounded-lg bg-emerald-500 font-bold text-white hover:bg-emerald-400`} aria-label="One more">
         +
       </button>)}
-      {item.sheet && (
+      {item.sheet && pieces && (
         <span className="rounded-full bg-[#111318]/80 px-2 py-1 text-xs text-white">
           <PieceStepper item={item} onStep={onStep} />
         </span>
@@ -298,48 +300,72 @@ function SeasonBox({ item, onChange, onError }: { item: Item; onChange: ChangeIt
   );
 }
 
-// Spread: the item's pieces by real size (Full, ¾ … ¼), each with its count, − / + and a tap to
-// type it. Odd offcuts (like 5/12) show at the end without buttons.
-function SpreadPanel({ item, onSet }: { item: Item; onSet: (twelfths: number, count: number) => void }) {
+// Spread: the item's piece sizes, biggest first. Each row is the real size and its share, − count +
+// (tap the count to type it), ✏ to change the size and ✕ to remove it. A new length or plate size
+// goes in at the bottom.
+function SpreadPanel({ item, onOp }: { item: Item; onOp: (op: PieceOp) => void }) {
   const work = useCan("work");
-  const pieces = normalizePieces(item.inStock, item.pieces);
-  const odd = Object.keys(pieces)
-    .map(Number)
-    .filter((k) => !ALL_PIECES.some((p) => p.twelfths === k))
-    .sort((a, b) => b - a);
+  const [editing, setEditing] = useState<string | null>(null);
+  const base = pieceBase(item.specs, item.name);
+  const rows = sortedRows(pieceRows(item.inStock, item.pieces, base), base);
   return (
-    <div className="w-full max-w-md rounded-lg border border-line bg-[#0D111A] p-2 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]">
+    <div className="w-full max-w-md rounded-lg border border-line bg-raised p-2">
       <ul className="divide-y divide-line">
-        {ALL_PIECES.map((p) => {
-          const n = pieces[String(p.twelfths)] ?? 0;
-          const size = pieceSizeLabel(p, item.specs, item.name);
+        {rows.map((row) => {
+          const label = pieceLabel(row.size, base);
+          const icon = "press flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-subtle hover:bg-surface hover:text-accent active:scale-[0.98]";
           return (
-            <li key={p.twelfths} className="flex items-center gap-2 py-1.5">
-              <span className={`min-w-0 flex-1 truncate font-mono text-sm tabular-nums ${n > 0 ? "text-fg" : "text-subtle"}`}>
-                {size.primary}
-                {size.primary !== "Full" && <span className="ml-1 text-xs text-muted">({size.sub ?? "Full"})</span>}
-              </span>
-              {work && (
-                <button type="button" onClick={() => onSet(p.twelfths, n - 1)} disabled={n <= 0} className="press flex h-7 w-7 items-center justify-center rounded-md bg-rose-500 font-bold text-white hover:bg-rose-400 active:scale-[0.98] disabled:opacity-30" aria-label={`One less ${size.primary}`}>
+            <li key={row.size} className="flex items-center gap-2 py-1.5">
+              {editing === row.size ? (
+                <div className="min-w-0 flex-1">
+                  <NewSize
+                    base={base}
+                    bare
+                    label="Size"
+                    onAdd={(to) => {
+                      setEditing(null);
+                      if (to !== row.size) onOp({ kind: "rename", size: row.size, to });
+                    }}
+                  />
+                </div>
+              ) : (
+                <span className={`min-w-0 flex-1 truncate text-sm ${row.count > 0 ? "text-fg" : "text-subtle"}`}>
+                  <span className="font-mono font-semibold tabular-nums">{label.primary}</span>
+                  {label.sub && <span className="ml-1.5 rounded-full bg-surface px-1.5 py-0.5 font-mono text-[11px] text-muted tabular-nums">{label.sub}</span>}
+                </span>
+              )}
+              {work && editing !== row.size && (
+                <button type="button" onClick={() => onOp({ kind: "count", size: row.size, count: row.count - 1 })} disabled={row.count <= 0} className="press flex h-7 w-7 items-center justify-center rounded-md bg-rose-500 font-bold text-white hover:bg-rose-400 active:scale-[0.98] disabled:opacity-30" aria-label={`One less ${label.primary}`}>
                   −
                 </button>
               )}
-              <PieceCount count={n} onCount={(c) => onSet(p.twelfths, c)} />
-              {work && (
-                <button type="button" onClick={() => onSet(p.twelfths, n + 1)} className="press flex h-7 w-7 items-center justify-center rounded-md bg-emerald-500 font-bold text-white hover:bg-emerald-400 active:scale-[0.98]" aria-label={`One more ${size.primary}`}>
+              {editing !== row.size && <PieceCount count={row.count} onCount={(c) => onOp({ kind: "count", size: row.size, count: c })} />}
+              {work && editing !== row.size && (
+                <button type="button" onClick={() => onOp({ kind: "count", size: row.size, count: row.count + 1 })} className="press flex h-7 w-7 items-center justify-center rounded-md bg-emerald-500 font-bold text-white hover:bg-emerald-400 active:scale-[0.98]" aria-label={`One more ${label.primary}`}>
                   +
+                </button>
+              )}
+              {work && base.kind !== "none" && (
+                <button type="button" onClick={() => setEditing(editing === row.size ? null : row.size)} className={icon} aria-label={`Change size ${label.primary}`} title="Change the size">
+                  <Icon name={editing === row.size ? "close" : "pencil"} className="h-3.5 w-3.5" />
+                </button>
+              )}
+              {work && editing !== row.size && (
+                <button
+                  type="button"
+                  onClick={() => (row.count === 0 || confirm(`Remove ${label.primary}? Its ${row.count} on the shelf come off the count.`)) && onOp({ kind: "remove", size: row.size })}
+                  className={icon}
+                  aria-label={`Remove size ${label.primary}`}
+                  title="Remove this size"
+                >
+                  ✕
                 </button>
               )}
             </li>
           );
         })}
-        {odd.map((k) => (
-          <li key={k} className="flex items-center gap-2 py-1.5 text-sm text-muted">
-            <span className="flex-1 font-mono tabular-nums">{k}/12 offcut</span>
-            <span className="w-10 text-center font-mono font-semibold text-fg tabular-nums">{pieces[String(k)]}</span>
-          </li>
-        ))}
       </ul>
+      {work && <NewSize base={base} label={base.kind === "xy" ? "+ Size" : "+ Length"} onAdd={(size) => onOp({ kind: "add", size })} />}
     </div>
   );
 }
@@ -348,7 +374,7 @@ function SpreadPanel({ item, onSet }: { item: Item; onSet: (twelfths: number, co
 function PieceCount({ count, onCount }: { count: number; onCount: (n: number) => void }) {
   const work = useCan("work");
   const [text, setText] = useState<string | null>(null);
-  const tone = count > 0 ? "text-sky-300" : "text-subtle";
+  const tone = count > 0 ? "text-accent" : "text-subtle";
   if (!work || text === null)
     return (
       <button type="button" disabled={!work} onClick={() => setText(String(count))} className={`w-10 text-center font-mono font-semibold tabular-nums ${tone} ${work ? "underline decoration-dotted underline-offset-4" : ""}`} aria-label="Type how many pieces">
@@ -392,7 +418,7 @@ function ItemBody({
 }: {
   item: Item;
   data: ItemData | null;
-  onStep: (d: number, bucket?: number) => void;
+  onStep: (d: number, size?: string) => void;
   onCount: (n: number) => void;
   onSaved: () => void;
   onChange: ChangeItem;
@@ -552,20 +578,20 @@ function ItemBody({
             </div>
           )}
           {!picture && photoButtons}
-          <Stepper item={item} onStep={onStep} onCount={onCount} big>
+          <Stepper item={item} onStep={onStep} onCount={onCount} big pieces={false}>
             {item.sheet && (
               <button
                 type="button"
                 onClick={() => setSpreadOpen((o) => !o)}
                 aria-expanded={spreadOpen}
-                className={`press flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold active:scale-[0.98] ${spreadOpen ? "border-sky-400/60 bg-sky-500/15 text-sky-300" : "border-line text-fg-2 hover:border-sky-400/40 hover:text-accent"}`}
+                className={`press flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold active:scale-[0.98] ${spreadOpen ? "border-sky-400/60 bg-sky-500/15 text-accent" : "border-line text-fg-2 hover:border-sky-400/40 hover:text-accent"}`}
               >
                 Spread <Chevron open={spreadOpen} small />
               </button>
             )}
           </Stepper>
           {item.sheet && spreadOpen && (
-            <SpreadPanel item={item} onSet={(twelfths, n) => onChange((i) => setPieceCount(i, twelfths, n), () => setItemPieces(item.id, twelfths, n))} />
+            <SpreadPanel item={item} onOp={(op) => onChange((i) => applyPieceOp(i, op), () => editItemPieces(item.id, op))} />
           )}
           <div className="text-xs text-muted">
             {[
@@ -679,9 +705,12 @@ function ItemBody({
             onSaved();
           }}
         >
-          <button className="btn min-h-11 shrink-0" disabled={finding} onClick={find} title="Find BOM parts that are this item; each one waits in To Review for Approve">
-            <Icon name="search" className="h-4 w-4" /> {finding ? "Looking…" : "BOM"}
-          </button>
+          {/* Raw stock isn't a BOM part, so its window has no BOM search. */}
+          {!item.sheet && cat?.group !== "consumables" && (
+            <button className="btn min-h-11 shrink-0" disabled={finding} onClick={find} title="Find BOM parts that are this item; each one waits in To Review for Approve">
+              <Icon name="search" className="h-4 w-4" /> {finding ? "Looking…" : "BOM"}
+            </button>
+          )}
           {work && (
             <button
               type="button"
@@ -893,7 +922,7 @@ function ProductSearch({
   );
 }
 
-function MaterialBody({ data, onStep, onOpen, onClose }: { data: MaterialData; onStep: (id: string, d: number, bucket?: number) => void; onOpen: (id: string) => void; onClose: () => void }) {
+function MaterialBody({ data, onStep, onOpen, onClose }: { data: MaterialData; onStep: (id: string, d: number, size?: string) => void; onOpen: (id: string) => void; onClose: () => void }) {
   const { items, categories, locations } = data;
   const group = materialCategory(data.material, useMaterials());
   const home = categories.find((c: InvCategory) => c.fields.some((f) => f.kind === "material" && group && f.materials?.includes(group)));

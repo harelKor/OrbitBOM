@@ -1,6 +1,7 @@
 import type { InvCategory } from "@/lib/inventory/categories";
 import type { OpenOrder } from "@/lib/inventory/season";
 import type { ItemUsage } from "@/lib/inventory/usage";
+import type { StoredPieces } from "@/lib/inventory/stock";
 
 export type { InvCategory };
 
@@ -16,7 +17,7 @@ export type Item = {
   conditionId: string | null;
   locationId: string | null;
   inStock: number;
-  pieces: Record<string, number>; // a fraction item's pieces by size, in twelfths (lib/inventory/stock.ts)
+  pieces: StoredPieces; // a fraction item's piece sizes and counts (lib/inventory/stock.ts)
   seasonNeed: number | null;
   note: string | null;
   price: number | null;

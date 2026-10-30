@@ -45,13 +45,13 @@ export function ItemPage({
 }) {
   const work = useCan("work");
   const router = useRouter();
-  const [item, step] = useOptimistic(initial, (s, [d, b]: [number, number | undefined]) => ({ ...s, ...stepStock(s, d, b) }));
+  const [item, step] = useOptimistic(initial, (s, [d, b]: [number, string | undefined]) => ({ ...s, ...stepStock(s, d, b) }));
   const [pending, startTransition] = useTransition();
   const [open, setOpen] = useState<"edit" | "toBom" | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [result, setResult] = useState<{ error?: string; message?: string } | null>(null);
 
-  const onStep = (d: number, b?: number) =>
+  const onStep = (d: number, b?: string) =>
     startTransition(async () => {
       step([d, b]);
       const r = await adjustStock(item.id, d, b);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatStock, parseStock, snapStock } from "./stock";
-import { adjustPieceBucket, canTakePiece, normalizePieces, pieceSizeLabel } from "./stock";
+import { applyPieceOp, canTakePiece, fractionText, parseSize, pieceBase, pieceLabel, stepStock } from "./stock";
 
 it("keeps sheets in twelfths and counts in whole units", () => {
   expect(snapStock(1 / 3 + 2 / 3, true)).toBe(1);
@@ -24,34 +24,36 @@ it("reads what people type", () => {
 });
 
 describe("pieces", () => {
-  it("fills in pieces for old stock", () => {
-    expect(normalizePieces(2.5, {})).toEqual({ "12": 2, "6": 1 });
-    expect(normalizePieces(1 + 7 / 12, null)).toEqual({ "12": 1, "4": 1, "3": 1 });
-    expect(normalizePieces(1, { "6": 2 })).toEqual({ "6": 2 });
+  const tube = { sheet: true, specs: { length: "900" }, name: "Shaft" };
+  const plate = { sheet: true, specs: { size: "500x900" }, name: "Plate" };
+  const counts = (r: { pieces?: { size: string; count: number }[] }) => Object.fromEntries((r.pieces ?? []).filter((p) => p.count).map((p) => [p.size, p.count]));
+  it("reads old stock as presets", () => {
+    expect(counts(stepStock({ ...tube, inStock: 2.5, pieces: {} }, 0.5, "f6"))).toEqual({ f12: 2, f6: 2 });
+    expect(counts(stepStock({ ...tube, inStock: 1, pieces: { "6": 2 } }, 1))).toEqual({ f12: 1, f6: 2 });
   });
-  it("steps one piece of a size", () => {
-    expect(adjustPieceBucket(1, { "12": 1 }, 0.5, 6)).toEqual({ inStock: 1.5, pieces: { "12": 1, "6": 1 } });
-    expect(adjustPieceBucket(1.5, { "12": 1, "6": 1 }, -0.5, 6)).toEqual({ inStock: 1, pieces: { "12": 1 } });
-    // Taking a half with only a full on the shelf cuts it.
-    expect(adjustPieceBucket(1, { "12": 1 }, -0.5, 6)).toEqual({ inStock: 0.5, pieces: { "6": 1 } });
+  it("cuts a size from a bigger piece", () => {
+    const r = stepStock({ ...tube, inStock: 1, pieces: [{ size: "f12", count: 1 }] }, -0.5, "m300");
+    expect(counts(r)).toEqual({ f8: 1 }); // 600mm is ⅔
+    expect(r.inStock).toBeCloseTo(2 / 3, 3);
   });
   it("−1 takes a full piece, else the biggest", () => {
-    expect(adjustPieceBucket(1.75, { "12": 1, "9": 1 }, -1)).toEqual({ inStock: 0.75, pieces: { "9": 1 } });
-    expect(adjustPieceBucket(1.25, { "9": 1, "6": 1 }, -1)).toEqual({ inStock: 0.5, pieces: { "6": 1 } });
-    expect(adjustPieceBucket(0.5, { "6": 1 }, 1)).toEqual({ inStock: 1.5, pieces: { "12": 1, "6": 1 } });
+    expect(counts(stepStock({ ...tube, inStock: 1.25, pieces: { "9": 1, "6": 1 } }, -1))).toEqual({ f6: 1 });
   });
-  it("takes other amounts as material", () => {
-    expect(adjustPieceBucket(2, { "12": 2 }, -1.25)).toEqual({ inStock: 0.75, pieces: { "9": 1 } });
-    expect(canTakePiece(0.5, { "6": 1 }, 9)).toBe(false);
-    expect(canTakePiece(0.5, { "6": 1 }, 3)).toBe(true);
+  it("custom sizes count by their share", () => {
+    const r = applyPieceOp({ ...tube, inStock: 0, pieces: [] }, { kind: "count", size: "m1125", count: 2 });
+    expect(r.inStock).toBe(2.5);
+    expect(fractionText(1125 / 900)).toBe("5/4");
+    expect(fractionText(3)).toBe("3/1");
+    const p = applyPieceOp({ ...plate, inStock: 0, pieces: [] }, { kind: "count", size: "p500x450", count: 3 });
+    expect(p.inStock).toBe(1.5);
+    expect(canTakePiece({ ...plate, ...p }, "f12")).toBe(false);
   });
   it("labels real sizes", () => {
-    const half = { label: "½", value: 0.5 };
-    expect(pieceSizeLabel(half, { length: "900" })).toEqual({ primary: "450mm", sub: "½" });
-    expect(pieceSizeLabel(half, { length: "500mm" })).toEqual({ primary: "250mm", sub: "½" });
-    expect(pieceSizeLabel(half, { size: "500x900" })).toEqual({ primary: "500×450", sub: "½" });
-    expect(pieceSizeLabel(half, { size: "40x20" }, "40x20mm Box Tube 1000mm")).toEqual({ primary: "500mm", sub: "½" });
-    expect(pieceSizeLabel(half, { od: "25" }, "Ø25mm 2mm wall Round Tube")).toEqual({ primary: "½" });
-    expect(pieceSizeLabel({ label: "Full", value: 1 }, {})).toEqual({ primary: "Full" });
+    expect(pieceLabel("f6", pieceBase({ length: "900" }))).toEqual({ primary: "450mm", sub: "½" });
+    expect(pieceLabel("f6", pieceBase({ size: "500x900" }))).toEqual({ primary: "500×450", sub: "½" });
+    expect(pieceLabel("f6", pieceBase({ size: "40x20" }, "40x20mm Box Tube 1000mm"))).toEqual({ primary: "500mm", sub: "½" });
+    expect(pieceLabel("f6", pieceBase({}, "Ø25mm 2mm wall Round Tube"))).toEqual({ primary: "½", sub: "" });
+    expect(parseSize("500 x 450", pieceBase({ size: "500x900" }))).toBe("p500x450");
+    expect(parseSize("450", pieceBase({ length: "900" }))).toBe("m450");
   });
 });

@@ -19,10 +19,10 @@ import { categoryOf, getCategory, slugify, type InvCategory } from "@/lib/invent
 import type { ImportRow } from "@/lib/inventory/import";
 import { pushItemToCards } from "@/lib/inventory/cotsSync";
 import { recordItemChanges } from "@/lib/inventory/history";
-import { moveStock, setPieceStock, setStock } from "@/lib/inventory/moves";
+import { editPieces, moveStock, setStock } from "@/lib/inventory/moves";
 import { readProduct, saveProductPhoto, toUsd } from "@/lib/inventory/product";
 import { missing, newestOpenOrders, orderHref } from "@/lib/inventory/season";
-import { parseStock, snapStock } from "@/lib/inventory/stock";
+import { type PieceOp, SIZE_KEY, parseStock, snapStock } from "@/lib/inventory/stock";
 import { applyEachPartChanges } from "@/lib/parts/apply";
 import { StorageNotConfiguredError, deleteObject, objectExists, presignUpload } from "@/lib/storage/r2";
 import { isUuid } from "@/lib/uuid";
@@ -319,24 +319,22 @@ export async function linkItemToProduct(itemId: string, product: z.input<typeof 
   return { message: "Linked the product." };
 }
 
-const PIECE_SIZES = [3, 4, 6, 8, 9, 12];
-
-// The − / + stepper (a fraction item also steps one piece of a size: `bucket` in twelfths).
-export async function adjustStock(itemId: string, delta: number, bucket?: number): Promise<ActionResult> {
+// The − / + stepper (a fraction item also steps one piece of a size: "f6", "m450", "p500x450").
+export async function adjustStock(itemId: string, delta: number, size?: string): Promise<ActionResult> {
   const member = await requireCapability("work");
   if (!isUuid(itemId) || !Number.isFinite(delta) || !delta) return { error: "Unknown item." };
-  if (bucket !== undefined && !PIECE_SIZES.includes(bucket)) return { error: "Unknown piece size." };
-  await db.transaction((tx) => moveStock(tx, { itemId, delta, reason: delta > 0 ? "received" : "used", bucket }, { memberId: member.id, via: "ui" }));
+  if (size !== undefined && !SIZE_KEY.test(size)) return { error: "Unknown piece size." };
+  await db.transaction((tx) => moveStock(tx, { itemId, delta, reason: delta > 0 ? "received" : "used", size }, { memberId: member.id, via: "ui" }));
   refresh();
   return {};
 }
 
-// How many pieces of one size a fraction item has, typed or stepped in the item window's Spread.
-export async function setItemPieces(itemId: string, twelfths: number, count: number): Promise<ActionResult> {
+// A fraction item's Spread: a size's count, a size changed or removed, a new size.
+export async function editItemPieces(itemId: string, op: PieceOp): Promise<ActionResult> {
   const member = await requireCapability("work");
-  if (!isUuid(itemId) || !PIECE_SIZES.includes(twelfths)) return { error: "Unknown item." };
-  if (!Number.isInteger(count) || count < 0 || count > 100000) return { error: "Type a whole number of pieces." };
-  await db.transaction((tx) => setPieceStock(tx, itemId, twelfths, count, { memberId: member.id, via: "ui" }));
+  if (!isUuid(itemId) || !SIZE_KEY.test(op.size) || (op.kind === "rename" && !SIZE_KEY.test(op.to))) return { error: "Unknown piece size." };
+  if (op.kind === "count" && (!Number.isInteger(op.count) || op.count < 0 || op.count > 100000)) return { error: "Type a whole number of pieces." };
+  await db.transaction((tx) => editPieces(tx, itemId, op, { memberId: member.id, via: "ui" }));
   refresh();
   return {};
 }

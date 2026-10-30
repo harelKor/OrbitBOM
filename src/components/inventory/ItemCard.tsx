@@ -14,7 +14,7 @@ import { Icon } from "@/components/ui/Icon";
 import { softStatusTint } from "@/components/ui/statusTint";
 import { getCategory } from "@/lib/inventory/categories";
 import { hasSeasonNeed, missing, neededFor, orderHref, standing, type NeedView, type Standing } from "@/lib/inventory/season";
-import { SHEET_PIECES, canTakePiece, formatStock, isSheetGoods, parseStock, pieceSizeLabel } from "@/lib/inventory/stock";
+import { type PieceBase, canTakePiece, formatStock, isSheetGoods, parseSize, parseStock, pieceBase, pieceLabel, pieceRatio, pieceRows, sortedRows } from "@/lib/inventory/stock";
 import { useCan } from "@/components/shell/ModeContext";
 import { useInventoryPopup } from "./InventoryPopup";
 import { LocationPicker } from "./LocationPicker";
@@ -115,7 +115,7 @@ export function ItemCard({
   location?: { id: string; name: string };
   // With every location, the card's 📍 tag opens the workshop map window.
   locations?: Location[];
-  onStep: (delta: number, bucket?: number) => void;
+  onStep: (delta: number, size?: string) => void;
   onCount: (amount: number) => void;
 }) {
   const work = useCan("work");
@@ -390,55 +390,107 @@ export function CountBox({ item, onCount, big = false }: { item: Pick<Item, "inS
   );
 }
 
-// A fraction item's pieces: add or take one piece of a size, each button showing its real size
-// ("450mm ½", "500×450 ½") when the item's length or sheet size is known.
-export function PieceStepper({ item, onStep }: { item: Pick<Item, "inStock" | "pieces" | "specs" | "name">; onStep: (delta: number, bucket?: number) => void }) {
+// A fraction item's pieces: every size it has (presets and custom ones) with how many are on the
+// shelf, − takes one, + adds one; a new length or plate size adds one piece of it.
+export function PieceStepper({ item, onStep }: { item: Pick<Item, "inStock" | "pieces" | "specs" | "name">; onStep: (delta: number, size?: string) => void }) {
   const work = useCan("work");
   if (!work) return null;
+  const stocked = { ...item, sheet: true };
+  const base = pieceBase(item.specs, item.name);
+  const rows = sortedRows(pieceRows(item.inStock, item.pieces, base), base);
   return (
-    <Popover hideCaret align="right" triggerClassName="ml-1 rounded-full bg-white/20 px-1.5 text-[10px] hover:bg-white/30" trigger={<span>pieces ▾</span>}>
+    <Popover
+      hideCaret
+      align="right"
+      triggerClassName="ml-1 rounded-full bg-white/20 px-1.5 text-[10px] hover:bg-white/30"
+      panelClassName="ring-1 ring-white/15 shadow-lg"
+      trigger={<span>pieces ▾</span>}
+    >
       {(close) => (
-        // One row per size (− take, + add), so the real sizes fit the narrow panel on a phone.
-        <div className="divide-y divide-line p-1 text-sm">
-          {SHEET_PIECES.map((p) => {
-            const twelfths = Math.round(p.value * 12);
-            const size = pieceSizeLabel(p, item.specs, item.name);
-            const canTake = p.value <= item.inStock + 1e-9 && canTakePiece(item.inStock, item.pieces, twelfths);
-            return (
-              <div key={p.label} className="flex items-center gap-2 py-1">
-                <span className="min-w-0 flex-1 truncate">
-                  <span className="font-mono font-semibold tabular-nums">{size.primary}</span>
-                  {size.sub && <span className="ml-1.5 text-xs text-muted">{size.sub}</span>}
-                </span>
-                <button
-                  type="button"
-                  disabled={!canTake}
-                  onClick={() => {
-                    onStep(-p.value, twelfths);
-                    close();
-                  }}
-                  aria-label={`Take ${size.primary}`}
-                  className="press flex h-9 w-11 shrink-0 items-center justify-center rounded-md bg-rose-500 text-lg font-bold text-white hover:bg-rose-400 active:scale-[0.98] disabled:opacity-30"
-                >
-                  −
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onStep(p.value, twelfths);
-                    close();
-                  }}
-                  aria-label={`Add ${size.primary}`}
-                  className="press flex h-9 w-11 shrink-0 items-center justify-center rounded-md bg-emerald-500 text-lg font-bold text-white hover:bg-emerald-400 active:scale-[0.98]"
-                >
-                  +
-                </button>
-              </div>
-            );
-          })}
+        <div className="flex min-h-0 flex-col">
+          <div className="min-h-0 flex-1 divide-y divide-line overflow-y-auto p-1 text-sm">
+            {rows.map((row) => {
+              const label = pieceLabel(row.size, base);
+              const ratio = pieceRatio(row.size, base);
+              return (
+                <div key={row.size} className="flex items-center gap-2 py-1">
+                  <span className="min-w-0 flex-1 truncate">
+                    <span className="font-mono font-semibold tabular-nums">{label.primary}</span>
+                    {label.sub && <span className="ml-1.5 text-xs text-muted">{label.sub}</span>}
+                  </span>
+                  <span className={`font-mono text-xs font-semibold tabular-nums ${row.count ? "text-accent" : "text-subtle"}`}>×{row.count}</span>
+                  <button
+                    type="button"
+                    disabled={!canTakePiece(stocked, row.size)}
+                    onClick={() => {
+                      onStep(-ratio, row.size);
+                      close();
+                    }}
+                    aria-label={`Take ${label.primary}`}
+                    className="press flex h-9 w-10 shrink-0 items-center justify-center rounded-md bg-rose-500 text-lg font-bold text-white hover:bg-rose-400 active:scale-[0.98] disabled:opacity-30"
+                  >
+                    −
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onStep(ratio, row.size);
+                      close();
+                    }}
+                    aria-label={`Add ${label.primary}`}
+                    className="press flex h-9 w-10 shrink-0 items-center justify-center rounded-md bg-emerald-500 text-lg font-bold text-white hover:bg-emerald-400 active:scale-[0.98]"
+                  >
+                    +
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          <NewSize
+            base={base}
+            label="+ New size"
+            onAdd={(size) => {
+              onStep(pieceRatio(size, base), size);
+              close();
+            }}
+          />
         </div>
       )}
     </Popover>
+  );
+}
+
+// A new piece size typed in: a length in mm for tubes and shafts, X × Y for plates. Items with no
+// length or sheet size (filament) keep the preset fractions only.
+export function NewSize({ base, label, onAdd, bare = false }: { base: PieceBase; label: string; onAdd: (size: string) => void; bare?: boolean }) {
+  const [a, setA] = useState("");
+  const [b, setB] = useState("");
+  if (base.kind === "none") return null;
+  const size = parseSize(base.kind === "xy" ? `${a}x${b}` : a, base);
+  const add = () => {
+    if (!size) return;
+    onAdd(size);
+    setA("");
+    setB("");
+  };
+  const box = "h-8 min-w-0 rounded-md border border-line bg-raised px-2 font-mono text-sm tabular-nums outline-none focus:border-sky-400/60";
+  const keys = (e: React.KeyboardEvent) => e.key === "Enter" && add();
+  return (
+    <div className={`flex items-center gap-1.5 ${bare ? "" : "border-t border-line p-1 pt-2"}`} onClick={(e) => e.stopPropagation()}>
+      <span className="shrink-0 text-xs font-semibold text-subtle">{label}</span>
+      {base.kind === "xy" ? (
+        <>
+          <input value={a} onChange={(e) => setA(e.target.value)} onKeyDown={keys} inputMode="numeric" placeholder="X" aria-label="Width (mm)" className={`${box} w-14`} />
+          <span className="text-subtle">×</span>
+          <input value={b} onChange={(e) => setB(e.target.value)} onKeyDown={keys} inputMode="numeric" placeholder="Y" aria-label="Length (mm)" className={`${box} w-14`} />
+        </>
+      ) : (
+        <input value={a} onChange={(e) => setA(e.target.value)} onKeyDown={keys} inputMode="numeric" placeholder="Length (mm)" aria-label="Length (mm)" className={`${box} w-24 flex-1`} />
+      )}
+      <button type="button" disabled={!size} onClick={add} className="press h-8 shrink-0 rounded-md bg-sky-500 px-2.5 text-xs font-semibold text-white hover:bg-sky-400 active:scale-[0.98] disabled:opacity-40">
+        Add
+      </button>
+    </div>
   );
 }
 

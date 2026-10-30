@@ -17,6 +17,7 @@ export function Popover({
   align = "left",
   locked = false,
   hideCaret = false,
+  panelClassName = "",
 }: {
   trigger: React.ReactNode;
   children: (close: () => void) => React.ReactNode;
@@ -24,6 +25,7 @@ export function Popover({
   align?: "left" | "right";
   locked?: boolean;
   hideCaret?: boolean;
+  panelClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
@@ -111,7 +113,7 @@ export function Popover({
             ref={panel}
             role="dialog"
             style={{ top: pos?.top ?? -9999, left: pos?.left ?? -9999, width: WIDTH, maxHeight: pos?.maxHeight }}
-            className="fixed z-[60] flex flex-col overflow-hidden rounded-xl border border-line-strong bg-surface p-2 text-fg shadow-[0_16px_40px_-12px_rgba(17,19,24,0.35)]"
+            className={`fixed z-[60] flex flex-col overflow-hidden rounded-xl border border-line-strong bg-surface p-2 text-fg shadow-[0_16px_40px_-12px_rgba(17,19,24,0.35)] ${panelClassName}`}
           >
             {children(close)}
           </div>,

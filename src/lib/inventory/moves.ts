@@ -4,7 +4,7 @@ import { db, schema } from "@/db";
 import { categoryOf, getCategory } from "./categories";
 import { listCategories } from "@/lib/data/categories";
 import { currentVisit } from "@/lib/visits";
-import { type Pieces, setPieceCount, snapStock, stepStock } from "./stock";
+import { type PieceOp, type PieceRow, type StoredPieces, applyPieceOp, snapStock, stepStock } from "./stock";
 
 const { inventoryItems, inventoryMoves } = schema;
 
@@ -18,21 +18,21 @@ export type MoveCtx = { memberId: string | null; via: "ui" | "sync" | "mcp"; aiN
 // that size. Returns the stock before and after.
 export async function moveStock(
   tx: Tx,
-  move: { itemId: string; delta: number; reason: StockReason; partId?: string | null; bucket?: number },
+  move: { itemId: string; delta: number; reason: StockReason; partId?: string | null; size?: string },
   ctx: MoveCtx,
 ): Promise<{ name: string; from: number; to: number } | null> {
-  return changeStock(tx, move.itemId, (item) => stepStock(item, move.delta, move.bucket), move.reason, move.partId ?? null, ctx);
+  return changeStock(tx, move.itemId, (item) => stepStock(item, move.delta, move.size), move.reason, move.partId ?? null, ctx);
 }
 
-// One piece size's count set directly (the item window's Spread rows): a "Counted" move.
-export async function setPieceStock(tx: Tx, itemId: string, twelfths: number, count: number, ctx: MoveCtx) {
-  return changeStock(tx, itemId, (item) => (item.sheet ? setPieceCount(item, twelfths, count) : { inStock: item.inStock }), "counted", null, ctx);
+// The Spread's edits (a size's count, ✏, ✕, a new size): a "Counted" move when the stock changes.
+export async function editPieces(tx: Tx, itemId: string, op: PieceOp, ctx: MoveCtx) {
+  return changeStock(tx, itemId, (item) => (item.sheet ? applyPieceOp(item, op) : { inStock: item.inStock }), "counted", null, ctx);
 }
 
 async function changeStock(
   tx: Tx,
   itemId: string,
-  next: (item: { inStock: number; sheet: boolean; pieces: Pieces }) => { inStock: number; pieces?: Pieces },
+  next: (item: { inStock: number; sheet: boolean; pieces: StoredPieces; specs: Record<string, string>; name: string }) => { inStock: number; pieces?: PieceRow[] },
   reason: StockReason,
   partId: string | null,
   ctx: MoveCtx,
@@ -41,8 +41,9 @@ async function changeStock(
   if (!item) return null;
   const cats = await listCategories(tx);
   const sheet = !!getCategory(cats, categoryOf(item, cats))?.sheet;
-  const after = next({ inStock: item.inStock, sheet, pieces: item.pieces });
-  const to = snapStock(after.inStock, sheet);
+  const after = next({ inStock: item.inStock, sheet, pieces: item.pieces, specs: item.specs, name: item.name });
+  // A fraction item's stock is its pieces' sum (a custom size can be any share), so it isn't snapped.
+  const to = sheet ? Math.max(0, after.inStock) : snapStock(after.inStock, sheet);
   const pieces = after.pieces ?? item.pieces;
   if (to !== item.inStock || JSON.stringify(pieces) !== JSON.stringify(item.pieces)) {
     await tx.update(inventoryItems).set({ inStock: to, pieces }).where(eq(inventoryItems.id, item.id));

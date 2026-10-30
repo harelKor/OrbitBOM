@@ -131,21 +131,21 @@ export function InventoryView({
   // Stock steps, and an item being added (on top, glowing, until its save comes back).
   const [optimistic, addOptimistic] = useOptimistic(
     items,
-    (state, change: { id: string; delta: number; bucket?: number } | { id: string; count: number } | { add: Item }) =>
+    (state, change: { id: string; delta: number; size?: string } | { id: string; count: number } | { add: Item }) =>
       "add" in change
         ? [change.add, ...state]
         : state.map((i) =>
             i.id === change.id
-              ? { ...i, ...("count" in change ? countPieces(i, change.count) : stepStock(i, change.delta, change.bucket)) }
+              ? { ...i, ...("count" in change ? countPieces(i, change.count) : stepStock(i, change.delta, change.size)) }
               : i,
           ),
   );
   const [busy, startTransition] = useTransition();
-  const step = (id: string, delta: number, bucket?: number) =>
+  const step = (id: string, delta: number, size?: string) =>
     startTransition(async () => {
       setError(null);
-      addOptimistic({ id, delta, bucket });
-      const result = await adjustStock(id, delta, bucket);
+      addOptimistic({ id, delta, size });
+      const result = await adjustStock(id, delta, size);
       if (result.error) setError(result.error);
     });
 

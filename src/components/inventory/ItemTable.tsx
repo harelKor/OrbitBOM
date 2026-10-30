@@ -54,7 +54,7 @@ export function ItemTable({
   locationOf: (i: Item) => string | null;
   view: NeedView;
   hideCategory: boolean;
-  onStep: (id: string, delta: number, bucket?: number) => void;
+  onStep: (id: string, delta: number, size?: string) => void;
   onCount: (id: string, amount: number) => void;
   selected: Set<string>;
   onToggleSelect?: (id: string) => void;
