@@ -37,6 +37,7 @@ import { ItemHistory } from "./ItemHistory";
 import { PhotoButtons } from "./photo";
 import { ToBomDialog } from "./ToBomDialog";
 import { LocationPicker } from "./LocationPicker";
+import { SeasonTag } from "./SeasonTag";
 import { WorkshopMap } from "./WorkshopMap";
 import type { Condition, InvCategory, Item, Location } from "./types";
 
@@ -517,6 +518,7 @@ function ItemBody({
                 {cat.label}
               </Link>
             )}
+            <SeasonTag itemId={item.id} tag={item.seasonTag} className={tag} />
             {work && data ? (
               // Condition and location pills are menus that save at once.
               <>

@@ -235,6 +235,13 @@ export async function setItemCondition(itemId: string, conditionId: string | nul
   return saveFields(itemId, () => ({ conditionId }), member.id);
 }
 
+// The 2026 / 2027 season tag on the card, table and item window: flips it, or sets nextTag.
+export async function toggleItemSeasonTag(itemId: string, nextTag?: "2026" | "2027"): Promise<ActionResult> {
+  const member = await requireCapability("work");
+  if (!isUuid(itemId) || (nextTag !== undefined && nextTag !== "2026" && nextTag !== "2027")) return { error: "Unknown item." };
+  return saveFields(itemId, (before) => ({ seasonTag: nextTag ?? (before.seasonTag === "2027" ? "2026" : "2027") }), member.id);
+}
+
 // An item's specs, on their own: only the category's own fields are kept, blanks dropped.
 export async function setItemSpecs(itemId: string, specs: Record<string, string>): Promise<ActionResult> {
   const member = await requireCapability("work");

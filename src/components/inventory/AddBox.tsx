@@ -176,6 +176,7 @@ export function AddBox({
         locationId: input.locationId ?? null,
         inStock: parseStock(input.inStock ?? "0", sheet) ?? 0,
         seasonNeed: null,
+        seasonTag: "2027",
         note: null,
         price: input.price ?? null,
         imagePath: null,

@@ -25,6 +25,7 @@ import {
 } from "./ItemCard";
 import { useInventoryPopup } from "./InventoryPopup";
 import { LocationPicker } from "./LocationPicker";
+import { SeasonTag } from "./SeasonTag";
 import type { Condition, InvCategory, Item, Location } from "./types";
 import { SheetViewport } from "@/components/ui/SheetViewport";
 
@@ -133,6 +134,9 @@ export function ItemTable({
                         />
                       )}
                       <ProductName item={item} className="font-semibold" />
+                      <span onClick={stop} className="shrink-0">
+                        <SeasonTag itemId={item.id} tag={item.seasonTag} />
+                      </span>
                       {item.note && <NoteButton note={item.note} />}
                       {(gap > 0 || item.openOrder) && (
                         <span onClick={stop} className="shrink-0">

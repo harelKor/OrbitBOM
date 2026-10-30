@@ -644,6 +644,9 @@ export const inventoryItems = pgTable("inventory_items", {
   seasonNeed: doublePrecision("season_need"),
   // A remark for whoever takes or orders it, shown as a cloud on the card (Harel, 2026-10-28).
   note: text("note"),
+  // "2026": still from last season's list; "2027": checked for the 2027 season. Only the card's,
+  // table's and item window's tag flips it (Harel, 2026-10-30). New items start checked.
+  seasonTag: text("season_tag").$type<"2026" | "2027">().notNull().default("2027"),
   imagePath: text("image_path"),
   price: real("price"),
   // The Onshape library part (did:eid:partId) it was first linked to: new BOM parts with the same

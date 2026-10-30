@@ -20,6 +20,7 @@ export type Item = {
   pieces: StoredPieces; // a fraction item's piece sizes and counts (lib/inventory/stock.ts)
   seasonNeed: number | null;
   note: string | null;
+  seasonTag: "2026" | "2027"; // red 2026: last season's list; green 2027: checked for this season
   price: number | null;
   imagePath: string | null;
   usage: ItemUsage | null;

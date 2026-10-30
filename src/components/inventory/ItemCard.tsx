@@ -18,6 +18,7 @@ import { type PieceBase, canTakePiece, formatStock, isSheetGoods, parseSize, par
 import { useCan } from "@/components/shell/ModeContext";
 import { useInventoryPopup } from "./InventoryPopup";
 import { LocationPicker } from "./LocationPicker";
+import { SeasonTag } from "./SeasonTag";
 import type { InvCategory, Item, Location } from "./types";
 
 // Seeded conditions carry a colour name (FRCBOM's); ones added since carry a hex colour.
@@ -185,6 +186,7 @@ export function ItemCard({
             {condition.label}
           </Link>
         )}
+        <SeasonTag itemId={item.id} tag={item.seasonTag} />
       </div>
       <div className="card-overlay absolute top-2 right-2 flex max-w-[38%] flex-col items-end gap-1">
         {(gap > 0 || item.openOrder) && <CartButton item={item} gap={gap} />}
