@@ -4,9 +4,11 @@
 
 - The BOM, inventory and Onshape behaviour copy FRCBOM; don't redesign them.
 - Fixed lists live in `src/config/`. Exceptions, edited on the `/settings` page: inventory categories and
-  their fields (`inventory_categories`, seeded from `src/config/inventory.ts`), the material list
-  (`material_groups`, seeded from `src/config/materials.ts`; read it with `useMaterials()` or
-  `listMaterials()`, never `MATERIALS` directly), material 3D colours, inventory locations and conditions.
+  their fields (`inventory_categories`, seeded from `src/config/inventory.ts`), inventory locations
+  and conditions.
+- A BOM part's material is an inventory item (`material` = its name, `inventoryItemId` = its id).
+  Pickers read `useMaterials()` (client) or `listMaterialGroups()` / `listRawStock()` (server):
+  Raw Stock categories first. `MATERIALS` only feeds inventory "BOM material" spec fields and 3D colours.
 - Status always comes from `computeStatus` in `src/lib/status.ts`.
 - Database access happens only on the server through Drizzle (`src/db`). RLS is on with no
   policies, so the browser's Supabase key can't read tables.
