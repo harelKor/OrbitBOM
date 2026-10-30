@@ -5,18 +5,23 @@ import { Dialog } from "@/components/Dialog";
 import { MACHINES } from "@/config/machines";
 import { useMaterials } from "@/components/shell/MaterialColors";
 import { addManualPart } from "@/app/(app)/parts-actions";
+import { MaterialPicker } from "./fields";
+import { pickMaterial } from "./options";
 
 // FRCBOM's "Add Manual Part" dialog (ref §2b).
 export function ManualPartButton({ systemId }: { systemId: string }) {
   const materials = useMaterials();
   const [open, setOpen] = useState(false);
   const [formKey, setFormKey] = useState(0);
+  const [material, setMaterial] = useState<string | null>(null);
+  const picked = pickMaterial(materials, material);
   const [state, action, pending] = useActionState(
     async (prev: { error?: string } | undefined, formData: FormData) => {
       const result = await addManualPart(systemId, prev, formData);
       if (!result.error) {
         setOpen(false);
         setFormKey((k) => k + 1);
+        setMaterial(null);
       }
       return result;
     },
@@ -44,17 +49,11 @@ export function ManualPartButton({ systemId }: { systemId: string }) {
           <input name="name" required placeholder="Part Name *" className="input" />
           <div className="grid grid-cols-2 gap-3">
             <input name="quantity" type="number" min={0} required defaultValue={1} className="input" aria-label="Quantity" />
-            {/* An inventory item, Raw Stock first; the server saves its name as the material. */}
-            <select name="inventoryItemId" className="input" defaultValue="" aria-label="Material">
-              <option value="">Material (optional)</option>
-              {materials.map((g) => (
-                <optgroup key={g.id} label={g.label}>
-                  {g.items.map((i) => (
-                    <option key={i.id} value={i.id}>{`${i.label} (${i.stock})`}</option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
+            {/* An inventory item, Raw Stock first (the server saves its name as the material), or a
+                general material found by searching. */}
+            <MaterialPicker value={material} onChange={setMaterial} placeholder="Material (optional)" className="input justify-between" />
+            <input type="hidden" name="inventoryItemId" value={picked.inventoryItemId ?? ""} />
+            <input type="hidden" name="material" value={picked.inventoryItemId ? "" : (picked.material ?? "")} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             {machineSelect("preProcess", "Pre Process", "PreProcess")}

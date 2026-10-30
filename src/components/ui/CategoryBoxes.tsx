@@ -91,8 +91,7 @@ export function CategoryBoxes({
         </nav>
       )}
       <div
-        className={compact ? "-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible" : g ? "card-grid gap-3.5 sm:gap-4" : "grid gap-3 sm:grid-cols-2 lg:grid-cols-5"}
-        style={compact || !g ? undefined : ({ "--card-min": "220px" } as React.CSSProperties)}
+        className={compact ? "-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible" : g ? "category-grid" : "grid gap-3 sm:grid-cols-2 lg:grid-cols-5"}
       >
         {boxes.map((b) => {
           const n = counts.get(b.id) ?? { count: 0 };
@@ -130,19 +129,19 @@ export function CategoryBoxes({
             // A category box is one full studio card: the picture (or the group's icon, until it has
             // one) above a frosted dock with the name, the count on a soft blurred fade over the top
             // left. The stage is light in both themes; the dock keeps the name white on dark.
-            <span className="thumb-well relative flex h-full min-h-36 w-full flex-1 flex-col justify-between">
+            <span className="thumb-well relative flex h-full min-h-28 w-full min-w-0 sm:min-h-36 flex-1 flex-col justify-between">
               {b.imageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element -- static or short-lived R2 links, not optimisable
                 <img src={b.imageUrl} alt="" className="pointer-events-none absolute inset-x-0 top-0 bottom-9 h-[calc(100%-2.25rem)] w-full object-contain pt-3 pr-3 pb-2 pl-[14%]" />
               ) : (
                 <Icon name={g.icon as IconName} className="pointer-events-none absolute top-[calc(50%-1.125rem)] right-6 h-14 w-14 -translate-y-1/2 text-slate-400/70" />
               )}
-              <Frost at="top left" className="top-0 left-0 pt-2.5 pr-10 pb-5 pl-3.5">
-                <span className="display text-4xl leading-none">{number}</span>
+              <Frost at="top left" className="top-0 left-0 pt-2 pr-6 pb-4 pl-2.5 sm:pt-2.5 sm:pr-10 sm:pb-5 sm:pl-3.5">
+                <span className="display text-2xl leading-none sm:text-4xl">{number}</span>
               </Frost>
               {shortPill && <span className="absolute top-2 right-2.5">{shortPill}</span>}
-              <span className="relative z-10 mt-auto flex min-h-9 w-full items-center bg-[#111318]/78 px-3 py-1.5 backdrop-blur-md">
-                <span className={`line-clamp-1 leading-tight font-semibold text-white group-hover:text-sky-300 ${b.label.length > 16 ? "text-xs" : "text-sm"}`}>
+              <span className="relative z-10 mt-auto flex min-h-9 w-full min-w-0 items-center bg-[#111318]/78 px-2 py-1.5 backdrop-blur-md sm:px-3">
+                <span className={`min-w-0 truncate leading-tight font-semibold text-white group-hover:text-sky-300 ${b.label.length > 16 ? "text-[11px] sm:text-xs" : "text-xs sm:text-sm"}`}>
                   {b.label}
                 </span>
               </span>
@@ -165,8 +164,8 @@ export function CategoryBoxes({
           const cls = compact
             ? "card-interactive group flex h-12 shrink-0 items-center gap-2.5 overflow-hidden pr-3 text-left active:scale-[0.98]"
             : g
-              ? "card-interactive group relative flex aspect-[16/10] min-h-36 flex-col border-line-strong text-left shadow-md hover:border-accent active:scale-[0.98]"
-              : "card-interactive group relative flex min-h-32 flex-col justify-between p-4 text-left active:scale-[0.98]";
+              ? "card-interactive group relative flex aspect-[16/10] min-h-28 w-full max-w-full min-w-0 flex-col overflow-hidden border-line-strong sm:min-h-36 text-left shadow-md hover:border-accent active:scale-[0.98]"
+              : "card-interactive group relative flex min-h-32 w-full max-w-full min-w-0 flex-col justify-between overflow-hidden p-4 text-left active:scale-[0.98]";
           return g && categoryHref ? (
             <Link key={b.id} href={categoryHref(b.id)} className={cls}>
               {body}

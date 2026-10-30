@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { MACHINES } from "@/config/machines";
-import type { MaterialGroup } from "@/lib/data/materials";
-import { findMaterial } from "./options";
+import { pickMaterial } from "./options";
+import { MaterialPicker } from "./fields";
 import { useMaterials } from "@/components/shell/MaterialColors";
 import { STATUSES } from "@/config/statuses";
 import type { PartChanges } from "@/lib/parts/changes";
@@ -21,24 +21,12 @@ type FieldId = (typeof FIELDS)[number]["id"];
 
 const NONE = "__none__";
 
-function valueOptions(field: FieldId, materials: MaterialGroup[]) {
+function valueOptions(field: Exclude<FieldId, "material">) {
   switch (field) {
     case "classification":
       return [
         <option key="inhouse" value="inhouse">In-House</option>,
         <option key="cots" value="cots">COTS</option>,
-      ];
-    case "material":
-      return [
-        <option key={NONE} value={NONE}>— None —</option>,
-        // Raw Stock first, then the other inventory categories; the value is the item id.
-        ...materials.map((g) => (
-          <optgroup key={g.id} label={g.raw ? g.label : `${g.label} · inventory`}>
-            {g.items.map((i) => (
-              <option key={i.id} value={i.id}>{`${i.label} (${i.stock})`}</option>
-            ))}
-          </optgroup>
-        )),
       ];
     case "status":
       return STATUSES.map((s) => <option key={s.name}>{s.name}</option>);
@@ -74,8 +62,7 @@ export function BulkEditBar({
   function apply() {
     if (!value || !count) return;
     if (field === "material") {
-      const item = findMaterial(materials, value);
-      onApply(item ? { material: item.name, inventoryItemId: item.id } : { material: null, inventoryItemId: null });
+      onApply(pickMaterial(materials, value));
       return;
     }
     onApply({ [field]: value === NONE ? null : value } as PartChanges);
@@ -98,10 +85,15 @@ export function BulkEditBar({
             <option key={f.id} value={f.id}>{f.label}</option>
           ))}
         </select>
-        <select value={value} onChange={(e) => setValue(e.target.value)} className="input w-auto" aria-label="Value">
-          <option value="">— Value —</option>
-          {valueOptions(field, materials)}
-        </select>
+        {field === "material" ? (
+          // Searchable, so general materials can be found too.
+          <MaterialPicker value={value === NONE ? null : value || null} onChange={(v) => setValue(v ?? NONE)} placeholder="— Value —" />
+        ) : (
+          <select value={value} onChange={(e) => setValue(e.target.value)} className="input w-auto" aria-label="Value">
+            <option value="">— Value —</option>
+            {valueOptions(field)}
+          </select>
+        )}
         <button className="btn-primary" disabled={!value || !count} onClick={apply}>
           Apply
         </button>

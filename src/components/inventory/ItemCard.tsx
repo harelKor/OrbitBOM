@@ -139,7 +139,7 @@ export function ItemCard({
       onClick={() => openItem(item.id, item)}
       onKeyDown={(e) => e.key === "Enter" && e.target === e.currentTarget && openItem(item.id, item)}
       aria-label={`Open ${item.name}`}
-      className="card-interactive group flex cursor-pointer flex-col border-l-4 text-sm"
+      className="card-interactive group flex w-full max-w-full min-w-0 overflow-hidden cursor-pointer flex-col border-l-4 text-sm"
       data-item={item.id}
       data-new={glow}
       style={{ ...tinted, ...(color && { borderLeftColor: color }) }}

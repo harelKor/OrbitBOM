@@ -97,7 +97,8 @@ export function stockSize(cat: InvCategory, specs: Record<string, string>): stri
   return "";
 }
 
-// "Aluminum 25x2 tube", "Brass Ø30x150 cylinder", "Aluminum 50x50x100 block".
+// "Aluminum 25x2 tube", "Brass Ø30 cylinder", "Aluminum 50x50x100 block". A cylinder's length
+// stays out of the name like every raw stock length (it lives in specs and pieces).
 function stockName(cat: InvCategory, specs: Record<string, string>): string {
   const material = specs.material?.trim() ?? "";
   if (cat.id === "round-tubes") {
@@ -105,30 +106,41 @@ function stockName(cat: InvCategory, specs: Record<string, string>): string {
     return size ? [material, size, "tube"].filter(Boolean).join(" ") : "";
   }
   if (cat.id === "cylinders-blocks" && (specs.shape === "Block" || specs.shape === "Cylinder"))
-    return [material, stockSize(cat, specs), specs.shape.toLowerCase()].filter(Boolean).join(" ");
+    return [material, stockSize(cat, { ...specs, length: "" }), specs.shape.toLowerCase()].filter(Boolean).join(" ");
   return "";
 }
 
+// Raw Stock names never carry a stock length or a sheet's size (Harel, 2026-10-30): those stay in
+// specs and pieces, so one item holds every length or offcut of a stock. A box tube's size is its
+// profile (25x50), so it stays.
+export const leftOutOfName = (cat: InvCategory, f: CategoryField) =>
+  cat.group === "consumables" && (f.id === "length" || (f.id === "size" && cat.id !== "square-tubes"));
+
+// A field's name template when it has none: the value, after a space.
+export const DEFAULT_NAME = " {}";
+
 // "36T HTD 5mm 9mm wide 1/2" Hex Pulley": each value through its field's `name`, then the noun.
-// A sub-type ("M5 Tap") goes last like a noun, and neither repeats a word the name already has.
+// Templates carry their own spacing (Harel, 2026-10-30): " {}mm" puts a space before the value,
+// "x{}" or "{}mm" sticks to the previous value ("25x50" + "x2" → "25x50x2"). A sub-type ("M5 Tap")
+// goes last like a noun, and neither repeats a word the name already has.
 export function buildName(cat: InvCategory, specs: Record<string, string>): string {
   const size = cat.id === "bearings" ? bearingSize(specs) : "";
   if (size) return [size, specs.flanged === "Flanged" ? "Flanged" : "", cat.noun].filter(Boolean).join(" ");
   const stock = stockName(cat, specs);
   if (stock) return stock;
   const type = typeFieldOf(cat);
-  const parts = activeFields(cat, specs).flatMap((f) => {
+  let name = "";
+  for (const f of activeFields(cat, specs)) {
     const v = specs[f.id]?.trim();
-    if (!v || f === type) return [];
-    const pattern = f.name ?? "{}";
-    return pattern ? [pattern.replace("{}", v)] : [];
-  });
-  if (!parts.length) return "";
-  const has = (word: string) => parts.join(" ").toLowerCase().includes(word.toLowerCase());
+    if (!v || f === type || leftOutOfName(cat, f)) continue;
+    name += (f.name ?? DEFAULT_NAME).replace("{}", v);
+  }
+  if (!name.trim()) return "";
+  const has = (word: string) => name.toLowerCase().includes(word.toLowerCase());
   const typeWord = type ? plain(specs[type.id] ?? "") : "";
-  if (typeWord && !has(typeWord)) parts.push(typeWord);
-  if (cat.noun && !has(cat.noun)) parts.push(cat.noun);
-  return parts.join(" ").replace(/\s+/g, " ").trim();
+  if (typeWord && !has(typeWord)) name += ` ${typeWord}`;
+  if (cat.noun && !has(cat.noun)) name += ` ${cat.noun}`;
+  return name.replace(/\s+/g, " ").trim();
 }
 
 // The values in one short line for a card: "36T · HTD 5mm · 1/2" Hex".

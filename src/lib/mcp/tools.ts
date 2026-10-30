@@ -1007,7 +1007,7 @@ write(
           label: z.string().trim().min(1).max(60).describe("e.g. 'Teeth'."),
           kind: z.enum(["number", "text", "options"]),
           options: z.array(z.string().trim().min(1).max(60)).max(100).optional().describe("The choices, for kind options."),
-          name: z.string().max(40).optional().describe("How the value goes into the item's built name, '{}' standing for it ('{}T' gives '36T'); leave out to skip it."),
+          name: z.string().max(40).optional().describe("How the value goes into the item's built name, '{}' standing for it (' {}T' gives '36T'). Spacing is kept as written: start with a space to separate it from the value before ('x{}' sticks to it). Empty leaves the value out; left out, it is ' {}'."),
         }),
       )
       .max(20)

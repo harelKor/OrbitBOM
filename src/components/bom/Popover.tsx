@@ -130,8 +130,8 @@ export function focusIfMouse(el: HTMLInputElement | null) {
 }
 
 // `hint` shows muted on the right (a material's stock); `divider` draws a line above the option's
-// group header.
-export type Option = { value: string | null; label: string; color?: string; group?: string; hint?: string; divider?: boolean };
+// group header; `searchOnly` options appear only once something is typed (general materials).
+export type Option = { value: string | null; label: string; color?: string; group?: string; hint?: string; divider?: boolean; searchOnly?: boolean };
 
 // A searchable list, like FRCBOM's status and material menus.
 export function OptionList({
@@ -147,7 +147,9 @@ export function OptionList({
 }) {
   const [q, setQ] = useState("");
   const needle = q.trim().toLowerCase();
-  const filtered = options.filter((o) => o.label.toLowerCase().includes(needle) || (!!needle && !!o.group?.toLowerCase().includes(needle)));
+  const filtered = options.filter((o) =>
+    o.searchOnly ? !!needle && o.label.toLowerCase().includes(needle) : o.label.toLowerCase().includes(needle) || (!!needle && !!o.group?.toLowerCase().includes(needle)),
+  );
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <input ref={focusIfMouse} value={q} onChange={(e) => setQ(e.target.value)} placeholder={placeholder} className="input mb-1.5 py-2" />

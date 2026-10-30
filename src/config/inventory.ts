@@ -128,7 +128,7 @@ const teeth: CategoryField = {
   id: "teeth",
   label: "Teeth",
   kind: "number",
-  name: "{}T",
+  name: " {}T",
 };
 const bore: CategoryField = {
   id: "bore",
@@ -140,25 +140,28 @@ const length: CategoryField = {
   id: "length",
   label: "Length (mm)",
   kind: "number",
-  name: "{}mm",
+  name: " {}mm",
 };
+// Raw Stock lengths and sheet sizes stay out of item names (Harel, 2026-10-30): they live in specs
+// and pieces. buildName leaves them out even if a template is set again.
+const stockLength: CategoryField = { ...length, name: "" };
 const wall: CategoryField = {
   id: "wall",
   label: "Wall (mm)",
   kind: "text",
-  name: "{}mm wall",
+  name: " {}mm wall",
 };
 const thickness: CategoryField = {
   id: "thickness",
   label: "Thickness (mm)",
   kind: "number",
-  name: "{}mm",
+  name: " {}mm",
 };
 const sheetSize: CategoryField = {
   id: "size",
   label: "Sheet size (mm)",
   kind: "text",
-  name: "{}mm",
+  name: "",
 };
 const typeField = (options: string[]): CategoryField => ({
   id: "type",
@@ -198,7 +201,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     fields: [
       teeth,
       { id: "pitch", label: "Pitch", kind: "options", options: PITCHES },
-      { id: "width", label: "Width (mm)", kind: "number", name: "{}mm wide" },
+      { id: "width", label: "Width (mm)", kind: "number", name: " {}mm wide" },
       { ...bore, options: [...BORES, ...MOTOR_BORES] },
     ],
   },
@@ -212,7 +215,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     fields: [
       { id: "pitch", label: "Pitch", kind: "options", options: PITCHES },
       teeth,
-      { id: "width", label: "Width (mm)", kind: "number", name: "{}mm wide" },
+      { id: "width", label: "Width (mm)", kind: "number", name: " {}mm wide" },
       {
         id: "groove",
         label: "Groove",
@@ -253,8 +256,8 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
         kind: "options",
         options: BEARING_BORES,
       },
-      { id: "od", label: "OD", kind: "text", name: "{} OD" },
-      { id: "width", label: "Thick", kind: "text", name: "{} thick" },
+      { id: "od", label: "OD", kind: "text", name: " {} OD" },
+      { id: "width", label: "Thick", kind: "text", name: " {} thick" },
       {
         id: "flanged",
         label: "Type",
@@ -347,7 +350,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
         kind: "options",
         options: ["MaxPlanetary", "VersaPlanetary", "Cycloidal", "Other"],
       },
-      { id: "ratio", label: "Ratio", kind: "text", name: "{}" },
+      { id: "ratio", label: "Ratio", kind: "text", name: " {}" },
     ],
   },
   // A COTS part that fits no category lands here (the COTS page needs a box for it).
@@ -421,9 +424,9 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
       /(box|square|rect\w*)\s*tube|\btube\b.*\d+\s*x\s*\d+|\d+\s*x\s*\d+.*\btube\b|extrusion/i,
     fields: [
       { id: "material", label: "Material", kind: "material" },
-      { id: "size", label: "Size (mm)", kind: "text", name: "{}mm" },
+      { id: "size", label: "Size (mm)", kind: "text", name: " {}mm" },
       wall,
-      length,
+      stockLength,
     ],
   },
   // "Aluminum 25x2 tube", "Carbon Fiber 22x1.5 tube": material, then OD x wall (Harel,
@@ -440,7 +443,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
       { id: "material", label: "Material", kind: "material" },
       { id: "od", label: "OD (mm)", kind: "number" },
       { id: "wall", label: "Wall (mm)", kind: "text" },
-      length,
+      stockLength,
     ],
   },
   {
@@ -464,7 +467,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
           "Round",
         ],
       },
-      length,
+      stockLength,
     ],
   },
   {
@@ -497,8 +500,8 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     fields: [
       { id: "shape", label: "Shape", kind: "options", options: ["Cylinder", "Block"] },
       { id: "material", label: "Material", kind: "material" },
-      { id: "od", label: "OD (mm)", kind: "number", name: "Ø{}mm", when: "Cylinder" },
-      { id: "length", label: "Length (mm)", kind: "number", name: "{}mm", when: "Cylinder" },
+      { id: "od", label: "OD (mm)", kind: "number", name: " Ø{}mm", when: "Cylinder" },
+      { id: "length", label: "Length (mm)", kind: "number", name: "", when: "Cylinder" },
       { id: "x", label: "X (mm)", kind: "number", when: "Block" },
       { id: "y", label: "Y (mm)", kind: "number", when: "Block" },
       { id: "z", label: "Z (mm)", kind: "number", when: "Block" },
@@ -604,7 +607,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
         id: "width",
         label: "Width (mm)",
         kind: "number",
-        name: "{}mm",
+        name: " {}mm",
         when: "Tape",
       },
     ],
@@ -629,14 +632,14 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
         id: "diameter",
         label: "Diameter (mm)",
         kind: "number",
-        name: "Ø{}mm",
+        name: " Ø{}mm",
         when: "Rope",
       },
       {
         id: "length",
         label: "Length (m)",
         kind: "number",
-        name: "{}m",
+        name: " {}m",
         when: "Rope",
       },
     ],
@@ -817,7 +820,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
         id: "size",
         label: "Size (mm)",
         kind: "number",
-        name: "Ø{}mm",
+        name: " Ø{}mm",
         when: "Drill Bit",
       },
       {

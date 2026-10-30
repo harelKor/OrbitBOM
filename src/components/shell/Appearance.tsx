@@ -7,13 +7,15 @@ import { APPEARANCE_KEY as KEY, DEFAULT_HUE } from "./boot-scripts";
 // Card size and site colour, set from the right panel and kept in this browser, so every page
 // opens the way the member left it. Both live on <html>: --card-scale sizes the part card
 // grids (.card-grid), and data-hue + --hue turn the accent colours (globals.css).
-// Ctrl + mouse wheel (or a trackpad pinch) over a card grid moves the card size too; over a table
-// it zooms that table instead (SheetViewport).
+// Ctrl + mouse wheel (or a trackpad pinch) over a card grid moves the card size too, and so does a
+// two-finger pinch on a phone; over a table it zooms that table instead (SheetViewport).
 
 type Prefs = { scale: number; hue: number };
 const DEFAULTS: Prefs = { scale: 1, hue: DEFAULT_HUE };
 const MIN_SCALE = 0.3;
 const MAX_SCALE = 2.5;
+const GRIDS = ".card-grid, .category-grid";
+const clampScale = (n: number) => Math.round(Math.min(MAX_SCALE, Math.max(MIN_SCALE, n)) * 1000) / 1000;
 
 function apply({ scale, hue }: Prefs) {
   const root = document.documentElement;
@@ -44,6 +46,14 @@ export function AppearanceControls() {
       if (saved) setPrefs((latest.current = { ...DEFAULTS, ...saved }));
     } catch {}
   }, []);
+  // Card size from a gesture: state and storage follow, skipped when nothing moved.
+  const setScale = (n: number) => {
+    const scale = clampScale(n);
+    if (scale === latest.current.scale) return;
+    latest.current = { ...latest.current, scale };
+    setPrefs(latest.current);
+    persist(latest.current);
+  };
   const update = (next: Partial<Prefs>) => {
     const p = { ...latest.current, ...next };
     latest.current = p;
@@ -55,17 +65,43 @@ export function AppearanceControls() {
   // the browser's own zoom keeps working.
   useEffect(() => {
     const onWheel = (e: WheelEvent) => {
-      if (!e.ctrlKey || !(e.target as Element | null)?.closest?.(".card-grid")) return;
+      if (!e.ctrlKey || !(e.target as Element | null)?.closest?.(GRIDS)) return;
       e.preventDefault();
       const step = Math.max(-0.15, Math.min(0.15, -e.deltaY * (e.deltaMode === 1 ? 0.03 : 0.0008)));
-      const scale = Math.round(Math.min(MAX_SCALE, Math.max(MIN_SCALE, latest.current.scale * (1 + step))) * 1000) / 1000;
-      if (scale === latest.current.scale) return;
-      latest.current = { ...latest.current, scale };
-      setPrefs(latest.current);
-      persist(latest.current);
+      setScale(latest.current.scale * (1 + step));
     };
     window.addEventListener("wheel", onWheel, { passive: false });
     return () => window.removeEventListener("wheel", onWheel);
+  }, []);
+
+  // Two fingers on a card grid (phones): spreading them grows the cards, pinching shrinks them,
+  // in step with the fingers, instead of zooming the page.
+  useEffect(() => {
+    let pinch: { dist: number; scale: number } | null = null;
+    const gap = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    const onStart = (e: TouchEvent) => {
+      if (e.touches.length !== 2 || !(e.target as Element | null)?.closest?.(GRIDS)) return;
+      e.preventDefault();
+      pinch = { dist: gap(e.touches) || 1, scale: latest.current.scale };
+    };
+    const onMove = (e: TouchEvent) => {
+      if (!pinch || e.touches.length !== 2) return;
+      e.preventDefault();
+      setScale(pinch.scale * (gap(e.touches) / pinch.dist));
+    };
+    const onEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) pinch = null;
+    };
+    window.addEventListener("touchstart", onStart, { passive: false });
+    window.addEventListener("touchmove", onMove, { passive: false });
+    window.addEventListener("touchend", onEnd);
+    window.addEventListener("touchcancel", onEnd);
+    return () => {
+      window.removeEventListener("touchstart", onStart);
+      window.removeEventListener("touchmove", onMove);
+      window.removeEventListener("touchend", onEnd);
+      window.removeEventListener("touchcancel", onEnd);
+    };
   }, []);
 
   return (

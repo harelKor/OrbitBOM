@@ -12,6 +12,8 @@ import {
   COTS_STATUS_OPTIONS,
   findMaterial,
   materialOptions,
+  materialValue,
+  pickMaterial,
   PRIORITY_COLORS,
   PRIORITY_OPTIONS,
   STATUS_OPTIONS,
@@ -168,11 +170,10 @@ export function MaterialField({ part, save, className }: Props & { className?: s
         {(close) => (
           <OptionList
             options={options}
-            value={part.inventoryItemId}
+            value={materialValue(part)}
             placeholder="Search material…"
             onPick={(v) => {
-              const item = findMaterial(materials, v);
-              save(item ? { material: item.name, inventoryItemId: item.id } : { material: null, inventoryItemId: null });
+              save(pickMaterial(materials, v));
               close();
             }}
           />
@@ -184,6 +185,28 @@ export function MaterialField({ part, save, className }: Props & { className?: s
         </button>
       )}
     </span>
+  );
+}
+
+// The material menu on its own, for forms (Bulk edit, Add Manual Part): the same list as a part's
+// Material field, keeping the picked option value; pickMaterial() turns it into what to save.
+export function MaterialPicker({ value, onChange, placeholder = "Material", className = "input w-auto" }: { value: string | null; onChange: (value: string | null) => void; placeholder?: string; className?: string }) {
+  const options = materialOptions(useMaterials());
+  const picked = value ? options.find((o) => o.value === value) : undefined;
+  return (
+    <Popover triggerClassName={className} trigger={<span className={`truncate ${picked ? "" : "text-subtle"}`}>{picked?.label ?? placeholder}</span>}>
+      {(close) => (
+        <OptionList
+          options={options}
+          value={value}
+          placeholder="Search material…"
+          onPick={(v) => {
+            onChange(v);
+            close();
+          }}
+        />
+      )}
+    </Popover>
   );
 }
 

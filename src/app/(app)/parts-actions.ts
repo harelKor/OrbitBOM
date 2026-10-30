@@ -50,6 +50,7 @@ const manualPart = z.object({
   name: z.string().trim().min(1, "Part name is required."),
   quantity: z.coerce.number().int().min(0),
   inventoryItemId: z.union([z.literal(""), z.uuid()]).default(""),
+  material: z.string().trim().default(""), // a general material, when no item is picked
   description: z.string().trim().default(""),
   preProcess: machine,
   process1: machine,
@@ -67,7 +68,7 @@ export async function addManualPart(
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const d = parsed.data;
   const orNull = (v: string) => v || null;
-  // The material is an inventory item; the part keeps its name too.
+  // The material is an inventory item (the part keeps its name too), or a general material by name.
   const [item] = d.inventoryItemId
     ? await db.select({ id: schema.inventoryItems.id, name: schema.inventoryItems.name }).from(schema.inventoryItems).where(eq(schema.inventoryItems.id, d.inventoryItemId))
     : [];
@@ -76,7 +77,7 @@ export async function addManualPart(
     isManual: true,
     displayName: d.name,
     quantity: d.quantity,
-    material: item?.name ?? null,
+    material: item?.name ?? orNull(d.material),
     inventoryItemId: item?.id ?? null,
     description: orNull(d.description),
     preProcess: orNull(d.preProcess),

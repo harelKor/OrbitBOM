@@ -225,8 +225,10 @@ function readSpecs(text: string, cat: InvCategory, found: Record<string, string>
   }
   let rest = ` ${words.join(" ")} `;
   for (const f of cat.fields) {
-    if (specs[f.id] || f.kind !== "number" || !f.name || !f.name.includes("{}") || !active(f)) continue;
-    const [before, after] = f.name.split("{}").map((s) => tokens(s).map(escape).join("\\s*"));
+    // A length kept out of the name (Raw Stock) is still read as "1000mm".
+    const pattern = f.name || (f.id === "length" ? "{}mm" : "");
+    if (specs[f.id] || f.kind !== "number" || !pattern.includes("{}") || !active(f)) continue;
+    const [before, after] = pattern.split("{}").map((s) => tokens(s).map(escape).join("\\s*"));
     const m = new RegExp(`\\s${before ? `${before}\\s*` : ""}(\\d+(?:\\.\\d+)?)${after ? `\\s*${after}` : ""}\\s`).exec(rest);
     if (!m || (!before && !after)) continue;
     specs[f.id] = m[1];

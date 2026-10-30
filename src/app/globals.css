@@ -125,6 +125,14 @@
 }
 }
 
+/* Nothing may push the page wider than the phone: a too-wide grid or bar would cut the top bar
+   short on the right. clip (not hidden) keeps sticky headers working. */
+html,
+body {
+  overflow-x: clip;
+  max-width: 100%;
+}
+
 body {
   background: var(--color-ink);
   color: var(--color-fg);
@@ -310,10 +318,26 @@ body {
   }
 
   /* Part card grids follow the card size slider (right panel). Pass the default card width in
-     --card-min. */
+     --card-min. A card never grows past its column (min-width: 0), so small cards can't overlap. */
   .card-grid {
     @apply grid gap-3;
     grid-template-columns: repeat(auto-fill, minmax(min(max(calc(var(--card-min, 400px) * var(--card-scale, 1)), 110px), 100%), 1fr));
+  }
+  .card-grid > * {
+    @apply w-full max-w-full min-w-0;
+  }
+  /* Two fingers on cards set the card size (Appearance.tsx), not the page zoom. */
+  .card-grid,
+  .category-grid {
+    touch-action: pan-x pan-y;
+  }
+  /* Category picture boxes (Inventory, COTS): never under 135px, else 210px at 100%. */
+  .category-grid {
+    @apply grid gap-3;
+    grid-template-columns: repeat(auto-fill, minmax(min(max(135px, calc(210px * var(--card-scale, 1))), 100%), 1fr));
+  }
+  .category-grid > * {
+    @apply w-full max-w-full min-w-0 overflow-hidden;
   }
   /* Part, COTS and inventory tables: roomy cells, lines between rows and columns, a banded body
      and a highlighted row under the pointer. Rows are opaque (banding and hover are mixed in, not

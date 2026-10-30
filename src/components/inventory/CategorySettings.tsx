@@ -3,7 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { addCategory, deleteCategory, moveCategory, saveCategory } from "@/app/(app)/inventory/actions";
 import { CATEGORY_GROUPS } from "@/config/inventory";
-import type { CategoryField } from "@/lib/inventory/categories";
+import { DEFAULT_NAME, type CategoryField } from "@/lib/inventory/categories";
 import type { InvCategory, Item, Location } from "./types";
 
 const KINDS: { id: CategoryField["kind"]; label: string }[] = [
@@ -188,11 +188,11 @@ export function CategorySettings({
                         ))}
                       </select>
                       <input
-                        value={f.name ?? "{}"}
+                        value={f.name ?? DEFAULT_NAME}
                         onChange={(e) => setField(i, { name: e.target.value })}
                         aria-label="In the name as"
-                        title='How the value goes into the item name; {} is the value ("{}T" makes 36T). Empty leaves it out.'
-                        className="input min-h-10 w-24 font-mono text-xs"
+                        title='How the value goes into the item name; {} is the value (" {}T" makes 36T). Spacing is kept as typed: a space before it separates it from the value before, "x{}" sticks to it (25x50x2). Empty leaves it out.'
+                        className="input min-h-10 w-24 font-mono text-xs whitespace-pre"
                       />
                       <IconButton label="Move up" onClick={() => moveField(i, -1)} disabled={i === 0}>
                         ↑
