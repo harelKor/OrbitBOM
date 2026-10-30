@@ -26,16 +26,16 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
       text: robot ? `${robot.name} · ${robot.breakdown.percent}% complete` : "Create the first robot",
       image: "/apps/bom.png",
     },
-    { href: "/inventory", title: "Inventory", text: "Stock, locations and what each robot uses", image: "/apps/inventory.png" },
-    { href: "/cots", title: "COTS", text: "Released parts and the order list", image: "/apps/cots.png" },
+    { href: "/inventory", title: "Inventory", text: null, image: "/apps/inventory.png" },
+    { href: "/cots", title: "COTS", text: null, image: "/apps/cots.png" },
   ];
 
   // The cards fill the space between the sidebars: the negative margins undo the shell's own
   // padding, and on md+ the row is exactly one screen tall under the top bar. Phones stack them.
   return (
-    <div className="-m-4 flex md:-m-6 md:h-[calc(100dvh-var(--topbar-h,3.5rem))] md:overflow-hidden lg:-ml-11 xl:-mr-11 p-4 sm:p-8 lg:px-16 lg:py-10 xl:px-24">
+    <div className="-m-4 flex md:-m-6 md:h-[calc(100dvh-var(--topbar-h,3.5rem))] md:overflow-hidden lg:-ml-11 xl:-mr-11 p-4 sm:p-6 lg:px-12 lg:py-8 xl:px-16">
       <h1 className="sr-only">OrbitParts</h1>
-      <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-4 self-center sm:gap-6 md:h-full md:max-h-[42rem] md:grid-cols-3">
+      <div className="mx-auto grid w-full max-w-7xl grid-cols-1 gap-4 self-center sm:gap-6 md:h-full md:max-h-[50rem] md:grid-cols-3">
         {tiles.map((t) => (
           <FastLink
             key={t.title}
@@ -51,10 +51,10 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
               className="object-cover object-[center_20%] transition-transform duration-500 ease-out group-hover:scale-105"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-[#080a10]/95 via-[#080a10]/45 to-transparent" />
-            <div className="relative z-10 m-3 flex items-end justify-between gap-4 rounded-2xl border border-white/15 bg-black/45 p-5 backdrop-blur-xl transition-colors duration-300 group-hover:bg-black/55 sm:m-4 sm:p-6">
+            <div className="relative z-10 m-3 flex items-center justify-between gap-4 rounded-2xl border border-white/15 bg-black/45 p-5 backdrop-blur-xl transition-colors duration-300 group-hover:bg-black/55 sm:m-4 sm:p-6">
               <div className="min-w-0">
                 <span className="display block text-3xl text-[#6f87ff] drop-shadow-sm sm:text-4xl">{t.title}</span>
-                <span className="mt-1.5 block text-sm text-white/80">{t.text}</span>
+                {t.text && <span className="mt-1.5 block text-sm text-white/80">{t.text}</span>}
               </div>
               <span
                 aria-hidden
