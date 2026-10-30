@@ -104,7 +104,9 @@ export async function refreshThumbnails(systemId: string, memberId: string, dead
         await putObject(thumbKey(job.part.id, job.rev), image, res.headers.get("content-type") ?? "image/png");
         // Its fingerprint, for auto-link's "same picture" ("-" when the image can't be read).
         await db.update(parts).set({ thumbnailRev: job.rev, thumbHash: imageHash(new Uint8Array(image)) ?? "-" }).where(eq(parts.id, job.part.id));
-        if (job.part.thumbnailRev) await deleteObject(thumbKey(job.part.id, job.part.thumbnailRev));
+        // The picture a released part was locked with stays for To Fab (plan/fab-version-lock.md).
+        const old = job.part.thumbnailRev;
+        if (old && old !== job.part.releasedSnapshot?.thumbnailRev) await deleteObject(thumbKey(job.part.id, old));
         summary.fetched++;
       } catch (err) {
         fail(err);

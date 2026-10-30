@@ -181,3 +181,62 @@ export async function updatePartToLatest(systemId: string, partId: string, membe
     }
   });
 }
+
+export type PartVersionEntry = {
+  id: string; // the part's version row
+  versionId: string;
+  seq: number;
+  label: string; // "V70"
+  name: string | null;
+  at: string | null;
+  by: string | null;
+  change: VersionChange; // this part's change in that version
+  current: boolean; // the state the BOM shows now
+  released: string[]; // the fab statuses the part was sent to at this version: "Released", "Reproduction"…
+};
+
+// The part's own Versions window (plan/fab-version-lock.md §3): only the versions that added,
+// changed or removed this part, newest first, with the times it was released at each. A
+// database read only.
+export async function listPartVersions(partId: string): Promise<{ systemId: string | null; entries: PartVersionEntry[] }> {
+  const [[part], rows, releases] = await Promise.all([
+    db.select({ systemId: parts.systemId, versionRowId: parts.versionRowId }).from(parts).where(eq(parts.id, partId)),
+    db
+      .select({ row: partVersions, v: systemVersions, by: members.name })
+      .from(partVersions)
+      .innerJoin(systemVersions, eq(systemVersions.id, partVersions.versionId))
+      .leftJoin(members, eq(members.id, systemVersions.committedBy))
+      .where(and(eq(partVersions.partId, partId), eq(systemVersions.state, "committed")))
+      .orderBy(desc(systemVersions.seq)),
+    db.select({ rowId: schema.partReleases.rowId, versionId: schema.partReleases.versionId, status: schema.partReleases.status }).from(schema.partReleases).where(eq(schema.partReleases.partId, partId)),
+  ]);
+  if (!part) return { systemId: null, entries: [] };
+  return {
+    systemId: part.systemId,
+    entries: rows.map(({ row, v, by }) => {
+      const change: VersionChange = v.changes.find((c) => c.partId === partId) ?? {
+        key: row.id,
+        partId,
+        change: row.change === "baseline" ? "added" : row.change,
+        name: row.snapshot.onshapeName ?? "Part",
+        partNumber: row.snapshot.partNumber,
+        fields: {},
+        geometry: false,
+        ...(row.change === "baseline" ? { note: "Baseline" } : {}),
+      };
+      const released = releases.filter((r) => r.rowId === row.id || (!r.rowId && r.versionId === v.id)).map((r) => r.status);
+      return {
+        id: row.id,
+        versionId: v.id,
+        seq: v.seq ?? 0,
+        label: versionLabel(v),
+        name: v.name,
+        at: v.committedAt?.toISOString() ?? null,
+        by,
+        change,
+        current: row.id === part.versionRowId,
+        released: [...new Set(released)],
+      };
+    }),
+  };
+}

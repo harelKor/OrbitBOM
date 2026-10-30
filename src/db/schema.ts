@@ -219,6 +219,12 @@ export const parts = pgTable(
     // version row (its committed state) the part points at; see system_versions below.
     shapeSig: text("shape_sig"),
     versionRowId: uuid("version_row_id"),
+    // The state the part was released to fab at (plan/fab-version-lock.md): To Fab shows it, so a
+    // later commit doesn't swap the part under the shop. Set on Released / Reproduction /
+    // Secondary Production; null for parts never released since.
+    releasedVersionId: uuid("released_version_id").references((): AnyPgColumn => systemVersions.id, { onDelete: "set null" }),
+    releasedRowId: uuid("released_row_id"),
+    releasedSnapshot: jsonb("released_snapshot").$type<ReleasedSnapshot>(),
     removedFromCadAt: timestamp("removed_from_cad_at", { withTimezone: true }),
 
     lastModifiedAt: timestamp("last_modified_at", { withTimezone: true }).notNull().defaultNow(),
@@ -232,6 +238,22 @@ export const parts = pgTable(
     index("parts_inventory_item_idx").on(t.inventoryItemId),
   ],
 );
+
+// What To Fab shows of a released part: its state when it was released.
+export type ReleasedSnapshot = {
+  name: string | null;
+  quantity: number;
+  material: string | null;
+  thumbnailRev: string | null;
+  shapeSig: string | null;
+  studio: string | null; // its frozen Part Studio (src/lib/versions/studio.ts), for STEP and 3D
+  onshapePartId: string | null;
+  flatPartId: string | null; // sheet metal's flat pattern
+  versionLabel: string | null; // "V70"
+  versionName: string | null;
+  status: string;
+  at: string;
+};
 
 // A part's fabrication drawing (plan/auto-drawings.md): the views and sizes read from Onshape's
 // exact geometry, and the member's edits to its notes. Laid out with the current BOM row when
@@ -535,6 +557,25 @@ export const partVersions = pgTable(
     meshKey: text("mesh_key"), // the R2 file with this state's 3D preview
   },
   (t) => [index("part_versions_part_idx").on(t.partId, t.versionId), index("part_versions_version_idx").on(t.versionId)],
+);
+
+// Every time a part was released to fab (Released, Reproduction, Secondary Production) and the
+// version it was on, so its version history can tag those versions.
+export const partReleases = pgTable(
+  "part_releases",
+  {
+    id: id(),
+    partId: uuid("part_id")
+      .notNull()
+      .references(() => parts.id, { onDelete: "cascade" }),
+    versionId: uuid("version_id").references(() => systemVersions.id, { onDelete: "set null" }),
+    rowId: uuid("row_id"),
+    status: text("status").notNull(),
+    memberId: uuid("member_id").references(() => members.id, { onDelete: "set null" }),
+    batchId: uuid("batch_id"),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("part_releases_part_idx").on(t.partId)],
 );
 
 // What is stored in R2, key by key (plan/system-versioning.md §5): putObject and deleteObject

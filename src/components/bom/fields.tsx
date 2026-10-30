@@ -240,6 +240,7 @@ export function StatusField({ part, save, size = "md" }: Props & { size?: "sm" |
   const locked = !useCan("work");
   const { mode } = useMode();
   const [asking, setAsking] = useState<string | null>(null);
+  const [releasing, setReleasing] = useState(false);
   const status = computeStatus(part);
   const cots = part.classification === "cots";
   const machine = cots ? null : statusMachine(part);
@@ -262,12 +263,24 @@ export function StatusField({ part, save, size = "md" }: Props & { size?: "sm" |
             placeholder="Search status…"
             onPick={(v) => {
               if (v && NOTE_STATUSES.includes(v) && mode === "cad") setAsking(v);
+              // Edit mode releasing one made part outside the Release bar: confirm first, it locks the version for To Fab.
+              else if (v === "Released" && mode === "edit" && !cots && status !== "Released") setReleasing(true);
               else if (v) save({ status: v });
               close();
             }}
           />
         )}
       </Popover>
+      {releasing && (
+        <ConfirmReleaseDialog
+          part={part}
+          onClose={() => setReleasing(false)}
+          onConfirm={() => {
+            save({ status: "Released" });
+            setReleasing(false);
+          }}
+        />
+      )}
       {asking && (
         <StatusNoteDialog
           part={part}
@@ -283,6 +296,32 @@ export function StatusField({ part, save, size = "md" }: Props & { size?: "sm" |
         />
       )}
     </>
+  );
+}
+
+// Edit mode's Released from a part's own status menu: releasing sends it to To Fab and locks the
+// version it is on now, so it is confirmed rather than applied on one click.
+function ConfirmReleaseDialog({ part, onClose, onConfirm }: { part: CardPart; onClose: () => void; onConfirm: () => void }) {
+  return (
+    <Dialog open onClose={onClose} title="Confirm Release">
+      <div className="space-y-3">
+        <p className="text-sm text-fg">
+          Release <span className="font-semibold">{partTitle(part)}</span>
+          {part.quantity > 1 && <span className="font-mono tabular-nums"> ×{part.quantity}</span>} to fabrication?
+        </p>
+        <p className="text-sm text-muted">
+          To Fab will keep the version it is on now. Later BOM commits won&apos;t change it there; they show a red Changed tag until the part is released again or its fab version is updated.
+        </p>
+        <div className="flex justify-end gap-2">
+          <button type="button" className="btn active:scale-[0.98]" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="button" autoFocus className="btn-primary active:scale-[0.98]" onClick={onConfirm}>
+            Confirm Release
+          </button>
+        </div>
+      </div>
+    </Dialog>
   );
 }
 

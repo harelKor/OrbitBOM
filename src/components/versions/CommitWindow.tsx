@@ -64,7 +64,8 @@ export function CommitWindow({
   error: string | null;
   onCommit: (name: string, only?: string) => void;
 }) {
-  const [name, setName] = useState(draft.name ?? "");
+  // Starts with the Onshape version's name; another name renames it in Onshape on commit.
+  const [name, setName] = useState(draft.name ?? draft.onshape ?? "");
   const [expanded, setExpanded] = useState<string | null>(null);
   const counts = (["modified", "props", "added", "removed"] as const)
     .map((k) => ({ k, n: draft.changes.filter((c) => kindOf(c) === k).length }))
@@ -92,8 +93,14 @@ export function CommitWindow({
             }}
           >
             <label className="min-w-48 flex-1">
-              <span className="label">Name (optional, shown beside {draft.onshape ?? "the version"})</span>
+              <span className="label">Version name (the same in Onshape)</span>
               <input className="input" value={name} maxLength={120} placeholder="e.g. Shorter intake arm" onChange={(e) => setName(e.target.value)} />
+              {draft.onshape && name.trim() && name.trim() !== draft.onshape && (
+                <span className="mt-1 block text-xs text-subtle">
+                  Renames <span className="font-mono tabular-nums">{draft.onshape}</span> in Onshape too.
+                </span>
+              )}
+              {!draft.onshape && name.trim() && <span className="mt-1 block text-xs text-subtle">Saves a version with this name in Onshape too.</span>}
             </label>
             <button type="submit" className="btn-primary" disabled={committing}>
               {committing ? "Committing…" : "Commit changes"}

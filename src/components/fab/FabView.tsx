@@ -107,6 +107,14 @@ function inheritFromBatch(p: CardPart, batch: Batch, members: CardPart[]): PartC
   return Object.keys(changes).length ? changes : null;
 }
 
+// A released part on To Fab shows the state it was released at (plan/fab-version-lock.md): its
+// amount and picture then, and a red Changed tag when the BOM has moved past it since.
+function fabState(p: CardPart): CardPart {
+  const lock = p.fabLock;
+  if (!lock) return p;
+  return { ...p, quantity: lock.quantity, thumbUrl: lock.thumbUrl ?? p.thumbUrl, fabView: { changed: lock.changed } };
+}
+
 // To Fab: machine boxes, then To Post Process (batches with parts in Post Processing), Released
 // (loose parts), Ready to Fab (batches), In process and Finished (batches first, then parts), and
 // for one machine its other parts. Material boxes (?mat=) filter all of it. The Fab button (or a
@@ -132,7 +140,8 @@ export function FabView({
 }) {
   // Any team works the To Fab page; without a team (read only) nothing moves or changes.
   const work = useCan("work");
-  const [optimistic, addOptimistic] = useOptimistic(parts, (state, { ids, changes }: { ids: string[]; changes: PartChanges }) =>
+  const locked = useMemo(() => parts.map(fabState), [parts]);
+  const [optimistic, addOptimistic] = useOptimistic(locked, (state, { ids, changes }: { ids: string[]; changes: PartChanges }) =>
     state.map((p) => (ids.includes(p.id) ? { ...p, ...planPartUpdate(p, changes, "ui").set } : p)),
   );
   const [pending, startTransition] = useTransition();
@@ -811,7 +820,7 @@ function BatchCard({
   const machineName = batch.machine ? (getMachine(batch.machine)?.name ?? batch.machine) : null;
   const downloads = members.flatMap((p) => {
     const f = cadFormat(p);
-    return f ? [`/api/parts/${p.id}/export?format=${f}`] : [];
+    return f ? [`/api/parts/${p.id}/export?format=${f}${p.fabView ? "&fab=1" : ""}`] : [];
   });
   const notDone = members.filter((p) => !isDone(p));
   // The batch's status as its machine names it; a batch waiting to start is Ready to Fab.

@@ -14,7 +14,9 @@ import { useCan, useManage } from "@/components/shell/ModeContext";
 import { formatPrice, useCurrency } from "@/components/cots/currency";
 import { ShelfPill } from "@/components/cots/ShelfPill";
 import { Icon } from "@/components/ui/Icon";
+import { FabVersionBadge, PartVersionsButton } from "@/components/versions/PartVersionsWindow";
 import { cotsTotal, siteOf } from "@/lib/cots";
+import { fabStage } from "@/lib/fab";
 import { useBom } from "./BomContext";
 import { upload } from "./FilesField";
 import { MachineField, MaterialField, NameField, PersonField, PriorityField, QuantityField, StatusField, TypeField, machineSlotsShown, type SaveFn } from "./fields";
@@ -41,7 +43,16 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
   const overlay = "btn h-8 gap-1.5 bg-surface/95 text-xs shadow-sm";
 
   return (
-    <Dialog open onClose={onClose} title={title} width="w-[min(74rem,calc(100vw-2rem))]">
+    <Dialog
+      open
+      onClose={onClose}
+      title={
+        <>
+          {title}
+          {part.fabLock && !cots && <FabVersionBadge lock={part.fabLock} />}
+        </>
+      }
+      width="w-[min(74rem,calc(100vw-2rem))]">
         <div className="grid gap-5 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
           <div className="space-y-3">
             <div className="relative aspect-[4/3] overflow-hidden rounded-xl border border-line">
@@ -109,6 +120,7 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
           </div>
 
           <div className="min-w-0 space-y-5">
+            {!part.isManual && !cots && <PartVersionsButton partId={part.id} lock={part.fabLock} released={fabStage(part) !== null} />}
             <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] content-start items-center gap-x-3 gap-y-2 text-sm">
               <Row label="Name">
                 <NameField part={part} save={save} />

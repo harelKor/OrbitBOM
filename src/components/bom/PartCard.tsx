@@ -210,6 +210,17 @@ function MadePartCard({
             <VersionTag partId={part.id} tags={versions} manual={part.isManual} />
           </div>
         )}
+        {part.fabView?.changed && (
+          // To Fab only: the BOM moved past the state this part was released at.
+          <div className="pointer-events-none absolute inset-x-0 bottom-2 z-10 flex justify-center">
+            <span
+              className="rounded-full bg-red-600 px-2.5 py-0.5 text-[11px] font-bold tracking-wide text-white uppercase shadow-[0_0_10px_2px_rgba(220,38,38,0.45)]"
+              title={`Changed in the BOM since it was released${part.fabLock?.label ? ` at ${part.fabLock.label}` : ""}. To Fab still shows the released version.`}
+            >
+              Changed
+            </span>
+          </div>
+        )}
         {drawing && <DrawingPreview partId={ownerPartId(part)} title={partTitle(part)} onClose={() => setDrawing(false)} />}
         {fabControls && (
           <>
@@ -323,7 +334,7 @@ export function DownloadMenu({ part, format }: { part: CardPart; format: ExportF
           {exports.map((f, i) => (
             <a
               key={f}
-              href={`/api/parts/${ownerPartId(part)}/export?format=${f}`}
+              href={`/api/parts/${ownerPartId(part)}/export?format=${f}${part.fabView ? "&fab=1" : ""}`}
               onClick={(e) => {
                 e.preventDefault();
                 close();

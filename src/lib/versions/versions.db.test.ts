@@ -23,6 +23,10 @@ else
     const { loadVersionTags } = await import("./tags");
     const { listVersions, revertSystem, updatePartToLatest } = await import("./history");
     const { listSystemSync } = await import("./sync");
+    const { fabChanged, relockPart } = await import("./release");
+    const { syncOnshapeVersionName } = await import("./onshapeName");
+    const { listPartVersions } = await import("./history");
+    const { applyPartChanges } = await import("@/lib/parts/apply");
 
     const headers = [
       { id: "n", name: "Name" },
@@ -31,11 +35,11 @@ else
     let source = { wvmType: "v", wvmId: "v1" };
     // Each BOM row: partId → [name, quantity]. Shapes: version → partId → volume.
     let bomParts: Record<string, [string, number]> = { A: ["Part A", 2], B: ["Part B", 4] };
-    const shapes: Record<string, Record<string, number>> = { v1: { A: 1, B: 2 }, v2: { A: 1.5, B: 2 }, v3: { A9: 1.5, B9: 2 }, v4: { A9: 1.7, B9: 2 } };
+    const shapes: Record<string, Record<string, number>> = { v1: { A: 1, B: 2 }, v2: { A: 1.5, B: 2 }, v3: { A9: 1.5, B9: 2 }, v4: { A9: 1.7, B9: 2 }, v5: { A9: 1.7, B9: 2 } };
     let microversion = "mv1";
     const calls: string[] = [];
-    vi.stubGlobal("fetch", async (input: string) => {
-      calls.push(input);
+    vi.stubGlobal("fetch", async (input: string, init?: RequestInit) => {
+      calls.push(`${init?.method ?? "GET"} ${input}`);
       let body: unknown;
       if (input.includes("currentmicroversion")) body = { microversion };
       else if (input.includes("/massproperties")) {
@@ -232,5 +236,41 @@ else
       tags = await loadVersionTags(system.id);
       expect([Object.keys(tags.outdated), tags.latest]).toEqual([[], null]);
       await expect(updatePartToLatest(system.id, a.id, member.id)).rejects.toBeInstanceOf(VersionError);
+    });
+
+    it("locks a released part's version for To Fab and tags it Changed after a newer commit", async () => {
+      await db.delete(schema.onshapeCache).where(eq(schema.onshapeCache.key, "version-name:v5"));
+      const [, b] = await live();
+      await applyPartChanges([b.id], { status: "Released" }, { memberId: member.id, via: "mcp" });
+      let [, locked] = await live();
+      expect(locked.releasedSnapshot).toMatchObject({ quantity: 7, versionLabel: "V4", status: "Released", onshapePartId: "B9" });
+      expect(locked.releasedRowId).toBe(locked.versionRowId);
+      expect(fabChanged(locked)).toBe(false);
+
+      source = { wvmType: "v", wvmId: "v5" };
+      bomParts = { A9: ["Part A", 2], B9: ["Part B", 9] };
+      microversion = "mv5";
+      const { draft } = await checkSystem(system.id, member.id);
+      const c = await commitDraft(system.id, member.id, { draftId: draft!.id, seen: draft!.detectedAt.toISOString(), name: "Final B" });
+      [, locked] = await live();
+      expect([locked.quantity, locked.releasedSnapshot?.quantity, fabChanged(locked)]).toEqual([9, 7, true]);
+
+      // The edited name renames the Onshape version and becomes its label.
+      calls.length = 0;
+      const named = await syncOnshapeVersionName(system.id, c.versionId, "Final B", member);
+      expect(named).toEqual({ label: "Final B" });
+      expect(calls.some((x) => x.startsWith("POST") && x.includes(`/documents/d/${CAD}/versions/v5`))).toBe(true);
+
+      const history = await listPartVersions(b.id);
+      expect(history.entries.map((e) => [e.label, e.released, e.current])).toEqual([
+        ["Final B", [], true],
+        ["V4", ["Released"], false],
+        ["V2", [], false],
+        ["V1", [], false],
+      ]);
+
+      await relockPart(b.id, member.id);
+      [, locked] = await live();
+      expect([locked.releasedSnapshot?.quantity, locked.releasedSnapshot?.versionLabel, fabChanged(locked)]).toEqual([9, "Final B", false]);
     });
   });

@@ -10,9 +10,11 @@ import { categoryOf, type InvCategory } from "@/lib/inventory/categories";
 import { partKey } from "@/lib/model/assembly";
 import { thumbKey } from "@/lib/onshape/thumbnails";
 import { computeStatus } from "@/lib/status";
+import { versionLabel } from "@/lib/versions/label";
+import { fabChanged } from "@/lib/versions/release";
 import { imageUrl } from "@/lib/storage/r2";
 
-const { parts, systems, robots, members, partFiles, merges, mergeMembers, partDrawings, inventoryItems } = schema;
+const { parts, partVersions, systems, systemVersions, robots, members, partFiles, merges, mergeMembers, partDrawings, inventoryItems } = schema;
 
 export type PartFileRef = { id: string; type: string; filename: string };
 
@@ -30,6 +32,21 @@ export type BomPart = Omit<typeof parts.$inferSelect, "systemId"> & {
   hasDrawing: boolean;
   shelf: Shelf | null;
   shelfSuggestion: ShelfSuggestion | null;
+  // The state the part was released to fab at (plan/fab-version-lock.md); To Fab shows it.
+  fabLock: FabLock | null;
+};
+
+export type FabLock = {
+  label: string | null; // "V70"
+  name: string | null; // the version's name
+  partName: string | null;
+  quantity: number;
+  material: string | null;
+  thumbUrl: string | null;
+  studio: string | null;
+  bomLabel: string | null; // the BOM's version when it moved past the locked one: "Fab: V4 (BOM: V5)"
+  changed: boolean; // the BOM's latest state differs in shape or quantity: To Fab's red Changed tag
+  at: string;
 };
 
 async function load(where: ReturnType<typeof and>, { anySystem = false } = {}): Promise<BomPart[]> {
@@ -41,7 +58,7 @@ async function load(where: ReturnType<typeof and>, { anySystem = false } = {}): 
     .orderBy(asc(parts.partNumber), asc(parts.displayName), asc(parts.onshapeName));
   // Files, thumbnail links, groups and the shelf don't depend on each other: one round trip.
   const ids = rows.map((r) => r.part.id);
-  const [files, thumbs, groups, shelf] = await Promise.all([
+  const [files, thumbs, lockedThumbs, labels, groups, shelf] = await Promise.all([
     ids.length
       ? db
           .select({ id: partFiles.id, partId: partFiles.partId, type: partFiles.type, filename: partFiles.filename })
@@ -53,6 +70,13 @@ async function load(where: ReturnType<typeof and>, { anySystem = false } = {}): 
         .filter((r) => r.part.thumbnailRev)
         .map(async (r) => [r.part.id, await imageUrl(thumbKey(r.part.id, r.part.thumbnailRev!))] as const),
     ).then((entries) => new Map(entries)),
+    // Pictures kept for a released state that the BOM has moved past.
+    Promise.all(
+      rows
+        .filter((r) => r.part.releasedSnapshot?.thumbnailRev && r.part.releasedSnapshot.thumbnailRev !== r.part.thumbnailRev)
+        .map(async (r) => [r.part.id, await imageUrl(thumbKey(r.part.id, r.part.releasedSnapshot!.thumbnailRev!))] as const),
+    ).then((entries) => new Map(entries)),
+    bomLabels(rows.map((r) => r.part).filter((p) => p.releasedSnapshot && p.versionRowId && p.versionRowId !== p.releasedRowId).map((p) => p.versionRowId!)),
     groupsOfParts(ids),
     shelfOfParts(rows.map((r) => r.part)),
   ]);
@@ -72,7 +96,25 @@ async function load(where: ReturnType<typeof and>, { anySystem = false } = {}): 
     files: filesOf.get(r.part.id) ?? [],
     shelf: shelf.shelf.get(r.part.id) ?? null,
     shelfSuggestion: shelf.suggestion.get(r.part.id) ?? null,
+    fabLock: fabLockOf(r.part, lockedThumbs.get(r.part.id) ?? thumbs.get(r.part.id) ?? null, labels.get(r.part.versionRowId ?? "") ?? null),
   }));
+}
+
+function fabLockOf(p: typeof parts.$inferSelect, thumbUrl: string | null, bomLabel: string | null): FabLock | null {
+  const s = p.releasedSnapshot;
+  if (!s) return null;
+  return { label: s.versionLabel, name: s.versionName, partName: s.name, quantity: s.quantity, material: s.material, thumbUrl, studio: s.studio, bomLabel: bomLabel !== s.versionLabel ? bomLabel : null, changed: fabChanged(p), at: s.at };
+}
+
+// The version labels ("V70") of these part version rows.
+async function bomLabels(rowIds: string[]): Promise<Map<string, string>> {
+  if (!rowIds.length) return new Map();
+  const rows = await db
+    .select({ id: partVersions.id, seq: systemVersions.seq, onshapeRef: systemVersions.onshapeRef })
+    .from(partVersions)
+    .innerJoin(systemVersions, eq(systemVersions.id, partVersions.versionId))
+    .where(inArray(partVersions.id, rowIds));
+  return new Map(rows.map((r) => [r.id, versionLabel(r)]));
 }
 
 export function listSystemParts(systemId: string) {

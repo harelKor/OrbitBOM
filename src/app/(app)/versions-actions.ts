@@ -1,12 +1,15 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { requireMember } from "@/lib/auth";
 import { requireCapability } from "@/lib/mode";
 import { OnshapeError } from "@/lib/onshape/client";
 import { isUuid } from "@/lib/uuid";
 import { commitDraft, VersionError } from "@/lib/versions/commit";
 import { checkSystem, type Draft } from "@/lib/versions/detect";
-import { revertSystem, updatePartToLatest } from "@/lib/versions/history";
+import { syncOnshapeVersionName } from "@/lib/versions/onshapeName";
+import { listPartVersions, revertSystem, updatePartToLatest, type PartVersionEntry } from "@/lib/versions/history";
+import { relockPart } from "@/lib/versions/release";
 
 export type CheckResult = { draft?: Draft | null; error?: string; calls?: number; applied?: boolean };
 
@@ -36,10 +39,13 @@ export async function commitChanges(systemId: string, draftId: string, seen: str
   if (!isUuid(systemId) || !isUuid(draftId)) return { error: "Unknown system." };
   try {
     const c = await commitDraft(systemId, member.id, { draftId, seen, name: name.slice(0, 120), only });
+    // The same name in Onshape's version tree; Onshape failing never undoes the commit.
+    const named = await syncOnshapeVersionName(systemId, c.versionId, name.slice(0, 120), member);
     revalidatePath("/robots", "layout");
-    const warning = c.unknownMachines.length ? ` Unknown machines in Onshape: ${c.unknownMachines.join(", ")}.` : "";
-    if (only) return { message: `Committed to ${c.label}.` };
-    return { message: `Committed as ${c.label}: ${c.added.length} added, ${c.updated} updated, ${c.removed.length} removed.${warning}` };
+    const label = named.label ?? c.label;
+    const warning = (c.unknownMachines.length ? ` Unknown machines in Onshape: ${c.unknownMachines.join(", ")}.` : "") + (named.note ? ` ${named.note}` : "");
+    if (only) return { message: `Committed to ${label}.${named.note ? ` ${named.note}` : ""}` };
+    return { message: `Committed as ${label}: ${c.added.length} added, ${c.updated} updated, ${c.removed.length} removed.${warning}` };
   } catch (err) {
     if (err instanceof VersionError) return { error: err.message };
     throw err;
@@ -72,4 +78,20 @@ export async function updateToLatest(systemId: string, partId: string): Promise<
     if (err instanceof VersionError) return { error: err.message };
     throw err;
   }
+}
+
+// The part window's Versions button: the versions that changed this part, with its releases.
+export async function partVersionHistory(partId: string): Promise<{ systemId?: string | null; entries?: PartVersionEntry[]; error?: string }> {
+  await requireMember();
+  if (!isUuid(partId)) return { error: "Unknown part." };
+  return listPartVersions(partId);
+}
+
+// "Update fab version": To Fab takes the part's latest committed state, its status unchanged.
+export async function updateFabVersion(partId: string): Promise<CommitResult> {
+  const member = await requireCapability("sync");
+  if (!isUuid(partId)) return { error: "Unknown part." };
+  if (!(await relockPart(partId, member.id))) return { error: "That part is gone." };
+  revalidatePath("/robots", "layout");
+  return { message: "To Fab now shows the part's latest version." };
 }

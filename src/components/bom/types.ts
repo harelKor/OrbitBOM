@@ -1,3 +1,4 @@
+import type { FabLock } from "@/lib/data/parts";
 import type { MatchReason } from "@/lib/inventory/match";
 import type { PartRow } from "@/lib/parts/changes";
 
@@ -43,6 +44,9 @@ export type CardPart = PartRow & {
   hasDrawing?: boolean; // a fabrication drawing was made for it (system page → Drawings)
   shelf?: Shelf | null;
   shelfSuggestion?: ShelfSuggestion | null;
+  fabLock?: FabLock | null; // the state it was released to fab at (plan/fab-version-lock.md)
+  // Set on To Fab only: the card shows the locked state, downloads it, and tags a newer BOM change.
+  fabView?: { changed: boolean };
 };
 
 // The real part behind a row: a merged row's files and exports belong to its first member.
