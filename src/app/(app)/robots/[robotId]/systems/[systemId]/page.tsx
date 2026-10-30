@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { RecentActions } from "@/components/actions/RecentActions";
 import { AutoRefresh } from "@/components/bom/AutoRefresh";
+import { REFRESH } from "@/config/refresh";
 import { BomView } from "@/components/bom/BomView";
 import { ManualPartButton } from "@/components/bom/ManualPartButton";
 import { partTitle } from "@/components/bom/types";
@@ -95,7 +96,7 @@ export default async function SystemPage({
               <UpdateSystem systemId={system.id} draft={draft} lastSyncedAt={system.lastSyncedAt} thumbs={thumbs} latest={versions.latest && { id: versions.latest.id, label: versions.latest.label }} />
             </Suspense>
           </div>
-          <AutoRefresh systemId={system.id} />
+          {REFRESH.openPages && <AutoRefresh systemId={system.id} />}
         </>
       )}
 

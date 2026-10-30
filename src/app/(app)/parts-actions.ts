@@ -2,6 +2,7 @@
 
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { REFRESH } from "@/config/refresh";
 import { z } from "zod";
 import { MACHINES } from "@/config/machines";
 import { db, schema } from "@/db";
@@ -136,7 +137,7 @@ export async function syncSystem(systemId: string): Promise<SyncResult> {
 // tells the page to show them.
 export async function refreshIfDue(systemId: string): Promise<{ changed: boolean }> {
   const member = await requireMember();
-  if (!isUuid(systemId)) return { changed: false };
+  if (!REFRESH.openPages || !isUuid(systemId)) return { changed: false };
   const [system] = await db
     .select({ refreshMemberId: schema.systems.refreshMemberId })
     .from(schema.systems)

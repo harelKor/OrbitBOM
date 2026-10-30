@@ -43,7 +43,8 @@ graduation. Steps marked **(Harel)** need the Onshape Enterprise admin.
    every 10 minutes during meeting hours (14:00–23:00 Israel time) and hourly otherwise, on the
    Onshape account of whoever last clicked Update BOM on it; a check costs one Onshape call and
    pulls the BOM only when the document changed. Hours live in `src/config/refresh.ts`.
-   Without the scheduler, an open system page still checks for changes every few minutes.
+   An open system page's check every few minutes is off too (`REFRESH.openPages`), so Onshape is
+   only checked when a member clicks Update BOM.
 
 ## 4. Nightly backup
 
