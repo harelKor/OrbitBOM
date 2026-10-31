@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { OPEN_PART_EVENT, OPEN_PART_PENDING, type OpenPartDetail } from "@/components/dashboard/modelEvents";
+import { loadPartWindow, updatePart } from "@/app/(app)/parts-actions";
 import { BomProvider, useBom } from "./BomContext";
 import type { SaveFn } from "./fields";
 import { PartDetails } from "./PartDetails";
@@ -9,6 +10,21 @@ import { partIds, type CardPart } from "./types";
 
 type Bom = ReturnType<typeof useBom>;
 type Open = { part: CardPart; save: SaveFn; bom: Bom };
+
+// Fired on window to open a part's window from a page that has no card for it (an inventory
+// item's Used in): the provider loads the part and opens it on top of the page. `done` says
+// whether it opened.
+const OPEN_PART_LOAD_EVENT = "orbit:open-part-load";
+type OpenPartLoadDetail = { partId: string; done: (ok: boolean) => void };
+
+// Opens a part's details window where you are: a card for it on this page opens it (with that
+// page's save), else the part is loaded.
+export function openPartWindow(partId: string): Promise<boolean> {
+  const here: OpenPartDetail = { partId, taken: false };
+  window.dispatchEvent(new CustomEvent(OPEN_PART_EVENT, { detail: here }));
+  if (here.taken) return Promise.resolve(true);
+  return new Promise((done) => window.dispatchEvent(new CustomEvent<OpenPartLoadDetail>(OPEN_PART_LOAD_EVENT, { detail: { partId, done } })));
+}
 
 const Ctx = createContext<{ openId: string | null; open: (o: Open) => void; sync: (o: Open) => void }>({ openId: null, open: () => {}, sync: () => {} });
 
@@ -27,6 +43,25 @@ export function PartDetailsProvider({ children }: { children: React.ReactNode })
     setCurrent((c) => (c && c.part.id === o.part.id && (c.part !== o.part || c.bom !== o.bom) ? o : c));
   }, []);
   const save = useCallback<SaveFn>((changes) => saveRef.current(changes), []);
+  // A part loaded on its own: an edit saves it and loads it again, so the window shows the change.
+  useEffect(() => {
+    const onLoad = async (e: Event) => {
+      const { partId, done } = (e as CustomEvent<OpenPartLoadDetail>).detail;
+      const first = await loadPartWindow(partId).catch(() => null);
+      if (!first) return done(false);
+      const bom: Bom = { inventory: [], isAdmin: first.isAdmin, robotId: first.robotId ?? undefined };
+      const save: SaveFn = async (changes) => {
+        const r = await updatePart(partId, changes).catch(() => ({ error: "Couldn't save. Try again." }));
+        if (r.error) alert(r.error);
+        const next = await loadPartWindow(partId).catch(() => null);
+        if (next) sync({ part: next.part, save, bom });
+      };
+      open({ part: first.part, save, bom });
+      done(true);
+    };
+    window.addEventListener(OPEN_PART_LOAD_EVENT, onLoad);
+    return () => window.removeEventListener(OPEN_PART_LOAD_EVENT, onLoad);
+  }, [open, sync]);
   const openId = current?.part.id ?? null;
   const value = useMemo(() => ({ openId, open, sync }), [openId, open, sync]);
   return (

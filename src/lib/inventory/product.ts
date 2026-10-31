@@ -91,6 +91,8 @@ const EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "
 export async function saveProductPhoto(itemId: string, imageUrl: string): Promise<string | null> {
   const url = publicUrl(imageUrl);
   if (!url || !storageConfigured()) return null;
+  // A BOM part's CAD thumbnail is never a product photo (Harel, 2026-10-31).
+  if (/\/thumbs\/parts\//.test(url.pathname)) return null;
   try {
     const img = await get(url, "image/*", 5_000_000);
     const type = img.type.split(";")[0].trim().toLowerCase();

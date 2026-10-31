@@ -38,6 +38,7 @@ import { PhotoButtons } from "./photo";
 import { ToBomDialog } from "./ToBomDialog";
 import { LocationPicker } from "./LocationPicker";
 import { SeasonTag } from "./SeasonTag";
+import { UsedIn } from "./UsedIn";
 import { WorkshopMap } from "./WorkshopMap";
 import type { Condition, InvCategory, Item, Location } from "./types";
 
@@ -661,37 +662,7 @@ function ItemBody({
         </dl>
       )}
 
-      {!!usage?.parts.length && (
-        <div>
-          <div className="label">Used in</div>
-          <ul className="max-h-40 divide-y divide-line overflow-y-auto rounded-lg border border-line text-sm">
-            {usage.parts.map((p) => {
-              const covered = usage.coveredOf.get(p.partId) ?? 0;
-              return (
-                <li key={p.partId}>
-                  <Link
-                    href={p.systemId ? `/robots/${p.robotId}/systems/${p.systemId}#part-${p.partId}` : p.robotId ? `/robots/${p.robotId}` : "/cots/released"}
-                    onClick={onClose}
-                    className="flex items-center gap-2 px-2 py-1.5 hover:bg-raised"
-                  >
-                    <span className="min-w-0 flex-1 truncate">
-                      <span className="text-muted">
-                        {p.robotName} › {p.systemName} ›{" "}
-                      </span>
-                      {p.partName}
-                    </span>
-                    {!item.sheet && (
-                      <span className={`shrink-0 font-mono text-xs font-semibold tabular-nums ${covered < p.quantity ? "text-amber-600" : "text-emerald-600"}`}>
-                        {covered}/{p.quantity}
-                      </span>
-                    )}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
+      {!!usage?.parts.length && <UsedIn usage={usage} sheet={item.sheet} />}
 
       {message && <p className="text-sm text-emerald-700">{message}</p>}
       <div className="space-y-2 border-t border-line pt-3">

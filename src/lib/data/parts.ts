@@ -121,6 +121,15 @@ export function listSystemParts(systemId: string) {
   return load(and(eq(parts.systemId, systemId), isNull(parts.removedFromCadAt)));
 }
 
+// One part, for its details window opened away from its BOM page (an inventory item's Used in),
+// with the robot it's on (for Locate). Null when it was deleted.
+export async function getPart(partId: string): Promise<{ part: BomPart; robotId: string | null } | null> {
+  const [part] = await load(eq(parts.id, partId), { anySystem: true });
+  if (!part) return null;
+  const [sys] = part.systemId ? await db.select({ robotId: systems.robotId }).from(systems).where(eq(systems.id, part.systemId)) : [];
+  return { part, robotId: sys?.robotId ?? null };
+}
+
 export function listRobotParts(robotId: string) {
   return load(and(eq(systems.robotId, robotId), isNull(parts.removedFromCadAt)));
 }

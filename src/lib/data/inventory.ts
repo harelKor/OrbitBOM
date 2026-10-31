@@ -103,7 +103,7 @@ export async function listInventory() {
   ]);
   const sheets = sheetSet(items, categories);
   const usage = computeUsage(new Map(items.map((i) => [i.id, i.inStock])), used, sheets);
-  const [thumbs, catUrls] = await Promise.all([itemThumbs(items), Promise.all(categories.map((c) => categoryImageUrl(c.image)))]);
+  const [thumbs, catUrls] = await Promise.all([itemThumbs(items, categories), Promise.all(categories.map((c) => categoryImageUrl(c.image)))]);
   categories.forEach((c, i) => (c.imageUrl = catUrls[i]));
   return {
     items: items.map((i) => ({
@@ -132,10 +132,19 @@ async function openOrders() {
 }
 
 // One picture per item: its own photo, else the newest Onshape thumbnail among the parts linked
-// to it.
-async function itemThumbs(items: { id: string; imagePath: string | null }[]) {
-  const own = await Promise.all(items.filter((i) => i.imagePath).map(async (i) => [i.id, await imageUrl(i.imagePath!)] as const));
-  const itemIds = items.filter((i) => !i.imagePath).map((i) => i.id);
+// to it. Raw Stock (a plate, tube, shaft, filament) keeps its own photo or its category's
+// picture: a part cut from it isn't what it looks like, so a part thumbnail never stands in,
+// and a part thumbnail saved as its photo by mistake is ignored (Harel, 2026-10-31).
+const PART_THUMB = /^(thumbs|thumbnails)\//;
+const isRawStock = (i: Omit<Named, "id">, cats: InvCategory[]) => {
+  const cat = getCategory(cats, categoryOf(i, cats));
+  return !!cat && (cat.group === "consumables" || cat.sheet);
+};
+async function itemThumbs(items: (Named & { imagePath: string | null })[], cats: InvCategory[]) {
+  const raw = new Set(items.filter((i) => isRawStock(i, cats)).map((i) => i.id));
+  const photo = (i: { id: string; imagePath: string | null }) => (i.imagePath && !(raw.has(i.id) && PART_THUMB.test(i.imagePath)) ? i.imagePath : null);
+  const own = await Promise.all(items.filter((i) => photo(i)).map(async (i) => [i.id, await imageUrl(photo(i)!)] as const));
+  const itemIds = items.filter((i) => !photo(i) && !raw.has(i.id)).map((i) => i.id);
   if (!itemIds.length) return new Map(own.filter((u): u is readonly [string, string] => !!u[1]));
   const rows = await db
     .selectDistinctOn([parts.inventoryItemId], { itemId: parts.inventoryItemId, partId: parts.id, rev: parts.thumbnailRev })
@@ -291,7 +300,7 @@ export async function shelfOfParts(rows: ShelfPart[]) {
   // A waiting link's item, when the parts had no COTS part to load every item for.
   const missing = [...new Set(waiting.map((w) => w.itemId))].filter((id) => !all.some((i) => i.id === id));
   const known = missing.length ? [...all, ...(await db.select(itemCols).from(inventoryItems).where(inArray(inventoryItems.id, missing)))] : all;
-  const thumbs = await itemThumbs(items);
+  const thumbs = await itemThumbs(items, cats);
   for (const p of linked) {
     const item = items.find((i) => i.id === p.inventoryItemId);
     if (!item) continue;

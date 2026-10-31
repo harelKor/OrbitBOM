@@ -18,8 +18,17 @@ import { refreshSystem } from "@/lib/sync/refresh";
 import { updateBomFromOnshape } from "@/lib/sync/updateBom";
 import { deleteObjects, fileKeysFor } from "@/lib/storage/cleanup";
 import { isUuid } from "@/lib/uuid";
+import { getPart } from "@/lib/data/parts";
 
 export type ActionResult = { error?: string; message?: string };
+
+// A part's details window, opened in place from another page (an inventory item's Used in).
+export async function loadPartWindow(partId: string) {
+  const member = await requireMember();
+  if (!isUuid(partId)) return null;
+  const found = await getPart(partId);
+  return found && { part: found.part, robotId: found.robotId, isAdmin: member.isAdmin };
+}
 
 export async function updatePart(partId: string, changes: unknown): Promise<ActionResult> {
   await requireMember();

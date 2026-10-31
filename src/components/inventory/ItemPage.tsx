@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useOptimistic, useState, useTransition } from "react";
 import { adjustStock, deleteItem, linkPartsToItem } from "@/app/(app)/inventory/actions";
@@ -15,6 +14,7 @@ import { PieceStepper, ProductName, conditionColor, hostOf } from "./ItemCard";
 import { ItemForm, draftOf } from "./ItemForm";
 import { ItemHistory } from "./ItemHistory";
 import { ToBomDialog } from "./ToBomDialog";
+import { UsedIn } from "./UsedIn";
 import type { BomTarget, Condition, Group, InvCategory, Item, Location } from "./types";
 
 type Match = { partId: string; name: string; quantity: number; robotName: string; systemName: string; reason: "onshape" | "link" | "name" };
@@ -70,8 +70,6 @@ export function ItemPage({
   const spec = specLine(category, item.specs);
   const [draft, setDraft] = useState(() => draftOf(initial));
   const usage = item.usage;
-  const byRobot = new Map<string, NonNullable<typeof usage>["parts"]>();
-  for (const p of usage?.parts ?? []) byRobot.set(p.robotName, [...(byRobot.get(p.robotName) ?? []), p]);
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
@@ -197,38 +195,13 @@ export function ItemPage({
 
       <div className="space-y-4">
         <section className="panel p-4">
-          <h2 className="mb-2 font-semibold">Used in</h2>
-          {byRobot.size === 0 ? (
-            <p className="text-sm text-muted">No robot part is linked to this item yet.</p>
+          {usage?.parts.length ? (
+            <UsedIn usage={usage} sheet={item.sheet} />
           ) : (
-            <div className="space-y-3">
-              {[...byRobot].map(([robot, ps]) => (
-                <div key={robot}>
-                  <div className="mb-1 text-[11px] font-semibold tracking-wide text-subtle uppercase">{robot}</div>
-                  <ul className="divide-y divide-line text-sm">
-                    {ps.map((p) => {
-                      const covered = usage!.coveredOf.get(p.partId) ?? 0;
-                      return (
-                        <li key={p.partId} className="flex items-center gap-2 py-1.5">
-                          <Link href={p.systemId ? `/robots/${p.robotId}/systems/${p.systemId}#part-${p.partId}` : p.robotId ? `/robots/${p.robotId}` : "/cots/released"} className="min-w-0 flex-1 truncate hover:text-accent">
-                            <span className="text-muted">{p.systemName} › </span>
-                            {p.partName}
-                          </Link>
-                          {p.status && <span className="shrink-0 text-xs text-subtle">{p.status}</span>}
-                          {item.sheet ? (
-                            <span className="shrink-0 font-mono text-xs tabular-nums">×{p.quantity}</span>
-                          ) : (
-                            <span className={`shrink-0 font-mono text-xs font-semibold tabular-nums ${covered < p.quantity ? "text-amber-600" : "text-emerald-600"}`}>
-                              {covered}/{p.quantity}
-                            </span>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              ))}
-            </div>
+            <>
+              <h2 className="mb-2 font-semibold">Used in</h2>
+              <p className="text-sm text-muted">No robot part is linked to this item yet.</p>
+            </>
           )}
         </section>
 

@@ -428,6 +428,13 @@
       "when": 1793443216739,
       "tag": "0060_pla_bambu",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1793454443036,
+      "tag": "0061_raw_stock_no_part_photos",
+      "breakpoints": true
     }
   ]
 }
