@@ -79,6 +79,11 @@ export const robots = pgTable("robots", {
   schematicPath: text("schematic_path"),
   thumbnailPath: text("thumbnail_path"),
   archived: boolean("archived").notNull().default(false),
+  // The Onshape document where this robot's Fab batch layout assemblies are made (Harel,
+  // 2026-10-31), with its default workspace. Unset: the batch's system document.
+  layoutsDocumentUrl: text("layouts_document_url"),
+  layoutsDocumentId: text("layouts_document_id"),
+  layoutsWorkspaceId: text("layouts_workspace_id"),
   createdAt: createdAt(),
 });
 
@@ -331,13 +336,24 @@ export const partGroups = pgTable("part_groups", {
   priority: priority("priority").notNull().default("normal"),
   machine: text("machine"), // set on a To Fab batch: the machine (config id) its parts are made on
   madeBy: text("made_by"), // a To Fab batch's member, by name (who created it, changeable)
-  // The batch's "Batch - <name>" layout assembly in Onshape (src/lib/fab/onshapeLayout.ts), reused
-  // on the next push. `rev` names the layout last pushed, for the cached batch STEP.
-  onshapeLayout: jsonb("onshape_layout").$type<OnshapeLayoutRef>(),
+  // The Auto Layout window's last state (positions, turns, gap, margin, sheet), restored on open,
+  // and the "Batch - <name>" assembly it made in Onshape (src/lib/fab/onshapeLayout.ts). Saving
+  // one half merges into the column (jsonb ||), never wiping the other.
+  layoutData: jsonb("layout_data").$type<LayoutData>(),
   createdAt: createdAt(),
 });
 
-export type OnshapeLayoutRef = { baseUrl: string; did: string; wid: string; eid: string; rev: string; at: string };
+// A copy's place on the sheet: its flat-frame origin (mm) and turn about Z (degrees, any angle).
+export type LayoutPlacement = { partId: string; copy: number; x: number; y: number; rotation: number };
+// `rev` names the layout last pushed, for the cached batch STEP.
+export type OnshapeLayoutRef = { baseUrl: string; did: string; wid: string; eid: string; url: string; rev: string; createdAt: string };
+export type LayoutData = {
+  gap?: number;
+  margin?: number;
+  sheetKey?: string; // "auto", a stock piece size ("f6", "p500x450"), or "custom:<width>"
+  placements?: LayoutPlacement[];
+  onshape?: OnshapeLayoutRef;
+};
 
 export const groupMembers = pgTable(
   "group_members",

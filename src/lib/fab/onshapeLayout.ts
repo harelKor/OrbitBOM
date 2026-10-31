@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { OnshapeLayoutRef } from "@/db/schema";
 import { batchFlatParts } from "@/lib/fab/batchLayout";
@@ -95,7 +95,8 @@ export async function pushOnshapeLayout(
   const system = rows.map((r) => (r.assemblyUrl ? parseOnshapeUrl(r.assemblyUrl) : null)).find((r) => r?.did === did) ?? rows.map((r) => (r.assemblyUrl ? parseOnshapeUrl(r.assemblyUrl) : null)).find(Boolean);
   const baseUrl = system?.baseUrl ?? "https://cad.onshape.com";
 
-  const saved = group.onshapeLayout?.did === did && group.onshapeLayout.baseUrl === baseUrl ? group.onshapeLayout : null;
+  const prev = group.layoutData?.onshape;
+  const saved = prev?.did === did && prev.baseUrl === baseUrl ? prev : null;
   // The document's workspace, from what we already know before asking Onshape.
   const wid =
     saved?.wid ??
@@ -154,7 +155,11 @@ export async function pushOnshapeLayout(
   }
 
   const rev = createHash("sha1").update(JSON.stringify([eid, placed.map((c) => [c.ref, c.transform])])).digest("hex").slice(0, 16);
-  const ref: OnshapeLayoutRef = { baseUrl, did, wid, eid, rev, at: new Date().toISOString() };
-  await db.update(schema.partGroups).set({ onshapeLayout: ref }).where(eq(schema.partGroups.id, groupId));
-  return { url: `${baseUrl}/documents/${did}/w/${wid}/e/${eid}`, calls: client.calls, copies: placed.length, skipped, live };
+  const url = `${baseUrl}/documents/${did}/w/${wid}/e/${eid}`;
+  const ref: OnshapeLayoutRef = { baseUrl, did, wid, eid, url, rev, createdAt: new Date().toISOString() };
+  await db
+    .update(schema.partGroups)
+    .set({ layoutData: sql`coalesce(${schema.partGroups.layoutData}, '{}'::jsonb) || ${JSON.stringify({ onshape: ref })}::jsonb` })
+    .where(eq(schema.partGroups.id, groupId));
+  return { url, calls: client.calls, copies: placed.length, skipped, live };
 }

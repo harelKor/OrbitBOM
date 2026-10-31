@@ -82,7 +82,7 @@ export async function listGroups(): Promise<GroupSummary[]> {
 export async function listRobotGroups(robotId: string) {
   const [groups, gcodes] = await Promise.all([
     db
-      .select({ id: partGroups.id, name: partGroups.name, color: partGroups.color, machine: partGroups.machine, madeBy: partGroups.madeBy, priority: partGroups.priority, onshapeLayout: partGroups.onshapeLayout })
+      .select({ id: partGroups.id, name: partGroups.name, color: partGroups.color, machine: partGroups.machine, madeBy: partGroups.madeBy, priority: partGroups.priority, layoutData: partGroups.layoutData })
       .from(partGroups)
       .where(eq(partGroups.robotId, robotId))
       .orderBy(asc(partGroups.name)),
@@ -95,10 +95,10 @@ export async function listRobotGroups(robotId: string) {
   ]);
   const gcodeOf = new Map(gcodes.map(({ groupId, ...f }) => [groupId, f]));
   // A batch's Onshape layout assembly (src/lib/fab/onshapeLayout.ts), as a link to open it.
-  return groups.map(({ onshapeLayout: l, ...g }) => ({
+  return groups.map(({ layoutData, ...g }) => ({
     ...g,
     gcode: gcodeOf.get(g.id) ?? null,
-    onshapeLayoutUrl: l ? `${l.baseUrl}/documents/${l.did}/w/${l.wid}/e/${l.eid}` : null,
+    onshapeLayoutUrl: layoutData?.onshape?.url ?? null,
   }));
 }
 

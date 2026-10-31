@@ -18,7 +18,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ gro
   const { groupId } = await params;
   if (!isUuid(groupId)) return new NextResponse("Unknown batch.", { status: 400 });
   const [group] = await db.select().from(schema.partGroups).where(eq(schema.partGroups.id, groupId));
-  const ref = group?.onshapeLayout;
+  const ref = group?.layoutData?.onshape;
   if (!group || !ref) return new NextResponse("Make the Onshape Layout first.", { status: 400 });
 
   const filename = `Batch - ${group.name}.step`.replace(/[^\w.\- ]+/g, "_");
