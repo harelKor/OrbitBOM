@@ -82,7 +82,7 @@ export async function listGroups(): Promise<GroupSummary[]> {
 export async function listRobotGroups(robotId: string) {
   const [groups, gcodes] = await Promise.all([
     db
-      .select({ id: partGroups.id, name: partGroups.name, color: partGroups.color, machine: partGroups.machine, madeBy: partGroups.madeBy, priority: partGroups.priority })
+      .select({ id: partGroups.id, name: partGroups.name, color: partGroups.color, machine: partGroups.machine, madeBy: partGroups.madeBy, priority: partGroups.priority, onshapeLayout: partGroups.onshapeLayout })
       .from(partGroups)
       .where(eq(partGroups.robotId, robotId))
       .orderBy(asc(partGroups.name)),
@@ -94,7 +94,12 @@ export async function listRobotGroups(robotId: string) {
       .where(and(eq(partGroups.robotId, robotId), eq(groupFiles.type, "gcode"))),
   ]);
   const gcodeOf = new Map(gcodes.map(({ groupId, ...f }) => [groupId, f]));
-  return groups.map((g) => ({ ...g, gcode: gcodeOf.get(g.id) ?? null }));
+  // A batch's Onshape layout assembly (src/lib/fab/onshapeLayout.ts), as a link to open it.
+  return groups.map(({ onshapeLayout: l, ...g }) => ({
+    ...g,
+    gcode: gcodeOf.get(g.id) ?? null,
+    onshapeLayoutUrl: l ? `${l.baseUrl}/documents/${l.did}/w/${l.wid}/e/${l.eid}` : null,
+  }));
 }
 
 // Group badges on BOM parts.

@@ -31,6 +31,7 @@ import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { computeStatus, statusMachine } from "@/lib/status";
 import { prepareExport } from "@/components/bom/downloadExport";
 import { BatchLayoutDialog } from "./BatchLayoutDialog";
+import { OnshapeLayoutButton } from "./OnshapeLayoutButton";
 
 export type Batch = {
   id: string;
@@ -39,6 +40,7 @@ export type Batch = {
   madeBy: string | null;
   priority: Priority;
   gcode: { id: string; filename: string } | null;
+  onshapeLayoutUrl?: string | null; // the batch's "Batch - <name>" assembly in Onshape, once made
 };
 
 // A batch's priority colours all its text. "normal" (the default) is no priority; the shop's three
@@ -1043,6 +1045,7 @@ function BatchCard({
                 Auto Layout
               </button>
             )}
+            {open && <OnshapeLayoutButton groupId={batch.id} url={batch.onshapeLayoutUrl} />}
             {layoutOpen &&
               createPortal(
                 // The window sits outside the card in the page, but React still hands its clicks to the card.

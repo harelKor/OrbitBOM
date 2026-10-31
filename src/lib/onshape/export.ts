@@ -36,9 +36,19 @@ export async function exportPart(
   }
   // A flat export translates the part's flat pattern body (`partId` is that body's id).
   const formatName = format.replace(/_FLAT$/, "");
-  let t = await client.json<Translation>(`partstudios/${studio}/translations`, {
+  return translate(client, `partstudios/${studio}/translations`, { formatName, partIds: partId }, deadline, "this part");
+}
+
+// A whole assembly as one STEP file (a batch's Onshape layout).
+export function exportAssemblyStep(client: OnshapeClient, assembly: string /* d/<did>/w/<wid>/e/<eid> */, deadline: number) {
+  return translate(client, `assemblies/${assembly}/translations`, { formatName: "STEP", flattenAssemblies: false }, deadline, "this assembly");
+}
+
+// Start an Onshape translation, poll it and download the result.
+async function translate(client: OnshapeClient, path: string, params: Record<string, unknown>, deadline: number, what: string): Promise<ArrayBuffer> {
+  let t = await client.json<Translation>(path, {
     method: "POST",
-    body: JSON.stringify({ formatName, partIds: partId, storeInDocument: false }),
+    body: JSON.stringify({ ...params, storeInDocument: false }),
   });
   // Every poll counts against the app's yearly API allowance, so wait longer between them.
   for (let wait = 1500; t.requestState === "ACTIVE"; wait = Math.min(wait * 1.6, 8000)) {
@@ -48,7 +58,7 @@ export async function exportPart(
   }
   const dataId = t.resultExternalDataIds?.[0];
   if (t.requestState !== "DONE" || !dataId) {
-    throw new OnshapeError(`Onshape couldn't export this part${t.failureReason ? `: ${t.failureReason}` : "."}`);
+    throw new OnshapeError(`Onshape couldn't export ${what}${t.failureReason ? `: ${t.failureReason}` : "."}`);
   }
   const res = await client.raw(`documents/d/${t.documentId}/externaldata/${dataId}`);
   return res.arrayBuffer();
