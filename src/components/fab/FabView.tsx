@@ -2,7 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { createContext, useContext, useEffect, useId, useLayoutEffect, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
-import { flushSync } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { MACHINES, getMachine } from "@/config/machines";
 import type { Priority } from "@/config/priorities";
 import { materialColor } from "@/config/materialColors";
@@ -30,6 +30,7 @@ import { FINISHED_STATUS, IN_PROCESS_STATUS, READY_STATUS, fabBatchName, fabStag
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { computeStatus, statusMachine } from "@/lib/status";
 import { prepareExport } from "@/components/bom/downloadExport";
+import { BatchLayoutDialog } from "./BatchLayoutDialog";
 
 export type Batch = {
   id: string;
@@ -811,6 +812,7 @@ function BatchCard({
   const open = section ? section.id === batch.id : ownOpen;
   const setOpen = (next: boolean) => (section ? section.set(next ? batch.id : null) : setOwnOpen(next));
   const [renaming, setRenaming] = useState(false);
+  const [layoutOpen, setLayoutOpen] = useState(false);
   const [over, setOver] = useState(false);
   const [madeBy, setMadeBy] = useState(batch.madeBy ?? "");
   const [, startTransition] = useTransition();
@@ -1031,6 +1033,24 @@ function BatchCard({
                 ))}
               </select>
             )}
+            {open && (
+              <button
+                className="press flex items-center gap-1 rounded-full border border-line-strong bg-surface px-2.5 py-1 text-xs font-bold text-fg-2 transition-colors duration-150 hover:border-sky-400/40 hover:text-sky-500 active:scale-[0.98]"
+                onClick={() => setLayoutOpen(true)}
+                title="Lay the parts flat and nest them on the smallest plate on the shelf"
+              >
+                <Icon name="layers" className="h-3.5 w-3.5" />
+                Auto Layout
+              </button>
+            )}
+            {layoutOpen &&
+              createPortal(
+                // The window sits outside the card in the page, but React still hands its clicks to the card.
+                <div onClick={stop} onDoubleClick={stop}>
+                  <BatchLayoutDialog groupId={batch.id} name={batch.name} open onClose={() => setLayoutOpen(false)} />
+                </div>,
+                document.body,
+              )}
             <span className="ml-auto flex items-center gap-1.5">
               {downloads.length > 0 && !(batch.gcode && !open) && (
                 <button className="overlay-btn" onClick={() => void downloadAll(downloads)} aria-label={`Download ${downloads.length} files`} title={`Download ${downloads.length} files`}>
