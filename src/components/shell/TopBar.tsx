@@ -8,6 +8,9 @@ import { Brand } from "./Brand";
 import { ModeToggle } from "./ModeContext";
 import { UndoRedo } from "./UndoRedo";
 
+// The two panel buttons (pages on the left, robots on the right) match the Undo/Redo squares.
+const square = "press flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-white/30 hover:bg-white/10";
+
 export function TopBar({ onMenu, onRobots, navHidden }: { onMenu: () => void; onRobots: () => void; navHidden: boolean }) {
   const pathname = usePathname();
   const { filters, setFilters } = useFilters();
@@ -37,8 +40,8 @@ export function TopBar({ onMenu, onRobots, navHidden }: { onMenu: () => void; on
   }, []);
 
   return (
-    <header ref={header} className="sticky top-0 z-20 flex min-h-14 flex-wrap items-center gap-2 bg-bar px-4 py-2.5 text-white shadow-[0_2px_8px_rgba(0,0,120,0.25)] md:px-6">
-      <button onClick={onMenu} className="press rounded-md border border-white/30 px-2 py-1 lg:hidden" aria-label="Pages" title="Show pages">
+    <header ref={header} className="sticky top-0 z-20 flex min-h-14 flex-wrap items-center gap-1.5 bg-bar px-3 py-2.5 sm:gap-2 sm:px-4 text-white shadow-[0_2px_8px_rgba(0,0,120,0.25)] md:px-6">
+      <button onClick={onMenu} className={`${square} lg:hidden`} aria-label="Pages" title="Show pages">
         ☰
       </button>
       {/* The mark stays on screen whenever the left panel isn't showing it. */}
@@ -47,7 +50,8 @@ export function TopBar({ onMenu, onRobots, navHidden }: { onMenu: () => void; on
       </div>
       {partPages && (
         <>
-          <div className="relative min-w-40 flex-1 md:max-w-sm">
+          {/* On phones the search takes its own row under the buttons, so the buttons fit one row. */}
+          <div className="relative min-w-40 flex-1 max-sm:order-last max-sm:basis-full md:max-w-sm">
             <input
               ref={search}
               value={filters.q}
@@ -76,11 +80,11 @@ export function TopBar({ onMenu, onRobots, navHidden }: { onMenu: () => void; on
           </div>
         </>
       )}
-      <div className="ml-auto flex items-center gap-2">
+      <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
         <UndoRedo />
         <ModeToggle />
-        <button onClick={onRobots} className="press rounded-md border border-white/30 px-2 py-1 text-xs font-semibold xl:hidden" aria-label="Robots and systems" title="Show robots and systems">
-          Robots
+        <button onClick={onRobots} className={`${square} xl:hidden`} aria-label="Robots and systems" title="Show robots and systems">
+          ☰
         </button>
       </div>
     </header>
