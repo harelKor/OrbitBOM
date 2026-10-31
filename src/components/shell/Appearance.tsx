@@ -6,15 +6,15 @@ import { APPEARANCE_KEY as KEY, DEFAULT_HUE } from "./boot-scripts";
 
 // Card size and site colour, set from the right panel and kept in this browser, so every page
 // opens the way the member left it. Both live on <html>: --card-scale sizes the part card
-// grids (.card-grid), and data-hue + --hue turn the accent colours (globals.css).
-// Ctrl + mouse wheel (or a trackpad pinch) over a card grid moves the card size too, and so does a
+// grids (.card-grid) and list views (.list-stack), and data-hue + --hue turn the accent colours (globals.css).
+// Ctrl + mouse wheel (or a trackpad pinch) over a card grid or list moves the card size too, and so does a
 // two-finger pinch on a phone; over a table it zooms that table instead (SheetViewport).
 
 type Prefs = { scale: number; hue: number };
 const DEFAULTS: Prefs = { scale: 1, hue: DEFAULT_HUE };
 const MIN_SCALE = 0.3;
 const MAX_SCALE = 2.5;
-const GRIDS = ".card-grid, .category-grid";
+const GRIDS = ".card-grid, .category-grid, .list-stack";
 const clampScale = (n: number) => Math.round(Math.min(MAX_SCALE, Math.max(MIN_SCALE, n)) * 1000) / 1000;
 
 function apply({ scale, hue }: Prefs) {

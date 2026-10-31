@@ -60,5 +60,5 @@ export function PartListRow({
 
 // The List view: rows stacked one under another (two side by side on wide screens).
 export function PartList({ children }: { children: React.ReactNode }) {
-  return <div className="grid gap-2.5 lg:grid-cols-2 2xl:grid-cols-3">{children}</div>;
+  return <div className="list-stack">{children}</div>;
 }

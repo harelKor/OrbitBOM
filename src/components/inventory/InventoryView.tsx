@@ -468,7 +468,7 @@ export function InventoryView({
         glowOf={glowOf}
       />
     ) : layout === "list" ? (
-      <div className="grid gap-2.5 lg:grid-cols-2 2xl:grid-cols-3">
+      <div className="list-stack">
         {list.map((item) => (
           <ItemListRow
             key={item.id}

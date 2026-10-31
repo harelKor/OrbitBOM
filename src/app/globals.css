@@ -328,8 +328,19 @@ body {
   }
   /* Two fingers on cards set the card size (Appearance.tsx), not the page zoom. */
   .card-grid,
-  .category-grid {
+  .category-grid,
+  .list-stack {
     touch-action: pan-x pan-y;
+  }
+  /* List views (BOM, COTS, Inventory) follow the card size slider: the whole list zooms, and as
+     zoom is applied to the grid too, rows get fewer, wider columns as they grow. */
+  .list-stack {
+    @apply grid gap-2.5;
+    zoom: clamp(0.65, var(--card-scale, 1), 1.85);
+    grid-template-columns: repeat(auto-fill, minmax(min(360px, 100%), 1fr));
+  }
+  .list-stack > * {
+    @apply min-w-0;
   }
   /* Category picture boxes (Inventory, COTS): never under 135px, else 210px at 100%. */
   .category-grid {
