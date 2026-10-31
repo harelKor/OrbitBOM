@@ -9,7 +9,9 @@ export type Line = { pts: Pt[]; stroke: Stroke };
 // A dimension between a and b, its line drawn at y = at (horizontal) or x = at (vertical).
 export type Dim = { a: Pt; b: Pt; at: number; dir: "h" | "v"; text: string };
 export type NoteKind = "tap" | "fit" | "bore" | "tool" | "size" | "custom";
-export type Note = { id: string; kind: NoteKind; text: string; at: Pt; leader?: Pt };
+// What a fit note fits: a BOM part or an inventory item, shown by name on the note's line.
+export type NoteLink = { partId?: string; itemId?: string; name: string };
+export type Note = { id: string; kind: NoteKind; text: string; at: Pt; leader?: Pt; link?: NoteLink };
 
 // The BOM block, bottom right, filled by the caller from the part's BOM row. The name is the
 // part's number too.

@@ -28,7 +28,8 @@ function arrow(tip: Pt, from: Pt) {
   return `<path d="M${n(tip[0])} ${n(tip[1])}L${n(bx - uy * half)} ${n(by + ux * half)}L${n(bx + uy * half)} ${n(by - ux * half)}Z" fill="${INK.annotation}" stroke="${INK.annotation}" stroke-width="0.15" stroke-linejoin="round"/>`;
 }
 
-function text(at: Pt, value: string, opts: { size?: number; anchor?: string; bold?: boolean; rotate?: boolean } = {}) {
+// `nameLine`: the line given the "fit-name" class (-1: every line), lit on hover in the app.
+function text(at: Pt, value: string, opts: { size?: number; anchor?: string; bold?: boolean; rotate?: boolean; nameLine?: number } = {}) {
   const size = opts.size ?? 3.5;
   const attrs = [
     `font-size="${size}"`,
@@ -38,7 +39,7 @@ function text(at: Pt, value: string, opts: { size?: number; anchor?: string; bol
   ].join(" ");
   return `<text x="${n(at[0])}" y="${n(at[1])}" ${attrs}>${value
     .split("\n")
-    .map((l, i) => `<tspan x="${n(at[0])}" dy="${i ? size * 1.3 : 0}">${esc(l)}</tspan>`)
+    .map((l, i) => `<tspan x="${n(at[0])}" dy="${i ? size * 1.3 : 0}"${opts.nameLine === i || opts.nameLine === -1 ? ' class="fit-name"' : ""}>${esc(l)}</tspan>`)
     .join("")}</text>`;
 }
 
@@ -62,24 +63,43 @@ function dimension(dim: Dim): string {
   return out.join("");
 }
 
-function note(nt: Note): string {
-  if (!nt.leader) return text(nt.at, nt.text, nt.kind === "tool" ? { size: 5, bold: true } : {});
-  // The leader leaves from the text's lower edge (above the view) or upper edge (below it).
-  const { end } = noteBox(nt.text, nt.at, nt.leader);
-  return thin([end!, nt.leader]) + arrow(nt.leader, end!) + text(nt.at, nt.text);
+const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+// In the app, a note linked to a part or inventory item is one clickable group: its name lights
+// up on hover and a click opens that part's or item's window (DrawingEditor, DrawingPreview).
+function note(nt: Note, live: boolean): string {
+  const link = live ? nt.link : undefined;
+  const nameLine = link ? nt.text.split("\n").findIndex((l) => norm(l) === norm(link.name)) : undefined;
+  const opts = { ...(nt.kind === "tool" ? { size: 5, bold: true } : {}), ...(link ? { nameLine } : {}) };
+  let body: string;
+  if (!nt.leader) body = text(nt.at, nt.text, opts);
+  else {
+    // The leader leaves from the text's lower edge (above the view) or upper edge (below it).
+    const { end } = noteBox(nt.text, nt.at, nt.leader);
+    body = thin([end!, nt.leader]) + arrow(nt.leader, end!) + text(nt.at, nt.text, opts);
+  }
+  if (!link) return body;
+  const { rect } = noteBox(nt.text, nt.at);
+  const data = link.partId ? `data-fit-part="${esc(link.partId)}"` : `data-fit-item="${esc(link.itemId ?? "")}"`;
+  return `<g class="fit-link" ${data} data-fit-name="${esc(link.name)}"><title>Open ${esc(link.name)}</title><rect class="fit-hit" x="${n(rect.x0 - 1)}" y="${n(rect.y0 - 1)}" width="${n(rect.x1 - rect.x0 + 2)}" height="${n(rect.y1 - rect.y0 + 2)}" rx="1" fill="transparent"/>${body}</g>`;
 }
 
-export function drawingSvg(d: Drawing): string {
+const LIVE_STYLE =
+  "<style>.fit-link{cursor:pointer}.fit-link:hover .fit-name{fill:#0284c7;text-decoration:underline}.fit-link:hover .fit-hit{fill:rgba(56,189,248,.14)}</style>";
+
+// `live`: drawn in the app, where linked notes are clickable; files (PNG, PDF) leave it off.
+export function drawingSvg(d: Drawing, { live = false }: { live?: boolean } = {}): string {
   const { w, h } = d.sheet;
   const out: string[] = [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${w}mm" height="${h}mm" viewBox="0 0 ${w} ${h}" font-family="Arial, Helvetica, sans-serif">`,
     `<rect width="${w}" height="${h}" fill="#fff"/>`,
     `<rect x="${MARGIN}" y="${MARGIN}" width="${w - 2 * MARGIN}" height="${h - 2 * MARGIN}" fill="none" stroke="#000" stroke-width="0.7"/>`,
   ];
+  if (live) out.push(LIVE_STYLE);
   if (d.image) out.push(`<image href="${esc(d.image.href)}" x="${d.image.x}" y="${d.image.y}" width="${d.image.w}" height="${d.image.h}" preserveAspectRatio="xMidYMid meet"/>`);
   out.push('<g fill="none" stroke-linecap="round" stroke-linejoin="round">');
   for (const l of d.lines) out.push(`<path d="${path(l.pts)}" ${STROKES[l.stroke]}/>`);
-  out.push("</g>", ...d.dims.map(dimension), ...d.notes.map(note), titleBlock(d), "</svg>");
+  out.push("</g>", ...d.dims.map(dimension), ...d.notes.map((nt) => note(nt, live)), titleBlock(d), "</svg>");
   return out.join("");
 }
 

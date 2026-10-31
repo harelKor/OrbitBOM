@@ -6,6 +6,8 @@ import { onshapeClient } from "@/lib/onshape/client";
 import { studioPath } from "@/lib/onshape/parts";
 import { parseOnshapeUrl } from "@/lib/onshape/url";
 import { versionLabel } from "@/lib/versions/label";
+import { thumbKey } from "@/lib/onshape/thumbnails";
+import { imageUrl } from "@/lib/storage/r2";
 import { type BodyDetails, readBodies, type TessellatedEdges } from "./brep";
 import { READER, readPart } from "./read";
 import type { TitleBlock } from "./types";
@@ -98,7 +100,7 @@ export async function loadDrawing(partId: string) {
   // The system's other parts, for "fit for <part>" notes in the editor.
   const [others, version] = await Promise.all([
     db
-      .select({ displayName: schema.parts.displayName, onshapeName: schema.parts.onshapeName })
+      .select({ id: schema.parts.id, displayName: schema.parts.displayName, onshapeName: schema.parts.onshapeName, thumbnailRev: schema.parts.thumbnailRev })
       .from(schema.parts)
       .where(and(eq(schema.parts.systemId, part.systemId!), ne(schema.parts.id, part.id), isNull(schema.parts.removedFromCadAt))),
     partVersion(part.id, part.systemId!, part.versionRowId),
@@ -119,6 +121,14 @@ export async function loadDrawing(partId: string) {
     title,
     outdated: !!part.thumbnailRev && drawing.rev !== part.thumbnailRev,
     others: [...new Set(others.map((o) => o.displayName ?? o.onshapeName).filter((n): n is string => !!n))].sort(),
+    // The same parts with their ids and thumbnails, for the editor's Fit picker.
+    fitParts: async () => {
+      const named = others.filter((o) => o.displayName ?? o.onshapeName);
+      const list = await Promise.all(
+        named.map(async (o) => ({ id: o.id, name: (o.displayName ?? o.onshapeName)!, thumbUrl: o.thumbnailRev ? await imageUrl(thumbKey(o.id, o.thumbnailRev)) : null })),
+      );
+      return list.sort((a, b) => a.name.localeCompare(b.name));
+    },
   };
 }
 

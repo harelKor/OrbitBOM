@@ -122,6 +122,16 @@ export async function listInventory() {
   };
 }
 
+// Every item as the drawing editor's Fit picker shows it: name, category and picture only.
+export async function listFitTargets() {
+  const [items, categories] = await Promise.all([
+    db.select({ id: inventoryItems.id, name: inventoryItems.name, category: inventoryItems.category, imagePath: inventoryItems.imagePath }).from(inventoryItems).orderBy(asc(inventoryItems.name)),
+    listCategories(),
+  ]);
+  const thumbs = await itemThumbs(items, categories);
+  return items.map((i) => ({ id: i.id, name: i.name, category: categoryOf(i, categories), thumbUrl: thumbs.get(i.id) ?? null }));
+}
+
 // Each item's newest COTS card on its way (lib/inventory/season.ts says which count).
 async function openOrders() {
   const rows = await db

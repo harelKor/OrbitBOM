@@ -267,6 +267,25 @@ export function applyEdits(d: Drawing, e: DrawingEdits): Drawing {
       ...(e.moved?.[n.id] ? { at: e.moved[n.id] } : {}),
       ...(e.arrows?.[n.id] ? { leader: e.arrows[n.id] } : {}),
     }));
-  for (const a of e.added ?? []) notes.push({ id: a.id, kind: "custom", text: a.text, at: a.at, ...(a.leader ? { leader: a.leader } : {}) });
+  for (const a of e.added ?? []) {
+    const link = a.fitTargetName && (a.fitPartId || a.fitInventoryItemId) ? { name: a.fitTargetName, ...(a.fitPartId ? { partId: a.fitPartId } : { itemId: a.fitInventoryItemId }) } : undefined;
+    notes.push({ id: a.id, kind: "custom", text: a.text, at: a.at, ...(a.leader ? { leader: a.leader } : {}), ...(link ? { link } : {}) });
+  }
+  return { ...d, notes };
+}
+
+// Fit notes the drawing made itself (bearings) name what they fit; one whose line matches a part
+// or inventory item by name links to it, like a note added with the Fit picker.
+export function linkNotes(d: Drawing, targets: { name: string; partId?: string; itemId?: string }[]): Drawing {
+  if (!targets.length) return d;
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const byName = new Map<string, (typeof targets)[number]>();
+  for (const t of targets) if (!byName.has(norm(t.name))) byName.set(norm(t.name), t);
+  const notes = d.notes.map((nt) => {
+    if (nt.link || nt.kind === "tool") return nt;
+    const line = nt.text.split("\n").find((l) => byName.has(norm(l)));
+    const t = line ? byName.get(norm(line))! : undefined;
+    return t ? { ...nt, link: { name: line!.trim(), ...(t.partId ? { partId: t.partId } : { itemId: t.itemId }) } } : nt;
+  });
   return { ...d, notes };
 }

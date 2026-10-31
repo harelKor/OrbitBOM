@@ -22,7 +22,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ partId: st
   const loaded = await loadDrawing(partId);
   if (!loaded) return NextResponse.json({ error: "This part has no drawing yet." }, { status: 404 });
   const { drawing, title, others, outdated } = loaded;
-  return NextResponse.json({ part: drawing.part, edits: drawing.edits, title, others, outdated });
+  return NextResponse.json({ part: drawing.part, edits: drawing.edits, title, others, fitParts: await loaded.fitParts(), outdated });
 }
 
 const Pt = z.tuple([z.number(), z.number()]);
@@ -31,7 +31,20 @@ const Edits = z.object({
   text: z.record(z.string().max(100), z.string().max(300)).optional(),
   moved: z.record(z.string().max(100), Pt).optional(),
   arrows: z.record(z.string().max(100), Pt).optional(),
-  added: z.array(z.object({ id: z.string().max(100), text: z.string().max(300), at: Pt, leader: Pt.optional() })).max(100).optional(),
+  added: z
+    .array(
+      z.object({
+        id: z.string().max(100),
+        text: z.string().max(300),
+        at: Pt,
+        leader: Pt.optional(),
+        fitPartId: z.string().uuid().optional(),
+        fitInventoryItemId: z.string().uuid().optional(),
+        fitTargetName: z.string().max(200).optional(),
+      }),
+    )
+    .max(100)
+    .optional(),
 });
 
 // Save the member's edits to the drawing's notes (the drawing editor).

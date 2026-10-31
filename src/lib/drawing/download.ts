@@ -11,7 +11,8 @@ import type { TitleBlock } from "./types";
 const DPI = 300;
 const PX_PER_MM = DPI / 25.4;
 
-export type DrawingResponse = { part: Part; edits: DrawingEdits; title: TitleBlock; outdated: boolean; others: string[] };
+export type FitPart = { id: string; name: string; thumbUrl: string | null };
+export type DrawingResponse = { part: Part; edits: DrawingEdits; title: TitleBlock; outdated: boolean; others: string[]; fitParts: FitPart[] };
 
 export async function fetchDrawing(partId: string): Promise<DrawingResponse> {
   const res = await fetch(`/api/parts/${partId}/drawing`);

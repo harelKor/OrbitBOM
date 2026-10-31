@@ -68,7 +68,9 @@ export function PartDetailsProvider({ children }: { children: React.ReactNode })
     <Ctx.Provider value={value}>
       {children}
       {current && (
-        <BomProvider value={current.bom}>
+        // Keyed by part: another part opened from a window above this one (a drawing's fit note)
+        // opens anew, so it shows on top.
+        <BomProvider key={current.part.id} value={current.bom}>
           <PartDetails part={current.part} save={save} onClose={() => setCurrent(null)} />
         </BomProvider>
       )}

@@ -263,7 +263,8 @@ export type DrawingEdits = {
   text?: Record<string, string>;
   moved?: Record<string, [number, number]>; // where a note's text moved to
   arrows?: Record<string, [number, number]>; // where a note's arrow points instead
-  added?: { id: string; text: string; at: [number, number]; leader?: [number, number] }[];
+  // A fit note can name the BOM part or inventory item it fits, so the drawing opens its window.
+  added?: { id: string; text: string; at: [number, number]; leader?: [number, number]; fitPartId?: string; fitInventoryItemId?: string; fitTargetName?: string }[];
 };
 
 export const partDrawings = pgTable("part_drawings", {

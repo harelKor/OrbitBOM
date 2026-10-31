@@ -3,14 +3,15 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { BEARINGS, DEFAULT_FIT, FITS, SCREWS, type Fit } from "@/config/drawings";
+import { DEFAULT_FIT, FITS, SCREWS, type Fit } from "@/config/drawings";
 import type { DrawingEdits } from "@/db/schema";
-import { downloadDrawing, fetchDrawing, type DrawingResponse } from "@/lib/drawing/download";
-import { applyEdits, fmt, noteBox, partDrawing } from "@/lib/drawing/layout";
+import { downloadDrawing, fetchDrawing, type DrawingResponse, type FitPart } from "@/lib/drawing/download";
+import { applyEdits, fmt, linkNotes, noteBox, partDrawing } from "@/lib/drawing/layout";
 import { drawingSvg } from "@/lib/drawing/svg";
 import type { Drawing, Pt } from "@/lib/drawing/types";
 import { Icon } from "@/components/ui/Icon";
 import { ZoomStage } from "./ZoomStage";
+import { FitPicker, linkTargets, useFitItems, useOpenFitLink, type FitTarget } from "./fit";
 
 type Hole = Drawing["holes"][number];
 // Adding a note takes two clicks: where its arrow points, then where its text goes. Moving one
@@ -20,12 +21,12 @@ type Mode = { kind: "idle" } | { kind: "arrow" } | { kind: "text"; leader?: Pt; 
 // text was grabbed, from its anchor.
 type Drag = { id: string; part: "text" | "arrow"; off: Pt; pointer: number; moved: boolean };
 
-type Draft = { kind: "fit" | "screw" | "none"; fit: Fit; to: "bearing" | "part"; bearing: string; part: string | null; screw: string; extra: string };
-const NEW_DRAFT: Draft = { kind: "fit", fit: DEFAULT_FIT, to: "bearing", bearing: BEARINGS[0].name, part: null, screw: "M5", extra: "" };
+type Draft = { kind: "fit" | "screw" | "none"; fit: Fit; target: FitTarget | null; screw: string; extra: string };
+const NEW_DRAFT: Draft = { kind: "fit", fit: DEFAULT_FIT, target: null, screw: "M5", extra: "" };
 
 // The note's words: the fit or the tapped screw, then whatever the member typed.
 function draftText(d: Draft, hole?: Hole) {
-  const target = d.to === "bearing" ? d.bearing : d.part;
+  const target = d.target?.name;
   const head =
     d.kind === "fit" && target ? `${d.fit} fit for\n${target}${hole ? `\nØ${fmt(hole.d)}` : ""}` : d.kind === "screw" ? `${d.screw} tapped` : "";
   return [head, d.extra.trim()].filter(Boolean).join("\n");
@@ -82,9 +83,14 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
       .catch((e: Error) => setError(e.message));
   }, [partId, loads]);
 
+  const items = useFitItems();
+  const openFitLink = useOpenFitLink();
   const base = useMemo(() => (data ? partDrawing(data.part, data.title) : null), [data]);
   const drawing = useMemo(() => (base ? applyEdits(base, edits) : null), [base, edits]);
-  const svg = useMemo(() => (drawing ? drawingSvg(drawing) : ""), [drawing]);
+  // Notes linked to a part or item (picked, or matched by name) open its window when clicked.
+  const targets = useMemo(() => linkTargets(data?.fitParts ?? [], items), [data, items]);
+  const linked = useMemo(() => (drawing ? linkNotes(drawing, targets) : null), [drawing, targets]);
+  const svg = useMemo(() => (linked ? drawingSvg(linked, { live: true }) : ""), [linked]);
 
   const change = (next: DrawingEdits) => {
     setEdits(next);
@@ -113,9 +119,15 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
       swallow.current = false;
       return;
     }
-    if (mode.kind === "idle" && sheetPoint(e) && noteAt(sheetPoint(e)!)) return; // a press on a note
     const at = sheetPoint(e);
     if (!at || !drawing) return;
+    const pressed = mode.kind === "idle" ? noteAt(at) : null;
+    if (pressed) {
+      // A click (not a drag) on a note linked to a part or item opens its window.
+      const link = pressed.part === "text" ? linked?.notes.find((n) => n.id === pressed.id)?.link : undefined;
+      if (link) openFitLink.open(link);
+      return;
+    }
     const hole = holeAt(at);
     if (mode.kind === "idle") {
       // A click on a hole starts a note pointing at it.
@@ -125,7 +137,9 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
     } else if (mode.kind === "text") {
       const text = draftText(draft, mode.hole);
       const leader = mode.hole ? onEdge(mode.hole, at) : mode.leader;
-      change({ ...edits, added: [...added, { id: `note:${Date.now()}`, text, at, ...(leader ? { leader } : {}) }] });
+      const t = draft.kind === "fit" ? draft.target : null;
+      const link = t ? { fitTargetName: t.name, ...(t.kind === "part" ? { fitPartId: t.id } : { fitInventoryItemId: t.id }) } : {};
+      change({ ...edits, added: [...added, { id: `note:${Date.now()}`, text, at, ...(leader ? { leader } : {}), ...link }] });
       setDraft({ ...draft, extra: "" });
       setMode({ kind: "idle" });
     }
@@ -331,7 +345,7 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
         <aside className="w-full shrink-0 space-y-3 overflow-auto rounded-lg border border-white/10 bg-[#0D111A] p-3 text-sm text-white lg:w-80">
           <NoteForm
             draft={draft}
-            others={data?.others ?? []}
+            parts={data?.fitParts ?? []}
             onChange={setDraft}
             onPlace={() => setMode({ kind: "arrow" })}
             disabled={!drawing || !canAdd}
@@ -391,12 +405,10 @@ function NoteRow(props: {
   );
 }
 
-// A new note: a fit (to a stored bearing or another part of the system), a tapped screw, or
-// nothing, plus any words typed after it.
-function NoteForm({ draft, others, onChange, onPlace, disabled }: { draft: Draft; others: string[]; onChange: (d: Draft) => void; onPlace: () => void; disabled: boolean }) {
-  const [search, setSearch] = useState("");
+// A new note: a fit (to a part of the system or an inventory item, picked with thumbnails), a
+// tapped screw, or nothing, plus any words typed after it.
+function NoteForm({ draft, parts, onChange, onPlace, disabled }: { draft: Draft; parts: FitPart[]; onChange: (d: Draft) => void; onPlace: () => void; disabled: boolean }) {
   const set = (patch: Partial<Draft>) => onChange({ ...draft, ...patch });
-  const found = others.filter((o) => o.toLowerCase().includes(search.trim().toLowerCase())).slice(0, 30);
   const tab = (on: boolean) => (on ? "btn-primary py-0.5 text-xs" : "btn py-0.5 text-xs");
   const preview = draftText(draft);
   return (
@@ -422,38 +434,7 @@ function NoteForm({ draft, others, onChange, onPlace, disabled }: { draft: Draft
               <option key={f}>{f}</option>
             ))}
           </select>
-          <div className="flex gap-1.5">
-            <button className={tab(draft.to === "bearing")} onClick={() => set({ to: "bearing" })}>
-              Bearing
-            </button>
-            <button className={tab(draft.to === "part")} onClick={() => set({ to: "part" })}>
-              Part
-            </button>
-          </div>
-          {draft.to === "bearing" ? (
-            <select value={draft.bearing} onChange={(e) => set({ bearing: e.target.value })} className="input w-full text-sm" aria-label="Bearing">
-              {BEARINGS.map((b) => (
-                <option key={b.name} value={b.name}>
-                  {b.name} (Ø{fmt(b.boreMm)})
-                </option>
-              ))}
-            </select>
-          ) : (
-            <div className="space-y-1">
-              <input value={search} onChange={(e) => setSearch(e.target.value)} className="input w-full text-sm" placeholder="Search parts" aria-label="Search parts" />
-              <div className="max-h-40 overflow-auto rounded-md border border-white/10">
-                {found.length ? (
-                  found.map((o) => (
-                    <button key={o} onClick={() => set({ part: o })} className={`block w-full truncate px-2 py-1 text-left text-xs hover:bg-white/10 ${draft.part === o ? "bg-sky-500/30" : ""}`}>
-                      {o}
-                    </button>
-                  ))
-                ) : (
-                  <p className="px-2 py-1 text-xs text-white/50">No parts match.</p>
-                )}
-              </div>
-            </div>
-          )}
+          <FitPicker parts={parts} value={draft.target} onPick={(target) => set({ target })} />
         </>
       )}
       {draft.kind === "screw" && (

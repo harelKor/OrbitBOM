@@ -13,7 +13,7 @@ import { requireMember } from "@/lib/auth";
 import { requireCapability } from "@/lib/mode";
 import { listBomTargets } from "@/lib/data/robots";
 import { listCategories } from "@/lib/data/categories";
-import { inventoryItemWithLists, itemHistory, listInventory, robotInventory, usageOf } from "@/lib/data/inventory";
+import { inventoryItemWithLists, itemHistory, listFitTargets, listInventory, robotInventory, usageOf } from "@/lib/data/inventory";
 import { autoLink } from "@/lib/inventory/autolink";
 import { categoryOf, getCategory, slugify, type InvCategory } from "@/lib/inventory/categories";
 import type { ImportRow } from "@/lib/inventory/import";
@@ -848,4 +848,10 @@ export async function inventoryPicker() {
   await requireMember();
   const { items, categories, locations, conditions } = await listInventory();
   return { items, categories, locations, conditions };
+}
+
+// The drawing editor's Fit picker (and its clickable notes): every item's name and picture.
+export async function fitTargets() {
+  await requireMember();
+  return listFitTargets();
 }

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { expect, it } from "vitest";
 import { type Body, type Face, readBodies, type V3 } from "./brep";
-import { dimRect, maxToolText, noteBox, partDrawing } from "./layout";
+import { applyEdits, dimRect, linkNotes, maxToolText, noteBox, partDrawing } from "./layout";
 import { readPart } from "./read";
 import { drawingSvg } from "./svg";
 import { drawingSummary } from "./summary";
@@ -131,4 +131,21 @@ it("max tool snaps down to the shop's endmills", () => {
   expect(maxToolText(2.5)).toBe("Max tool 5mm (inner corners R2.5)");
   expect(maxToolText(10)).toBe("Max tool 6mm (inner corners R10)");
   expect(maxToolText(1.2)).toBe("Max tool Ø2.4 (inner corners R1.2)");
+});
+
+it("links a bearing fit note to its inventory item by name, clickable only in the app", () => {
+  const d = linkNotes(partDrawing(part("plate")!, { name: "Plate" }), [{ name: "1/2in hex bearing", itemId: "item-1" }]);
+  expect(d.notes.find((n) => n.kind === "fit")?.link).toEqual({ name: "1/2IN HEX Bearing", itemId: "item-1" });
+  expect(d.notes.find((n) => n.kind === "tap")?.link).toBeUndefined();
+  const live = drawingSvg(d, { live: true });
+  expect(live).toContain('data-fit-item="item-1"');
+  expect(live).toContain('class="fit-name">1/2IN HEX Bearing</tspan>');
+  expect(drawingSvg(d)).not.toContain("fit-link");
+});
+
+it("links a note added with the Fit picker to its part", () => {
+  const base = partDrawing(part("plate")!, { name: "Plate" });
+  const d = applyEdits(base, { added: [{ id: "note:1", text: "slip fit for\nShaft A", at: [50, 50], fitPartId: "p-1", fitTargetName: "Shaft A" }] });
+  expect(d.notes.at(-1)?.link).toEqual({ name: "Shaft A", partId: "p-1" });
+  expect(drawingSvg(d, { live: true })).toContain('data-fit-part="p-1"');
 });
