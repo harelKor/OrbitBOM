@@ -35,9 +35,9 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   return (
     <div className="-m-4 flex md:-m-6 md:h-[calc(100dvh-var(--topbar-h,3.5rem))] md:overflow-hidden lg:-ml-11 xl:-mr-11 p-4 sm:p-6 lg:px-12 lg:py-8 xl:px-16">
       <h1 className="sr-only">OrbitParts</h1>
-      <div className="mx-auto flex w-full max-w-7xl flex-col self-center md:h-full md:max-h-[51.5rem]">
+      <div className="mx-auto flex w-full max-w-7xl flex-col self-center md:h-full md:max-h-[52.5rem]">
         {/* The team motto: one quiet line on desktop only, so it never pushes the cards down on phones. */}
-        <p className="mb-2 hidden select-none text-center text-xs font-medium tracking-wide text-faint md:block lg:text-sm">
+        <p className="mb-3 hidden select-none text-center text-base font-semibold tracking-wide text-muted md:block lg:text-lg">
           Robots change · Spirit remains
         </p>
         <div className="grid w-full grid-cols-1 gap-4 sm:gap-6 md:min-h-0 md:flex-1 md:grid-cols-3">
