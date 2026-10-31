@@ -26,7 +26,7 @@ export type FlatGeom = {
 
 export type FlatPart = FlatGeom & { partId: string; name: string; quantity: number };
 
-export type Rotation = 0 | 90 | 180 | 270;
+export type Rotation = number; // degrees about Z
 export type Placement = { partId: string; copy: number; x: number; y: number; rotation: Rotation };
 
 export type NestOptions = { sheetW: number; sheetH?: number; gap?: number; margin?: number };
@@ -275,28 +275,44 @@ function minAreaRect(hull: Pt[]): { angle: number; w: number; h: number } {
 
 // ---------- placing copies ----------
 
-const turned = (r: Rotation) => r === 90 || r === 270;
+// Turns are in degrees about Z, any angle (the nester uses 0 and 90; ←/→ in the window step 5°).
+const trig = (deg: number): [number, number] => {
+  const t = (deg * Math.PI) / 180;
+  const snap = (n: number) => (Math.abs(n - Math.round(n)) < 1e-12 ? Math.round(n) : n);
+  return [snap(Math.cos(t)), snap(Math.sin(t))];
+};
+const turn = ([x, y]: Pt, deg: number): Pt => {
+  const [c, s] = trig(deg);
+  return [x * c - y * s, x * s + y * c];
+};
 
-// A copy's footprint on the sheet.
-export const footprint = (part: { w: number; h: number }, r: Rotation): Pt => (turned(r) ? [part.h, part.w] : [part.w, part.h]);
+// The turned bounding box's corners relative to the flat-frame origin.
+function turnedBox(part: { w: number; h: number }, r: Rotation): { min: Pt; max: Pt } {
+  const pts = ([[0, 0], [part.w, 0], [part.w, part.h], [0, part.h]] as Pt[]).map((p) => turn(p, r));
+  const xs = pts.map((p) => p[0]);
+  const ys = pts.map((p) => p[1]);
+  return { min: [Math.min(...xs), Math.min(...ys)], max: [Math.max(...xs), Math.max(...ys)] };
+}
+
+// A copy's footprint on the sheet: its turned bounding box.
+export function footprint(part: { w: number; h: number }, r: Rotation): Pt {
+  const { min, max } = turnedBox(part, r);
+  return [max[0] - min[0], max[1] - min[1]];
+}
 
 // Where the flat-frame origin goes so the turned bounding box starts at `corner`, and back.
 export function originFromCorner(part: { w: number; h: number }, r: Rotation, corner: Pt): Pt {
-  const [cx, cy] = corner;
-  if (r === 90) return [cx + part.h, cy];
-  if (r === 180) return [cx + part.w, cy + part.h];
-  if (r === 270) return [cx, cy + part.w];
-  return [cx, cy];
+  const { min } = turnedBox(part, r);
+  return [corner[0] - min[0], corner[1] - min[1]];
 }
 export function cornerOf(part: { w: number; h: number }, p: { x: number; y: number; rotation: Rotation }): Pt {
-  const [ox, oy] = originFromCorner(part, p.rotation, [0, 0]);
-  return [p.x - ox, p.y - oy];
+  const { min } = turnedBox(part, p.rotation);
+  return [p.x + min[0], p.y + min[1]];
 }
 
 // A flat-frame point on the sheet.
 export function placePoint(pt: Pt, p: { x: number; y: number; rotation: Rotation }): Pt {
-  const [x, y] = pt;
-  const [rx, ry] = p.rotation === 90 ? [-y, x] : p.rotation === 180 ? [-x, -y] : p.rotation === 270 ? [y, -x] : [x, y];
+  const [rx, ry] = turn(pt, p.rotation);
   return [rx + p.x, ry + p.y];
 }
 
@@ -308,8 +324,7 @@ const mul = (a: Mat4, b: Mat4): Mat4 => {
 
 // T(x, y, 0) · Rz(rotation) · flatten: the copy's pose from its Part Studio, mm, row-major.
 export function placementMatrix(part: { flatten: Mat4 }, p: { x: number; y: number; rotation: Rotation }): Mat4 {
-  const t = (p.rotation * Math.PI) / 180;
-  const [c, s] = [Math.round(Math.cos(t)), Math.round(Math.sin(t))];
+  const [c, s] = trig(p.rotation);
   const placed: Mat4 = [c, -s, 0, p.x, s, c, 0, p.y, 0, 0, 1, 0, 0, 0, 0, 1];
   return mul(placed, part.flatten);
 }

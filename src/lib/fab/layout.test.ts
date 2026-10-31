@@ -104,6 +104,22 @@ describe("nesting", () => {
     }
   });
 
+  it("places a copy turned by any angle on its box", () => {
+    const pt = part("a", 200, 100, 1);
+    for (const rotation of [5, -37, 123.5]) {
+      const pl = { x: 300, y: -40, rotation };
+      const [cx, cy] = cornerOf(pt, pl);
+      const [fw, fh] = footprint(pt, rotation);
+      const m = placementMatrix(pt, pl);
+      const corners = [[0, 0, 0], [200, 0, 0], [200, 100, 0], [0, 100, 0]].map((p) => apply(m, p as V));
+      expect(Math.min(...corners.map((c) => c[0]))).toBeCloseTo(cx);
+      expect(Math.min(...corners.map((c) => c[1]))).toBeCloseTo(cy);
+      expect(Math.max(...corners.map((c) => c[0]))).toBeCloseTo(cx + fw);
+      expect(Math.max(...corners.map((c) => c[1]))).toBeCloseTo(cy + fh);
+      expect(det3(m)).toBeCloseTo(1, 6);
+    }
+  });
+
   it("recommends the smallest stock piece that fits", () => {
     const pieces = [
       { size: "f12", label: "500×900", share: "Full", x: 500, y: 900, count: 1 },

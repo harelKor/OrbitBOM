@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getMachine } from "@/config/machines";
@@ -110,6 +110,29 @@ export async function updateGroup(groupId: string, details: unknown): Promise<Ac
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   await db.update(partGroups).set(parsed.data).where(eq(partGroups.id, groupId));
   refresh();
+  return {};
+}
+
+const layoutState = z.object({
+  gap: z.number().min(0).max(200),
+  margin: z.number().min(0).max(200),
+  sheetKey: z.string().max(40),
+  placements: z
+    .array(z.object({ partId: z.uuid(), copy: z.number().int().min(0).max(10_000), x: z.number().finite(), y: z.number().finite(), rotation: z.number().finite() }))
+    .max(5000),
+});
+
+// The Auto Layout window's state, kept so reopening it shows the same layout. Merged into
+// layout_data, so the batch's Onshape assembly (its `onshape` key) stays.
+export async function saveBatchLayout(groupId: string, state: unknown): Promise<ActionResult> {
+  await requireCapability("work");
+  if (!isUuid(groupId)) return { error: "Unknown batch." };
+  const parsed = layoutState.safeParse(state);
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  await db
+    .update(partGroups)
+    .set({ layoutData: sql`coalesce(${partGroups.layoutData}, '{}'::jsonb) || ${JSON.stringify(parsed.data)}::jsonb` })
+    .where(eq(partGroups.id, groupId));
   return {};
 }
 

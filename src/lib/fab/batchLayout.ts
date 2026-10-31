@@ -2,6 +2,7 @@ import "server-only";
 import { gunzipSync } from "node:zlib";
 import { eq, inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
+import type { LayoutData } from "@/db/schema";
 import { partKey } from "@/lib/model/assembly";
 import { builtStudios } from "@/lib/model/build";
 import { decodeMeshes, type Mesh } from "@/lib/model/mesh";
@@ -23,6 +24,7 @@ export type BatchLayout = {
   stock: BatchStock;
   advice: PlateAdvice;
   layout: Nest;
+  saved: LayoutData | null; // the window's last state and the batch's Onshape assembly
 };
 
 // Flat frames by mesh file and part id; a mesh file never changes once written.
@@ -140,9 +142,9 @@ export async function batchStock(groupId: string): Promise<{ material: string | 
 
 // The batch laid out on the smallest stock piece that takes it all (or a default sheet).
 export async function batchLayout(groupId: string, gap = DEFAULT_GAP, margin = DEFAULT_MARGIN): Promise<BatchLayout | null> {
-  const [group] = await db.select({ id: partGroups.id, name: partGroups.name }).from(partGroups).where(eq(partGroups.id, groupId));
+  const [group] = await db.select({ id: partGroups.id, name: partGroups.name, saved: partGroups.layoutData }).from(partGroups).where(eq(partGroups.id, groupId));
   if (!group) return null;
   const [{ parts: flat, missing }, { material, stock }] = await Promise.all([batchFlatParts(groupId), batchStock(groupId)]);
   const { advice, nest } = advisePlate(flat, stock?.pieces ?? [], gap, margin);
-  return { groupId, name: group.name, material, parts: flat, missing, stock, advice, layout: nest };
+  return { groupId, name: group.name, material, parts: flat, missing, stock, advice, layout: nest, saved: group.saved ?? null };
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { saveBatchLayout } from "@/app/(app)/groups/actions";
 import { Dialog } from "@/components/Dialog";
 import type { BatchLayout } from "@/lib/fab/batchLayout";
 import {
@@ -11,7 +12,6 @@ import {
   footprint,
   layoutBox,
   nestParts,
-  originFromCorner,
   placePoint,
   type FlatPart,
   type Placement,
@@ -25,19 +25,41 @@ type Sheet = { kind: "auto" } | { kind: "piece"; size: string } | { kind: "custo
 
 const mm = (n: number) => `${Math.round(n)}`;
 const keyOf = (p: { partId: string; copy: number }) => `${p.partId}#${p.copy}`;
-// Part colours on the sheet: Orbit blue, then calmer tints so copies of one part read as a set.
-const TINTS = ["#38BDF8", "#F59E0B", "#34D399", "#A78BFA", "#F472B6", "#60A5FA", "#FBBF24", "#2DD4BF"];
+// Every part in one CAD grey (Harel, 2026-10-31); the selected copy gets a bright outline.
+const GREY = { stroke: "#94a3b8", fill: "rgba(148,163,184,0.18)", on: "#60a5fa", onFill: "rgba(96,165,250,0.22)", clash: "#F43F5E" };
+
+const sheetKeyOf = (s: Sheet) => (s.kind === "piece" ? s.size : s.kind === "custom" ? `custom:${Math.round(s.w)}` : "auto");
+function sheetFrom(key: string | undefined): Sheet {
+  if (!key || key === "auto") return { kind: "auto" };
+  if (key.startsWith("custom:")) return { kind: "custom", w: Math.max(50, Number(key.slice(7)) || 600) };
+  return { kind: "piece", size: key };
+}
+// Turns kept between -180 and 180, rounded to a tenth of a degree.
+const normDeg = (d: number) => Math.round((((d % 360) + 540) % 360 - 180) * 10) / 10;
 
 // Auto Layout (Harel, 2026-10-31): the batch's parts laid flat, pockets up, nested on the
-// smallest plate on the shelf that takes them. Drag a copy to move it; R or double-click turns it.
-// The layout is worked out from the 3D shapes already saved (no Onshape calls).
+// smallest plate on the shelf that takes them. Drag a copy to move it; ←/→ turn it 5° (Shift 1°),
+// R or double-click 90°. The layout is worked out from the 3D shapes already saved (no Onshape
+// calls), and every change is saved on the batch, so reopening shows the same layout.
 export function BatchLayoutDialog({ groupId, name, open, onClose }: { groupId: string; name: string; open: boolean; onClose: () => void }) {
   const [data, setData] = useState<BatchLayout | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [gap, setGap] = useState(DEFAULT_GAP);
-  const [margin, setMargin] = useState(DEFAULT_MARGIN);
-  const [sheet, setSheet] = useState<Sheet>({ kind: "auto" });
+  const [gap, setGapRaw] = useState(DEFAULT_GAP);
+  const [margin, setMarginRaw] = useState(DEFAULT_MARGIN);
+  const [sheet, setSheetRaw] = useState<Sheet>({ kind: "auto" });
   const [selected, setSelected] = useState<string | null>(null);
+  // Copies moved or turned by hand (or restored from the last visit), until the next re-nest.
+  const [edited, setEdited] = useState<Placement[] | null>(null);
+  // While Onshape Layout runs, the layout stays as it is.
+  const [busy, setBusy] = useState(false);
+  const [onshapeUrl, setOnshapeUrl] = useState<string | null>(null);
+  // Set by the member's own changes; only then is the layout saved.
+  const dirty = useRef(false);
+  const touch = () => (dirty.current = true);
+  // A new gap, margin or sheet nests afresh.
+  const setGap = (n: number) => (touch(), setEdited(null), setGapRaw(n));
+  const setMargin = (n: number) => (touch(), setEdited(null), setMarginRaw(n));
+  const setSheet = (s: Sheet) => (touch(), setEdited(null), setSheetRaw(s));
 
   useEffect(() => {
     if (!open || data) return;
@@ -47,7 +69,19 @@ export function BatchLayoutDialog({ groupId, name, open, onClose }: { groupId: s
         const body = await res.json().catch(() => ({ error: "The layout didn't load." }));
         if (!live) return;
         if (!res.ok) setError(body.error ?? "The layout didn't load.");
-        else setData(body);
+        else {
+          const loaded = body as BatchLayout;
+          setData(loaded);
+          const saved = loaded.saved;
+          setOnshapeUrl(saved?.onshape?.url ?? null);
+          if (saved?.gap != null) setGapRaw(saved.gap);
+          if (saved?.margin != null) setMarginRaw(saved.margin);
+          if (saved?.sheetKey) setSheetRaw(sheetFrom(saved.sheetKey));
+          // The saved positions, when they still cover exactly the batch's copies.
+          const want = new Set(loaded.parts.flatMap((p) => Array.from({ length: p.quantity }, (_, copy) => keyOf({ partId: p.partId, copy }))));
+          const list = saved?.placements ?? [];
+          if (list.length === want.size && list.every((p) => want.has(keyOf(p)))) setEdited(list);
+        }
       })
       .catch(() => live && setError("The layout didn't load."));
     return () => {
@@ -78,12 +112,35 @@ export function BatchLayoutDialog({ groupId, name, open, onClose }: { groupId: s
     return { advice: advised.advice, nest: nestParts(parts, { sheetW: w, gap, margin }), sheetW: w, sheetH: 0 };
   }, [data, parts, pieces, gap, margin, sheet]);
 
-  // Copies moved or turned by hand, until the next re-nest.
-  const [edited, setEdited] = useState<{ from: unknown; list: Placement[] } | null>(null);
   const nest = nested?.nest;
-  const placements = useMemo(() => (edited && edited.from === nest ? edited.list : (nest?.placements ?? [])), [edited, nest]);
-  const setPlacements = (change: (all: Placement[]) => Placement[]) =>
-    setEdited((prev) => ({ from: nest, list: change(prev && prev.from === nest ? prev.list : (nest?.placements ?? [])) }));
+  const placements = useMemo(() => edited ?? nest?.placements ?? [], [edited, nest]);
+  const setPlacements = (change: (all: Placement[]) => Placement[]) => {
+    if (busy) return;
+    touch();
+    setEdited((prev) => change(prev ?? nest?.placements ?? []));
+  };
+
+  // Saved a moment after the last change (and at once before Onshape Layout runs).
+  const sheetKey = sheetKeyOf(sheet);
+  const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const save = () => {
+    if (pending.current) clearTimeout(pending.current);
+    pending.current = null;
+    if (!dirty.current || !data) return Promise.resolve();
+    dirty.current = false;
+    return saveBatchLayout(groupId, { gap, margin, sheetKey, placements }).then(() => undefined);
+  };
+  const saveRef = useRef(save);
+  useEffect(() => {
+    saveRef.current = save;
+  });
+  useEffect(() => {
+    if (!dirty.current) return;
+    if (pending.current) clearTimeout(pending.current);
+    pending.current = setTimeout(() => void saveRef.current(), 700);
+  }, [placements, gap, margin, sheetKey]);
+  // Closing the window saves what's waiting.
+  useEffect(() => () => void saveRef.current(), []);
 
   const advice = nested?.advice;
   const box = layoutBox(parts, placements);
@@ -116,27 +173,31 @@ export function BatchLayoutDialog({ groupId, name, open, onClose }: { groupId: s
     return bad;
   }, [placements, byId, sheetW, sheetH, gap, nested?.sheetH]);
 
-  const rotate = (k: string) =>
+  // Turns a copy about its own centre, so it stays where it was.
+  const rotate = (k: string, by = 90) =>
     setPlacements((all) =>
       all.map((p) => {
         if (keyOf(p) !== k) return p;
         const part = byId.get(p.partId)!;
-        // Turn about the copy's box centre, so it stays where it was.
-        const [cx, cy] = cornerOf(part, p);
-        const [w, h] = footprint(part, p.rotation);
-        const rotation = ((p.rotation + 90) % 360) as Rotation;
-        const [nw, nh] = footprint(part, rotation);
-        const [x, y] = originFromCorner(part, rotation, [cx + (w - nw) / 2, cy + (h - nh) / 2]);
-        return { ...p, x, y, rotation };
+        const mid: Pt = [part.w / 2, part.h / 2];
+        const [cx, cy] = placePoint(mid, p);
+        const rotation: Rotation = normDeg(p.rotation + by);
+        const [mx, my] = placePoint(mid, { x: 0, y: 0, rotation });
+        return { ...p, x: cx - mx, y: cy - my, rotation };
       }),
     );
 
   useEffect(() => {
-    if (!open || !selected) return;
+    if (!open || !selected || busy) return;
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (t && ["INPUT", "SELECT", "TEXTAREA"].includes(t.tagName)) return;
       if (e.key === "r" || e.key === "R") rotate(selected);
+      else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        e.preventDefault();
+        const step = e.shiftKey ? 1 : 5;
+        rotate(selected, e.key === "ArrowLeft" ? -step : step);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -152,7 +213,25 @@ export function BatchLayoutDialog({ groupId, name, open, onClose }: { groupId: s
       width="w-[min(64rem,calc(100vw-2rem))]"
       sheet
       title={<span>Auto Layout · {name}</span>}
-      actions={data && <OnshapeLayoutButton groupId={groupId} placements={placements} />}
+      actions={
+        data && (
+          <OnshapeLayoutButton
+            groupId={groupId}
+            placements={placements}
+            url={onshapeUrl}
+            // The window's own props (the button's newer version takes them).
+            {...({
+              where: "dialog",
+              onBusy: (on: boolean) => {
+                if (on) void save();
+                setBusy(on);
+                if (on) setSelected(null);
+              },
+              onDone: (url: string) => setOnshapeUrl(url),
+            } as object)}
+          />
+        )
+      }
     >
       {error ? (
         <p className="text-sm text-rose-600">{error}</p>
@@ -160,7 +239,7 @@ export function BatchLayoutDialog({ groupId, name, open, onClose }: { groupId: s
         <p className="text-sm text-muted">Laying the parts flat…</p>
       ) : (
         <div className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-end gap-3 text-xs">
+          <fieldset disabled={busy} className="flex flex-wrap items-end gap-3 text-xs disabled:opacity-60">
             <label className="flex flex-col gap-1">
               <span className="text-muted">Gap</span>
               <span className="flex items-center gap-1">
@@ -210,7 +289,7 @@ export function BatchLayoutDialog({ groupId, name, open, onClose }: { groupId: s
                 </span>
               </label>
             )}
-            <button className="press rounded-md border border-line-strong px-2.5 py-1 font-semibold text-fg-2 hover:border-sky-400/60 hover:text-sky-500 active:scale-[0.98]" onClick={() => setEdited(null)}>
+            <button className="press rounded-md border border-line-strong px-2.5 py-1 font-semibold text-fg-2 hover:border-sky-400/60 hover:text-sky-500 active:scale-[0.98]" onClick={() => (touch(), setEdited(null))}>
               Re-nest
             </button>
             <div className="ml-auto text-right">
@@ -219,7 +298,7 @@ export function BatchLayoutDialog({ groupId, name, open, onClose }: { groupId: s
                 {mm(boxW)}mm × {mm(boxH)}mm
               </div>
             </div>
-          </div>
+          </fieldset>
 
           <Advisor data={data} advice={advice!} />
 
@@ -235,7 +314,7 @@ export function BatchLayoutDialog({ groupId, name, open, onClose }: { groupId: s
               sheetW={sheetW}
               sheetH={sheetH}
               pieceLabel={shownPiece ? `${shownPiece.label}${shownPiece.share ? ` (${shownPiece.share})` : ""}` : null}
-              tint={(id) => TINTS[parts.findIndex((p) => p.partId === id) % TINTS.length]}
+              locked={busy}
             />
           ) : (
             <p className="rounded-lg border border-dashed border-line-strong p-6 text-center text-sm text-muted">No part in this batch has a saved 3D shape yet.</p>
@@ -247,15 +326,18 @@ export function BatchLayoutDialog({ groupId, name, open, onClose }: { groupId: s
             </span>
             {nested.nest.unplaced.length > 0 && <span className="text-amber-500">{nested.nest.unplaced.length} don&apos;t fit on this sheet</span>}
             {clashes.size > 0 && <span className="text-rose-500">{clashes.size} too close or off the sheet</span>}
-            <span>Drag to move · R or double-click turns 90°</span>
-            {selected && (
-              <button className="press rounded-md border border-line-strong px-2 py-0.5 font-semibold text-fg-2 hover:border-sky-400/60 active:scale-[0.98]" onClick={() => rotate(selected)}>
-                Turn 90°
-              </button>
+            <span>Drag to move · ←/→ rotates 5° (Shift 1°) · R or double-click turns 90°</span>
+            {selected && !busy && (
+              <span className="flex items-center gap-1">
+                <span className="font-mono tabular-nums text-fg">{placements.find((p) => keyOf(p) === selected)?.rotation ?? 0}°</span>
+                <button className="press rounded-md border border-line-strong px-2 py-0.5 font-semibold text-fg-2 hover:border-sky-400/60 active:scale-[0.98]" onClick={() => rotate(selected)}>
+                  Turn 90°
+                </button>
+              </span>
             )}
           </div>
 
-          <PartList parts={parts} tint={(id) => TINTS[parts.findIndex((p) => p.partId === id) % TINTS.length]} />
+          <PartList parts={parts} />
           {data.missing.length > 0 && (
             <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs">
               <div className="mb-1 font-semibold text-amber-600 dark:text-amber-400">Not in the layout</div>
@@ -328,12 +410,12 @@ function Advisor({ data, advice }: { data: BatchLayout; advice: ReturnType<typeo
   );
 }
 
-function PartList({ parts, tint }: { parts: FlatPart[]; tint: (id: string) => string }) {
+function PartList({ parts }: { parts: FlatPart[] }) {
   return (
     <div className="flex flex-wrap gap-1.5 text-xs">
       {parts.map((p) => (
         <span key={p.partId} className="flex items-center gap-1.5 rounded-full border border-line bg-surface px-2 py-0.5" title={p.plate ? undefined : "Not a flat plate: laid on its biggest face"}>
-          <span className="h-2 w-2 rounded-full" style={{ background: tint(p.partId) }} />
+          <span className="h-2 w-2 rounded-full bg-slate-400" />
           <span className="max-w-[12rem] truncate font-medium">{p.name}</span>
           <span className="font-mono tabular-nums text-muted">×{p.quantity}</span>
           <span className="font-mono tabular-nums text-subtle">
@@ -357,7 +439,7 @@ function SheetPreview({
   sheetW,
   sheetH,
   pieceLabel,
-  tint,
+  locked,
 }: {
   parts: Map<string, FlatPart>;
   placements: Placement[];
@@ -369,7 +451,7 @@ function SheetPreview({
   sheetW: number;
   sheetH: number;
   pieceLabel: string | null;
-  tint: (id: string) => string;
+  locked: boolean;
 }) {
   const svg = useRef<SVGSVGElement>(null);
   const drag = useRef<{ k: string; start: Pt; from: Pt } | null>(null);
@@ -391,7 +473,15 @@ function SheetPreview({
       .join(" ") + " Z";
 
   return (
-    <div className="overflow-hidden rounded-xl border border-white/10 bg-[#07090E] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]">
+    <div className="relative overflow-hidden rounded-xl border border-white/10 bg-[#07090E] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]">
+      {locked && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#07090E]/60 backdrop-blur-[1px]">
+          <span className="flex items-center gap-2 rounded-full border border-sky-400/40 bg-[#0D111A] px-4 py-2 text-sm font-semibold text-sky-300 shadow-[0_0_20px_rgba(56,189,248,0.25)]">
+            <span className="h-3 w-3 animate-spin rounded-full border-2 border-sky-400 border-t-transparent" />
+            Creating Onshape Layout…
+          </span>
+        </div>
+      )}
       <svg
         ref={svg}
         viewBox={`${-pad} ${-pad} ${sheetW + 2 * pad} ${sheetH + 2 * pad}`}
@@ -425,8 +515,10 @@ function SheetPreview({
           const part = parts.get(pl.partId);
           if (!part) return null;
           const k = keyOf(pl);
-          const color = clashes.has(k) ? "#F43F5E" : tint(pl.partId);
           const on = selected === k;
+          const clash = clashes.has(k);
+          const stroke = clash ? GREY.clash : on ? GREY.on : GREY.stroke;
+          const fill = clash ? "rgba(244,63,94,0.18)" : on ? GREY.onFill : GREY.fill;
           const [cx, cy] = cornerOf(part, pl);
           const [fw, fh] = footprint(part, pl.rotation);
           const [lx, ly] = toSvg([cx + fw / 2, cy + fh / 2]);
@@ -443,7 +535,7 @@ function SheetPreview({
               onDoubleClick={() => rotate(k)}
             >
               <title>{`${part.name} (${pl.copy + 1}/${part.quantity})`}</title>
-              <path d={[part.outline, ...part.holes].map((l) => path(l, pl)).join(" ")} fillRule="evenodd" fill={color} fillOpacity={on ? 0.45 : 0.25} stroke={color} strokeWidth={on ? 2 : 1} vectorEffect="non-scaling-stroke" />
+              <path d={[part.outline, ...part.holes].map((l) => path(l, pl)).join(" ")} fillRule="evenodd" fill={fill} stroke={stroke} strokeWidth={on ? 2 : 1} vectorEffect="non-scaling-stroke" />
               {Math.min(fw, fh) > 30 && (
                 <text x={lx} y={ly} textAnchor="middle" dominantBaseline="middle" fill="#E2E8F0" fontSize={Math.min(14, Math.min(fw, fh) / 4) + Math.max(0, sheetW / 120)} fontFamily="ui-monospace, monospace" pointerEvents="none">
                   {part.quantity > 1 ? `${pl.copy + 1}` : ""}
