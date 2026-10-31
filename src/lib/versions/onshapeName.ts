@@ -4,7 +4,7 @@ import { db, schema } from "@/db";
 import type { VersionRef } from "@/db/schema";
 import { onshapeClient, OnshapeError } from "@/lib/onshape/client";
 import { parseOnshapeUrl } from "@/lib/onshape/url";
-import { versionLabel } from "./label";
+import { primaryVersion, versionLabel } from "./label";
 
 const { onshapeCache, systems, systemVersions } = schema;
 
@@ -29,21 +29,22 @@ export async function syncOnshapeVersionName(
     .where(eq(systemVersions.id, versionId));
   if (!row || row.v.systemId !== systemId) return {};
   const ref = row.v.onshapeRef;
-  const sources = Object.entries(ref?.sources ?? {});
-  if (sources.map(([, s]) => s.name).join(", ") === typed) return {};
-  if (sources.length > 1) return { note: "It comes from more than one Onshape version, so Onshape's names were left as they are." };
+  const main = primaryVersion(ref);
+  if (main?.[1].name === typed) return {};
   const asm = row.assemblyUrl ? parseOnshapeUrl(row.assemblyUrl) : null;
   if (!asm || !ref) return {};
-  if (!sources.length && asm.wvm !== "w") return {};
+  if (!main && asm.wvm !== "w") return {};
   if (!member.onshapeConnected) return { note: "Connect Onshape on your profile to name the version in Onshape too." };
 
   const client = onshapeClient(member.id, asm.baseUrl);
   try {
     let next: NonNullable<VersionRef["sources"]>;
-    if (sources.length) {
-      const [did, { versionId: vid }] = sources[0];
-      await client.json(`documents/d/${did}/versions/${vid}`, { method: "POST", body: JSON.stringify({ name: typed }) });
-      next = { [did]: { versionId: vid, name: typed } };
+    if (main) {
+      // Only the main document's version is renamed; the COTS and library ones keep their names.
+      const [did, v] = main;
+      await client.json(`documents/d/${did}/versions/${v.versionId}`, { method: "POST", body: JSON.stringify({ name: typed }) });
+      next = { ...ref.sources, [did]: { ...v, name: typed } };
+      const vid = v.versionId;
       await rememberName(vid, typed);
     } else {
       // A workspace: Onshape gets a version of the Manufacture document as it was when checked.
@@ -51,7 +52,7 @@ export async function syncOnshapeVersionName(
         method: "POST",
         body: JSON.stringify({ documentId: asm.did, workspaceId: asm.wvmid, name: typed, ...(ref.mv && ref.did === asm.did ? { microversionId: ref.mv } : {}) }),
       });
-      next = { [asm.did]: { versionId: made.id, name: made.name ?? typed } };
+      next = { ...ref.sources, [asm.did]: { versionId: made.id, name: made.name ?? typed, parts: 0, main: true } };
       await rememberName(made.id, made.name ?? typed);
     }
     const onshapeRef = { ...ref, sources: next };
@@ -59,7 +60,7 @@ export async function syncOnshapeVersionName(
     return { label: versionLabel({ seq: row.v.seq, onshapeRef }) };
   } catch (err) {
     if (!(err instanceof OnshapeError)) throw err;
-    return { note: `Saved here; Onshape wasn't ${sources.length ? "renamed" : "given the version"}: ${err.message}` };
+    return { note: `Saved here; Onshape wasn't ${main ? "renamed" : "given the version"}: ${err.message}` };
   }
 }
 

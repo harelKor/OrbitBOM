@@ -414,6 +414,13 @@
       "when": 1793392785302,
       "tag": "0058_fab_version_lock",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1793442680066,
+      "tag": "0059_single_version_label",
+      "breakpoints": true
     }
   ]
 }

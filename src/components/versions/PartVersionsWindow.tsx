@@ -30,9 +30,9 @@ export function FabVersionBadge({ lock }: { lock: FabLock }) {
       title={`To Fab shows the part as it was released${lock.label ? ` at ${lock.label}` : ""}, ${new Date(lock.at).toLocaleDateString()}.`}
     >
       <Icon name="lock" className="h-3 w-3" />
-      <span className="font-mono tabular-nums">Fab: {label}</span>
+      <span className="max-w-[8rem] truncate font-mono tabular-nums">Fab: {label}</span>
       {lock.name && lock.name !== lock.label && <span className="max-w-[10rem] truncate">· {lock.name}</span>}
-      {lock.bomLabel && <span className="font-mono tabular-nums">(BOM: {lock.bomLabel})</span>}
+      {lock.bomLabel && <span className="max-w-[8rem] truncate font-mono tabular-nums">(BOM: {lock.bomLabel})</span>}
     </span>
   );
 }
@@ -101,7 +101,7 @@ export function PartVersionsButton({ partId, lock, released }: { partId: string;
                     className={`panel overflow-hidden ${tagged ? (reproduction ? "border-red-500/60 bg-red-500/5" : "border-amber-500/60 bg-amber-500/5") : v.current ? "border-accent/50" : ""}`}
                   >
                     <div className="flex flex-wrap items-center gap-2 px-3 py-2">
-                      <span className="rounded-md bg-accent/10 px-2 py-0.5 font-mono text-sm font-bold text-accent tabular-nums">{v.label}</span>
+                      <span className="max-w-[10rem] truncate rounded-md bg-accent/10 px-2 py-0.5 font-mono text-sm font-bold text-accent tabular-nums">{v.label}</span>
                       <span className="min-w-0 truncate text-sm font-semibold">{v.name && v.name !== v.label ? v.name : ""}</span>
                       {v.released.map((s) => (
                         <span key={s} className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${RELEASE_TAG[s] ?? RELEASE_TAG.Released}`}>

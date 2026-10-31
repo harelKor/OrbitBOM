@@ -509,7 +509,9 @@ export type VersionChange = {
 
 // The Onshape state a version comes from: the Manufacture document's microversion and, per
 // document inserted by version, that version ("V70"); `from` is what the parts used before.
-type DocVersions = Record<string, { versionId: string; name: string }>;
+// `parts`: how many of the BOM's parts come from that document; `main`: the document most of
+// them come from, which names the version (label.ts). Versions read before these were kept lack both.
+type DocVersions = Record<string, { versionId: string; name: string; parts?: number; main?: boolean }>;
 export type VersionRef = { mv: string | null; did: string; sources?: DocVersions; from?: DocVersions };
 
 export const systemVersions = pgTable(

@@ -30,11 +30,11 @@ export function VersionTag({ partId, tags, manual = false }: { partId: string; t
     <span onClick={(e) => e.stopPropagation()} className="contents">
       <Popover
         hideCaret
-        triggerClassName="inline-flex h-6 items-center gap-1 rounded-full border border-sky-400/50 bg-white/90 px-2 text-[11px] font-semibold text-sky-600 shadow-sm backdrop-blur-md hover:border-sky-400"
+        triggerClassName="inline-flex h-6 max-w-full min-w-0 items-center gap-1 rounded-full border border-sky-400/50 bg-white/90 px-2 text-[11px] font-semibold text-sky-600 shadow-sm backdrop-blur-md hover:border-sky-400"
         trigger={
           <>
-            <CheckIcon className="h-3 w-3" />
-            <span className="font-mono tabular-nums">{current.label}</span>
+            <CheckIcon className="h-3 w-3 shrink-0" />
+            <span className="max-w-[7rem] truncate font-mono tabular-nums">{current.label}</span>
           </>
         }
       >

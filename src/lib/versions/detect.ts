@@ -209,15 +209,20 @@ async function versionNames(
   rows: BomRow[],
 ): Promise<Pick<VersionRef, "sources" | "from">> {
   const used = (list: { sourceDid: string | null; sourceWvm: string | null; sourceWid: string | null }[]) => {
-    const out = new Map<string, string>();
-    for (const p of list) if (p.sourceDid && p.sourceWvm === "v" && p.sourceWid) out.set(p.sourceDid, p.sourceWid);
+    // Every document's part count, workspace ones too: when most parts come from a workspace,
+    // no Onshape version names the site's version.
+    const count = new Map<string, number>();
+    const out = new Map<string, { versionId: string; parts: number; main: boolean }>();
+    for (const p of list) if (p.sourceDid) count.set(p.sourceDid, (count.get(p.sourceDid) ?? 0) + 1);
+    const main = [...count].reduce<[string, number] | null>((best, d) => (!best || d[1] > best[1] ? d : best), null)?.[0];
+    for (const p of list) if (p.sourceDid && p.sourceWvm === "v" && p.sourceWid) out.set(p.sourceDid, { versionId: p.sourceWid, parts: count.get(p.sourceDid)!, main: p.sourceDid === main });
     return out;
   };
-  const named = async (docs: Map<string, string>) => {
+  const named = async (docs: Map<string, { versionId: string; parts: number; main: boolean }>) => {
     const out: NonNullable<VersionRef["sources"]> = {};
-    for (const [did, versionId] of docs) {
+    for (const [did, { versionId, parts, main }] of docs) {
       const name = await versionName(client, did, versionId);
-      if (name) out[did] = { versionId, name };
+      if (name) out[did] = { versionId, name, parts, main };
     }
     return out;
   };
