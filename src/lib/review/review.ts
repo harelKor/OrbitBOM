@@ -188,7 +188,16 @@ export async function partsToSetUp(robotId: string, systemId?: string) {
   return measured.map((p) => ({ part: p, guess: suggestSetup(p, learned, stock) }));
 }
 
-// Suggest setup on To Review: the rules' guess for every part that needs one.
+// Auto-link for these parts (imported when used: autolink.ts imports this file).
+async function linkParts(partIds: string[], memberId: string) {
+  if (!partIds.length) return 0;
+  const { autoLink } = await import("@/lib/inventory/autolink");
+  return autoLink({ partIds }, { memberId, via: "ui" });
+}
+
+// Suggest setup on To Review: the rules' guess for every part that needs one, then auto-link's
+// inventory item for the ones still without (COTS parts; in-house parts get their Raw Stock item
+// with the material).
 export async function suggestRobotSetups(robotId: string, memberId: string, systemId?: string) {
   const todo = await partsToSetUp(robotId, systemId);
   const edits = todo.flatMap((t) => (t.guess ? [{ id: t.part.id, ...t.guess }] : []));
@@ -196,7 +205,49 @@ export async function suggestRobotSetups(robotId: string, memberId: string, syst
   if (changed) {
     await logAiAction({ source: "rule", tool: "Suggest setup", memberId, batchId, parts: changed, summary: `Set up ${changed} of ${todo.length} parts that had no material or processes` });
   }
-  return { checked: todo.length, suggested: changed };
+  const linked = await linkParts(todo.map((t) => t.part.id), memberId);
+  return { checked: todo.length, suggested: changed, linked };
+}
+
+// The part window's Suggest: the rules' setup and auto-link's inventory item for one part, even
+// one that already has some of it (the rules only fill what's missing). Both wait in To Review,
+// where the window's Approve and Reject settle them.
+export async function suggestOnePart(partId: string, memberId: string) {
+  const [row] = await db
+    .select({ part: parts, robotId: systems.robotId, systemName: systems.name })
+    .from(parts)
+    .innerJoin(systems, eq(systems.id, parts.systemId))
+    .where(eq(parts.id, partId));
+  if (!row) return null;
+  const [measured] = row.part.isManual ? [row.part] : await measureParts(row.robotId, [{ ...row.part, systemName: row.systemName }]);
+  const [learned, stock] = await Promise.all([learnedProcesses(), listRawStock()]);
+  const guess = suggestSetup(measured, learned, stock);
+  let setUp = 0;
+  if (guess) {
+    const { changed, batchId } = await applySuggestions([{ id: partId, ...guess }], { memberId, source: "rule", via: "ui" });
+    setUp = changed;
+    if (changed) await logAiAction({ source: "rule", tool: "Suggest setup", memberId, batchId, parts: 1, summary: `Set up "${row.part.displayName ?? row.part.onshapeName ?? "a part"}" from the part window` });
+  }
+  const linked = await linkParts([partId], memberId);
+  return { setUp, linked, reason: guess?.reason ?? null };
+}
+
+// What a part has waiting in To Review, for its window's Approve and Reject.
+export async function partReview(partId: string) {
+  const [r] = await db.select().from(partReviews).where(eq(partReviews.partId, partId));
+  if (!r) return null;
+  const itemIds = [r.pending.inventoryItemId, r.changes.inventoryItemId?.to].filter((v): v is string => typeof v === "string");
+  const items = itemIds.length
+    ? await db.select({ id: schema.inventoryItems.id, name: schema.inventoryItems.name }).from(schema.inventoryItems).where(inArray(schema.inventoryItems.id, itemIds))
+    : [];
+  const pendingItem = typeof r.pending.inventoryItemId === "string" ? (items.find((i) => i.id === r.pending.inventoryItemId)?.name ?? "an inventory item") : null;
+  return {
+    source: r.source,
+    aiName: r.aiName,
+    reason: r.reason,
+    fields: Object.keys(r.changes),
+    pendingItem,
+  };
 }
 
 // ---------- review ----------

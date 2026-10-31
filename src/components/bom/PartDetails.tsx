@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { Dialog } from "@/components/Dialog";
 import { deleteManualPart } from "@/app/(app)/parts-actions";
 import { inventoryPicker } from "@/app/(app)/inventory/actions";
+import { approveParts, partReviewState, rejectParts, suggestPart, type PartReviewState } from "@/app/(app)/robots/[robotId]/review/actions";
 import { PartModel, type StageView } from "@/components/dashboard/PartStage";
 import { DrawingEditor } from "@/components/drawing/DrawingEditor";
 import { AddBox } from "@/components/inventory/AddBox";
@@ -121,6 +122,7 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
 
           <div className="min-w-0 space-y-5">
             {!part.isManual && !cots && <PartVersionsButton partId={part.id} lock={part.fabLock} released={fabStage(part) !== null} />}
+            {!part.memberIds && <SuggestBar part={part} />}
             <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] content-start items-center gap-x-3 gap-y-2 text-sm">
               <Row label="Name">
                 <NameField part={part} save={save} />
@@ -339,8 +341,96 @@ function InventoryLink({ part, save }: { part: CardPart; save: SaveFn }) {
         defaultCategory={null}
         placeholder={itemId ? "Link another item: search, paste a link or add one" : "Link an inventory item: search, paste a link or add one"}
         onPick={(id) => save({ inventoryItemId: id })}
+        searchFor={partTitle(part)}
         floating
       />}
+    </section>
+  );
+}
+
+const FIELD_NAMES: Record<string, string> = {
+  classification: "type",
+  material: "material",
+  inventoryItemId: "inventory link",
+  preProcess: "pre-process",
+  process1: "machine 1",
+  process2: "machine 2",
+  displayName: "name",
+  cotsLinks: "product links",
+  unitPrice: "price",
+  cotsCategory: "COTS category",
+};
+
+// Suggest runs the site's setup rules and auto-link on this one part. Whatever waits in To Review
+// for it (from Suggest, Suggest setup, auto-link or a member's Claude) shows here with Approve,
+// which keeps it, and Reject, which puts the old values back.
+function SuggestBar({ part }: { part: CardPart }) {
+  const review = useCan("review");
+  const [state, setState] = useState<PartReviewState | undefined>(undefined);
+  const [busy, setBusy] = useState<"suggest" | "approve" | "reject" | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
+  // Read again whenever the part changes (a save, an Approve elsewhere, a refresh).
+  const version = part.lastModifiedAt.getTime();
+  useEffect(() => {
+    if (!review) return;
+    let cancelled = false;
+    partReviewState(part.id).then((s) => !cancelled && setState(s));
+    return () => {
+      cancelled = true;
+    };
+  }, [review, part.id, version, tick]);
+  if (!review) return null;
+
+  const run = async (kind: "suggest" | "approve" | "reject") => {
+    setBusy(kind);
+    setNote(null);
+    const r = kind === "suggest" ? await suggestPart(part.id) : kind === "approve" ? await approveParts([part.id]) : await rejectParts([part.id]);
+    setBusy(null);
+    if (r.error) return alert(r.error);
+    setNote(r.message ?? null);
+    setTick((t) => t + 1);
+  };
+  const waiting = !!state && (state.fields.length > 0 || !!state.pendingItem);
+  const what = state ? [...state.fields.map((f) => FIELD_NAMES[f] ?? f), ...(state.pendingItem ? [`link to "${state.pendingItem}"`] : [])] : [];
+  const by = state?.source === "ai" ? (state.aiName ?? "Claude") : "Suggest";
+
+  return (
+    <section className={`space-y-2 rounded-xl border px-3 py-2.5 ${waiting ? "border-sky-400/40 bg-sky-500/5" : "border-line"}`}>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" className={`btn h-8 gap-1.5 text-xs active:scale-[0.98] ${busy === "suggest" ? "animate-pulse" : ""}`} disabled={!!busy} onClick={() => run("suggest")} title="Guess material, machines and the inventory item for this part">
+          <Icon name="spark" className="h-3.5 w-3.5 text-amber-500" />
+          {busy === "suggest" ? "Suggesting…" : "Suggest"}
+        </button>
+        {waiting && (
+          <>
+            <button
+              type="button"
+              className="btn h-8 gap-1.5 border-emerald-500/50 bg-emerald-500/10 text-xs text-emerald-700 hover:bg-emerald-500/20 active:scale-[0.98] dark:text-emerald-300"
+              disabled={!!busy}
+              onClick={() => run("approve")}
+            >
+              {busy === "approve" ? "Approving…" : "Approve"}
+            </button>
+            <button
+              type="button"
+              className="btn h-8 gap-1.5 border-rose-500/50 bg-rose-500/10 text-xs text-rose-700 hover:bg-rose-500/20 active:scale-[0.98] dark:text-rose-300"
+              disabled={!!busy}
+              onClick={() => run("reject")}
+              title="Put the old values back"
+            >
+              {busy === "reject" ? "Rejecting…" : "Reject"}
+            </button>
+          </>
+        )}
+      </div>
+      {waiting && (
+        <p className="text-xs leading-snug text-muted">
+          <span className="font-semibold text-fg">{by}</span> suggested {what.join(", ")}
+          {state?.reason && <span className="block text-subtle">{state.reason}</span>}
+        </p>
+      )}
+      {note && !waiting && <p className="text-xs text-muted">{note}</p>}
     </section>
   );
 }

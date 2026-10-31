@@ -51,6 +51,7 @@ export function AddBox({
   onAdded,
   onAdding,
   onFocusChange,
+  searchFor,
 }: {
   q: string;
   setQ: (q: string) => void;
@@ -67,6 +68,7 @@ export function AddBox({
   onAdded?: (itemId: string) => void; // Inventory: a new item goes to the top of the list with a glow (the banner's jump icon lights it again)
   onAdding?: (item: Item) => void; // Inventory: shows the item at once while it saves (call it inside the save's transition)
   onFocusChange?: (focused: boolean) => void; // Inventory on phones: Scan shows only while the box is focused
+  searchFor?: string; // a part's details window: a Search "<part name>" chip fills the box with it and opens the results
 }) {
   // Any team adds items; without a team it is only a search box.
   const edit = useCan("work");
@@ -443,10 +445,28 @@ export function AddBox({
           </button>
         )}
       </label>
-      {edit && !query && !draft && !saved && (
-        <button type="button" onClick={() => start({ category: defaultCategory })} className="mt-2 text-sm font-medium text-accent hover:underline">
-          + Add without searching
-        </button>
+      {!query && !draft && !saved && (edit || searchFor) && (
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+          {searchFor && (
+            <button
+              type="button"
+              onClick={() => {
+                setQ(searchFor);
+                box.current?.focus();
+              }}
+              className="btn h-8 max-w-full gap-1.5 text-xs active:scale-[0.98]"
+              title={`Search the inventory and stores for "${searchFor}"`}
+            >
+              <Icon name="search" className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">Search “{searchFor.length > 32 ? `${searchFor.slice(0, 32)}…` : searchFor}”</span>
+            </button>
+          )}
+          {edit && (
+            <button type="button" onClick={() => start({ category: defaultCategory })} className="text-sm font-medium text-accent hover:underline">
+              + Add without searching
+            </button>
+          )}
+        </div>
       )}
 
       {open &&

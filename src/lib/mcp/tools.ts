@@ -322,7 +322,7 @@ read("system_stats", "A system's completion and count per status.", z.object({ s
 
 read(
   "search_inventory",
-  "Inventory items with stock. All active robots share one shelf: need is what every robot's linked parts need together, short what the stock doesn't cover, free what no part needs. Sheet items (plates) count sheets and pieces (2.75 = 2 ¾ sheets) and have no need. season_need is a separate shelf target for the season (season_short what the stock is under it); on_order is the status of a COTS card already ordering it.",
+  "Inventory items with stock, category and specs (use them to match BOM parts to items when setting up parts: pass the id to set_up_parts as inventory_item_id). All active robots share one shelf: need is what every robot's linked parts need together, short what the stock doesn't cover, free what no part needs. Sheet items (plates) count sheets and pieces (2.75 = 2 ¾ sheets) and have no need. season_need is a separate shelf target for the season (season_short what the stock is under it); on_order is the status of a COTS card already ordering it.",
   z.object({ text: z.string().optional() }),
   async ({ text }) => {
     const { items } = await listInventory();
@@ -420,16 +420,23 @@ write(
 
 read(
   "parts_to_set_up",
-  "A robot's CAD parts that have no material or no processes and aren't waiting in To Review, with their size (size_mm: the 3D model's extents, smallest first, so a flat plate's thickness is size_mm[0]; for bent sheet, such as an angle or U channel, use wall_mm, and sheet_metal says Onshape can flatten it) and the site's own guess (site_guess) where its rules can tell. Sizes need the robot's 3D model to be built.",
+  "A robot's CAD parts that have no material or no processes and aren't waiting in To Review, with their size (size_mm: the 3D model's extents, smallest first, so a flat plate's thickness is size_mm[0]; for bent sheet, such as an angle or U channel, use wall_mm, and sheet_metal says Onshape can flatten it), the site's own setup guess (site_guess) where its rules can tell, and auto-link's guess of the inventory item it is (link_guess: score 0-100 and why). Configuring a part always includes linking it to its inventory item: a COTS part to the item it is, an in-house part to the Raw Stock item it's cut from. Match by name, sizes and specs, material and picture (search_inventory for items with their specs; inventory_to_link's item list) and pass inventory_item_id to set_up_parts. Sizes need the robot's 3D model to be built.",
   z.object({ robot_id: uuid, system_id: uuid.optional(), limit: z.number().int().min(1).max(500).optional() }),
   async ({ robot_id, system_id, limit = 200 }) => {
     const rows = await partsToSetUp(robot_id, system_id);
+    const shown = rows.slice(0, limit);
+    const { found, names } = await findLinks({ partIds: shown.map((r) => r.part.id) });
+    const links = new Map(found.map((f) => [f.partId, f]));
     return {
       total: rows.length,
-      parts: rows.slice(0, limit).map(({ part, guess }) => ({
-        ...summarise(part),
-        site_guess: guess ? { ...guess.changes, reason: guess.reason } : null,
-      })),
+      parts: shown.map(({ part, guess }) => {
+        const hit = links.get(part.id);
+        return {
+          ...summarise(part),
+          site_guess: guess ? { ...guess.changes, reason: guess.reason } : null,
+          link_guess: hit ? { item_id: hit.itemId, item: names.get(hit.itemId), score: hit.score, why: hit.why } : null,
+        };
+      }),
       truncated: rows.length > limit,
     };
   },
@@ -440,6 +447,12 @@ const setupInput = z.object({
   type: z.enum(["inhouse", "cots", "external", "undefined"]).optional(),
   material_item_id: uuid.optional().describe("The inventory item the part is made from: an id from list_materials (or search_inventory). Sets the part's material to its name."),
   material: z.string().optional().describe("Instead of material_item_id: an exact item name from list_materials, when only one item has it."),
+  inventory_item_id: uuid
+    .nullable()
+    .optional()
+    .describe(
+      "The inventory item this part is: for a COTS part the item itself (a motor, a bearing), for an in-house part the Raw Stock item it's made from (then it is the material too, like material_item_id). Match it by the part's name, sizes and specs, material and picture. null unlinks. Left out, the site's auto-link suggests one (it waits in To Review).",
+    ),
   pre_process: z.string().nullable().optional().describe("Machine name or id, or null."),
   process_1: z.string().nullable().optional().describe("Machine name or id, or null."),
   process_2: z.string().nullable().optional().describe("Machine name or id, or null."),
@@ -448,19 +461,29 @@ const setupInput = z.object({
 
 write(
   "set_up_parts",
-  "Set the material, processes and type you worked out for parts (each part can differ). The parts change at once and wait in To Review, where their designer approves or rejects each one; Reject puts the old values back. Use this, not update_parts, for setups you inferred yourself.",
+  "Set the material, processes, type and inventory item you worked out for parts (each part can differ). Always link each part to its inventory item too (inventory_item_id: COTS parts to the item they are, in-house parts to their Raw Stock item); parts you leave without one get auto-link's suggestion. The parts change at once and wait in To Review, where their designer approves or rejects each one; Reject puts the old values back. Use this, not update_parts, for setups you inferred yourself.",
   z.object({ parts: z.array(setupInput).min(1).max(500) }),
   async ({ parts: input }, { member, aiName }) => {
     const stock = await listRawStock();
-    const others = input.some((e) => e.material_item_id && !stock.some((i) => i.id === e.material_item_id))
-      ? await db.select({ id: inventoryItems.id, name: inventoryItems.name }).from(inventoryItems).where(inArray(inventoryItems.id, input.flatMap((e) => (e.material_item_id ? [e.material_item_id] : []))))
-      : [];
+    const wanted = input.flatMap((e) => [e.material_item_id, e.inventory_item_id].filter((id): id is string => !!id && !stock.some((i) => i.id === id)));
+    const others = wanted.length ? await db.select({ id: inventoryItems.id, name: inventoryItems.name }).from(inventoryItems).where(inArray(inventoryItems.id, wanted)) : [];
+    const current = await db.select({ id: parts.id, classification: parts.classification }).from(parts).where(inArray(parts.id, input.map((e) => e.part_id)));
+    const findItem = (id: string) => {
+      const item = stock.find((i) => i.id === id) ?? others.find((i) => i.id === id);
+      if (!item) throw new ToolError(`No inventory item ${id}. Use list_materials, search_inventory or inventory_to_link.`);
+      return item;
+    };
     // The material is an inventory item: the part gets its name and its id.
     const itemFor = (e: (typeof input)[number]) => {
-      if (e.material_item_id) {
-        const item = stock.find((i) => i.id === e.material_item_id) ?? others.find((i) => i.id === e.material_item_id);
-        if (!item) throw new ToolError(`No inventory item ${e.material_item_id}. Use list_materials or search_inventory.`);
-        return item;
+      if (e.material_item_id && e.inventory_item_id && e.material_item_id !== e.inventory_item_id) {
+        throw new ToolError("Pass one item per part: material_item_id and inventory_item_id differ.");
+      }
+      if (e.material_item_id) return findItem(e.material_item_id);
+      // An in-house part's item is its material (a Raw Stock item is too, unless the part is COTS).
+      if (e.inventory_item_id) {
+        const type = e.type ?? current.find((p) => p.id === e.part_id)?.classification;
+        const raw = stock.some((i) => i.id === e.inventory_item_id);
+        if (type === "inhouse" || (raw && type !== "cots")) return findItem(e.inventory_item_id);
       }
       if (e.material === undefined) return undefined;
       const named = stock.filter((i) => i.name === e.material);
@@ -478,7 +501,7 @@ write(
           Object.entries({
             classification: e.type,
             material: item?.name,
-            inventoryItemId: item?.id,
+            inventoryItemId: item ? item.id : e.inventory_item_id === null ? null : e.inventory_item_id ? findItem(e.inventory_item_id).id : undefined,
             preProcess: e.pre_process,
             process1: e.process_1,
             process2: e.process_2,
@@ -503,7 +526,10 @@ write(
       preview: diffs.map((d) => ({ id: d.id, part: d.part, changes: d.changes.map(readable), reason: d.reason })),
       apply: async () => {
         const { batchId, changed } = await applySuggestions(edits, { memberId: member.id, source: "ai", via: "mcp", aiName });
-        return { changed, batch_id: batchId, next: "The parts now wait in the robot's To Review page for their designer." };
+        // Parts given no item get auto-link's suggestion (in-house parts are linked through their material).
+        const unlinked = input.filter((e) => e.inventory_item_id === undefined && !e.material_item_id && e.material === undefined).map((e) => e.part_id);
+        const auto_linked = unlinked.length ? await autoLink({ partIds: unlinked }, { memberId: member.id, via: "mcp" }) : 0;
+        return { changed, batch_id: batchId, auto_linked, next: "The parts now wait in the robot's To Review page for their designer." };
       },
     };
   },

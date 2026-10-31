@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireCapability } from "@/lib/mode";
 import { approveInventoryReviews, dismissInventoryReviews, rejectInventoryReviews } from "@/lib/review/inventory";
-import { approveReviews, dismissReviews, rejectReviews, suggestRobotSetups } from "@/lib/review/review";
+import { approveReviews, dismissReviews, partReview, rejectReviews, suggestOnePart, suggestRobotSetups } from "@/lib/review/review";
 import { isUuid } from "@/lib/uuid";
 
 export type ActionResult = { error?: string; message?: string };
@@ -71,13 +71,35 @@ export async function rejectInventory(ids: string[]): Promise<ActionResult> {
 export async function suggestSetup(robotId: string, systemId?: string): Promise<ActionResult> {
   const member = await requireCapability("review");
   if (!isUuid(robotId) || (systemId && !isUuid(systemId))) return { error: "Unknown robot." };
-  const { checked, suggested } = await suggestRobotSetups(robotId, member.id, systemId);
+  const { checked, suggested, linked } = await suggestRobotSetups(robotId, member.id, systemId);
   refresh();
   if (!checked) return { message: `Every part${systemId ? " in this subsystem" : ""} already has a material and processes.` };
   const left = checked - suggested;
   return {
     message:
       `Set up ${suggested} of ${checked} parts that needed it.` +
+      (linked ? ` Suggested ${linked} inventory ${linked === 1 ? "link" : "links"}.` : "") +
       (left ? ` ${left} need a person or Claude: ask it to "set up the parts of this robot that have no material".` : ""),
   };
+}
+
+// ---------- one part, from its window ----------
+
+export type PartReviewState = Awaited<ReturnType<typeof partReview>>;
+
+export async function partReviewState(partId: string): Promise<PartReviewState> {
+  await requireCapability("work");
+  if (!isUuid(partId)) return null;
+  return partReview(partId);
+}
+
+// The part window's Suggest: setup rules plus auto-link on that one part, into To Review.
+export async function suggestPart(partId: string): Promise<ActionResult> {
+  const member = await requireCapability("review");
+  if (!isUuid(partId)) return { error: "Unknown part." };
+  const r = await suggestOnePart(partId, member.id);
+  if (!r) return { error: "Unknown part." };
+  refresh();
+  if (!r.setUp && !r.linked) return { message: "Nothing to suggest: the part already has its material and processes, and no inventory item clearly matches it." };
+  return {};
 }
