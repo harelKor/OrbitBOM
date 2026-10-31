@@ -72,7 +72,10 @@ export function BomView({
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { canManage: edit, canWork, canDraw, mode: role } = usePermissions();
+  const { canManage, canShape, canWork, canDraw, mode: role } = usePermissions();
+  // A system page gives the CAD Team the admin's toolbar too: Table and Kanban, Bulk edit, Merge
+  // parts and + Manual part (deletes and settings stay with admins in Edit).
+  const edit = canManage || (canShape && !!mergeSystemId);
   // Cards or List in any mode (this browser remembers which); Table and Kanban are Edit-mode views.
   const [look, setLook] = useStoredChoice("orbit-bom-view", LOOKS, "card");
   const asked = searchParams.get("view");

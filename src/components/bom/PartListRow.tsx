@@ -6,12 +6,13 @@ import { getStatus } from "@/config/statuses";
 import { siteOf } from "@/lib/cots";
 import { computeStatus } from "@/lib/status";
 import { ListPill, ListRow } from "@/components/ui/ListRow";
+import { statusTint } from "@/components/ui/statusTint";
 import { SLOTS, type SaveFn } from "./fields";
 import { usePartDetails } from "./PartDetailsHost";
 import { partIds, partTitle, type CardPart } from "./types";
 
 // A part as one row of the List view: thumbnail, name, "Qty · material", the machine it's at
-// (COTS: the product's site) and its status. A tap opens the part's details window.
+// (COTS: the product's site) and its status, washed in the status colour like its card. A tap opens the part's details window.
 export function PartListRow({
   part,
   save,
@@ -36,6 +37,7 @@ export function PartListRow({
     <ListRow
       id={`part-${part.id}`}
       data-part={partIds(part)}
+      style={statusTint(status)}
       picture={part.thumbUrl ?? (cots ? (part.shelf?.thumbUrl ?? null) : null)}
       placeholder={<span className="px-1 text-center text-[10px] leading-tight text-slate-500">{part.isManual ? "Manual" : "No picture"}</span>}
       title={partTitle(part)}

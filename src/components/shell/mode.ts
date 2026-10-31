@@ -12,9 +12,9 @@ export const ROBOT_COOKIE = "orbit-robot";
 // (adding them, and an item's name, category, location, condition, specs, photo and product links).
 // draw: make, upload and regenerate drawings. review: To Review and Ready for QA. sync: Update BOM
 // from Onshape and system versions. classify: a part's type, COTS or In-House (Harel, 2026-10-31).
-// manage: everything else (deletes, bulk edit, merge, manual parts, robot and system settings,
-// Settings).
-export type Capability = "work" | "draw" | "review" | "sync" | "classify" | "manage";
+// shape: a system page's Bulk edit, Merge parts and + Manual part (CAD too, Harel 2026-10-31).
+// manage: everything else (deletes, robot and system settings, Settings).
+export type Capability = "work" | "draw" | "review" | "sync" | "classify" | "shape" | "manage";
 
 export function can(mode: Mode, cap: Capability): boolean {
   if (cap === "work") return mode !== "none";

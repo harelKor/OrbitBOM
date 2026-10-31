@@ -68,7 +68,18 @@ export default async function SystemPage({
           <Link href={`/robots/${robot.id}`} className="text-sm text-subtle hover:text-fg">
             {robot.name}
           </Link>
-          <h1 className="min-w-0 truncate display text-3xl text-accent">{system.name}</h1>
+          {/* Versions and Update system sit on the name's line. */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <h1 className="min-w-0 truncate display text-3xl text-accent">{system.name}</h1>
+            {system.assemblyUrl && (
+              <div className="flex flex-wrap items-center gap-3">
+                <Suspense>
+                  <VersionsWindow systemId={system.id} list={versionList} thumbs={thumbs} />
+                  <UpdateSystem systemId={system.id} draft={draft} lastSyncedAt={system.lastSyncedAt} thumbs={thumbs} latest={versions.latest && { id: versions.latest.id, label: versions.latest.label }} />
+                </Suspense>
+              </div>
+            )}
+          </div>
           {system.assemblyUrl && (
             <a href={system.assemblyUrl} target="_blank" rel="noreferrer" className="text-sm text-subtle hover:text-fg">
               Open in Onshape ↗
@@ -88,17 +99,7 @@ export default async function SystemPage({
 
       <QaSection parts={parts.filter((p) => p.status === "Ready for QA")} inventory={inventory} isAdmin={member.isAdmin} robotId={robot.id} />
 
-      {system.assemblyUrl && (
-        <>
-          <div className="flex flex-wrap items-center gap-3">
-            <Suspense>
-              <VersionsWindow systemId={system.id} list={versionList} thumbs={thumbs} />
-              <UpdateSystem systemId={system.id} draft={draft} lastSyncedAt={system.lastSyncedAt} thumbs={thumbs} latest={versions.latest && { id: versions.latest.id, label: versions.latest.label }} />
-            </Suspense>
-          </div>
-          {REFRESH.openPages && <AutoRefresh systemId={system.id} />}
-        </>
-      )}
+      {system.assemblyUrl && REFRESH.openPages && <AutoRefresh systemId={system.id} />}
 
       <div className={`grid gap-3 ${system.assemblyUrl ? "lg:h-[26rem] lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]" : ""}`}>
         {(system.assemblyUrl || systemActions.length > 0) && (

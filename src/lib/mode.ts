@@ -35,6 +35,7 @@ export const DENIED: Record<Capability, string> = {
   review: "Only the CAD Team can review parts.",
   sync: "Only the CAD Team can sync from Onshape.",
   classify: "Only the CAD Team can change a part between COTS and In-House.",
+  shape: "Only the CAD Team can bulk edit, merge or add parts.",
   manage: "Only an admin in Edit mode can do this.",
 };
 

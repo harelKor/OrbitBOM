@@ -75,7 +75,7 @@ export async function addManualPart(
   _: ActionResult | undefined,
   formData: FormData,
 ): Promise<ActionResult> {
-  const member = await requireCapability("manage");
+  const member = await requireCapability("shape");
   const parsed = manualPart.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const d = parsed.data;
@@ -215,7 +215,7 @@ async function updateMergedRow(mergeId: string, changes: PartChanges, memberId: 
 }
 
 export async function mergeParts(systemId: string, name: string, ids: string[]): Promise<ActionResult> {
-  await requireCapability("manage");
+  await requireCapability("shape");
   if (!isUuid(systemId) || !name.trim()) return { error: "Give the merged part a name." };
   const partIds = await expandMerges(ids);
   if (partIds.length < 2 || partIds.some((id) => !isUuid(id))) return { error: "Pick two or more parts to merge." };
@@ -239,7 +239,7 @@ export async function mergeParts(systemId: string, name: string, ids: string[]):
 }
 
 export async function unmergeParts(mergeRowId: string): Promise<ActionResult> {
-  await requireCapability("manage");
+  await requireCapability("shape");
   const mergeId = mergeRowId.replace(MERGE_PREFIX, "");
   if (!isUuid(mergeId)) return { error: "Unknown merged part." };
   await db.delete(schema.merges).where(eq(schema.merges.id, mergeId));

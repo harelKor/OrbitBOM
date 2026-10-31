@@ -47,6 +47,7 @@ export function usePermissions() {
     canReview: can(mode, "review"),
     canSync: can(mode, "sync"),
     canClassify: can(mode, "classify"),
+    canShape: can(mode, "shape"),
     canManage: can(mode, "manage"),
   };
 }

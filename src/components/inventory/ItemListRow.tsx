@@ -4,7 +4,7 @@ import { ListPill, ListRow } from "@/components/ui/ListRow";
 import { getCategory, specLine } from "@/lib/inventory/categories";
 import { hasSeasonNeed, missing, neededFor, standing, type NeedView } from "@/lib/inventory/season";
 import { formatStock } from "@/lib/inventory/stock";
-import { conditionColor } from "./ItemCard";
+import { conditionColor, standingTint } from "./ItemCard";
 import { useInventoryPopup } from "./InventoryPopup";
 import type { InvCategory, Item } from "./types";
 
@@ -15,7 +15,7 @@ const STANDING = {
 };
 
 // An inventory item as one row of the List view: its picture, name, "stock / need · specs", and
-// pills for its location, condition and standing. A tap opens the item's window.
+// pills for its location, condition and standing, washed in its standing colour like its card. A tap opens the item's window.
 export function ItemListRow({
   item,
   categories,
@@ -50,6 +50,7 @@ export function ItemListRow({
     <ListRow
       data-item={item.id}
       data-new={glow}
+      style={standingTint(item, view)}
       picture={item.thumbUrl ?? category?.imageUrl ?? null}
       dimPicture={!item.thumbUrl}
       title={item.name}
