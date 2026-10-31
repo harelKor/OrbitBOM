@@ -221,7 +221,12 @@ export function FabView({
 
   const onMachine = (p: CardPart) => !machine || machinesOf(p).includes(machine);
 
-  // Per-machine counts of the parts in the queue, for the boxes.
+  // Per-machine counts of the parts in the queue, for the boxes. With My batches on, only the
+  // parts in the member's own batches count, so machines and materials with none of them hide.
+  const myBatchIds = useMemo(
+    () => (mine ? new Set(batches.filter((b) => b.madeBy === me).map((b) => b.id)) : null),
+    [mine, batches, me],
+  );
   const counts = useMemo(() => {
     const byMachine = new Map<string, number>();
     const byMaterial = new Map<string, number>();
@@ -229,6 +234,7 @@ export function FabView({
     let total = 0;
     for (const p of optimistic) {
       if (!fabStage(p)) continue;
+      if (myBatchIds && !p.groups.some((g) => myBatchIds.has(g.id))) continue;
       total += 1;
       const key = materialKeyOf(p);
       for (const m of machinesOf(p)) {
@@ -238,7 +244,7 @@ export function FabView({
       if (!machine || machinesOf(p).includes(machine)) byMaterial.set(key, (byMaterial.get(key) ?? 0) + 1);
     }
     return { total, byMachine, byMaterial, materialsOn };
-  }, [optimistic, machine]);
+  }, [optimistic, machine, myBatchIds]);
 
   // ?mat= : the material filter box picked. A material with no parts on the machine picked is
   // dropped, so switching machines never leaves an empty filter.
