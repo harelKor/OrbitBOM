@@ -16,6 +16,16 @@ export const BEARINGS = [
   { boreMm: 16.1, name: "8x16x5 Radial Bearing" },
 ];
 
+// The shop's endmills, for a drawing's "Max tool" note: the biggest one not wider than the
+// tightest inner corner's diameter.
+export const TOOLS = [
+  { label: "1/8in", mm: 3.175 },
+  { label: "3mm", mm: 3 },
+  { label: "4mm", mm: 4 },
+  { label: "5mm", mm: 5 },
+  { label: "6mm", mm: 6 },
+];
+
 export const FITS = ["light press", "heavy press", "slip", "precise slip"] as const;
 export type Fit = (typeof FITS)[number];
 export const DEFAULT_FIT: Fit = "light press";

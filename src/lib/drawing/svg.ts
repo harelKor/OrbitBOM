@@ -90,7 +90,7 @@ function titleBlock(d: Drawing) {
   const t = d.title;
   const rows: [string, string][][] = [
     [["Material", t.material ?? ""], ["Qty", t.quantity != null ? String(t.quantity) : ""]],
-    [["Stock", d.stock], ["Rev", t.revision ?? ""]],
+    [["Stock", d.stock], ["Ver", t.revision ?? ""]],
     [["Process", (t.processes ?? []).join(" → ")], ["Date", t.date ?? ""]],
     [["System", [t.robot, t.system].filter(Boolean).join(" / ")]],
   ];

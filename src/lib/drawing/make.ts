@@ -1,10 +1,11 @@
 import "server-only";
-import { and, eq, inArray, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne } from "drizzle-orm";
 import { getMachine } from "@/config/machines";
 import { db, schema } from "@/db";
 import { onshapeClient } from "@/lib/onshape/client";
 import { studioPath } from "@/lib/onshape/parts";
 import { parseOnshapeUrl } from "@/lib/onshape/url";
+import { versionLabel } from "@/lib/versions/label";
 import { type BodyDetails, readBodies, type TessellatedEdges } from "./brep";
 import { READER, readPart } from "./read";
 import type { TitleBlock } from "./types";
@@ -43,11 +44,24 @@ export async function makeDrawings(systemId: string, partIds: string[], memberId
       summary.left.push(...group.map((r) => r.part.id));
       continue;
     }
-    const [details, edges] = await Promise.all([
-      client.json<BodyDetails>(`partstudios/${path}/bodydetails`),
-      client.json<TessellatedEdges>(`partstudios/${path}/tessellatededges?angleTolerance=0.1&chordTolerance=0.00005`),
-    ]);
-    const bodies = readBodies(details, edges);
+    // Only the chosen parts' geometry: a top-down Part Studio's every body is tens of MB and most
+    // of a minute. Should Onshape leave a chosen part out, the whole studio is read once instead.
+    const wanted = [...new Set(group.map((r) => r.part.onshapePartId!))];
+    const fetchBodies = async (only: boolean) => {
+      const q = (extra = "") => {
+        const params = new URLSearchParams(extra);
+        if (only) for (const id of wanted) params.append("partId", id);
+        const s = params.toString();
+        return s ? `?${s}` : "";
+      };
+      const [details, edges] = await Promise.all([
+        client.json<BodyDetails>(`partstudios/${path}/bodydetails${q()}`),
+        client.json<TessellatedEdges>(`partstudios/${path}/tessellatededges${q("angleTolerance=0.1&chordTolerance=0.00005")}`),
+      ]);
+      return readBodies(details, edges);
+    };
+    let bodies = await fetchBodies(true);
+    if (wanted.some((id) => !bodies.some((b) => b.id === id && b.faces.length && b.edges.length))) bodies = await fetchBodies(false);
     for (const r of group) {
       const body = bodies.find((b) => b.id === r.part.onshapePartId);
       const read = body && readPart(body);
@@ -82,10 +96,13 @@ export async function loadDrawing(partId: string) {
     .filter((p): p is string => !!p)
     .map((p) => getMachine(p)?.name ?? p);
   // The system's other parts, for "fit for <part>" notes in the editor.
-  const others = await db
-    .select({ displayName: schema.parts.displayName, onshapeName: schema.parts.onshapeName })
-    .from(schema.parts)
-    .where(and(eq(schema.parts.systemId, part.systemId!), ne(schema.parts.id, part.id), isNull(schema.parts.removedFromCadAt)));
+  const [others, version] = await Promise.all([
+    db
+      .select({ displayName: schema.parts.displayName, onshapeName: schema.parts.onshapeName })
+      .from(schema.parts)
+      .where(and(eq(schema.parts.systemId, part.systemId!), ne(schema.parts.id, part.id), isNull(schema.parts.removedFromCadAt))),
+    partVersion(part.id, part.systemId!, part.versionRowId),
+  ]);
   const title: TitleBlock = {
     name: part.displayName ?? part.onshapeName ?? "Unnamed part",
     ...(part.material ? { material: part.material } : {}),
@@ -93,7 +110,7 @@ export async function loadDrawing(partId: string) {
     quantity: part.quantity,
     system: row.system,
     robot: row.robot,
-    ...(drawing.rev ? { revision: drawing.rev.slice(0, 8) } : {}),
+    ...(version ? { revision: version } : {}),
     date: drawing.updatedAt.toISOString().slice(0, 10),
   };
   return {
@@ -103,4 +120,34 @@ export async function loadDrawing(partId: string) {
     outdated: !!part.thumbnailRev && drawing.rev !== part.thumbnailRev,
     others: [...new Set(others.map((o) => o.displayName ?? o.onshapeName).filter((n): n is string => !!n))].sort(),
   };
+}
+
+// The Onshape version the part card shows ("V82"): the system's version, or the part's own when
+// a Revert or a partial commit left it behind its newest state. Database reads only.
+async function partVersion(partId: string, systemId: string, rowId: string | null): Promise<string | null> {
+  const { partVersions, systemVersions } = schema;
+  const cols = { id: systemVersions.id, seq: systemVersions.seq, onshapeRef: systemVersions.onshapeRef };
+  const [rows, [system], [latest]] = await Promise.all([
+    db
+      .select({ rowId: partVersions.id, ...cols })
+      .from(partVersions)
+      .innerJoin(systemVersions, eq(systemVersions.id, partVersions.versionId))
+      .where(and(eq(partVersions.partId, partId), eq(systemVersions.state, "committed")))
+      .orderBy(desc(systemVersions.seq)),
+    db
+      .select(cols)
+      .from(systems)
+      .innerJoin(systemVersions, eq(systemVersions.id, systems.currentVersionId))
+      .where(eq(systems.id, systemId)),
+    db
+      .select(cols)
+      .from(systemVersions)
+      .where(and(eq(systemVersions.systemId, systemId), eq(systemVersions.state, "committed")))
+      .orderBy(desc(systemVersions.seq))
+      .limit(1),
+  ]);
+  const own = rows.find((r) => r.rowId === rowId);
+  if (own && rows[0] && rows[0].rowId !== own.rowId) return versionLabel(own);
+  const v = system ?? latest ?? own;
+  return v ? versionLabel(v) : null;
 }

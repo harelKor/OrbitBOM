@@ -1,7 +1,7 @@
 // A part's views, sizes and notes laid out on an A4 sheet (plan/auto-drawings.md). Only taps,
 // fits and the sizes Harel's standards ask for are noted; holes get centre marks only.
 
-import { BEARINGS, DEFAULT_FIT, HOLE_MATCH_MM, TAPS } from "@/config/drawings";
+import { BEARINGS, DEFAULT_FIT, HOLE_MATCH_MM, TAPS, TOOLS } from "@/config/drawings";
 import type { DrawingEdits } from "@/db/schema";
 import type { Hole, Part, View } from "./read";
 import type { Dim, Drawing, Line, Note, Pt, TitleBlock } from "./types";
@@ -9,9 +9,11 @@ import type { Dim, Drawing, Line, Note, Pt, TitleBlock } from "./types";
 export const SHEET = { w: 297, h: 210 }; // A4 landscape
 export const MARGIN = 10;
 export const TITLE = { w: 120, h: 36 };
-const SCALES = [2, 1, 0.5, 0.2, 0.1];
-const GAP = 30;
-const AREA = { x0: MARGIN + 15, x1: SHEET.w - MARGIN - 15, y0: MARGIN + 28, y1: SHEET.h - MARGIN - TITLE.h - 16 };
+// Largest first: a part is drawn at the biggest scale that fits, so it fills the sheet.
+const SCALES = [4, 3, 2.5, 2, 1.5, 1.25, 1, 0.85, 0.75, 0.65, 0.6, 0.5, 0.4, 0.35, 0.3, 0.25, 0.2, 0.15, 0.1];
+const GAP = 22;
+// Room left around the views for their dimensions and notes.
+const AREA = { x0: MARGIN + 10, x1: SHEET.w - MARGIN - 12, y0: MARGIN + 22, y1: SHEET.h - MARGIN - TITLE.h - 10 };
 
 export const fmt = (n: number) => String(Math.round(n * 100) / 100);
 const near = (a: number, b: number) => Math.abs(a - b) <= HOLE_MATCH_MM;
@@ -172,8 +174,13 @@ function holeNotes(views: Placed[], place: ReturnType<typeof noter>, ends?: Plac
   return notes;
 }
 
-const toolNote = (r?: number): Note[] =>
-  r ? [{ id: "tool", kind: "tool", text: `Max tool Ø${fmt(2 * r)} (inner corners R${fmt(r)})`, at: [MARGIN + 5, SHEET.h - MARGIN - 6] }] : [];
+// The biggest shop endmill that fits the tightest inner corner (TOOLS); smaller than every one,
+// the corner's raw diameter, so the shop sees it needs a special tool.
+export function maxToolText(r: number): string {
+  const tool = TOOLS.filter((t) => t.mm <= 2 * r + 1e-6).sort((a, b) => b.mm - a.mm)[0];
+  return `Max tool ${tool ? tool.label : `Ø${fmt(2 * r)}`} (inner corners R${fmt(r)})`;
+}
+const toolNote = (r?: number): Note[] => (r ? [{ id: "tool", kind: "tool", text: maxToolText(r), at: [MARGIN + 5, SHEET.h - MARGIN - 6] }] : []);
 
 // A horizontal dimension across the top of a view, or a vertical one down its right side.
 const across = (p: Placed, text: string, below = false): Dim => {

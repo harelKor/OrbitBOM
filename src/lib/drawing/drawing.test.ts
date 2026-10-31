@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { expect, it } from "vitest";
 import { type Body, type Face, readBodies, type V3 } from "./brep";
-import { dimRect, noteBox, partDrawing } from "./layout";
+import { dimRect, maxToolText, noteBox, partDrawing } from "./layout";
 import { readPart } from "./read";
 import { drawingSvg } from "./svg";
 import { drawingSummary } from "./summary";
@@ -25,7 +25,7 @@ it("reads the test plate's thickness, holes and inner corners exactly", () => {
 
 it("notes only the M5 tap, the bearing fit and the max tool on a plate", () => {
   const d = partDrawing(part("plate")!, { name: "1690-101 Side plate", material: "6061 Aluminum 1/4in" });
-  expect(d.notes.map((n) => n.text)).toEqual(["M5 tapped", "light press fit for\n1/2IN HEX Bearing\nØ28.7", "Max tool Ø7 (inner corners R3.5)"]);
+  expect(d.notes.map((n) => n.text)).toEqual(["M5 tapped", "light press fit for\n1/2IN HEX Bearing\nØ28.7", "Max tool 6mm (inner corners R3.5)"]);
   expect(d.dims.map((x) => x.text)).toEqual(["6.7"]);
   const svg = drawingSvg(d);
   expect(svg).toContain("1690-101 Side plate");
@@ -123,4 +123,12 @@ it("keeps notes clear of each other and of the sizes", () => {
       sizes.forEach((b) => expect(hit(a, b)).toBe(false));
     });
   }
+});
+
+it("max tool snaps down to the shop's endmills", () => {
+  expect(maxToolText(1.75)).toBe("Max tool 1/8in (inner corners R1.75)");
+  expect(maxToolText(1.5)).toBe("Max tool 3mm (inner corners R1.5)");
+  expect(maxToolText(2.5)).toBe("Max tool 5mm (inner corners R2.5)");
+  expect(maxToolText(10)).toBe("Max tool 6mm (inner corners R10)");
+  expect(maxToolText(1.2)).toBe("Max tool Ø2.4 (inner corners R1.2)");
 });

@@ -10,7 +10,7 @@ export type Hole = { faceId: string; at: [number, number]; d: number; both?: boo
 export type View = { w: number; h: number; lines: [number, number][][]; holes: Hole[]; axis?: boolean };
 
 // Bumped when the reader changes, so drawings made by an older one are made again.
-export const READER = 2;
+export const READER = 3;
 
 export type Part = { reader?: number } & (
   | { kind: "plate"; thickness: number; front: View; side: View; minInnerRadius?: number }
@@ -91,6 +91,59 @@ function longestAcross(body: Body, n?: V3): V3 | undefined {
 }
 const anyAcross = (n: V3) => unit(cross(n, Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0]));
 
+// The direction across plane normal n that sits a plate level on the sheet: a side of the
+// smallest rectangle around its outline (always along one of its outline's hull edges). Where
+// sides tie, as a right-angle gusset's legs and its hypotenuse do, the one most of its straight
+// edges run along or across wins, so the legs sit level instead of the slope.
+function plateAxis(body: Body, n: V3): V3 | undefined {
+  const e1 = anyAcross(n);
+  const e2 = cross(n, e1);
+  const pts = body.edges.flat().map((p): [number, number] => [dot(p, e1), dot(p, e2)]);
+  const hull = convexHull(pts);
+  if (hull.length < 3) return undefined;
+  const straight = body.edges
+    .filter((e) => e.length === 2 && perp(sub(e[1], e[0]), n))
+    .map((e) => {
+      const d = sub(e[1], e[0]);
+      return { x: dot(d, e1), y: dot(d, e2), len: Math.hypot(...d) };
+    });
+  const options = hull.map((p, i) => {
+    const q = hull[(i + 1) % hull.length];
+    const l = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1;
+    const [c, s] = [(q[0] - p[0]) / l, (q[1] - p[1]) / l];
+    let [x0, x1, y0, y1] = [Infinity, -Infinity, Infinity, -Infinity];
+    for (const [x, y] of hull) {
+      const [a, b] = [x * c + y * s, -x * s + y * c];
+      [x0, x1, y0, y1] = [Math.min(x0, a), Math.max(x1, a), Math.min(y0, b), Math.max(y1, b)];
+    }
+    const along = straight.reduce((t, e) => {
+      const cos = Math.abs(e.x * c + e.y * s) / (e.len || 1);
+      return t + (cos > 0.9998 || cos < 0.02 ? e.len : 0);
+    }, 0);
+    return { c, s, area: (x1 - x0) * (y1 - y0), along };
+  });
+  const least = Math.min(...options.map((o) => o.area));
+  const best = options.filter((o) => o.area <= least * 1.02).reduce((a, b) => (b.along > a.along ? b : a));
+  return unit([e1[0] * best.c + e2[0] * best.s, e1[1] * best.c + e2[1] * best.s, e1[2] * best.c + e2[2] * best.s]);
+}
+
+// Andrew's monotone chain, counter-clockwise, without collinear points.
+function convexHull(points: [number, number][]): [number, number][] {
+  const pts = [...points].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  if (pts.length < 3) return pts;
+  const turn = (o: [number, number], a: [number, number], b: [number, number]) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const half = (list: [number, number][]) => {
+    const out: [number, number][] = [];
+    for (const p of list) {
+      while (out.length >= 2 && turn(out[out.length - 2], out[out.length - 1], p) <= 1e-9) out.pop();
+      out.push(p);
+    }
+    out.pop();
+    return out;
+  };
+  return [...half(pts), ...half([...pts].reverse())];
+}
+
 const holesAndCorners = (body: Body, isAcross: (f: Face) => boolean) => {
   const cut = cylinders(body).filter((f) => f.concave && isAcross(f));
   const corners = cut.filter((f) => f.loops < 2).map((f) => f.radius!);
@@ -104,7 +157,7 @@ function readPlate(body: Body): Part | null {
   const n = unit(big.dir!);
   const levels = flats.filter((f) => parallel(f.dir!, n) && f.area > big.area * 0.5).map((f) => dot(f.center, n));
   const thickness = Math.max(...levels) - Math.min(...levels);
-  let u = longestAcross(body, n) ?? anyAcross(n);
+  let u = plateAxis(body, n) ?? longestAcross(body, n) ?? anyAcross(n);
   let v = cross(n, u);
   const size = (a: V3) => range(body, a)[1] - range(body, a)[0];
   if (size(v) > size(u)) [u, v] = [v, cross(n, v)]; // long side across the sheet
