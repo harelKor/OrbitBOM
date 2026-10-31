@@ -65,6 +65,7 @@ export function CotsCard({
 }) {
   const edit = useManage();
   const work = useCan("work");
+  const classify = useCan("classify");
   const { versions } = useBom();
   const showDetails = usePartDetails(part, save);
   const order = variant === "order";
@@ -140,7 +141,7 @@ export function CotsCard({
           <span className={`rounded-full bg-[#111318]/85 font-bold text-white tabular-nums ${order ? "px-3 py-1 text-base" : "px-2 py-0.5 text-[11px]"}`}>
             {work && !order ? <QuantityField part={part} save={save} /> : `×${part.quantity}`}
           </span>
-          {!order && (edit ? <TypeField part={part} save={save} badge /> : <TypeBadge part={part} />)}
+          {!order && (classify ? <TypeField part={part} save={save} badge /> : <TypeBadge part={part} />)}
           {!group && <MergedBadge part={part} />}
         </div>
         <div className="absolute top-2 right-2 flex max-w-[55%] flex-col items-end gap-1">

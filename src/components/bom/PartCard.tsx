@@ -81,7 +81,7 @@ function MadePartCard({
   thumbBadge?: React.ReactNode; // To Fab, inside a batch: a control at the very start of the thumbnail's top-left
 }) {
   // Edit: name, type and the manual part menu. Work (any team): status, amount, material, counters.
-  const { canManage: edit, canWork: work } = usePermissions();
+  const { canManage: edit, canWork: work, canClassify } = usePermissions();
   const { versions } = useBom();
   const machines = SLOTS.filter((s) => part[s.key]);
   // The process being worked on: the first slot whose done counter hasn't reached the quantity.
@@ -156,7 +156,7 @@ function MadePartCard({
               {work ? <QuantityField part={part} save={save} /> : `×${part.quantity}`}
             </span>
           )}
-          {!fabCounter && !post && (edit ? <TypeField part={part} save={save} badge /> : <TypeBadge part={part} />)}
+          {!fabCounter && !post && (canClassify ? <TypeField part={part} save={save} badge /> : <TypeBadge part={part} />)}
           <MergedBadge part={part} />
         </div>
         <div className="absolute top-2 right-2 flex max-w-[60%] items-start gap-1.5">

@@ -13,7 +13,7 @@ import { isReleaseMove, lockRelease } from "@/lib/versions/release";
 import { currentVisit } from "@/lib/visits";
 import { planPartUpdate, type PartChanges, type Plan } from "./changes";
 
-const { parts, partHistory, inventoryItems } = schema;
+const { parts, partHistory, inventoryItems, inventoryCategories } = schema;
 const ORDERING = ORDER_STATUSES.filter((s) => s !== COTS_IN_STOCK) as string[];
 
 const inStockNow = (p: typeof parts.$inferSelect) => p.classification === "cots" && computeStatus(p) === COTS_IN_STOCK;
@@ -53,6 +53,7 @@ export async function applyEachPartChanges(
   const batchId = ctx.batchId ?? randomUUID();
   if (!edits.length) return { batchId, changed: 0 };
   const byId = new Map(edits.map((e) => [e.id, e.changes]));
+  const fromItem = ctx.via === "sync" ? new Map<string, PartChanges>() : await linkedItemSetup(edits.map((e) => e.changes));
   // Changes made from a page belong to that page visit (Recent actions on the dashboard).
   const visit = ctx.via === "ui" ? await currentVisit() : null;
 
@@ -62,7 +63,10 @@ export async function applyEachPartChanges(
     let changed = 0;
     for (const row of rows) {
       if (ctx.onlyIf && !ctx.onlyIf(row)) continue;
-      const plan = planPartUpdate(row, byId.get(row.id)!, ctx.via);
+      const own = byId.get(row.id)!;
+      // Linking an item sets the part's type from the item's group; what the edit says itself wins.
+      const extra = own.inventoryItemId && row.classification !== "external" ? fromItem.get(own.inventoryItemId) : undefined;
+      const plan = planPartUpdate(row, extra ? { ...extra, ...own } : own, ctx.via);
       const { set, history } = plan;
       if (!history.length) continue;
       changed++;
@@ -126,6 +130,26 @@ export async function applyEachPartChanges(
     }
     return { batchId, changed };
   });
+}
+
+// What linking a part to each item in these edits sets besides the link (Harel, 2026-10-31): a Raw
+// Stock item is a material, so the part is made in-house from it; a COTS, Hardware or Electrical
+// item is the part itself, so the part is COTS of that category. Edits that set the type
+// themselves are left alone.
+async function linkedItemSetup(changes: PartChanges[]): Promise<Map<string, PartChanges>> {
+  const ids = [...new Set(changes.filter((c) => c.inventoryItemId && c.classification === undefined).map((c) => c.inventoryItemId!))];
+  const out = new Map<string, PartChanges>();
+  if (!ids.length) return out;
+  const items = await db
+    .select({ id: inventoryItems.id, name: inventoryItems.name, category: inventoryItems.category, group: inventoryCategories.group })
+    .from(inventoryItems)
+    .leftJoin(inventoryCategories, eq(inventoryCategories.id, inventoryItems.category))
+    .where(inArray(inventoryItems.id, ids));
+  for (const i of items) {
+    if (i.group === "consumables") out.set(i.id, { classification: "inhouse", material: i.name });
+    else if (i.group === "cots" || i.group === "hardware" || i.group === "electrical") out.set(i.id, { classification: "cots", cotsCategory: i.category });
+  }
+  return out;
 }
 
 // A part was linked to an item: the item remembers the part's Onshape library part (new BOM parts

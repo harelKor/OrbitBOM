@@ -52,6 +52,15 @@ describe("parseBom", () => {
     ]);
   });
 
+  it("puts PLA parts without a process on the Bambu", () => {
+    const row = (partId: string, mat: string, p1?: string) => ({
+      itemSource: src(partId),
+      headerIdToValue: { "h-name": partId, "h-mat": { displayName: mat }, ...(p1 ? { "h-p1": p1 } : {}) },
+    });
+    const { rows } = parseBom({ headers, rows: [row("a", "PLA"), row("b", "PLA", "CNC"), row("c", "Plate")] });
+    expect(rows.map((r) => r.process1)).toEqual(["3d-bambu", "cnc", null]);
+  });
+
   it("adds up repeated parts", () => {
     const row = { itemSource: src("A"), headerIdToValue: { "h-name": "Spacer", "h-qty": 3 } };
     expect(parseBom({ headers, rows: [row, row] }).rows[0].quantity).toBe(6);

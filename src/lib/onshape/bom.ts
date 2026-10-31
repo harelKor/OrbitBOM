@@ -1,6 +1,7 @@
 // Turns Onshape's assembly BOM response (GET /assemblies/.../bom) into BOM rows the sync can
 // merge. Material and the processes come from the team's custom part properties (ref §6).
 
+import { importSetup } from "@/config/autoSetup";
 import { findMachineByName } from "@/config/machines";
 import { ONSHAPE_PROPERTIES } from "@/config/onshapeProperties";
 
@@ -111,6 +112,9 @@ export function parseBom(bom: OnshapeBom): ParsedBom {
       process1: machine(get(row, col.process1)),
       process2: machine(get(row, col.process2)),
     };
+    // A PLA part with no process from Onshape is printed on the Bambu (config/autoSetup.ts).
+    const auto = !parsed.preProcess && !parsed.process1 && !parsed.process2 ? importSetup(parsed.material, onshapeMaterial) : undefined;
+    if (auto) parsed.process1 = auto.process1;
     const key = partKey(parsed);
     const seen = byKey.get(key);
     if (seen) seen.quantity += parsed.quantity;

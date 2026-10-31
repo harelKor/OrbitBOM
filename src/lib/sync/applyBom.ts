@@ -1,11 +1,12 @@
 import "server-only";
 import { and, eq } from "drizzle-orm";
+import { importSetup } from "@/config/autoSetup";
 import { db, schema } from "@/db";
 import { partKey, type BomRow } from "@/lib/onshape/bom";
 import { planPartUpdate } from "@/lib/parts/changes";
 import { moreToMake, planMerge } from "./merge";
 
-const { parts, partHistory } = schema;
+const { parts, partHistory, inventoryItems } = schema;
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -77,10 +78,20 @@ export async function applyBomRows(
   };
 
   if (plan.insert.length) {
+    // A new part parseBom set up from its material (a PLA part on the Bambu) is linked to that
+    // material's filament item; the item's name stays its material on later syncs.
+    const autoOf = (r: BomRow) => {
+      const a = importSetup(r.material, r.onshapeMaterial);
+      return a && !r.preProcess && r.process1 === a.process1 && !r.process2 ? a : undefined;
+    };
+    const filament = plan.insert.some(autoOf) ? await filamentItems(tx) : [];
     const inserted = await tx
       .insert(parts)
       .values(
-        plan.insert.map((r) => ({
+        plan.insert.map((r) => {
+          const a = autoOf(r);
+          const item = a && filamentFor(a.material, filament);
+          return {
           systemId,
           sourceDid: r.sourceDid,
           sourceWid: r.sourceWid,
@@ -90,7 +101,9 @@ export async function applyBomRows(
           onshapeName: r.onshapeName,
           partNumber: r.partNumber,
           description: r.description,
-          material: r.material,
+          material: item?.name ?? r.material,
+          inventoryItemId: item?.id ?? null,
+          overriddenFields: item ? ["material"] : [],
           quantity: r.quantity,
           preProcess: r.preProcess,
           process1: r.process1,
@@ -100,7 +113,8 @@ export async function applyBomRows(
           geometry: r.onshapeMaterial ? { onshapeMaterial: r.onshapeMaterial } : null,
           shapeSig: sigs[sigKey(r)] ?? null,
           lastModifiedBy: memberId,
-        })),
+          };
+        }),
       )
       .returning({ id: parts.id });
     inserted.forEach((p, i) => {
@@ -114,6 +128,11 @@ export async function applyBomRows(
     // A finished part whose CAD quantity went up goes back to the shop for the extra pieces.
     const reopen = moreToMake(part, u.changes);
     const { set, history } = planPartUpdate(part, reopen ? { ...u.changes, ...reopen } : u.changes, "sync");
+    // A part nobody had typed that now has a process from Onshape (a PLA part on the Bambu) is made in-house.
+    if (part.classification === "undefined" && (set.preProcess || set.process1 || set.process2)) {
+      set.classification = "inhouse";
+      history.push({ field: "classification", oldValue: "undefined", newValue: "inhouse" });
+    }
     if (history.length) result.updated++;
     if (u.relinked) result.relinked.push(u.identity.onshapeName);
     if (u.restore) result.restored.push(u.identity.onshapeName);
@@ -143,4 +162,23 @@ export async function applyBomRows(
       .where(and(eq(parts.id, id), eq(parts.isManual, false)));
   }
   return result;
+}
+
+type Filament = { id: string; name: string; material: string };
+
+async function filamentItems(tx: Tx): Promise<Filament[]> {
+  const rows = await tx.select({ id: inventoryItems.id, name: inventoryItems.name, specs: inventoryItems.specs }).from(inventoryItems).where(eq(inventoryItems.category, "filament"));
+  return rows.map((r) => ({ id: r.id, name: r.name, material: r.specs.material ?? "" }));
+}
+
+// The filament item of a material: one named just that ("PLA") first, then one whose material
+// spec is it, then one with it in its name.
+function filamentFor(material: string, items: Filament[]): Filament | undefined {
+  const re = new RegExp(`\\b${material}\\b`, "i");
+  const low = material.toLowerCase();
+  return (
+    items.find((i) => i.name.trim().toLowerCase() === low) ??
+    items.find((i) => i.material.toLowerCase() === low) ??
+    items.find((i) => re.test(i.name))
+  );
 }

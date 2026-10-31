@@ -421,6 +421,13 @@
       "when": 1793442680066,
       "tag": "0059_single_version_label",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1793443216739,
+      "tag": "0060_pla_bambu",
+      "breakpoints": true
     }
   ]
 }

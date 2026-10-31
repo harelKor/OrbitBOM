@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pickableStatuses, statusDenied } from "./mode";
+import { can, partChangesCapability, pickableStatuses, statusDenied } from "./mode";
 
 describe("status rules by team", () => {
   it("lets Edit set anything", () => {
@@ -31,5 +31,16 @@ describe("status rules by team", () => {
 
   it("lets no team change nothing", () => {
     expect(statusDenied("none", "Released", { cots: false })).not.toBeNull();
+  });
+});
+
+describe("part type", () => {
+  it("lets admins and the CAD Team switch COTS and In-House", () => {
+    expect(partChangesCapability({ classification: "cots" })).toBe("classify");
+    expect(partChangesCapability({ classification: "inhouse", material: "PLA" })).toBe("classify");
+    expect(partChangesCapability({ classification: "external" })).toBe("manage");
+    expect(can("cad", "classify")).toBe(true);
+    expect(can("edit", "classify")).toBe(true);
+    expect(can("build", "classify")).toBe(false);
   });
 });
