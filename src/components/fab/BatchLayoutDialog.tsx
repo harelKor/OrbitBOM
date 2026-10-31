@@ -219,16 +219,15 @@ export function BatchLayoutDialog({ groupId, name, open, onClose }: { groupId: s
             groupId={groupId}
             placements={placements}
             url={onshapeUrl}
-            // The window's own props (the button's newer version takes them).
-            {...({
-              where: "dialog",
-              onBusy: (on: boolean) => {
-                if (on) void save();
-                setBusy(on);
-                if (on) setSelected(null);
-              },
-              onDone: (url: string) => setOnshapeUrl(url),
-            } as object)}
+            where="dialog"
+            onBusy={(on) => {
+              if (on) {
+                void save();
+                setSelected(null);
+              }
+              setBusy(on);
+            }}
+            onDone={(url) => setOnshapeUrl(url)}
           />
         )
       }
