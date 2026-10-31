@@ -6,6 +6,7 @@ export function Dialog({
   open,
   onClose,
   title,
+  actions,
   wide = false,
   width,
   sheet = false,
@@ -14,6 +15,7 @@ export function Dialog({
   open: boolean;
   onClose: () => void;
   title: React.ReactNode;
+  actions?: React.ReactNode; // buttons in the title bar, right of the title and left of ✕
   wide?: boolean;
   width?: string; // a width class, in place of the two standard widths
   sheet?: boolean; // on phones: a full-width sheet up from the bottom, its title bar kept in view
@@ -45,8 +47,9 @@ export function Dialog({
       }}
       className={`m-auto ${width ?? (wide ? "w-[min(40rem,calc(100vw-2rem))]" : "w-[min(28rem,calc(100vw-2rem))]")} modal p-0 outline-none ${sheet ? SHEET : ""}`}
     >
-      <div className={`flex items-center justify-between border-b border-line px-5 py-3 ${sheet ? "sticky top-0 z-[2] bg-surface max-sm:px-4" : ""}`}>
+      <div className={`flex items-center justify-between gap-2 border-b border-line px-5 py-3 ${actions ? "max-sm:flex-wrap" : ""} ${sheet ? "sticky top-0 z-[2] bg-surface max-sm:px-4" : ""}`}>
         <h2 className="min-w-0 flex-1 font-semibold">{title}</h2>
+        {actions && <div className="flex flex-wrap items-center justify-end gap-1.5 max-sm:order-last max-sm:basis-full max-sm:justify-start">{actions}</div>}
         <button type="button" onClick={onClose} className="press rounded p-1 text-muted hover:text-fg" aria-label="Close">
           ✕
         </button>

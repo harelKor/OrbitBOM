@@ -20,8 +20,8 @@ import { cotsTotal, siteOf } from "@/lib/cots";
 import { fabStage } from "@/lib/fab";
 import { useBom } from "./BomContext";
 import { upload } from "./FilesField";
-import { MachineField, MaterialField, NameField, PersonField, PriorityField, QuantityField, StatusField, TypeField, machineSlotsShown, type SaveFn } from "./fields";
-import { DoneCounter, DownloadMenu, MergedBadge, cadFormat } from "./PartCard";
+import { MachineField, MaterialField, NameField, QuantityField, StatusField, TypeField, machineSlotsShown, type SaveFn } from "./fields";
+import { DownloadMenu, MergedBadge, cadFormat } from "./PartCard";
 import { ownerPartId, partTitle, type CardPart } from "./types";
 
 type Stage = StageView | "thumb";
@@ -42,6 +42,7 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
   const title = partTitle(part);
   const canLocate = !part.isManual && !!robotId && !!part.modelKey;
   const overlay = "btn h-8 gap-1.5 bg-surface/95 text-xs shadow-sm";
+  const suggest = useSuggest(part, !part.memberIds);
 
   return (
     <Dialog
@@ -51,6 +52,14 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
         <>
           {title}
           {part.fabLock && !cots && <FabVersionBadge lock={part.fabLock} />}
+        </>
+      }
+      actions={
+        <>
+          {!part.isManual && !cots && <PartVersionsButton partId={part.id} lock={part.fabLock} released={fabStage(part) !== null} />}
+          {suggest.buttons}
+          {!cots && canDraw && !part.isManual && <DrawingAction partId={ownerPartId(part)} hasDrawing={!!part.hasDrawing} />}
+          {!cots && canDraw && <DrawingFileButton part={part} />}
         </>
       }
       width="w-[min(74rem,calc(100vw-2rem))]">
@@ -121,8 +130,7 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
           </div>
 
           <div className="min-w-0 space-y-5">
-            {!part.isManual && !cots && <PartVersionsButton partId={part.id} lock={part.fabLock} released={fabStage(part) !== null} />}
-            {!part.memberIds && <SuggestBar part={part} />}
+            {suggest.message}
             <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] content-start items-center gap-x-3 gap-y-2 text-sm">
               <Row label="Name">
                 <NameField part={part} save={save} />
@@ -140,12 +148,6 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
                 <StatusField part={part} save={save} />
               </Row>
               {cots ? <CotsRows part={part} save={save} /> : <MadeRows part={part} save={save} />}
-              <Row label="Priority">
-                <PriorityField part={part} save={save} />
-              </Row>
-              <Row label="Designer">
-                <PersonField value={part.designerName} names={[]} onSave={(v) => save({ designerName: v })} />
-              </Row>
               <Row label="Last edited">
                 <span className="text-muted">
                   <span className="font-mono tabular-nums">{part.lastModifiedAt.toISOString().slice(0, 10)}</span>
@@ -154,12 +156,6 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
               </Row>
             </dl>
             <InventoryLink part={part} save={save} />
-            {!cots && canDraw && (
-              <div className="flex flex-wrap items-center gap-2">
-                {!part.isManual && <DrawingAction partId={ownerPartId(part)} hasDrawing={!!part.hasDrawing} />}
-                <DrawingFileButton part={part} />
-              </div>
-            )}
           </div>
         </div>
     </Dialog>
@@ -331,7 +327,7 @@ function InventoryLink({ part, save }: { part: CardPart; save: SaveFn }) {
         </div>
       )}
       {!itemId && !work && <p className="text-sm text-subtle">Not linked to an inventory item.</p>}
-      {work && <AddBox
+      {work && !itemId && <AddBox
         q={q}
         setQ={setQ}
         items={data?.items ?? []}
@@ -339,7 +335,7 @@ function InventoryLink({ part, save }: { part: CardPart; save: SaveFn }) {
         locations={data?.locations ?? []}
         conditions={data?.conditions ?? []}
         defaultCategory={null}
-        placeholder={itemId ? "Link another item: search, paste a link or add one" : "Link an inventory item: search, paste a link or add one"}
+        placeholder="Link an inventory item: search, paste a link or add one"
         onPick={(id) => save({ inventoryItemId: id })}
         searchFor={partTitle(part)}
         floating
@@ -362,10 +358,11 @@ const FIELD_NAMES: Record<string, string> = {
 };
 
 // Suggest runs the site's setup rules and auto-link on this one part. Whatever waits in To Review
-// for it (from Suggest, Suggest setup, auto-link or a member's Claude) shows here with Approve,
-// which keeps it, and Reject, which puts the old values back.
-function SuggestBar({ part }: { part: CardPart }) {
-  const review = useCan("review");
+// for it (from Suggest, Suggest setup, auto-link or a member's Claude) shows Approve, which keeps
+// it, and Reject, which puts the old values back. The buttons sit in the window's title bar; what
+// was suggested shows as a line over the part's properties.
+function useSuggest(part: CardPart, enabled: boolean): { buttons: React.ReactNode; message: React.ReactNode } {
+  const review = useCan("review") && enabled;
   const [state, setState] = useState<PartReviewState | undefined>(undefined);
   const [busy, setBusy] = useState<"suggest" | "approve" | "reject" | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -380,7 +377,7 @@ function SuggestBar({ part }: { part: CardPart }) {
       cancelled = true;
     };
   }, [review, part.id, version, tick]);
-  if (!review) return null;
+  if (!review) return { buttons: null, message: null };
 
   const run = async (kind: "suggest" | "approve" | "reject") => {
     setBusy(kind);
@@ -395,44 +392,44 @@ function SuggestBar({ part }: { part: CardPart }) {
   const what = state ? [...state.fields.map((f) => FIELD_NAMES[f] ?? f), ...(state.pendingItem ? [`link to "${state.pendingItem}"`] : [])] : [];
   const by = state?.source === "ai" ? (state.aiName ?? "Claude") : "Suggest";
 
-  return (
-    <section className={`space-y-2 rounded-xl border px-3 py-2.5 ${waiting ? "border-sky-400/40 bg-sky-500/5" : "border-line"}`}>
-      <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className={`btn h-8 gap-1.5 text-xs active:scale-[0.98] ${busy === "suggest" ? "animate-pulse" : ""}`} disabled={!!busy} onClick={() => run("suggest")} title="Guess material, machines and the inventory item for this part">
-          <Icon name="spark" className="h-3.5 w-3.5 text-amber-500" />
-          {busy === "suggest" ? "Suggesting…" : "Suggest"}
-        </button>
-        {waiting && (
-          <>
-            <button
-              type="button"
-              className="btn h-8 gap-1.5 border-emerald-500/50 bg-emerald-500/10 text-xs text-emerald-700 hover:bg-emerald-500/20 active:scale-[0.98] dark:text-emerald-300"
-              disabled={!!busy}
-              onClick={() => run("approve")}
-            >
-              {busy === "approve" ? "Approving…" : "Approve"}
-            </button>
-            <button
-              type="button"
-              className="btn h-8 gap-1.5 border-rose-500/50 bg-rose-500/10 text-xs text-rose-700 hover:bg-rose-500/20 active:scale-[0.98] dark:text-rose-300"
-              disabled={!!busy}
-              onClick={() => run("reject")}
-              title="Put the old values back"
-            >
-              {busy === "reject" ? "Rejecting…" : "Reject"}
-            </button>
-          </>
-        )}
-      </div>
+  const buttons = (
+    <>
+      <button type="button" className={`btn h-8 gap-1.5 text-xs active:scale-[0.98] ${busy === "suggest" ? "animate-pulse" : ""}`} disabled={!!busy} onClick={() => run("suggest")} title="Guess material, machines and the inventory item for this part">
+        <Icon name="spark" className="h-3.5 w-3.5 text-amber-500" />
+        {busy === "suggest" ? "Suggesting…" : "Suggest"}
+      </button>
       {waiting && (
-        <p className="text-xs leading-snug text-muted">
-          <span className="font-semibold text-fg">{by}</span> suggested {what.join(", ")}
-          {state?.reason && <span className="block text-subtle">{state.reason}</span>}
-        </p>
+        <>
+          <button
+            type="button"
+            className="btn h-8 gap-1.5 border-emerald-500/50 bg-emerald-500/10 text-xs text-emerald-700 hover:bg-emerald-500/20 active:scale-[0.98] dark:text-emerald-300"
+            disabled={!!busy}
+            onClick={() => run("approve")}
+          >
+            {busy === "approve" ? "Approving…" : "Approve"}
+          </button>
+          <button
+            type="button"
+            className="btn h-8 gap-1.5 border-rose-500/50 bg-rose-500/10 text-xs text-rose-700 hover:bg-rose-500/20 active:scale-[0.98] dark:text-rose-300"
+            disabled={!!busy}
+            onClick={() => run("reject")}
+            title="Put the old values back"
+          >
+            {busy === "reject" ? "Rejecting…" : "Reject"}
+          </button>
+        </>
       )}
-      {note && !waiting && <p className="text-xs text-muted">{note}</p>}
-    </section>
+    </>
   );
+  const message = waiting ? (
+    <p className="border-l-2 border-sky-400/60 pl-2.5 text-xs leading-snug text-muted">
+      <span className="font-semibold text-fg">{by}</span> suggested {what.join(", ")}
+      {state?.reason && <span className="block text-subtle">{state.reason}</span>}
+    </p>
+  ) : note ? (
+    <p className="text-xs text-muted">{note}</p>
+  ) : null;
+  return { buttons, message };
 }
 
 // Material and each machine with how many are done there.
@@ -446,7 +443,6 @@ function MadeRows({ part, save }: { part: CardPart; save: SaveFn }) {
         <Row key={slot.key} label={slot.label}>
           <span className="flex min-w-0 items-center gap-2">
             <MachineField part={part} save={save} slot={slot} placeholder="None" />
-            {part[slot.key] && <DoneCounter part={part} save={save} slot={slot} />}
           </span>
         </Row>
       ))}
