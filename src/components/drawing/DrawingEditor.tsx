@@ -10,16 +10,15 @@ import { applyEdits, fmt, noteBox, partDrawing } from "@/lib/drawing/layout";
 import { drawingSvg } from "@/lib/drawing/svg";
 import type { Drawing, Pt } from "@/lib/drawing/types";
 import { Icon } from "@/components/ui/Icon";
+import { ZoomStage } from "./ZoomStage";
 
 type Hole = Drawing["holes"][number];
 // Adding a note takes two clicks: where its arrow points, then where its text goes. Moving one
-// moves its text or its arrow.
-type Mode =
-  | { kind: "idle" }
-  | { kind: "arrow" }
-  | { kind: "text"; leader?: Pt; hole?: Hole }
-  | { kind: "moveText"; id: string }
-  | { kind: "moveArrow"; id: string };
+// is a drag, of its text or of its arrow tip.
+type Mode = { kind: "idle" } | { kind: "arrow" } | { kind: "text"; leader?: Pt; hole?: Hole };
+// A note being dragged: its text (the arrow tip stays put) or its arrow tip. `off` is where the
+// text was grabbed, from its anchor.
+type Drag = { id: string; part: "text" | "arrow"; off: Pt; pointer: number; moved: boolean };
 
 type Draft = { kind: "fit" | "screw" | "none"; fit: Fit; to: "bearing" | "part"; bearing: string; part: string | null; screw: string; extra: string };
 const NEW_DRAFT: Draft = { kind: "fit", fit: DEFAULT_FIT, to: "bearing", bearing: BEARINGS[0].name, part: null, screw: "M5", extra: "" };
@@ -43,9 +42,15 @@ const HINTS: Record<Mode["kind"], string | null> = {
   idle: null,
   arrow: "Click where the arrow points (a hole, or anywhere)",
   text: "Click where the text goes",
-  moveText: "Click the text's new place",
-  moveArrow: "Click where the arrow points now",
 };
+
+// A note's text box on the sheet; the tool note is drawn bigger (svg.ts).
+function textRect(n: Drawing["notes"][number]) {
+  const { rect } = noteBox(n.text, n.at);
+  if (n.kind !== "tool" || n.leader) return rect;
+  const k = 5 / 3.5;
+  return { x0: rect.x0, y0: n.at[1] - 5, x1: rect.x0 + (rect.x1 - rect.x0) * k, y1: rect.y1 };
+}
 
 // The drawing editor (plan/auto-drawings.md): deliberately small. Change, hide or move any note
 // (text and arrow apart), and add notes: a fit, a tapped screw, or plain words. Nothing else.
@@ -60,6 +65,9 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
   const [busy, setBusy] = useState<"regenerate" | "delete" | null>(null);
   const [loads, setLoads] = useState(0); // bumped by Regenerate to fetch the new drawing
   const sheet = useRef<HTMLDivElement>(null);
+  const drag = useRef<Drag | null>(null);
+  const [active, setActive] = useState<{ id: string; part: Drag["part"] } | null>(null); // under the mouse, or being dragged
+  const [dragging, setDragging] = useState(false);
   const frame = useRef<HTMLDialogElement>(null);
   useEffect(() => frame.current?.showModal(), []);
   const router = useRouter();
@@ -101,6 +109,11 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
   };
 
   function onSheetClick(e: React.MouseEvent) {
+    if (swallow.current) {
+      swallow.current = false;
+      return;
+    }
+    if (mode.kind === "idle" && sheetPoint(e) && noteAt(sheetPoint(e)!)) return; // a press on a note
     const at = sheetPoint(e);
     if (!at || !drawing) return;
     const hole = holeAt(at);
@@ -115,18 +128,73 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
       change({ ...edits, added: [...added, { id: `note:${Date.now()}`, text, at, ...(leader ? { leader } : {}) }] });
       setDraft({ ...draft, extra: "" });
       setMode({ kind: "idle" });
-    } else if (mode.kind === "moveText") {
-      if (added.some((a) => a.id === mode.id)) change({ ...edits, added: added.map((a) => (a.id === mode.id ? { ...a, at } : a)) });
-      else change({ ...edits, moved: { ...edits.moved, [mode.id]: at } });
-      setMode({ kind: "idle" });
-    } else {
-      const from = textCentre(mode.id);
-      const leader = hole && from ? onEdge(hole, from) : at;
-      if (added.some((a) => a.id === mode.id)) change({ ...edits, added: added.map((a) => (a.id === mode.id ? { ...a, leader } : a)) });
-      else change({ ...edits, arrows: { ...edits.arrows, [mode.id]: leader } });
-      setMode({ kind: "idle" });
     }
   }
+
+  const moveText = (id: string, at: Pt) =>
+    added.some((a) => a.id === id) ? change({ ...edits, added: added.map((a) => (a.id === id ? { ...a, at } : a)) }) : change({ ...edits, moved: { ...edits.moved, [id]: at } });
+  const moveArrow = (id: string, leader: Pt) =>
+    added.some((a) => a.id === id)
+      ? change({ ...edits, added: added.map((a) => (a.id === id ? { ...a, leader } : a)) })
+      : change({ ...edits, arrows: { ...edits.arrows, [id]: leader } });
+
+  // The note part under a sheet point: an arrow tip first (small, and often inside a text's
+  // reach), then a text box.
+  function noteAt(p: Pt): { id: string; part: Drag["part"] } | null {
+    if (!drawing) return null;
+    const tip = drawing.notes.find((n) => n.leader && Math.hypot(n.leader[0] - p[0], n.leader[1] - p[1]) <= 2.5);
+    if (tip) return { id: tip.id, part: "arrow" };
+    const pad = 1;
+    const box = [...drawing.notes].reverse().find((n) => {
+      const r = textRect(n);
+      return p[0] >= r.x0 - pad && p[0] <= r.x1 + pad && p[1] >= r.y0 - pad && p[1] <= r.y1 + pad;
+    });
+    return box ? { id: box.id, part: "text" } : null;
+  }
+
+  // Press on a note's text or arrow tip and drag it, like a pin on the workshop map. While the
+  // text moves its arrow keeps pointing at the same spot; a dragged tip snaps onto a hole's edge.
+  function onSheetPointerDown(e: React.PointerEvent) {
+    if (e.button !== 0 || mode.kind !== "idle" || !drawing) return;
+    const p = sheetPoint(e);
+    const hit = p && noteAt(p);
+    if (!p || !hit) return;
+    const n = drawing.notes.find((x) => x.id === hit.id)!;
+    e.stopPropagation(); // no pan
+    e.preventDefault();
+    sheet.current?.setPointerCapture(e.pointerId);
+    drag.current = { ...hit, off: hit.part === "text" ? [p[0] - n.at[0], p[1] - n.at[1]] : [0, 0], pointer: e.pointerId, moved: false };
+    setActive(hit);
+  }
+  function onSheetPointerMove(e: React.PointerEvent) {
+    const p = sheetPoint(e);
+    if (!p) return;
+    const d = drag.current;
+    if (!d || d.pointer !== e.pointerId) {
+      if (mode.kind === "idle" && !e.buttons) {
+        const hit = noteAt(p);
+        if (hit?.id !== active?.id || hit?.part !== active?.part) setActive(hit);
+      }
+      return;
+    }
+    if (!d.moved) {
+      d.moved = true;
+      setDragging(true);
+    }
+    if (d.part === "text") return moveText(d.id, [p[0] - d.off[0], p[1] - d.off[1]]);
+    const hole = holeAt(p);
+    const from = textCentre(d.id);
+    moveArrow(d.id, hole && from ? onEdge(hole, from) : p);
+  }
+  function onSheetPointerUp(e: React.PointerEvent) {
+    const d = drag.current;
+    if (!d || d.pointer !== e.pointerId) return;
+    drag.current = null;
+    setDragging(false);
+    // A press without a move is still a click (it doesn't start a note on a hole under the text).
+    if (d.moved) swallow.current = true;
+  }
+  const swallow = useRef(false);
 
   async function save() {
     setSaving(true);
@@ -164,7 +232,7 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
     if (!dirty || confirm("Close without saving your changes?")) onClose();
   };
   const hint = HINTS[mode.kind];
-  const hasArrow = (id: string) => !!drawing?.notes.find((n) => n.id === id)?.leader;
+  const activeNote = active && drawing?.notes.find((n) => n.id === active.id);
 
   // On document.body: inside the part card, pressing the sheet would scale the card (:active) and
   // pull the fixed editor into it. Clicks still bubble through React, so they stop here. A modal
@@ -216,19 +284,49 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
       {data?.outdated && <p className="mb-2 rounded-md bg-amber-50 p-2 text-sm text-amber-800">The part changed in Onshape since this drawing was made. Regenerate it to update.</p>}
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
-        <div className="min-h-0 flex-1 overflow-auto">
-          {drawing ? (
+        {drawing ? (
+          // The whole sheet fits without scrollbars; Ctrl + wheel zooms, drag pans when zoomed in.
+          <ZoomStage aspect={drawing.sheet.w / drawing.sheet.h} leftPan={mode.kind === "idle"} className="min-h-[55dvh] flex-1 rounded-lg lg:h-[calc(100dvh-7rem)] lg:min-h-0">
             <div
               ref={sheet}
               onClick={onSheetClick}
-              className={`mx-auto w-full max-w-[1100px] bg-white shadow-lg [&>svg]:block [&>svg]:h-auto [&>svg]:w-full ${mode.kind === "idle" ? "cursor-pointer" : "cursor-crosshair"}`}
-              style={{ aspectRatio: `${drawing.sheet.w} / ${drawing.sheet.h}` }}
-              dangerouslySetInnerHTML={{ __html: svg }}
-            />
-          ) : (
-            !error && <p className="text-sm text-white/60">Loading the drawing…</p>
-          )}
-        </div>
+              onPointerDown={onSheetPointerDown}
+              onPointerMove={onSheetPointerMove}
+              onPointerUp={onSheetPointerUp}
+              onPointerCancel={onSheetPointerUp}
+              onPointerLeave={() => !drag.current && setActive(null)}
+              className={`relative h-full w-full touch-none select-none bg-white shadow-lg ${
+                dragging ? "cursor-grabbing" : active ? "cursor-grab" : mode.kind === "idle" ? "cursor-pointer" : "cursor-crosshair"
+              }`}
+            >
+              <div className="h-full w-full [&>svg]:block [&>svg]:h-full [&>svg]:w-full" dangerouslySetInnerHTML={{ __html: svg }} />
+              {/* Arrow tip handles, and the note under the mouse outlined. */}
+              <svg viewBox={`0 0 ${drawing.sheet.w} ${drawing.sheet.h}`} className="pointer-events-none absolute inset-0 h-full w-full">
+                {mode.kind === "idle" &&
+                  drawing.notes.map(
+                    (n) =>
+                      n.leader && (
+                        <circle
+                          key={n.id}
+                          cx={n.leader[0]}
+                          cy={n.leader[1]}
+                          r={active?.id === n.id && active.part === "arrow" ? 1.6 : 1.1}
+                          fill={active?.id === n.id && active.part === "arrow" ? "#0EA5E9" : "rgba(14,165,233,0.25)"}
+                          stroke="#0EA5E9"
+                          strokeWidth={0.25}
+                        />
+                      ),
+                  )}
+                {activeNote && active?.part === "text" && (() => {
+                  const r = textRect(activeNote);
+                  return <rect x={r.x0 - 1} y={r.y0 - 1} width={r.x1 - r.x0 + 2} height={r.y1 - r.y0 + 2} rx={0.8} fill="rgba(56,189,248,0.10)" stroke="#38BDF8" strokeWidth={0.3} />;
+                })()}
+              </svg>
+            </div>
+          </ZoomStage>
+        ) : (
+          <div className="min-h-0 flex-1">{!error && <p className="text-sm text-white/60">Loading the drawing…</p>}</div>
+        )}
 
         <aside className="w-full shrink-0 space-y-3 overflow-auto rounded-lg border border-white/10 bg-[#0D111A] p-3 text-sm text-white lg:w-80">
           <NoteForm
@@ -238,6 +336,7 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
             onPlace={() => setMode({ kind: "arrow" })}
             disabled={!drawing || !canAdd}
           />
+          <p className="text-xs text-white/50">Drag a note&apos;s text or its arrow tip on the drawing to move it. Ctrl + wheel zooms; drag, Space + drag or the middle button pans.</p>
           <div className="space-y-2">
             {base?.notes.map((n) => (
               <NoteRow
@@ -245,8 +344,6 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
                 text={edits.text?.[n.id] ?? n.text}
                 hidden={hidden.has(n.id)}
                 onText={(t) => change({ ...edits, text: { ...edits.text, [n.id]: t } })}
-                onMoveText={() => setMode({ kind: "moveText", id: n.id })}
-                onMoveArrow={hasArrow(n.id) ? () => setMode({ kind: "moveArrow", id: n.id }) : undefined}
                 onToggle={() =>
                   change({ ...edits, hidden: hidden.has(n.id) ? [...hidden].filter((x) => x !== n.id) : [...hidden, n.id] })
                 }
@@ -257,8 +354,6 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
                 key={a.id}
                 text={a.text}
                 onText={(t) => change({ ...edits, added: added.map((x) => (x.id === a.id ? { ...x, text: t } : x)) })}
-                onMoveText={() => setMode({ kind: "moveText", id: a.id })}
-                onMoveArrow={() => setMode({ kind: "moveArrow", id: a.id })}
                 onDelete={() => change({ ...edits, added: added.filter((x) => x.id !== a.id) })}
               />
             ))}
@@ -274,8 +369,6 @@ function NoteRow(props: {
   text: string;
   hidden?: boolean;
   onText: (t: string) => void;
-  onMoveText: () => void;
-  onMoveArrow?: () => void;
   onToggle?: () => void;
   onDelete?: () => void;
 }) {
@@ -283,14 +376,6 @@ function NoteRow(props: {
     <div className={`space-y-1 rounded-md border border-white/10 p-2 ${props.hidden ? "opacity-50" : ""}`}>
       <textarea value={props.text} onChange={(e) => props.onText(e.target.value)} rows={Math.max(1, props.text.split("\n").length)} className="input w-full resize-none text-sm" />
       <div className="flex flex-wrap gap-1.5 text-xs">
-        <button className="btn py-0.5 text-xs" onClick={props.onMoveText} disabled={props.hidden}>
-          Move text
-        </button>
-        {props.onMoveArrow && (
-          <button className="btn py-0.5 text-xs" onClick={props.onMoveArrow} disabled={props.hidden}>
-            Move arrow
-          </button>
-        )}
         {props.onToggle && (
           <button className="btn py-0.5 text-xs" onClick={props.onToggle}>
             {props.hidden ? "Show" : "Hide"}
