@@ -9,6 +9,7 @@ import { requireAdmin } from "@/lib/auth";
 import { requireCapability } from "@/lib/mode";
 import { deleteObjects, fileKeysFor } from "@/lib/storage/cleanup";
 import { deleteRobotModel } from "@/lib/model/build";
+import { saveLayoutsDocument } from "@/lib/fab/layoutsDocument";
 import { onshapeUrl, parseOnshapeUrl } from "@/lib/onshape/url";
 
 export type FormState = { error?: string; saved?: boolean } | undefined;
@@ -136,3 +137,13 @@ export async function deleteSystem(robotId: string, systemId: string) {
   revalidatePath("/", "layout");
   redirect(`/robots/${robotId}`);
 }
+
+// Settings: the robot's Batch Layouts document (src/lib/fab/layoutsDocument.ts). Empty clears it,
+// so Onshape Layout goes back to the system's own document.
+export async function setLayoutsDocument(robotId: string, link: string): Promise<FormState> {
+  const member = await requireCapability("manage");
+  const r = await saveLayoutsDocument(robotId, link, member);
+  if (!r.error) revalidatePath("/", "layout");
+  return r;
+}
+

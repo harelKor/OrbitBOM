@@ -1047,7 +1047,7 @@ function BatchCard({
                 Auto Layout
               </button>
             )}
-            {open && <OnshapeLayoutButton groupId={batch.id} url={batch.onshapeLayoutUrl} />}
+            {open && <OnshapeLayoutButton groupId={batch.id} url={batch.onshapeLayoutUrl} where="card" />}
             {layoutOpen &&
               createPortal(
                 // The window sits outside the card in the page, but React still hands its clicks to the card.

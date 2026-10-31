@@ -8,6 +8,7 @@ import { z } from "zod";
 import { db, schema } from "@/db";
 import { syncSystem } from "@/app/(app)/parts-actions";
 import { requireCapability } from "@/lib/mode";
+import { saveLayoutsDocument } from "@/lib/fab/layoutsDocument";
 import { refreshThumbnails } from "@/lib/onshape/thumbnails";
 import { onshapeUrl, parseOnshapeUrl } from "@/lib/onshape/url";
 
@@ -51,4 +52,13 @@ export async function linkMainAssembly(assemblyUrl: string, _: { error?: string 
   await db.update(schema.robots).set({ mainAssemblyUrl: onshapeUrl(ref) }).where(eq(schema.robots.id, robotId.data));
   revalidatePath("/", "layout");
   redirect(`/robots/${robotId.data}#viewer`);
+}
+
+// Makes the document the panel is open in a robot's Batch Layouts document: Onshape Layout makes
+// that robot's "Batch - <name>" assemblies here.
+export async function setBatchLayoutsDocument(documentUrl: string, _: { error?: string; saved?: boolean } | undefined, formData: FormData) {
+  const member = await requireCapability("sync");
+  const r = await saveLayoutsDocument(String(formData.get("robotId") ?? ""), documentUrl, member);
+  if (!r.error) revalidatePath("/", "layout");
+  return r;
 }

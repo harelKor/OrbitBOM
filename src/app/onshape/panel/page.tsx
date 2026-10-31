@@ -55,9 +55,17 @@ async function panelBody(ref: ReturnType<typeof parseOnshapeUrl>) {
   if (robot) redirect(`/robots/${robot.id}`);
 
   const robots = await db
-    .select({ id: schema.robots.id, name: schema.robots.name })
+    .select({ id: schema.robots.id, name: schema.robots.name, layoutsDid: schema.robots.layoutsDocumentId })
     .from(schema.robots)
     .where(eq(schema.robots.archived, false))
     .orderBy(desc(schema.robots.year), asc(schema.robots.name));
-  return <LinkAssemblyForm assemblyUrl={onshapeUrl(ref)} robots={robots} onshapeConnected={member.onshapeConnected} />;
+  return (
+    <LinkAssemblyForm
+      assemblyUrl={onshapeUrl(ref)}
+      documentUrl={onshapeUrl({ baseUrl: ref.baseUrl, did: ref.did, wvm: ref.wvm, wvmid: ref.wvmid })}
+      robots={robots.map(({ id, name }) => ({ id, name }))}
+      layoutsFor={robots.filter((r) => r.layoutsDid === ref.did).map((r) => r.name)}
+      onshapeConnected={member.onshapeConnected}
+    />
+  );
 }

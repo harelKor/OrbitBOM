@@ -1,4 +1,4 @@
-import { asc } from "drizzle-orm";
+import { asc, desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { redirect } from "next/navigation";
 import { requireMember } from "@/lib/auth";
@@ -17,13 +17,18 @@ export default async function SettingsPage() {
   const member = await requireMember();
   // Settings is for admins in Edit mode; the teams land back on their home page.
   if (!(await isEditMode())) redirect("/");
-  const [categories, materials, conditions, locations, items, backups] = await Promise.all([
+  const [categories, materials, conditions, locations, items, backups, robots] = await Promise.all([
     listCategories(),
     listBaseMaterials(),
     db.select().from(inventoryConditions).orderBy(asc(inventoryConditions.label)),
     db.select().from(inventoryLocations).orderBy(asc(inventoryLocations.name)),
     db.select({ category: inventoryItems.category, specs: inventoryItems.specs }).from(inventoryItems),
     backupInfo(),
+    db
+      .select({ id: schema.robots.id, name: schema.robots.name, year: schema.robots.year, url: schema.robots.layoutsDocumentUrl })
+      .from(schema.robots)
+      .where(eq(schema.robots.archived, false))
+      .orderBy(desc(schema.robots.year), asc(schema.robots.name)),
   ]);
 
   return (
@@ -43,6 +48,7 @@ export default async function SettingsPage() {
         backups={backups.all}
         restoreScopes={Object.entries(RESTORE_SCOPES).map(([id, s]) => ({ id, label: s.label, text: s.text }))}
         isAdmin={member.isAdmin}
+        robots={robots}
       />
     </div>
   );

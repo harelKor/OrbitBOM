@@ -1,15 +1,19 @@
 "use client";
 
 import { useActionState } from "react";
-import { linkAssembly, linkMainAssembly } from "./actions";
+import { linkAssembly, linkMainAssembly, setBatchLayoutsDocument } from "./actions";
 
 export function LinkAssemblyForm({
   assemblyUrl,
+  documentUrl,
   robots,
+  layoutsFor,
   onshapeConnected,
 }: {
   assemblyUrl: string;
+  documentUrl: string;
   robots: { id: string; name: string }[];
+  layoutsFor: string[]; // robots whose Batch Layouts document this is
   onshapeConnected: boolean;
 }) {
   const [state, action, pending] = useActionState(
@@ -18,6 +22,10 @@ export function LinkAssemblyForm({
   );
   const [mainState, mainAction, mainPending] = useActionState(
     linkMainAssembly.bind(null, assemblyUrl),
+    undefined,
+  );
+  const [layoutsState, layoutsAction, layoutsPending] = useActionState(
+    setBatchLayoutsDocument.bind(null, documentUrl),
     undefined,
   );
 
@@ -29,6 +37,11 @@ export function LinkAssemblyForm({
     );
   return (
     <div className="space-y-6">
+      {layoutsFor.length > 0 && (
+        <p className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 font-semibold text-emerald-700 dark:text-emerald-300">
+          ✓ Used as Batch Layouts document for {layoutsFor.join(", ")}
+        </p>
+      )}
       <form action={mainAction} className="space-y-3">
         <h1 className="text-base font-semibold">Is this the whole robot?</h1>
         <p className="text-muted">
@@ -83,6 +96,27 @@ export function LinkAssemblyForm({
         {state?.error && <p className="text-rose-700">{state.error}</p>}
         <button className="btn-primary w-full" disabled={pending}>
           {pending ? "Linking and syncing…" : "Link & sync"}
+        </button>
+      </form>
+      <form action={layoutsAction} className="space-y-3 border-t border-line pt-5">
+        <h2 className="text-base font-semibold">Or keep Fab batch layouts here</h2>
+        <p className="text-muted">
+          Onshape Layout makes each batch&apos;s &quot;Batch - name&quot; assembly in this document.
+        </p>
+        {robots.length > 1 && (
+          <select name="robotId" aria-label="Robot" className="input" required>
+            {robots.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+        )}
+        {robots.length === 1 && <input type="hidden" name="robotId" value={robots[0].id} />}
+        {layoutsState?.error && <p className="text-rose-700">{layoutsState.error}</p>}
+        {layoutsState?.saved && !layoutsPending && <p className="text-emerald-700 dark:text-emerald-300">Saved.</p>}
+        <button className="btn w-full" disabled={layoutsPending}>
+          {layoutsPending ? "Saving…" : robots.length === 1 ? `Use this document for ${robots[0].name}'s Batch Layouts` : "Use this document for the robot's Batch Layouts"}
         </button>
       </form>
     </div>

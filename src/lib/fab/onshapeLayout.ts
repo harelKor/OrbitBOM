@@ -16,7 +16,7 @@ import { parseOnshapeUrl } from "@/lib/onshape/url";
 //   same tab:  read the assembly + delete its old instances + one insert-and-place = 3
 // Failed calls don't count, so a fallback after a refused call costs nothing extra.
 
-export type LayoutPush = { url: string; calls: number; copies: number; skipped: string[]; live: string[] };
+export type LayoutPush = { url: string; calls: number; copies: number; skipped: string[]; live: string[]; fellBack?: boolean };
 
 type Ref = { did: string; wvm: "w" | "v" | "m"; wvmid: string; eid: string; partId: string };
 type Copy = { name: string; ref: Ref; transform: number[] };
@@ -60,11 +60,16 @@ export async function pushOnshapeLayout(
   client: OnshapeClient,
   groupId: string,
   placements: Placement[],
+  useLayoutsDocument = true,
 ): Promise<LayoutPush> {
   const [group] = await db.select().from(schema.partGroups).where(eq(schema.partGroups.id, groupId));
   if (!group) throw new OnshapeError("This batch no longer exists.");
+  const [robot] = await db
+    .select({ url: schema.robots.layoutsDocumentUrl, did: schema.robots.layoutsDocumentId, wid: schema.robots.layoutsWorkspaceId })
+    .from(schema.robots)
+    .where(eq(schema.robots.id, group.robotId));
   const rows = await db
-    .select({ part: schema.parts, assemblyUrl: schema.systems.assemblyUrl })
+    .select({ part: schema.parts, assemblyUrl: schema.systems.assemblyUrl, docMvs: schema.systems.docMicroversions })
     .from(schema.groupMembers)
     .innerJoin(schema.parts, eq(schema.parts.id, schema.groupMembers.partId))
     .leftJoin(schema.systems, eq(schema.systems.id, schema.parts.systemId))
@@ -88,17 +93,28 @@ export async function pushOnshapeLayout(
   }
   if (!copies.length) throw new OnshapeError("None of this batch's parts can be placed in Onshape (no 3D model yet, or not from Onshape).");
 
-  // The document most copies come from, normally the system's own.
+  // The robot's Batch Layouts document when it has one (Settings or the Onshape panel); else the
+  // document most copies come from, normally the system's own.
+  const layouts = useLayoutsDocument && robot?.did && robot.wid && robot.url ? parseOnshapeUrl(robot.url) : null;
   const counts = new Map<string, number>();
   for (const c of copies) counts.set(c.ref.did, (counts.get(c.ref.did) ?? 0) + 1);
-  const did = [...counts].sort((a, b) => b[1] - a[1])[0][0];
-  const system = rows.map((r) => (r.assemblyUrl ? parseOnshapeUrl(r.assemblyUrl) : null)).find((r) => r?.did === did) ?? rows.map((r) => (r.assemblyUrl ? parseOnshapeUrl(r.assemblyUrl) : null)).find(Boolean);
-  const baseUrl = system?.baseUrl ?? "https://cad.onshape.com";
+  const did = layouts ? robot.did! : [...counts].sort((a, b) => b[1] - a[1])[0][0];
+  const systemRefs = rows.map((r) => (r.assemblyUrl ? parseOnshapeUrl(r.assemblyUrl) : null));
+  const system = systemRefs.find((r) => r?.did === did) ?? systemRefs.find(Boolean);
+  const baseUrl = layouts?.baseUrl ?? system?.baseUrl ?? "https://cad.onshape.com";
+
+  // Another document's live Part Studio can't be inserted, so pin it to the document state the last
+  // Update BOM saw (no Onshape call).
+  const mvs: Record<string, string> = Object.assign({}, ...rows.map((r) => r.docMvs ?? {}));
+  for (const c of copies) {
+    if (c.ref.did !== did && c.ref.wvm === "w" && mvs[c.ref.did]) c.ref = { ...c.ref, wvm: "m", wvmid: mvs[c.ref.did] };
+  }
 
   const prev = group.layoutData?.onshape;
   const saved = prev?.did === did && prev.baseUrl === baseUrl ? prev : null;
   // The document's workspace, from what we already know before asking Onshape.
   const wid =
+    (layouts ? robot.wid : null) ??
     saved?.wid ??
     (system?.did === did && system.wvm === "w" ? system.wvmid : null) ??
     rows.find((r) => r.part.sourceDid === did && r.part.sourceWvm?.[0]?.toLowerCase() === "w")?.part.sourceWid ??
@@ -151,7 +167,16 @@ export async function pushOnshapeLayout(
     placed = copies.filter((c) => c.ref.did === did || c.ref.wvm !== "w");
     for (const c of copies) if (c.ref.did === did && c.ref.wvm !== "w" && !live.includes(c.name)) live.push(c.name);
     for (const c of copies) if (!placed.includes(c) && !skipped.includes(c.name)) skipped.push(c.name);
-    await insert(placed, false);
+    try {
+      await insert(placed, false);
+    } catch (again) {
+      if (!layouts || !(again instanceof OnshapeError) || again.status !== 400) throw again;
+      // Onshape refused parts from the robots' documents in the Layouts document: remove the empty
+      // tab and make the layout in the system's own document instead.
+      await client.raw(`elements/${doc}/e/${eid}`, { method: "DELETE" }).catch(() => null);
+      const out = await pushOnshapeLayout(client, groupId, placements, false);
+      return { ...out, fellBack: true };
+    }
   }
 
   const rev = createHash("sha1").update(JSON.stringify([eid, placed.map((c) => [c.ref, c.transform])])).digest("hex").slice(0, 16);

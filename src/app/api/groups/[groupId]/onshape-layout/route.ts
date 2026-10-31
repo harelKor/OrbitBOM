@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { batchLayout } from "@/lib/fab/batchLayout";
+import type { Placement } from "@/lib/fab/layout";
 import { pushOnshapeLayout } from "@/lib/fab/onshapeLayout";
 import { requireCapability } from "@/lib/mode";
 import { onshapeClient, OnshapeError } from "@/lib/onshape/client";
@@ -19,7 +20,7 @@ const body = z.object({
         copy: z.number().int().min(0),
         x: z.number().finite(),
         y: z.number().finite(),
-        rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]),
+        rotation: z.number().finite(), // degrees about Z
       }),
     )
     .max(500)
@@ -51,7 +52,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ gro
     .limit(1);
   const baseUrl = (host?.url && parseOnshapeUrl(host.url)?.baseUrl) || "https://cad.onshape.com";
   try {
-    const result = await pushOnshapeLayout(onshapeClient(member.id, baseUrl), groupId, placements);
+    const result = await pushOnshapeLayout(onshapeClient(member.id, baseUrl), groupId, placements as Placement[]);
     return NextResponse.json(result);
   } catch (err) {
     if (err instanceof OnshapeError) return new NextResponse(err.message, { status: 502 });
