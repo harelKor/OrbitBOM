@@ -236,7 +236,7 @@ export async function suggestOnePart(partId: string, memberId: string) {
 export async function partReview(partId: string) {
   const [r] = await db.select().from(partReviews).where(eq(partReviews.partId, partId));
   if (!r) return null;
-  const itemIds = [r.pending.inventoryItemId, r.changes.inventoryItemId?.to].filter((v): v is string => typeof v === "string");
+  const itemIds = [r.pending.inventoryItemId, r.changes.inventoryItemId?.to, r.changes.inventoryItemId?.from].filter((v): v is string => typeof v === "string");
   const items = itemIds.length
     ? await db.select({ id: schema.inventoryItems.id, name: schema.inventoryItems.name }).from(schema.inventoryItems).where(inArray(schema.inventoryItems.id, itemIds))
     : [];
@@ -246,6 +246,10 @@ export async function partReview(partId: string) {
     aiName: r.aiName,
     reason: r.reason,
     fields: Object.keys(r.changes),
+    // Each changed field's old and new value, and the names of the inventory items in them, so the
+    // part window can show "old → new" on every row the suggestion touched.
+    changes: r.changes as Record<string, { from: unknown; to: unknown }>,
+    itemNames: Object.fromEntries(items.map((i) => [i.id, i.name])) as Record<string, string>,
     pendingItem,
   };
 }

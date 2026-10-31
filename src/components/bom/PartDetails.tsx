@@ -15,6 +15,7 @@ import { useCan, useManage } from "@/components/shell/ModeContext";
 import { formatPrice, useCurrency } from "@/components/cots/currency";
 import { ShelfPill } from "@/components/cots/ShelfPill";
 import { Icon } from "@/components/ui/Icon";
+import { getMachine } from "@/config/machines";
 import { FabVersionBadge, PartVersionsButton } from "@/components/versions/PartVersionsWindow";
 import { cotsTotal, siteOf } from "@/lib/cots";
 import { fabStage } from "@/lib/fab";
@@ -43,6 +44,7 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
   const canLocate = !part.isManual && !!robotId && !!part.modelKey;
   const overlay = "btn h-8 gap-1.5 bg-surface/95 text-xs shadow-sm";
   const suggest = useSuggest(part, !part.memberIds);
+  const was = (field: string) => suggest.was[field];
 
   return (
     <Dialog
@@ -57,7 +59,7 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
       actions={
         <>
           {!part.isManual && !cots && <PartVersionsButton partId={part.id} lock={part.fabLock} released={fabStage(part) !== null} />}
-          {suggest.buttons}
+          {suggest.suggestButton}
           {!cots && canDraw && !part.isManual && <DrawingAction partId={ownerPartId(part)} hasDrawing={!!part.hasDrawing} />}
           {!cots && canDraw && <DrawingFileButton part={part} />}
         </>
@@ -129,25 +131,25 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
             )}
           </div>
 
-          <div className="min-w-0 space-y-5">
+          <div className="flex min-w-0 flex-col gap-5">
             {suggest.message}
-            <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] content-start items-center gap-x-3 gap-y-2 text-sm">
-              <Row label="Name">
+            <dl className="grid grid-cols-[7rem_minmax(0,1fr)] content-start items-center gap-x-3 gap-y-3">
+              <Row label="Name" was={was("displayName")}>
                 <NameField part={part} save={save} />
               </Row>
               <Row label="System">{part.systemName}</Row>
-              <Row label="Type">
+              <Row label="Type" was={was("classification")}>
                 <TypeField part={part} save={save} />
               </Row>
-              <Row label="Quantity">
+              <Row label="Quantity" was={was("quantity")}>
                 <span className="font-mono tabular-nums">
                   <QuantityField part={part} save={save} />
                 </span>
               </Row>
-              <Row label="Status">
+              <Row label="Status" was={was("status")}>
                 <StatusField part={part} save={save} />
               </Row>
-              {cots ? <CotsRows part={part} save={save} /> : <MadeRows part={part} save={save} />}
+              {cots ? <CotsRows part={part} save={save} was={was} /> : <MadeRows part={part} save={save} was={was} />}
               <Row label="Last edited">
                 <span className="text-muted">
                   <span className="font-mono tabular-nums">{part.lastModifiedAt.toISOString().slice(0, 10)}</span>
@@ -155,20 +157,37 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
                 </span>
               </Row>
             </dl>
-            <InventoryLink part={part} save={save} />
+            <InventoryLink part={part} save={save} diff={suggest.inventory} />
+            {suggest.actions}
           </div>
         </div>
     </Dialog>
   );
 }
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+// One property. `was` is its value before a suggestion waiting in To Review changed it: the row
+// then shows the old value struck through, an arrow, and the new value glowing.
+function Row({ label, was, children }: { label: string; was?: string; children: React.ReactNode }) {
   return (
     <>
-      <dt className="text-xs font-medium text-subtle">{label}</dt>
-      <dd className="min-w-0 break-words text-fg">{children}</dd>
+      <dt className="w-28 shrink-0 text-sm text-muted">{label}</dt>
+      <dd className="min-w-0 py-0.5 text-base font-medium break-words text-fg">
+        {was === undefined ? (
+          children
+        ) : (
+          <span className="flex min-w-0 flex-wrap items-center gap-y-1">
+            <span className="text-xs text-muted line-through decoration-rose-400/80 sm:text-sm">{was}</span>
+            <span className="mx-1.5 text-muted">→</span>
+            <Glow>{children}</Glow>
+          </span>
+        )}
+      </dd>
     </>
   );
+}
+
+function Glow({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <span className={`inline-flex min-w-0 items-center rounded-lg bg-sky-500/10 px-2 py-0.5 shadow-[0_0_14px_rgba(56,189,248,0.35)] ring-2 ring-sky-400/70 ${className}`}>{children}</span>;
 }
 
 // The part's note, always open to type in: it saves when the box loses focus. The card shows it
@@ -289,7 +308,7 @@ export function DrawingFileButton({ part, compact = false }: { part: CardPart; c
 
 // The inventory item the part is linked to, and the Inventory page's search box to link it: an
 // item on the shelf, a store product or a custom item, added and linked in one go.
-function InventoryLink({ part, save }: { part: CardPart; save: SaveFn }) {
+function InventoryLink({ part, save, diff }: { part: CardPart; save: SaveFn; diff: InventoryDiff }) {
   const work = useCan("work");
   const { inventory } = useBom();
   const { openItem } = useInventoryPopup();
@@ -311,8 +330,30 @@ function InventoryLink({ part, save }: { part: CardPart; save: SaveFn }) {
         <Icon name="box" className="h-3.5 w-3.5" />
         Inventory
       </h3>
+      {diff?.pending && (
+        <div className="flex min-w-0 items-center gap-2 text-sm">
+          <span className="shrink-0 text-muted line-through decoration-rose-400/80">{name ?? "Unlinked"}</span>
+          <span className="shrink-0 text-muted">→</span>
+          <Glow className="min-w-0 flex-1 py-2">
+            <span className="min-w-0 flex-1 truncate font-semibold text-fg" title={diff.pending}>
+              {diff.pending}
+            </span>
+            <span className="ml-2 shrink-0 text-xs text-muted">links on Approve</span>
+          </Glow>
+        </div>
+      )}
+      {itemId && diff && !diff.pending && (
+        <div className="flex min-w-0 items-center gap-2 text-sm">
+          <span className="shrink-0 text-muted line-through decoration-rose-400/80">{diff.was}</span>
+          <span className="shrink-0 text-muted">→</span>
+        </div>
+      )}
       {itemId && (
-        <div className="flex items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/5 px-3 py-2 text-sm">
+        <div
+          className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm ${
+            diff && !diff.pending ? "border-transparent bg-sky-500/10 shadow-[0_0_14px_rgba(56,189,248,0.35)] ring-2 ring-sky-400/70" : "border-emerald-500/40 bg-emerald-500/5"
+          }`}
+        >
           <span className="min-w-0 flex-1 truncate font-semibold text-fg" title={name ?? undefined}>
             {name}
           </span>
@@ -357,11 +398,30 @@ const FIELD_NAMES: Record<string, string> = {
   cotsCategory: "COTS category",
 };
 
+type InventoryDiff = { was: string; pending: string | null } | null;
+
+// A field's value as the "before" of a suggestion: machine names, COTS / In-House, item names.
+function formatOld(field: string, value: unknown, itemNames: Record<string, string>): string {
+  if (value === null || value === undefined || value === "") return field === "inventoryItemId" ? "Unlinked" : "None";
+  if (field === "classification") return value === "cots" ? "COTS" : "In-House";
+  if (field === "preProcess" || field === "process1" || field === "process2") return getMachine(String(value))?.name ?? String(value);
+  if (field === "inventoryItemId") return itemNames[String(value)] ?? "Inventory item";
+  if (Array.isArray(value)) return value.length ? `${value.length} ${value.length === 1 ? "link" : "links"}` : "None";
+  if (typeof value === "object") return "—";
+  return String(value);
+}
+
 // Suggest runs the site's setup rules and auto-link on this one part. Whatever waits in To Review
-// for it (from Suggest, Suggest setup, auto-link or a member's Claude) shows Approve, which keeps
-// it, and Reject, which puts the old values back. The buttons sit in the window's title bar; what
-// was suggested shows as a line over the part's properties.
-function useSuggest(part: CardPart, enabled: boolean): { buttons: React.ReactNode; message: React.ReactNode } {
+// for it (from Suggest, Suggest setup, auto-link or a member's Claude) shows on the rows it changed
+// as "old → new", with big Approve (keep it) and Reject (put the old values back) at the bottom
+// right of the window. Suggest sits in the title bar; who suggested it shows over the properties.
+function useSuggest(part: CardPart, enabled: boolean): {
+  suggestButton: React.ReactNode;
+  message: React.ReactNode;
+  actions: React.ReactNode;
+  was: Record<string, string>;
+  inventory: InventoryDiff;
+} {
   const review = useCan("review") && enabled;
   const [state, setState] = useState<PartReviewState | undefined>(undefined);
   const [busy, setBusy] = useState<"suggest" | "approve" | "reject" | null>(null);
@@ -377,7 +437,7 @@ function useSuggest(part: CardPart, enabled: boolean): { buttons: React.ReactNod
       cancelled = true;
     };
   }, [review, part.id, version, tick]);
-  if (!review) return { buttons: null, message: null };
+  if (!review) return { suggestButton: null, message: null, actions: null, was: {}, inventory: null };
 
   const run = async (kind: "suggest" | "approve" | "reject") => {
     setBusy(kind);
@@ -392,55 +452,67 @@ function useSuggest(part: CardPart, enabled: boolean): { buttons: React.ReactNod
   const what = state ? [...state.fields.map((f) => FIELD_NAMES[f] ?? f), ...(state.pendingItem ? [`link to "${state.pendingItem}"`] : [])] : [];
   const by = state?.source === "ai" ? (state.aiName ?? "Claude") : "Suggest";
 
-  const buttons = (
-    <>
-      <button type="button" className={`btn h-8 gap-1.5 text-xs active:scale-[0.98] ${busy === "suggest" ? "animate-pulse" : ""}`} disabled={!!busy} onClick={() => run("suggest")} title="Guess material, machines and the inventory item for this part">
-        <Icon name="spark" className="h-3.5 w-3.5 text-amber-500" />
-        {busy === "suggest" ? "Suggesting…" : "Suggest"}
-      </button>
-      {waiting && (
-        <>
-          <button
-            type="button"
-            className="btn h-8 gap-1.5 border-emerald-500/50 bg-emerald-500/10 text-xs text-emerald-700 hover:bg-emerald-500/20 active:scale-[0.98] dark:text-emerald-300"
-            disabled={!!busy}
-            onClick={() => run("approve")}
-          >
-            {busy === "approve" ? "Approving…" : "Approve"}
-          </button>
-          <button
-            type="button"
-            className="btn h-8 gap-1.5 border-rose-500/50 bg-rose-500/10 text-xs text-rose-700 hover:bg-rose-500/20 active:scale-[0.98] dark:text-rose-300"
-            disabled={!!busy}
-            onClick={() => run("reject")}
-            title="Put the old values back"
-          >
-            {busy === "reject" ? "Rejecting…" : "Reject"}
-          </button>
-        </>
-      )}
-    </>
+  const was: Record<string, string> = {};
+  let inventory: InventoryDiff = null;
+  if (waiting && state) {
+    for (const [field, c] of Object.entries(state.changes)) {
+      if (field !== "inventoryItemId") was[field] = formatOld(field, c.from, state.itemNames);
+    }
+    const linked = state.changes.inventoryItemId;
+    if (state.pendingItem) inventory = { was: "Unlinked", pending: state.pendingItem };
+    else if (linked) inventory = { was: formatOld("inventoryItemId", linked.from, state.itemNames), pending: null };
+  }
+
+  const suggestButton = (
+    <button type="button" className={`btn h-8 gap-1.5 text-xs active:scale-[0.98] ${busy === "suggest" ? "animate-pulse" : ""}`} disabled={!!busy} onClick={() => run("suggest")} title="Guess material, machines and the inventory item for this part">
+      <Icon name="spark" className="h-3.5 w-3.5 text-amber-500" />
+      {busy === "suggest" ? "Suggesting…" : "Suggest"}
+    </button>
   );
+  const actions = waiting ? (
+    <div className="mt-auto flex items-center justify-end gap-3 pt-4">
+      <button
+        type="button"
+        className={`rounded-xl border border-rose-500/50 bg-rose-500/15 px-5 py-2.5 text-sm font-semibold text-rose-700 transition-colors duration-150 hover:bg-rose-500/25 active:scale-[0.98] disabled:opacity-60 dark:text-rose-200 ${busy === "reject" ? "animate-pulse" : ""}`}
+        disabled={!!busy}
+        onClick={() => run("reject")}
+        title="Put the old values back"
+      >
+        {busy === "reject" ? "Rejecting…" : "Reject"}
+      </button>
+      <button
+        type="button"
+        className={`rounded-xl border border-emerald-500/60 bg-emerald-500/20 px-5 py-2.5 text-sm font-semibold text-emerald-700 shadow-[0_0_16px_rgba(16,185,129,0.25)] transition-colors duration-150 hover:bg-emerald-500/30 active:scale-[0.98] disabled:opacity-60 dark:text-emerald-200 ${busy === "approve" ? "animate-pulse" : ""}`}
+        disabled={!!busy}
+        onClick={() => run("approve")}
+        title="Keep the suggested values"
+      >
+        {busy === "approve" ? "Approving…" : "Approve"}
+      </button>
+    </div>
+  ) : null;
   const message = waiting ? (
-    <p className="border-l-2 border-sky-400/60 pl-2.5 text-xs leading-snug text-muted">
+    <p className="border-l-2 border-sky-400/60 pl-2.5 text-sm leading-snug text-muted">
       <span className="font-semibold text-fg">{by}</span> suggested {what.join(", ")}
       {state?.reason && <span className="block text-subtle">{state.reason}</span>}
     </p>
   ) : note ? (
-    <p className="text-xs text-muted">{note}</p>
+    <p className="text-sm text-muted">{note}</p>
   ) : null;
-  return { buttons, message };
+  return { suggestButton, message, actions, was, inventory };
 }
 
 // Material and each machine with how many are done there.
-function MadeRows({ part, save }: { part: CardPart; save: SaveFn }) {
+type Was = (field: string) => string | undefined;
+
+function MadeRows({ part, save, was }: { part: CardPart; save: SaveFn; was: Was }) {
   return (
     <>
-      <Row label="Material">
+      <Row label="Material" was={was("material")}>
         <MaterialField part={part} save={save} />
       </Row>
       {machineSlotsShown(part).map((slot) => (
-        <Row key={slot.key} label={slot.label}>
+        <Row key={slot.key} label={slot.label} was={was(slot.key)}>
           <span className="flex min-w-0 items-center gap-2">
             <MachineField part={part} save={save} slot={slot} placeholder="None" />
           </span>
@@ -451,13 +523,13 @@ function MadeRows({ part, save }: { part: CardPart; save: SaveFn }) {
 }
 
 // Where to buy it, the price and the shelf.
-function CotsRows({ part, save }: { part: CardPart; save: SaveFn }) {
+function CotsRows({ part, save, was }: { part: CardPart; save: SaveFn; was: Was }) {
   const currency = useCurrency();
   const total = cotsTotal(part);
   const links = part.cotsLinks ?? [];
   return (
     <>
-      <Row label="Where to buy">
+      <Row label="Where to buy" was={was("cotsLinks")}>
         {links.length ? (
           <span className="flex flex-wrap gap-x-3 gap-y-1">
             {links.map((l) => (
@@ -470,7 +542,7 @@ function CotsRows({ part, save }: { part: CardPart; save: SaveFn }) {
           <span className="text-subtle">No links yet</span>
         )}
       </Row>
-      <Row label="Price">
+      <Row label="Price" was={was("unitPrice")}>
         {part.unitPrice == null || total == null ? (
           <span className="text-subtle">—</span>
         ) : (
