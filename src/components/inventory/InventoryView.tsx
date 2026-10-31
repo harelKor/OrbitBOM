@@ -47,6 +47,7 @@ import { ImportDialog } from "./ImportDialog";
 import { RecentActions } from "@/components/actions/RecentActions";
 import type { RecentAction } from "@/lib/data/actions";
 import { useInventoryPopup } from "./InventoryPopup";
+import { ItemListRow } from "./ItemListRow";
 import { ItemCard } from "./ItemCard";
 import { ItemTable } from "./ItemTable";
 import { usePhone } from "@/components/ui/usePhone";
@@ -414,13 +415,13 @@ export function InventoryView({
     });
   };
 
-  // Cards | Table, remembered in this browser.
+  // Cards | List | Table, remembered in this browser.
   const layoutSaved = useSyncExternalStore(
     foldStore.subscribe,
     () => foldStore.read(LAYOUT_KEY),
     () => null,
   );
-  const layout: Layout = layoutSaved === "table" ? "table" : "cards";
+  const layout: Layout = layoutSaved === "table" || layoutSaved === "list" ? layoutSaved : "cards";
   const setLayout = (l: Layout) => {
     foldMemory.set(LAYOUT_KEY, l);
     try {
@@ -466,6 +467,23 @@ export function InventoryView({
         onToggleSelect={selecting ? toggleSelected : undefined}
         glowOf={glowOf}
       />
+    ) : layout === "list" ? (
+      <div className="grid gap-2.5 lg:grid-cols-2 2xl:grid-cols-3">
+        {list.map((item) => (
+          <ItemListRow
+            key={item.id}
+            item={item}
+            categories={categories}
+            condition={conditions.find((c) => c.id === item.conditionId)}
+            location={locations.find((l) => l.id === locationOf(item))}
+            view={cardView}
+            hideCategory={scope.kind === "category" || !!cat}
+            selected={selected.has(item.id)}
+            onToggleSelect={selecting ? () => toggleSelected(item.id) : undefined}
+            glow={glowOf(item.id)}
+          />
+        ))}
+      </div>
     ) : (
       <div
         className="card-grid"
@@ -866,10 +884,11 @@ export function InventoryView({
   );
 }
 
-type Layout = "cards" | "table";
+type Layout = "cards" | "list" | "table";
 const LAYOUT_KEY = "orbit-inventory-layout";
 const LAYOUTS: { value: Layout; label: string }[] = [
   { value: "cards", label: "Cards" },
+  { value: "list", label: "List" },
   { value: "table", label: "Table" },
 ];
 

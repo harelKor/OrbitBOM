@@ -24,6 +24,8 @@ import { cotsTotal, groupSameCots, siteOf, spreadCotsChanges } from "@/lib/cots"
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { computeStatus } from "@/lib/status";
 import { CotsCard, OrderStatusButton } from "./CotsCard";
+import { PartList, PartListRow } from "@/components/bom/PartListRow";
+import { useStoredChoice } from "@/components/ui/useStoredChoice";
 import { formatPrice, useCurrency } from "./currency";
 import { SheetViewport } from "@/components/ui/SheetViewport";
 
@@ -103,7 +105,8 @@ export function CotsView({
   const category = group ? params.get("cat") : null;
   const groupOfCat = new Map(categories.map((c) => [c.id, c.group]));
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
-  const [view, setView] = useState<"cards" | "table">("cards");
+  // Cards, List (rows, made for phones) or Table, remembered by this browser.
+  const [view, setView] = useStoredChoice("orbit-cots-view", ["cards", "list", "table"] as const, "cards");
   const [byVendor, setByVendor] = useState(false);
   // Picking cards: "order" (Released's Send to order) or "status" (set one status on all of them).
   const [selecting, setSelecting] = useState<"order" | "status" | null>(null);
@@ -237,6 +240,23 @@ export function CotsView({
     return (
     view === "table" ? (
       <CotsTable rows={rows} saveRow={saveRow} struck={struck} orderList={list === "order" && !small} onClear={clearable ? clear : undefined} />
+    ) : view === "list" ? (
+      <PartList>
+        {rows.map((row) => {
+          const ids = row.members.map((m) => m.id);
+          return (
+            <div key={row.key} className={`relative ${row.members.every((m) => struck.has(m.id)) ? "opacity-60" : ""}`} {...dragProps(ids, from)}>
+              <PartListRow
+                part={row.part}
+                save={saveRow(row)}
+                selected={selected.has(row.key)}
+                onToggleSelect={ordering ? () => setSelected((s) => toggle(s, row.key)) : undefined}
+              />
+              {clearable && <ClearButton name={partTitle(row.part)} onClick={() => clear(ids)} />}
+            </div>
+          );
+        })}
+      </PartList>
     ) : (
       <div className="card-grid" style={{ "--card-min": small ? "200px" : list === "order" ? "300px" : "260px" } as React.CSSProperties}>
         {rows.map((row) => {
@@ -335,6 +355,7 @@ export function CotsView({
           onChange={setView}
           options={[
             { value: "cards", label: "Cards" },
+            { value: "list", label: "List" },
             { value: "table", label: "Table" },
           ]}
         />

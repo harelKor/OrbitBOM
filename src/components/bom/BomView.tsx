@@ -21,6 +21,8 @@ import { matchesPills, matchesTopBar } from "./filter";
 import { FilterPills } from "./FilterPills";
 import { KanbanView } from "./KanbanView";
 import { PartCard } from "./PartCard";
+import { PartList, PartListRow } from "./PartListRow";
+import { useStoredChoice } from "@/components/ui/useStoredChoice";
 import { TableView } from "./TableView";
 import { type CardPart } from "./types";
 import { Icon } from "@/components/ui/Icon";
@@ -32,11 +34,12 @@ function bySystem(parts: CardPart[]): [string, CardPart[]][] {
   return [...groups].sort(([a], [b]) => a.localeCompare(b));
 }
 
-type View = "card" | "table" | "kanban";
+type View = "card" | "list" | "table" | "kanban";
+const LOOKS = ["card", "list"] as const; // the views every mode has, remembered by this browser
 type Chip = "all" | "cots" | "inhouse";
 
 // The BOM page body (ref §3): the top bar's search, Material and Process pills, type chips, a Status select,
-// the Card / Table / Kanban views, and (Edit mode) Bulk edit and Merge. Edits show at once and
+// the Cards / List / Table / Kanban views, and (Edit mode) Bulk edit and Merge. Edits show at once and
 // roll back if the save fails.
 export function BomView({
   parts,
@@ -70,12 +73,16 @@ export function BomView({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { canManage: edit, canWork, canDraw, mode: role } = usePermissions();
-  // View mode always shows cards; Table and Kanban are Edit-mode views.
-  const view = edit ? (searchParams.get("view") as View) || "card" : "card";
+  // Cards or List in any mode (this browser remembers which); Table and Kanban are Edit-mode views.
+  const [look, setLook] = useStoredChoice("orbit-bom-view", LOOKS, "card");
+  const asked = searchParams.get("view");
+  const view: View = edit && (asked === "table" || asked === "kanban") ? asked : look;
   const setView = (v: View) => {
     const params = new URLSearchParams(searchParams);
-    if (v === "card") params.delete("view");
-    else params.set("view", v);
+    if (v === "card" || v === "list") {
+      setLook(v);
+      params.delete("view");
+    } else params.set("view", v);
     // Only the URL changes: the views are drawn here from the same parts, so there is nothing to
     // ask the server for.
     window.history.replaceState(null, "", `${pathname}${params.size ? `?${params}` : ""}`);
@@ -164,7 +171,14 @@ export function BomView({
       return next;
     });
 
-  const cards = (list: CardPart[], withSystem: boolean) => (
+  const cards = (list: CardPart[], withSystem: boolean) =>
+    view === "list" ? (
+      <PartList>
+        {list.map((p) => (
+          <PartListRow key={p.id} part={p} save={saveFor(p.id)} selected={selected.has(p.id)} onToggleSelect={selecting ? () => toggle(p.id) : undefined} />
+        ))}
+      </PartList>
+    ) : (
     <div className="card-grid">
       {list.map((p) => (
         <PartCard
@@ -177,7 +191,7 @@ export function BomView({
         />
       ))}
     </div>
-  );
+    );
 
   const chips: { id: Chip; label: string }[] = [
     { id: "all", label: "All" },
@@ -212,17 +226,17 @@ export function BomView({
           ))}
         </div>
           <FilterPills />
-          {edit && <div className="flex overflow-hidden rounded-md border border-line-strong" role="group" aria-label="View">
-            {(["card", "table", "kanban"] as const).map((v) => (
+          <div className="flex overflow-hidden rounded-md border border-line-strong" role="group" aria-label="View">
+            {(edit ? (["card", "list", "table", "kanban"] as const) : LOOKS).map((v) => (
               <button
                 key={v}
                 onClick={() => setView(v)}
                 className={`press px-3 py-1 text-xs font-medium capitalize ${view === v ? "bg-accent text-white" : "bg-raised text-fg-2 hover:bg-line"}`}
               >
-                {v}
+                {v === "card" ? "Cards" : v}
               </button>
             ))}
-          </div>}
+          </div>
           <select value={status} onChange={(e) => setStatus(e.target.value)} className="input w-auto rounded-full py-1 text-xs" aria-label="Status">
             <option value="">All statuses</option>
             {STATUSES.filter((s) => role !== "build" || BUILD_STATUSES.includes(s.name)).map((s) => (
