@@ -165,7 +165,7 @@ export function CategoryBoxes({
             ? "card-interactive group flex h-12 shrink-0 items-center gap-2.5 overflow-hidden pr-3 text-left active:scale-[0.98]"
             : g
               ? "card-interactive group relative flex aspect-[16/10] min-h-28 w-full max-w-full min-w-0 flex-col overflow-hidden border-line-strong sm:min-h-36 text-left shadow-md hover:border-accent active:scale-[0.98]"
-              : "card-interactive group relative flex min-h-32 w-full max-w-full min-w-0 flex-col justify-between overflow-hidden p-4 text-left active:scale-[0.98]";
+              : "card-interactive group relative flex min-h-40 w-full max-w-full min-w-0 flex-col justify-between overflow-hidden p-5 text-left active:scale-[0.98] sm:min-h-44";
           return g && categoryHref ? (
             <Link key={b.id} href={categoryHref(b.id)} className={cls}>
               {body}

@@ -19,27 +19,27 @@ export function SyncBox({ robotId, systems }: { robotId: string; systems: SyncSy
   const synced = outdated === 0 && waiting === 0;
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className="card-interactive group flex items-center gap-4 p-4 text-left">
+      <button type="button" onClick={() => setOpen(true)} className="card-interactive group flex items-center gap-5 py-5 pr-8 pl-6 text-left active:scale-[0.98] sm:gap-8 sm:pr-12 sm:pl-7">
         <span
-          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 ${
+          className={`flex h-12 w-12 shrink-0 sm:h-14 sm:w-14 items-center justify-center rounded-full border-2 ${
             synced ? "border-sky-500/60 bg-sky-500/10 text-sky-500" : outdated ? "border-rose-500/60 bg-rose-500/10 text-rose-500" : "border-amber-500/60 bg-amber-500/10 text-amber-500"
           }`}
         >
-          {synced ? <CheckIcon className="h-6 w-6" /> : <Icon name="box" className="h-6 w-6" />}
+          {synced ? <CheckIcon className="h-6 w-6 sm:h-7 sm:w-7" /> : <Icon name="box" className="h-6 w-6 sm:h-7 sm:w-7" />}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-sm font-medium text-muted">Onshape sync</span>
+          <span className="block text-lg font-bold text-fg sm:text-xl">Onshape sync</span>
           {synced ? (
-            <span className="block text-xs text-subtle">All systems up to date</span>
+            <span className="mt-0.5 block text-sm text-subtle">All systems up to date</span>
           ) : (
-            <span className="block text-xs tabular-nums">
+            <span className="mt-0.5 block text-sm tabular-nums">
               {outdated > 0 && <span className="font-semibold text-rose-500">{outdated} outdated</span>}
               {outdated > 0 && waiting > 0 && <span className="text-subtle">, </span>}
               {waiting > 0 && <span className="font-semibold text-amber-500">{waiting} with changes waiting</span>}
             </span>
           )}
         </span>
-        {!synced && <span className={`display font-mono text-4xl tabular-nums ${outdated ? "text-rose-500" : "text-amber-500"}`}>{outdated + waiting}</span>}
+        {!synced && <span className={`display font-mono text-5xl sm:text-6xl tabular-nums ${outdated ? "text-rose-500" : "text-amber-500"}`}>{outdated + waiting}</span>}
       </button>
       <Dialog open={open} onClose={() => setOpen(false)} title="Onshape sync" wide>
         {synced ? (
