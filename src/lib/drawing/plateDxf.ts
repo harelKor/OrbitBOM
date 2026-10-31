@@ -1,0 +1,85 @@
+import "server-only";
+import { type schema } from "@/db";
+import { exportPart } from "@/lib/onshape/export";
+import { onshapeClient } from "@/lib/onshape/client";
+import { studioPath } from "@/lib/onshape/parts";
+import { parseOnshapeUrl } from "@/lib/onshape/url";
+import { partMesh } from "@/lib/model/part";
+import { getObject, objectExists, putObject, storageConfigured } from "@/lib/storage/r2";
+import { writeDxf } from "./dxf";
+import { flattenMesh } from "./flatten";
+
+// A plate's flat 1:1 DXF (the part laid on its back face, pockets up, long side level). Made from
+// the part's cached 3D mesh, so usually no Onshape calls; an Onshape sheet metal part gets its own
+// flat pattern instead. Kept in R2 per part revision: downloading it again, or in a batch zip,
+// reads the stored file.
+
+export const PLATE_DXF_VERSION = 1; // bump when the DXF output changes, so every file is made again
+
+type Row = { part: typeof schema.parts.$inferSelect; robotId: string; assemblyUrl: string | null };
+type Member = { id: string; onshapeConnected: boolean };
+
+export class PlateDxfError extends Error {
+  constructor(
+    message: string,
+    readonly status = 400,
+  ) {
+    super(message);
+  }
+}
+
+// What the file is made from: the state released to fab (?fab=1) when the part is locked there.
+function source(row: Row, fab: boolean) {
+  const lock = fab && row.part.releasedSnapshot?.studio && row.part.releasedSnapshot.onshapePartId ? row.part.releasedSnapshot : null;
+  return {
+    lock,
+    rev: lock ? lock.thumbnailRev : row.part.thumbnailRev,
+    flatPartId: lock ? lock.flatPartId : row.part.geometry?.sheetMetal?.flatPartId,
+  };
+}
+
+export function plateDxfName(part: Row["part"], qty?: number) {
+  const name = (part.displayName ?? part.onshapeName ?? "part").replace(/[^\w.\- ]+/g, "_");
+  return `${part.partNumber ? `${part.partNumber} ` : ""}${name}${qty && qty > 1 ? `_qty${qty}` : ""}.dxf`;
+}
+
+export function plateDxfKey(row: Row, fab: boolean): string | null {
+  const { rev, flatPartId } = source(row, fab);
+  return rev ? `exports/${row.part.id}/${rev}.${flatPartId ? "flat" : `plate${PLATE_DXF_VERSION}`}.dxf` : null;
+}
+
+// The DXF text, from R2 when it's stored, else made (and stored when the part has a revision).
+export async function plateDxf(row: Row, member: Member, fab: boolean, deadline: number): Promise<string> {
+  if (!studioPath(row.part)) throw new PlateDxfError("This part isn't from Onshape.");
+  const key = storageConfigured() ? plateDxfKey(row, fab) : null;
+  if (key && (await objectExists(key))) {
+    const res = await getObject(key);
+    if (res) return res.text();
+  }
+  const text = await makeDxf(row, member, fab, deadline);
+  if (key) await putObject(key, new TextEncoder().encode(text), "image/vnd.dxf");
+  return text;
+}
+
+async function makeDxf(row: Row, member: Member, fab: boolean, deadline: number): Promise<string> {
+  const { lock, flatPartId } = source(row, fab);
+  if (flatPartId) {
+    // Onshape sheet metal: its own flat pattern (bends unfolded), one translation.
+    const ref = row.assemblyUrl ? parseOnshapeUrl(row.assemblyUrl) : null;
+    const studio = lock?.studio ?? studioPath(row.part);
+    if (!ref || !studio) throw new PlateDxfError("This part isn't from Onshape.");
+    if (!member.onshapeConnected) throw new PlateDxfError("Connect your Onshape account first (Profile → Connect Onshape).", 403);
+    const body = await exportPart(onshapeClient(member.id, ref.baseUrl), studio, flatPartId, "DXF_FLAT", deadline);
+    return new TextDecoder().decode(body);
+  }
+  // The released state's mesh is read from its frozen Part Studio only when the part changed since.
+  const frozen = lock && lock.thumbnailRev !== row.part.thumbnailRev ? { studio: lock.studio!, onshapePartId: lock.onshapePartId! } : null;
+  const mesh = await partMesh(row, member, frozen);
+  if (!mesh) throw new PlateDxfError("This part's 3D shape isn't available.");
+  const flat = flattenMesh(mesh.positions, mesh.indices);
+  // A plate is thin next to its outline (as the drawings' reader decides).
+  if (!flat || flat.thickness > 0.25 * Math.min(flat.size[0], flat.size[1])) {
+    throw new PlateDxfError("This part isn't a flat plate, so it has no flat DXF. Download its STEP instead.");
+  }
+  return writeDxf(flat.loops.map((l) => l.pts));
+}

@@ -29,7 +29,7 @@ import { useEscape } from "@/components/ui/useEscape";
 import { FINISHED_STATUS, IN_PROCESS_STATUS, READY_STATUS, fabBatchName, fabStage, isFabFinished, machinesOf } from "@/lib/fab";
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { computeStatus, statusMachine } from "@/lib/status";
-import { prepareExport } from "@/components/bom/downloadExport";
+import { downloadExport, prepareExport } from "@/components/bom/downloadExport";
 import { BatchLayoutDialog } from "./BatchLayoutDialog";
 import { OnshapeLayoutButton } from "./OnshapeLayoutButton";
 
@@ -832,6 +832,8 @@ function BatchCard({
     const f = cadFormat(p);
     return f ? [`/api/parts/${p.id}/export?format=${f}${p.fabView ? "&fab=1" : ""}`] : [];
   });
+  // A laser batch (or one whose parts all cut from flat DXFs) downloads them as one zip.
+  const dxfZip = batch.machine === "laser" || (members.length > 0 && members.every((p) => ["DXF", "DXF_FLAT"].includes(cadFormat(p) ?? "")));
   const notDone = members.filter((p) => !isDone(p));
   // The batch's status as its machine names it; a batch waiting to start is Ready to Fab.
   const label = (status: string) => (stage === "readyToFab" && status === READY_STATUS ? "Ready to Fab" : statusLabel(status, batch.machine));
@@ -1058,6 +1060,17 @@ function BatchCard({
               {downloads.length > 0 && !(batch.gcode && !open) && (
                 <button className="overlay-btn" onClick={() => void downloadAll(downloads)} aria-label={`Download ${downloads.length} files`} title={`Download ${downloads.length} files`}>
                   <Icon name="download" />
+                </button>
+              )}
+              {dxfZip && downloads.length > 0 && (
+                <button
+                  className="overlay-btn w-auto gap-1 px-2 text-xs font-semibold"
+                  onClick={() => void downloadExport(`/api/groups/${batch.id}/dxf`)}
+                  aria-label={`Download ${batch.name} flat DXFs as a zip`}
+                  title="All flat DXFs in one zip, named with each part's quantity"
+                >
+                  <Icon name="download" />
+                  DXF zip
                 </button>
               )}
               {!open && batch.gcode && (

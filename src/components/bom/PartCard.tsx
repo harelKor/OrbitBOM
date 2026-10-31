@@ -27,7 +27,7 @@ import { LinkTag } from "@/components/cots/ShelfPill";
 
 export { NoteCloud };
 
-const EXPORTABLE = ["STEP", "STL", "PARASOLID"] as const;
+const EXPORTABLE = ["STEP", "STL", "PARASOLID", "DXF"] as const; // DXF: a plate laid flat, made in the app
 const FLAT = ["DXF_FLAT", "STEP_FLAT"] as const; // only for Onshape sheet metal parts
 type ExportFormat = (typeof EXPORTABLE)[number] | (typeof FLAT)[number];
 
@@ -317,13 +317,15 @@ export function cadFormat(part: CardPart): ExportFormat | null {
   return "STEP";
 }
 
-const LABELS: Partial<Record<ExportFormat, string>> = { PARASOLID: "Parasolid", DXF_FLAT: "Flat DXF", STEP_FLAT: "Flat STEP" };
+const LABELS: Partial<Record<ExportFormat, string>> = { PARASOLID: "Parasolid", DXF: "Flat DXF", DXF_FLAT: "Flat DXF", STEP_FLAT: "Flat STEP" };
 export const label = (f: ExportFormat) => LABELS[f] ?? f;
 
 // Every way to download the part: the CAD exports (the first machine's format on top) and any
 // files attached to it.
 export function DownloadMenu({ part, format }: { part: CardPart; format: ExportFormat | null }) {
-  const all: ExportFormat[] = part.geometry?.sheetMetal ? [...FLAT, ...EXPORTABLE] : [...EXPORTABLE];
+  // The plate DXF is offered for laser parts and thin plates; sheet metal has its own flat pattern.
+  const plate = format === "DXF" || !!part.geometry?.wallMm;
+  const all: ExportFormat[] = part.geometry?.sheetMetal ? [...FLAT, ...EXPORTABLE.filter((f) => f !== "DXF")] : EXPORTABLE.filter((f) => f !== "DXF" || plate);
   const exports = format ? [format, ...all.filter((f) => f !== format)] : [];
   const item = "flex items-center justify-between gap-3 rounded px-2 py-1.5 hover:bg-raised";
   return (

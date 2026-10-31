@@ -8,6 +8,8 @@ export const EXPORT_FORMATS = {
   STL: { ext: "stl", type: "model/stl" },
   STEP: { ext: "step", type: "model/step" },
   PARASOLID: { ext: "x_t", type: "application/octet-stream" },
+  // A plate laid flat, made in the app from its 3D mesh (src/lib/drawing/plateDxf.ts), never here.
+  DXF: { ext: "dxf", type: "image/vnd.dxf" },
   // The flat pattern of a sheet metal part.
   DXF_FLAT: { ext: "dxf", type: "image/vnd.dxf" },
   STEP_FLAT: { ext: "step", type: "model/step" },
@@ -30,6 +32,7 @@ export async function exportPart(
   format: ExportFormat,
   deadline: number,
 ): Promise<ArrayBuffer> {
+  if (format === "DXF") throw new OnshapeError("A plate's DXF is made from its mesh, not exported.");
   if (format === "STL") {
     const res = await client.raw(`parts/${studio}/partid/${encodeURIComponent(partId)}/stl?mode=binary&units=millimeter`);
     return res.arrayBuffer();

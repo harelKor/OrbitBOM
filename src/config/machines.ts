@@ -21,7 +21,7 @@ export type MachineDef = {
 
 export const MACHINES = [
   { id: "hadasas", kind: "factory", name: "HadasaS", stage: "Process", cadFormat: "STEP", sheetFormat: "STEP_FLAT" },
-  { id: "laser", kind: "laser", name: "Laser", stage: "Process", cadFormat: "STEP", sheetFormat: "DXF_FLAT" },
+  { id: "laser", kind: "laser", name: "Laser", stage: "Process", cadFormat: "DXF", sheetFormat: "DXF_FLAT" },
   { id: "manual-mill", kind: "machining", name: "Manual Mill", stage: "Process", cadFormat: "PDF" },
   { id: "3d-pcbway", kind: "print", name: "3D Print - PCBway", stage: "Process", cadFormat: "STL" },
   { id: "bending", kind: "bending", name: "Bending", stage: "Process", cadFormat: "PARASOLID" },
