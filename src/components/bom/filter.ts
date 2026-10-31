@@ -1,12 +1,9 @@
 import { getMachine } from "@/config/machines";
-import { matchesDate, type Filters } from "@/components/shell/FilterContext";
+import type { Filters } from "@/components/shell/FilterContext";
 import { partTitle, type CardPart } from "./types";
 
-// The top bar's search, Material, Process and Date filters, shared by the BOM and To Fab.
-export function matchesTopBar(p: CardPart, { q, material, process, date }: Filters): boolean {
-  if (process && ![p.preProcess, p.process1, p.process2].includes(process)) return false;
-  if (material && p.material !== material) return false;
-  if (!matchesDate(p.lastModifiedAt, date)) return false;
+// The top bar's part search, shared by the BOM, To Fab and To Review.
+export function matchesTopBar(p: CardPart, { q }: Pick<Filters, "q">): boolean {
   const needle = q.trim().toLowerCase();
   if (!needle) return true;
   const haystack = [partTitle(p), p.onshapeName, p.material, ...[p.preProcess, p.process1, p.process2].map((m) => (m ? getMachine(m)?.name : null))]
@@ -14,4 +11,11 @@ export function matchesTopBar(p: CardPart, { q, material, process, date }: Filte
     .join(" ")
     .toLowerCase();
   return haystack.includes(needle);
+}
+
+// The BOM filter row's Material and Process pills.
+export function matchesPills(p: CardPart, { material, process }: Pick<Filters, "material" | "process">): boolean {
+  if (process && ![p.preProcess, p.process1, p.process2].includes(process)) return false;
+  if (material && p.material !== material) return false;
+  return true;
 }

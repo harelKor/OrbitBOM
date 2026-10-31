@@ -5,7 +5,7 @@ import Image from "next/image";
 export function Brand({ compact = false }: { compact?: boolean }) {
   return (
     <Link href="/?home" className="press flex shrink-0 items-center gap-2.5 text-white" aria-label="OrbitParts home">
-      <Image src="/orbit-logo.png" alt="" width={34} height={34} className="h-[34px] w-[34px] rounded-md" priority />
+      <Image src="/orbit-logo.png" alt="" width={34} height={34} className="h-[34px] w-[34px] shrink-0 object-contain" priority />
       <span className={`items-center gap-2.5 ${compact ? "hidden sm:flex" : "flex"}`}>
         <span className="display text-[26px] leading-none">1690</span>
         <span className="leading-tight">

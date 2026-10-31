@@ -2,34 +2,18 @@
 
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
-import { getMachine, MACHINES } from "@/config/machines";
-import { OptionList, Popover, type Option } from "@/components/bom/Popover";
-import { DATE_OPTIONS, useFilters, type DateFilter, type Filters } from "./FilterContext";
+import { useFilters } from "./FilterContext";
 import { Icon } from "@/components/ui/Icon";
 import { Brand } from "./Brand";
-import { useMaterials } from "./MaterialColors";
 import { ModeToggle } from "./ModeContext";
 import { UndoRedo } from "./UndoRedo";
-
-const PROCESS_OPTIONS: Option[] = [{ value: null, label: "Any process" }, ...MACHINES.map((m) => ({ value: m.id, label: m.name }))];
-const DATE_PICK: Option[] = [{ value: null, label: "Any time" }, ...DATE_OPTIONS.map((d) => ({ value: d.value, label: d.label }))];
 
 export function TopBar({ onMenu, onRobots, navHidden }: { onMenu: () => void; onRobots: () => void; navHidden: boolean }) {
   const pathname = usePathname();
   const { filters, setFilters } = useFilters();
-  const materials = useMaterials();
-  // Parts filter by their material's name; items that share a name are one choice.
-  const seen = new Set<string>();
-  const firstOther = materials.find((g) => !g.raw)?.id;
-  const materialPick: Option[] = [
-    { value: null, label: "Any material" },
-    ...materials.flatMap((g) =>
-      g.items.flatMap((i, n) => (seen.has(i.name) ? [] : (seen.add(i.name), [{ value: i.name, label: i.name, group: g.label, divider: n === 0 && g.id === firstOther }]))),
-    ),
-  ];
   const search = useRef<HTMLInputElement>(null);
   const header = useRef<HTMLElement>(null);
-  // Part search and filters apply to the robot pages; Inventory has its own.
+  // Part search applies to the robot pages; Inventory has its own.
   const partPages = pathname.startsWith("/robots/") && pathname !== "/robots/new";
 
   useEffect(() => {
@@ -52,8 +36,6 @@ export function TopBar({ onMenu, onRobots, navHidden }: { onMenu: () => void; on
     return () => ro.disconnect();
   }, []);
 
-  const active = filters.q || filters.material || filters.process || filters.date;
-
   return (
     <header ref={header} className="sticky top-0 z-20 flex min-h-14 flex-wrap items-center gap-2 bg-bar px-4 py-2.5 text-white shadow-[0_2px_8px_rgba(0,0,120,0.25)] md:px-6">
       <button onClick={onMenu} className="press rounded-md border border-white/30 px-2 py-1 lg:hidden" aria-label="Pages" title="Show pages">
@@ -71,11 +53,11 @@ export function TopBar({ onMenu, onRobots, navHidden }: { onMenu: () => void; on
               value={filters.q}
               onChange={(e) => setFilters({ q: e.target.value })}
               placeholder="Search part name"
-              className={`input border-white bg-white text-[#111318] ${filters.q ? "pr-[5.5rem]" : "pr-16"}`}
+              className={`input border-white bg-white text-[#111318] ${filters.q ? "pr-9 sm:pr-[5.5rem]" : "sm:pr-16"}`}
             />
             {/* Right edge of the box: the shortcut hint, then the clear button in the far corner. */}
             <div className="absolute inset-y-0 right-1.5 flex items-center gap-1.5">
-              <kbd className="pointer-events-none rounded border border-line-strong px-1.5 text-[11px] text-subtle">Ctrl K</kbd>
+              <kbd className="pointer-events-none rounded max-sm:hidden border border-line-strong px-1.5 text-[11px] text-subtle">Ctrl K</kbd>
               {filters.q && (
                 <button
                   type="button"
@@ -92,31 +74,6 @@ export function TopBar({ onMenu, onRobots, navHidden }: { onMenu: () => void; on
               )}
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            <Pill label="Material" value={filters.material || null} options={materialPick} pick={(v) => setFilters({ material: v ?? "" })} />
-            <Pill
-              label="Process"
-              value={filters.process || null}
-              shown={filters.process ? getMachine(filters.process)?.name : undefined}
-              options={PROCESS_OPTIONS}
-              pick={(v) => setFilters({ process: v ?? "" })}
-            />
-            <Pill
-              label="Date"
-              value={filters.date || null}
-              shown={DATE_OPTIONS.find((d) => d.value === filters.date)?.label}
-              options={DATE_PICK}
-              pick={(v) => setFilters({ date: (v ?? "") as DateFilter })}
-            />
-            {active && (
-              <button
-                onClick={() => setFilters({ q: "", material: "", process: "", date: "" } satisfies Filters)}
-                className="press px-1.5 text-xs text-white/80 hover:text-white"
-              >
-                Clear
-              </button>
-            )}
-          </div>
         </>
       )}
       <div className="ml-auto flex items-center gap-2">
@@ -130,37 +87,3 @@ export function TopBar({ onMenu, onRobots, navHidden }: { onMenu: () => void; on
   );
 }
 
-function Pill({
-  label,
-  value,
-  shown,
-  options,
-  pick,
-}: {
-  label: string;
-  value: string | null;
-  shown?: string;
-  options: Option[];
-  pick: (v: string | null) => void;
-}) {
-  return (
-    <Popover
-      triggerClassName={`rounded-full border px-3 py-1 text-xs font-medium ${
-        value ? "border-white bg-white text-accent hover:text-accent" : "border-white/40 text-white hover:border-white hover:bg-white/10 hover:text-white"
-      }`}
-      trigger={value ? (shown ?? value) : label}
-    >
-      {(close) => (
-        <OptionList
-          options={options}
-          value={value}
-          placeholder={`Search ${label.toLowerCase()}…`}
-          onPick={(v) => {
-            pick(v);
-            close();
-          }}
-        />
-      )}
-    </Popover>
-  );
-}

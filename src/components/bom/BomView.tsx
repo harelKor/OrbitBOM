@@ -17,7 +17,8 @@ import { RELEASED_STATUS, ReleaseBar } from "./ReleaseBar";
 import { MERGE_PREFIX, fanOutChanges, isMergeId, mergedRow } from "@/lib/merges/merge";
 import type { VersionTags } from "@/lib/versions/tags";
 import { BomProvider, type InventoryName } from "./BomContext";
-import { matchesTopBar } from "./filter";
+import { matchesPills, matchesTopBar } from "./filter";
+import { FilterPills } from "./FilterPills";
 import { KanbanView } from "./KanbanView";
 import { PartCard } from "./PartCard";
 import { TableView } from "./TableView";
@@ -34,7 +35,7 @@ function bySystem(parts: CardPart[]): [string, CardPart[]][] {
 type View = "card" | "table" | "kanban";
 type Chip = "all" | "cots" | "inhouse";
 
-// The BOM page body (ref §3): the top bar's search and filters, type chips, a Status select,
+// The BOM page body (ref §3): the top bar's search, Material and Process pills, type chips, a Status select,
 // the Card / Table / Kanban views, and (Edit mode) Bulk edit and Merge. Edits show at once and
 // roll back if the save fails.
 export function BomView({
@@ -150,7 +151,7 @@ export function BomView({
         if (chip === "cots" && p.classification !== "cots") return false;
         if (chip === "inhouse" && p.classification !== "inhouse") return false;
         if (status && computeStatus(p) !== status) return false;
-        return matchesTopBar(p, filters);
+        return matchesTopBar(p, filters) && matchesPills(p, filters);
       }),
     [optimistic, filters, chip, status],
   );
@@ -210,6 +211,7 @@ export function BomView({
             </button>
           ))}
         </div>
+          <FilterPills />
           {edit && <div className="flex overflow-hidden rounded-md border border-line-strong" role="group" aria-label="View">
             {(["card", "table", "kanban"] as const).map((v) => (
               <button
