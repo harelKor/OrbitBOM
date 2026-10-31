@@ -435,6 +435,13 @@
       "when": 1793454443036,
       "tag": "0061_raw_stock_no_part_photos",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1793477759401,
+      "tag": "0062_batch_onshape_layout",
+      "breakpoints": true
     }
   ]
 }

@@ -331,8 +331,13 @@ export const partGroups = pgTable("part_groups", {
   priority: priority("priority").notNull().default("normal"),
   machine: text("machine"), // set on a To Fab batch: the machine (config id) its parts are made on
   madeBy: text("made_by"), // a To Fab batch's member, by name (who created it, changeable)
+  // The batch's "Batch - <name>" layout assembly in Onshape (src/lib/fab/onshapeLayout.ts), reused
+  // on the next push. `rev` names the layout last pushed, for the cached batch STEP.
+  onshapeLayout: jsonb("onshape_layout").$type<OnshapeLayoutRef>(),
   createdAt: createdAt(),
 });
+
+export type OnshapeLayoutRef = { baseUrl: string; did: string; wid: string; eid: string; rev: string; at: string };
 
 export const groupMembers = pgTable(
   "group_members",
