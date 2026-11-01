@@ -42,9 +42,11 @@ export async function renameSelf(name: string): Promise<{ error?: string }> {
   return {};
 }
 
-// The member's own team and, for CAD Team, their subsystem.
+// The member's own team and, for CAD Team, their subsystem. Only admins change it here;
+// everyone else's team is set by an admin on /members.
 export async function setOwnTeam(team: Team | null, systemId: string | null) {
   const member = await requireMember();
+  if (!member.isAdmin) throw new Error("Only an admin can change your team.");
   await saveTeam(member.id, team, systemId);
   // The team is the member's mode, so every page's controls change with it.
   revalidatePath("/", "layout");

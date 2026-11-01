@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { db, schema } from "@/db";
 import { requireMember } from "@/lib/auth";
 import { DAILY_CALL_BUDGET } from "@/lib/onshape/client";
+import { TEAMS } from "@/config/teams";
 import { TeamPicker } from "@/components/teams/TeamPicker";
 import { listTeamSystems } from "@/lib/teams";
 import { disconnectOnshape, setOwnTeam } from "./actions";
@@ -54,7 +55,11 @@ export default async function ProfilePage({
         </p>
       </div>
 
-      <TeamPicker team={member.team} systemId={member.systemId} systems={systems} save={setOwnTeam} />
+      {member.isAdmin ? (
+        <TeamPicker team={member.team} systemId={member.systemId} systems={systems} save={setOwnTeam} />
+      ) : (
+        <TeamBadges team={member.team} system={systems.find((s) => s.id === member.systemId) ?? null} />
+      )}
 
       {onshape && MESSAGES[onshape] && (
         <p className={`rounded-md p-3 text-sm ${onshape === "connected" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
@@ -96,5 +101,24 @@ export default async function ProfilePage({
         <McpTokens tokens={mcpTokens} origin={origin} />
       </section>
     </div>
+  );
+}
+
+// Non-admins see their team read-only; an admin sets it on /members.
+function TeamBadges({ team, system }: { team: string | null; system: { name: string; robotName: string } | null }) {
+  const label = TEAMS.find((t) => t.id === team)?.label ?? "Unassigned";
+  return (
+    <section className="panel flex flex-wrap items-center gap-2 p-4 text-sm">
+      <span className="text-muted">Team</span>
+      <span className={`rounded-full border px-2.5 py-0.5 font-medium ${team ? "border-sky-400/40 bg-sky-500/10 text-accent" : "border-line text-fg-2"}`}>
+        {label}
+      </span>
+      {team === "cad" && system && (
+        <span className="rounded-full border border-line px-2.5 py-0.5 text-fg-2">
+          {system.robotName} · {system.name}
+        </span>
+      )}
+      <span className="w-full text-xs text-muted">An admin sets your team on the Members page.</span>
+    </section>
   );
 }

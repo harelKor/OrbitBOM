@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { fitTargets } from "@/app/(app)/inventory/actions";
 import { openPartWindow } from "@/components/bom/PartDetailsHost";
 import { useInventoryPopup } from "@/components/inventory/InventoryPopup";
@@ -63,6 +63,19 @@ export function FitPicker({ parts, value, onPick }: { parts: FitPart[]; value: F
   const items = useFitItems();
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
+  // The results list stays closed until the search box is focused, and closes on a pick or an outside click.
+  const [listOpen, setListOpen] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!listOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (boxRef.current?.contains(e.target as Node)) return;
+      setListOpen(false);
+      setOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [listOpen]);
   const rows = useMemo<FitTarget[]>(() => {
     const ws = words(q);
     const ps: FitTarget[] = parts.filter((p) => matches(p.name, ws)).map((p) => ({ kind: "part", id: p.id, name: p.name, thumbUrl: p.thumbUrl }));
@@ -90,10 +103,15 @@ export function FitPicker({ parts, value, onPick }: { parts: FitPart[]; value: F
     );
 
   return (
-    <div className="space-y-1">
+    <div ref={boxRef} className="space-y-1">
       <input
         value={q}
-        onChange={(e) => setQ(e.target.value)}
+        onChange={(e) => {
+          setQ(e.target.value);
+          setListOpen(true);
+        }}
+        onFocus={() => setListOpen(true)}
+        onClick={() => setListOpen(true)}
         autoFocus={!!value}
         className="input w-full text-sm"
         placeholder="Search parts and inventory"
@@ -102,15 +120,18 @@ export function FitPicker({ parts, value, onPick }: { parts: FitPart[]; value: F
           if (e.key === "Enter" && rows[0]) {
             onPick(rows[0]);
             setOpen(false);
+            setListOpen(false);
             setQ("");
           }
-          if (e.key === "Escape" && value) {
+          if (e.key === "Escape" && (value || listOpen)) {
             e.preventDefault();
             e.stopPropagation();
             setOpen(false);
+            setListOpen(false);
           }
         }}
       />
+      {listOpen && (
       <div className="max-h-72 overflow-auto rounded-lg border border-white/10 bg-[#07090E]/60">
         {rows.map((t) => (
           <button
@@ -118,6 +139,7 @@ export function FitPicker({ parts, value, onPick }: { parts: FitPart[]; value: F
             onClick={() => {
               onPick(t);
               setOpen(false);
+              setListOpen(false);
               setQ("");
             }}
             className={`flex w-full items-center gap-2 px-1.5 py-1 text-left transition-colors duration-150 hover:bg-white/10 active:scale-[0.98] ${value?.id === t.id ? "bg-sky-500/20" : ""}`}
@@ -132,6 +154,7 @@ export function FitPicker({ parts, value, onPick }: { parts: FitPart[]; value: F
         {!rows.length && <p className="px-2 py-2 text-xs text-white/50">{items ? "Nothing matches." : "Loading…"}</p>}
         {!q && items && <p className="px-2 py-1.5 text-[11px] text-white/40">Type to search the whole inventory.</p>}
       </div>
+      )}
     </div>
   );
 }
