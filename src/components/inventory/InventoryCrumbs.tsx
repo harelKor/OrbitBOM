@@ -10,7 +10,10 @@ export function InventoryCrumbs({ categories }: { categories: { id: string; labe
   const params = useSearchParams();
   const rawGroup = params.get("group");
   const group = rawGroup && isCategoryGroup(rawGroup) ? CATEGORY_GROUPS.find((g) => g.id === rawGroup) : undefined;
-  const cat = group ? categories.find((c) => c.id === params.get("cat")) : undefined;
+  // ?cat= can list several categories in the Short views ("Gears + Pulleys", "3 categories").
+  const ids = group ? (params.get("cat") ?? "").split(",").filter(Boolean) : [];
+  const picked = categories.filter((c) => ids.includes(c.id));
+  const cat = picked.length ? { label: picked.length > 2 ? `${picked.length} categories` : picked.map((c) => c.label).join(" + ") } : undefined;
   const crumb = "press rounded px-1 hover:text-accent active:scale-[0.98]";
   return (
     <nav aria-label="Category route" className="flex flex-wrap items-center gap-1 text-xs font-semibold tracking-wide text-subtle uppercase">

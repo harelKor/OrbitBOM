@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
 import { FastLink } from "@/components/ui/FastLink";
 import { NewSystemButton } from "@/app/(app)/robots/[robotId]/NewSystemButton";
 import { RobotSettings } from "@/app/(app)/robots/[robotId]/RobotSettings";
@@ -9,24 +8,16 @@ import { SystemSettings } from "@/app/(app)/robots/[robotId]/systems/[systemId]/
 import type { ShellRobot, ShellSystem } from "@/lib/data/shell";
 import { AppearanceControls } from "./Appearance";
 import { EditOnly } from "./ModeContext";
-import { useRobotContext } from "./useRobotContext";
+import { selectRobot, useRobotContext } from "./useRobotContext";
 
 // Robots, and the active robot's systems, one click away on every page. In Edit mode each
-// robot card and system tile has its settings gear in the corner. Clicking a robot first opens its
-// systems list here; clicking it again (once its systems show) opens its dashboard.
+// robot card and system tile has its settings gear in the corner. Clicking another robot selects it
+// (side links and its systems follow it, the page stays); clicking the selected one opens its dashboard.
 export function RobotSwitcher({ robots, lastRobotId, isAdmin }: { robots: ShellRobot[]; lastRobotId: string | null; isAdmin: boolean }) {
   const { pathname, robot: current, systemId } = useRobotContext(robots, lastRobotId);
   const active = robots.filter((r) => !r.archived);
   const archived = robots.filter((r) => r.archived);
-  // The robot whose systems show below the list: the page's robot until another one is clicked.
-  const [expandedId, setExpandedId] = useState<string | null>(current?.id ?? null);
-  const [pageRobotId, setPageRobotId] = useState(current?.id ?? null);
-  if ((current?.id ?? null) !== pageRobotId) {
-    // Moving to another robot's page shows that robot's systems again.
-    setPageRobotId(current?.id ?? null);
-    setExpandedId(current?.id ?? null);
-  }
-  const expanded = robots.find((r) => r.id === expandedId) ?? null;
+  const expanded = current;
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
@@ -47,8 +38,7 @@ export function RobotSwitcher({ robots, lastRobotId, isAdmin }: { robots: ShellR
             current={r.id === current?.id}
             overview={r.id === current?.id && !systemId && !pathname.includes("/fab") && !pathname.includes("/review")}
             isAdmin={isAdmin}
-            expanded={r.id === expandedId}
-            onExpand={() => setExpandedId(r.id)}
+            onSelect={() => selectRobot(r.id)}
           />
         ))}
       </div>
@@ -81,8 +71,7 @@ export function RobotSwitcher({ robots, lastRobotId, isAdmin }: { robots: ShellR
                 current={r.id === current?.id}
                 overview={false}
                 isAdmin={isAdmin}
-                expanded={r.id === expandedId}
-                onExpand={() => setExpandedId(r.id)}
+                onSelect={() => selectRobot(r.id)}
               />
             ))}
           </div>
@@ -100,30 +89,29 @@ function RobotCard({
   current,
   overview,
   isAdmin,
-  expanded,
-  onExpand,
+  onSelect,
 }: {
   robot: ShellRobot;
   current: boolean;
   overview: boolean;
   isAdmin: boolean;
-  expanded: boolean;
-  onExpand: () => void;
+  onSelect: () => void;
 }) {
   return (
     <div className="relative">
       <FastLink
         href={`/robots/${robot.id}`}
         aria-current={overview ? "page" : undefined}
-        aria-expanded={expanded}
-        data-selected={overview}
+        aria-pressed={current}
+        data-selected={current}
+        title={current ? "Open dashboard" : "Select robot"}
         onClick={(e) => {
-          // First click only shows the robot's systems; a new-tab click always opens the dashboard.
-          if (expanded || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+          // First click selects the robot without leaving the page; a new-tab click always opens the dashboard.
+          if (current || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
           e.preventDefault();
-          onExpand();
+          onSelect();
         }}
-        className={`card-interactive group flex items-center gap-3 p-2 ${(current || expanded) && !overview ? "border-white/20" : ""}`}
+        className="card-interactive group flex items-center gap-3 p-2"
       >
         <Picture url={robot.thumbUrl} className="h-12 w-12" />
         <div className="min-w-0 flex-1">

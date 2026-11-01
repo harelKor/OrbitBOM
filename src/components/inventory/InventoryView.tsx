@@ -231,7 +231,10 @@ export function InventoryView({
   const rawGroup = params.get("group");
   const group: CategoryGroupId | null =
     home && rawGroup && isCategoryGroup(rawGroup) ? rawGroup : null;
-  const cat = group ? params.get("cat") : null;
+  // Short for Season / Robots can hold several categories at once (?cat=a,b); otherwise one.
+  const cats = group ? (params.get("cat") ?? "").split(",").filter(Boolean) : [];
+  const catSet = new Set(cats);
+  const cat = cats.length === 1 ? cats[0] : null;
   const groupOfCat = new Map(categories.map((c) => [c.id, c.group]));
   const need: NeedView = view ?? "any";
   const inView = (i: Item) =>
@@ -242,7 +245,7 @@ export function InventoryView({
         : true;
   const inBox = (i: Item) =>
     (!group || groupOf(groupOfCat.get(i.category)) === group) &&
-    (!cat || i.category === cat);
+    (catSet.size === 0 || catSet.has(i.category));
   const red = (i: Item) => standing(i, need) === "short";
 
   // In a category: a labeled row of pills per spec field (Bearings: ID, OD, Thick, Type),
@@ -648,7 +651,8 @@ export function InventoryView({
               <button
                 key={t.id}
                 type="button"
-                onClick={() => pushQuery({ view: on ? null : t.id })}
+                // Leaving the view keeps one category at most (outside it a box picks just one).
+                onClick={() => pushQuery({ view: on ? null : t.id, ...(on && cats.length > 1 ? { cat: null } : {}) })}
                 aria-pressed={on}
                 className={`card-interactive group flex min-w-0 items-center gap-3 p-3 text-left active:scale-[0.98] sm:gap-4 sm:px-4 sm:py-3 ${tint}`}
               >
@@ -679,8 +683,15 @@ export function InventoryView({
           counts={counts}
           group={group}
           category={cat}
+          picked={view ? catSet : undefined}
           onGroup={(g) => pushQuery({ group: g, cat: null })}
-          onCategory={(c) => pushQuery({ cat: c })}
+          onCategory={(c) => {
+            if (!view || !c) return pushQuery({ cat: c });
+            const next = new Set(catSet);
+            if (next.has(c)) next.delete(c);
+            else next.add(c);
+            pushQuery({ cat: [...next].join(",") || null });
+          }}
           categoryHref={
             view
               ? undefined

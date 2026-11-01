@@ -44,6 +44,7 @@ export function CategoryBoxes({
   counts,
   group,
   category = null,
+  picked,
   onGroup,
   onCategory,
   categoryHref,
@@ -55,6 +56,8 @@ export function CategoryBoxes({
   counts: Map<string, BoxCount>; // by group id and by category id
   group: CategoryGroupId | null;
   category?: string | null;
+  // Several categories at once (Inventory's Short views): each box toggles itself via onCategory.
+  picked?: Set<string>;
   onGroup: (id: CategoryGroupId | null) => void;
   onCategory?: (id: string | null) => void;
   categoryHref?: (id: string) => string;
@@ -95,8 +98,8 @@ export function CategoryBoxes({
       >
         {boxes.map((b) => {
           const n = counts.get(b.id) ?? { count: 0 };
-          const selected = !!g && b.id === category;
-          const select = () => (g ? onCategory?.(selected ? null : b.id) : onGroup(b.id as CategoryGroupId));
+          const selected = !!g && (picked ? picked.has(b.id) : b.id === category);
+          const select = () => (g ? onCategory?.(picked || !selected ? b.id : null) : onGroup(b.id as CategoryGroupId));
           const number = (
             <span className={`font-mono tabular-nums ${n.short ? "text-rose-500" : compact ? "text-subtle" : "text-accent"}`} title={n.short ? `${n.short} short` : undefined}>
               {n.count}
