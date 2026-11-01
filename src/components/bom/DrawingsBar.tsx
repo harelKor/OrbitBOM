@@ -43,7 +43,7 @@ export function DrawingsBar({
           : `${r.linked.length} Onshape drawing${r.linked.length === 1 ? "" : "s"} linked` +
               (r.unchanged.length ? ` · ${r.unchanged.length} already up to date` : "") +
               (r.left.length ? ` · ${r.left.length} left, run it again` : "") +
-              (r.linked.length + r.unchanged.length === 0 ? ` · none of the ${r.found} drawing tabs is named like a part` : ""),
+              (r.linked.length + r.unchanged.length === 0 ? ` · none of the ${r.found} drawing tabs has a part's number or name` : ""),
       );
       if (r.linked.length) router.refresh();
     } catch (err) {

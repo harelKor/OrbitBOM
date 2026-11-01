@@ -311,7 +311,7 @@ function FindDrawingButton({ part }: { part: CardPart }) {
       } else {
         alert(
           r.found
-            ? `None of the ${r.found} Onshape drawing tabs is named "${partTitle(part)}".`
+            ? `None of the ${r.found} Onshape drawing tabs has this part's number or name.`
             : "No drawing tabs in this system's Onshape document.",
         );
       }

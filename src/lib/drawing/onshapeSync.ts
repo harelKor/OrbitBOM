@@ -3,6 +3,7 @@ import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { onshapeClient } from "@/lib/onshape/client";
 import { exportDrawingPdf } from "@/lib/onshape/export";
+import { matchDrawingTab } from "./drawingMatch";
 import { parseOnshapeUrl } from "@/lib/onshape/url";
 import { onshapeDrawingKey, replacePartFile } from "@/lib/parts/files";
 import { getObject, putObject } from "@/lib/storage/r2";
@@ -20,20 +21,11 @@ export type OnshapeDrawingSync = {
 
 type Element = { id: string; name: string; elementType: string; microversionId?: string };
 
-// "Part 7", "part 7 drawing" and " PART 7 " all match a part named Part 7.
-export const drawingKey = (name: string) =>
-  name
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .replace(/[\s_-]*(drawing|dwg)$/, "")
-    .trim();
-
 // Pull the official drawings from Onshape (system page → Drawings → Sync Onshape drawings, or the
 // part window's Find drawing). Only on a click, never in the background: each call counts against
 // the Onshape app's yearly allowance. One listing of the drawing tabs in the system's assembly
 // document (`cached`: reuse a listing up to 10 minutes old, 0 calls), then one PDF export (start,
-// poll, download) per tab whose name matches a part's name or part number, and only when that tab
+// poll, download) per tab that matches a part (drawingMatch.ts: part code, then name), only when it
 // changed since its last sync. The PDF becomes the part's drawing file, which View drawing opens.
 export async function syncOnshapeDrawings(
   systemId: string,
@@ -69,13 +61,9 @@ export async function syncOnshapeDrawings(
   const doc = `d/${ref.did}/${ref.wvm}/${ref.wvmid}`;
   const client = onshapeClient(memberId, ref.baseUrl);
   const elements = await drawingTabs(client, doc, cached);
-  const tabs = new Map<string, { path: string; eid: string; mv: string; name: string }[]>();
-  for (const e of elements) {
-    summary.found++;
-    const key = drawingKey(e.name);
-    if (key) tabs.set(key, [...(tabs.get(key) ?? []), { path: `${doc}/e/${e.id}`, eid: e.id, mv: e.microversionId ?? "", name: e.name.trim() }]);
-  }
-  if (!tabs.size) return summary;
+  const tabs = elements.map((e) => ({ path: `${doc}/e/${e.id}`, eid: e.id, mv: e.microversionId ?? "", name: e.name.trim() }));
+  summary.found = tabs.length;
+  if (!tabs.length) return summary;
 
   const existing = await db
     .select({ partId: partFiles.partId, r2Key: partFiles.r2Key })
@@ -86,10 +74,8 @@ export async function syncOnshapeDrawings(
   // Each drawing tab is exported once, however many parts it matches.
   const pdfs = new Map<string, Promise<ArrayBuffer>>();
   for (const r of rows) {
-    const names = [r.displayName, r.onshapeName, r.partNumber].filter((n): n is string => !!n).map(drawingKey);
-    const options = names.flatMap((n) => tabs.get(n) ?? []);
-    if (!options.length) continue;
-    const tab = options[0];
+    const tab = matchDrawingTab([r.displayName, r.onshapeName, r.partNumber], tabs);
+    if (!tab) continue;
     const key = onshapeDrawingKey(r.id, tab.eid, tab.mv);
     if (tab.mv && keyOf.get(r.id) === key) {
       summary.unchanged.push(r.id);
