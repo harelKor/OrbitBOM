@@ -16,10 +16,10 @@ export type OnshapeDrawingSync = {
   linked: string[]; // part ids that got a new drawing file
   unchanged: string[]; // part ids whose Onshape drawing hasn't changed since the last sync
   left: string[]; // part ids matched but not exported before the deadline: call again with them
-  found: number; // drawing tabs in the system's documents
+  found: number; // drawing tabs in the system's document
 };
 
-type Element = { id: string; name: string; elementType: string; microversionId?: string };
+type Element = { id: string; name?: string; elementType?: string; type?: string; dataType?: string; microversionId?: string };
 
 // Pull the official drawings from Onshape (system page → Drawings → Sync Onshape drawings, or the
 // part window's Find drawing). Only on a click, never in the background: each call counts against
@@ -57,13 +57,24 @@ export async function syncOnshapeDrawings(
   if (!rows.length) return summary;
 
   // Only the system's own document (its assembly's, the "manufacture" document): that's where the
-  // team keeps the drawings, not in the documents the parts were first made in.
-  const doc = `d/${ref.did}/${ref.wvm}/${ref.wvmid}`;
+  // team keeps the drawings, not in the documents the parts were first made in. When the system is
+  // connected at a version and a part's drawing isn't there, the document's main workspace is
+  // looked at too (drawings added after that version).
   const client = onshapeClient(memberId, ref.baseUrl);
-  const elements = await drawingTabs(client, doc, cached);
-  const tabs = elements.map((e) => ({ path: `${doc}/e/${e.id}`, eid: e.id, mv: e.microversionId ?? "", name: e.name.trim() }));
-  summary.found = tabs.length;
-  if (!tabs.length) return summary;
+  const doc = `d/${ref.did}/${ref.wvm}/${ref.wvmid}`;
+  const tabs = await drawingTabs(client, doc, cached);
+  const names = (r: (typeof rows)[number]) => [r.displayName, r.onshapeName, r.partNumber];
+  const matched = new Map(rows.map((r) => [r.id, matchDrawingTab(names(r), tabs)]));
+  let found = tabs.length;
+  if (ref.wvm !== "w" && rows.some((r) => !matched.get(r.id))) {
+    const wid = (await client.json<{ defaultWorkspace?: { id: string } }>(`documents/${ref.did}`)).defaultWorkspace?.id;
+    if (wid) {
+      const latest = await drawingTabs(client, `d/${ref.did}/w/${wid}`, cached);
+      found = Math.max(found, latest.length);
+      for (const r of rows) if (!matched.get(r.id)) matched.set(r.id, matchDrawingTab(names(r), latest));
+    }
+  }
+  summary.found = found;
 
   const existing = await db
     .select({ partId: partFiles.partId, r2Key: partFiles.r2Key })
@@ -74,7 +85,7 @@ export async function syncOnshapeDrawings(
   // Each drawing tab is exported once, however many parts it matches.
   const pdfs = new Map<string, Promise<ArrayBuffer>>();
   for (const r of rows) {
-    const tab = matchDrawingTab([r.displayName, r.onshapeName, r.partNumber], tabs);
+    const tab = matched.get(r.id);
     if (!tab) continue;
     const key = onshapeDrawingKey(r.id, tab.eid, tab.mv);
     if (tab.mv && keyOf.get(r.id) === key) {
@@ -94,19 +105,28 @@ export async function syncOnshapeDrawings(
   return summary;
 }
 
-// The document's drawing tabs. The listing is kept in R2, so a run of Find drawing clicks within
-// 10 minutes lists the document once.
-async function drawingTabs(client: OnshapeClient, doc: string, cached: boolean): Promise<Element[]> {
-  const key = `cache/drawing-tabs/${doc.replace(/\//g, "_")}.json`;
+type DrawingTab = { path: string; eid: string; mv: string; name: string };
+
+// Onshape lists a drawing as an APPLICATION element whose dataType is "onshape-app/drawing" (some
+// answers say DRAWING), so the whole list is fetched and filtered here, folders and all.
+function isDrawing(e: Element) {
+  const type = String(e.elementType ?? e.type ?? "").toUpperCase();
+  return type === "DRAWING" || (type === "APPLICATION" && /drawing/i.test(String(e.dataType ?? "")));
+}
+
+// A document's drawing tabs (`doc` = d/<did>/<wvm>/<wvmid>). The list is kept in R2, so a run of
+// Find drawing clicks within 10 minutes lists the document once.
+async function drawingTabs(client: OnshapeClient, doc: string, cached: boolean): Promise<DrawingTab[]> {
+  const key = `cache/drawing-tabs-v2/${doc.replace(/\//g, "_")}.json`;
   if (cached) {
     const hit = await getObject(key).catch(() => null);
-    const saved = hit ? ((await hit.json().catch(() => null)) as { at: number; tabs: Element[] } | null) : null;
+    const saved = hit ? ((await hit.json().catch(() => null)) as { at: number; tabs: DrawingTab[] } | null) : null;
     if (saved && Date.now() - saved.at < LISTING_TTL_MS) return saved.tabs;
   }
-  const elements = await client.json<Element[]>(`documents/${doc}/elements?elementType=DRAWING`);
+  const elements = await client.json<Element[]>(`documents/${doc}/elements`);
   const tabs = elements
-    .filter((e) => e.elementType === "DRAWING")
-    .map(({ id, name, elementType, microversionId }) => ({ id, name, elementType, microversionId }));
+    .filter(isDrawing)
+    .map((e) => ({ path: `${doc}/e/${e.id}`, eid: e.id, mv: e.microversionId ?? "", name: String(e.name ?? "").trim() }));
   await putObject(key, new TextEncoder().encode(JSON.stringify({ at: Date.now(), tabs })), "application/json").catch(() => {});
   return tabs;
 }

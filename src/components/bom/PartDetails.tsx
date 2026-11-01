@@ -300,39 +300,52 @@ function FindDrawingButton({ part }: { part: CardPart }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [found, setFound] = useState(false);
+  // Shown under the button (a toast would sit behind this window).
+  const [note, setNote] = useState<string | null>(null);
+  useEffect(() => {
+    if (!note) return;
+    const t = setTimeout(() => setNote(null), 7000);
+    return () => clearTimeout(t);
+  }, [note]);
   const file = part.files.find((f) => f.type === "drawing") ?? null;
   async function find() {
     setBusy(true);
+    setNote(null);
     try {
       const r = await syncOnshapeDrawings(part.systemId, [ownerPartId(part)], true);
       if (r.linked.length || r.unchanged.length) {
         router.refresh();
         setFound(true);
       } else {
-        alert(
+        setNote(
           r.found
             ? `None of the ${r.found} Onshape drawing tabs has this part's number or name.`
             : "No drawing tabs in this system's Onshape document.",
         );
       }
     } catch (e) {
-      alert((e as Error).message);
+      setNote((e as Error).message);
     } finally {
       setBusy(false);
     }
   }
   return (
-    <>
+    <span className="relative inline-flex">
       <button
         type="button"
         onClick={find}
         disabled={busy}
         className={`btn h-8 gap-1.5 text-xs ${busy ? "animate-pulse" : ""}`}
-        title="Find this part's drawing tab in Onshape (named like the part) and bring it in"
+        title="Find this part's drawing tab in the system's Onshape document (by part number) and bring it in"
       >
         <Icon name="search" className="h-3.5 w-3.5" />
         {busy ? "Finding drawing…" : "Find drawing"}
       </button>
+      {note && (
+        <span role="status" className="absolute top-full right-0 z-20 mt-1.5 w-64 rounded-md bg-rose-600 px-3 py-2 text-xs font-medium text-white shadow-lg">
+          {note}
+        </span>
+      )}
       {found && file && (
         <DrawingPreview
           partId={ownerPartId(part)}
@@ -343,7 +356,7 @@ function FindDrawingButton({ part }: { part: CardPart }) {
           onClose={() => setFound(false)}
         />
       )}
-    </>
+    </span>
   );
 }
 
