@@ -46,7 +46,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
             <FastLink
               key={t.title}
               href={t.href}
-              className="group relative flex min-h-0 w-full flex-1 flex-col md:h-full md:min-h-[16rem] justify-end overflow-hidden rounded-3xl border border-white/12 bg-[#0d111c] shadow-2xl transition-all duration-300 hover:border-accent/60 hover:shadow-[0_0_40px_rgba(37,99,235,0.22)] active:scale-[0.98]"
+              className="group relative flex min-h-0 w-full flex-1 flex-col md:h-full md:min-h-[16rem] justify-end overflow-hidden rounded-3xl border border-white/12 bg-[#0d111c] shadow-2xl transition-all duration-300 hover:border-[#1e40ff]/60 hover:shadow-[0_0_40px_rgba(0,34,255,0.28)] active:scale-[0.98]"
             >
               <Image
                 src={t.image}
@@ -54,12 +54,15 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
                 fill
                 loading="eager"
                 sizes="(min-width: 768px) 33vw, 100vw"
-                className="object-cover object-[center_20%] transition-transform duration-500 ease-out group-hover:scale-105"
+                className="object-cover object-[center_20%] saturate-[0.92] contrast-[1.03] transition-transform duration-500 ease-out group-hover:scale-105"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#080a10]/95 via-[#080a10]/45 to-transparent" />
-              <div className="relative z-10 m-2 flex items-center justify-between gap-3 rounded-2xl border border-white/15 bg-black/45 p-3 backdrop-blur-xl transition-colors duration-300 group-hover:bg-black/55 sm:m-4 sm:gap-4 sm:p-6">
+              {/* A light Orbit-blue tint and wash, so the three pictures share one colour atmosphere. */}
+              <div className="pointer-events-none absolute inset-0 bg-[#0018e6]/16 mix-blend-color" />
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_25%,rgba(0,34,255,0.14),transparent_70%)]" />
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#080a10]/95 via-[#080a10]/45 to-transparent" />
+              <div className="relative z-10 m-2 flex h-[4.75rem] items-center justify-between gap-3 rounded-2xl border border-white/15 bg-black/45 p-3 backdrop-blur-xl transition-colors duration-300 group-hover:bg-black/55 sm:m-4 sm:h-[7.5rem] sm:gap-4 sm:p-6">
                 <div className="min-w-0">
-                  <span className="display block text-2xl text-[#6f87ff] drop-shadow-sm sm:text-4xl">{t.title}</span>
+                  <span className="display block text-2xl text-[#2a4bff] drop-shadow-[0_0_10px_rgba(0,34,255,0.55)] transition-colors duration-300 group-hover:text-[#4a67ff] sm:text-4xl">{t.title}</span>
                   {t.text && <span className="mt-0.5 line-clamp-1 block text-xs text-white/80 sm:mt-1.5 sm:text-sm">{t.text}</span>}
                 </div>
                 <span

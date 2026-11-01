@@ -126,7 +126,7 @@ function EdgeArrow({ side, collapsed, onClick }: { side: "left" | "right"; colla
       onClick={onClick}
       aria-label={`${collapsed ? "Show" : "Hide"} ${side === "left" ? "pages" : "robots and systems"}`}
       title={`${collapsed ? "Show" : "Hide"} ${side === "left" ? "pages" : "robots and systems"}`}
-      className={`press fixed top-1/2 z-50 hidden h-20 w-7 -translate-y-1/2 items-center justify-center bg-accent text-white shadow-[0_6px_18px_-4px_var(--color-accent)] hover:bg-accent-hover pointer-coarse:h-12 pointer-coarse:w-4 pointer-coarse:bg-accent/45 pointer-coarse:shadow-none ${
+      className={`press fixed top-1/2 z-50 hidden h-20 w-7 -translate-y-1/2 items-center justify-center border border-white/20 bg-bar text-white shadow-[0_0_18px_rgba(0,24,230,0.65)] transition-[filter,box-shadow] duration-150 hover:brightness-125 hover:shadow-[0_0_24px_rgba(0,34,255,0.8)] pointer-coarse:h-12 pointer-coarse:w-4 pointer-coarse:bg-bar/60 pointer-coarse:shadow-none ${
         side === "left"
           ? "left-[calc(var(--shell-left)-1px)] rounded-r-xl lg:flex"
           : "right-[calc(var(--shell-right)-1px)] rounded-l-xl xl:flex"

@@ -50,11 +50,11 @@
 /* Dark mode: follows the device unless the greyscale slider picked a shade (data-theme on <html>). */
 @layer base {
 :root[data-theme="dark"] {
-  --color-accent: #4d6bff;
+  --color-accent: #1e40ff;
   --color-bar: #0d1aa6;
-  --color-accent-hover: #6f87ff;
-  --color-accent-soft: #4d6bff;
-  --color-gold: #4d6bff;
+  --color-accent-hover: #3d5cff;
+  --color-accent-soft: #1e40ff;
+  --color-gold: #1e40ff;
   --color-ink: #0b0d14;
   --color-surface: #151925;
   --color-raised: #1d2230;
@@ -71,11 +71,11 @@
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-  --color-accent: #4d6bff;
+  --color-accent: #1e40ff;
   --color-bar: #0d1aa6;
-  --color-accent-hover: #6f87ff;
-  --color-accent-soft: #4d6bff;
-  --color-gold: #4d6bff;
+  --color-accent-hover: #3d5cff;
+  --color-accent-soft: #1e40ff;
+  --color-gold: #1e40ff;
   --color-ink: #0b0d14;
   --color-surface: #151925;
   --color-raised: #1d2230;
@@ -112,15 +112,15 @@
   --color-gold: var(--color-accent);
 }
 :root[data-hue][data-theme="dark"] {
-  --color-accent: oklch(0.592 0.221 var(--hue));
+  --color-accent: oklch(0.506 0.277 var(--hue));
   --color-bar: oklch(0.351 0.212 var(--hue));
-  --color-accent-hover: oklch(0.663 0.179 var(--hue));
+  --color-accent-hover: oklch(0.559 0.242 var(--hue));
 }
 @media (prefers-color-scheme: dark) {
   :root[data-hue]:not([data-theme="light"]) {
-    --color-accent: oklch(0.592 0.221 var(--hue));
+    --color-accent: oklch(0.506 0.277 var(--hue));
     --color-bar: oklch(0.351 0.212 var(--hue));
-    --color-accent-hover: oklch(0.663 0.179 var(--hue));
+    --color-accent-hover: oklch(0.559 0.242 var(--hue));
   }
 }
 }
