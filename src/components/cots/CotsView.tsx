@@ -423,10 +423,11 @@ export function CotsView({
         <span className="font-mono text-xs text-subtle tabular-nums">{allRows.length} parts</span>
         {list === "released" && (
           // Phone: the add row (place + search) takes the full width and Send to order sits on its own
-          // row under it, so they never overlap; from sm up they share one wrapping row.
-          <div className="ml-auto flex w-full min-w-0 flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end lg:w-auto lg:flex-nowrap">
+          // row under it, so they never overlap; from sm up they share one wrapping row, tops aligned
+          // and all 48px tall, so "+ Add without searching" under the box doesn't push the others down.
+          <div className="ml-auto flex w-full min-w-0 flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-start sm:justify-end lg:w-auto lg:flex-nowrap">
             {edit && shelf && !ordering && (
-              <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto sm:flex-1 lg:flex-none">
+              <div className="flex w-full min-w-0 items-start gap-2 sm:w-auto sm:flex-1 lg:flex-none">
                 <select value={addTo} onChange={(e) => setAddTo(e.target.value)} className="input min-h-12 w-auto max-w-[40%] shrink-0 py-2 text-sm sm:max-w-none" aria-label="Add the card to">
                   {places.map((p) => (
                     <option key={p.robotId ?? ""} value={p.robotId ?? ""}>
@@ -440,7 +441,7 @@ export function CotsView({
             {work && canOrder && <button
               onClick={() => toggleSelecting("order")}
               aria-pressed={selecting === "order"}
-              className={`press w-full shrink-0 rounded-xl px-7 py-3 text-lg font-bold sm:w-auto shadow-lg transition-colors active:scale-[0.98] ${
+              className={`press min-h-12 w-full shrink-0 rounded-xl px-7 py-2.5 text-lg font-bold sm:w-auto shadow-lg transition-colors active:scale-[0.98] ${
                 selecting === "order" ? "border border-line-strong bg-surface text-fg" : "bg-amber-400 text-slate-950 shadow-amber-400/40 hover:bg-amber-300"
               }`}
             >
