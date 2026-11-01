@@ -14,6 +14,7 @@ import { useEscape } from "@/components/ui/useEscape";
 import { DrawingsBar } from "./DrawingsBar";
 import { MergeBar, type MergeInfo } from "./MergeBar";
 import { RELEASED_STATUS, ReleaseBar } from "./ReleaseBar";
+import { SuggestBar } from "./SuggestBar";
 import { MERGE_PREFIX, fanOutChanges, isMergeId, mergedRow } from "@/lib/merges/merge";
 import type { VersionTags } from "@/lib/versions/tags";
 import { BomProvider, type InventoryName } from "./BomContext";
@@ -72,7 +73,7 @@ export function BomView({
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { canManage, canShape, canWork, canDraw, mode: role } = usePermissions();
+  const { canManage, canShape, canWork, canDraw, canReview, mode: role } = usePermissions();
   // A system page gives the CAD Team the admin's toolbar too: Table and Kanban, Bulk edit, Merge
   // parts and + Manual part (deletes and settings stay with admins in Edit).
   const edit = canManage || (canShape && !!mergeSystemId);
@@ -145,9 +146,9 @@ export function BomView({
   const { filters } = useFilters();
   const [chip, setChip] = useState<Chip>("all");
   const [status, setStatus] = useState("");
-  const [chosenMode, setMode] = useState<"bulk" | "merge" | "drawings" | "release" | null>(null);
+  const [chosenMode, setMode] = useState<"bulk" | "merge" | "drawings" | "release" | "suggest" | null>(null);
   // Leaving Edit mode ends Bulk edit and Merge; Release works in both modes.
-  const mode = edit || (chosenMode === "release" && canWork) || (chosenMode === "drawings" && canDraw) ? chosenMode : null;
+  const mode = edit || (chosenMode === "release" && canWork) || (chosenMode === "drawings" && canDraw) || (chosenMode === "suggest" && canReview) ? chosenMode : null;
   const selecting = mode !== null;
   const [selected, setSelected] = useState<Set<string>>(new Set());
   useEscape(selecting, () => {
@@ -266,6 +267,16 @@ export function BomView({
               Drawings
             </button>
           )}
+          {canReview && mergeSystemId && view !== "kanban" && (
+            <button
+              className={`${mode === "suggest" ? "btn-primary" : "btn"} inline-flex items-center gap-1.5`}
+              onClick={() => setMode((m) => (m === "suggest" ? null : "suggest"))}
+              title="Pick parts, set up or not, and get fresh setup and inventory suggestions for To Review"
+            >
+              <Icon name="spark" className="h-4 w-4" />
+              Suggest
+            </button>
+          )}
           {edit && toolbar}
       </div>
 
@@ -321,6 +332,19 @@ export function BomView({
             setSelected(new Set());
           }}
           onSelectAll={() => setSelected(new Set(shown.map((p) => p.id)))}
+          onDone={() => {
+            setMode(null);
+            setSelected(new Set());
+          }}
+        />
+      )}
+      {mode === "suggest" && mergeSystemId && (
+        <SuggestBar
+          selected={shown.filter((p) => selected.has(p.id))}
+          total={shown.length}
+          onSelectAll={() => setSelected(new Set(shown.map((p) => p.id)))}
+          onSelectUndefined={() => setSelected(new Set(shown.filter((p) => p.classification === "undefined").map((p) => p.id)))}
+          onClear={() => setSelected(new Set())}
           onDone={() => {
             setMode(null);
             setSelected(new Set());

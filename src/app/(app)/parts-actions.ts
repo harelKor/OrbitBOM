@@ -13,7 +13,7 @@ import { OnshapeError } from "@/lib/onshape/client";
 import { MERGE_PREFIX, fanOutChanges, isMergeId, mergedRow } from "@/lib/merges/merge";
 import { applyEachPartChanges, applyPartChanges } from "@/lib/parts/apply";
 import { partChangesSchema, resolveCounterAdds, type PartChanges } from "@/lib/parts/changes";
-import { settleSuggestedLink } from "@/lib/review/review";
+import { settleSuggestedLink, suggestPickedParts } from "@/lib/review/review";
 import { refreshSystem } from "@/lib/sync/refresh";
 import { updateBomFromOnshape } from "@/lib/sync/updateBom";
 import { deleteObjects, fileKeysFor } from "@/lib/storage/cleanup";
@@ -171,6 +171,23 @@ export async function updateParts(ids: string[], changes: unknown): Promise<Acti
   await applyPartChanges(partIds, parsed.data, { memberId: member.id, via: "ui" });
   revalidatePath("/robots", "layout");
   return {};
+}
+
+// The system page's Suggest mode: fresh setup suggestions plus auto-link on the picked parts
+// (set up or not), each waiting in To Review for Approve or Reject.
+export async function suggestParts(ids: string[]): Promise<ActionResult> {
+  const member = await requireCapability("review");
+  const partIds = [...new Set(await expandMerges(ids))];
+  if (!partIds.length || partIds.some((id) => !isUuid(id))) return { error: "Unknown part." };
+  const { checked, suggested, linked } = await suggestPickedParts(partIds, member.id);
+  revalidatePath("/robots", "layout");
+  if (!suggested && !linked) return { message: `Nothing new to suggest for ${checked === 1 ? "this part" : `these ${checked} parts`}.` };
+  return {
+    message:
+      `Suggested a new setup for ${suggested} of ${checked} part${checked === 1 ? "" : "s"}.` +
+      (linked ? ` ${linked} inventory ${linked === 1 ? "link" : "links"} to approve.` : "") +
+      " They wait in To Review for Approve or Reject.",
+  };
 }
 
 // ---------- Merge parts (ref §3) ----------

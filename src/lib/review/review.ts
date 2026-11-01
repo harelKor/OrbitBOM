@@ -243,6 +243,39 @@ export async function suggestOnePart(partId: string, memberId: string) {
   return { setUp, linked, reason: guess?.reason ?? null };
 }
 
+// The system page's Suggest mode: fresh setups for the picked parts, set up or not. Each part's
+// material, item and processes are worked out as if it had none (classification stays, so a COTS
+// part only turns in-house for plates and prints); when the rules find no Raw Stock item, its own
+// material still picks the processes. Only fields that change are written, and every one waits
+// in To Review with its "from → to", like Suggest setup. Then auto-link for the ones without an item.
+export async function suggestPickedParts(partIds: string[], memberId: string) {
+  if (!partIds.length) return { checked: 0, suggested: 0, linked: 0 };
+  const rows = await db
+    .select({ part: parts, robotId: systems.robotId, systemName: systems.name })
+    .from(parts)
+    .innerJoin(systems, eq(systems.id, parts.systemId))
+    .where(and(inArray(parts.id, partIds), isNull(parts.removedFromCadAt), sql`${parts.classification} <> 'external'`));
+  const byRobot = new Map<string, (Part & { systemName: string })[]>();
+  for (const r of rows) byRobot.set(r.robotId, [...(byRobot.get(r.robotId) ?? []), { ...r.part, systemName: r.systemName }]);
+  const measured: (Part & { systemName: string })[] = [];
+  for (const [robotId, list] of byRobot) {
+    measured.push(...list.filter((p) => p.isManual), ...(await measureParts(robotId, list.filter((p) => !p.isManual))));
+  }
+  const [learned, stock] = await Promise.all([learnedProcesses(), listRawStock()]);
+  const blankProcesses = { preProcess: null, process1: null, process2: null };
+  const edits = measured.flatMap((p) => {
+    const fresh = suggestSetup({ ...p, ...blankProcesses, material: null, inventoryItemId: null }, learned, stock);
+    const guess = fresh?.changes.material ? fresh : suggestSetup({ ...p, ...blankProcesses }, learned, stock);
+    return guess ? [{ id: p.id, ...guess }] : [];
+  });
+  const { changed, batchId } = await applySuggestions(edits, { memberId, source: "rule", via: "ui" });
+  if (changed) {
+    await logAiAction({ source: "rule", tool: "Suggest setup", memberId, batchId, parts: changed, summary: `Suggested a fresh setup for ${changed} of ${measured.length} picked parts` });
+  }
+  const linked = await linkParts(measured.map((p) => p.id), memberId);
+  return { checked: measured.length, suggested: changed, linked };
+}
+
 // What a part has waiting in To Review, for its window's Approve and Reject.
 export async function partReview(partId: string) {
   const [r] = await db.select().from(partReviews).where(eq(partReviews.partId, partId));
