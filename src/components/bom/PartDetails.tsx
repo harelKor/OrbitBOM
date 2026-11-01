@@ -10,6 +10,7 @@ import { approveParts, partReviewState, rejectParts, suggestPart, type PartRevie
 import { PartModel, type StageView } from "@/components/dashboard/PartStage";
 import { DrawingEditor } from "@/components/drawing/DrawingEditor";
 import { DrawingPreview } from "@/components/drawing/DrawingPreview";
+import { syncOnshapeDrawings } from "@/components/drawing/syncOnshape";
 import { AddBox } from "@/components/inventory/AddBox";
 import { useInventoryPopup } from "@/components/inventory/InventoryPopup";
 import { useCan, useManage } from "@/components/shell/ModeContext";
@@ -63,6 +64,7 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
           {suggest.suggestButton}
           {!cots && <ViewDrawingButton part={part} />}
           {!cots && canDraw && !part.isManual && <DrawingAction partId={ownerPartId(part)} hasDrawing={!!part.hasDrawing} />}
+          {!cots && canDraw && !part.isManual && part.systemId && <FindDrawingButton part={part} />}
           {!cots && canDraw && <DrawingFileButton part={part} />}
         </>
       }
@@ -286,6 +288,59 @@ function ViewDrawingButton({ part }: { part: CardPart }) {
           hasDrawing={!!part.hasDrawing}
           file={file}
           onClose={() => setOpen(false)}
+        />
+      )}
+    </>
+  );
+}
+
+// Look for this part's drawing tab in its Onshape documents (named like the part) and bring it in
+// as its drawing file, then open it. Only on this click: it spends Onshape calls.
+function FindDrawingButton({ part }: { part: CardPart }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [found, setFound] = useState(false);
+  const file = part.files.find((f) => f.type === "drawing") ?? null;
+  async function find() {
+    setBusy(true);
+    try {
+      const r = await syncOnshapeDrawings(part.systemId, [ownerPartId(part)]);
+      if (r.linked.length || r.unchanged.length) {
+        router.refresh();
+        setFound(true);
+      } else {
+        alert(
+          r.found
+            ? `None of the ${r.found} Onshape drawing tabs is named "${partTitle(part)}".`
+            : "No drawing tabs in this part's Onshape documents.",
+        );
+      }
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <>
+      <button
+        type="button"
+        onClick={find}
+        disabled={busy}
+        className={`btn h-8 gap-1.5 text-xs ${busy ? "animate-pulse" : ""}`}
+        title="Find this part's drawing tab in Onshape (named like the part) and bring it in"
+      >
+        <Icon name="search" className="h-3.5 w-3.5" />
+        {busy ? "Finding drawing…" : "Find drawing"}
+      </button>
+      {found && file && (
+        <DrawingPreview
+          partId={ownerPartId(part)}
+          systemId={part.systemId}
+          title={partTitle(part)}
+          hasDrawing={!!part.hasDrawing}
+          file={file}
+          onClose={() => setFound(false)}
         />
       )}
     </>
