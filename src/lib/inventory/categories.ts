@@ -116,6 +116,11 @@ function stockName(cat: InvCategory, specs: Record<string, string>): string {
 export const leftOutOfName = (cat: InvCategory, f: CategoryField) =>
   cat.group === "consumables" && (f.id === "length" || (f.id === "size" && cat.id !== "square-tubes"));
 
+// Every box tube is aluminium (Harel, 2026-11-01), so plain "Aluminum" stays out of its name:
+// "25x50mm 2mm wall Box tube". Another material (carbon, an alloy like 6061-T6) is still named.
+const unnamedMaterial = (cat: InvCategory, f: CategoryField, v: string) =>
+  cat.id === "square-tubes" && f.id === "material" && /^(alumin?i?um|אלומיניום)$/i.test(v);
+
 // A field's name template when it has none: the value, after a space.
 export const DEFAULT_NAME = " {}";
 
@@ -132,8 +137,10 @@ export function buildName(cat: InvCategory, specs: Record<string, string>): stri
   let name = "";
   for (const f of activeFields(cat, specs)) {
     const v = specs[f.id]?.trim();
-    if (!v || f === type || leftOutOfName(cat, f)) continue;
-    name += (f.name ?? DEFAULT_NAME).replace("{}", v);
+    if (!v || f === type || leftOutOfName(cat, f) || unnamedMaterial(cat, f, v)) continue;
+    // An inch value ('1x1"', '1/8"') drops the template's "mm": '1x1" 1/8" wall Box tube'.
+    const template = v.endsWith('"') ? (f.name ?? DEFAULT_NAME).replace("{}mm", "{}") : (f.name ?? DEFAULT_NAME);
+    name += template.replace("{}", v);
   }
   if (!name.trim()) return "";
   const has = (word: string) => name.toLowerCase().includes(word.toLowerCase());

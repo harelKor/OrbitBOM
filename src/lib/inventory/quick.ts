@@ -77,8 +77,20 @@ const MATERIAL_WORDS: Rule[] = [
   [/alumin?i?um|\balu\b|אלומיניום/, () => ({ material: "Aluminum" })],
 ];
 const NUM = "(\\d+(?:\\.\\d+)?)";
+// A size in inches: "1", "1.5", "1/8".
+const INCH = "(\\d+(?:[./]\\d+)?)";
 const BY = "\\s*(?:mm)?\\s*[x×*]\\s*";
 const SHOP_WORDS: Record<string, Rule[]> = {
+  // "25x50 2mm wall box tube", "25×50×1.5mm", '1x1" 1/8" box tube': profile, then wall (mm, or
+  // inches with their "). A long "1000mm" is a stock length, left for the length field.
+  "square-tubes": [
+    [new RegExp(`${NUM}${BY}${NUM}${BY}${NUM}(?:\\s*mm\\b)?`), (m) => ({ size: `${m[1]}x${m[2]}`, wall: m[3] })],
+    [new RegExp(`${INCH}\\s*(?:"|in\\b)?\\s*[x×*]\\s*${INCH}\\s*(?:"|''|inch(?:es)?\\b|in\\b)`), (m) => ({ size: `${m[1]}x${m[2]}"` })],
+    [new RegExp(`${NUM}${BY}${NUM}(?:\\s*mm\\b)?`), (m) => ({ size: `${m[1]}x${m[2]}` })],
+    [new RegExp(`${INCH}\\s*(?:"|''|inch(?:es)?\\b|in\\b)(?:\\s*wall)?`), (m) => ({ wall: `${m[1]}"` })],
+    [new RegExp(`\\b(\\d{1,2}(?:\\.\\d+)?)\\s*(?:mm\\b)?\\s*wall|\\b(\\d{1,2}(?:\\.\\d+)?)\\s*mm\\b`), (m) => ({ wall: m[1] ?? m[2] })],
+    ...MATERIAL_WORDS,
+  ],
   // "aluminum 25x2 tube", "carbon Ø20×1.5": OD x wall in mm.
   "round-tubes": [[new RegExp(`ø?\\s*${NUM}${BY}${NUM}(?:\\s*mm\\b)?`), (m) => ({ od: m[1], wall: m[2] })], ...MATERIAL_WORDS],
   // "aluminum 50x50x100 block" (X x Y x Z), "brass Ø30x150 cylinder" (OD x length), "8mm standoff stock".

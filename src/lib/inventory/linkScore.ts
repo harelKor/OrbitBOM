@@ -47,7 +47,13 @@ function nameLikeness(a: string, b: string) {
   return 0.5 * (both / Math.min(A.size, B.size)) + 0.5 * (both / new Set([...A, ...B]).size);
 }
 
-const sameValue = (a: string, b: string) => a.trim().toLowerCase().replace(/\s+/g, " ") === b.trim().toLowerCase().replace(/\s+/g, " ");
+// "25×50" and "50x25" are the same box tube profile.
+const norm = (v: string) => {
+  const s = v.trim().toLowerCase().replace(/\s+/g, " ").replace(/\s*[×*]\s*|\s+x\s+/g, "x");
+  const dims = /^(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(.*)$/.exec(s);
+  return dims ? `${[Number(dims[1]), Number(dims[2])].sort((p, q) => p - q).join("x")}${dims[3]}` : s;
+};
+const sameValue = (a: string, b: string) => norm(a) === norm(b);
 
 export function scoreLink(part: LinkPart, item: LinkItem): { score: number; why: string[] } {
   if (part.onshapeKey && part.onshapeKey === item.onshapeKey) return { score: CERTAIN, why: ["same Onshape part"] };

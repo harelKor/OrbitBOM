@@ -52,8 +52,18 @@ describe("raw stock names", () => {
   it("leave lengths and sheet sizes out", () => {
     expect(buildName(by("aluminum-plates"), { material: "6061-T6", thickness: "3", size: "500x900" })).toBe("6061-T6 3mm Plate");
     expect(buildName(by("polycarbonate"), { thickness: "2", size: "1200x2400" })).toBe("2mm Plate");
-    expect(buildName(by("square-tubes"), { material: "Aluminum", size: "25x50", wall: "2", length: "1000" })).toBe("Aluminum 25x50mm 2mm wall Box tube");
+    expect(buildName(by("square-tubes"), { material: "Aluminum", size: "25x50", wall: "2", length: "1000" })).toBe("25x50mm 2mm wall Box tube");
+    expect(buildName(by("square-tubes"), { material: "Carbon Fiber", size: "22x22", wall: "1.3" })).toBe("Carbon Fiber 22x22mm 1.3mm wall Box tube");
     expect(buildName(by("shafts"), { profile: '1/2" Hex', length: "900" })).toBe('1/2" Hex Shaft');
+  });
+  it("read a box tube typed with or without aluminum", () => {
+    for (const text of ["aluminum 25x50 2mm wall box tube", "25x50 2mm wall box tube"]) {
+      const q = parseQuick(text, cats)!;
+      expect(q.categoryId).toBe("square-tubes");
+      expect(buildName(by("square-tubes"), q.specs)).toBe("25x50mm 2mm wall Box tube");
+    }
+    expect(parseQuick("25x50x1.5 box tube 1000mm", cats)?.specs).toMatchObject({ size: "25x50", wall: "1.5", length: "1000" });
+    expect(buildName(by("square-tubes"), parseQuick('1x1" 1/8" box tube', cats)!.specs)).toBe('1x1" 1/8" wall Box tube');
   });
   it("still read a typed length into specs", () => {
     expect(parseQuick('1/2" hex shaft 900mm', cats)?.specs).toMatchObject({ profile: '1/2" Hex', length: "900" });
@@ -81,5 +91,15 @@ describe("name templates", () => {
     expect(buildName(cat, { a: "25", c: "3" })).toBe("25 3mm Tube");
     expect(buildName(cat, { a: "25", d: "3" })).toBe("253mm Tube");
     expect(buildName(cat, { b: "2" })).toBe("x2 Tube");
+  });
+});
+
+describe("box tube auto-link sizes", () => {
+  it("treat 25×50 and 50x25 as one profile", async () => {
+    const { scoreLink } = await import("./linkScore");
+    const cat = cats.find((c) => c.id === "square-tubes")!;
+    const item = { category: cat, specs: { size: "25×50", wall: "1.5" }, name: "Box tube 25×50×1.5mm", aliases: [], urls: [], thumbHashes: [], docKeys: [] };
+    const part = { names: ["50x25x1.5 box tube"], urls: [] };
+    expect(scoreLink(part as never, item as never).score).toBeGreaterThan(0);
   });
 });
