@@ -11,7 +11,7 @@ export const ROBOT_COOKIE = "orbit-robot";
 // work: status, machines, material, quantities and stock, notes, fab batches, inventory items
 // (adding them, and an item's name, category, location, condition, specs, photo and product links).
 // draw: make, upload and regenerate drawings. review: To Review and Ready for QA. sync: Update BOM
-// from Onshape and system versions. classify: a part's type, COTS or In-House (Harel, 2026-10-31).
+// from Onshape and system versions. classify: a part's type, COTS, In-House or back to Undefined (Harel, 2026-10-31 and 2026-11-01).
 // shape: a system page's Bulk edit, Merge parts and + Manual part (CAD too, Harel 2026-10-31).
 // manage: everything else (deletes, robot and system settings, Settings).
 export type Capability = "work" | "draw" | "review" | "sync" | "classify" | "shape" | "manage";
@@ -62,7 +62,7 @@ export function partChangesCapability(changes: object): Capability {
   if (keys.every((k) => WORK_PART_FIELDS.has(k))) return "work";
   if (keys.every((k) => k === "drawingUrl" || WORK_PART_FIELDS.has(k))) return "draw";
   const c = (changes as { classification?: unknown }).classification;
-  if ((c === "inhouse" || c === "cots") && keys.every((k) => k === "classification" || WORK_PART_FIELDS.has(k))) return "classify";
+  if ((c === "inhouse" || c === "cots" || c === "undefined") && keys.every((k) => k === "classification" || WORK_PART_FIELDS.has(k))) return "classify";
   return "manage";
 }
 

@@ -38,6 +38,7 @@ describe("part type", () => {
   it("lets admins and the CAD Team switch COTS and In-House", () => {
     expect(partChangesCapability({ classification: "cots" })).toBe("classify");
     expect(partChangesCapability({ classification: "inhouse", material: "PLA" })).toBe("classify");
+    expect(partChangesCapability({ classification: "undefined" })).toBe("classify");
     expect(partChangesCapability({ classification: "external" })).toBe("manage");
     expect(can("cad", "classify")).toBe(true);
     expect(can("edit", "classify")).toBe(true);

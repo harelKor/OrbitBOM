@@ -90,9 +90,8 @@ export function TypeBadge({ part }: { part: CardPart }) {
 }
 
 export function TypeField({ part, save, badge = false }: Props & { badge?: boolean }) {
-  // Admins and the CAD Team switch a part between COTS and In-House.
+  // Admins and the CAD Team switch a part between COTS, In-House and Undefined.
   const locked = !useCan("classify");
-  const manage = useManage();
   return (
     <Popover locked={locked}
       hideCaret={badge}
@@ -112,7 +111,7 @@ export function TypeField({ part, save, badge = false }: Props & { badge?: boole
     >
       {(close) => (
         <OptionList
-          options={manage ? TYPE_OPTIONS : TYPE_OPTIONS.filter((o) => o.value !== "undefined")}
+          options={TYPE_OPTIONS}
           value={part.classification}
           onPick={(v) => {
             save({ classification: v as "inhouse" | "cots" | "undefined" });

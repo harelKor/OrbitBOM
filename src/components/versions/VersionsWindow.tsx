@@ -9,14 +9,15 @@ import { Icon } from "@/components/ui/Icon";
 import type { VersionEntry, VersionList } from "@/lib/versions/history";
 import { afterPartsUpdate } from "./afterUpdate";
 import { ChangeBox } from "./CommitWindow";
-import { OPEN_VERSIONS_EVENT } from "./events";
+import { CHECK_SYSTEM_EVENT, OPEN_VERSIONS_EVENT } from "./events";
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—");
 
 // The system's Versions window (plan/system-versioning.md §7): every committed version, newest
 // first, as collapsible boxes with their parts' Before → After. Revert (Edit mode) puts the
 // system's parts back on a version; the newer one stays on top, in green. Opens from the
-// Versions button, an Outdated tag's missed update, or ?versions=1 (the right panel's tag).
+// Versions button, an Outdated tag's missed update, or ?versions=1 (the right panel's tag). On
+// phones Update system lives in its title bar instead of the page header.
 export function VersionsWindow({ systemId, list, thumbs }: { systemId: string; list: VersionList; thumbs: Record<string, string | null> }) {
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -53,14 +54,35 @@ export function VersionsWindow({ systemId, list, thumbs }: { systemId: string; l
 
   return (
     <>
-      <button type="button" className="btn" onClick={() => setOpen(true)} disabled={!list.versions.length} title="Every time this system was updated from Onshape">
+      <button type="button" className="btn" onClick={() => setOpen(true)} disabled={!list.versions.length && !edit} title="Every time this system was updated from Onshape">
         <Icon name="box" className="h-4 w-4" />
         Versions
         {reverted && <span className="rounded-full bg-rose-500 px-1.5 text-[10px] font-bold text-white">Outdated</span>}
       </button>
-      <Dialog open={open} onClose={() => setOpen(false)} title="Versions" width="w-[min(46rem,calc(100vw-2rem))]">
+      <Dialog
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Versions"
+        width="w-[min(46rem,calc(100vw-2rem))]"
+        actions={
+          edit && !reverted ? (
+            <button
+              type="button"
+              className="btn h-8 px-3 text-sm sm:hidden"
+              title="Check the Onshape assembly for changed, added and removed parts. Nothing reaches the BOM until you commit."
+              onClick={() => {
+                setOpen(false);
+                window.dispatchEvent(new Event(CHECK_SYSTEM_EVENT));
+              }}
+            >
+              Update system
+            </button>
+          ) : undefined
+        }
+      >
         <div className="space-y-3">
           {message && <p className={`text-sm ${message.error ? "text-rose-600" : "text-emerald-600"}`}>{message.text}</p>}
+          {list.versions.length === 0 && <p className="text-sm text-muted">No versions yet. Update system checks Onshape for the first one.</p>}
           <ul className="max-h-[65vh] space-y-2 overflow-y-auto pr-1">
             {list.versions.map((v) => (
               <VersionBox

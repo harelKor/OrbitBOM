@@ -7,12 +7,13 @@ import { useCan } from "@/components/shell/ModeContext";
 import type { Draft } from "@/lib/versions/detect";
 import { PARTS_UPDATING_EVENT, afterPartsUpdate } from "./afterUpdate";
 import { CommitWindow } from "./CommitWindow";
-import { OPEN_COMMIT_EVENT } from "./events";
+import { CHECK_SYSTEM_EVENT, OPEN_COMMIT_EVENT } from "./events";
 
 // Update System (plan/system-versioning.md §4, §7): checks the Manufacture assembly for
 // changes and opens the Commit window when there are any. Changes found by the background
 // check wait behind the "changes waiting" badge, in View mode too (read-only there). Opened from
-// the Onshape panel (?check=1), it checks by itself.
+// the Onshape panel (?check=1), it checks by itself. On phones its buttons hide and the Versions
+// window's Update system runs the check (CHECK_SYSTEM_EVENT).
 export function UpdateSystem({
   systemId,
   draft: initial,
@@ -87,6 +88,17 @@ export function UpdateSystem({
     return () => window.removeEventListener(OPEN_COMMIT_EVENT, onOpen);
   }, []);
 
+  // The Versions window's Update system (phones) runs the same check.
+  const checkRef = useRef(check);
+  useEffect(() => {
+    checkRef.current = check;
+  });
+  useEffect(() => {
+    const onCheck = () => checkRef.current(false);
+    window.addEventListener(CHECK_SYSTEM_EVENT, onCheck);
+    return () => window.removeEventListener(CHECK_SYSTEM_EVENT, onCheck);
+  }, []);
+
   const autoChecked = useRef(false);
   useEffect(() => {
     if (params.get("check") !== "1" || autoChecked.current) return;
@@ -117,7 +129,7 @@ export function UpdateSystem({
     <div className="flex flex-wrap items-center gap-3">
       {edit && latest && (
         <button
-          className="btn-primary"
+          className="btn-primary max-sm:hidden"
           disabled={committing}
           title="Put every part back on the latest version. Reverting to an older version is in Versions."
           onClick={backToLatest}
@@ -127,7 +139,7 @@ export function UpdateSystem({
       )}
       {edit && !latest && (
         <button
-          className="btn"
+          className="btn max-sm:hidden"
           disabled={checking || committing}
           title="Check the Onshape assembly for changed, added and removed parts. Nothing reaches the BOM until you commit."
           onClick={() => check(false)}
@@ -148,11 +160,12 @@ export function UpdateSystem({
           <span className="font-mono tabular-nums">{waiting}</span> {waiting === 1 ? "change" : "changes"} waiting in Onshape
         </button>
       )}
+      {checking && <span className="animate-pulse text-sm text-subtle sm:hidden">Checking Onshape…</span>}
       {message && <span className="text-sm text-emerald-600">{message}</span>}
       {loading && <span className="animate-pulse text-sm text-subtle">Loading the new thumbnails and 3D model…</span>}
       {error && <span className="text-sm text-rose-600">{error}</span>}
       {!message && !error && !draft && lastSyncedAt && (
-        <span className="text-xs text-subtle">Last committed {lastSyncedAt.toISOString().slice(0, 16).replace("T", " ")} UTC</span>
+        <span className="text-xs text-subtle max-sm:hidden">Last committed {lastSyncedAt.toISOString().slice(0, 16).replace("T", " ")} UTC</span>
       )}
       {draft && (
         <CommitWindow

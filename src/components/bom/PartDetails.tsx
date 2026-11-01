@@ -529,7 +529,7 @@ type InventoryDiff = { was: string; pending: string | null } | null;
 // A field's value as the "before" of a suggestion: machine names, COTS / In-House, item names.
 function formatOld(field: string, value: unknown, itemNames: Record<string, string>): string {
   if (value === null || value === undefined || value === "") return field === "inventoryItemId" ? "Unlinked" : "None";
-  if (field === "classification") return value === "cots" ? "COTS" : "In-House";
+  if (field === "classification") return value === "cots" ? "COTS" : value === "undefined" ? "Undefined" : "In-House";
   if (field === "preProcess" || field === "process1" || field === "process2") return getMachine(String(value))?.name ?? String(value);
   if (field === "inventoryItemId") return itemNames[String(value)] ?? "Inventory item";
   if (Array.isArray(value)) return value.length ? `${value.length} ${value.length === 1 ? "link" : "links"}` : "None";
