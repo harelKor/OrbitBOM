@@ -23,6 +23,7 @@ import { CotsCard } from "@/components/cots/CotsCard";
 import { NoteCloud } from "./NoteCloud";
 import { downloadExport } from "./downloadExport";
 import { LinkTag } from "@/components/cots/ShelfPill";
+import { CardSuggest } from "./CardSuggest";
 
 export { NoteCloud };
 
@@ -38,7 +39,7 @@ export const isCardBodyClick = (e: React.MouseEvent) => !(e.target as HTMLElemen
 // The part card: the Onshape thumbnail is the hero, with quantity, type and the Merged tag on its
 // top-left, Download on its top-right (the linked inventory item opens from the details window and
 // the List view's row) and
-// the version tag on its bottom-right; below it two dense rows: the name, then
+// the version tag on its bottom-right, with Suggest (then ✓ / ✕) beside it on Undefined parts; below it two dense rows: the name, then
 // the status and the material → process pills. Properties only open their editors in Edit mode,
 // and a click anywhere else on the card opens the part's details window (3D, notes, drawing,
 // inventory). On To Fab the rows are read-only (status, amount, material, machine) and the
@@ -108,6 +109,8 @@ function MadePartCard({
   const bottomDownload = download && !onCheck && !fabControls && !post;
   // A drawing file (uploaded in the details window, or synced from an Onshape drawing tab).
   const drawingFile = part.files.find((f) => f.type === "drawing");
+  // The BOM's own cards (not To Fab, To Post Process or Ready for QA) offer Suggest on Undefined parts.
+  const suggestable = !onCheck && !fabCounter && !post && !onToggleSelect;
 
   return (
     <div id={`part-${part.id}`} data-selected={!!selected} data-part={partIds(part)} style={style ?? statusTint(computeStatus(part))} onClick={openDetails} className={`card-interactive part-card group flex w-full max-w-full min-w-0 overflow-hidden scroll-mt-20 cursor-pointer flex-col text-sm target:border-accent target:ring-2 target:ring-accent ${checked ? "opacity-60" : ""}`}>
@@ -202,9 +205,11 @@ function MadePartCard({
             </button>
           </div>
         )}
-        {!fabControls && !post && (versions || bottomDownload) && (
+        {!fabControls && !post && (versions || bottomDownload || suggestable) && (
           // Narrow cards: Download moves here from the top-right (globals.css .dl-narrow), beside the version tag.
+          // Undefined parts get Suggest here, which turns into ✓ / ✕ once it suggested something.
           <div className="absolute right-2 bottom-2 flex items-center gap-1.5">
+            {suggestable && <CardSuggest part={part} />}
             {versions && <VersionTag partId={part.id} tags={versions} manual={part.isManual} />}
             {bottomDownload && <span className="dl-narrow"><DownloadMenu part={part} format={format} /></span>}
           </div>
