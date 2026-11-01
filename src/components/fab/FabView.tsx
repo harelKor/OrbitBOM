@@ -463,7 +463,7 @@ export function FabView({
           {machinesWithParts.map((m) => (
             <MachineBox key={m.id} href={machineHref(m.id)} name={m.name} count={counts.byMachine.get(m.id)!} active={machine === m.id} />
           ))}
-          <MaterialBoxes counts={counts.byMaterial} active={mat} />
+          <MaterialFilters counts={counts.byMaterial} active={mat} />
           <button
             onClick={() => setMine((m) => !m)}
             aria-pressed={mine}
@@ -649,15 +649,54 @@ function MachineBox({ href, name, count, active }: { href: string; name: string;
   );
 }
 
-// One filter box per material with parts in the queue (on the machine picked), in the machine
-// boxes' row (it wraps when there are many); ?mat= keeps the pick and a second click clears it.
+// The material filter, in the machine boxes' row: a Filters toggle, closed by default like the
+// Inventory's. Closed, the material in use (?mat=) sits next to it with ✕ to clear it, so the
+// queue never filters without showing why; open, it shows one box per material.
+function MaterialFilters({ counts, active }: { counts: Map<string, number>; active: string | null }) {
+  const [open, setOpen] = useState(false);
+  const colors = useMaterialColors();
+  if (counts.size < 2 && !active) return null;
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className={`press inline-flex min-h-9 items-center gap-1 self-center rounded-full border pr-3 pl-1.5 text-xs font-semibold transition-colors duration-150 hover:border-sky-400/40 active:scale-[0.98] ${active ? "border-accent text-accent" : "border-line-strong text-fg-2"}`}
+      >
+        <Chevron open={open} small className="hover:bg-transparent" />
+        Filters
+        {active && <span className="ml-0.5 rounded-full bg-accent px-1.5 font-mono text-[10px] text-white tabular-nums">1</span>}
+      </button>
+      {!open && active && (
+        <button
+          type="button"
+          onClick={() => pushQuery({ mat: null })}
+          title={`Remove the ${materialLabel(active)} filter`}
+          className="press inline-flex min-h-9 items-center gap-1.5 self-center rounded-full border border-accent bg-accent px-3 text-xs font-semibold text-white active:scale-[0.98]"
+        >
+          <span className="h-3 w-3 rounded-sm border border-white/30" style={{ backgroundColor: materialColor(active === NO_MATERIAL_KEY ? null : active, colors) }} />
+          {materialLabel(active)}
+          <Icon name="close" className="h-3 w-3" />
+        </button>
+      )}
+      {open && <MaterialBoxes counts={counts} active={active} />}
+    </>
+  );
+}
+
+function materialLabel(m: string) {
+  return m === NO_MATERIAL_KEY ? "No material" : m.replace(/-T6$/, "");
+}
+
+// One filter box per material with parts in the queue (on the machine picked); ?mat= keeps the
+// pick and a second click clears it.
 function MaterialBoxes({ counts, active }: { counts: Map<string, number>; active: string | null }) {
   const colors = useMaterialColors();
   const materials = useMaterials();
   const all = materials.flatMap((g) => g.items.map((i) => i.name));
   const order = (m: string) => (m === NO_MATERIAL_KEY ? Infinity : all.indexOf(m) === -1 ? all.length : all.indexOf(m));
   const keys = [...counts.keys()].sort((a, b) => order(a) - order(b) || a.localeCompare(b));
-  if (keys.length < 2 && !active) return null;
   return keys.map((m) => {
     const selected = active === m;
     const none = m === NO_MATERIAL_KEY;
@@ -677,7 +716,7 @@ function MaterialBoxes({ counts, active }: { counts: Map<string, number>; active
           />
         </span>
         <span className="min-w-0">
-          <span className="block text-xs leading-tight font-bold whitespace-nowrap text-fg">{none ? "No material" : m.replace(/-T6$/, "")}</span>
+          <span className="block text-xs leading-tight font-bold whitespace-nowrap text-fg">{materialLabel(m)}</span>
           <span className="block font-mono text-[11px] text-subtle tabular-nums">{counts.get(m)}</span>
         </span>
       </button>

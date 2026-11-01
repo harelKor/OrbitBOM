@@ -405,10 +405,12 @@ export function CotsView({
         )}
         <span className="font-mono text-xs text-subtle tabular-nums">{allRows.length} parts</span>
         {list === "released" && (
-          <div className="ml-auto flex w-full flex-wrap items-start justify-end gap-2 lg:w-auto lg:flex-nowrap">
+          // Phone: the add row (place + search) takes the full width and Send to order sits on its own
+          // row under it, so they never overlap; from sm up they share one wrapping row.
+          <div className="ml-auto flex w-full min-w-0 flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end lg:w-auto lg:flex-nowrap">
             {edit && shelf && !ordering && (
-              <>
-                <select value={addTo} onChange={(e) => setAddTo(e.target.value)} className="input min-h-12 w-auto py-2 text-sm" aria-label="Add the card to">
+              <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto sm:flex-1 lg:flex-none">
+                <select value={addTo} onChange={(e) => setAddTo(e.target.value)} className="input min-h-12 w-auto max-w-[40%] shrink-0 py-2 text-sm sm:max-w-none" aria-label="Add the card to">
                   {places.map((p) => (
                     <option key={p.robotId ?? ""} value={p.robotId ?? ""}>
                       Add to: {p.name}
@@ -416,12 +418,12 @@ export function CotsView({
                   ))}
                 </select>
                 <AddBoxSlot shelf={shelf} onPick={addItem} />
-              </>
+              </div>
             )}
             {work && canOrder && <button
               onClick={() => toggleSelecting("order")}
               aria-pressed={selecting === "order"}
-              className={`press shrink-0 rounded-xl px-7 py-3 text-lg font-bold shadow-lg transition-colors active:scale-[0.98] ${
+              className={`press w-full shrink-0 rounded-xl px-7 py-3 text-lg font-bold sm:w-auto shadow-lg transition-colors active:scale-[0.98] ${
                 selecting === "order" ? "border border-line-strong bg-surface text-fg" : "bg-amber-400 text-slate-950 shadow-amber-400/40 hover:bg-amber-300"
               }`}
             >
@@ -546,7 +548,7 @@ export function CotsView({
 function AddBoxSlot({ shelf, onPick }: { shelf: CotsShelf; onPick: (itemId: string) => void }) {
   const [q, setQ] = useState("");
   return (
-    <div className="flex min-w-0 flex-1 lg:w-[28rem] lg:flex-none">
+    <div className="flex w-full min-w-0 flex-1 lg:w-[28rem] lg:flex-none">
       <AddBox q={q} setQ={setQ} {...shelf} defaultCategory={null} placeholder="Add a COTS part: type a name or paste a link" onPick={onPick} newStock="0" />
     </div>
   );

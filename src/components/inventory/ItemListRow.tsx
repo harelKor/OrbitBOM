@@ -6,6 +6,7 @@ import { hasSeasonNeed, missing, neededFor, standing, type NeedView } from "@/li
 import { formatStock } from "@/lib/inventory/stock";
 import { conditionColor, standingTint } from "./ItemCard";
 import { useInventoryPopup } from "./InventoryPopup";
+import { SeasonTag } from "./SeasonTag";
 import type { InvCategory, Item } from "./types";
 
 const STANDING = {
@@ -15,7 +16,7 @@ const STANDING = {
 };
 
 // An inventory item as one row of the List view: its picture, name, "stock / need · specs", and
-// pills for its location, condition and standing, washed in its standing colour like its card. A tap opens the item's window.
+// pills for its location, condition, season tag and standing, washed in its standing colour like its card. A tap opens the item's window.
 export function ItemListRow({
   item,
   categories,
@@ -67,6 +68,7 @@ export function ItemListRow({
         <>
           {location && <ListPill>📍 {location.name}</ListPill>}
           {condition && <ListPill color={conditionColor(condition.color)}>{condition.label}</ListPill>}
+          <SeasonTag itemId={item.id} tag={item.seasonTag} className="rounded-full border border-transparent px-2.5 py-0.5 text-[11px]" />
           {showStanding && <ListPill color={STANDING[state].color}>{STANDING[state].label(formatStock(gap, item.sheet))}</ListPill>}
         </>
       }
