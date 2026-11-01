@@ -220,9 +220,9 @@ describe("suggestSetup with shapes", () => {
 
   it("prints PLA, TPU and Onyx parts, and never adds a second process or bending", () => {
     const pla = setup({ onshapeMaterial: "PLA", bbox: [19, 19, 200], wallMm: 2, shape: { kind: "box-tube", d1: 19, d2: 19 } });
-    expect(pla?.changes).toEqual({ material: "Bambu PLA – Black filament", inventoryItemId: "id:Bambu PLA – Black filament", preProcess: null, process1: "3d-bambu", process2: null, classification: "inhouse" });
-    expect(setup({ onshapeMaterial: "TPU 95A" })?.changes).toMatchObject({ material: "TPU filament", process1: "3d-bambu", process2: null });
-    expect(setup({ onshapeMaterial: "Onyx" })?.changes).toMatchObject({ material: "Markforged Onyx filament", process1: "3d-markforged" });
+    expect(pla?.changes).toEqual({ material: "PLA", preProcess: null, process1: "3d-bambu", process2: null, classification: "inhouse" });
+    expect(setup({ onshapeMaterial: "TPU 95A" })?.changes).toMatchObject({ material: "TPU", process1: "3d-bambu", process2: null });
+    expect(setup({ onshapeMaterial: "Onyx" })?.changes).toMatchObject({ material: "Onyx", process1: "3d-markforged" });
     // Learned habits can't add bending to a print.
     const learned: Learned = new Map([["Bambu PLA – Black filament", { process1: "3d-bambu", process2: "bending", count: 5 }]]);
     const s = suggestSetup({ classification: "undefined", material: null, preProcess: null, process1: null, process2: null, geometry: { onshapeMaterial: "PLA", sheetMetal: { flatPartId: "x" }, wallMm: 2 } }, learned, STOCK);

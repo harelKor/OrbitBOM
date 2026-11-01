@@ -29,16 +29,16 @@ export const SHAPE_MACHINES = {
 };
 
 // 3D printing materials, by Onshape's material name: the part is printed on `machine` and nothing
-// else (no pre-process, no second process), from the filament item whose name or material spec
-// matches `filament`.
-export const PRINT_MATERIALS: { match: RegExp; filament: RegExp; machine: string }[] = [
-  { match: /\bonyx\b/i, filament: /\bonyx\b/i, machine: "3d-markforged" },
-  { match: /\bpla\b/i, filament: /\bpla\b/i, machine: "3d-bambu" },
-  { match: /\btpu\b/i, filament: /\btpu\b/i, machine: "3d-bambu" },
-  { match: /\bpetg\b/i, filament: /\bpetg\b/i, machine: "3d-bambu" },
-  { match: /\babs\b/i, filament: /\babs\b/i, machine: "3d-bambu" },
-  { match: /\basa\b/i, filament: /\basa\b/i, machine: "3d-bambu" },
-  { match: /\bpa ?6?12\b|nylon/i, filament: /\bpa ?6?12\b|nylon/i, machine: "3d-bambu" },
+// else (no pre-process, no second process). Suggest gives it the plain `material` ("PLA"), not a
+// filament item such as "Bambu Lab PLA Black" (Harel, 2026-11-01).
+export const PRINT_MATERIALS: { match: RegExp; material: string; machine: string }[] = [
+  { match: /\bonyx\b/i, material: "Onyx", machine: "3d-markforged" },
+  { match: /\bpla\b/i, material: "PLA", machine: "3d-bambu" },
+  { match: /\btpu\b/i, material: "TPU", machine: "3d-bambu" },
+  { match: /\bpetg\b/i, material: "PETG", machine: "3d-bambu" },
+  { match: /\babs\b/i, material: "ABS", machine: "3d-bambu" },
+  { match: /\basa\b/i, material: "ASA", machine: "3d-bambu" },
+  { match: /\bpa ?6?12\b|nylon/i, material: "PA612", machine: "3d-bambu" },
 ];
 
 // How close a part's measured thickness must be to a plate's, in mm (the closest plate wins).

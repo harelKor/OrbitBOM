@@ -53,8 +53,13 @@ describe("suggestSetup", () => {
   });
 
   it("recognises 3D printed parts by their Onshape material", () => {
-    expect(suggestSetup(part({ geometry: { onshapeMaterial: "PLA" } }), none)?.changes).toMatchObject({ material: "Bambu PLA – Black filament", process1: "3d-bambu" });
-    expect(suggestSetup(part({ geometry: { onshapeMaterial: "Onyx" } }), none)?.changes).toMatchObject({ material: "Markforged Onyx filament", process1: "3d-markforged" });
+    expect(suggestSetup(part({ geometry: { onshapeMaterial: "PLA" } }), none)?.changes).toMatchObject({ material: "PLA", process1: "3d-bambu" });
+    expect(suggestSetup(part({ geometry: { onshapeMaterial: "Onyx" } }), none)?.changes).toMatchObject({ material: "Onyx", process1: "3d-markforged" });
+    // A print linked to a filament item gets the plain material instead (Harel, 2026-11-01).
+    expect(suggestSetup(part({ classification: "inhouse", material: "Bambu PLA – Black filament", inventoryItemId: "Bambu PLA – Black filament" }), none)?.changes).toMatchObject({
+      material: "PLA",
+      inventoryItemId: null,
+    });
   });
 
   it("only adds processes to a part that has a material, and keeps processes someone set", () => {

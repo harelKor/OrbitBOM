@@ -41,7 +41,7 @@ export type StockItem = { id: string; name: string; category: string; specs: Rec
 export type SetupChanges = {
   classification?: "inhouse";
   material?: string;
-  inventoryItemId?: string;
+  inventoryItemId?: string | null; // null: a print leaves its filament item for the plain material
   preProcess?: string | null;
   process1?: string | null;
   process2?: string | null;
@@ -195,6 +195,7 @@ export function blockFor(size: [number, number, number], fam: string | undefined
 type Plan = {
   kind: "print" | "hex" | "box-tube" | "round-tube" | "rod" | "spacer" | "plate" | "bent" | "block";
   item?: StockItem;
+  material?: string; // a print's plain material ("PLA"), set instead of an item
   set?: ProcessSet; // processes the shape decides
   fixed?: boolean; // `set` wins over the team's habits
   category?: string; // inventory category for the team default when no item matched
@@ -218,8 +219,7 @@ function planFor(part: SetupInput, stock: StockItem[], linked: StockItem | undef
   // Rule 1: a 3D printing material is printed, and only printed.
   const print = PRINT_MATERIALS.find((p) => p.match.test(text) || (linked?.category === "filament" && p.match.test(itemText(linked))));
   if (print) {
-    const item = stock.find((i) => i.category === "filament" && print.filament.test(itemText(i)));
-    return { kind: "print", item, set: { process1: print.machine }, fixed: true, why: om };
+    return { kind: "print", material: print.material, set: { process1: print.machine }, fixed: true, why: om };
   }
 
   const s = g?.shape;
@@ -339,7 +339,15 @@ export function suggestSetup(part: SetupInput, learned: Learned, stock: StockIte
 
   let item = linked ?? named;
   let material = settled ? part.material : null;
-  if (named) {
+  // A print gets the plain material ("PLA"), also in place of a filament item it was linked to.
+  const print = plan?.kind === "print" && plan.material && (!settled || (linked ?? named)?.category === "filament") ? plan.material : null;
+  if (print) {
+    item = undefined;
+    material = print;
+    if (part.material !== print) changes.material = print;
+    if (part.inventoryItemId) changes.inventoryItemId = null;
+    if (changes.material) why.push(`${plan!.why}: ${print}`);
+  } else if (named) {
     changes.inventoryItemId = named.id;
     why.push(`Linked to the inventory item ${named.name}`);
   } else if (!settled && plan?.item) {
