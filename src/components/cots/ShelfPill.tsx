@@ -210,15 +210,21 @@ function useDismissed(id: string) {
 // suggestion, never automatic). A card Inventory sent to refill the shelf asks once the shelf has
 // the item's whole need (its season count). A compact pill so it never makes the card taller: a tap
 // marks the part In Stock, ✕ dismisses it in this browser. Cards and List rows both show it.
-export function ShelfCoversPrompt({ part, shelf, save }: { part: CardPart; shelf: Shelf | null; save: SaveFn }) {
+// The count is the whole shelf against what this part needs ("19/1"); a refill card counts it
+// against the item's whole need. On a card it sits on the thumbnail's top-right (`overlay`).
+export function ShelfCoversPrompt({ part, shelf, save, overlay = false }: { part: CardPart; shelf: Shelf | null; save: SaveFn; overlay?: boolean }) {
   const work = useCan("work");
   const dismissed = useDismissed(part.id);
   if (!work || !shelf || dismissed || computeStatus(part) === COTS_IN_STOCK) return null;
   if (shelf.restock ? !shelf.met : shelf.sheet || shelf.covered < Math.max(part.quantity, 1)) return null;
-  const count = shelf.restock ? formatStock(shelf.inStock, shelf.sheet) : `${shelf.covered}/${part.quantity}`;
+  const count = `${formatStock(shelf.inStock, shelf.sheet)}/${shelf.restock ? formatStock(shelf.total || part.quantity) : part.quantity}`;
   const why = shelf.restock ? `The shelf has ${count}, all that's needed. Mark In Stock` : `The shelf has ${part.quantity} for this. Mark In Stock`;
   return (
-    <span className="inline-flex max-w-full min-w-0 shrink-0 items-center overflow-hidden rounded-full border border-emerald-500/60 bg-emerald-500/10 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+    <span
+      className={`inline-flex max-w-full min-w-0 shrink-0 items-center overflow-hidden rounded-full border border-emerald-500/60 text-[11px] ${
+        overlay ? "bg-surface/90 shadow-sm backdrop-blur-md" : "bg-emerald-500/10"
+      } font-semibold text-emerald-600 dark:text-emerald-400`}
+    >
       <button
         type="button"
         onClick={(e) => {

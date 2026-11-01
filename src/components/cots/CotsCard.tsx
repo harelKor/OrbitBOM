@@ -141,7 +141,8 @@ export function CotsCard({
           <span className={`rounded-full bg-[#111318]/85 font-bold text-white tabular-nums ${order ? "px-3 py-1 text-base" : "px-2 py-0.5 text-[11px]"}`}>
             {work && !order ? <QuantityField part={part} save={save} /> : `×${part.quantity}`}
           </span>
-          {!order && (classify ? <TypeField part={part} save={save} badge /> : <TypeBadge part={part} />)}
+          {/* Every card on the COTS pages is COTS: the tag only shows on a BOM page. */}
+          {!order && !shelfOnThumb && (classify ? <TypeField part={part} save={save} badge /> : <TypeBadge part={part} />)}
           {!group && <MergedBadge part={part} />}
         </div>
         <div className="absolute top-2 right-2 flex max-w-[55%] flex-col items-end gap-1">
@@ -158,6 +159,7 @@ export function CotsCard({
               ⧉ {group.systems} systems
             </span>
           )}
+          {!struck && <ShelfCoversPrompt part={part} shelf={shelf} save={save} overlay />}
           {!order && <LinkTag part={part} save={save} />}
           {sentBack && (
             <span className="max-w-full truncate rounded-md bg-rose-600 px-2 py-0.5 text-[11px] font-bold text-white shadow-md" title={`Sent back: ${part.cotsSentBack}`}>
@@ -240,12 +242,6 @@ export function CotsCard({
           <Price part={part} big={order} />
         </div>
 
-        {((!shelfOnThumb && hasShelfTag) || !struck) && (
-          <div className="flex min-w-0 items-center gap-1.5 empty:hidden">
-            {!shelfOnThumb && hasShelfTag && <ShelfPill part={part} shelf={shelf} save={save} />}
-            {!struck && <ShelfCoversPrompt part={part} shelf={shelf} save={save} />}
-          </div>
-        )}
       </div>
     </div>
   );
