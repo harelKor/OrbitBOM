@@ -103,11 +103,14 @@ function MadePartCard({
     if (!onToggleSelect && isCardBodyClick(e)) showDetails();
   };
   const [drawing, setDrawing] = useState(false);
+  const download = !!(format || part.files.length > 0 || part.hasDrawing);
+  // On a narrow card Download sits on the thumbnail's bottom-right, unless − / + use that corner.
+  const bottomDownload = download && !onCheck && !fabControls && !post;
   // A drawing file (uploaded in the details window, or synced from an Onshape drawing tab).
   const drawingFile = part.files.find((f) => f.type === "drawing");
 
   return (
-    <div id={`part-${part.id}`} data-selected={!!selected} data-part={partIds(part)} style={style ?? statusTint(computeStatus(part))} onClick={openDetails} className={`card-interactive group flex w-full max-w-full min-w-0 overflow-hidden scroll-mt-20 cursor-pointer flex-col text-sm target:border-accent target:ring-2 target:ring-accent ${checked ? "opacity-60" : ""}`}>
+    <div id={`part-${part.id}`} data-selected={!!selected} data-part={partIds(part)} style={style ?? statusTint(computeStatus(part))} onClick={openDetails} className={`card-interactive part-card group flex w-full max-w-full min-w-0 overflow-hidden scroll-mt-20 cursor-pointer flex-col text-sm target:border-accent target:ring-2 target:ring-accent ${checked ? "opacity-60" : ""}`}>
       {checked && !post && <span aria-hidden className="pointer-events-none absolute inset-x-3 top-1/2 z-10 h-0.5 -rotate-6 rounded-full bg-emerald-500" />}
       {onToggleSelect && (
         // While selecting, a click anywhere on the card toggles it.
@@ -175,7 +178,7 @@ function MadePartCard({
             </button>
           ) : (
             <>
-              {(format || part.files.length > 0 || part.hasDrawing) && <DownloadMenu part={part} format={format} />}
+              {download && <span className={bottomDownload ? "dl-wide" : "contents"}><DownloadMenu part={part} format={format} /></span>}
             </>
           )}
         </div>
@@ -199,9 +202,11 @@ function MadePartCard({
             </button>
           </div>
         )}
-        {!fabControls && !post && versions && (
+        {!fabControls && !post && (versions || bottomDownload) && (
+          // Narrow cards: Download moves here from the top-right (globals.css .dl-narrow), beside the version tag.
           <div className="absolute right-2 bottom-2 flex items-center gap-1.5">
-            <VersionTag partId={part.id} tags={versions} manual={part.isManual} />
+            {versions && <VersionTag partId={part.id} tags={versions} manual={part.isManual} />}
+            {bottomDownload && <span className="dl-narrow"><DownloadMenu part={part} format={format} /></span>}
           </div>
         )}
         {part.fabView?.changed && (

@@ -322,6 +322,25 @@ body {
   .card-overlay {
     zoom: clamp(0.55, calc(0.3 + var(--card-scale, 1) * 0.7), 1);
   }
+  /* Part cards: Download moves from the thumbnail's top-right to its bottom-right when the card is
+     narrow, so the top corners don't crowd (PartCard renders both; one shows). */
+  .part-card {
+    container-type: inline-size;
+  }
+  .dl-wide {
+    display: contents;
+  }
+  .dl-narrow {
+    display: none;
+  }
+  @container (max-width: 195px) {
+    .dl-wide {
+      display: none;
+    }
+    .dl-narrow {
+      display: contents;
+    }
+  }
   /* Frosted buttons floating over a thumbnail (Download, Locate). */
   .overlay-btn {
     @apply press flex h-9 w-9 items-center justify-center rounded-md border border-line bg-surface/90 text-fg-2 shadow-sm backdrop-blur-md hover:border-accent hover:bg-accent hover:text-white;
