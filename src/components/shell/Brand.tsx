@@ -7,8 +7,8 @@ export function Brand({ compact = false }: { compact?: boolean }) {
     <Link href="/?home" className="press flex shrink-0 items-center gap-2.5 text-white" aria-label="OrbitParts home">
       <Image src="/orbit-logo.png" alt="" width={34} height={34} className="h-[34px] w-[34px] shrink-0 object-contain" priority />
       <span className={`items-center gap-2.5 ${compact ? "hidden sm:flex" : "flex"}`}>
-        {/* Set in the display face (Jost black italic) rather than a traced path, so it stays sharp at any size. */}
-        <span className="display text-[1.65rem] font-black italic tracking-tight leading-none text-white tabular-nums">1690</span>
+        {/* The team's 1690 lettering (white with a soft shadow). */}
+        <Image src="/logo-1690.png" alt="1690" width={85} height={26} className="h-[26px] w-auto shrink-0" priority />
         <span className="leading-tight">
           <span className="block text-[13px] font-semibold tracking-[0.12em]">ORBIT</span>
           <span className="block text-[11px] tracking-[0.12em] text-white/75">PARTS</span>
