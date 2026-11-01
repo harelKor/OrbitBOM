@@ -424,9 +424,19 @@ body {
      sized lays out at exactly the set widths (data-fixed), clipping long cells.
      Name columns carry .sheet-name so the next columns show beside them on a phone. */
   .sheet {
-    @apply overflow-auto overscroll-contain;
+    @apply overflow-auto;
+    /* Sideways swipes stay in the table; up and down hand over to the page at the table's edges. */
+    overscroll-behavior-x: contain;
+    overscroll-behavior-y: auto;
     max-height: max(18rem, calc(100dvh - 8rem));
     touch-action: pan-x pan-y;
+  }
+  /* Phones: the table only scrolls sideways and is as tall as its rows, so an up or down swipe
+     always moves the page (back up to the filters and categories above the table). */
+  @media (max-width: 767.98px) {
+    .sheet {
+      max-height: none;
+    }
   }
   .sheet > .data-table {
     zoom: var(--sheet-zoom, 1);

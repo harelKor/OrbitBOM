@@ -149,10 +149,11 @@ export function SheetViewport({
     let pinch: { dist: number; zoom: number } | null = null;
     const spread = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
     const onTouchStart = (e: TouchEvent) => {
-      if (e.touches.length === 2) pinch = { dist: spread(e.touches), zoom: zoom.current };
+      if (e.touches.length >= 2) pinch = { dist: spread(e.touches), zoom: zoom.current };
     };
     const onTouchMove = (e: TouchEvent) => {
-      if (!pinch || e.touches.length !== 2) return;
+      // Only a two-finger pinch is held back; one finger always scrolls (the page, at the edges).
+      if (!pinch || e.touches.length < 2) return;
       e.preventDefault();
       const mid = {
         x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
