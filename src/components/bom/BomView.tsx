@@ -315,8 +315,8 @@ export function BomView({
           count={selected.size}
           selected={shown.filter((p) => selected.has(p.id))}
           total={shown.length}
-          onRelease={() => {
-            save([...selected], { status: RELEASED_STATUS });
+          onRelease={(ids) => {
+            save(ids, { status: RELEASED_STATUS });
             setMode(null);
             setSelected(new Set());
           }}

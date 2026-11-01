@@ -32,6 +32,7 @@ import { groupSameCots } from "@/lib/cots";
 import { partChangesSchema, planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { planUndo } from "@/lib/parts/undo";
 import { applySuggestions, logAiAction, partsToSetUp, revertAiBatch } from "@/lib/review/review";
+import { cotsLinkDenied } from "@/lib/parts/cotsLink";
 import { computeStatus } from "@/lib/status";
 import { statusBreakdown } from "@/lib/stats";
 import { updateBomFromOnshape } from "@/lib/sync/updateBom";
@@ -398,6 +399,10 @@ write(
     const normal = normaliseChanges(changes);
     const rows = await db.select().from(parts).where(inArray(parts.id, part_ids));
     if (rows.length !== new Set(part_ids).size) throw new ToolError("Some part ids don't exist.");
+    for (const p of rows) {
+      const denied = cotsLinkDenied(p, normal);
+      if (denied) throw new ToolError(`${nameOf(p)}: ${denied}`);
+    }
     const diffs = rows
       .map((p) => ({ part: nameOf(p), id: p.id, changes: planPartUpdate(p, normal, "mcp").history }))
       .filter((d) => d.changes.length);
@@ -668,6 +673,10 @@ write(
       .from(groupMembers)
       .innerJoin(parts, eq(parts.id, groupMembers.partId))
       .where(and(eq(groupMembers.groupId, group_id), isNull(parts.removedFromCadAt)));
+    for (const r of rows) {
+      const denied = cotsLinkDenied(r.part, normal);
+      if (denied) throw new ToolError(`${nameOf(r.part)}: ${denied}`);
+    }
     const changing = rows.filter((r) => planPartUpdate(r.part, normal, "mcp").history.length);
     return {
       count: changing.length,

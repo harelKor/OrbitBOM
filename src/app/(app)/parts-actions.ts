@@ -36,7 +36,7 @@ export async function updatePart(partId: string, changes: unknown): Promise<Acti
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   // Status, machines, material and counts are any team's; other fields need Edit mode.
   const member = await requireCapability(partChangesCapability(parsed.data));
-  const denied = await statusChangeDenied([partId], parsed.data);
+  const denied = await statusChangeDenied(isMergeId(partId) ? await expandMerges([partId]) : [partId], parsed.data);
   if (denied) return { error: denied };
   if (isMergeId(partId)) return updateMergedRow(partId.slice(MERGE_PREFIX.length), parsed.data, member.id);
   if (!isUuid(partId)) return { error: "Unknown part." };

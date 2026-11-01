@@ -9,6 +9,8 @@ import { PART_TAG_LABELS, partTag, type PartTag } from "@/lib/partTag";
 import { computeStatus, partStatusLabel, statusMachine } from "@/lib/status";
 import { STATUSES, getStatus, statusLabel } from "@/config/statuses";
 import { COTS_ORDERED } from "@/config/cots";
+import { COTS_LINK_REQUIRED, statusNeedsItem } from "@/lib/parts/cotsLink";
+import { toast } from "@/components/ui/Toaster";
 import { useState } from "react";
 import { Dialog } from "@/components/Dialog";
 import {
@@ -263,7 +265,9 @@ export function StatusField({ part, save, size = "md" }: Props & { size?: "sm" |
             value={status}
             placeholder="Search status…"
             onPick={(v) => {
-              if (v && NOTE_STATUSES.includes(v) && mode === "cad") setAsking(v);
+              // A COTS part goes to Released or the Order List only once it is linked to its inventory item.
+              if (v && cots && !part.inventoryItemId && statusNeedsItem(mode === "cad" && NOTE_STATUSES.includes(v) ? COTS_ORDERED : v)) toast(COTS_LINK_REQUIRED, true);
+              else if (v && NOTE_STATUSES.includes(v) && mode === "cad") setAsking(v);
               // Edit mode releasing one made part outside the Release bar: confirm first, it locks the version for To Fab.
               else if (v === "Released" && mode === "edit" && !cots && status !== "Released") setReleasing(true);
               else if (v) save({ status: v });
