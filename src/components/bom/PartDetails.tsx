@@ -17,6 +17,7 @@ import { useCan, useManage } from "@/components/shell/ModeContext";
 import { formatPrice, useCurrency } from "@/components/cots/currency";
 import { ShelfPill } from "@/components/cots/ShelfPill";
 import { Icon } from "@/components/ui/Icon";
+import { usePhone } from "@/components/ui/usePhone";
 import { getMachine } from "@/config/machines";
 import { FabVersionBadge, PartVersionsButton } from "@/components/versions/PartVersionsWindow";
 import { cotsTotal, siteOf } from "@/lib/cots";
@@ -60,9 +61,22 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
   const format = cadFormat(part);
   const title = partTitle(part);
   const canLocate = !part.isManual && !!robotId && !!part.modelKey;
-  const overlay = "btn h-8 gap-1.5 bg-surface/95 text-xs shadow-sm";
+  const overlay = "btn h-7 gap-1.5 bg-surface/95 px-2 text-xs shadow-sm sm:h-8 sm:px-3";
+  const phone = usePhone();
   const suggest = useSuggest(part, !part.memberIds);
   const was = (field: string) => suggest.was[field];
+  // On phones Suggest and the drawing buttons fold into the ⋯ menu beside Versions and ✕.
+  const drawingFile = part.files.some((f) => f.type === "drawing");
+  const hasMenu = !!suggest.suggestButton || (!cots && (canDraw || !!part.hasDrawing || drawingFile));
+  const tools = (
+    <>
+      {suggest.suggestButton}
+      {!cots && <ViewDrawingButton part={part} />}
+      {!cots && canDraw && !part.isManual && <DrawingAction partId={ownerPartId(part)} hasDrawing={!!part.hasDrawing} />}
+      {!cots && canDraw && !part.isManual && part.systemId && <FindDrawingButton part={part} />}
+      {!cots && canDraw && <DrawingFileButton part={part} />}
+    </>
+  );
 
   return (
     <Dialog
@@ -77,22 +91,19 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
       actions={
         <>
           {!part.isManual && !cots && <PartVersionsButton partId={part.id} lock={part.fabLock} released={fabStage(part) !== null} />}
-          {suggest.suggestButton}
-          {!cots && <ViewDrawingButton part={part} />}
-          {!cots && canDraw && !part.isManual && <DrawingAction partId={ownerPartId(part)} hasDrawing={!!part.hasDrawing} />}
-          {!cots && canDraw && !part.isManual && part.systemId && <FindDrawingButton part={part} />}
-          {!cots && canDraw && <DrawingFileButton part={part} />}
+          {phone ? hasMenu && <MoreMenu>{tools}</MoreMenu> : tools}
         </>
       }
+      compact
       width="w-[min(74rem,calc(100vw-2rem))]">
-        <div className="grid gap-5 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-          <div className="space-y-3">
-            <div className="relative aspect-[4/3] overflow-hidden rounded-xl border border-line">
+        <div className="grid gap-3 sm:gap-5 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+          <div className="space-y-2 sm:space-y-3">
+            <div className="relative h-36 overflow-hidden rounded-xl border border-line sm:h-auto sm:aspect-[4/3]">
               {stage === "thumb" ? (
                 <div className={`thumb-well flex h-full w-full items-center justify-center ${cots ? "thumb-cots" : "thumb-made"}`}>
                   {part.thumbUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
-                    <img src={part.thumbUrl} alt="" className="h-full w-full object-contain p-4" />
+                    <img src={part.thumbUrl} alt="" className="h-full w-full object-contain p-2 sm:p-4" />
                   ) : (
                     <span className="text-xs text-muted">{part.isManual ? "Manual part" : "No thumbnail yet"}</span>
                   )}
@@ -109,7 +120,7 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
                 />
               )}
               {!part.isManual && (
-                <div className="absolute top-3 right-3 flex gap-1.5">
+                <div className="absolute top-2 right-2 flex gap-1.5 sm:top-3 sm:right-3">
                   <button type="button" className={overlay} aria-pressed={stage === "thumb"} onClick={() => setStage(stage === "thumb" ? "part" : "thumb")}>
                     <Icon name={stage === "thumb" ? "cube" : "image"} className="h-3.5 w-3.5" />
                     {stage === "thumb" ? "3D" : "Thumbnail"}
@@ -122,11 +133,11 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
                   )}
                 </div>
               )}
-              <div className="absolute bottom-3 left-3 flex flex-wrap items-center gap-1.5">
+              <div className="absolute bottom-2 left-2 flex flex-wrap items-center gap-1.5 sm:bottom-3 sm:left-3">
                 <MergedBadge part={part} />
               </div>
               {(format || part.files.length > 0 || part.hasDrawing) && (
-                <div className="absolute right-3 bottom-3">
+                <div className="absolute right-2 bottom-2 sm:right-3 sm:bottom-3">
                   <DownloadMenu part={part} format={format} />
                 </div>
               )}
@@ -151,9 +162,9 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
             )}
           </div>
 
-          <div className="flex min-w-0 flex-col gap-5">
+          <div className="flex min-w-0 flex-col gap-3 sm:gap-5">
             {suggest.message}
-            <dl className="grid grid-cols-[7rem_minmax(0,1fr)] content-start items-center gap-x-3 gap-y-3">
+            <dl className="grid grid-cols-[5.5rem_minmax(0,1fr)] content-start items-center gap-x-2 gap-y-1.5 sm:grid-cols-[7rem_minmax(0,1fr)] sm:gap-x-3 sm:gap-y-3">
               <Row label="Name" was={was("displayName")}>
                 <span className="flex min-w-0 items-center gap-2">
                   <span className="min-w-0 flex-1">
@@ -200,13 +211,53 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
   );
 }
 
+// The phone's ⋯ menu: Suggest and the drawing buttons in a list under the title bar. Closing it
+// only moves the list off screen, so a drawing being made, a file uploading or a drawing window
+// opened from it keeps going. A tap outside the list closes it.
+function MoreMenu({ children }: { children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => {
+      if (!box.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", away);
+    return () => document.removeEventListener("pointerdown", away);
+  }, [open]);
+  return (
+    <div ref={box} className="relative">
+      <button
+        type="button"
+        className="btn h-8 w-8 justify-center p-0 text-base leading-none font-bold active:scale-[0.98]"
+        aria-label="More"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        ⋯
+      </button>
+      <div
+        role="menu"
+        aria-hidden={!open}
+        className={
+          open
+            ? "absolute top-full right-0 z-30 mt-1.5 flex w-52 flex-col items-stretch gap-1.5 rounded-xl border border-line-strong bg-surface p-2 shadow-[0_16px_40px_-12px_rgba(5,8,20,0.55)] [&_.btn]:w-full [&_.btn]:justify-start [&>span]:flex"
+            : "fixed top-0 -left-[200vw] flex w-52 flex-col"
+        }
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
 // One property. `was` is its value before a suggestion waiting in To Review changed it: the row
 // then shows the old value struck through, an arrow, and the new value glowing.
 function Row({ label, was, children }: { label: string; was?: string; children: React.ReactNode }) {
   return (
     <>
-      <dt className="w-28 shrink-0 text-sm text-muted">{label}</dt>
-      <dd className="min-w-0 py-0.5 text-base font-medium break-words text-fg">
+      <dt className="shrink-0 text-xs text-muted sm:w-28 sm:text-sm">{label}</dt>
+      <dd className="min-w-0 py-0 text-sm font-medium break-words text-fg sm:py-0.5 sm:text-base">
         {was === undefined ? (
           children
         ) : (
@@ -229,6 +280,7 @@ function Glow({ children, className = "" }: { children: React.ReactNode; classNa
 // as the yellow cloud on its thumbnail.
 function NotesBox({ part, save }: { part: CardPart; save: SaveFn }) {
   const work = useCan("work");
+  const phone = usePhone();
   const [text, setText] = useState(part.note ?? "");
   const [focused, setFocused] = useState(false);
   const [seen, setSeen] = useState(part.note);
@@ -238,14 +290,14 @@ function NotesBox({ part, save }: { part: CardPart; save: SaveFn }) {
     setText(part.note ?? "");
   }
   return (
-    <label className="block rounded-xl border-2 border-amber-400/70 bg-amber-50 px-3 py-2 shadow-[3px_4px_0_0_rgba(245,158,11,0.25)] focus-within:border-amber-500 dark:bg-amber-400/10">
-      <span className="flex items-center gap-1.5 text-xs font-bold tracking-wide text-amber-700 uppercase dark:text-amber-300">
+    <label className="block rounded-xl border-2 border-amber-400/70 bg-amber-50 px-2.5 py-1.5 shadow-[3px_4px_0_0_rgba(245,158,11,0.25)] focus-within:border-amber-500 dark:bg-amber-400/10">
+      <span className="flex items-center gap-1.5 text-[11px] font-bold tracking-wide text-amber-700 uppercase sm:text-xs dark:text-amber-300">
         <Icon name="note" className="h-3.5 w-3.5" />
         Notes
       </span>
       <textarea
         value={text}
-        rows={2}
+        rows={phone ? 1 : 2}
         readOnly={!work}
         onChange={(e) => setText(e.target.value)}
         onFocus={() => setFocused(true)}
@@ -451,7 +503,7 @@ function InventoryLink({ part, save, diff }: { part: CardPart; save: SaveFn; dif
   const name = itemId ? (data?.items.find((i) => i.id === itemId)?.name ?? inventory.find((i) => i.id === itemId)?.name ?? part.shelf?.itemName ?? "Inventory item") : null;
 
   return (
-    <section className="space-y-2">
+    <section className="space-y-1.5 sm:space-y-2">
       <h3 className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-subtle uppercase">
         <Icon name="box" className="h-3.5 w-3.5" />
         Inventory
@@ -476,7 +528,7 @@ function InventoryLink({ part, save, diff }: { part: CardPart; save: SaveFn; dif
       )}
       {itemId && (
         <div
-          className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm ${
+          className={`flex items-center gap-2 rounded-xl border px-3 py-1.5 text-sm sm:py-2 ${
             diff && !diff.pending ? "border-transparent bg-sky-500/10 shadow-[0_0_14px_rgba(56,189,248,0.35)] ring-2 ring-sky-400/70" : "border-emerald-500/40 bg-emerald-500/5"
           }`}
         >
@@ -596,7 +648,7 @@ function useSuggest(part: CardPart, enabled: boolean): {
     </button>
   );
   const actions = waiting ? (
-    <div className="mt-auto flex items-center justify-end gap-3 pt-4">
+    <div className="mt-auto flex items-center justify-end gap-3 pt-1 sm:pt-4">
       <button
         type="button"
         className={`rounded-xl border border-rose-500/50 bg-rose-500/15 px-5 py-2.5 text-sm font-semibold text-rose-700 transition-colors duration-150 hover:bg-rose-500/25 active:scale-[0.98] disabled:opacity-60 dark:text-rose-200 ${busy === "reject" ? "animate-pulse" : ""}`}

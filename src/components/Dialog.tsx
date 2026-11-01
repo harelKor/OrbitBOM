@@ -10,6 +10,7 @@ export function Dialog({
   wide = false,
   width,
   sheet = false,
+  compact = false,
   children,
 }: {
   open: boolean;
@@ -19,6 +20,7 @@ export function Dialog({
   wide?: boolean;
   width?: string; // a width class, in place of the two standard widths
   sheet?: boolean; // on phones: a full-width sheet up from the bottom, its title bar kept in view
+  compact?: boolean; // on phones: tighter padding and the actions kept in the title row (no second row)
   children: React.ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -47,14 +49,16 @@ export function Dialog({
       }}
       className={`m-auto ${width ?? (wide ? "w-[min(40rem,calc(100vw-2rem))]" : "w-[min(28rem,calc(100vw-2rem))]")} modal p-0 outline-none ${sheet ? SHEET : ""}`}
     >
-      <div className={`flex items-center justify-between gap-2 border-b border-line px-5 py-3 ${actions ? "max-sm:flex-wrap" : ""} ${sheet ? "sticky top-0 z-[2] bg-surface max-sm:px-4" : ""}`}>
-        <h2 className="min-w-0 flex-1 font-semibold">{title}</h2>
-        {actions && <div className="flex flex-wrap items-center justify-end gap-1.5 max-sm:order-last max-sm:basis-full max-sm:justify-start">{actions}</div>}
+      <div className={`flex items-center justify-between gap-2 border-b border-line px-5 py-3 ${actions && !compact ? "max-sm:flex-wrap" : ""} ${compact ? "max-sm:px-3 max-sm:py-2" : ""} ${sheet ? "sticky top-0 z-[2] bg-surface max-sm:px-4" : ""}`}>
+        <h2 className={`min-w-0 flex-1 font-semibold ${compact ? "max-sm:text-sm max-sm:leading-tight" : ""}`}>{title}</h2>
+        {actions && (
+          <div className={`flex flex-wrap items-center justify-end gap-1.5 ${compact ? "max-sm:shrink-0 max-sm:flex-nowrap" : "max-sm:order-last max-sm:basis-full max-sm:justify-start"}`}>{actions}</div>
+        )}
         <button type="button" onClick={onClose} className="press rounded p-1 text-muted hover:text-fg" aria-label="Close">
           ✕
         </button>
       </div>
-      <div className={sheet ? "p-5 max-sm:px-4 max-sm:pb-[max(1.25rem,env(safe-area-inset-bottom))]" : "p-5"}>{children}</div>
+      <div className={sheet ? "p-5 max-sm:px-4 max-sm:pb-[max(1.25rem,env(safe-area-inset-bottom))]" : compact ? "p-5 max-sm:p-3" : "p-5"}>{children}</div>
     </dialog>
   );
 }
