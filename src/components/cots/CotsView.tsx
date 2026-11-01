@@ -8,6 +8,7 @@ import { addCotsFromItem, clearInStock, updateCotsParts } from "@/app/(app)/cots
 import { BomProvider, useBom } from "@/components/bom/BomContext";
 import { PartStage, type StageView } from "@/components/dashboard/PartStage";
 import { AddBox } from "@/components/inventory/AddBox";
+import { useInventoryPopup } from "@/components/inventory/InventoryPopup";
 import type { Condition, InvCategory, Item, Location } from "@/components/inventory/types";
 import { useCan, useManage, useMode } from "@/components/shell/ModeContext";
 import { statusDenied } from "@/components/shell/mode";
@@ -138,6 +139,21 @@ export function CotsView({
   }
   const saveRow = (row: Row) => (changes: PartChanges) =>
     save(row.members.length === 1 ? [{ id: row.members[0].id, changes }] : spreadCotsChanges(row.members, changes));
+  // A card linked to an inventory item opens the item's window with its order (Need to Order and
+  // the order status); a card with no item still opens the part's window.
+  const { openItem } = useInventoryPopup();
+  const openRow = (row: Row) => {
+    const p = row.part;
+    const itemId = p.shelf?.itemId ?? p.inventoryItemId;
+    if (!itemId) return undefined;
+    return () =>
+      openItem(itemId, undefined, {
+        cotsOrder: {
+          info: { quantity: p.quantity, status: computeStatus(p), links: p.cotsLinks ?? [], unitPrice: p.unitPrice, sentBack: p.cotsSentBack ?? null, grouped: row.members.length > 1 },
+          save: saveRow(row),
+        },
+      });
+  };
   const clear = (ids: string[]) => {
     setCleared((s) => new Set([...s, ...ids]));
     startTransition(async () => {
@@ -269,7 +285,7 @@ export function CotsView({
               <GroupBox key={row.key} row={row} onClose={() => setOpen((s) => toggle(s, row.key))} {...dragProps(ids, from)}>
                 {row.members.map((m) => (
                   <div key={m.id} {...dragProps([m.id], from)}>
-                    <CotsCard part={m} save={saveRow({ key: m.id, part: m, members: [m] })} showSystem highlightSystem variant={variant} shelfOnThumb struck={struck.has(m.id)} />
+                    <CotsCard part={m} save={saveRow({ key: m.id, part: m, members: [m] })} onOpen={openRow({ key: m.id, part: m, members: [m] })} showSystem highlightSystem variant={variant} shelfOnThumb struck={struck.has(m.id)} />
                   </div>
                 ))}
               </GroupBox>
@@ -279,6 +295,7 @@ export function CotsView({
               <CotsCard
                 part={row.part}
                 save={saveRow(row)}
+                onOpen={openRow(row)}
                 showSystem
                 variant={variant} shelfOnThumb
                 origin={list === "released" ? originOf(row.members[0]) : undefined}

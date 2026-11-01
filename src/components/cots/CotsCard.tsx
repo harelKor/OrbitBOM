@@ -46,6 +46,7 @@ export function CotsCard({
   group,
   shelfOnThumb = false,
   origin,
+  onOpen,
 }: {
   part: CardPart;
   save: SaveFn;
@@ -62,6 +63,8 @@ export function CotsCard({
   // On the COTS page the inventory tag sits on the thumbnail, so every card is the same height.
   shelfOnThumb?: boolean;
   origin?: "General" | "Robot";
+  // On the COTS pages a click opens the linked inventory item's window instead of the part's.
+  onOpen?: () => void;
 }) {
   const edit = useManage();
   const work = useCan("work");
@@ -100,6 +103,7 @@ export function CotsCard({
   const onCardClick = (e: React.MouseEvent) => {
     if (onToggleSelect || !isCardBodyClick(e)) return;
     if (group) group.onOpen();
+    else if (onOpen) onOpen();
     else showDetails();
   };
   const picture = (!part.isManual && part.thumbUrl) || shelf?.thumbUrl || null;

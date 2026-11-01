@@ -20,6 +20,7 @@ import {
   setSeasonNeed,
   unlinkItemProduct,
 } from "@/app/(app)/inventory/actions";
+import { updateCotsParts } from "@/app/(app)/cots/actions";
 import { textOn } from "@/components/bom/options";
 import { Dialog } from "@/components/Dialog";
 import { Can, EditOnly, useCan } from "@/components/shell/ModeContext";
@@ -27,12 +28,14 @@ import { Chevron } from "@/components/ui/Chevron";
 import { Icon } from "@/components/ui/Icon";
 import { materialCategory } from "@/config/materials";
 import { activeFields, getCategory } from "@/lib/inventory/categories";
-import { hasSeasonNeed, missing } from "@/lib/inventory/season";
+import { hasSeasonNeed, missing, orderHref } from "@/lib/inventory/season";
+import type { PartChanges } from "@/lib/parts/changes";
 import type { Offer, ProductGroup } from "@/lib/inventory/productGroups";
 import { type PieceOp, applyPieceOp, countPieces, formatStock, isSheetGoods, parseStock, pieceBase, pieceLabel, pieceRows, snapStock, sortedRows, stepStock } from "@/lib/inventory/stock";
 import { bestOffer, isLink, searchStores } from "./AddBox";
 import { CountBox, ItemPrice, NewSize, PieceStepper, conditionColor, hostOf } from "./ItemCard";
 import { ItemForm, draftOf } from "./ItemForm";
+import { CotsOrderBox, type CotsOrderInfo } from "./CotsOrderBox";
 import { ItemHistory } from "./ItemHistory";
 import { PhotoButtons } from "./photo";
 import { ToBomDialog } from "./ToBomDialog";
@@ -52,9 +55,18 @@ import type { Condition, InvCategory, Item, Location } from "./types";
 type ChangeItem = (change: (i: Item) => Partial<Item>, run: () => Promise<{ error?: string }>) => void;
 type ItemData = NonNullable<Awaited<ReturnType<typeof itemPopup>>>;
 type MaterialData = Awaited<ReturnType<typeof materialPopup>>;
-type State = { kind: "item"; id: string; preview: Item | null; data: ItemData | null } | { kind: "material"; name: string; data: MaterialData | null } | null;
+// A COTS card opens its item with the card's order: the window shows Need to Order and the
+// order status, and saves through the card (so the COTS page updates with it).
+export type CotsOrderContext = { info: CotsOrderInfo; save: (changes: PartChanges) => void };
+type State =
+  | { kind: "item"; id: string; preview: Item | null; data: ItemData | null; order: CotsOrderContext | null }
+  | { kind: "material"; name: string; data: MaterialData | null }
+  | null;
 
-const Ctx = createContext<{ openItem: (id: string, preview?: Item) => void; openMaterial: (name: string) => void }>({ openItem: () => {}, openMaterial: () => {} });
+const Ctx = createContext<{ openItem: (id: string, preview?: Item, opts?: { cotsOrder?: CotsOrderContext }) => void; openMaterial: (name: string) => void }>({
+  openItem: () => {},
+  openMaterial: () => {},
+});
 export const useInventoryPopup = () => useContext(Ctx);
 
 const ITEM_PARAM = "item";
@@ -82,13 +94,13 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
       const data = await materialPopup(name);
       setState((s) => (s?.kind === "material" && s.name === name ? { ...s, data } : s));
     });
-  const showItem = (id: string, preview: Item | null) => {
+  const showItem = (id: string, preview: Item | null, order: CotsOrderContext | null = null) => {
     setError(null);
-    setState({ kind: "item", id, preview, data: null });
+    setState({ kind: "item", id, preview, data: null, order });
     loadItem(id);
   };
-  const openItem = (id: string, preview?: Item) => {
-    showItem(id, preview ?? null);
+  const openItem = (id: string, preview?: Item, opts?: { cotsOrder?: CotsOrderContext }) => {
+    showItem(id, preview ?? null, opts?.cotsOrder ?? null);
     if (urlItem() !== id) setUrlItem(id, true);
   };
   const openMaterial = (name: string) => {
@@ -173,6 +185,15 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
             onSaved={() => after({})}
             onChange={(change, run) => saveNow(state.id, change, run)}
             onClose={close}
+            order={
+              state.order ??
+              (state.data?.order
+                ? {
+                    info: { ...state.data.order, href: item.openOrder ? orderHref(item.openOrder) : undefined },
+                    save: (changes) => saveNow(state.id, () => ({}), () => updateCotsParts([{ id: state.data!.order!.id, changes }])),
+                  }
+                : null)
+            }
           />
         )}
         {state?.kind === "material" && !state.data && <p className="py-8 text-center text-sm text-muted">Loading…</p>}
@@ -416,6 +437,7 @@ function ItemBody({
   onSaved,
   onChange,
   onClose,
+  order,
 }: {
   item: Item;
   data: ItemData | null;
@@ -424,6 +446,7 @@ function ItemBody({
   onSaved: () => void;
   onChange: ChangeItem;
   onClose: () => void;
+  order: CotsOrderContext | null;
 }) {
   const [mode, setMode] = useState<"view" | "edit" | "toBom">("view");
   const [spreadOpen, setSpreadOpen] = useState(false);
@@ -579,6 +602,7 @@ function ItemBody({
               </Link>
             </div>
           )}
+          {order && <CotsOrderBox key={`${order.info.status}:${order.info.quantity}`} info={order.info} onSave={order.save} onLeave={onClose} />}
           {!picture && photoButtons}
           <Stepper item={item} onStep={onStep} onCount={onCount} big pieces={false}>
             {item.sheet && (

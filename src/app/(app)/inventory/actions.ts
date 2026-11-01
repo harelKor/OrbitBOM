@@ -827,7 +827,25 @@ export async function itemPopup(itemId: string) {
   await requireMember();
   if (!isUuid(itemId)) return null;
   const [detail, targets] = await Promise.all([inventoryItemWithLists(itemId), listBomTargets()]);
-  return detail && { ...detail, targets };
+  if (!detail) return null;
+  return { ...detail, targets, order: detail.item.openOrder ? await openOrderPart(detail.item.openOrder.partId) : null };
+}
+
+// The COTS card on its way for an item, for the window's Need to Order box and order status.
+async function openOrderPart(partId: string) {
+  const [p] = await db
+    .select({
+      id: schema.parts.id,
+      quantity: schema.parts.quantity,
+      designState: schema.parts.designState,
+      cotsLinks: schema.parts.cotsLinks,
+      unitPrice: schema.parts.unitPrice,
+      cotsSentBack: schema.parts.cotsSentBack,
+      systemId: schema.parts.systemId,
+    })
+    .from(schema.parts)
+    .where(eq(schema.parts.id, partId));
+  return p ? { id: p.id, quantity: p.quantity, status: cotsStatusOf(p.designState), links: p.cotsLinks, unitPrice: p.unitPrice, sentBack: p.cotsSentBack, fromBom: p.systemId !== null } : null;
 }
 
 export async function loadItemHistory(itemId: string) {
