@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useState } from "react";
 import { Dialog } from "@/components/Dialog";
-import { CheckIcon } from "@/components/ui/CheckBadge";
 import { Icon } from "@/components/ui/Icon";
 
 export type QaSystem = { id: string; name: string; count: number };
@@ -15,17 +14,16 @@ export function QaBox({ robotId, systems }: { robotId: string; systems: QaSystem
   const total = systems.reduce((n, s) => n + s.count, 0);
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className="card-interactive group flex items-center gap-5 py-5 pr-8 pl-6 text-left active:scale-[0.98] sm:gap-8 sm:pr-12 sm:pl-7">
-        <span className="flex h-12 w-12 shrink-0 sm:h-14 sm:w-14 items-center justify-center rounded-full border-2 border-amber-500/60 bg-amber-500/10 text-amber-500">
-          <CheckIcon className="h-6 w-6 sm:h-7 sm:w-7" />
+      <button type="button" onClick={() => setOpen(true)} className="card-interactive group flex items-center justify-between gap-3 overflow-hidden px-5 py-4 text-left active:scale-[0.98]">
+        <span className="min-w-0">
+          <span className="block text-lg font-bold leading-tight text-fg sm:text-xl">Ready for QA</span>
+          {total > 0 && (
+            <span className="mt-0.5 block truncate text-sm text-subtle tabular-nums">
+              in {systems.length} {systems.length === 1 ? "system" : "systems"}
+            </span>
+          )}
         </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-lg font-bold text-fg sm:text-xl">Ready for QA</span>
-          <span className="mt-0.5 block text-sm text-subtle tabular-nums">
-            {total === 0 ? "Nothing to check" : `in ${systems.length} ${systems.length === 1 ? "system" : "systems"}`}
-          </span>
-        </span>
-        <span className="display font-mono text-5xl sm:text-6xl text-accent tabular-nums">{total}</span>
+        <span className="display shrink-0 font-mono text-4xl leading-none text-accent tabular-nums sm:text-5xl">{total}</span>
       </button>
       <Dialog open={open} onClose={() => setOpen(false)} title="Ready for QA" wide>
         {systems.length === 0 ? (
