@@ -26,23 +26,37 @@ export function openPartWindow(partId: string): Promise<boolean> {
   return new Promise((done) => window.dispatchEvent(new CustomEvent<OpenPartLoadDetail>(OPEN_PART_LOAD_EVENT, { detail: { partId, done } })));
 }
 
-const Ctx = createContext<{ openId: string | null; open: (o: Open) => void; sync: (o: Open) => void }>({ openId: null, open: () => {}, sync: () => {} });
+const Ctx = createContext<{ openIds: string[]; open: (o: Open) => void; sync: (o: Open) => void }>({ openIds: [], open: () => {}, sync: () => {} });
 
 // The part details window lives here, once for the whole app, and not inside the card that opened
 // it: an edit that moves the card (a new status puts it in another column or section) re-creates
 // the card, and the window would close mid-edit. The open card keeps the window's part current.
+// Windows stack: a part opened from inside another part's window (a fit note on its drawing)
+// opens on top, and closing it returns to the window and drawing below (Harel, 2026-11-01).
 export function PartDetailsProvider({ children }: { children: React.ReactNode }) {
-  const [current, setCurrent] = useState<Open | null>(null);
-  const saveRef = useRef<SaveFn>(() => {});
+  const [stack, setStack] = useState<Open[]>([]);
+  // Each part's latest save, read when the window saves, so a new save doesn't re-render it.
+  const saves = useRef(new Map<string, SaveFn>());
   const open = useCallback((o: Open) => {
-    saveRef.current = o.save;
-    setCurrent(o);
+    saves.current.set(o.part.id, o.save);
+    setStack((s) => {
+      // The same part on top: show it as given. Another part opens above what's open.
+      if (s.at(-1)?.part.id === o.part.id) return [...s.slice(0, -1), o];
+      return [...s, o];
+    });
   }, []);
   const sync = useCallback((o: Open) => {
-    saveRef.current = o.save;
-    setCurrent((c) => (c && c.part.id === o.part.id && (c.part !== o.part || c.bom !== o.bom) ? o : c));
+    saves.current.set(o.part.id, o.save);
+    setStack((s) => {
+      let changed = false;
+      const next = s.map((c) => {
+        if (c.part.id !== o.part.id || (c.part === o.part && c.bom === o.bom)) return c;
+        changed = true;
+        return o;
+      });
+      return changed ? next : s;
+    });
   }, []);
-  const save = useCallback<SaveFn>((changes) => saveRef.current(changes), []);
   // A part loaded on its own: an edit saves it and loads it again, so the window shows the change.
   useEffect(() => {
     const onLoad = async (e: Event) => {
@@ -62,29 +76,37 @@ export function PartDetailsProvider({ children }: { children: React.ReactNode })
     window.addEventListener(OPEN_PART_LOAD_EVENT, onLoad);
     return () => window.removeEventListener(OPEN_PART_LOAD_EVENT, onLoad);
   }, [open, sync]);
-  const openId = current?.part.id ?? null;
-  const value = useMemo(() => ({ openId, open, sync }), [openId, open, sync]);
+  const key = stack.map((o) => o.part.id).join(" ");
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the ids, not the array, decide
+  const openIds = useMemo(() => stack.map((o) => o.part.id), [key]);
+  const value = useMemo(() => ({ openIds, open, sync }), [openIds, open, sync]);
   return (
     <Ctx.Provider value={value}>
       {children}
-      {current && (
-        // Keyed by part: another part opened from a window above this one (a drawing's fit note)
-        // opens anew, so it shows on top.
-        <BomProvider key={current.part.id} value={current.bom}>
-          <PartDetails part={current.part} save={save} onClose={() => setCurrent(null)} />
+      {stack.map((o, i) => (
+        // Keyed by place and part: the windows below stay mounted (with any drawing open in them)
+        // while one above is open.
+        <BomProvider key={`${i}:${o.part.id}`} value={o.bom}>
+          <StackedWindow part={o.part} saves={saves} onClose={() => setStack((s) => s.slice(0, i))} />
         </BomProvider>
-      )}
+      ))}
     </Ctx.Provider>
   );
+}
+
+function StackedWindow({ part, saves, onClose }: { part: CardPart; saves: React.RefObject<Map<string, SaveFn>>; onClose: () => void }) {
+  const id = part.id;
+  const save: SaveFn = (changes) => saves.current.get(id)?.(changes);
+  return <PartDetails part={part} save={save} onClose={onClose} />;
 }
 
 // A card's way to open its part's window; while it's open the card hands it every new version of
 // the part (and its save, which is bound to the page the card is on). A double-click on the part
 // in a 3D view opens it too (OPEN_PART_EVENT), also right after the viewer brought us to its page.
 export function usePartDetails(part: CardPart, save: SaveFn) {
-  const { openId, open, sync } = useContext(Ctx);
+  const { openIds, open, sync } = useContext(Ctx);
   const bom = useBom();
-  const isOpen = openId === part.id;
+  const isOpen = openIds.includes(part.id);
   const show = useRef(() => open({ part, save, bom }));
   useEffect(() => {
     show.current = () => open({ part, save, bom });
