@@ -34,7 +34,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   // padding, and the area is exactly one screen tall under the top bar. Phones stack the three
   // cards as equal-height rows, so all of them fit without scrolling.
   return (
-    <div className="-m-4 flex h-[calc(100dvh-var(--topbar-h,3.5rem))] overflow-hidden md:-m-6 lg:-ml-11 xl:-mr-11 px-5 py-3.5 md:px-6 md:py-5 lg:px-10 lg:py-7">
+    <div className="-m-4 flex h-[calc(100dvh-var(--topbar-h,2.75rem))] overflow-hidden md:-m-6 lg:-ml-11 xl:-mr-11 px-5 py-3.5 md:px-6 md:py-5 lg:px-10 lg:py-7">
       <h1 className="sr-only">OrbitParts</h1>
       <div className="mx-auto flex h-full w-full max-w-sm flex-col justify-center md:max-w-[72rem]">
         {/* The team motto: one quiet line on desktop only, so it never pushes the cards down on phones. */}

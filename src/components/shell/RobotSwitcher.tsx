@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { FastLink } from "@/components/ui/FastLink";
 import { NewSystemButton } from "@/app/(app)/robots/[robotId]/NewSystemButton";
 import { RobotSettings } from "@/app/(app)/robots/[robotId]/RobotSettings";
@@ -11,15 +12,25 @@ import { EditOnly } from "./ModeContext";
 import { useRobotContext } from "./useRobotContext";
 
 // Robots, and the active robot's systems, one click away on every page. In Edit mode each
-// robot card and system tile has its settings gear in the corner.
+// robot card and system tile has its settings gear in the corner. Clicking a robot first opens its
+// systems list here; clicking it again (once its systems show) opens its dashboard.
 export function RobotSwitcher({ robots, lastRobotId, isAdmin }: { robots: ShellRobot[]; lastRobotId: string | null; isAdmin: boolean }) {
   const { pathname, robot: current, systemId } = useRobotContext(robots, lastRobotId);
   const active = robots.filter((r) => !r.archived);
   const archived = robots.filter((r) => r.archived);
+  // The robot whose systems show below the list: the page's robot until another one is clicked.
+  const [expandedId, setExpandedId] = useState<string | null>(current?.id ?? null);
+  const [pageRobotId, setPageRobotId] = useState(current?.id ?? null);
+  if ((current?.id ?? null) !== pageRobotId) {
+    // Moving to another robot's page shows that robot's systems again.
+    setPageRobotId(current?.id ?? null);
+    setExpandedId(current?.id ?? null);
+  }
+  const expanded = robots.find((r) => r.id === expandedId) ?? null;
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
-      <div className="flex min-h-14 items-center justify-between bg-bar px-4 text-white">
+      <div className="flex min-h-11 items-center justify-between bg-bar px-4 text-white">
         <span className="text-sm font-semibold">Robots</span>
         <EditOnly>
           <Link href="/robots/new" className="press rounded-md border border-white/40 px-2 py-1 text-xs font-semibold hover:bg-white/10">
@@ -36,24 +47,26 @@ export function RobotSwitcher({ robots, lastRobotId, isAdmin }: { robots: ShellR
             current={r.id === current?.id}
             overview={r.id === current?.id && !systemId && !pathname.includes("/fab") && !pathname.includes("/review")}
             isAdmin={isAdmin}
+            expanded={r.id === expandedId}
+            onExpand={() => setExpandedId(r.id)}
           />
         ))}
       </div>
 
-      {current && (
+      {expanded && (
         <div className="border-t border-line p-2">
           <div className="flex items-center justify-between gap-2 px-1 pt-1 pb-2">
-            <span className="truncate text-xs font-semibold text-muted">{current.name} systems</span>
+            <span className="truncate text-xs font-semibold text-muted">{expanded.name} systems</span>
             <EditOnly>
-              <NewSystemButton robotId={current.id} small />
+              <NewSystemButton robotId={expanded.id} small />
             </EditOnly>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            {current.systems.map((s) => (
-              <SystemTile key={s.id} robotId={current.id} system={s} active={s.id === systemId} isAdmin={isAdmin} />
+            {expanded.systems.map((s) => (
+              <SystemTile key={s.id} robotId={expanded.id} system={s} active={s.id === systemId} isAdmin={isAdmin} />
             ))}
           </div>
-          {current.systems.length === 0 && <p className="px-2 text-xs text-subtle">No systems yet.</p>}
+          {expanded.systems.length === 0 && <p className="px-2 text-xs text-subtle">No systems yet.</p>}
         </div>
       )}
 
@@ -62,7 +75,15 @@ export function RobotSwitcher({ robots, lastRobotId, isAdmin }: { robots: ShellR
           <summary className="cursor-pointer px-2 py-1 text-xs text-subtle">Archived ({archived.length})</summary>
           <div className="mt-2 space-y-2">
             {archived.map((r) => (
-              <RobotCard key={r.id} robot={r} current={r.id === current?.id} overview={false} isAdmin={isAdmin} />
+              <RobotCard
+                key={r.id}
+                robot={r}
+                current={r.id === current?.id}
+                overview={false}
+                isAdmin={isAdmin}
+                expanded={r.id === expandedId}
+                onExpand={() => setExpandedId(r.id)}
+              />
             ))}
           </div>
         </details>
@@ -74,14 +95,35 @@ export function RobotSwitcher({ robots, lastRobotId, isAdmin }: { robots: ShellR
   );
 }
 
-function RobotCard({ robot, current, overview, isAdmin }: { robot: ShellRobot; current: boolean; overview: boolean; isAdmin: boolean }) {
+function RobotCard({
+  robot,
+  current,
+  overview,
+  isAdmin,
+  expanded,
+  onExpand,
+}: {
+  robot: ShellRobot;
+  current: boolean;
+  overview: boolean;
+  isAdmin: boolean;
+  expanded: boolean;
+  onExpand: () => void;
+}) {
   return (
     <div className="relative">
       <FastLink
         href={`/robots/${robot.id}`}
         aria-current={overview ? "page" : undefined}
+        aria-expanded={expanded}
         data-selected={overview}
-        className={`card-interactive group flex items-center gap-3 p-2 ${current && !overview ? "border-white/20" : ""}`}
+        onClick={(e) => {
+          // First click only shows the robot's systems; a new-tab click always opens the dashboard.
+          if (expanded || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+          e.preventDefault();
+          onExpand();
+        }}
+        className={`card-interactive group flex items-center gap-3 p-2 ${(current || expanded) && !overview ? "border-white/20" : ""}`}
       >
         <Picture url={robot.thumbUrl} className="h-12 w-12" />
         <div className="min-w-0 flex-1">

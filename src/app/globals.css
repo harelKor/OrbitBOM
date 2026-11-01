@@ -44,7 +44,7 @@
 :root {
   color-scheme: light;
   /* The top bar's height, measured by TopBar; sticky strips sit right under it. */
-  --topbar-h: 3.5rem;
+  --topbar-h: 2.75rem;
 }
 
 /* Dark mode: follows the device unless the greyscale slider picked a shade (data-theme on <html>). */
@@ -131,6 +131,16 @@ html,
 body {
   overflow-x: clip;
   max-width: 100%;
+}
+
+/* No scrollbar tracks anywhere: they ate width at the side of every page. Scrolling (wheel,
+   touch, keys, drag) still works everywhere. */
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+*::-webkit-scrollbar {
+  display: none;
 }
 
 body {

@@ -44,7 +44,7 @@ export function LeftNav({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex min-h-14 items-center overflow-visible bg-bar px-3">
+      <div className="flex min-h-11 items-center overflow-visible bg-bar px-3">
         <Brand />
       </div>
       {/* The column's edge line starts under the blue bar, so it never runs through the logo. */}
