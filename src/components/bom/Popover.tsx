@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { rankGrouped } from "@/lib/search/rank";
 
 const WIDTH = 288;
 const GAP = 6;
@@ -147,9 +148,13 @@ export function OptionList({
 }) {
   const [q, setQ] = useState("");
   const needle = q.trim().toLowerCase();
-  const filtered = options.filter((o) =>
+  const matches = options.filter((o) =>
     o.searchOnly ? !!needle && o.label.toLowerCase().includes(needle) : o.label.toLowerCase().includes(needle) || (!!needle && !!o.group?.toLowerCase().includes(needle)),
   );
+  // Typed: best matches first ("pla" lists PLA before Aluminum plate), groups kept together.
+  const filtered = needle ? rankGrouped(matches, needle, (o) => o.label, (o) => o.group) : matches;
+  // A divider belongs to its group, wherever ranking puts the group's first option.
+  const divided = new Set(options.filter((o) => o.divider).map((o) => o.group));
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <input ref={focusIfMouse} value={q} onChange={(e) => setQ(e.target.value)} placeholder={placeholder} className="input mb-1.5 py-2" />
@@ -159,7 +164,7 @@ export function OptionList({
           return (
             <li key={`${o.group ?? ""}:${o.value ?? ""}`}>
               {header && (
-                <div className={`px-2.5 pt-2.5 pb-1 text-xs font-semibold text-subtle ${o.divider && i > 0 ? "mt-2 border-t border-line" : ""}`}>
+                <div className={`px-2.5 pt-2.5 pb-1 text-xs font-semibold text-subtle ${divided.has(o.group) && i > 0 ? "mt-2 border-t border-line" : ""}`}>
                   {header}
                 </div>
               )}

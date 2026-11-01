@@ -34,6 +34,22 @@ type Stage = StageView | "thumb";
 // on the right its properties, its inventory link and, under the inventory search, the drawing. Its
 // fields edit by the member's mode (fields.tsx): any team sets status, material and machines, the
 // CAD Team makes drawings, and Edit mode does the rest (name, type, deleting a manual part).
+// What the Name row's ✕ sets: the part's type, status, material, machines, inventory link and
+// counts back to blank.
+const RESET_SPECS = {
+  classification: "undefined",
+  status: "Not Started",
+  material: null,
+  preProcess: null,
+  process1: null,
+  process2: null,
+  inventoryItemId: null,
+  cotsCategory: null,
+  donePreprocess: 0,
+  doneProcess1: 0,
+  doneProcess2: 0,
+} satisfies Parameters<SaveFn>[0];
+
 export function PartDetails({ part, save, onClose }: { part: CardPart; save: SaveFn; onClose: () => void }) {
   const edit = useManage();
   const canDraw = useCan("draw");
@@ -139,7 +155,22 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
             {suggest.message}
             <dl className="grid grid-cols-[7rem_minmax(0,1fr)] content-start items-center gap-x-3 gap-y-3">
               <Row label="Name" was={was("displayName")}>
-                <NameField part={part} save={save} />
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="min-w-0 flex-1">
+                    <NameField part={part} save={save} />
+                  </span>
+                  {edit && (
+                    <button
+                      type="button"
+                      onClick={() => save(RESET_SPECS)}
+                      title="Reset part configuration to defaults"
+                      aria-label="Reset part configuration to defaults"
+                      className="shrink-0 rounded-md px-1.5 py-0.5 text-sm text-muted transition-colors duration-150 hover:bg-rose-500/10 hover:text-rose-500 active:scale-[0.98]"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </span>
               </Row>
               <Row label="System">{part.systemName}</Row>
               <Row label="Type" was={was("classification")}>

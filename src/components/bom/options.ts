@@ -1,6 +1,6 @@
 import { MACHINES, type MachineStage } from "@/config/machines";
 import type { MaterialGroup } from "@/lib/data/materials";
-import { allMaterials } from "@/config/materials";
+import { GENERAL_MATERIALS } from "@/config/materials";
 import { PRIORITIES } from "@/config/priorities";
 import { COTS_STATUSES } from "@/config/cots";
 import { STATUSES } from "@/config/statuses";
@@ -14,11 +14,11 @@ const GENERAL = "general:";
 
 // The inventory items a part's material can be (useMaterials()) as menu options by category:
 // Raw Stock first, then the other categories under a divider. Values are item ids. Below them, the
-// classic general materials no item is named after, shown only once something is typed.
+// plain general materials (GENERAL_MATERIALS) no item is named after, shown only once something is typed.
 export function materialOptions(materials: MaterialGroup[]): Option[] {
   const firstOther = materials.find((g) => !g.raw)?.id;
   const taken = new Set(materials.flatMap((g) => g.items.map((i) => i.name.toLowerCase())));
-  const general = [...new Set(allMaterials())].filter((m) => !taken.has(m.toLowerCase()));
+  const general = GENERAL_MATERIALS.filter((m) => !taken.has(m.toLowerCase()));
   return [
     { value: null, label: "— None —" },
     ...materials.flatMap((g) =>

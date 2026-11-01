@@ -27,6 +27,26 @@ export const BASE_MATERIALS = [
   "PA612",
 ];
 
+// The plain material names the BOM material picker offers under "General Materials" once
+// something is typed (Harel, 2026-11-01): generic names only, never a size or thickness, since
+// sized stock lives in the inventory as items.
+export const GENERAL_MATERIALS = [
+  "Aluminum - 6061",
+  "Aluminum - 7075",
+  "Aluminum - 5052",
+  "Polycarbonate",
+  "Steel",
+  "Stainless Steel",
+  "Brass",
+  "PLA",
+  "TPU",
+  "PETG",
+  "Onyx",
+  "Carbon Fiber",
+  "Birch / Wood",
+  "Delrin / Acetal",
+];
+
 export type MaterialList = Record<string, string[]>;
 
 export const MATERIALS: MaterialList = {
