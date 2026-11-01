@@ -9,6 +9,7 @@ import { inventoryPicker } from "@/app/(app)/inventory/actions";
 import { approveParts, partReviewState, rejectParts, suggestPart, type PartReviewState } from "@/app/(app)/robots/[robotId]/review/actions";
 import { PartModel, type StageView } from "@/components/dashboard/PartStage";
 import { DrawingEditor } from "@/components/drawing/DrawingEditor";
+import { DrawingPreview } from "@/components/drawing/DrawingPreview";
 import { AddBox } from "@/components/inventory/AddBox";
 import { useInventoryPopup } from "@/components/inventory/InventoryPopup";
 import { useCan, useManage } from "@/components/shell/ModeContext";
@@ -60,6 +61,7 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
         <>
           {!part.isManual && !cots && <PartVersionsButton partId={part.id} lock={part.fabLock} released={fabStage(part) !== null} />}
           {suggest.suggestButton}
+          {!cots && <ViewDrawingButton part={part} />}
           {!cots && canDraw && !part.isManual && <DrawingAction partId={ownerPartId(part)} hasDrawing={!!part.hasDrawing} />}
           {!cots && canDraw && <DrawingFileButton part={part} />}
         </>
@@ -265,7 +267,32 @@ export function DrawingAction({ partId, hasDrawing, compact = false }: { partId:
   );
 }
 
-// Upload a drawing file (a PDF or picture made outside the app); the card's View drawing opens it.
+// The part's drawing window: the app's drawing and its drawing file (uploaded or from Onshape).
+function ViewDrawingButton({ part }: { part: CardPart }) {
+  const [open, setOpen] = useState(false);
+  const file = part.files.find((f) => f.type === "drawing") ?? null;
+  if (!part.hasDrawing && !file) return null;
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} className="btn h-8 gap-1.5 text-xs">
+        <Icon name="drawing" className="h-3.5 w-3.5" />
+        View drawing
+      </button>
+      {open && (
+        <DrawingPreview
+          partId={ownerPartId(part)}
+          systemId={part.systemId}
+          title={partTitle(part)}
+          hasDrawing={!!part.hasDrawing}
+          file={file}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </>
+  );
+}
+
+// Upload a drawing file (a PDF or picture made outside the app); View drawing opens it.
 // `compact` is the part card's icon button.
 export function DrawingFileButton({ part, compact = false }: { part: CardPart; compact?: boolean }) {
   const router = useRouter();
@@ -290,7 +317,7 @@ export function DrawingFileButton({ part, compact = false }: { part: CardPart; c
         ref={input}
         type="file"
         hidden
-        accept=".pdf,.png,.jpg,.jpeg,.svg,.dxf,.dwg,image/*,application/pdf"
+        accept=".pdf,.png,.jpg,.jpeg,.webp,.svg,.dxf,.dwg,image/*,application/pdf"
         onChange={async (e) => {
           const f = e.target.files?.[0];
           e.target.value = "";

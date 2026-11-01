@@ -8,6 +8,7 @@ import { requireAdmin } from "@/lib/auth";
 import { requireCapability } from "@/lib/mode";
 import { READY_STATUSES } from "@/lib/fab";
 import { applyPartChanges } from "@/lib/parts/apply";
+import { replacePartFile } from "@/lib/parts/files";
 import { computeStatus } from "@/lib/status";
 import { StorageNotConfiguredError, deleteObject, fileKey, objectExists, presignUpload } from "@/lib/storage/r2";
 import { isUuid } from "@/lib/uuid";
@@ -62,33 +63,21 @@ export async function finishUpload(
   }
   if (!(await objectExists(key))) return { error: "The upload didn't reach file storage. Try again." };
   const name = filename.slice(0, 255);
-  const old = await db.transaction(async (tx) => {
-    // Locks the owner, so two uploads of the same file at once replace each other in turn.
-    const ownerTable = owner.kind === "part" ? parts : partGroups;
-    await tx.select({ id: ownerTable.id }).from(ownerTable).where(eq(ownerTable.id, owner.id)).for("update");
-    if (owner.kind === "part") {
+  if (owner.kind === "part") {
+    await replacePartFile(owner.id, type, { key, filename: name, contentType: contentType || null, memberId: member.id });
+  } else {
+    const old = await db.transaction(async (tx) => {
+      // Locks the batch, so two uploads of the same file at once replace each other in turn.
+      await tx.select({ id: partGroups.id }).from(partGroups).where(eq(partGroups.id, owner.id)).for("update");
       const previous = await tx
-        .delete(partFiles)
-        .where(and(eq(partFiles.partId, owner.id), eq(partFiles.type, type)))
-        .returning({ r2Key: partFiles.r2Key });
-      await tx.insert(partFiles).values({
-        partId: owner.id,
-        type,
-        r2Key: key,
-        filename: name,
-        contentType: contentType || null,
-        uploadedBy: member.id,
-      });
+        .delete(groupFiles)
+        .where(and(eq(groupFiles.groupId, owner.id), eq(groupFiles.type, type)))
+        .returning({ r2Key: groupFiles.r2Key });
+      await tx.insert(groupFiles).values({ groupId: owner.id, type, r2Key: key, filename: name });
       return previous;
-    }
-    const previous = await tx
-      .delete(groupFiles)
-      .where(and(eq(groupFiles.groupId, owner.id), eq(groupFiles.type, type)))
-      .returning({ r2Key: groupFiles.r2Key });
-    await tx.insert(groupFiles).values({ groupId: owner.id, type, r2Key: key, filename: name });
-    return previous;
-  });
-  await Promise.all(old.map((f) => deleteObject(f.r2Key)));
+    });
+    await Promise.all(old.map((f) => deleteObject(f.r2Key)));
+  }
   if (owner.kind === "group" && type === "gcode") await markGcoded(owner.id, member.id);
   refresh();
   return {};
@@ -118,6 +107,19 @@ export async function removeBatchGcode(groupId: string): Promise<{ error?: strin
     .delete(groupFiles)
     .where(and(eq(groupFiles.groupId, groupId), eq(groupFiles.type, "gcode")))
     .returning({ r2Key: groupFiles.r2Key });
+  await Promise.all(removed.map((f) => deleteObject(f.r2Key)));
+  refresh();
+  return {};
+}
+
+// Remove a part's drawing file (the drawing window's Delete): the CAD Team's, like uploading it.
+export async function removePartDrawingFile(partId: string): Promise<{ error?: string }> {
+  await requireCapability("draw");
+  if (!isUuid(partId)) return { error: "Unknown part." };
+  const removed = await db
+    .delete(partFiles)
+    .where(and(eq(partFiles.partId, partId), eq(partFiles.type, "drawing")))
+    .returning({ r2Key: partFiles.r2Key });
   await Promise.all(removed.map((f) => deleteObject(f.r2Key)));
   refresh();
   return {};

@@ -34,7 +34,7 @@ export type CardPart = PartRow & {
   onshapeName: string | null;
   lastModifiedAt: Date;
   lastModifiedByName: string | null;
-  files: { id: string; type: string; filename: string }[];
+  files: { id: string; type: string; filename: string; onshape?: boolean }[];
   thumbUrl: string | null;
   modelKey: string | null; // the part's key in the robot's 3D model
   geometry?: { onshapeMaterial?: string; sheetMetal?: { flatPartId: string }; wallMm?: number } | null;

@@ -47,6 +47,11 @@ export function exportAssemblyStep(client: OnshapeClient, assembly: string /* d/
   return translate(client, `assemblies/${assembly}/translations`, { formatName: "STEP", flattenAssemblies: false }, deadline, "this assembly");
 }
 
+// An Onshape drawing tab as a PDF (the drawing sync on the system page).
+export function exportDrawingPdf(client: OnshapeClient, drawing: string /* d/<did>/<wvm>/<wvmid>/e/<eid> */, deadline: number) {
+  return translate(client, `drawings/${drawing}/translations`, { formatName: "PDF" }, deadline, "this drawing");
+}
+
 // Start an Onshape translation, poll it and download the result.
 async function translate(client: OnshapeClient, path: string, params: Record<string, unknown>, deadline: number, what: string): Promise<ArrayBuffer> {
   let t = await client.json<Translation>(path, {

@@ -103,7 +103,7 @@ function MadePartCard({
     if (!onToggleSelect && isCardBodyClick(e)) showDetails();
   };
   const [drawing, setDrawing] = useState(false);
-  // A drawing file uploaded in the details window, for a part with no drawing made from Onshape.
+  // A drawing file (uploaded in the details window, or synced from an Onshape drawing tab).
   const drawingFile = part.files.find((f) => f.type === "drawing");
   const { openItem } = useInventoryPopup();
 
@@ -143,7 +143,7 @@ function MadePartCard({
           {(fabCounter || post) && (part.hasDrawing || drawingFile) && (
             <button
               type="button"
-              onClick={() => (part.hasDrawing ? setDrawing(true) : window.open(`/api/files/${drawingFile!.id}`, "_blank", "noopener"))}
+              onClick={() => setDrawing(true)}
               className="overlay-btn"
               aria-label="View drawing"
               title="View drawing"
@@ -221,7 +221,16 @@ function MadePartCard({
             </span>
           </div>
         )}
-        {drawing && <DrawingPreview partId={ownerPartId(part)} title={partTitle(part)} onClose={() => setDrawing(false)} />}
+        {drawing && (
+          <DrawingPreview
+            partId={ownerPartId(part)}
+            systemId={part.systemId}
+            title={partTitle(part)}
+            hasDrawing={!!part.hasDrawing}
+            file={drawingFile ?? null}
+            onClose={() => setDrawing(false)}
+          />
+        )}
         {fabControls && (
           <>
             <button

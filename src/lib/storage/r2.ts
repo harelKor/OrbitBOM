@@ -64,10 +64,12 @@ export async function imageUrl(key: string) {
   return signed.url;
 }
 
-export function presignDownload(key: string, filename: string, inline = true) {
+// `contentType` overrides the stored one, so a PDF or SVG uploaded without it still opens inline.
+export function presignDownload(key: string, filename: string, inline = true, contentType?: string | null) {
   const safe = filename.replace(/["\\\r\n]/g, "_");
   return presign("GET", key, 300, {
     "response-content-disposition": `${inline ? "inline" : "attachment"}; filename="${safe}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    ...(contentType ? { "response-content-type": contentType } : {}),
   });
 }
 

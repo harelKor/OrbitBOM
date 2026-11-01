@@ -17,5 +17,19 @@ export async function GET(request: Request, { params }: { params: Promise<{ file
     (await db.select().from(schema.groupFiles).where(eq(schema.groupFiles.id, fileId)))[0];
   if (!file) return new NextResponse("Not found", { status: 404 });
   const download = new URL(request.url).searchParams.has("download");
-  return NextResponse.redirect(await presignDownload(file.r2Key, file.filename, !download));
+  return NextResponse.redirect(await presignDownload(file.r2Key, file.filename, !download, viewType(file.filename)));
+}
+
+// Drawings open inside the app's drawing window, which needs the browser to show them, not save them.
+const VIEW_TYPES: Record<string, string> = {
+  pdf: "application/pdf",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  gif: "image/gif",
+  svg: "image/svg+xml",
+};
+function viewType(filename: string) {
+  return VIEW_TYPES[filename.split(".").pop()?.toLowerCase() ?? ""] ?? null;
 }

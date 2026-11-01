@@ -9,6 +9,7 @@ import { cotsCategoryOf } from "@/lib/cots";
 import { categoryOf, type InvCategory } from "@/lib/inventory/categories";
 import { partKey } from "@/lib/model/assembly";
 import { thumbKey } from "@/lib/onshape/thumbnails";
+import { isOnshapeDrawingKey } from "@/lib/parts/files";
 import { computeStatus } from "@/lib/status";
 import { versionLabel } from "@/lib/versions/label";
 import { fabChanged } from "@/lib/versions/release";
@@ -16,7 +17,8 @@ import { imageUrl } from "@/lib/storage/r2";
 
 const { parts, partVersions, systems, systemVersions, robots, members, partFiles, merges, mergeMembers, partDrawings, inventoryItems } = schema;
 
-export type PartFileRef = { id: string; type: string; filename: string };
+// `onshape`: a drawing pulled from an Onshape drawing tab (Sync Onshape drawings).
+export type PartFileRef = { id: string; type: string; filename: string; onshape?: boolean };
 
 // Loaded through the part's system, so systemId is always set; only a COTS card added on the COTS
 // page has none (systemId "" there).
@@ -61,7 +63,7 @@ async function load(where: ReturnType<typeof and>, { anySystem = false } = {}): 
   const [files, thumbs, lockedThumbs, labels, groups, shelf] = await Promise.all([
     ids.length
       ? db
-          .select({ id: partFiles.id, partId: partFiles.partId, type: partFiles.type, filename: partFiles.filename })
+          .select({ id: partFiles.id, partId: partFiles.partId, type: partFiles.type, filename: partFiles.filename, r2Key: partFiles.r2Key })
           .from(partFiles)
           .where(inArray(partFiles.partId, ids))
       : [],
@@ -81,7 +83,9 @@ async function load(where: ReturnType<typeof and>, { anySystem = false } = {}): 
     shelfOfParts(rows.map((r) => r.part)),
   ]);
   const filesOf = new Map<string, PartFileRef[]>();
-  for (const { partId, ...f } of files) filesOf.set(partId, [...(filesOf.get(partId) ?? []), f]);
+  for (const { partId, r2Key, ...f } of files) {
+    filesOf.set(partId, [...(filesOf.get(partId) ?? []), isOnshapeDrawingKey(r2Key) ? { ...f, onshape: true } : f]);
+  }
   return rows.map((r) => ({
     ...r.part,
     systemId: r.part.systemId ?? "",
