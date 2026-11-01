@@ -294,7 +294,7 @@ function ViewDrawingButton({ part }: { part: CardPart }) {
   );
 }
 
-// Look for this part's drawing tab in its Onshape documents (named like the part) and bring it in
+// Look for this part's drawing tab in the system's Onshape document (named like the part) and bring it in
 // as its drawing file, then open it. Only on this click: it spends Onshape calls.
 function FindDrawingButton({ part }: { part: CardPart }) {
   const router = useRouter();
@@ -304,7 +304,7 @@ function FindDrawingButton({ part }: { part: CardPart }) {
   async function find() {
     setBusy(true);
     try {
-      const r = await syncOnshapeDrawings(part.systemId, [ownerPartId(part)]);
+      const r = await syncOnshapeDrawings(part.systemId, [ownerPartId(part)], true);
       if (r.linked.length || r.unchanged.length) {
         router.refresh();
         setFound(true);
@@ -312,7 +312,7 @@ function FindDrawingButton({ part }: { part: CardPart }) {
         alert(
           r.found
             ? `None of the ${r.found} Onshape drawing tabs is named "${partTitle(part)}".`
-            : "No drawing tabs in this part's Onshape documents.",
+            : "No drawing tabs in this system's Onshape document.",
         );
       }
     } catch (e) {

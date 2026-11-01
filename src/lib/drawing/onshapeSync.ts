@@ -5,9 +5,11 @@ import { onshapeClient } from "@/lib/onshape/client";
 import { exportDrawingPdf } from "@/lib/onshape/export";
 import { parseOnshapeUrl } from "@/lib/onshape/url";
 import { onshapeDrawingKey, replacePartFile } from "@/lib/parts/files";
-import { putObject } from "@/lib/storage/r2";
+import { getObject, putObject } from "@/lib/storage/r2";
+import type { OnshapeClient } from "@/lib/onshape/client";
 
 const { parts, partFiles, systems } = schema;
+const LISTING_TTL_MS = 10 * 60_000;
 
 export type OnshapeDrawingSync = {
   linked: string[]; // part ids that got a new drawing file
@@ -27,13 +29,19 @@ export const drawingKey = (name: string) =>
     .replace(/[\s_-]*(drawing|dwg)$/, "")
     .trim();
 
-// Pull the official drawings from Onshape (system page → Drawings → Sync Onshape drawings). Only
-// on that button, never in the background: each call counts against the Onshape app's yearly
-// allowance. One elements listing per document the system's in-house parts come from, then one
-// PDF export (start, poll, download) per drawing tab whose name matches a part's name or part
-// number, and only when that tab changed since the last sync. The PDF becomes the part's drawing
-// file, which the card's View drawing opens.
-export async function syncOnshapeDrawings(systemId: string, partIds: string[] | null, memberId: string, deadline: number): Promise<OnshapeDrawingSync> {
+// Pull the official drawings from Onshape (system page → Drawings → Sync Onshape drawings, or the
+// part window's Find drawing). Only on a click, never in the background: each call counts against
+// the Onshape app's yearly allowance. One listing of the drawing tabs in the system's assembly
+// document (`cached`: reuse a listing up to 10 minutes old, 0 calls), then one PDF export (start,
+// poll, download) per tab whose name matches a part's name or part number, and only when that tab
+// changed since its last sync. The PDF becomes the part's drawing file, which View drawing opens.
+export async function syncOnshapeDrawings(
+  systemId: string,
+  partIds: string[] | null,
+  memberId: string,
+  deadline: number,
+  cached = false,
+): Promise<OnshapeDrawingSync> {
   const summary: OnshapeDrawingSync = { linked: [], unchanged: [], left: [], found: 0 };
   const [system] = await db.select({ assemblyUrl: systems.assemblyUrl }).from(systems).where(eq(systems.id, systemId));
   const ref = system?.assemblyUrl ? parseOnshapeUrl(system.assemblyUrl) : null;
@@ -44,9 +52,6 @@ export async function syncOnshapeDrawings(systemId: string, partIds: string[] | 
       displayName: parts.displayName,
       onshapeName: parts.onshapeName,
       partNumber: parts.partNumber,
-      did: parts.sourceDid,
-      wvm: parts.sourceWvm,
-      wid: parts.sourceWid,
     })
     .from(parts)
     .where(
@@ -59,24 +64,16 @@ export async function syncOnshapeDrawings(systemId: string, partIds: string[] | 
     );
   if (!rows.length) return summary;
 
-  // The documents to look in: the system's own, then those its in-house parts come from.
-  const docs = new Map<string, string>([[`${ref.did}/${ref.wvm}/${ref.wvmid}`, `d/${ref.did}/${ref.wvm}/${ref.wvmid}`]]);
-  for (const r of rows) {
-    const wvm = r.wvm?.[0]?.toLowerCase();
-    if (r.did && r.wid && wvm && "wvm".includes(wvm)) docs.set(`${r.did}/${wvm}/${r.wid}`, `d/${r.did}/${wvm}/${r.wid}`);
-  }
-
+  // Only the system's own document (its assembly's, the "manufacture" document): that's where the
+  // team keeps the drawings, not in the documents the parts were first made in.
+  const doc = `d/${ref.did}/${ref.wvm}/${ref.wvmid}`;
   const client = onshapeClient(memberId, ref.baseUrl);
-  // Drawing tabs by matching name; a part's own document wins over another with the same name.
-  const tabs = new Map<string, { path: string; doc: string; eid: string; mv: string; name: string }[]>();
-  for (const [doc, path] of docs) {
-    const elements = await client.json<Element[]>(`documents/${path}/elements?elementType=DRAWING`);
-    for (const e of elements) {
-      if (e.elementType !== "DRAWING") continue;
-      summary.found++;
-      const key = drawingKey(e.name);
-      if (key) tabs.set(key, [...(tabs.get(key) ?? []), { path: `${path}/e/${e.id}`, doc, eid: e.id, mv: e.microversionId ?? "", name: e.name.trim() }]);
-    }
+  const elements = await drawingTabs(client, doc, cached);
+  const tabs = new Map<string, { path: string; eid: string; mv: string; name: string }[]>();
+  for (const e of elements) {
+    summary.found++;
+    const key = drawingKey(e.name);
+    if (key) tabs.set(key, [...(tabs.get(key) ?? []), { path: `${doc}/e/${e.id}`, eid: e.id, mv: e.microversionId ?? "", name: e.name.trim() }]);
   }
   if (!tabs.size) return summary;
 
@@ -92,7 +89,7 @@ export async function syncOnshapeDrawings(systemId: string, partIds: string[] | 
     const names = [r.displayName, r.onshapeName, r.partNumber].filter((n): n is string => !!n).map(drawingKey);
     const options = names.flatMap((n) => tabs.get(n) ?? []);
     if (!options.length) continue;
-    const tab = options.find((t) => r.did && t.doc.startsWith(`${r.did}/`)) ?? options[0];
+    const tab = options[0];
     const key = onshapeDrawingKey(r.id, tab.eid, tab.mv);
     if (tab.mv && keyOf.get(r.id) === key) {
       summary.unchanged.push(r.id);
@@ -109,4 +106,21 @@ export async function syncOnshapeDrawings(systemId: string, partIds: string[] | 
     summary.linked.push(r.id);
   }
   return summary;
+}
+
+// The document's drawing tabs. The listing is kept in R2, so a run of Find drawing clicks within
+// 10 minutes lists the document once.
+async function drawingTabs(client: OnshapeClient, doc: string, cached: boolean): Promise<Element[]> {
+  const key = `cache/drawing-tabs/${doc.replace(/\//g, "_")}.json`;
+  if (cached) {
+    const hit = await getObject(key).catch(() => null);
+    const saved = hit ? ((await hit.json().catch(() => null)) as { at: number; tabs: Element[] } | null) : null;
+    if (saved && Date.now() - saved.at < LISTING_TTL_MS) return saved.tabs;
+  }
+  const elements = await client.json<Element[]>(`documents/${doc}/elements?elementType=DRAWING`);
+  const tabs = elements
+    .filter((e) => e.elementType === "DRAWING")
+    .map(({ id, name, elementType, microversionId }) => ({ id, name, elementType, microversionId }));
+  await putObject(key, new TextEncoder().encode(JSON.stringify({ at: Date.now(), tabs })), "application/json").catch(() => {});
+  return tabs;
 }

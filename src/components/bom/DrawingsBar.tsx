@@ -39,7 +39,7 @@ export function DrawingsBar({
       const r = await syncOnshapeDrawings(systemId, ids.length ? ids : undefined);
       setResult(
         r.found === 0
-          ? "No drawing tabs found in this system's Onshape documents."
+          ? "No drawing tabs found in this system's Onshape document."
           : `${r.linked.length} Onshape drawing${r.linked.length === 1 ? "" : "s"} linked` +
               (r.unchanged.length ? ` · ${r.unchanged.length} already up to date` : "") +
               (r.left.length ? ` · ${r.left.length} left, run it again` : "") +

@@ -10,7 +10,8 @@ import { isUuid } from "@/lib/uuid";
 // Fluid compute lets a Hobby function run up to 300 s; new exports stop at 240 s.
 export const maxDuration = 300;
 
-const Body = z.object({ partIds: z.array(z.uuid()).min(1).max(500).optional() });
+// `cached`: the part window's Find drawing, which may reuse a recent listing of the drawing tabs.
+const Body = z.object({ partIds: z.array(z.uuid()).min(1).max(500).optional(), cached: z.boolean().optional() });
 
 // One round of pulling the system's Onshape drawing tabs onto its parts (system page, Edit mode →
 // Drawings → Sync Onshape drawings, or a drawing window's Sync again). Never called on its own.
@@ -27,7 +28,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ sys
     return NextResponse.json({ error: "Connect your Onshape account first (Profile → Connect Onshape)." }, { status: 403 });
   }
   try {
-    const summary = await syncOnshapeDrawings(systemId, body.data.partIds ?? null, member.id, started + 240_000);
+    const summary = await syncOnshapeDrawings(systemId, body.data.partIds ?? null, member.id, started + 240_000, body.data.cached ?? false);
     if (summary.linked.length) revalidatePath("/robots", "layout");
     return NextResponse.json(summary);
   } catch (err) {

@@ -49,17 +49,25 @@ export function exportAssemblyStep(client: OnshapeClient, assembly: string /* d/
 
 // An Onshape drawing tab as a PDF (the drawing sync on the system page).
 export function exportDrawingPdf(client: OnshapeClient, drawing: string /* d/<did>/<wvm>/<wvmid>/e/<eid> */, deadline: number) {
-  return translate(client, `drawings/${drawing}/translations`, { formatName: "PDF" }, deadline, "this drawing");
+  // A drawing PDF takes a few seconds: the first look waits for it, to save a poll.
+  return translate(client, `drawings/${drawing}/translations`, { formatName: "PDF" }, deadline, "this drawing", 4000);
 }
 
 // Start an Onshape translation, poll it and download the result.
-async function translate(client: OnshapeClient, path: string, params: Record<string, unknown>, deadline: number, what: string): Promise<ArrayBuffer> {
+async function translate(
+  client: OnshapeClient,
+  path: string,
+  params: Record<string, unknown>,
+  deadline: number,
+  what: string,
+  firstWait = 1500,
+): Promise<ArrayBuffer> {
   let t = await client.json<Translation>(path, {
     method: "POST",
     body: JSON.stringify({ ...params, storeInDocument: false }),
   });
   // Every poll counts against the app's yearly API allowance, so wait longer between them.
-  for (let wait = 1500; t.requestState === "ACTIVE"; wait = Math.min(wait * 1.6, 8000)) {
+  for (let wait = firstWait; t.requestState === "ACTIVE"; wait = Math.min(wait * 1.6, 8000)) {
     if (Date.now() > deadline) throw new OnshapeError("Onshape is still preparing this file. Try again in a minute.");
     await new Promise((r) => setTimeout(r, wait));
     t = await client.json<Translation>(`translations/${t.id}`);
