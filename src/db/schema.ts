@@ -4,6 +4,7 @@
 import { sql } from "drizzle-orm";
 import type { Part as DrawingPart } from "../lib/drawing/read";
 import type { PieceRow } from "../lib/inventory/stock";
+import type { Shape } from "../lib/review/shape";
 import {
   bigint,
   boolean,
@@ -131,6 +132,7 @@ export type PartGeometry = {
   onshapeMaterial?: string; // Onshape's own material, e.g. "Aluminum - 6061"
   sheetMetal?: { flatPartId: string }; // an Onshape sheet metal part and its flat pattern body
   wallMm?: number; // wall thickness measured from the mesh when the part is a thin wall (flat or bent sheet)
+  shape?: Shape; // the stock shape read from the mesh (src/lib/review/shape.ts)
 };
 
 // A COTS part's product page; the first is the one its name links to.

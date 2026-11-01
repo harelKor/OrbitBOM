@@ -17,6 +17,7 @@ import { listCategories } from "@/lib/data/categories";
 import { listRawStock } from "@/lib/data/materials";
 import { getCategory } from "@/lib/inventory/categories";
 import { sizeOf, suggestSetup, wallThickness, type Learned } from "./rules";
+import { analyzeShape } from "./shape";
 
 const { parts, systems, partReviews, partHistory, members, aiLogs } = schema;
 
@@ -30,8 +31,11 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stri
 
 // Parts with finer meshes skip the wall check, to keep To Review quick.
 const MAX_WALL_TRIANGLES = 20_000;
+// ...and the shape reading (hex, tube, plate, ...), which is quicker.
+const MAX_SHAPE_TRIANGLES = 400_000;
 // Bumped when measuring learns something new, so parts measured before are measured again.
-const SIZED_VERSION = 2;
+// 3: the stock shape (shape.ts).
+const SIZED_VERSION = 3;
 
 // Measures parts from the robot's built 3D model (R2 files only, no Onshape calls) and stores
 // the size in parts.geometry. A part is measured again only when its Part Studio file changed.
@@ -64,9 +68,12 @@ export async function measureParts<P extends Part>(robotId: string, rows: P[]): 
         // Only a part that isn't flat needs the slower wall check (bent sheet).
         const flat = bbox[0] <= bbox[1] * 0.25;
         const wallMm = !flat && mesh.indices.length <= MAX_WALL_TRIANGLES * 3 ? wallThickness(mesh.positions, mesh.indices) : undefined;
+        const shape = mesh.indices.length <= MAX_SHAPE_TRIANGLES * 3 ? analyzeShape(mesh.positions, mesh.indices) : undefined;
         const geometry = { ...(p.geometry ?? {}), bbox, minDim: bbox[0], sizedFrom: file, sizedV: SIZED_VERSION };
         if (wallMm === undefined) delete geometry.wallMm;
         else geometry.wallMm = wallMm;
+        if (shape === undefined) delete geometry.shape;
+        else geometry.shape = shape;
         sized.set(p.id, geometry);
       }
     }
@@ -74,7 +81,7 @@ export async function measureParts<P extends Part>(robotId: string, rows: P[]): 
   await Promise.all(Array.from({ length: 4 }, worker));
   if (!sized.size) return rows;
 
-  const values = [...sized].map(([id, g]) => sql`(${id}::uuid, ${JSON.stringify({ bbox: g!.bbox, minDim: g!.minDim, sizedFrom: g!.sizedFrom, sizedV: g!.sizedV, wallMm: g!.wallMm ?? null })}::jsonb)`);
+  const values = [...sized].map(([id, g]) => sql`(${id}::uuid, ${JSON.stringify({ bbox: g!.bbox, minDim: g!.minDim, sizedFrom: g!.sizedFrom, sizedV: g!.sizedV, wallMm: g!.wallMm ?? null, shape: g!.shape ?? null })}::jsonb)`);
   await db.execute(
     sql`update parts set geometry = jsonb_strip_nulls(coalesce(parts.geometry, '{}'::jsonb) || v.g) from (values ${sql.join(values, sql`, `)}) as v(id, g) where parts.id = v.id`,
   );
@@ -165,8 +172,10 @@ async function learnedProcesses(): Promise<Learned> {
 }
 
 // A robot's live CAD parts that are missing a material or every process and aren't waiting in
-// To Review, measured from the 3D model.
-export async function partsToSetUp(robotId: string, systemId?: string) {
+// To Review, measured from the 3D model. `unlinked` adds parts not marked COTS that have no
+// inventory item yet (a material Onshape filled in, "Aluminum - 6061", isn't an item), so Suggest
+// setup can link them to their exact Raw Stock item.
+export async function partsToSetUp(robotId: string, systemId?: string, opts: { unlinked?: boolean } = {}) {
   const rows = await db
     .select({ part: parts, systemName: systems.name })
     .from(parts)
@@ -180,7 +189,9 @@ export async function partsToSetUp(robotId: string, systemId?: string) {
         isNull(partReviews.partId),
         eq(parts.isManual, false),
         sql`${parts.classification} <> 'external'`,
-        sql`(${parts.material} is null or coalesce(${parts.preProcess}, ${parts.process1}, ${parts.process2}) is null)`,
+        opts.unlinked
+          ? sql`(${parts.material} is null or coalesce(${parts.preProcess}, ${parts.process1}, ${parts.process2}) is null or (${parts.inventoryItemId} is null and ${parts.classification} <> 'cots'))`
+          : sql`(${parts.material} is null or coalesce(${parts.preProcess}, ${parts.process1}, ${parts.process2}) is null)`,
       ),
     );
   const measured = await measureParts(robotId, rows.map((r) => ({ ...r.part, systemName: r.systemName })));
@@ -199,11 +210,11 @@ async function linkParts(partIds: string[], memberId: string) {
 // inventory item for the ones still without (COTS parts; in-house parts get their Raw Stock item
 // with the material).
 export async function suggestRobotSetups(robotId: string, memberId: string, systemId?: string) {
-  const todo = await partsToSetUp(robotId, systemId);
+  const todo = await partsToSetUp(robotId, systemId, { unlinked: true });
   const edits = todo.flatMap((t) => (t.guess ? [{ id: t.part.id, ...t.guess }] : []));
   const { changed, batchId } = await applySuggestions(edits, { memberId, source: "rule", via: "ui" });
   if (changed) {
-    await logAiAction({ source: "rule", tool: "Suggest setup", memberId, batchId, parts: changed, summary: `Set up ${changed} of ${todo.length} parts that had no material or processes` });
+    await logAiAction({ source: "rule", tool: "Suggest setup", memberId, batchId, parts: changed, summary: `Set up ${changed} of ${todo.length} parts that had no material, processes or inventory item` });
   }
   const linked = await linkParts(todo.map((t) => t.part.id), memberId);
   return { checked: todo.length, suggested: changed, linked };

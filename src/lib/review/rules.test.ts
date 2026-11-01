@@ -59,6 +59,7 @@ describe("suggestSetup", () => {
 
   it("only adds processes to a part that has a material, and keeps processes someone set", () => {
     expect(suggestSetup(part({ classification: "inhouse", material: "Polycarbonate 2mm" }), none)?.changes).toEqual({
+      inventoryItemId: "Polycarbonate 2mm",
       preProcess: null,
       process1: "laser",
       process2: null,

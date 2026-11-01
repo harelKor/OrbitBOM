@@ -159,6 +159,8 @@ function summarise(p: typeof parts.$inferSelect & { systemName?: string }) {
     // pattern), wall_mm the measured sheet thickness of a flat or bent thin wall.
     sheet_metal: !!p.geometry?.sheetMetal,
     wall_mm: p.geometry?.wallMm ?? null,
+    // The stock shape read from the 3D model (hex, box-tube, round-tube, rod, spacer, plate, block).
+    shape: p.geometry?.shape ?? null,
     pre_process: machineName(p.preProcess),
     process_1: machineName(p.process1),
     process_2: machineName(p.process2),
