@@ -46,7 +46,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
             <FastLink
               key={t.title}
               href={t.href}
-              className="group relative flex min-h-0 w-full flex-1 flex-col md:h-full md:min-h-[16rem] justify-end overflow-hidden rounded-3xl border-[6px] border-[#1a3bff]/55 bg-[#0d111c] shadow-[0_0_24px_-6px_rgba(0,24,230,0.35)] transition-all duration-300 hover:border-[#2952ff]/80 hover:shadow-[0_0_32px_-4px_rgba(26,59,255,0.55)] active:scale-[0.98]"
+              className="group relative flex min-h-0 w-full flex-1 flex-col md:h-full md:min-h-[16rem] justify-end overflow-hidden rounded-3xl border-[4px] border-[#1a3bff]/55 bg-[#0d111c] shadow-[0_0_24px_-6px_rgba(0,24,230,0.35)] transition-all duration-300 hover:border-[#2952ff]/80 hover:shadow-[0_0_32px_-4px_rgba(26,59,255,0.55)] active:scale-[0.98]"
             >
               <Image
                 src={t.image}
