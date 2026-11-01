@@ -273,7 +273,7 @@ function MadePartCard({
 
           <div className="flex min-w-0 flex-wrap items-center gap-1">
             <StatusField part={part} save={save} size="sm" />
-            {!post && (part.material || part.inventoryItemId || work) && <MaterialField part={part} save={save} className={pill} />}
+            {!post && (part.material || part.inventoryItemId || work) && <MaterialField part={part} save={save} className={pill} noOpen />}
             {!post && machines.map((slot) => (
               <span key={slot.key} className="contents">
                 <span className="text-[10px] text-faint">→</span>

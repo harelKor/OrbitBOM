@@ -12,12 +12,14 @@ import { useInventoryPopup } from "@/components/inventory/InventoryPopup";
 import { ShelfCoversPrompt } from "@/components/cots/ShelfPill";
 import { SLOTS, TypeBadge, type SaveFn } from "./fields";
 import { usePartDetails } from "./PartDetailsHost";
+import { CardSuggest } from "./CardSuggest";
 import { partIds, partTitle, type CardPart } from "./types";
 
 // A part as one row of the List view: thumbnail, name, "Qty · material", the machine it's at
 // (COTS: the product's site), its type badge (coloured like the card's) and its status, washed in
 // the status colour like its card. A linked part gets a button that opens its inventory item, and a
-// COTS part the shelf covers gets the In Stock? pill. A tap elsewhere opens the part's details window.
+// COTS part the shelf covers gets the In Stock? pill. Suggest (or ✓ / ✕ for a
+// waiting suggestion) sits before them. A tap elsewhere opens the part's details window.
 export function PartListRow({
   part,
   save,
@@ -62,20 +64,23 @@ export function PartListRow({
         </>
       }
       actions={
-        part.inventoryItemId && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              openItem(part.inventoryItemId!);
-            }}
-            className="press flex h-8 w-8 items-center justify-center rounded-full border border-line-strong bg-raised text-fg-2 hover:border-sky-400/40 hover:text-accent active:scale-[0.98]"
-            aria-label="Open inventory item"
-            title="Open inventory item"
-          >
-            <Icon name="box" />
-          </button>
-        )
+        <>
+          <CardSuggest part={part} variant="row" />
+          {part.inventoryItemId && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                openItem(part.inventoryItemId!);
+              }}
+              className="press flex h-8 w-8 items-center justify-center rounded-full border border-line-strong bg-raised text-fg-2 hover:border-sky-400/40 hover:text-accent active:scale-[0.98]"
+              aria-label="Open inventory item"
+              title="Open inventory item"
+            >
+              <Icon name="box" />
+            </button>
+          )}
+        </>
       }
       onOpen={open}
       selected={selected}

@@ -17,6 +17,7 @@ import { useCan, useManage } from "@/components/shell/ModeContext";
 import { formatPrice, useCurrency } from "@/components/cots/currency";
 import { ShelfPill } from "@/components/cots/ShelfPill";
 import { Icon } from "@/components/ui/Icon";
+import { SuggestIcon } from "@/components/ui/SuggestIcon";
 import { usePhone } from "@/components/ui/usePhone";
 import { getMachine } from "@/config/machines";
 import { FabVersionBadge, PartVersionsButton } from "@/components/versions/PartVersionsWindow";
@@ -643,7 +644,7 @@ function useSuggest(part: CardPart, enabled: boolean): {
 
   const suggestButton = (
     <button type="button" className={`btn h-8 gap-1.5 text-xs active:scale-[0.98] ${busy === "suggest" ? "animate-pulse" : ""}`} disabled={!!busy} onClick={() => run("suggest")} title="Guess material, machines and the inventory item for this part">
-      <Icon name="spark" className="h-3.5 w-3.5 text-amber-500" />
+      <SuggestIcon className="h-3.5 w-3.5 text-amber-500" />
       {busy === "suggest" ? "Suggesting…" : "Suggest"}
     </button>
   );

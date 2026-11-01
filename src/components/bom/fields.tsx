@@ -153,7 +153,8 @@ export function TextField({
 
 // A part's material is an inventory item (Raw Stock first, then the rest): picking one saves its
 // name and ties the part to it.
-export function MaterialField({ part, save, className }: Props & { className?: string }) {
+// `noOpen`: no box button beside it (the part card keeps its material line clean).
+export function MaterialField({ part, save, className, noOpen = false }: Props & { className?: string; noOpen?: boolean }) {
   const locked = !useCan("work");
   const { inventory } = useBom();
   const materials = useMaterials();
@@ -186,7 +187,7 @@ export function MaterialField({ part, save, className }: Props & { className?: s
           />
         )}
       </Popover>
-      {linked && openStock && (
+      {linked && openStock && !noOpen && (
         <button type="button" onClick={openStock} className="press flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-line text-subtle hover:border-accent hover:text-accent" aria-label="See it in the inventory" title="See it in the inventory">
           <Icon name="box" className="h-3.5 w-3.5" />
         </button>

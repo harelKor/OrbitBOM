@@ -27,6 +27,7 @@ import { useStoredChoice } from "@/components/ui/useStoredChoice";
 import { TableView } from "./TableView";
 import { type CardPart } from "./types";
 import { Icon } from "@/components/ui/Icon";
+import { SuggestIcon } from "@/components/ui/SuggestIcon";
 
 // Parts grouped by system, systems in name order.
 function bySystem(parts: CardPart[]): [string, CardPart[]][] {
@@ -273,7 +274,7 @@ export function BomView({
               onClick={() => setMode((m) => (m === "suggest" ? null : "suggest"))}
               title="Pick parts, set up or not, and get fresh setup and inventory suggestions for To Review"
             >
-              <Icon name="spark" className="h-4 w-4" />
+              <SuggestIcon className="h-4 w-4 text-amber-500" />
               Suggest
             </button>
           )}

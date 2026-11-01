@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { suggestParts } from "@/app/(app)/parts-actions";
-import { Icon } from "@/components/ui/Icon";
+import { SuggestIcon } from "@/components/ui/SuggestIcon";
 import type { CardPart } from "./types";
 
 // System page → Suggest: pick any parts (set up or not) and get fresh setup suggestions plus
@@ -63,7 +63,7 @@ export function SuggestBar({
           Clear
         </button>
         <button className="btn-primary inline-flex items-center gap-1.5" onClick={run} disabled={busy || ids.length === 0}>
-          <Icon name="spark" className="h-4 w-4" />
+          <SuggestIcon className="h-4 w-4" />
           {busy ? "Suggesting…" : `Suggest setup for ${ids.length} part${ids.length === 1 ? "" : "s"}`}
         </button>
         <button className="btn ml-auto" onClick={onDone} disabled={busy}>

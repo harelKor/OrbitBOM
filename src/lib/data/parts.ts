@@ -15,7 +15,7 @@ import { versionLabel } from "@/lib/versions/label";
 import { fabChanged } from "@/lib/versions/release";
 import { imageUrl } from "@/lib/storage/r2";
 
-const { parts, partVersions, systems, systemVersions, robots, members, partFiles, merges, mergeMembers, partDrawings, inventoryItems } = schema;
+const { parts, partVersions, systems, systemVersions, robots, members, partFiles, merges, mergeMembers, partDrawings, inventoryItems, partReviews } = schema;
 
 // `onshape`: a drawing pulled from an Onshape drawing tab (Sync Onshape drawings).
 export type PartFileRef = { id: string; type: string; filename: string; onshape?: boolean };
@@ -34,6 +34,7 @@ export type BomPart = Omit<typeof parts.$inferSelect, "systemId"> & {
   hasDrawing: boolean;
   shelf: Shelf | null;
   shelfSuggestion: ShelfSuggestion | null;
+  review: boolean; // a suggestion waits in To Review: the card shows ✓ / ✕
   // The state the part was released to fab at (plan/fab-version-lock.md); To Fab shows it.
   fabLock: FabLock | null;
 };
@@ -52,10 +53,11 @@ export type FabLock = {
 };
 
 async function load(where: ReturnType<typeof and>, { anySystem = false } = {}): Promise<BomPart[]> {
-  const base = db.select({ part: parts, systemName: systems.name, lastModifiedByName: members.name, drawingOf: partDrawings.partId }).from(parts);
+  const base = db.select({ part: parts, systemName: systems.name, lastModifiedByName: members.name, drawingOf: partDrawings.partId, reviewOf: partReviews.partId }).from(parts);
   const rows = await (anySystem ? base.leftJoin(systems, eq(systems.id, parts.systemId)) : base.innerJoin(systems, eq(systems.id, parts.systemId)))
     .leftJoin(members, eq(members.id, parts.lastModifiedBy))
     .leftJoin(partDrawings, eq(partDrawings.partId, parts.id))
+    .leftJoin(partReviews, eq(partReviews.partId, parts.id))
     .where(where)
     .orderBy(asc(parts.partNumber), asc(parts.displayName), asc(parts.onshapeName));
   // Files, thumbnail links, groups and the shelf don't depend on each other: one round trip.
@@ -97,6 +99,7 @@ async function load(where: ReturnType<typeof and>, { anySystem = false } = {}): 
     systemName: r.systemName ?? "",
     lastModifiedByName: r.lastModifiedByName,
     hasDrawing: r.drawingOf !== null,
+    review: r.reviewOf !== null,
     files: filesOf.get(r.part.id) ?? [],
     shelf: shelf.shelf.get(r.part.id) ?? null,
     shelfSuggestion: shelf.suggestion.get(r.part.id) ?? null,
