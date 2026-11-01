@@ -51,7 +51,7 @@ export function TopBar({ onMenu, onRobots, navHidden }: { onMenu: () => void; on
       {partPages && (
         <>
           {/* On phones the search takes its own row under the buttons, so the buttons fit one row. */}
-          <div className="relative min-w-40 flex-1 max-sm:order-last max-sm:basis-full md:max-w-sm">
+          <div className={`relative min-w-40 flex-1 max-sm:order-last max-sm:basis-full md:max-w-sm ${navHidden ? "" : "lg:ml-24"}`}>
             <input
               ref={search}
               value={filters.q}
