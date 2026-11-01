@@ -208,36 +208,46 @@ function useDismissed(id: string) {
 
 // The card's suggestion when the shelf already covers a part that isn't In Stock yet (Harel: a
 // suggestion, never automatic). A card Inventory sent to refill the shelf asks once the shelf has
-// the item's whole need (its season count). Dismissing hides it in this browser.
+// the item's whole need (its season count). A compact pill so it never makes the card taller: a tap
+// marks the part In Stock, ✕ dismisses it in this browser. Cards and List rows both show it.
 export function ShelfCoversPrompt({ part, shelf, save }: { part: CardPart; shelf: Shelf | null; save: SaveFn }) {
   const work = useCan("work");
   const dismissed = useDismissed(part.id);
   if (!work || !shelf || dismissed || computeStatus(part) === COTS_IN_STOCK) return null;
   if (shelf.restock ? !shelf.met : shelf.sheet || shelf.covered < Math.max(part.quantity, 1)) return null;
+  const count = shelf.restock ? formatStock(shelf.inStock, shelf.sheet) : `${shelf.covered}/${part.quantity}`;
+  const why = shelf.restock ? `The shelf has ${count}, all that's needed. Mark In Stock` : `The shelf has ${part.quantity} for this. Mark In Stock`;
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-emerald-500/50 bg-emerald-500/10 px-2 py-1.5 text-xs">
-      <span className="min-w-0 flex-1 text-fg-2">
-        {shelf.restock ? (
-          <>
-            The shelf has <span className="font-mono font-semibold tabular-nums">{formatStock(shelf.inStock, shelf.sheet)}</span>, all that&apos;s needed. Mark In Stock?
-          </>
-        ) : (
-          <>
-            The shelf has <span className="font-mono font-semibold tabular-nums">{part.quantity}</span> for this. Mark In Stock?
-          </>
-        )}
-      </span>
-      <button type="button" onClick={() => save({ status: COTS_IN_STOCK })} className="press rounded-md bg-emerald-600 px-2 py-0.5 font-semibold text-white hover:bg-emerald-500">
-        In Stock
+    <span className="inline-flex max-w-full min-w-0 shrink-0 items-center overflow-hidden rounded-full border border-emerald-500/60 bg-emerald-500/10 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          save({ status: COTS_IN_STOCK });
+        }}
+        className="press flex min-w-0 items-center gap-1 py-0.5 pr-1 pl-2 hover:bg-emerald-600 hover:text-white"
+        title={why}
+        aria-label={why}
+      >
+        <span aria-hidden>✓</span>
+        <span className="truncate">
+          <span className="sm:hidden">Stock?</span>
+          <span className="hidden sm:inline">In Stock?</span>
+        </span>
+        <span className="hidden font-mono tabular-nums sm:inline">({count})</span>
       </button>
       <button
         type="button"
-        onClick={() => dismiss(part.id)}
-        className="press rounded p-0.5 text-subtle hover:text-fg"
+        onClick={(e) => {
+          e.stopPropagation();
+          dismiss(part.id);
+        }}
+        className="press flex shrink-0 items-center self-stretch border-l border-emerald-500/40 px-1 text-subtle hover:bg-raised hover:text-fg"
         aria-label="Not now"
+        title="Not now"
       >
-        <Icon name="close" className="h-3.5 w-3.5" />
+        <Icon name="close" className="h-3 w-3" />
       </button>
-    </div>
+    </span>
   );
 }

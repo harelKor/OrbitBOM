@@ -774,7 +774,7 @@ function Section({
         <p className={`text-sm text-subtle ${onDropParts ? "rounded-lg border border-dashed border-line py-6 text-center" : ""}`}>{empty}</p>
       ) : (
         <OpenBatchContext.Provider value={{ id: openBatch, set: setOpenBatch }}>
-          <div className="card-grid" style={{ "--card-min": small ? "150px" : "200px" } as React.CSSProperties}>{children}</div>
+          <div className="card-grid" style={{ "--card-min": small ? "150px" : "220px" } as React.CSSProperties}>{children}</div>
         </OpenBatchContext.Provider>
       )}
     </section>

@@ -240,12 +240,12 @@ export function CotsCard({
           <Price part={part} big={order} />
         </div>
 
-        {!shelfOnThumb && hasShelfTag && (
-          <div className="flex min-w-0">
-            <ShelfPill part={part} shelf={shelf} save={save} />
+        {((!shelfOnThumb && hasShelfTag) || !struck) && (
+          <div className="flex min-w-0 items-center gap-1.5 empty:hidden">
+            {!shelfOnThumb && hasShelfTag && <ShelfPill part={part} shelf={shelf} save={save} />}
+            {!struck && <ShelfCoversPrompt part={part} shelf={shelf} save={save} />}
           </div>
         )}
-        {!struck && <ShelfCoversPrompt part={part} shelf={shelf} save={save} />}
       </div>
     </div>
   );

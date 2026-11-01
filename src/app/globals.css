@@ -318,10 +318,11 @@ body {
   }
 
   /* Part card grids follow the card size slider (right panel). Pass the default card width in
-     --card-min. A card never grows past its column (min-width: 0), so small cards can't overlap. */
+     --card-min; the 220px default matches Inventory's item cards, so a slider position shows as many
+     part cards per row as item cards. A card never grows past its column (min-width: 0), so small cards can't overlap. */
   .card-grid {
     @apply grid gap-3;
-    grid-template-columns: repeat(auto-fill, minmax(min(max(calc(var(--card-min, 400px) * var(--card-scale, 1)), 110px), 100%), 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(max(calc(var(--card-min, 220px) * var(--card-scale, 1)), 110px), 100%), 1fr));
   }
   .card-grid > * {
     @apply w-full max-w-full min-w-0;

@@ -258,7 +258,7 @@ export function CotsView({
         })}
       </PartList>
     ) : (
-      <div className="card-grid" style={{ "--card-min": small ? "200px" : list === "order" ? "300px" : "260px" } as React.CSSProperties}>
+      <div className="card-grid" style={{ "--card-min": small ? "200px" : list === "order" ? "300px" : "220px" } as React.CSSProperties}>
         {rows.map((row) => {
           const grouped = row.members.length > 1;
           const crossed = row.members.every((m) => struck.has(m.id));

@@ -19,7 +19,6 @@ import { ownerPartId, partIds, partTitle, type CardPart } from "./types";
 import { downloadDrawing } from "@/lib/drawing/download";
 import { DrawingPreview } from "@/components/drawing/DrawingPreview";
 import { usePartDetails } from "./PartDetailsHost";
-import { useInventoryPopup } from "@/components/inventory/InventoryPopup";
 import { CotsCard } from "@/components/cots/CotsCard";
 import { NoteCloud } from "./NoteCloud";
 import { downloadExport } from "./downloadExport";
@@ -37,7 +36,8 @@ const pill = "rounded-full border border-line-strong bg-raised px-2 py-0.5 text-
 export const isCardBodyClick = (e: React.MouseEvent) => !(e.target as HTMLElement).closest("a, button, input, select, textarea, label, [role=dialog], dialog");
 
 // The part card: the Onshape thumbnail is the hero, with quantity, type and the Merged tag on its
-// top-left, Download (and the inventory item, when the part is linked to one) on its top-right and
+// top-left, Download on its top-right (the linked inventory item opens from the details window and
+// the List view's row) and
 // the version tag on its bottom-right; below it two dense rows: the name, then
 // the status and the material → process pills. Properties only open their editors in Edit mode,
 // and a click anywhere else on the card opens the part's details window (3D, notes, drawing,
@@ -105,7 +105,6 @@ function MadePartCard({
   const [drawing, setDrawing] = useState(false);
   // A drawing file (uploaded in the details window, or synced from an Onshape drawing tab).
   const drawingFile = part.files.find((f) => f.type === "drawing");
-  const { openItem } = useInventoryPopup();
 
   return (
     <div id={`part-${part.id}`} data-selected={!!selected} data-part={partIds(part)} style={style ?? statusTint(computeStatus(part))} onClick={openDetails} className={`card-interactive group flex w-full max-w-full min-w-0 overflow-hidden scroll-mt-20 cursor-pointer flex-col text-sm target:border-accent target:ring-2 target:ring-accent ${checked ? "opacity-60" : ""}`}>
@@ -176,11 +175,6 @@ function MadePartCard({
             </button>
           ) : (
             <>
-              {part.inventoryItemId && (
-                <button type="button" onClick={() => openItem(part.inventoryItemId!)} className="overlay-btn" aria-label="Open its inventory item" title="Open its inventory item">
-                  <Icon name="box" />
-                </button>
-              )}
               {(format || part.files.length > 0 || part.hasDrawing) && <DownloadMenu part={part} format={format} />}
             </>
           )}

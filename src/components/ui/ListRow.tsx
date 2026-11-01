@@ -13,6 +13,7 @@ export function ListRow({
   title,
   detail,
   pills,
+  actions,
   onOpen,
   selected,
   onToggleSelect,
@@ -26,6 +27,7 @@ export function ListRow({
   title: React.ReactNode;
   detail?: React.ReactNode;
   pills?: React.ReactNode;
+  actions?: React.ReactNode; // small buttons before the chevron; they stop the click themselves
   onOpen: () => void;
   selected?: boolean;
   onToggleSelect?: () => void;
@@ -59,6 +61,7 @@ export function ListRow({
         {detail && <span className="truncate text-xs text-muted">{detail}</span>}
         {pills && <span className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">{pills}</span>}
       </span>
+      {actions && !onToggleSelect && <span className="flex shrink-0 items-center gap-1">{actions}</span>}
       {onToggleSelect ? <CheckBadge checked={!!selected} /> : <Icon name="chevron" className="h-4 w-4 shrink-0 text-muted" />}
     </div>
   );
