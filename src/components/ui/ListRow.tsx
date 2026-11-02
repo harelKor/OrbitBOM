@@ -4,7 +4,7 @@ import { CheckBadge } from "./CheckBadge";
 import { Icon } from "./Icon";
 
 // One row of a page's List view (made for phones): a square picture, the name, a muted detail
-// line, small pills, and a chevron. A tap opens the thing's window; while the page is selecting,
+// line, and small pills. A tap opens the thing's window; while the page is selecting,
 // a tap selects the row instead. With an `href` (the product's page) the name is a link that opens
 // it in a new tab, like a card's name; the rest of the row still opens the window.
 export function ListRow({
@@ -30,7 +30,7 @@ export function ListRow({
   href?: string | null;
   detail?: React.ReactNode;
   pills?: React.ReactNode;
-  actions?: React.ReactNode; // small buttons before the chevron; they stop the click themselves
+  actions?: React.ReactNode; // small buttons at the row's right end; they stop the click themselves
   onOpen: () => void;
   selected?: boolean;
   onToggleSelect?: () => void;
@@ -46,7 +46,7 @@ export function ListRow({
       onKeyDown={(e) => e.key === "Enter" && e.target === e.currentTarget && act()}
       aria-pressed={onToggleSelect ? !!selected : undefined}
       style={style}
-      className={`flex min-w-0 cursor-pointer items-center gap-3.5 rounded-2xl border border-line bg-surface/90 px-3.5 py-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] transition-all duration-150 hover:border-sky-400/40 active:not-[:has(:is(button,a,input,select,textarea,[role=dialog]):active)]:scale-[0.99] active:not-[:has(:is(button,a,input,select,textarea,[role=dialog]):active)]:bg-raised ${
+      className={`flex min-w-0 cursor-pointer items-center gap-3.5 rounded-2xl border border-line bg-surface/90 py-3 pr-3 pl-3.5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] transition-all duration-150 hover:border-sky-400/40 active:not-[:has(:is(button,a,input,select,textarea,[role=dialog]):active)]:scale-[0.99] active:not-[:has(:is(button,a,input,select,textarea,[role=dialog]):active)]:bg-raised ${
         selected ? "ring-2 ring-sky-400" : ""
       } ${className}`}
       {...rest}
@@ -78,7 +78,7 @@ export function ListRow({
         {pills && <span className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">{pills}</span>}
       </span>
       {actions && !onToggleSelect && <span className="flex shrink-0 items-center gap-1">{actions}</span>}
-      {onToggleSelect ? <CheckBadge checked={!!selected} /> : <Icon name="chevron" className="h-4 w-4 shrink-0 text-muted" />}
+      {onToggleSelect && <CheckBadge checked={!!selected} />}
     </div>
   );
 }

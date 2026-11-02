@@ -15,13 +15,13 @@ export default async function CotsPage() {
     { href: "/cots/order-list", title: "Order List", count: ordering, text: `Being ordered · ${counts.get(COTS_IN_STOCK) ?? 0} in stock`, icon: "cart" as IconName },
   ];
   return (
-    <div className="space-y-5">
+    <div className="flex min-h-[calc(100dvh-var(--topbar-h,2.75rem)-2rem)] flex-col gap-5 pb-4 md:min-h-[calc(100dvh-var(--topbar-h,2.75rem)-3rem)]">
       <div>
         <div className="text-xs font-semibold tracking-wide text-subtle uppercase">Shop</div>
         <h1 className="display text-3xl text-accent">COTS</h1>
         <p className="mt-1 max-w-3xl text-sm text-muted">The parts the team buys, from released to on the shelf.</p>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 sm:gap-5">
+      <div className="grid flex-1 grid-rows-[3fr_3fr_2fr] gap-3 sm:grid-cols-2 sm:grid-rows-[3fr_1fr] sm:gap-5">
         {boxes.map((b) => (
           <Link
             key={b.href}

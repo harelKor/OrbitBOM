@@ -125,12 +125,13 @@ export function LeftNav({
                 {[
                   { href: "/cots/released", name: "Released" },
                   { href: "/cots/order-list", name: "Order List" },
+                  { href: "/cots/history", name: "Order History" },
                 ].map((l) => (
                   <FastLink
                     key={l.href}
                     href={l.href}
                     className={`press flex items-center gap-2 rounded-md px-2 py-1 text-xs ${
-                      pathname === "/inventory" && `/inventory?${query.toString()}` === l.href ? "bg-accent/15 text-white" : "text-fg-2 hover:bg-raised hover:text-fg"
+                      pathname === l.href ? "bg-accent/15 text-white" : "text-fg-2 hover:bg-raised hover:text-fg"
                     }`}
                   >
                     {l.name}
