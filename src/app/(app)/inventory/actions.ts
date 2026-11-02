@@ -172,6 +172,25 @@ async function applyPhoto(itemId: string, key: string, ctx: { memberId: string; 
   return null;
 }
 
+// The item window's ⋯ > Delete photo: the item goes back to its category's picture (or a linked
+// part's CAD picture). The stored file is removed unless something else still shows it.
+export async function removeItemPhoto(itemId: string): Promise<ActionResult> {
+  const member = await requireCapability("work");
+  if (!isUuid(itemId)) return { error: "Unknown item." };
+  const [before] = await db.select({ imagePath: inventoryItems.imagePath }).from(inventoryItems).where(eq(inventoryItems.id, itemId));
+  if (!before) return { error: "That item was deleted." };
+  if (!before.imagePath) return { error: "This picture comes from a BOM part's CAD, so there's no photo to delete." };
+  await db.update(inventoryItems).set({ imagePath: null }).where(eq(inventoryItems.id, itemId));
+  await recordItemChanges(db, itemId, before, { imagePath: null }, { memberId: member.id, via: "ui" });
+  const key = before.imagePath;
+  if (!/^(thumbs|thumbnails)\//.test(key)) {
+    const [shared] = await db.select({ id: inventoryItems.id }).from(inventoryItems).where(eq(inventoryItems.imagePath, key)).limit(1);
+    if (!shared) await deleteObject(key).catch(() => {});
+  }
+  refresh();
+  return { message: "Photo deleted." };
+}
+
 export async function deleteItem(itemId: string) {
   await requireCapability("manage");
   if (!isUuid(itemId)) return;

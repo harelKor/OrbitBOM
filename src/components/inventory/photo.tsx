@@ -37,9 +37,9 @@ export async function uploadPhoto(file: File): Promise<{ key: string; preview: s
   }
 }
 
-// "Take photo" opens the phone's camera straight away; "Upload" picks a file (or a photo from
-// the phone's gallery). On a computer both pick a file.
-export function PhotoButtons({ onPhoto, compact = false }: { onPhoto: (p: { key: string; preview: string }) => void; compact?: boolean }) {
+// The camera and file pickers behind "Take photo" and "Upload": `inputs` must stay mounted (put
+// them outside any menu that closes), `take()` and `upload()` open them.
+export function usePhotoPicker(onPhoto: (p: { key: string; preview: string }) => void) {
   const camera = useRef<HTMLInputElement>(null);
   const file = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -66,15 +66,27 @@ export function PhotoButtons({ onPhoto, compact = false }: { onPhoto: (p: { key:
       }}
     />
   );
+  const inputs = (
+    <>
+      {input(camera, true)}
+      {input(file, false)}
+    </>
+  );
+  return { inputs, busy, error, takePhoto: () => camera.current?.click(), upload: () => file.current?.click() };
+}
+
+// "Take photo" opens the phone's camera straight away; "Upload" picks a file (or a photo from
+// the phone's gallery). On a computer both pick a file.
+export function PhotoButtons({ onPhoto, compact = false }: { onPhoto: (p: { key: string; preview: string }) => void; compact?: boolean }) {
+  const { inputs, busy, error, takePhoto, upload } = usePhotoPicker(onPhoto);
   const btn = compact ? "btn min-h-9 px-2.5 text-xs" : "btn min-h-11";
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {input(camera, true)}
-      {input(file, false)}
-      <button type="button" className={btn} disabled={busy} onClick={() => camera.current?.click()}>
+      {inputs}
+      <button type="button" className={btn} disabled={busy} onClick={takePhoto}>
         📷 {busy ? "Uploading…" : "Take photo"}
       </button>
-      <button type="button" className={btn} disabled={busy} onClick={() => file.current?.click()}>
+      <button type="button" className={btn} disabled={busy} onClick={upload}>
         <Icon name="download" className="h-4 w-4 rotate-180" /> Upload
       </button>
       {error && <span className="text-xs text-rose-700">{error}</span>}

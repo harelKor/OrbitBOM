@@ -13,6 +13,7 @@ import {
   loadItemHistory,
   materialPopup,
   readProductLink,
+  removeItemPhoto,
   setItemCondition,
   setItemLocation,
   setItemPhoto,
@@ -20,9 +21,9 @@ import {
   setSeasonNeed,
   unlinkItemProduct,
 } from "@/app/(app)/inventory/actions";
-import { updateCotsParts } from "@/app/(app)/cots/actions";
 import { textOn } from "@/components/bom/options";
 import { Dialog } from "@/components/Dialog";
+import { Popover } from "@/components/bom/Popover";
 import { Can, EditOnly, useCan } from "@/components/shell/ModeContext";
 import { Chevron } from "@/components/ui/Chevron";
 import { Icon } from "@/components/ui/Icon";
@@ -33,11 +34,11 @@ import type { PartChanges } from "@/lib/parts/changes";
 import type { Offer, ProductGroup } from "@/lib/inventory/productGroups";
 import { type PieceOp, applyPieceOp, countPieces, formatStock, isSheetGoods, parseStock, pieceBase, pieceLabel, pieceRows, snapStock, sortedRows, stepStock } from "@/lib/inventory/stock";
 import { bestOffer, isLink, searchStores } from "./AddBox";
-import { CountBox, ItemPrice, NewSize, PieceStepper, conditionColor, hostOf } from "./ItemCard";
+import { CartButton, CountBox, ItemPrice, NewSize, PieceStepper, conditionColor, hostOf } from "./ItemCard";
 import { ItemForm, draftOf } from "./ItemForm";
-import { CotsOrderBox, type CotsOrderInfo } from "./CotsOrderBox";
+import { CotsOrderBox, showsOrder, type CotsOrderInfo } from "./CotsOrderBox";
 import { ItemHistory } from "./ItemHistory";
-import { PhotoButtons } from "./photo";
+import { PhotoButtons, usePhotoPicker } from "./photo";
 import { ToBomDialog } from "./ToBomDialog";
 import { LocationPicker } from "./LocationPicker";
 import { SeasonTag } from "./SeasonTag";
@@ -185,15 +186,12 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
             onSaved={() => after({})}
             onChange={(change, run) => saveNow(state.id, change, run)}
             onClose={close}
+            // Only a window opened from the COTS page changes the order; anywhere else it's read-only.
             order={
               state.order ??
-              (state.data?.order
-                ? {
-                    info: { ...state.data.order, href: item.openOrder ? orderHref(item.openOrder) : undefined },
-                    save: (changes) => saveNow(state.id, () => ({}), () => updateCotsParts([{ id: state.data!.order!.id, changes }])),
-                  }
-                : null)
+              (state.data?.order ? { info: { ...state.data.order, href: item.openOrder ? orderHref(item.openOrder) : undefined }, save: () => {} } : null)
             }
+            orderEditable={!!state.order}
           />
         )}
         {state?.kind === "material" && !state.data && <p className="py-8 text-center text-sm text-muted">Loading…</p>}
@@ -438,6 +436,7 @@ function ItemBody({
   onChange,
   onClose,
   order,
+  orderEditable,
 }: {
   item: Item;
   data: ItemData | null;
@@ -447,6 +446,7 @@ function ItemBody({
   onChange: ChangeItem;
   onClose: () => void;
   order: CotsOrderContext | null;
+  orderEditable: boolean;
 }) {
   const [mode, setMode] = useState<"view" | "edit" | "toBom">("view");
   const [spreadOpen, setSpreadOpen] = useState(false);
@@ -482,21 +482,34 @@ function ItemBody({
   const usage = item.usage;
   // Only the item's own photo gets the picture box; the dimmed category drawing stays on the card.
   const picture = photo ?? item.thumbUrl ?? null;
+  const onPhoto = (p: { key: string; preview: string }) =>
+    startPhoto(async () => {
+      setPhoto(p.preview);
+      const r = await setItemPhoto(item.id, p.key);
+      if (r.error) setMessage(r.error);
+      else onSaved();
+    });
   const photoButtons = (
     <Can cap="work">
-      <PhotoButtons
-        compact
-        onPhoto={(p) =>
-          startPhoto(async () => {
-            setPhoto(p.preview);
-            const r = await setItemPhoto(item.id, p.key);
-            if (r.error) setMessage(r.error);
-            else onSaved();
-          })
-        }
-      />
+      <PhotoButtons compact onPhoto={onPhoto} />
     </Can>
   );
+  // With a picture, Take / Upload / Delete photo live in the ⋯ menu on it.
+  const picker = usePhotoPicker(onPhoto);
+  const deletePhoto = () => {
+    if (!confirm(`Delete the photo of "${item.name}"?`)) return;
+    startPhoto(async () => {
+      const r = await removeItemPhoto(item.id);
+      setMessage(r.error ?? r.message ?? null);
+      if (!r.error) {
+        setPhoto(null);
+        onChange(() => ({ thumbUrl: null }), async () => ({}));
+        onSaved();
+      }
+    });
+  };
+  const gap = missing(item, "any");
+  const cart = (gap > 0 || item.openOrder) && <CartButton item={item} gap={gap} onLeave={onClose} onSent={onSaved} />;
 
   if (mode === "edit" && data)
     return (
@@ -521,18 +534,53 @@ function ItemBody({
   const tag = "rounded-full px-2.5 py-0.5 text-xs font-semibold max-sm:inline-flex max-sm:min-h-10 max-sm:items-center max-sm:px-3.5 max-sm:text-sm";
   const caret = { backgroundPosition: "right 10px center, right 6px center", backgroundSize: "4px 4px", backgroundRepeat: "no-repeat" } as const;
   const caretOf = (c: string) => ({ ...caret, backgroundImage: `linear-gradient(45deg, transparent 50%, ${c} 50%), linear-gradient(135deg, ${c} 50%, transparent 50%)` });
-  const shownFields = cat ? activeFields(cat, item.specs) : [];
+  const specs = (cat ? activeFields(cat, item.specs) : []).filter((f) => item.specs[f.id]);
   return (
     <div className="space-y-4">
       {/* On phones the picture sits above the count and pills, each the whole width. */}
       <div className="flex flex-col gap-4 sm:flex-row">
         {picture && (
-          <div className="shrink-0 space-y-1.5">
-            <div className="thumb-well flex h-44 w-full items-center justify-center rounded-xl sm:h-56 sm:w-56">
-              {/* eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable */}
-              <img src={picture} alt="" className="h-full w-full object-contain p-2" />
-            </div>
-            {photoButtons}
+          <div className="thumb-well relative flex h-44 w-full shrink-0 items-center justify-center rounded-xl sm:h-56 sm:w-56">
+            {/* eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable */}
+            <img src={picture} alt="" className={`h-full w-full object-contain p-2 ${picker.busy ? "opacity-50" : ""}`} />
+            {cart && <div className="absolute top-2 left-2">{cart}</div>}
+            {work && (
+              <div className="absolute top-2 right-2">
+                {picker.inputs}
+                <Popover
+                  align="right"
+                  hideCaret
+                  triggerClassName="press flex h-9 w-9 items-center justify-center rounded-full border border-white/40 bg-[#0D111A]/60 text-lg leading-none font-bold text-white shadow-sm backdrop-blur-md transition-colors duration-150 hover:border-sky-400/60 hover:text-sky-300 active:scale-[0.98]"
+                  trigger={
+                    <>
+                      ⋯<span className="sr-only">Photo options</span>
+                    </>
+                  }
+                >
+                  {(close) => {
+                    const row = "press flex min-h-10 w-full items-center gap-2 rounded-lg px-2.5 text-left text-sm font-medium text-fg hover:bg-raised active:scale-[0.98]";
+                    return (
+                      <div className="p-0.5">
+                        <button type="button" className={row} onClick={() => (close(), picker.takePhoto())}>
+                          📷 Take photo
+                        </button>
+                        <button type="button" className={row} onClick={() => (close(), picker.upload())}>
+                          <Icon name="download" className="h-4 w-4 rotate-180" /> Upload photo
+                        </button>
+                        <button type="button" className={`${row} text-rose-500`} onClick={() => (close(), deletePhoto())}>
+                          <Icon name="close" className="h-4 w-4" /> Delete photo
+                        </button>
+                      </div>
+                    );
+                  }}
+                </Popover>
+              </div>
+            )}
+            {(picker.busy || picker.error) && (
+              <span className={`absolute inset-x-2 bottom-2 rounded-md px-2 py-1 text-center text-xs font-semibold ${picker.error ? "bg-rose-600/90 text-white" : "bg-[#0D111A]/70 text-white"}`}>
+                {picker.error ?? "Uploading…"}
+              </span>
+            )}
           </div>
         )}
         <div className="min-w-0 flex-1 space-y-2">
@@ -543,6 +591,7 @@ function ItemBody({
               </Link>
             )}
             <SeasonTag itemId={item.id} tag={item.seasonTag} className={tag} />
+            {!picture && cart}
             {work && data ? (
               // Condition and location pills are menus that save at once.
               <>
@@ -602,7 +651,6 @@ function ItemBody({
               </Link>
             </div>
           )}
-          {order && <CotsOrderBox key={`${order.info.status}:${order.info.quantity}`} info={order.info} onSave={order.save} onLeave={onClose} />}
           {!picture && photoButtons}
           <Stepper item={item} onStep={onStep} onCount={onCount} big pieces={false}>
             {item.sheet && (
@@ -630,77 +678,98 @@ function ItemBody({
             {missing(item, "any") > 0 && <span className="font-mono font-semibold text-rose-500 tabular-nums"> · {missing(item, "any")} short</span>}
           </div>
           <SeasonBox item={item} onChange={onChange} onError={setMessage} />
+          {order && showsOrder(order.info.status) && (
+            <CotsOrderBox key={`${order.info.status}:${order.info.quantity}`} info={order.info} onSave={order.save} editable={orderEditable} onLeave={onClose} />
+          )}
         </div>
       </div>
 
       <ItemNotesBox item={item} onSaved={onSaved} onError={setMessage} />
 
-      {(shownFields.some((f) => item.specs[f.id]) || item.cotsLinks.length > 0 || item.price != null) && (
-        <dl className="grid grid-cols-1 gap-x-4 gap-y-1 text-sm sm:grid-cols-[auto_1fr] sm:items-center">
-          {shownFields
-            .filter((f) => item.specs[f.id])
-            .map((f) => (
-              <div key={f.id} className="contents">
-                <dt className="text-muted">{f.label}</dt>
-                <dd>{item.specs[f.id]}</dd>
-              </div>
+      {/* Specs flow on the left, one after another; Buy at and Price keep their own column on the
+          right, level with the first two lines. */}
+      <div className="flex items-start gap-4">
+        <p className="min-w-0 flex-1 text-sm leading-relaxed sm:text-base">
+          {specs.length ? (
+            specs.map((f, i) => (
+              <span key={f.id} className="inline">
+                {i > 0 && <span className="mx-2 text-subtle" aria-hidden>·</span>}
+                <span className="whitespace-nowrap">
+                  <span className="text-muted">{f.label}</span> <span className="font-semibold text-fg">{item.specs[f.id]}</span>
+                </span>
+              </span>
+            ))
+          ) : (
+            <span className="text-sm text-subtle">No specs yet</span>
+          )}
+        </p>
+        <dl className="grid shrink-0 grid-cols-[auto_auto] items-center gap-x-2 gap-y-1 text-sm">
+          <dt className="text-right text-muted">Buy at</dt>
+          <dd className="flex min-h-7 flex-wrap items-center gap-x-2 gap-y-0.5">
+            {item.cotsLinks.map((l) => (
+              <span key={l.url} className="inline-flex items-center gap-0.5">
+                <a href={l.url} target="_blank" rel="noreferrer" className="font-semibold text-sky-600 hover:underline dark:text-sky-400">
+                  {l.site || hostOf(l.url)} ↗
+                </a>
+                {work && (
+                  <button
+                    type="button"
+                    disabled={moving}
+                    onClick={() => {
+                      const last = item.cotsLinks.length === 1 && item.price != null;
+                      if (!confirm(`Remove the ${l.site || hostOf(l.url)} link from this item?${last ? " It's the last link, so the price goes too." : ""}`)) return;
+                      save(() => unlinkItemProduct(item.id, l.url));
+                    }}
+                    aria-label={`Remove the ${l.site || hostOf(l.url)} link`}
+                    title="Remove this link"
+                    className="press flex h-9 w-9 items-center justify-center rounded-full text-subtle hover:bg-rose-500/10 hover:text-rose-500 active:scale-[0.98] disabled:opacity-50 sm:h-6 sm:w-6"
+                  >
+                    <Icon name="close" className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </span>
             ))}
-          {item.cotsLinks.length > 0 && (
-            <>
-              <dt className="text-muted">Buy at</dt>
-              <dd className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                {item.cotsLinks.map((l) => (
-                  <span key={l.url} className="inline-flex items-center gap-1">
-                    <a href={l.url} target="_blank" rel="noreferrer" className="text-sky-600 hover:underline dark:text-sky-400">
-                      {l.site || hostOf(l.url)} ↗
-                    </a>
-                    {work && (
-                      <button
-                        type="button"
-                        disabled={moving}
-                        onClick={() => {
-                          const last = item.cotsLinks.length === 1 && item.price != null;
-                          if (!confirm(`Remove the ${l.site || hostOf(l.url)} link from this item?${last ? " It's the last link, so the price goes too." : ""}`)) return;
-                          save(() => unlinkItemProduct(item.id, l.url));
-                        }}
-                        aria-label={`Remove the ${l.site || hostOf(l.url)} link`}
-                        title="Remove this link"
-                        className="press flex h-10 w-10 items-center justify-center rounded-full text-subtle sm:h-6 sm:w-6 hover:bg-rose-500/10 hover:text-rose-500 active:scale-[0.98] disabled:opacity-50"
-                      >
-                        <Icon name="close" className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </span>
-                ))}
-              </dd>
-            </>
-          )}
-          {item.price != null && (
-            <>
-              <dt className="text-muted">Price</dt>
-              <dd className="flex items-center gap-1.5">
-                <ItemPrice price={item.price} suffix=" each" />
-              </dd>
-            </>
-          )}
+            {!item.cotsLinks.length &&
+              (work ? (
+                <Popover
+                  align="right"
+                  hideCaret
+                  triggerClassName="press flex h-9 w-9 items-center justify-center rounded-md text-subtle hover:bg-raised hover:text-accent active:scale-[0.98] sm:h-7 sm:w-7"
+                  trigger={
+                    <>
+                      <Icon name="pencil" className="h-3.5 w-3.5" />
+                      <span className="sr-only">Link a product</span>
+                    </>
+                  }
+                >
+                  {(close) => (
+                    <ProductSearch
+                      itemId={item.id}
+                      initial={item.name}
+                      onMessage={setMessage}
+                      onLinked={(m) => {
+                        close();
+                        setMessage(m);
+                        onSaved();
+                      }}
+                    />
+                  )}
+                </Popover>
+              ) : (
+                <span className="text-subtle">—</span>
+              ))}
+          </dd>
+          <dt className="text-right text-muted">Price</dt>
+          <dd>{item.price != null ? <ItemPrice price={item.price} suffix=" each" /> : <span className="text-subtle">—</span>}</dd>
         </dl>
-      )}
+      </div>
 
       {!!usage?.parts.length && <UsedIn usage={usage} sheet={item.sheet} />}
 
       {message && <p className="text-sm text-emerald-700">{message}</p>}
       <div className="space-y-2 border-t border-line pt-3">
-        {/* BOM, the pencil and the product search share one row. */}
-        <ProductSearch
-          itemId={item.id}
-          initial={item.name}
-          enabled={work}
-          onMessage={setMessage}
-          onLinked={(m) => {
-            setMessage(m);
-            onSaved();
-          }}
-        >
+        {/* BOM and the pencil share one row. */}
+        <div className="flex gap-2">
           {/* Raw stock isn't a BOM part, so its window has no BOM search. */}
           {!item.sheet && cat?.group !== "consumables" && (
             <button className="btn min-h-11 shrink-0" disabled={finding} onClick={find} title="Find BOM parts that are this item; each one waits in To Review for Approve">
@@ -722,7 +791,7 @@ function ItemBody({
               <Icon name="pencil" className="h-4 w-4" />
             </button>
           )}
-        </ProductSearch>
+        </div>
         <EditOnly>
           <div className="flex flex-wrap gap-2">
             <button className="btn min-h-11" disabled={!data} onClick={() => setMode("toBom")}>
@@ -778,23 +847,18 @@ function HistorySection({ item, categories, locations, conditions }: { item: Ite
   );
 }
 
-// The item window's product bar: search the team's stores (like the add box) or paste a product
-// link; picking one links the item to it (link, price, photo) and the window reloads. `children`
-// (the BOM and Edit buttons) sit before it on the same row; without `enabled` only they show.
+// Buy at's pencil (like a COTS card's): search the team's stores (like the add box) or paste a
+// product link; picking one links the item to it (link, price, photo) and the window reloads.
 function ProductSearch({
   itemId,
   initial,
-  enabled,
   onLinked,
   onMessage,
-  children,
 }: {
   itemId: string;
   initial: string;
-  enabled: boolean;
   onLinked: (message: string | null) => void;
   onMessage: (m: string | null) => void;
-  children?: React.ReactNode;
 }) {
   const [q, setQ] = useState("");
   const [found, setFound] = useState<{ q: string; groups: ProductGroup[] } | null>(null);
@@ -839,35 +903,35 @@ function ProductSearch({
       onLinked(r.error ? `Linked the product. ${r.error}` : (res.message ?? null));
     });
 
-  if (!enabled) return <div className="flex gap-2">{children}</div>;
   return (
-    <div className="space-y-2">
-      <div className="flex gap-2">
-        {children}
-        <label className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-xl border border-line-strong bg-surface px-3 focus-within:border-sky-400">
+    <div className="space-y-2 text-sm">
+      <div className="px-1 text-[11px] font-semibold text-subtle">Link a product</div>
+      <div className="flex gap-1.5">
+        <label className="flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-lg border border-line-strong bg-surface px-2.5 focus-within:border-sky-400">
           <Icon name="search" className="h-4 w-4 shrink-0 text-subtle" />
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && link && readLink()}
-            placeholder="Search stores or paste a product link"
+            autoFocus
+            placeholder="Search stores or paste a link"
             aria-label="Link to a product"
-            className="min-w-0 flex-1 bg-transparent py-2 text-sm outline-none"
+            className="min-w-0 flex-1 bg-transparent py-1.5 text-sm outline-none"
           />
         </label>
-        {!query && (
-          <button type="button" className="btn min-h-11 shrink-0 max-sm:hidden" onClick={() => setQ(initial)}>
-            Search “{initial.length > 18 ? `${initial.slice(0, 18)}…` : initial}”
-          </button>
-        )}
         {link && (
-          <button type="button" className="btn-primary min-h-11" disabled={linking} onClick={readLink}>
+          <button type="button" className="btn-primary min-h-10" disabled={linking} onClick={readLink}>
             {linking ? "Linking…" : "Link"}
           </button>
         )}
       </div>
+      {!query && (
+        <button type="button" className="press block w-full truncate rounded-md px-1 text-left text-xs font-semibold text-accent hover:underline active:scale-[0.98]" onClick={() => setQ(initial)}>
+          Search “{initial}”
+        </button>
+      )}
       {!link && query.length >= 3 && (
-        <div className="max-h-64 space-y-0.5 overflow-y-auto rounded-xl border border-line p-1">
+        <div className="max-h-72 space-y-0.5 overflow-y-auto rounded-lg border border-line p-1">
           {!groups && <p className="px-2 py-2 text-xs text-muted">{searching ? "Searching the stores…" : "…"}</p>}
           {groups?.length === 0 && <p className="px-2 py-2 text-xs text-muted">No store result for that. Try other words, or paste a product link.</p>}
           {groups?.map((g) => (

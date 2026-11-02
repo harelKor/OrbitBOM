@@ -315,7 +315,8 @@ export function ItemPrice({ price, suffix = "" }: { price: number; suffix?: stri
 
 // The cart on a card's picture. Short with nothing on order: sends what's missing to Released.
 // On order: orange, and opens that COTS card.
-export function CartButton({ item, gap }: { item: Item; gap: number }) {
+// In the item window, `onLeave` closes it on the way to COTS and `onSent` reloads it.
+export function CartButton({ item, gap, onLeave, onSent }: { item: Item; gap: number; onLeave?: () => void; onSent?: () => void }) {
   const work = useCan("work");
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -329,11 +330,15 @@ export function CartButton({ item, gap }: { item: Item; gap: number }) {
       disabled={pending}
       onClick={(e) => {
         e.stopPropagation();
-        if (order) return router.push(orderHref(order));
+        if (order) {
+          onLeave?.();
+          return router.push(orderHref(order));
+        }
         start(async () => {
           setError(null);
           const r = await sendItemToReleased(item.id);
           if (r.error) setError(r.error);
+          else onSent?.();
         });
       }}
       title={error ?? label}
