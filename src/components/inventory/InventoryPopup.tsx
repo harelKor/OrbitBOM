@@ -171,7 +171,7 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
   return (
     <Ctx.Provider value={{ openItem, openMaterial }}>
       {children}
-      <Dialog open={!!state} onClose={close} title={title} width={state?.kind === "item" ? "w-[min(36rem,calc(100vw-1rem))]" : undefined} wide sheet>
+      <Dialog open={!!state} onClose={close} title={title} width={state?.kind === "item" ? "w-[min(36rem,calc(100vw-2rem))]" : undefined} wide compact>
         {error && <p className="mb-3 rounded-md bg-rose-50 p-2 text-sm text-rose-700">Couldn&apos;t save: {error}</p>}
         {state?.kind === "item" && !item && <p className="py-8 text-center text-sm text-muted">Loading…</p>}
         {state?.kind === "item" && item && (
@@ -526,8 +526,8 @@ function ItemBody({
       />
     );
 
-  // Pills are big enough to tap on phones.
-  const tag = "rounded-full px-2.5 py-0.5 text-xs font-semibold max-sm:inline-flex max-sm:min-h-10 max-sm:items-center max-sm:px-3 max-sm:text-sm";
+  // Compact pills so all of them fit on one line under the picture on phones.
+  const tag = "shrink-0 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold max-sm:py-1";
   const caret = { backgroundPosition: "right 10px center, right 6px center", backgroundSize: "4px 4px", backgroundRepeat: "no-repeat" } as const;
   const caretOf = (c: string) => ({ ...caret, backgroundImage: `linear-gradient(45deg, transparent 50%, ${c} 50%), linear-gradient(135deg, ${c} 50%, transparent 50%)` });
   const specs = (cat ? activeFields(cat, item.specs) : []).filter((f) => item.specs[f.id]);
@@ -557,15 +557,15 @@ function ItemBody({
       }}
     />
   );
-  // On phones the right column dissolves into the outer row: the tags sit beside the picture and
-  // the count line and what follows take the whole width below it.
+  // On phones the right column dissolves into the outer row: the picture spans the top, the tags
+  // sit on one line below it, and the count line and what follows take the whole width.
   const wide = "max-sm:w-full";
   return (
     <div className="space-y-2.5">
       {picker.inputs}
       <div className="flex flex-wrap gap-x-3 gap-y-2.5 sm:flex-nowrap">
         {picture && (
-          <div className="thumb-well relative flex h-32 w-32 shrink-0 items-center justify-center rounded-xl sm:h-44 sm:w-44">
+          <div className="thumb-well relative flex h-36 w-full shrink-0 items-center justify-center rounded-xl sm:h-44 sm:w-44">
             {/* eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable */}
             <img src={picture} alt="" className={`h-full w-full object-contain p-2 ${picker.busy ? "opacity-50" : ""}`} />
             {cart && <div className="absolute top-1.5 left-1.5">{cart}</div>}
@@ -581,7 +581,7 @@ function ItemBody({
         )}
         <div className="max-sm:contents sm:flex sm:min-w-0 sm:flex-1 sm:flex-col sm:gap-2.5">
           <div className="flex min-w-0 flex-1 flex-col gap-1.5 sm:flex-none">
-            <div className="flex flex-wrap items-center gap-1">
+            <div className="flex items-center gap-1.5 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:[scrollbar-width:none] sm:flex-wrap sm:gap-1">
               {cat && (
                 <Link href={`/inventory/c/${cat.id}`} onClick={onClose} className={`${tag} bg-[#111318]/85 text-white hover:bg-accent`}>
                   {cat.label}
