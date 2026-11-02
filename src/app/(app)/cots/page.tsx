@@ -21,21 +21,21 @@ export default async function CotsPage() {
         <h1 className="display text-3xl text-accent">COTS</h1>
         <p className="mt-1 max-w-3xl text-sm text-muted">The parts the team buys, from released to on the shelf.</p>
       </div>
-      <div className="grid gap-5 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2 sm:gap-5">
         {boxes.map((b) => (
           <Link
             key={b.href}
             href={b.href}
-            className="card-interactive group relative flex min-h-64 flex-col justify-between p-7 active:scale-[0.98] sm:min-h-80 sm:p-9"
+            className="card-interactive group relative flex min-h-40 flex-col justify-between p-5 active:scale-[0.98] sm:min-h-80 sm:p-9"
           >
-            <span className="absolute top-6 right-6 grid h-14 w-14 place-items-center rounded-2xl border border-line bg-raised text-accent transition-colors group-hover:border-accent/40 sm:top-8 sm:right-8 sm:h-16 sm:w-16">
-              <Icon name={b.icon} className="h-8 w-8 sm:h-9 sm:w-9" />
+            <span className="absolute top-4 right-4 grid h-11 w-11 place-items-center rounded-2xl border border-line bg-raised text-accent transition-colors group-hover:border-accent/40 sm:top-8 sm:right-8 sm:h-16 sm:w-16">
+              <Icon name={b.icon} className="h-6 w-6 sm:h-9 sm:w-9" />
             </span>
-            <span className="display font-mono text-7xl text-accent tabular-nums sm:text-8xl">{b.count}</span>
+            <span className="display font-mono text-5xl text-accent tabular-nums sm:text-8xl">{b.count}</span>
             <span className="flex items-end gap-3">
               <span className="flex-1">
-                <span className="block display text-4xl text-fg sm:text-5xl">{b.title}</span>
-                <span className="mt-1 block text-base text-muted sm:text-lg">{b.text}</span>
+                <span className="block display text-3xl text-fg sm:text-5xl">{b.title}</span>
+                <span className="mt-0.5 block text-sm text-muted sm:text-lg">{b.text}</span>
               </span>
               <Icon name="arrow" className="h-7 w-7 text-subtle transition-transform group-hover:translate-x-1 group-hover:text-accent" />
             </span>
@@ -43,16 +43,16 @@ export default async function CotsPage() {
         ))}
         <Link
           href="/cots/history"
-          className="card-interactive group relative col-span-full flex min-h-28 items-center gap-5 p-5 active:scale-[0.98] sm:min-h-36 sm:gap-7 sm:p-6"
+          className="card-interactive group relative col-span-full flex min-h-20 items-center gap-4 p-4 active:scale-[0.98] sm:min-h-36 sm:gap-7 sm:p-6"
         >
-          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-line bg-raised text-accent transition-colors group-hover:border-accent/40 sm:h-14 sm:w-14">
-            <Icon name="clock" className="h-7 w-7 sm:h-8 sm:w-8" />
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-line bg-raised text-accent transition-colors group-hover:border-accent/40 sm:h-14 sm:w-14">
+            <Icon name="clock" className="h-5 w-5 sm:h-8 sm:w-8" />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block display text-3xl text-fg sm:text-4xl">Order History</span>
-            <span className="mt-0.5 block text-sm text-muted sm:text-base">Every order, from In Route to arrived</span>
+            <span className="block display text-xl text-fg sm:text-4xl">Order History</span>
+            <span className="mt-0.5 block text-xs text-muted sm:text-base">Every order, from In Route to arrived</span>
           </span>
-          <span className="display font-mono text-5xl text-accent tabular-nums sm:text-6xl">{history}</span>
+          <span className="display font-mono text-3xl text-accent tabular-nums sm:text-6xl">{history}</span>
           <Icon name="arrow" className="h-7 w-7 shrink-0 text-subtle transition-transform group-hover:translate-x-1 group-hover:text-accent" />
         </Link>
       </div>
