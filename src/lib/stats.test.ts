@@ -20,7 +20,7 @@ it("counts parts per status and done parts", () => {
   expect(b.done).toBe(2);
   expect(b.percent).toBe(50);
   expect(b.statuses.find((s) => s.name === "Not Started")).toMatchObject({ count: 1, percent: 25 });
-  expect(b.statuses).toHaveLength(15); // 12 made-part statuses and 3 COTS-only ones
+  expect(b.statuses).toHaveLength(16); // 12 made-part statuses and 4 COTS-only ones
 });
 
 it("handles an empty list", () => {

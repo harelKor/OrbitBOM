@@ -2,7 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { useEffect, useOptimistic, useState, useTransition } from "react";
-import { COTS_IN_STOCK, COTS_ORDERED, COTS_RELEASED, IN_STOCK_SHOWN_DAYS, ORDER_STATUSES, getCotsStatus } from "@/config/cots";
+import { COTS_ARRIVED, COTS_IN_STOCK, COTS_ORDERED, COTS_RELEASED, IN_STOCK_SHOWN_DAYS, ORDER_STATUSES, getCotsStatus } from "@/config/cots";
 import { CATEGORY_GROUPS, groupOf, isCategoryGroup, type CategoryGroupId } from "@/config/inventory";
 import { addCotsFromItem, clearInStock, updateCotsParts } from "@/app/(app)/cots/actions";
 import { BomProvider, useBom } from "@/components/bom/BomContext";
@@ -46,6 +46,8 @@ const groupLabel = (id: CategoryGroupId) => CATEGORY_GROUPS.find((g) => g.id ===
 // Where a Released card came from: a robot's BOM (or a robot's section), or General.
 const originOf = (p: CardPart): "General" | "Robot" => (p.systemId || (p as CotsViewPart).robotId ? "Robot" : "General");
 const ORDERING = ORDER_STATUSES.filter((s) => s !== COTS_IN_STOCK) as string[];
+// The Order List's top sections and status filters: Arrived parts get their own section instead.
+const ORDER_FILTERS = ORDERING.filter((s) => s !== COTS_ARRIVED);
 // The statuses the Status bar can set on the selected cards.
 const BULK_STATUSES: string[] = [COTS_RELEASED, ...ORDER_STATUSES];
 const SHOWN_MS = IN_STOCK_SHOWN_DAYS * 24 * 60 * 60 * 1000;
@@ -97,6 +99,7 @@ export function CotsView({
   const [notice, setNotice] = useState<string | null>(null);
   // Parts set In Stock on this visit stay in place, crossed out.
   const [struck, setStruck] = useState<Set<string>>(new Set());
+  const [arrivedStruck, setArrivedStruck] = useState<Set<string>>(new Set());
   // Parts whose X was pressed on this visit, gone before the server answers.
   const [cleared, setCleared] = useState<Set<string>>(new Set());
   const [now] = useState(() => Date.now());
@@ -125,7 +128,10 @@ export function CotsView({
       setStruck((s) => {
         const next = new Set(s);
         for (const e of edits) {
-          if (e.changes.status === COTS_IN_STOCK) next.add(e.id);
+          if (e.changes.status === COTS_IN_STOCK) {
+            next.add(e.id);
+            if (optimistic.some((p) => p.id === e.id && computeStatus(p) === COTS_ARRIVED)) setArrivedStruck((a) => new Set(a).add(e.id));
+          }
           else if (e.changes.status) next.delete(e.id);
         }
         return next;
@@ -180,7 +186,10 @@ export function CotsView({
   const ofCategory = (p: CotsViewPart) => (!group || groupOf(groupOfCat.get(p.category)) === group) && (!category || p.category === category);
   const ofStatus = (p: CardPart) => list !== "order" || !statusFilter || computeStatus(p) === statusFilter || struck.has(p.id);
   const listed = optimistic.filter(inList);
-  const main = listed.filter((p) => ofCategory(p) && ofStatus(p));
+  // Arrived parts (and ones set In Stock from there on this visit) sit in the Order List's Arrived section.
+  const isArrived = (p: CardPart) => list === "order" && (computeStatus(p) === COTS_ARRIVED || (struck.has(p.id) && arrivedStruck.has(p.id)));
+  const main = listed.filter((p) => ofCategory(p) && ofStatus(p) && !isArrived(p));
+  const arrived = listed.filter((p) => ofCategory(p) && isArrived(p));
   const inStock = optimistic.filter((p) => shownInStock(p) && !struck.has(p.id) && ofCategory(p));
   const counts = new Map<string, { count: number }>();
   for (const p of listed)
@@ -397,7 +406,7 @@ export function CotsView({
           Status
         </button>}
         {list === "order" &&
-          ORDERING.map((s) => {
+          ORDER_FILTERS.map((s) => {
             const color = getCotsStatus(s)?.color ?? "#94a3b8";
             const on = statusFilter === s;
             return (
@@ -462,7 +471,7 @@ export function CotsView({
       )}
 
       {byVendor ? (
-        vendors.length === 0 ? (
+        vendors.length === 0 && arrived.length === 0 ? (
           <Empty list={list} />
         ) : (
           vendors.map((v) => {
@@ -485,7 +494,7 @@ export function CotsView({
               </BomProvider>
             ) : null,
           )}
-          {allRows.length === 0 && <Empty list={list} />}
+          {allRows.length === 0 && arrived.length === 0 && <Empty list={list} />}
         </>
       )}
 
@@ -497,6 +506,14 @@ export function CotsView({
             byPlace(queued, { small: true, from: "ordered" })
           )}
         </Section>
+      )}
+
+      {arrived.length > 0 && (
+        <div className="rounded-xl border border-teal-400/55 bg-teal-500/[0.03] p-3 shadow-[0_0_20px_-4px_rgba(20,184,166,0.32)] ring-1 ring-teal-400/30">
+          <Section title="Arrived" count={rowsOf(arrived).length}>
+            {byPlace(arrived)}
+          </Section>
+        </div>
       )}
 
       {inStock.length > 0 && (
