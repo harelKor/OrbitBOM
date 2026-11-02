@@ -102,8 +102,9 @@ export function CotsOrderBox({ info, onSave, editable, onLeave }: { info: CotsOr
           pill
         )}
       </div>
-      <label className={`${HALO} flex min-w-0 flex-col justify-center gap-1 px-3 py-1.5`}>
-        <span className={LABEL}>Ordering</span>
+      {/* One line: the label on the left, the amount big on the right. */}
+      <label className={`${HALO} flex min-w-0 items-center justify-between gap-2 px-3 py-1.5`}>
+        <span className="shrink-0 text-[10px] leading-none font-semibold tracking-wide text-subtle uppercase sm:text-xs">Ordering</span>
         {canCount ? (
           <input
             value={typed ?? String(qty)}
@@ -115,10 +116,10 @@ export function CotsOrderBox({ info, onSave, editable, onLeave }: { info: CotsOr
             }}
             inputMode="numeric"
             aria-label="Amount being ordered"
-            className="-mx-1 w-full min-w-0 rounded-md bg-transparent px-1 font-mono text-sm font-bold text-fg tabular-nums outline-none hover:bg-surface focus:bg-surface focus:ring-1 focus:ring-sky-400/60"
+            className="-mr-1 w-full min-w-0 rounded-md bg-transparent px-1 text-right font-mono text-xl leading-none font-bold text-fg tabular-nums outline-none sm:text-2xl hover:bg-surface focus:bg-surface focus:ring-1 focus:ring-sky-400/60"
           />
         ) : (
-          <span className="font-mono text-sm font-bold text-fg tabular-nums" title={info.grouped && editable ? "The sum of several systems' cards: change it on each card" : undefined}>
+          <span className="font-mono text-xl leading-none font-bold text-fg tabular-nums sm:text-2xl" title={info.grouped && editable ? "The sum of several systems' cards: change it on each card" : undefined}>
             {qty}
           </span>
         )}

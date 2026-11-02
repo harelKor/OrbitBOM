@@ -20,6 +20,7 @@ export function Popover({
   hideCaret = false,
   panelClassName = "",
   width = WIDTH,
+  onClosed,
 }: {
   trigger: React.ReactNode;
   children: (close: () => void) => React.ReactNode;
@@ -30,8 +31,19 @@ export function Popover({
   panelClassName?: string;
   // The panel's width; it never grows past the screen (or the dialog it opens in).
   width?: number;
+  // Runs each time the panel closes, however it closed (so a menu can go back to its first page).
+  onClosed?: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const closed = useRef(onClosed);
+  useEffect(() => {
+    closed.current = onClosed;
+  });
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (wasOpen.current && !open) closed.current?.();
+    wasOpen.current = open;
+  }, [open]);
   const button = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number; maxHeight: number; width: number } | null>(null);

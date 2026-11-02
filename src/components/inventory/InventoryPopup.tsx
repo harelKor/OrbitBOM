@@ -156,19 +156,8 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
   const count = (itemId: string, amount: number) => saveNow(itemId, (i) => countPieces(i, amount), () => countStock(itemId, amount));
 
   const item = state?.kind === "item" ? (state.data?.item ?? state.preview) : null;
-  // An item without its own photo has no picture box, so its name anchors the window instead.
-  const title =
-    state?.kind === "item" ? (
-      item && !item.thumbUrl ? (
-        <span className="block text-2xl font-bold tracking-tight text-fg sm:text-3xl">{item.name}</span>
-      ) : (
-        (item?.name ?? "Inventory item")
-      )
-    ) : state?.kind === "material" ? (
-      state.name
-    ) : (
-      ""
-    );
+  // Every item has a picture box (its photo or its category's drawing), so the title is the same for all.
+  const title = state?.kind === "item" ? (item?.name ?? "Inventory item") : state?.kind === "material" ? state.name : "";
   return (
     <Ctx.Provider value={{ openItem, openMaterial }}>
       {children}
@@ -218,13 +207,13 @@ function Stepper({
   children?: React.ReactNode;
 }) {
   const work = useCan("work");
-  const size = "h-10 w-10 text-xl";
+  const size = big ? "h-11 w-11 text-xl" : "h-10 w-10 text-xl";
   return (
     <div className="flex items-center gap-2">
       {work && (<button type="button" onClick={() => onStep(-1)} disabled={item.sheet ? item.inStock <= 0 : item.inStock < 1} className={`press flex ${size} items-center justify-center rounded-lg bg-rose-500 font-bold text-white hover:bg-rose-400 disabled:opacity-30`} aria-label="One less">
         −
       </button>)}
-      <span className={`text-center font-mono font-semibold tabular-nums ${big ? "display min-w-10 text-2xl sm:text-3xl" : "min-w-14 text-xl"}`}>
+      <span className={`text-center font-mono font-semibold tabular-nums ${big ? "display min-w-10 text-3xl sm:text-4xl" : "min-w-14 text-xl"}`}>
         {onCount ? <CountBox item={item} onCount={onCount} big={big} /> : formatStock(item.inStock, item.sheet)}
       </span>
       {work && (<button type="button" onClick={() => onStep(1)} className={`press flex ${size} items-center justify-center rounded-lg bg-emerald-500 font-bold text-white hover:bg-emerald-400`} aria-label="One more">
@@ -299,8 +288,8 @@ function SeasonBox({ item, onChange, onError }: { item: Item; onChange: ChangeIt
     onChange(() => ({ seasonNeed }), () => setSeasonNeed(item.id, value));
   };
   return (
-    <label className="inline-flex items-center gap-2 rounded-xl border border-line bg-raised py-1 pr-1 pl-2.5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]">
-      <span className="text-[11px] leading-tight font-semibold text-subtle uppercase">Season needs</span>
+    <label className="flex min-w-40 flex-1 items-center justify-between gap-2 rounded-xl border border-line bg-raised px-3 py-1.5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]">
+      <span className="text-xs leading-tight font-semibold tracking-wide text-subtle uppercase">Season needs</span>
       <input
         value={text ?? current}
         onChange={(e) => setText(e.target.value)}
@@ -313,7 +302,7 @@ function SeasonBox({ item, onChange, onError }: { item: Item; onChange: ChangeIt
         inputMode={item.sheet ? "text" : "numeric"}
         placeholder="—"
         aria-label="Season needs"
-        className="min-h-9 w-16 rounded-md border border-line-strong bg-surface px-1 py-1 text-center font-mono text-lg font-semibold tabular-nums outline-none focus:border-sky-400"
+        className="min-h-9 w-20 rounded-md border border-line-strong bg-surface px-1 py-1 text-center font-mono text-xl font-semibold tabular-nums outline-none focus:border-sky-400"
       />
     </label>
   );
@@ -474,8 +463,10 @@ function ItemBody({
   const onMap = location?.mapX != null && location?.mapY != null;
   const [showMap, setShowMap] = useState(false);
   const usage = item.usage;
-  // Only the item's own photo gets the picture box; the dimmed category drawing stays on the card.
+  // The picture box is always there, so the cart, ⋮ and price sit in the same place on every item:
+  // the item's own photo, or its category's drawing dimmed when it has none.
   const picture = photo ?? item.thumbUrl ?? null;
+  const filler = picture ? null : (cat?.imageUrl ?? null);
   const onPhoto = (p: { key: string; preview: string }) =>
     startPhoto(async () => {
       setPhoto(p.preview);
@@ -566,21 +557,23 @@ function ItemBody({
     <div className="space-y-2.5">
       {picker.inputs}
       <div className="flex flex-wrap gap-x-3 gap-y-2.5 sm:flex-nowrap">
-        {picture && (
-          <div className="thumb-well relative flex h-36 w-full shrink-0 items-center justify-center rounded-xl sm:h-44 sm:w-44">
-            {/* eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable */}
-            <img src={picture} alt="" className={`h-full w-full object-contain p-2 ${picker.busy ? "opacity-50" : ""}`} />
-            {cart && <div className="absolute top-1.5 left-1.5">{cart}</div>}
-            {menu && <div className="absolute top-1.5 right-1.5">{menu}</div>}
-            {picker.busy || picker.error ? (
-              <span className={`absolute inset-x-2 bottom-2 rounded-md px-2 py-1 text-center text-xs font-semibold ${picker.error ? "bg-rose-600/90 text-white" : "bg-[#0D111A]/70 text-white"}`}>
-                {picker.error ?? "Uploading…"}
-              </span>
-            ) : (
-              buy && <div className="absolute right-2 bottom-2 left-2 flex">{buy}</div>
-            )}
-          </div>
-        )}
+        <div className="thumb-well relative flex h-36 w-full shrink-0 items-center justify-center rounded-xl sm:h-44 sm:w-44">
+          {picture || filler ? (
+            // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
+            <img src={(picture ?? filler)!} alt="" className={`h-full w-full object-contain p-2 ${picker.busy ? "opacity-50" : picture ? "" : "opacity-60"}`} />
+          ) : (
+            <Icon name="box" className="h-12 w-12 text-subtle opacity-60" />
+          )}
+          {cart && <div className="absolute top-1.5 left-1.5">{cart}</div>}
+          {menu && <div className="absolute top-1.5 right-1.5">{menu}</div>}
+          {picker.busy || picker.error ? (
+            <span className={`absolute inset-x-2 bottom-2 rounded-md px-2 py-1 text-center text-xs font-semibold ${picker.error ? "bg-rose-600/90 text-white" : "bg-[#0D111A]/70 text-white"}`}>
+              {picker.error ?? "Uploading…"}
+            </span>
+          ) : (
+            buy && <div className="absolute right-2 bottom-2 left-2 flex">{buy}</div>
+          )}
+        </div>
         <div className="max-sm:contents sm:flex sm:min-w-0 sm:flex-1 sm:flex-col sm:gap-2.5">
           <div className="flex min-w-0 flex-1 flex-col gap-1.5 sm:flex-none">
             <div className="flex items-center gap-1.5 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:[scrollbar-width:none] sm:flex-wrap sm:gap-1">
@@ -590,7 +583,6 @@ function ItemBody({
                 </Link>
               )}
               <SeasonTag itemId={item.id} tag={item.seasonTag} className={tag} />
-              {!picture && cart}
               {work && data ? (
                 // Condition and location pills are menus that save at once.
                 <>
@@ -631,8 +623,6 @@ function ItemBody({
                   )}
                 </>
               )}
-              {!picture && buy}
-              {!picture && menu}
             </div>
             {(item.sheet || usage?.need || gap > 0) && (
               <div className="text-xs text-muted">
@@ -650,8 +640,8 @@ function ItemBody({
               </Link>
             </div>
           )}
-          {/* The count and Season needs share one line. */}
-          <div className={`flex flex-wrap items-center gap-2 ${wide}`}>
+          {/* The count and Season needs fill one line, as wide as the Notes box below. */}
+          <div className={`flex w-full flex-wrap items-center justify-between gap-2.5 ${wide}`}>
             <Stepper item={item} onStep={onStep} onCount={onCount} big pieces={false}>
               {item.sheet && (
                 <button
@@ -696,7 +686,8 @@ function ItemBody({
 
       {!!usage?.parts.length && <UsedIn usage={usage} sheet={item.sheet} />}
 
-      {work && item.cotsLinks.length === 0 && (
+      {/* Raw stock is linked to a product only from the pencil's form. */}
+      {work && item.cotsLinks.length === 0 && !item.sheet && cat?.group !== "consumables" && (
         <div className="rounded-xl border border-line-strong bg-surface p-3">
           <ProductSearch
             itemId={item.id}
@@ -764,6 +755,8 @@ function ItemMenu({
     <Popover
       align="right"
       hideCaret
+      // Closed any way (outside tap, Escape, the ⋮ again), it opens next time on the main menu.
+      onClosed={() => setLinking(false)}
       // Edit link widens the panel into a clearly framed search box.
       width={linking ? 352 : undefined}
       panelClassName={linking ? "rounded-xl! border-2! border-accent/60! bg-surface! p-3! shadow-[0_12px_32px_rgba(0,0,0,0.6)]! ring-1 ring-white/15" : ""}

@@ -362,7 +362,7 @@ export function CountBox({ item, onCount, big = false }: { item: Pick<Item, "inS
     if (n != null && n >= 0 && Math.abs(n - item.inStock) > 1e-9) onCount(n);
     setText(null);
   };
-  if (!work) return <span className={big ? "text-2xl" : ""}>{formatStock(item.inStock, item.sheet)}</span>;
+  if (!work) return <span className={big ? "text-3xl sm:text-4xl" : ""}>{formatStock(item.inStock, item.sheet)}</span>;
   if (text === null)
     return (
       <button
@@ -371,7 +371,7 @@ export function CountBox({ item, onCount, big = false }: { item: Pick<Item, "inS
           e.stopPropagation();
           setText(formatStock(item.inStock, item.sheet));
         }}
-        className={`rounded px-0.5 underline decoration-dotted decoration-white/40 underline-offset-4 hover:decoration-current ${big ? "text-2xl" : ""}`}
+        className={`rounded px-0.5 underline decoration-dotted decoration-white/40 underline-offset-4 hover:decoration-current ${big ? "text-3xl sm:text-4xl" : ""}`}
         title="Type the real count"
         aria-label="Type the real count"
       >
@@ -392,7 +392,7 @@ export function CountBox({ item, onCount, big = false }: { item: Pick<Item, "inS
         if (e.key === "Escape") setText(null);
       }}
       aria-label="Real count"
-      className={`rounded bg-white px-1 text-center text-fg outline-none ${big ? "w-24 text-2xl" : "w-14"}`}
+      className={`rounded bg-white px-1 text-center text-fg outline-none ${big ? "w-28 text-3xl sm:text-4xl" : "w-14"}`}
     />
   );
 }
