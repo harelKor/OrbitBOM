@@ -229,7 +229,7 @@ export function ShelfCoversPrompt({ part, shelf, save, overlay = false }: { part
         type="button"
         onClick={(e) => {
           e.stopPropagation();
-          save({ status: COTS_IN_STOCK });
+          save({ status: COTS_IN_STOCK, fromShelfPrompt: true });
         }}
         className="press flex min-w-0 items-center gap-1 py-0.5 pr-1 pl-2 hover:bg-emerald-600 hover:text-white"
         title={why}

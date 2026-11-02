@@ -71,6 +71,9 @@ export const partChangesSchema = z
     // Counts one more (or takes one back) from the saved count rather than the page's copy, so
     // two people counting the same part at once never lose a piece (resolveCounterAdds).
     add: z.partialRecord(z.enum(["donePreprocess", "doneProcess1", "doneProcess2", "postDone"]), z.number().int().min(-1000).max(1000)),
+    // Marked In Stock from the "In Stock?" tag: the shelf already had these units, so nothing
+    // arrived (no Order History row, no stock added). Not a part field.
+    fromShelfPrompt: z.literal(true),
   })
   .partial();
 
@@ -144,6 +147,7 @@ export function planPartUpdate(
 ): Plan {
   const changes = resolveCounterAdds(part, input);
   const { status, donePreprocess, doneProcess1, doneProcess2, fabricators, ...rest } = changes;
+  delete rest.fromShelfPrompt; // a flag for applyEachPartChanges, not a part field
   const next: Partial<PartRow> = { ...rest };
 
   if (status !== undefined) Object.assign(next, applyStatus(status));

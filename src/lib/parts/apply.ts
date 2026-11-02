@@ -77,6 +77,7 @@ export async function applyEachPartChanges(
       let received = 0;
       if (
         ctx.receive !== false &&
+        !own.fromShelfPrompt &&
         after.classification === "cots" &&
         after.inventoryItemId &&
         set.designState === COTS_IN_STOCK &&
@@ -117,7 +118,7 @@ export async function applyEachPartChanges(
         })),
       );
       // A COTS order went In Route, arrived, or was taken back: its Order History card follows.
-      if (set.designState !== undefined) await recordOrderHistory(tx, row, after);
+      if (set.designState !== undefined && !own.fromShelfPrompt) await recordOrderHistory(tx, row, after);
       // Sent to fab: To Fab keeps this state until the part is released again (plan/fab-version-lock.md).
       if (isReleaseMove(row, after)) await lockRelease(tx, after, { memberId: ctx.memberId, batchId });
       if (received) await moveStock(tx, { itemId: after.inventoryItemId!, delta: received, reason: "received", partId: row.id }, { memberId: ctx.memberId, via: ctx.via, batchId });
