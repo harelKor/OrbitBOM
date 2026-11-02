@@ -7,7 +7,6 @@ import {
   editItemPieces,
   countStock,
   deleteItem,
-  findBomParts,
   itemPopup,
   linkItemToProduct,
   loadItemHistory,
@@ -24,7 +23,7 @@ import {
 import { textOn } from "@/components/bom/options";
 import { Dialog } from "@/components/Dialog";
 import { Popover } from "@/components/bom/Popover";
-import { Can, EditOnly, useCan } from "@/components/shell/ModeContext";
+import { useCan } from "@/components/shell/ModeContext";
 import { Chevron } from "@/components/ui/Chevron";
 import { Icon } from "@/components/ui/Icon";
 import { materialCategory } from "@/config/materials";
@@ -38,8 +37,7 @@ import { CartButton, CountBox, ItemPrice, NewSize, PieceStepper, conditionColor,
 import { ItemForm, draftOf } from "./ItemForm";
 import { CotsOrderBox, showsOrder, type CotsOrderInfo } from "./CotsOrderBox";
 import { ItemHistory } from "./ItemHistory";
-import { PhotoButtons, usePhotoPicker } from "./photo";
-import { ToBomDialog } from "./ToBomDialog";
+import { usePhotoPicker } from "./photo";
 import { LocationPicker } from "./LocationPicker";
 import { SeasonTag } from "./SeasonTag";
 import { UsedIn } from "./UsedIn";
@@ -219,13 +217,13 @@ function Stepper({
   children?: React.ReactNode;
 }) {
   const work = useCan("work");
-  const size = big ? "h-12 w-12 text-2xl" : "h-10 w-10 text-xl";
+  const size = "h-10 w-10 text-xl";
   return (
     <div className="flex items-center gap-2">
       {work && (<button type="button" onClick={() => onStep(-1)} disabled={item.sheet ? item.inStock <= 0 : item.inStock < 1} className={`press flex ${size} items-center justify-center rounded-lg bg-rose-500 font-bold text-white hover:bg-rose-400 disabled:opacity-30`} aria-label="One less">
         −
       </button>)}
-      <span className={`min-w-14 text-center font-mono font-semibold tabular-nums ${big ? "display text-4xl" : "text-xl"}`}>
+      <span className={`text-center font-mono font-semibold tabular-nums ${big ? "display min-w-10 text-2xl sm:text-3xl" : "min-w-14 text-xl"}`}>
         {onCount ? <CountBox item={item} onCount={onCount} big={big} /> : formatStock(item.inStock, item.sheet)}
       </span>
       {work && (<button type="button" onClick={() => onStep(1)} className={`press flex ${size} items-center justify-center rounded-lg bg-emerald-500 font-bold text-white hover:bg-emerald-400`} aria-label="One more">
@@ -282,7 +280,7 @@ function ItemNotesBox({ item, onSaved, onError }: { item: Item; onSaved: () => v
   );
 }
 
-// "Needed for Season": how many the team wants on the shelf for the season, typed in place under
+// "Season needs": how many the team wants on the shelf for the season, typed in place under
 // the count. Blank or 0 clears it. Saves on Enter or when the box loses focus.
 function SeasonBox({ item, onChange, onError }: { item: Item; onChange: ChangeItem; onError: (m: string | null) => void }) {
   const work = useCan("work");
@@ -300,8 +298,8 @@ function SeasonBox({ item, onChange, onError }: { item: Item; onChange: ChangeIt
     onChange(() => ({ seasonNeed }), () => setSeasonNeed(item.id, value));
   };
   return (
-    <label className="inline-flex items-center gap-2.5 rounded-xl border border-line bg-raised py-1.5 pr-1.5 pl-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]">
-      <span className="text-[11px] leading-tight font-semibold text-subtle uppercase">Needed for Season</span>
+    <label className="inline-flex items-center gap-2 rounded-xl border border-line bg-raised py-1 pr-1 pl-2.5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]">
+      <span className="text-[11px] leading-tight font-semibold text-subtle uppercase">Season needs</span>
       <input
         value={text ?? current}
         onChange={(e) => setText(e.target.value)}
@@ -313,8 +311,8 @@ function SeasonBox({ item, onChange, onError }: { item: Item; onChange: ChangeIt
         disabled={!work}
         inputMode={item.sheet ? "text" : "numeric"}
         placeholder="—"
-        aria-label="Needed for Season"
-        className="min-h-10 w-20 rounded-md border border-line-strong bg-surface px-1 py-1 text-center font-mono text-lg font-semibold tabular-nums outline-none focus:border-sky-400"
+        aria-label="Season needs"
+        className="min-h-9 w-16 rounded-md border border-line-strong bg-surface px-1 py-1 text-center font-mono text-lg font-semibold tabular-nums outline-none focus:border-sky-400"
       />
     </label>
   );
@@ -424,9 +422,10 @@ function PieceCount({ count, onCount }: { count: number; onCount: (n: number) =>
   );
 }
 
-// The item window, kept simple: picture and tags, the count, the details, the parts that use it.
-// Condition and location save as they're picked; the pencil opens the full form (name, category,
-// specs). Admins in Edit also get To BOM and Delete. History opens on demand.
+// The item window, kept compact enough to open without scrolling: picture and tags, the count
+// with Season needs beside it, the details, the parts that use it, then History and the pencil on
+// one line. Condition and location save as they're picked; the pencil opens the full form (name,
+// category, specs, and Delete for admins). The ⋯ menu holds the photo and the product link.
 function ItemBody({
   item,
   data,
@@ -448,27 +447,20 @@ function ItemBody({
   order: CotsOrderContext | null;
   orderEditable: boolean;
 }) {
-  const [mode, setMode] = useState<"view" | "edit" | "toBom">("view");
+  const [mode, setMode] = useState<"view" | "edit">("view");
   const [spreadOpen, setSpreadOpen] = useState(false);
   const [draft, setDraft] = useState(() => draftOf(item));
   const [message, setMessage] = useState<string | null>(null);
-  const [deleting, startDelete] = useTransition();
-  const [finding, startFind] = useTransition();
   const [photo, setPhoto] = useState<string | null>(null);
   const [, startPhoto] = useTransition();
   const work = useCan("work");
-  const [moving, startMove] = useTransition();
-  // A link's ✕ saves, then the window reloads.
+  const [, startMove] = useTransition();
+  // A link's Unlink saves, then the window reloads.
   const save = (run: () => Promise<{ error?: string }>) =>
     startMove(async () => {
       const r = await run();
       setMessage(r.error ?? null);
       if (!r.error) onSaved();
-    });
-  const find = () =>
-    startFind(async () => {
-      const r = await findBomParts(item.id);
-      setMessage(r.error ?? r.message ?? null);
     });
   const categories = data?.categories ?? [];
   const locations = data?.locations ?? [];
@@ -489,12 +481,6 @@ function ItemBody({
       if (r.error) setMessage(r.error);
       else onSaved();
     });
-  const photoButtons = (
-    <Can cap="work">
-      <PhotoButtons compact onPhoto={onPhoto} />
-    </Can>
-  );
-  // With a picture, Take / Upload / Delete photo live in the ⋯ menu on it.
   const picker = usePhotoPicker(onPhoto);
   const deletePhoto = () => {
     if (!confirm(`Delete the photo of "${item.name}"?`)) return;
@@ -507,6 +493,11 @@ function ItemBody({
         onSaved();
       }
     });
+  };
+  const unlink = (l: Item["cotsLinks"][number]) => {
+    const last = item.cotsLinks.length === 1 && item.price != null;
+    if (!confirm(`Remove the ${l.site || hostOf(l.url)} link from this item?${last ? " It's the last link, so the price goes too." : ""}`)) return;
+    save(() => unlinkItemProduct(item.id, l.url));
   };
   const gap = missing(item, "any");
   const cart = (gap > 0 || item.openOrder) && <CartButton item={item} gap={gap} onLeave={onClose} onSent={onSaved} />;
@@ -527,297 +518,291 @@ function ItemBody({
           setMessage(m ?? "Saved.");
           onSaved();
         }}
+        onDelete={() => {
+          const warn = usage?.parts.length ? ` ${usage.parts.length} BOM parts will no longer draw from it.` : "";
+          if (!confirm(`Delete "${item.name}" from the inventory?${warn}`)) return;
+          return deleteItem(item.id).then(onClose);
+        }}
       />
     );
 
   // Pills are big enough to tap on phones.
-  const tag = "rounded-full px-2.5 py-0.5 text-xs font-semibold max-sm:inline-flex max-sm:min-h-10 max-sm:items-center max-sm:px-3.5 max-sm:text-sm";
+  const tag = "rounded-full px-2.5 py-0.5 text-xs font-semibold max-sm:inline-flex max-sm:min-h-10 max-sm:items-center max-sm:px-3 max-sm:text-sm";
   const caret = { backgroundPosition: "right 10px center, right 6px center", backgroundSize: "4px 4px", backgroundRepeat: "no-repeat" } as const;
   const caretOf = (c: string) => ({ ...caret, backgroundImage: `linear-gradient(45deg, transparent 50%, ${c} 50%), linear-gradient(135deg, ${c} 50%, transparent 50%)` });
   const specs = (cat ? activeFields(cat, item.specs) : []).filter((f) => item.specs[f.id]);
+  // Where to buy it and the price, one line: on the picture, or with the tags when there's none.
+  const buy = (item.cotsLinks.length > 0 || item.price != null) && (
+    <span className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-[#0D111A]/80 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur-md [&_button]:border-white/30 [&_button]:text-white/70">
+      {item.cotsLinks.map((l) => (
+        <a key={l.url} href={l.url} target="_blank" rel="noreferrer" className="truncate hover:text-sky-300 hover:underline">
+          {l.site || hostOf(l.url)}
+        </a>
+      ))}
+      {item.price != null && <ItemPrice price={item.price} />}
+    </span>
+  );
+  const menu = work && (
+    <ItemMenu
+      item={item}
+      hasPhoto={!!picture}
+      onTake={picker.takePhoto}
+      onUpload={picker.upload}
+      onDeletePhoto={deletePhoto}
+      onUnlink={unlink}
+      onMessage={setMessage}
+      onLinked={(m) => {
+        setMessage(m);
+        onSaved();
+      }}
+    />
+  );
+  // On phones the right column dissolves into the outer row: the tags sit beside the picture and
+  // the count line and what follows take the whole width below it.
+  const wide = "max-sm:w-full";
   return (
-    <div className="space-y-4">
-      {/* On phones the picture sits above the count and pills, each the whole width. */}
-      <div className="flex flex-col gap-4 sm:flex-row">
+    <div className="space-y-2.5">
+      {picker.inputs}
+      <div className="flex flex-wrap gap-x-3 gap-y-2.5 sm:flex-nowrap">
         {picture && (
-          <div className="thumb-well relative flex h-44 w-full shrink-0 items-center justify-center rounded-xl sm:h-56 sm:w-56">
+          <div className="thumb-well relative flex h-32 w-32 shrink-0 items-center justify-center rounded-xl sm:h-44 sm:w-44">
             {/* eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable */}
             <img src={picture} alt="" className={`h-full w-full object-contain p-2 ${picker.busy ? "opacity-50" : ""}`} />
-            {cart && <div className="absolute top-2 left-2">{cart}</div>}
-            {work && (
-              <div className="absolute top-2 right-2">
-                {picker.inputs}
-                <Popover
-                  align="right"
-                  hideCaret
-                  triggerClassName="press flex h-9 w-9 items-center justify-center rounded-full border border-white/40 bg-[#0D111A]/60 text-lg leading-none font-bold text-white shadow-sm backdrop-blur-md transition-colors duration-150 hover:border-sky-400/60 hover:text-sky-300 active:scale-[0.98]"
-                  trigger={
-                    <>
-                      ⋯<span className="sr-only">Photo options</span>
-                    </>
-                  }
-                >
-                  {(close) => {
-                    const row = "press flex min-h-10 w-full items-center gap-2 rounded-lg px-2.5 text-left text-sm font-medium text-fg hover:bg-raised active:scale-[0.98]";
-                    return (
-                      <div className="p-0.5">
-                        <button type="button" className={row} onClick={() => (close(), picker.takePhoto())}>
-                          📷 Take photo
-                        </button>
-                        <button type="button" className={row} onClick={() => (close(), picker.upload())}>
-                          <Icon name="download" className="h-4 w-4 rotate-180" /> Upload photo
-                        </button>
-                        <button type="button" className={`${row} text-rose-500`} onClick={() => (close(), deletePhoto())}>
-                          <Icon name="close" className="h-4 w-4" /> Delete photo
-                        </button>
-                      </div>
-                    );
-                  }}
-                </Popover>
-              </div>
-            )}
-            {(picker.busy || picker.error) && (
+            {cart && <div className="absolute top-1.5 left-1.5">{cart}</div>}
+            {menu && <div className="absolute top-1.5 right-1.5">{menu}</div>}
+            {picker.busy || picker.error ? (
               <span className={`absolute inset-x-2 bottom-2 rounded-md px-2 py-1 text-center text-xs font-semibold ${picker.error ? "bg-rose-600/90 text-white" : "bg-[#0D111A]/70 text-white"}`}>
                 {picker.error ?? "Uploading…"}
               </span>
+            ) : (
+              buy && <div className="absolute right-2 bottom-2 left-2 flex">{buy}</div>
             )}
           </div>
         )}
-        <div className="min-w-0 flex-1 space-y-2">
-          <div className="flex flex-wrap gap-1">
-            {cat && (
-              <Link href={`/inventory/c/${cat.id}`} onClick={onClose} className={`${tag} bg-[#111318]/85 text-white hover:bg-accent`}>
-                {cat.label}
-              </Link>
-            )}
-            <SeasonTag itemId={item.id} tag={item.seasonTag} className={tag} />
-            {!picture && cart}
-            {work && data ? (
-              // Condition and location pills are menus that save at once.
-              <>
-                <select
-                  value={item.conditionId ?? ""}
-                  onChange={(e) => {
-                    const conditionId = e.target.value || null;
-                    onChange(() => ({ conditionId }), () => setItemCondition(item.id, conditionId));
-                  }}
-                  aria-label="Condition"
-                  className={`${tag} press cursor-pointer appearance-none border pr-6 disabled:opacity-60 ${condition ? "border-transparent hover:brightness-110" : "border-dashed border-line-strong bg-transparent text-muted hover:border-sky-400/40"}`}
-                  style={condition ? { ...caretOf(textOn(color!)), backgroundColor: color, color: textOn(color!) } : caretOf("currentColor")}
-                >
-                  <option value="" className="bg-surface text-fg">
-                    {condition ? "No condition" : "Add condition"}
-                  </option>
-                  {conditions.map((c) => (
-                    <option key={c.id} value={c.id} className="bg-surface text-fg">
-                      {c.label}
+        <div className="max-sm:contents sm:flex sm:min-w-0 sm:flex-1 sm:flex-col sm:gap-2.5">
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5 sm:flex-none">
+            <div className="flex flex-wrap items-center gap-1">
+              {cat && (
+                <Link href={`/inventory/c/${cat.id}`} onClick={onClose} className={`${tag} bg-[#111318]/85 text-white hover:bg-accent`}>
+                  {cat.label}
+                </Link>
+              )}
+              <SeasonTag itemId={item.id} tag={item.seasonTag} className={tag} />
+              {!picture && cart}
+              {work && data ? (
+                // Condition and location pills are menus that save at once.
+                <>
+                  <select
+                    value={item.conditionId ?? ""}
+                    onChange={(e) => {
+                      const conditionId = e.target.value || null;
+                      onChange(() => ({ conditionId }), () => setItemCondition(item.id, conditionId));
+                    }}
+                    aria-label="Condition"
+                    className={`${tag} press cursor-pointer appearance-none border pr-6 disabled:opacity-60 ${condition ? "border-transparent hover:brightness-110" : "border-dashed border-line-strong bg-transparent text-muted hover:border-sky-400/40"}`}
+                    style={condition ? { ...caretOf(textOn(color!)), backgroundColor: color, color: textOn(color!) } : caretOf("currentColor")}
+                  >
+                    <option value="" className="bg-surface text-fg">
+                      {condition ? "No condition" : "Condition"}
                     </option>
-                  ))}
-                </select>
-                <LocationPicker
-                  locations={locations}
-                  value={item.locationId}
-                  onChange={(id) => onChange(() => ({ locationId: id }), () => setItemLocation(item.id, id))}
-                  className={`${tag} press border bg-transparent hover:border-sky-400/40 active:scale-[0.98] disabled:opacity-60 ${location ? "border-line text-fg-2" : "border-dashed border-line-strong text-muted"}`}
-                />
-              </>
-            ) : (
-              <>
-            {condition && (
-              <Link href={`/inventory/condition/${condition.id}`} onClick={onClose} className={`${tag} hover:brightness-110`} style={{ background: color, color: textOn(color!) }}>
-                {condition.label}
-              </Link>
-            )}
-            {location && (
-              <button
-                type="button"
-                onClick={() => setShowMap((v) => !v)}
-                aria-expanded={showMap}
-                title={onMap ? "Show where it is on the workshop map" : "Show the workshop map"}
-                className={`${tag} press border active:scale-[0.98] ${showMap ? "border-sky-400/60 bg-sky-500/15 text-sky-300" : "border-line text-fg-2 hover:border-sky-400/40 hover:text-accent"}`}
-              >
-                📍 {location.name}
-              </button>
-            )}
-              </>
+                    {conditions.map((c) => (
+                      <option key={c.id} value={c.id} className="bg-surface text-fg">
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                  <LocationPicker
+                    locations={locations}
+                    value={item.locationId}
+                    onChange={(id) => onChange(() => ({ locationId: id }), () => setItemLocation(item.id, id))}
+                    className={`${tag} press border bg-transparent hover:border-sky-400/40 active:scale-[0.98] disabled:opacity-60 ${location ? "border-line text-fg-2" : "border-dashed border-line-strong text-muted"}`}
+                  >
+                    {location ? `📍 ${location.name}` : "📍 Location"}
+                  </LocationPicker>
+                </>
+              ) : (
+                <>
+                  {condition && (
+                    <Link href={`/inventory/condition/${condition.id}`} onClick={onClose} className={`${tag} hover:brightness-110`} style={{ background: color, color: textOn(color!) }}>
+                      {condition.label}
+                    </Link>
+                  )}
+                  {location && (
+                    <button
+                      type="button"
+                      onClick={() => setShowMap((v) => !v)}
+                      aria-expanded={showMap}
+                      title={onMap ? "Show where it is on the workshop map" : "Show the workshop map"}
+                      className={`${tag} press border active:scale-[0.98] ${showMap ? "border-sky-400/60 bg-sky-500/15 text-sky-300" : "border-line text-fg-2 hover:border-sky-400/40 hover:text-accent"}`}
+                    >
+                      📍 {location.name}
+                    </button>
+                  )}
+                </>
+              )}
+              {!picture && buy}
+              {!picture && menu}
+            </div>
+            {(item.sheet || usage?.need || gap > 0) && (
+              <div className="text-xs text-muted">
+                {[item.sheet ? (isSheetGoods(cat?.label ?? item.name) ? "sheets on the shelf" : "on the shelf") : null, usage?.need ? `Robots need ${usage.need}` : null].filter(Boolean).join(" · ")}
+                {gap > 0 && <span className="font-mono font-semibold text-rose-500 tabular-nums">{item.sheet || usage?.need ? " · " : ""}{gap} short</span>}
+              </div>
             )}
           </div>
           {showMap && location && (
             // A compact map centred on the item's shelf, its pin lit in Orbit blue.
-            <div className="map-unfold w-full max-w-md space-y-1">
+            <div className={`map-unfold w-full max-w-md space-y-1 ${wide}`}>
               <WorkshopMap key={location.id} locations={locations} focusId={location.id} selectedId={location.id} compact />
               <Link href={`/inventory?loc=${location.id}`} onClick={onClose} className="inline-block text-xs font-semibold text-accent hover:underline">
                 {onMap ? `Everything at ${location.name} →` : `${location.name} isn't on the map yet. See everything there →`}
               </Link>
             </div>
           )}
-          {!picture && photoButtons}
-          <Stepper item={item} onStep={onStep} onCount={onCount} big pieces={false}>
-            {item.sheet && (
-              <button
-                type="button"
-                onClick={() => setSpreadOpen((o) => !o)}
-                aria-expanded={spreadOpen}
-                className={`press flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold active:scale-[0.98] ${spreadOpen ? "border-sky-400/60 bg-sky-500/15 text-accent" : "border-line text-fg-2 hover:border-sky-400/40 hover:text-accent"}`}
-              >
-                Spread <Chevron open={spreadOpen} small />
-              </button>
-            )}
-          </Stepper>
-          {item.sheet && spreadOpen && (
-            <SpreadPanel item={item} onOp={(op) => onChange((i) => applyPieceOp(i, op), () => editItemPieces(item.id, op))} />
-          )}
-          <div className="text-xs text-muted">
-            {[
-              item.sheet ? (isSheetGoods(cat?.label ?? item.name) ? "sheets on the shelf" : "on the shelf") : null,
-              hasSeasonNeed(item) ? `Season needs ${formatStock(item.seasonNeed!, item.sheet)}` : null,
-              usage?.need ? `Robots need ${usage.need}` : null,
-            ]
-              .filter(Boolean)
-              .join(" · ") || "Tap the number to type the count"}
-            {missing(item, "any") > 0 && <span className="font-mono font-semibold text-rose-500 tabular-nums"> · {missing(item, "any")} short</span>}
+          {/* The count and Season needs share one line. */}
+          <div className={`flex flex-wrap items-center gap-2 ${wide}`}>
+            <Stepper item={item} onStep={onStep} onCount={onCount} big pieces={false}>
+              {item.sheet && (
+                <button
+                  type="button"
+                  onClick={() => setSpreadOpen((o) => !o)}
+                  aria-expanded={spreadOpen}
+                  className={`press flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold active:scale-[0.98] ${spreadOpen ? "border-sky-400/60 bg-sky-500/15 text-accent" : "border-line text-fg-2 hover:border-sky-400/40 hover:text-accent"}`}
+                >
+                  Spread <Chevron open={spreadOpen} small />
+                </button>
+              )}
+            </Stepper>
+            <SeasonBox item={item} onChange={onChange} onError={setMessage} />
           </div>
-          <SeasonBox item={item} onChange={onChange} onError={setMessage} />
+          {item.sheet && spreadOpen && (
+            <div className={wide}>
+              <SpreadPanel item={item} onOp={(op) => onChange((i) => applyPieceOp(i, op), () => editItemPieces(item.id, op))} />
+            </div>
+          )}
           {order && showsOrder(order.info.status) && (
-            <CotsOrderBox key={`${order.info.status}:${order.info.quantity}`} info={order.info} onSave={order.save} editable={orderEditable} onLeave={onClose} />
+            <div className={wide}>
+              <CotsOrderBox key={`${order.info.status}:${order.info.quantity}`} info={order.info} onSave={order.save} editable={orderEditable} onLeave={onClose} />
+            </div>
           )}
         </div>
       </div>
 
       <ItemNotesBox item={item} onSaved={onSaved} onError={setMessage} />
 
-      {/* Specs flow on the left, one after another; Buy at and Price keep their own column on the
-          right, level with the first two lines. */}
-      <div className="flex items-start gap-4">
-        <p className="min-w-0 flex-1 text-sm leading-relaxed sm:text-base">
-          {specs.length ? (
-            specs.map((f, i) => (
-              <span key={f.id} className="inline">
-                {i > 0 && <span className="mx-2 text-subtle" aria-hidden>·</span>}
-                <span className="whitespace-nowrap">
-                  <span className="text-muted">{f.label}</span> <span className="font-semibold text-fg">{item.specs[f.id]}</span>
-                </span>
+      {specs.length > 0 && (
+        <p className="text-sm leading-relaxed">
+          {specs.map((f, i) => (
+            <span key={f.id} className="inline">
+              {i > 0 && <span className="mx-2 text-subtle" aria-hidden>·</span>}
+              <span className="whitespace-nowrap">
+                <span className="text-muted">{f.label}</span> <span className="font-semibold text-fg">{item.specs[f.id]}</span>
               </span>
-            ))
-          ) : (
-            <span className="text-sm text-subtle">No specs yet</span>
-          )}
+            </span>
+          ))}
         </p>
-        <dl className="grid shrink-0 grid-cols-[auto_auto] items-center gap-x-2 gap-y-1 text-sm">
-          <dt className="text-right text-muted">Buy at</dt>
-          <dd className="flex min-h-7 flex-wrap items-center gap-x-2 gap-y-0.5">
-            {item.cotsLinks.map((l) => (
-              <span key={l.url} className="inline-flex items-center gap-0.5">
-                <a href={l.url} target="_blank" rel="noreferrer" className="font-semibold text-sky-600 hover:underline dark:text-sky-400">
-                  {l.site || hostOf(l.url)} ↗
-                </a>
-                {work && (
-                  <button
-                    type="button"
-                    disabled={moving}
-                    onClick={() => {
-                      const last = item.cotsLinks.length === 1 && item.price != null;
-                      if (!confirm(`Remove the ${l.site || hostOf(l.url)} link from this item?${last ? " It's the last link, so the price goes too." : ""}`)) return;
-                      save(() => unlinkItemProduct(item.id, l.url));
-                    }}
-                    aria-label={`Remove the ${l.site || hostOf(l.url)} link`}
-                    title="Remove this link"
-                    className="press flex h-9 w-9 items-center justify-center rounded-full text-subtle hover:bg-rose-500/10 hover:text-rose-500 active:scale-[0.98] disabled:opacity-50 sm:h-6 sm:w-6"
-                  >
-                    <Icon name="close" className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </span>
-            ))}
-            {!item.cotsLinks.length &&
-              (work ? (
-                <Popover
-                  align="right"
-                  hideCaret
-                  triggerClassName="press flex h-9 w-9 items-center justify-center rounded-md text-subtle hover:bg-raised hover:text-accent active:scale-[0.98] sm:h-7 sm:w-7"
-                  trigger={
-                    <>
-                      <Icon name="pencil" className="h-3.5 w-3.5" />
-                      <span className="sr-only">Link a product</span>
-                    </>
-                  }
-                >
-                  {(close) => (
-                    <ProductSearch
-                      itemId={item.id}
-                      initial={item.name}
-                      onMessage={setMessage}
-                      onLinked={(m) => {
-                        close();
-                        setMessage(m);
-                        onSaved();
-                      }}
-                    />
-                  )}
-                </Popover>
-              ) : (
-                <span className="text-subtle">—</span>
-              ))}
-          </dd>
-          <dt className="text-right text-muted">Price</dt>
-          <dd>{item.price != null ? <ItemPrice price={item.price} suffix=" each" /> : <span className="text-subtle">—</span>}</dd>
-        </dl>
-      </div>
+      )}
 
       {!!usage?.parts.length && <UsedIn usage={usage} sheet={item.sheet} />}
 
       {message && <p className="text-sm text-emerald-700">{message}</p>}
-      <div className="space-y-2 border-t border-line pt-3">
-        {/* BOM and the pencil share one row. */}
-        <div className="flex gap-2">
-          {/* Raw stock isn't a BOM part, so its window has no BOM search. */}
-          {!item.sheet && cat?.group !== "consumables" && (
-            <button className="btn min-h-11 shrink-0" disabled={finding} onClick={find} title="Find BOM parts that are this item; each one waits in To Review for Approve">
-              <Icon name="search" className="h-4 w-4" /> {finding ? "Looking…" : "BOM"}
-            </button>
-          )}
-          {work && (
-            <button
-              type="button"
-              className="btn min-h-11 w-11 shrink-0 justify-center px-0"
-              disabled={!data}
-              onClick={() => {
-                setDraft(draftOf(item));
-                setMode("edit");
-              }}
-              title="Edit item"
-              aria-label="Edit item"
-            >
-              <Icon name="pencil" className="h-4 w-4" />
-            </button>
-          )}
+      {/* History and the pencil share the last line. */}
+      <div className="flex items-start justify-between gap-2 border-t border-line pt-2">
+        <div className="min-w-0 flex-1">
+          <HistorySection item={item} categories={categories} locations={locations} conditions={conditions} />
         </div>
-        <EditOnly>
-          <div className="flex flex-wrap gap-2">
-            <button className="btn min-h-11" disabled={!data} onClick={() => setMode("toBom")}>
-              To BOM
-            </button>
-            <button
-              className="btn ml-auto min-h-11 text-rose-700"
-              disabled={deleting}
-              onClick={() => {
-                const warn = usage?.parts.length ? ` ${usage.parts.length} BOM parts will no longer draw from it.` : "";
-                if (!confirm(`Delete "${item.name}" from the inventory?${warn}`)) return;
-                startDelete(async () => {
-                  await deleteItem(item.id);
-                  onClose();
-                });
-              }}
-            >
-              Delete
-            </button>
-          </div>
-        </EditOnly>
+        {work && (
+          <button
+            type="button"
+            className="btn mt-1 h-8 w-8 shrink-0 justify-center px-0 active:scale-[0.98]"
+            disabled={!data}
+            onClick={() => {
+              setDraft(draftOf(item));
+              setMode("edit");
+            }}
+            title="Edit item"
+            aria-label="Edit item"
+          >
+            <Icon name="pencil" className="h-4 w-4" />
+          </button>
+        )}
       </div>
-
-      <HistorySection item={item} categories={categories} locations={locations} conditions={conditions} />
-      {data && <ToBomDialog key={mode === "toBom" ? "bom" : "closed-bom"} item={mode === "toBom" ? item : null} targets={data.targets} onClose={() => setMode("view")} />}
     </div>
+  );
+}
+
+// The ⋯ menu: Take / Upload / Delete photo, and Edit link (search the stores or paste a link,
+// right in the menu) with Unlink for each link the item has.
+function ItemMenu({
+  item,
+  hasPhoto,
+  onTake,
+  onUpload,
+  onDeletePhoto,
+  onUnlink,
+  onMessage,
+  onLinked,
+}: {
+  item: Item;
+  hasPhoto: boolean;
+  onTake: () => void;
+  onUpload: () => void;
+  onDeletePhoto: () => void;
+  onUnlink: (l: Item["cotsLinks"][number]) => void;
+  onMessage: (m: string | null) => void;
+  onLinked: (m: string | null) => void;
+}) {
+  const [linking, setLinking] = useState(false);
+  return (
+    <Popover
+      align="right"
+      hideCaret
+      triggerClassName="press flex h-8 w-8 items-center justify-center rounded-full border border-white/40 bg-[#0D111A]/60 text-lg leading-none font-bold text-white shadow-sm backdrop-blur-md transition-colors duration-150 hover:border-sky-400/60 hover:text-sky-300 active:scale-[0.98]"
+      trigger={
+        <>
+          ⋯<span className="sr-only">Photo and link options</span>
+        </>
+      }
+    >
+      {(close) => {
+        const done = (run: () => void) => {
+          setLinking(false);
+          close();
+          run();
+        };
+        if (linking)
+          return (
+            <div className="w-[min(22rem,calc(100vw-2rem))] p-1">
+              <ProductSearch itemId={item.id} initial={item.name} onMessage={onMessage} onLinked={(m) => done(() => onLinked(m))} />
+            </div>
+          );
+        const row = "press flex min-h-10 w-full items-center gap-2 rounded-lg px-2.5 text-left text-sm font-medium text-fg hover:bg-raised active:scale-[0.98]";
+        return (
+          <div className="p-0.5">
+            <button type="button" className={row} onClick={() => done(onTake)}>
+              📷 Take photo
+            </button>
+            <button type="button" className={row} onClick={() => done(onUpload)}>
+              <Icon name="download" className="h-4 w-4 rotate-180" /> Upload photo
+            </button>
+            {hasPhoto && (
+              <button type="button" className={`${row} text-rose-500`} onClick={() => done(onDeletePhoto)}>
+                <Icon name="close" className="h-4 w-4" /> Delete photo
+              </button>
+            )}
+            <div className="my-0.5 border-t border-line" />
+            <button type="button" className={row} onClick={() => setLinking(true)}>
+              <Icon name="pencil" className="h-4 w-4" /> Edit link
+            </button>
+            {item.cotsLinks.map((l) => (
+              <button key={l.url} type="button" className={`${row} text-rose-500`} onClick={() => done(() => onUnlink(l))}>
+                <Icon name="close" className="h-4 w-4" /> Unlink {l.site || hostOf(l.url)}
+              </button>
+            ))}
+          </div>
+        );
+      }}
+    </Popover>
   );
 }
 
@@ -847,7 +832,7 @@ function HistorySection({ item, categories, locations, conditions }: { item: Ite
   );
 }
 
-// Buy at's pencil (like a COTS card's): search the team's stores (like the add box) or paste a
+// Edit link in the ⋯ menu: search the team's stores (like the add box) or paste a
 // product link; picking one links the item to it (link, price, photo) and the window reloads.
 function ProductSearch({
   itemId,
