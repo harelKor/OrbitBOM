@@ -9,6 +9,7 @@ import { getCategory, specLine } from "@/lib/inventory/categories";
 import { hasSeasonNeed, missing, neededFor, standing, type NeedView } from "@/lib/inventory/season";
 import { formatStock, isSheetGoods } from "@/lib/inventory/stock";
 import { CountBox, PieceStepper, conditionColor, standingTint } from "./ItemCard";
+import { ConditionSelect } from "./ConditionSelect";
 import { LocationPicker } from "./LocationPicker";
 import { useInventoryPopup } from "./InventoryPopup";
 import { SeasonTag } from "./SeasonTag";
@@ -140,30 +141,21 @@ export function ItemListRow({
               </LocationPicker>
             )}
             {conditions && (
-              <select
-                value={item.conditionId ?? ""}
+              <ConditionSelect
+                conditions={conditions}
+                value={item.conditionId}
                 disabled={saving}
-                onChange={(e) => {
-                  const conditionId = e.target.value || null;
+                onChange={(conditionId) =>
                   startSaving(async () => {
                     await setItemCondition(item.id, conditionId);
-                  });
-                }}
-                aria-label="Condition"
-                className={`press max-w-full cursor-pointer appearance-none truncate rounded-full border px-2.5 py-0.5 text-[11px] font-semibold active:scale-[0.98] disabled:opacity-60 ${
+                  })
+                }
+                emptyLabel="+ Condition"
+                className={`press cursor-pointer appearance-none rounded-full border px-2.5 py-0.5 text-[11px] font-semibold active:scale-[0.98] disabled:opacity-60 ${
                   condition ? "border-transparent hover:brightness-110" : "border-dashed border-line-strong bg-transparent text-muted hover:border-sky-400/40"
                 }`}
                 style={condition ? { backgroundColor: color, color: textOn(color!) } : undefined}
-              >
-                <option value="" className="bg-surface text-fg">
-                  {condition ? "No condition" : "+ Condition"}
-                </option>
-                {conditions.map((c) => (
-                  <option key={c.id} value={c.id} className="bg-surface text-fg">
-                    {c.label}
-                  </option>
-                ))}
-              </select>
+              />
             )}
             <SeasonTag itemId={item.id} tag={item.seasonTag} className="rounded-full border border-transparent px-2.5 py-0.5 text-[11px]" />
             {showStanding && <ListPill color={STANDING[state].color}>{STANDING[state].label(formatStock(gap, item.sheet))}</ListPill>}

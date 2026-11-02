@@ -35,6 +35,7 @@ import { type PieceOp, applyPieceOp, countPieces, formatStock, isSheetGoods, par
 import { bestOffer, isLink, searchStores } from "./AddBox";
 import { CartButton, CountBox, ItemPrice, NewSize, PieceStepper, conditionColor, hostOf } from "./ItemCard";
 import { ItemForm, draftOf } from "./ItemForm";
+import { ConditionSelect } from "./ConditionSelect";
 import { CotsOrderBox, showsOrder, type CotsOrderInfo } from "./CotsOrderBox";
 import { ItemHistory } from "./ItemHistory";
 import { usePhotoPicker } from "./photo";
@@ -593,25 +594,14 @@ function ItemBody({
               {work && data ? (
                 // Condition and location pills are menus that save at once.
                 <>
-                  <select
-                    value={item.conditionId ?? ""}
-                    onChange={(e) => {
-                      const conditionId = e.target.value || null;
-                      onChange(() => ({ conditionId }), () => setItemCondition(item.id, conditionId));
-                    }}
-                    aria-label="Condition"
-                    className={`${tag} press cursor-pointer appearance-none border pr-6 disabled:opacity-60 ${condition ? "border-transparent hover:brightness-110" : "border-dashed border-line-strong bg-transparent text-muted hover:border-sky-400/40"}`}
+                  <ConditionSelect
+                    conditions={conditions}
+                    value={item.conditionId}
+                    onChange={(conditionId) => onChange(() => ({ conditionId }), () => setItemCondition(item.id, conditionId))}
+                    emptyLabel="Condition"
+                    className={`${tag} press cursor-pointer appearance-none border pr-5 disabled:opacity-60 ${condition ? "border-transparent hover:brightness-110" : "border-dashed border-line-strong bg-transparent text-muted hover:border-sky-400/40"}`}
                     style={condition ? { ...caretOf(textOn(color!)), backgroundColor: color, color: textOn(color!) } : caretOf("currentColor")}
-                  >
-                    <option value="" className="bg-surface text-fg">
-                      {condition ? "No condition" : "Condition"}
-                    </option>
-                    {conditions.map((c) => (
-                      <option key={c.id} value={c.id} className="bg-surface text-fg">
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
+                  />
                   <LocationPicker
                     locations={locations}
                     value={item.locationId}

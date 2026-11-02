@@ -49,8 +49,8 @@ const {
 const STATE = "inventory-seed:shop-2026-10";
 const CONDITIONS = [
   { label: "New", color: "#10b981" },
-  { label: "3D Printed", color: "#8b5cf6" },
-  { label: "Used / Worn", color: "#f59e0b" },
+  { label: "Printed", color: "#8b5cf6" },
+  { label: "Worn", color: "#f59e0b" },
 ];
 const ctx = { memberId: null, via: "sync" as const };
 
