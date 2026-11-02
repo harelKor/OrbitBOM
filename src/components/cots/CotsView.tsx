@@ -276,6 +276,7 @@ export function CotsView({
                 save={saveRow(row)}
                 selected={selected.has(row.key)}
                 onToggleSelect={ordering ? () => setSelected((s) => toggle(s, row.key)) : undefined}
+                onOpen={openRow(row)}
               />
               {clearable && <ClearButton name={partTitle(row.part)} onClick={() => clear(ids)} />}
             </div>

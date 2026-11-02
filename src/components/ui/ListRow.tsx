@@ -46,7 +46,7 @@ export function ListRow({
       onKeyDown={(e) => e.key === "Enter" && e.target === e.currentTarget && act()}
       aria-pressed={onToggleSelect ? !!selected : undefined}
       style={style}
-      className={`press flex min-w-0 cursor-pointer items-center gap-3.5 rounded-2xl border border-line bg-surface/90 px-3.5 py-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] transition-colors duration-150 hover:border-sky-400/40 active:scale-[0.98] active:bg-raised ${
+      className={`flex min-w-0 cursor-pointer items-center gap-3.5 rounded-2xl border border-line bg-surface/90 px-3.5 py-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] transition-all duration-150 hover:border-sky-400/40 active:not-[:has(:is(button,a,input,select,textarea,[role=dialog]):active)]:scale-[0.99] active:not-[:has(:is(button,a,input,select,textarea,[role=dialog]):active)]:bg-raised ${
         selected ? "ring-2 ring-sky-400" : ""
       } ${className}`}
       {...rest}

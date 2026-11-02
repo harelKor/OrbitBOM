@@ -17,7 +17,6 @@ import { CheckBadge } from "@/components/ui/CheckBadge";
 import { Icon } from "@/components/ui/Icon";
 import { cotsTotal, siteOf } from "@/lib/cots";
 import { formatStock } from "@/lib/inventory/stock";
-import type { PartChanges } from "@/lib/parts/changes";
 import { computeStatus } from "@/lib/status";
 import { stepShelfStock } from "@/app/(app)/inventory/actions";
 import { LinkTag, ShelfCoversPrompt, ShelfPill } from "./ShelfPill";
@@ -231,8 +230,6 @@ export function CotsCard({
             )}
           </div>
           {links.length > 1 && <LinksMenu links={links} />}
-          {/* A part linked to an inventory item takes its product links from the item, so they're edited there. */}
-          {work && !part.inventoryItemId && <LinksEditor part={part} save={save} />}
           {edit && !order && !group && <EditMenu part={part} />}
         </div>
         {showSystem &&
@@ -268,90 +265,6 @@ function LinksMenu({ links }: { links: CardPart["cotsLinks"] }) {
         </div>
       )}
     </Popover>
-  );
-}
-
-// The small pencil: edit the product links by hand, and the price of one.
-function LinksEditor({ part, save }: { part: CardPart; save: SaveFn }) {
-  return (
-    <Popover
-      align="right"
-      hideCaret
-      triggerClassName="rounded p-0.5 text-subtle hover:text-accent"
-      trigger={
-        <>
-          <Icon name="pencil" className="h-3.5 w-3.5" />
-          <span className="sr-only">Edit links</span>
-        </>
-      }
-    >
-      {(close) => (
-        <LinksForm
-          part={part}
-          onCancel={close}
-          onSave={(changes) => {
-            save(changes);
-            close();
-          }}
-        />
-      )}
-    </Popover>
-  );
-}
-
-function LinksForm({ part, onSave, onCancel }: { part: CardPart; onSave: (changes: PartChanges) => void; onCancel: () => void }) {
-  const canRename = useManage();
-  const [name, setName] = useState(partTitle(part));
-  const [rows, setRows] = useState(() => (part.cotsLinks?.length ? part.cotsLinks.map((l) => ({ url: l.url, site: l.site ?? "", priceUsd: l.priceUsd })) : [{ url: "", site: "", priceUsd: undefined }]));
-  const [price, setPrice] = useState(part.unitPrice == null ? "" : String(part.unitPrice));
-  const [error, setError] = useState<string | null>(null);
-  const set = (i: number, field: "url" | "site", v: string) => setRows((r) => r.map((row, j) => (j === i ? { ...row, [field]: v } : row)));
-
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    const links = rows
-      .filter((r) => r.url.trim())
-      .map((r) => ({ url: r.url.trim(), ...(r.site.trim() ? { site: r.site.trim() } : {}), ...(r.priceUsd != null ? { priceUsd: r.priceUsd } : {}) }));
-    if (links.some((l) => !/^https?:\/\/\S+$/.test(l.url))) return setError("Links start with https://");
-    const unit = price.trim() === "" ? null : Number(price);
-    if (unit !== null && (!Number.isFinite(unit) || unit < 0)) return setError("The price is a number of dollars.");
-    const renamed = canRename && name.trim() && name.trim() !== partTitle(part) ? { displayName: name.trim() } : {};
-    onSave({ cotsLinks: links, unitPrice: unit, ...renamed });
-  }
-
-  return (
-    <form onSubmit={submit} className="space-y-2 text-sm">
-      {canRename && (
-        <label className="block space-y-1">
-          <span className="text-[11px] font-semibold text-subtle">Name</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} className="input py-1.5" aria-label="Part name" />
-        </label>
-      )}
-      <div className="text-[11px] font-semibold text-subtle">Product links (the first is the name&apos;s link)</div>
-      {rows.map((r, i) => (
-        <div key={i} className="flex gap-1">
-          <input value={r.url} onChange={(e) => set(i, "url", e.target.value)} placeholder="https://…" className="input min-w-0 flex-1 py-1.5" autoFocus={i === 0} aria-label="Link" />
-          <input value={r.site} onChange={(e) => set(i, "site", e.target.value)} placeholder="Site" className="input w-20 py-1.5" aria-label="Site name" />
-          <button type="button" onClick={() => setRows((rs) => rs.filter((_, j) => j !== i))} className="press rounded px-1 text-subtle hover:text-rose-500" aria-label="Remove link">
-            <Icon name="close" className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      ))}
-      <button type="button" onClick={() => setRows((r) => [...r, { url: "", site: "", priceUsd: undefined }])} className="press text-xs font-medium text-accent">
-        + Add link
-      </button>
-      <label className="flex items-center gap-2 pt-1">
-        <span className="text-[11px] font-semibold text-subtle">Price of one ($)</span>
-        <input value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" className="input w-24 py-1.5 font-mono tabular-nums" />
-      </label>
-      {error && <p className="text-xs text-rose-500">{error}</p>}
-      <div className="flex justify-end gap-2">
-        <button type="button" className="btn" onClick={onCancel}>
-          Cancel
-        </button>
-        <button className="btn-primary">Save</button>
-      </div>
-    </form>
   );
 }
 

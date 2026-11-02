@@ -97,7 +97,7 @@ export function ItemListRow({
         editable ? (
           // A tap on a control works it, not the row (menus are portaled, so their clicks still
           // bubble through React to the row).
-          <span className="contents" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+          <span className="contents" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
             {stepper && (
               <span className="inline-flex items-center gap-1">
                 <button
