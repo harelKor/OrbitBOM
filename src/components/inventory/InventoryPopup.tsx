@@ -425,7 +425,8 @@ function PieceCount({ count, onCount }: { count: number; onCount: (n: number) =>
 // The item window, kept compact enough to open without scrolling: picture and tags, the count
 // with Season needs beside it, the details, the parts that use it, then History and the pencil on
 // one line. Condition and location save as they're picked; the pencil opens the full form (name,
-// category, specs, and Delete for admins). The ⋯ menu holds the photo and the product link.
+// category, specs, and Delete for admins). The ⋮ menu holds the photo and the product link; an item
+// with no product link yet has the product search at the bottom instead.
 function ItemBody({
   item,
   data,
@@ -705,6 +706,21 @@ function ItemBody({
 
       {!!usage?.parts.length && <UsedIn usage={usage} sheet={item.sheet} />}
 
+      {work && item.cotsLinks.length === 0 && (
+        <div className="rounded-xl border border-line-strong bg-surface p-3">
+          <ProductSearch
+            itemId={item.id}
+            initial={item.name}
+            autoFocus={false}
+            onMessage={setMessage}
+            onLinked={(m) => {
+              setMessage(m);
+              onSaved();
+            }}
+          />
+        </div>
+      )}
+
       {message && <p className="text-sm text-emerald-700">{message}</p>}
       {/* History and the pencil share the last line. */}
       <div className="flex items-start justify-between gap-2 border-t border-line pt-2">
@@ -731,8 +747,8 @@ function ItemBody({
   );
 }
 
-// The ⋯ menu: Take / Upload / Delete photo, and Edit link (search the stores or paste a link,
-// right in the menu) with Unlink for each link the item has.
+// The ⋮ menu: Take / Upload / Delete photo and, once the item has a product link, Edit link
+// (search the stores or paste a link, right in the menu) with Unlink for each link.
 function ItemMenu({
   item,
   hasPhoto,
@@ -753,14 +769,19 @@ function ItemMenu({
   onLinked: (m: string | null) => void;
 }) {
   const [linking, setLinking] = useState(false);
+  const linked = item.cotsLinks.length > 0;
   return (
     <Popover
       align="right"
       hideCaret
-      triggerClassName="press flex h-8 w-8 items-center justify-center rounded-full border border-white/40 bg-[#0D111A]/60 text-lg leading-none font-bold text-white shadow-sm backdrop-blur-md transition-colors duration-150 hover:border-sky-400/60 hover:text-sky-300 active:scale-[0.98]"
+      // Edit link widens the panel into a clearly framed search box.
+      width={linking ? 352 : undefined}
+      panelClassName={linking ? "rounded-xl! border-2! border-accent/60! bg-surface! p-3! shadow-[0_12px_32px_rgba(0,0,0,0.6)]! ring-1 ring-white/15" : ""}
+      triggerClassName="press flex h-8 w-8 items-center justify-center rounded-full border border-white/40 bg-[#0D111A]/60 leading-none text-white shadow-sm backdrop-blur-md transition-colors duration-150 hover:border-sky-400/60 hover:text-sky-300 active:scale-[0.98]"
       trigger={
         <>
-          ⋯<span className="sr-only">Photo and link options</span>
+          <Icon name="more" className="h-4 w-4" />
+          <span className="sr-only">Photo and link options</span>
         </>
       }
     >
@@ -772,7 +793,7 @@ function ItemMenu({
         };
         if (linking)
           return (
-            <div className="w-[min(22rem,calc(100vw-2rem))] p-1">
+            <div className="min-h-0 overflow-y-auto">
               <ProductSearch itemId={item.id} initial={item.name} onMessage={onMessage} onLinked={(m) => done(() => onLinked(m))} />
             </div>
           );
@@ -790,10 +811,14 @@ function ItemMenu({
                 <Icon name="close" className="h-4 w-4" /> Delete photo
               </button>
             )}
-            <div className="my-0.5 border-t border-line" />
-            <button type="button" className={row} onClick={() => setLinking(true)}>
-              <Icon name="pencil" className="h-4 w-4" /> Edit link
-            </button>
+            {linked && (
+              <>
+                <div className="my-0.5 border-t border-line" />
+                <button type="button" className={row} onClick={() => setLinking(true)}>
+                  <Icon name="pencil" className="h-4 w-4" /> Edit link
+                </button>
+              </>
+            )}
             {item.cotsLinks.map((l) => (
               <button key={l.url} type="button" className={`${row} text-rose-500`} onClick={() => done(() => onUnlink(l))}>
                 <Icon name="close" className="h-4 w-4" /> Unlink {l.site || hostOf(l.url)}
@@ -832,16 +857,19 @@ function HistorySection({ item, categories, locations, conditions }: { item: Ite
   );
 }
 
-// Edit link in the ⋯ menu: search the team's stores (like the add box) or paste a
-// product link; picking one links the item to it (link, price, photo) and the window reloads.
+// The product search (Edit link in the ⋮ menu, or the bottom of an unlinked item's window): search
+// the team's stores (like the add box) or paste a product link; picking one links the item to it
+// (link, price, photo) and the window reloads.
 function ProductSearch({
   itemId,
   initial,
   onLinked,
   onMessage,
+  autoFocus = true,
 }: {
   itemId: string;
   initial: string;
+  autoFocus?: boolean;
   onLinked: (message: string | null) => void;
   onMessage: (m: string | null) => void;
 }) {
@@ -892,13 +920,13 @@ function ProductSearch({
     <div className="space-y-2 text-sm">
       <div className="px-1 text-[11px] font-semibold text-subtle">Link a product</div>
       <div className="flex gap-1.5">
-        <label className="flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-lg border border-line-strong bg-surface px-2.5 focus-within:border-sky-400">
+        <label className="flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-lg border border-line-strong bg-raised px-3 focus-within:border-sky-400">
           <Icon name="search" className="h-4 w-4 shrink-0 text-subtle" />
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && link && readLink()}
-            autoFocus
+            autoFocus={autoFocus}
             placeholder="Search stores or paste a link"
             aria-label="Link to a product"
             className="min-w-0 flex-1 bg-transparent py-1.5 text-sm outline-none"
@@ -911,7 +939,7 @@ function ProductSearch({
         )}
       </div>
       {!query && (
-        <button type="button" className="press block w-full truncate rounded-md px-1 text-left text-xs font-semibold text-accent hover:underline active:scale-[0.98]" onClick={() => setQ(initial)}>
+        <button type="button" className="press block w-full truncate rounded-lg border border-line-strong bg-raised px-3 py-2 text-left text-xs font-semibold text-accent hover:border-sky-400/40 active:scale-[0.98]" onClick={() => setQ(initial)}>
           Search “{initial}”
         </button>
       )}

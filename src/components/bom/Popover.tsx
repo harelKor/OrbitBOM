@@ -19,6 +19,7 @@ export function Popover({
   locked = false,
   hideCaret = false,
   panelClassName = "",
+  width = WIDTH,
 }: {
   trigger: React.ReactNode;
   children: (close: () => void) => React.ReactNode;
@@ -27,11 +28,13 @@ export function Popover({
   locked?: boolean;
   hideCaret?: boolean;
   panelClassName?: string;
+  // The panel's width; it never grows past the screen (or the dialog it opens in).
+  width?: number;
 }) {
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; maxHeight: number; width: number } | null>(null);
   const [host, setHost] = useState<Element | null>(null);
 
   useLayoutEffect(() => {
@@ -41,10 +44,15 @@ export function Popover({
       if (!r) return;
       const vw = window.innerWidth;
       const vh = window.innerHeight;
+      // Inside a dialog the panel stays within the dialog's sides, so nothing is cut off.
+      const frame = host instanceof HTMLDialogElement ? host.getBoundingClientRect() : null;
+      const minX = Math.max(8, (frame?.left ?? 0) + 8);
+      const maxX = Math.min(vw - 8, (frame?.right ?? vw) - 8);
+      const w = Math.min(width, maxX - minX);
       const height = panel.current?.offsetHeight ?? 320;
       const below = vh - r.bottom - GAP;
       const up = below < Math.min(height, 320) && r.top > below;
-      const left = Math.min(Math.max(8, align === "right" ? r.right - WIDTH : r.left), vw - WIDTH - 8);
+      const left = Math.min(Math.max(minX, align === "right" ? r.right - w : r.left), maxX - w);
       const room = (up ? r.top : below) - GAP - 8;
       const top = up ? Math.max(8, r.top - GAP - Math.min(height, room)) : r.bottom + GAP;
       // If something around the panel (a window mid-animation) is the frame for fixed elements,
@@ -57,16 +65,21 @@ export function Popover({
         dx = at.left - parseFloat(p.style.left || "0");
         dy = at.top - parseFloat(p.style.top || "0");
       }
-      setPos({ left: left - dx, top: top - dy, maxHeight: room });
+      setPos({ left: left - dx, top: top - dy, maxHeight: room, width: w });
     };
     place();
+    // When the panel's content changes (a menu turning into a search), place it again so it
+    // keeps clear of the screen's edges.
+    const watch = new ResizeObserver(() => place());
+    if (panel.current) watch.observe(panel.current);
     window.addEventListener("resize", place);
     window.addEventListener("scroll", place, true);
     return () => {
+      watch.disconnect();
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
     };
-  }, [open, align]);
+  }, [open, align, width, host]);
 
   useEffect(() => {
     if (!open) return;
@@ -113,7 +126,7 @@ export function Popover({
           <div
             ref={panel}
             role="dialog"
-            style={{ top: pos?.top ?? -9999, left: pos?.left ?? -9999, width: WIDTH, maxHeight: pos?.maxHeight }}
+            style={{ top: pos?.top ?? -9999, left: pos?.left ?? -9999, width: pos?.width ?? width, maxHeight: pos?.maxHeight }}
             className={`fixed z-[60] flex flex-col overflow-hidden rounded-xl border border-line-strong bg-surface p-2 text-fg shadow-[0_16px_40px_-12px_rgba(17,19,24,0.35)] ${panelClassName}`}
           >
             {children(close)}

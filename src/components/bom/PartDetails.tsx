@@ -54,7 +54,7 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
   const phone = usePhone();
   const suggest = useSuggest(part, !part.memberIds);
   const was = (field: string) => suggest.was[field];
-  // On phones Suggest and the drawing buttons fold into the ⋯ menu beside Versions and ✕.
+  // On phones Suggest and the drawing buttons fold into the ⋮ menu beside Versions and ✕.
   const drawingFile = part.files.some((f) => f.type === "drawing");
   const hasMenu = !!suggest.suggestButton || (!cots && (canDraw || !!part.hasDrawing || drawingFile));
   const tools = (
@@ -200,7 +200,7 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
   );
 }
 
-// The phone's ⋯ menu: Suggest and the drawing buttons in a list under the title bar. Closing it
+// The phone's ⋮ menu: Suggest and the drawing buttons in a list under the title bar. Closing it
 // only moves the list off screen, so a drawing being made, a file uploading or a drawing window
 // opened from it keeps going. A tap outside the list closes it.
 function MoreMenu({ children }: { children: React.ReactNode }) {
@@ -223,7 +223,7 @@ function MoreMenu({ children }: { children: React.ReactNode }) {
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
       >
-        ⋯
+        <Icon name="more" className="h-4 w-4" />
       </button>
       <div
         role="menu"
