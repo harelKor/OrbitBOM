@@ -66,6 +66,30 @@ export function partChangesCapability(changes: object): Capability {
   return "manage";
 }
 
+// What the part window's ✕ (Name row) sets: the part's type, status, material, machines, inventory
+// link and counts back to blank. Admins in Edit and the CAD Team use it (classify, plus the one
+// "Not Started" the CAD Team may set, through statusDenied's reset option).
+export const RESET_SPECS = {
+  classification: "undefined",
+  status: "Not Started",
+  material: null,
+  preProcess: null,
+  process1: null,
+  process2: null,
+  inventoryItemId: null,
+  cotsCategory: null,
+  donePreprocess: 0,
+  doneProcess1: 0,
+  doneProcess2: 0,
+} as const;
+
+// True when `changes` is exactly RESET_SPECS (every field, same values, nothing else).
+export function isSpecReset(changes: object): boolean {
+  const keys = Object.keys(changes);
+  const reset = RESET_SPECS as Record<string, unknown>;
+  return keys.length === Object.keys(reset).length && keys.every((k) => k in reset && (changes as Record<string, unknown>)[k] === reset[k]);
+}
+
 // ---------- Status rules by team (Harel, 2026-10-30) ----------
 // Admins in Edit set any status. The CAD Team releases parts with the Release button (its
 // checklist) and otherwise only sends them to Reproduction or Secondary Production, with a note
@@ -88,8 +112,10 @@ export function pickableStatuses(mode: Mode): readonly string[] | null {
 
 // Why the mode can't give these parts this status, or null when it can. `note` is the note sent
 // with the change: Reproduction and Secondary Production need one.
-export function statusDenied(mode: Mode, status: string | undefined, opts: { cots: boolean; note?: string | null }): string | null {
+export function statusDenied(mode: Mode, status: string | undefined, opts: { cots: boolean; note?: string | null; reset?: boolean }): string | null {
   if (!status || mode === "edit") return null;
+  // The part window's ✕ puts a part back to Not Started along with its specs.
+  if (mode === "cad" && opts.reset && status === RESET_SPECS.status) return null;
   const noted = !!opts.note?.trim();
   if (mode === "cad") {
     if (status === RELEASE_STATUS || (!opts.cots && QA_STATUSES.includes(status))) return null;

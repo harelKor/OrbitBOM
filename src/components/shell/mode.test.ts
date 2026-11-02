@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { can, partChangesCapability, pickableStatuses, statusDenied } from "./mode";
+import { can, isSpecReset, partChangesCapability, pickableStatuses, RESET_SPECS, statusDenied } from "./mode";
 
 describe("status rules by team", () => {
   it("lets Edit set anything", () => {
@@ -43,5 +43,21 @@ describe("part type", () => {
     expect(can("cad", "classify")).toBe(true);
     expect(can("edit", "classify")).toBe(true);
     expect(can("build", "classify")).toBe(false);
+  });
+});
+
+describe("part window reset (✕)", () => {
+  it("is a classify change the CAD Team may make, Not Started included", () => {
+    expect(partChangesCapability(RESET_SPECS)).toBe("classify");
+    expect(can("cad", "classify")).toBe(true);
+    expect(isSpecReset(RESET_SPECS)).toBe(true);
+    expect(statusDenied("cad", "Not Started", { cots: false, reset: true })).toBeNull();
+    expect(statusDenied("cad", "Not Started", { cots: true, reset: true })).toBeNull();
+  });
+  it("doesn't open Not Started to the CAD Team otherwise", () => {
+    expect(isSpecReset({ status: "Not Started" })).toBe(false);
+    expect(isSpecReset({ ...RESET_SPECS, displayName: "x" })).toBe(false);
+    expect(statusDenied("cad", "Not Started", { cots: false })).not.toBeNull();
+    expect(statusDenied("build", "Not Started", { cots: false, reset: true })).not.toBeNull();
   });
 });

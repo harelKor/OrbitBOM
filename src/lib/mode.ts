@@ -1,7 +1,7 @@
 import "server-only";
 import { inArray } from "drizzle-orm";
 import { cookies } from "next/headers";
-import { can, effectiveMode, MODE_COOKIE, statusDenied, type Capability, type Mode } from "@/components/shell/mode";
+import { can, effectiveMode, isSpecReset, MODE_COOKIE, statusDenied, type Capability, type Mode } from "@/components/shell/mode";
 import { db, schema } from "@/db";
 import { getMember, requireMember, type Member } from "@/lib/auth";
 import { cotsLinkDenied } from "@/lib/parts/cotsLink";
@@ -65,7 +65,7 @@ export async function statusChangeDenied(
   const kinds = new Set(rows.map((r) => r.classification === "cots"));
   if (!kinds.size) kinds.add(false);
   for (const cots of kinds) {
-    const denied = statusDenied(mode, changes.status, { cots, note: changes.note });
+    const denied = statusDenied(mode, changes.status, { cots, note: changes.note, reset: isSpecReset(changes) });
     if (denied) return denied;
   }
   return null;

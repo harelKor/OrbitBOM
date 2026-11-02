@@ -14,6 +14,7 @@ import { syncOnshapeDrawings } from "@/components/drawing/syncOnshape";
 import { AddBox } from "@/components/inventory/AddBox";
 import { useInventoryPopup } from "@/components/inventory/InventoryPopup";
 import { useCan, useManage } from "@/components/shell/ModeContext";
+import { RESET_SPECS } from "@/components/shell/mode";
 import { formatPrice, useCurrency } from "@/components/cots/currency";
 import { ShelfPill } from "@/components/cots/ShelfPill";
 import { Icon } from "@/components/ui/Icon";
@@ -36,25 +37,12 @@ type Stage = StageView | "thumb";
 // on the right its properties, its inventory link and, under the inventory search, the drawing. Its
 // fields edit by the member's mode (fields.tsx): any team sets status, material and machines, the
 // CAD Team makes drawings, and Edit mode does the rest (name, type, deleting a manual part).
-// What the Name row's ✕ sets: the part's type, status, material, machines, inventory link and
-// counts back to blank.
-const RESET_SPECS = {
-  classification: "undefined",
-  status: "Not Started",
-  material: null,
-  preProcess: null,
-  process1: null,
-  process2: null,
-  inventoryItemId: null,
-  cotsCategory: null,
-  donePreprocess: 0,
-  doneProcess1: 0,
-  doneProcess2: 0,
-} satisfies Parameters<SaveFn>[0];
 
 export function PartDetails({ part, save, onClose }: { part: CardPart; save: SaveFn; onClose: () => void }) {
   const edit = useManage();
   const canDraw = useCan("draw");
+  // The Name row's ✕ (reset specs): admins in Edit and the CAD Team (Harel, 2026-11-02).
+  const canReset = useCan("classify");
   const { robotId } = useBom();
   const [stage, setStage] = useState<Stage>(part.isManual ? "thumb" : "part");
   const [, startTransition] = useTransition();
@@ -171,7 +159,7 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
                   <span className="min-w-0 flex-1">
                     <NameField part={part} save={save} />
                   </span>
-                  {edit && (
+                  {canReset && (
                     <button
                       type="button"
                       onClick={() => save(RESET_SPECS)}
