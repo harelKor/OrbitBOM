@@ -479,6 +479,10 @@ export function InventoryView({
             categories={categories}
             condition={conditions.find((c) => c.id === item.conditionId)}
             location={locations.find((l) => l.id === locationOf(item))}
+            conditions={conditions}
+            locations={locations}
+            onStep={(d, b) => step(item.id, d, b)}
+            onCount={(n) => count(item.id, n)}
             view={cardView}
             hideCategory={scope.kind === "category" || !!cat}
             selected={selected.has(item.id)}

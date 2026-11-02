@@ -154,14 +154,14 @@ export function TextField({
 // A part's material is an inventory item (Raw Stock first, then the rest): picking one saves its
 // name and ties the part to it.
 // `noOpen`: no box button beside it (the part card keeps its material line clean).
-export function MaterialField({ part, save, className, noOpen = false }: Props & { className?: string; noOpen?: boolean }) {
+export function MaterialField({ part, save, className, noOpen = false, placeholder }: Props & { className?: string; noOpen?: boolean; placeholder?: string }) {
   const locked = !useCan("work");
   const { inventory } = useBom();
   const materials = useMaterials();
   const { openItem, openMaterial } = useInventoryPopup();
   const linked = findMaterial(materials, part.inventoryItemId) ?? (part.inventoryItemId ? inventory.find((i) => i.id === part.inventoryItemId) : undefined);
   const options = materialOptions(materials);
-  const label = part.material ?? linked?.name ?? <Empty />;
+  const label = part.material ?? linked?.name ?? <Empty text={placeholder} />;
   // The material's stock opens in a window over the page (View: tap the material; Edit: the box).
   const openStock = linked ? () => openItem(linked.id) : part.material ? () => openMaterial(part.material!) : null;
   if (locked)

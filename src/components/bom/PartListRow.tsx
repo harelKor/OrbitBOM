@@ -69,7 +69,18 @@ export function PartListRow({
             {canClassify ? <TypeField part={part} save={save} badge /> : <TypeBadge part={part} />}
             {!cots && (
               <>
-                {(part.material || part.inventoryItemId || work) && <MaterialField part={part} save={save} className={pill} noOpen />}
+                {part.material || part.inventoryItemId ? (
+                  <MaterialField part={part} save={save} className={pill} noOpen />
+                ) : (
+                  // No material yet: a dashed "+ Material" pill picks one right here.
+                  work && <MaterialField part={part} save={save} className={addPill} noOpen placeholder="+ Material" />
+                )}
+                {!slots.length && work && (
+                  <span className="contents">
+                    <span className="text-[10px] text-faint">→</span>
+                    <MachineField part={part} save={save} slot={SLOTS[1]} placeholder="+ Process" className={addPill} />
+                  </span>
+                )}
                 {slots.map((slot) => (
                   <span key={slot.key} className="contents">
                     <span className="text-[10px] text-faint">→</span>
@@ -115,6 +126,8 @@ export function PartListRow({
   );
 }
 
+// A field with nothing in it yet, waiting to be picked.
+const addPill = "max-w-full truncate rounded-full border border-dashed border-line-strong px-2.5 py-0.5 text-[11px] font-medium text-muted hover:border-sky-400/40 hover:text-accent";
 const pill = "max-w-full truncate rounded-full border border-line-strong bg-ink/60 px-2.5 py-0.5 text-[11px] font-medium text-fg-2";
 
 // The List view: rows stacked one under another (two side by side on wide screens).
