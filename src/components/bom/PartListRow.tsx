@@ -10,14 +10,16 @@ import { statusTint } from "@/components/ui/statusTint";
 import { Icon } from "@/components/ui/Icon";
 import { useInventoryPopup } from "@/components/inventory/InventoryPopup";
 import { ShelfCoversPrompt } from "@/components/cots/ShelfPill";
-import { SLOTS, TypeBadge, type SaveFn } from "./fields";
+import { MachineField, MaterialField, SLOTS, StatusField, TypeBadge, TypeField, type SaveFn } from "./fields";
+import { usePermissions } from "@/components/shell/ModeContext";
 import { usePartDetails } from "./PartDetailsHost";
 import { CardSuggest } from "./CardSuggest";
 import { partIds, partTitle, type CardPart } from "./types";
 
 // A part as one row of the List view: thumbnail, name, "Qty · material", the machine it's at
 // (COTS: the product's site), its type badge (coloured like the card's) and its status, washed in
-// the status colour like its card. A linked part gets a button that opens its inventory item, and a
+// the status colour like its card. Type, material, machines and status edit in place like on a
+// card. A linked part gets a button that opens its inventory item, and a
 // COTS part the shelf covers gets the In Stock? pill. Suggest (or ✓ / ✕ for a
 // waiting suggestion) sits before them. A tap elsewhere opens the part's details window.
 export function PartListRow({
@@ -41,6 +43,10 @@ export function PartListRow({
   const machine = current ? (getMachine(part[current.key]!)?.name ?? part[current.key]) : null;
   const cots = part.classification === "cots";
   const what = cots ? (part.shelf?.itemName ?? null) : part.material;
+  const { canWork: work, canClassify } = usePermissions();
+  // Outside a selection the type, material, machines and status open their editors like the
+  // card's (each field locks itself for a team that can't change it); while selecting they're plain pills.
+  const editable = !onToggleSelect;
   return (
     <ListRow
       id={`part-${part.id}`}
@@ -52,16 +58,38 @@ export function PartListRow({
       detail={
         <span className="tabular-nums">
           Qty: <span className="font-mono">{part.quantity}</span>
-          {what && ` · ${what}`}
+          {what && (cots || !editable) && ` · ${what}`}
         </span>
       }
       pills={
-        <>
-          <TypeBadge part={part} />
-          {cots ? part.cotsLinks[0] && <ListPill>{siteOf(part.cotsLinks[0])}</ListPill> : machine && <ListPill>{machine}</ListPill>}
-          <ListPill color={statusColor}>{status}</ListPill>
-          {cots && <ShelfCoversPrompt part={part} shelf={part.shelf ?? null} save={save} />}
-        </>
+        editable ? (
+          // A click on a field opens its menu, not the part's window (menus are portaled, so the
+          // click still bubbles through React to the row).
+          <span className="contents" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+            {canClassify ? <TypeField part={part} save={save} badge /> : <TypeBadge part={part} />}
+            {cots ? (
+              part.cotsLinks[0] && <ListPill>{siteOf(part.cotsLinks[0])}</ListPill>
+            ) : (
+              <>
+                {(part.material || part.inventoryItemId || work) && <MaterialField part={part} save={save} className={pill} noOpen />}
+                {slots.map((slot) => (
+                  <span key={slot.key} className="contents">
+                    <span className="text-[10px] text-faint">→</span>
+                    <MachineField part={part} save={save} slot={slot} className={`${pill} ${slot === current ? "border-accent/60 text-accent" : ""}`} />
+                  </span>
+                ))}
+              </>
+            )}
+            <StatusField part={part} save={save} size="sm" />
+            {cots && <ShelfCoversPrompt part={part} shelf={part.shelf ?? null} save={save} />}
+          </span>
+        ) : (
+          <>
+            <TypeBadge part={part} />
+            {cots ? part.cotsLinks[0] && <ListPill>{siteOf(part.cotsLinks[0])}</ListPill> : machine && <ListPill>{machine}</ListPill>}
+            <ListPill color={statusColor}>{status}</ListPill>
+          </>
+        )
       }
       actions={
         <>
@@ -88,6 +116,8 @@ export function PartListRow({
     />
   );
 }
+
+const pill = "max-w-full truncate rounded-full border border-line-strong bg-ink/60 px-2.5 py-0.5 text-[11px] font-medium text-fg-2";
 
 // The List view: rows stacked one under another (two side by side on wide screens).
 export function PartList({ children }: { children: React.ReactNode }) {
