@@ -375,7 +375,7 @@ export function CotsView({
         onCategory={(c) => pushQuery({ cat: c })}
       />
 
-      <div className="flex flex-wrap items-center gap-2.5">
+      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2.5">
         <Segmented
           label="View"
           value={view}
@@ -390,7 +390,7 @@ export function CotsView({
           type="button"
           onClick={() => setByVendor((v) => !v)}
           aria-pressed={byVendor}
-          className={`press rounded-lg border px-3.5 py-1.5 text-xs font-semibold transition-colors active:scale-[0.98] ${
+          className={`press rounded-lg border px-2.5 py-1 text-xs font-semibold sm:px-3.5 sm:py-1.5 transition-colors active:scale-[0.98] ${
             byVendor ? "border-accent bg-accent text-white" : "border-line-strong bg-raised text-muted hover:text-fg"
           }`}
         >
@@ -400,7 +400,7 @@ export function CotsView({
           type="button"
           onClick={() => toggleSelecting("status")}
           aria-pressed={selecting === "status"}
-          className={`press rounded-lg border px-3.5 py-1.5 text-xs font-semibold transition-colors active:scale-[0.98] ${
+          className={`press rounded-lg border px-2.5 py-1 text-xs font-semibold sm:px-3.5 sm:py-1.5 transition-colors active:scale-[0.98] ${
             selecting === "status" ? "border-accent bg-accent text-white" : "border-line-strong bg-raised text-muted hover:text-fg"
           }`}
         >
@@ -417,10 +417,17 @@ export function CotsView({
                 onClick={() => setStatusFilter((cur) => (cur === s ? null : s))}
                 aria-pressed={on}
                 style={{ borderColor: color, background: on ? `${color}40` : undefined }}
-                className="press flex items-center gap-2 rounded-lg border-2 px-3.5 py-1.5 text-sm font-bold text-fg transition-colors active:scale-[0.98]"
+                className="press flex items-center gap-1.5 rounded-lg border-2 px-2.5 py-1 text-xs font-bold text-fg transition-colors active:scale-[0.98] sm:gap-2 sm:px-3.5 sm:py-1.5 sm:text-sm"
               >
                 <span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} />
-                {s}
+                {s === COTS_ORDERED ? (
+                  <>
+                    <span className="sm:hidden">Order List</span>
+                    <span className="hidden sm:inline">In Order List</span>
+                  </>
+                ) : (
+                  s
+                )}
                 <span className="font-mono text-xs tabular-nums">{statusCounts.get(s) ?? 0}</span>
               </button>
             );
@@ -430,7 +437,6 @@ export function CotsView({
             {categories.find((c) => c.id === category)?.label ?? groupLabel(group)} ✕
           </button>
         )}
-        <span className="font-mono text-xs text-subtle tabular-nums">{allRows.length} parts</span>
         {list === "released" && (
           // Phone: the add row (place + search) takes the full width and Send to order sits on its own
           // row under it, so they never overlap; from sm up they share one wrapping row, tops aligned

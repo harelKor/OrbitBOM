@@ -7,6 +7,9 @@ import { useInventoryPopup } from "@/components/inventory/InventoryPopup";
 import { useCan } from "@/components/shell/ModeContext";
 import { Chevron } from "@/components/ui/Chevron";
 import { Icon } from "@/components/ui/Icon";
+import { ListRow } from "@/components/ui/ListRow";
+import { Segmented } from "@/components/ui/Segmented";
+import { useStoredChoice } from "@/components/ui/useStoredChoice";
 import { toast } from "@/components/ui/Toaster";
 import type { OrderHistoryCard } from "@/lib/data/inventory";
 import { formatPrice, setCurrency, useCurrency } from "./currency";
@@ -24,6 +27,7 @@ const ddmm = (d: Date | string) => {
 // cards in a collapsible section per vendor, newest order first.
 export function OrderHistoryView({ cards: initial }: { cards: OrderHistoryCard[] }) {
   const currency = useCurrency();
+  const [view, setView] = useStoredChoice("orbit-cots-history-view", ["cards", "list"] as const, "cards");
   const [, start] = useTransition();
   const [cards, apply] = useOptimistic(initial, (list, c: Change) =>
     c.dismiss
@@ -59,7 +63,16 @@ export function OrderHistoryView({ cards: initial }: { cards: OrderHistoryCard[]
           <p className="mt-1 max-w-3xl text-sm text-muted">Every order that went In Route or arrived, by vendor. ✕ removes a card from this page.</p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold tracking-wide text-subtle uppercase">Total</span>
+          <Segmented
+            label="View"
+            value={view}
+            onChange={setView}
+            options={[
+              { value: "cards", label: "Cards" },
+              { value: "list", label: "List" },
+            ]}
+          />
+          <span className="ml-2 text-xs font-semibold tracking-wide text-subtle uppercase">Total</span>
           <span className="font-mono text-2xl font-bold text-emerald-500 tabular-nums sm:text-3xl">{formatPrice(total, currency)}</span>
           <button
             type="button"
@@ -79,11 +92,19 @@ export function OrderHistoryView({ cards: initial }: { cards: OrderHistoryCard[]
       ) : (
         sections.map(([vendor, list]) => (
           <VendorSection key={vendor} title={vendor} count={list.length}>
-            <div className="card-grid" style={{ "--card-min": "220px" } as React.CSSProperties}>
-              {list.map((c) => (
-                <HistoryCard key={c.id} card={c} onDismiss={() => dismiss(c.id)} onText={(side, text) => setText(c.id, side, text)} />
-              ))}
-            </div>
+            {view === "list" ? (
+              <div className="list-stack">
+                {list.map((c) => (
+                  <HistoryRow key={c.id} card={c} onDismiss={() => dismiss(c.id)} onText={(side, text) => setText(c.id, side, text)} />
+                ))}
+              </div>
+            ) : (
+              <div className="card-grid" style={{ "--card-min": "220px" } as React.CSSProperties}>
+                {list.map((c) => (
+                  <HistoryCard key={c.id} card={c} onDismiss={() => dismiss(c.id)} onText={(side, text) => setText(c.id, side, text)} />
+                ))}
+              </div>
+            )}
           </VendorSection>
         ))
       )}
@@ -161,6 +182,49 @@ function HistoryCard({ card, onDismiss, onText }: { card: OrderHistoryCard; onDi
         </div>
       </div>
     </div>
+  );
+}
+
+// The same order as one List view row: picture, name (links to the product page), then the bold
+// amount, "DD/MM → DD/MM" and the price; ✕ before the chevron. A tap opens the item's window.
+function HistoryRow({ card, onDismiss, onText }: { card: OrderHistoryCard; onDismiss: () => void; onText: (side: Side, text: string) => void }) {
+  const { openItem } = useInventoryPopup();
+  const work = useCan("work");
+  const currency = useCurrency();
+  return (
+    <ListRow
+      picture={card.thumbUrl}
+      title={card.name}
+      href={card.productUrl}
+      onOpen={() => card.inventoryItemId && openItem(card.inventoryItemId)}
+      pills={
+        <span className="flex items-center gap-2.5 font-mono text-sm font-bold whitespace-nowrap text-fg-2 tabular-nums">
+          <span className="text-fg">×{card.quantity}</span>
+          <span className="flex items-center gap-1.5">
+            <DateSlot date={card.inRouteAt} text={card.inRouteText} editable={work} onSave={(t) => onText("inRoute", t)} />
+            <span className="text-subtle">→</span>
+            <DateSlot date={card.arrivedAt} text={card.arrivedText} editable={work} onSave={(t) => onText("arrived", t)} />
+          </span>
+          {card.unitPrice != null && <span className="text-emerald-500">{formatPrice(card.quantity * card.unitPrice, currency)}</span>}
+        </span>
+      }
+      actions={
+        work && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDismiss();
+            }}
+            title="Remove from Order History"
+            aria-label={`Remove ${card.name} from Order History`}
+            className="press flex h-8 w-8 items-center justify-center rounded-full border border-line-strong bg-raised text-subtle hover:text-fg active:scale-[0.98]"
+          >
+            <Icon name="close" className="h-3.5 w-3.5" />
+          </button>
+        )
+      }
+    />
   );
 }
 
