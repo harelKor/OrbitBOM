@@ -54,7 +54,7 @@ import { usePhone } from "@/components/ui/usePhone";
 import { ScanButton } from "./ScanButton";
 import { LocationPicker } from "./LocationPicker";
 import { WorkshopMap, type PinStats } from "./WorkshopMap";
-import type { Item, Lookups } from "./types";
+import type { Condition, Item, Lookups } from "./types";
 
 export type InventoryScope =
   | { kind: "home" }
@@ -349,8 +349,25 @@ export function InventoryView({
   ];
 
   // Phones: the two selects share their own row, half each.
+  // On phones the Condition choice lives in the Filters panel instead of its own select.
+  const condFilter: CondFilter | null =
+    phone && conditions.length > 0
+      ? {
+          conditions,
+          value: conditionId,
+          counts: (focusCat ? catItems : optimistic).reduce<Record<string, number>>((m, i) => {
+            if (i.conditionId) m[i.conditionId] = (m[i.conditionId] ?? 0) + 1;
+            return m;
+          }, {}),
+          onChange: setConditionId,
+        }
+      : null;
+  const clearFilters = () => {
+    setSpecPick(null);
+    if (condFilter) setConditionId("");
+  };
   const filters = (
-    <div className="flex w-full gap-2 sm:w-auto">
+    <div className="hidden w-full gap-2 sm:flex sm:w-auto">
       <select
         value={conditionId}
         onChange={(e) => setConditionId(e.target.value)}
@@ -750,10 +767,16 @@ export function InventoryView({
             <Fold id="all" title={`All items (${items.length})`}>
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 {filters}
+                {condFilter && <SpecFilterBar rows={[]} picks={{}} cond={condFilter} open={filtersOpen} onToggle={toggleFilters} onPick={togglePick} onClear={clearFilters} />}
                 <span className="ml-auto" />
                 {!edit && !hideExport && exportButton}
                 {layoutSwitch}
               </div>
+              {filtersOpen && condFilter && (
+                <div className="mb-3">
+                  <SpecFilterRows rows={[]} picks={{}} cond={condFilter} onPick={togglePick} />
+                </div>
+              )}
               {grid(
                 optimistic.filter(
                   (i) =>
@@ -770,13 +793,13 @@ export function InventoryView({
             <span className="font-mono tabular-nums">
               {shownMain.length} item{shownMain.length === 1 ? "" : "s"}
             </span>
-            {specRows.length > 0 && <SpecFilterBar rows={specRows} picks={picks} open={filtersOpen} onToggle={toggleFilters} onPick={togglePick} onClear={() => setSpecPick(null)} />}
+            {(specRows.length > 0 || condFilter) && <SpecFilterBar rows={specRows} picks={picks} cond={condFilter} open={filtersOpen} onToggle={toggleFilters} onPick={togglePick} onClear={clearFilters} />}
             {showBoxes && filters}
             <span className="ml-auto" />
             {!edit && !hideExport && exportButton}
             {layoutSwitch}
           </div>
-          {filtersOpen && specRows.length > 0 && <SpecFilterRows rows={specRows} picks={picks} onPick={togglePick} />}
+          {filtersOpen && (specRows.length > 0 || condFilter) && <SpecFilterRows rows={specRows} picks={picks} cond={condFilter} onPick={togglePick} />}
           {shownMain.length === 0 ? (
             <div className="panel p-6 text-sm text-muted">
               {query
@@ -979,9 +1002,12 @@ function Fold({
 
 // The Filters toggle on the item count row. Closed, the picks in use sit next to it (✕ removes
 // one) with Clear, so the list never filters without showing why (Harel, 2026-10-28).
+type CondFilter = { conditions: Condition[]; value: string; counts: Record<string, number>; onChange: (id: string) => void };
+
 function SpecFilterBar({
   rows,
   picks,
+  cond,
   open,
   onToggle,
   onPick,
@@ -989,6 +1015,7 @@ function SpecFilterBar({
 }: {
   rows: SpecGroup[];
   picks: SpecPicks;
+  cond: CondFilter | null;
   open: boolean;
   onToggle: () => void;
   onPick: (fieldId: string, key: string) => void;
@@ -998,17 +1025,19 @@ function SpecFilterBar({
     const v = g.values.find((x) => x.key === picks[g.field.id]);
     return v ? [{ g, v }] : [];
   });
+  const activeCond = cond?.conditions.find((c) => c.id === cond.value);
+  const total = active.length + (activeCond ? 1 : 0);
   return (
     <>
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className={`press inline-flex min-h-9 items-center gap-1 rounded-full border pr-3 pl-1.5 text-xs font-semibold transition-colors duration-150 hover:border-sky-400/40 ${active.length ? "border-accent text-accent" : "border-line-strong text-fg-2"}`}
+        className={`press inline-flex min-h-9 items-center gap-1 rounded-full border pr-3 pl-1.5 text-xs font-semibold transition-colors duration-150 hover:border-sky-400/40 ${total ? "border-accent text-accent" : "border-line-strong text-fg-2"}`}
       >
         <Chevron open={open} small className="hover:bg-transparent" />
         Filters
-        {active.length > 0 && <span className="ml-0.5 rounded-full bg-accent px-1.5 font-mono text-[10px] text-white tabular-nums">{active.length}</span>}
+        {total > 0 && <span className="ml-0.5 rounded-full bg-accent px-1.5 font-mono text-[10px] text-white tabular-nums">{total}</span>}
       </button>
       {!open &&
         active.map(({ g, v }) => (
@@ -1024,7 +1053,19 @@ function SpecFilterBar({
             <Icon name="close" className="h-3 w-3" />
           </button>
         ))}
-      {active.length > 0 && (
+      {!open && cond && activeCond && (
+        <button
+          type="button"
+          onClick={() => cond.onChange("")}
+          title={`Remove Condition: ${activeCond.label}`}
+          className="press inline-flex min-h-9 items-center gap-1.5 rounded-full border border-accent bg-accent px-3 text-xs font-semibold text-white"
+        >
+          <span className="text-[10px] tracking-wider uppercase opacity-75">Condition</span>
+          {activeCond.label}
+          <Icon name="close" className="h-3 w-3" />
+        </button>
+      )}
+      {total > 0 && (
         <button type="button" onClick={onClear} className="press min-h-9 px-1 text-xs font-semibold text-accent hover:underline">
           Clear
         </button>
@@ -1036,7 +1077,7 @@ function SpecFilterBar({
 // The open filters: a labeled row per field. A row with more than ROW_MAX values shows the
 // first ones (and its pick) with "+N more"; its label folds it back.
 const ROW_MAX = 10;
-function SpecFilterRows({ rows, picks, onPick }: { rows: SpecGroup[]; picks: SpecPicks; onPick: (fieldId: string, key: string) => void }) {
+function SpecFilterRows({ rows, picks, cond, onPick }: { rows: SpecGroup[]; picks: SpecPicks; cond: CondFilter | null; onPick: (fieldId: string, key: string) => void }) {
   const [wide, setWide] = useState<Set<string>>(new Set());
   const flip = (id: string) =>
     setWide((s) => {
@@ -1047,6 +1088,17 @@ function SpecFilterRows({ rows, picks, onPick }: { rows: SpecGroup[]; picks: Spe
     });
   return (
     <div className="space-y-1.5">
+      {cond && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="w-full shrink-0 text-[10px] font-semibold tracking-wider text-subtle uppercase sm:w-20">Condition</span>
+          {cond.conditions.map((c) => (
+            <SubPill key={c.id} on={cond.value === c.id} onClick={() => cond.onChange(cond.value === c.id ? "" : c.id)}>
+              {c.label}
+              <span className="ml-1.5 font-mono text-[10px] tabular-nums opacity-60">{cond.counts[c.id] ?? 0}</span>
+            </SubPill>
+          ))}
+        </div>
+      )}
       {rows.map((g) => {
         const long = g.values.length > ROW_MAX;
         const all = !long || wide.has(g.field.id);
