@@ -55,6 +55,7 @@ export function ItemListRow({
       picture={item.thumbUrl ?? category?.imageUrl ?? null}
       dimPicture={!item.thumbUrl}
       title={item.name}
+      href={item.cotsLinks[0]?.url}
       detail={
         <>
           <span className="font-mono tabular-nums">

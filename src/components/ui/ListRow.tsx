@@ -5,12 +5,14 @@ import { Icon } from "./Icon";
 
 // One row of a page's List view (made for phones): a square picture, the name, a muted detail
 // line, small pills, and a chevron. A tap opens the thing's window; while the page is selecting,
-// a tap selects the row instead.
+// a tap selects the row instead. With an `href` (the product's page) the name is a link that opens
+// it in a new tab, like a card's name; the rest of the row still opens the window.
 export function ListRow({
   picture,
   dimPicture = false,
   placeholder,
   title,
+  href,
   detail,
   pills,
   actions,
@@ -25,6 +27,7 @@ export function ListRow({
   dimPicture?: boolean; // a stand-in picture (the category's), shown fainter
   placeholder?: React.ReactNode;
   title: React.ReactNode;
+  href?: string | null;
   detail?: React.ReactNode;
   pills?: React.ReactNode;
   actions?: React.ReactNode; // small buttons before the chevron; they stop the click themselves
@@ -57,7 +60,20 @@ export function ListRow({
         )}
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="truncate text-base font-bold text-fg">{title}</span>
+        {href && !onToggleSelect ? (
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+            className="self-start max-w-full truncate text-base font-bold text-sky-500 underline-offset-2 hover:underline dark:text-sky-400"
+          >
+            {title}
+          </a>
+        ) : (
+          <span className="truncate text-base font-bold text-fg">{title}</span>
+        )}
         {detail && <span className="truncate text-xs text-muted">{detail}</span>}
         {pills && <span className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">{pills}</span>}
       </span>

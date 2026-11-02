@@ -3,7 +3,6 @@
 import { getCotsStatus } from "@/config/cots";
 import { getMachine } from "@/config/machines";
 import { getStatus } from "@/config/statuses";
-import { siteOf } from "@/lib/cots";
 import { computeStatus } from "@/lib/status";
 import { ListPill, ListRow } from "@/components/ui/ListRow";
 import { statusTint } from "@/components/ui/statusTint";
@@ -16,8 +15,8 @@ import { usePartDetails } from "./PartDetailsHost";
 import { CardSuggest } from "./CardSuggest";
 import { partIds, partTitle, type CardPart } from "./types";
 
-// A part as one row of the List view: thumbnail, name, "Qty · material", the machine it's at
-// (COTS: the product's site), its type badge (coloured like the card's) and its status, washed in
+// A part as one row of the List view: thumbnail, name (a link to the product's page when it has
+// one), "Qty · material", the machine it's at, its type badge (coloured like the card's) and its status, washed in
 // the status colour like its card. Type, material, machines and status edit in place like on a
 // card. A linked part gets a button that opens its inventory item, and a
 // COTS part the shelf covers gets the In Stock? pill. Suggest (or ✓ / ✕ for a
@@ -55,6 +54,7 @@ export function PartListRow({
       picture={part.thumbUrl ?? (cots ? (part.shelf?.thumbUrl ?? null) : null)}
       placeholder={<span className="px-1 text-center text-[10px] leading-tight text-slate-500">{part.isManual ? "Manual" : "No picture"}</span>}
       title={partTitle(part)}
+      href={part.cotsLinks?.[0]?.url}
       detail={
         <span className="tabular-nums">
           Qty: <span className="font-mono">{part.quantity}</span>
@@ -67,9 +67,7 @@ export function PartListRow({
           // click still bubbles through React to the row).
           <span className="contents" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
             {canClassify ? <TypeField part={part} save={save} badge /> : <TypeBadge part={part} />}
-            {cots ? (
-              part.cotsLinks[0] && <ListPill>{siteOf(part.cotsLinks[0])}</ListPill>
-            ) : (
+            {!cots && (
               <>
                 {(part.material || part.inventoryItemId || work) && <MaterialField part={part} save={save} className={pill} noOpen />}
                 {slots.map((slot) => (
@@ -86,7 +84,7 @@ export function PartListRow({
         ) : (
           <>
             <TypeBadge part={part} />
-            {cots ? part.cotsLinks[0] && <ListPill>{siteOf(part.cotsLinks[0])}</ListPill> : machine && <ListPill>{machine}</ListPill>}
+            {!cots && machine && <ListPill>{machine}</ListPill>}
             <ListPill color={statusColor}>{status}</ListPill>
           </>
         )

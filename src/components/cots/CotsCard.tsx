@@ -231,7 +231,8 @@ export function CotsCard({
             )}
           </div>
           {links.length > 1 && <LinksMenu links={links} />}
-          {work && <LinksEditor part={part} save={save} />}
+          {/* A part linked to an inventory item takes its product links from the item, so they're edited there. */}
+          {work && !part.inventoryItemId && <LinksEditor part={part} save={save} />}
           {edit && !order && !group && <EditMenu part={part} />}
         </div>
         {showSystem &&
