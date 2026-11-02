@@ -10,6 +10,7 @@ import { FieldInput } from "./fields";
 import { hostOf } from "./ItemCard";
 import { LocationPicker } from "./LocationPicker";
 import { PhotoButtons } from "./photo";
+import { ProductPicker, type ChosenProduct } from "./ProductSearch";
 import type { Condition, InvCategory, Item, Location } from "./types";
 
 export type Draft = {
@@ -99,7 +100,6 @@ export function ItemForm({
   const [deleting, startDelete] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const [linkText, setLinkText] = useState("");
   const cat = getCategory(categories, d.category);
   const built = cat ? buildName(cat, d.specs) : "";
   const name = d.nameTouched || !built ? d.name : built;
@@ -119,8 +119,18 @@ export function ItemForm({
     const n = parseStock(d.inStock, sheet) ?? 0;
     setDraft({ ...d, inStock: formatStock(Math.max(0, n + by), sheet) });
   };
+  // A picked store result or a pasted link joins the links, and brings its price and picture.
+  const chooseProduct = (p: ChosenProduct, note?: string) => {
+    setDraft({
+      ...d,
+      links: [...d.links.filter((l) => l.url !== p.url), { url: p.url, ...(p.site ? { site: p.site } : {}) }],
+      price: p.price ?? d.price,
+      imageUrl: p.imageUrl ?? d.imageUrl,
+    });
+    setError(note ?? null);
+    return true;
+  };
   const submit = () => {
-    const links = linkText.trim() ? [...d.links, { url: linkText.trim() }] : d.links;
     const input: ItemInput = {
       name: name.trim(),
       category: d.category,
@@ -128,7 +138,7 @@ export function ItemForm({
       inStock: d.inStock,
       conditionId: d.conditionId,
       locationId: d.locationId,
-      links,
+      links: d.links,
       price: d.price,
       imageUrl: d.imageUrl,
       photoKey: d.photo?.key ?? null,
@@ -268,8 +278,16 @@ export function ItemForm({
             </div>
           </div>
         )}
-        <div className="flex gap-2">
-          <input type="url" value={linkText} onChange={(e) => setLinkText(e.target.value)} placeholder={d.links.length ? "Another product link…" : "Product link (optional)"} className="input min-h-11 flex-1" />
+        <div className="flex items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <ProductPicker
+              initial={name}
+              autoFocus={false}
+              actionLabel="Add"
+              placeholder={d.links.length ? "Another product: search or paste a link" : "Search stores or paste a product link"}
+              onChoose={chooseProduct}
+            />
+          </div>
           <input
             type="number"
             min={0}

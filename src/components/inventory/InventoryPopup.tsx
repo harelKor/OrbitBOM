@@ -8,10 +8,8 @@ import {
   countStock,
   deleteItem,
   itemPopup,
-  linkItemToProduct,
   loadItemHistory,
   materialPopup,
-  readProductLink,
   removeItemPhoto,
   setItemCondition,
   setItemLocation,
@@ -30,9 +28,8 @@ import { materialCategory } from "@/config/materials";
 import { activeFields, getCategory } from "@/lib/inventory/categories";
 import { hasSeasonNeed, missing, orderHref } from "@/lib/inventory/season";
 import type { PartChanges } from "@/lib/parts/changes";
-import type { Offer, ProductGroup } from "@/lib/inventory/productGroups";
 import { type PieceOp, applyPieceOp, countPieces, formatStock, isSheetGoods, parseStock, pieceBase, pieceLabel, pieceRows, snapStock, sortedRows, stepStock } from "@/lib/inventory/stock";
-import { bestOffer, isLink, searchStores } from "./AddBox";
+import { ProductSearch } from "./ProductSearch";
 import { CartButton, CountBox, ItemPrice, NewSize, PieceStepper, conditionColor, hostOf } from "./ItemCard";
 import { ItemForm, draftOf } from "./ItemForm";
 import { ConditionSelect } from "./ConditionSelect";
@@ -837,144 +834,6 @@ function HistorySection({ item, categories, locations, conditions }: { item: Ite
         <p className="text-sm text-muted">Loading…</p>
       )}
     </details>
-  );
-}
-
-// The product search (Edit link in the ⋮ menu, or the bottom of an unlinked item's window): search
-// the team's stores (like the add box) or paste a product link; picking one links the item to it
-// (link, price, photo) and the window reloads.
-function ProductSearch({
-  itemId,
-  initial,
-  onLinked,
-  onMessage,
-  autoFocus = true,
-}: {
-  itemId: string;
-  initial: string;
-  autoFocus?: boolean;
-  onLinked: (message: string | null) => void;
-  onMessage: (m: string | null) => void;
-}) {
-  const [q, setQ] = useState("");
-  const [found, setFound] = useState<{ q: string; groups: ProductGroup[] } | null>(null);
-  const [searching, setSearching] = useState(false);
-  const [linking, startLink] = useTransition();
-  const query = q.trim();
-  const link = isLink(query);
-
-  // Stores are asked only after a pause in typing.
-  useEffect(() => {
-    if (link || query.length < 3) return;
-    const c = new AbortController();
-    const t = setTimeout(() => {
-      setSearching(true);
-      searchStores(query, c.signal)
-        .then((r) => setFound({ q: query, groups: r.groups }))
-        .catch(() => {})
-        .finally(() => !c.signal.aborted && setSearching(false));
-    }, 450);
-    return () => {
-      clearTimeout(t);
-      c.abort();
-      setSearching(false);
-    };
-  }, [link, query]);
-  const groups = found?.q === query ? found.groups : null;
-
-  const pick = (o: Pick<Offer, "url" | "vendor" | "price" | "image">) =>
-    startLink(async () => {
-      const r = await linkItemToProduct(itemId, { url: o.url, site: o.vendor || undefined, price: o.price, imageUrl: o.image });
-      if (r.error) return onMessage(r.error);
-      setQ("");
-      onLinked(r.message ?? null);
-    });
-  const readLink = () =>
-    startLink(async () => {
-      const r = await readProductLink(query);
-      const p = r.product;
-      const res = await linkItemToProduct(itemId, p ? { url: p.url, site: p.site, price: p.price, imageUrl: p.image } : { url: query });
-      if (res.error) return onMessage(res.error);
-      setQ("");
-      onLinked(r.error ? `Linked the product. ${r.error}` : (res.message ?? null));
-    });
-
-  return (
-    <div className="space-y-2 text-sm">
-      <div className="px-1 text-[11px] font-semibold text-subtle">Link a product</div>
-      <div className="flex gap-1.5">
-        <label className="flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-lg border border-line-strong bg-raised px-3 focus-within:border-sky-400">
-          <Icon name="search" className="h-4 w-4 shrink-0 text-subtle" />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && link && readLink()}
-            autoFocus={autoFocus}
-            placeholder="Search stores or paste a link"
-            aria-label="Link to a product"
-            className="min-w-0 flex-1 bg-transparent py-1.5 text-sm outline-none"
-          />
-        </label>
-        {link && (
-          <button type="button" className="btn-primary min-h-10" disabled={linking} onClick={readLink}>
-            {linking ? "Linking…" : "Link"}
-          </button>
-        )}
-      </div>
-      {!query && (
-        <button type="button" className="press block w-full truncate rounded-lg border border-line-strong bg-raised px-3 py-2 text-left text-xs font-semibold text-accent hover:border-sky-400/40 active:scale-[0.98]" onClick={() => setQ(initial)}>
-          Search “{initial}”
-        </button>
-      )}
-      {!link && query.length >= 3 && (
-        <div className="max-h-72 space-y-0.5 overflow-y-auto rounded-lg border border-line p-1">
-          {!groups && <p className="px-2 py-2 text-xs text-muted">{searching ? "Searching the stores…" : "…"}</p>}
-          {groups?.length === 0 && <p className="px-2 py-2 text-xs text-muted">No store result for that. Try other words, or paste a product link.</p>}
-          {groups?.map((g) => (
-            <div
-              key={g.offers[0].url}
-              role="button"
-              tabIndex={0}
-              aria-disabled={linking}
-              onClick={() => !linking && pick({ ...bestOffer(g), image: bestOffer(g).image ?? g.image })}
-              onKeyDown={(e) => e.key === "Enter" && !linking && pick({ ...bestOffer(g), image: bestOffer(g).image ?? g.image })}
-              className="press flex cursor-pointer gap-3 rounded-lg p-2 hover:bg-raised active:scale-[0.98]"
-            >
-              <div className="thumb-well flex h-12 w-12 shrink-0 items-center justify-center rounded-lg">
-                {g.image ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- the store's own picture
-                  <img src={g.image} alt="" className="h-full w-full rounded-lg bg-white object-contain" />
-                ) : (
-                  <Icon name="cart" className="h-5 w-5 text-subtle" />
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-semibold text-fg" title={g.title}>
-                  {g.title}
-                </div>
-                <div className="mt-1 flex flex-wrap gap-1.5">
-                  {g.offers.map((o) => (
-                    <button
-                      key={o.url}
-                      type="button"
-                      disabled={linking}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        pick({ ...o, image: o.image ?? g.image });
-                      }}
-                      className="press min-h-8 rounded-full border border-line-strong px-2.5 text-xs font-semibold text-fg-2 hover:border-accent hover:text-accent"
-                    >
-                      {o.vendor}
-                      {o.price != null && <span className="ml-1.5 font-mono text-emerald-600 tabular-nums">${o.price.toFixed(2)}</span>}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
   );
 }
 
