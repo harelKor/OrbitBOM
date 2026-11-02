@@ -23,7 +23,7 @@ import { listMaterialGroups, listRawStock } from "@/lib/data/materials";
 import { cotsCategories } from "@/lib/data/parts";
 import { moveStock } from "@/lib/inventory/moves";
 import { hasSeasonNeed, missing } from "@/lib/inventory/season";
-import { formatStock } from "@/lib/inventory/stock";
+import { formatStockExact as formatStock } from "@/lib/inventory/stock";
 import { listRobots } from "@/lib/data/robots";
 import { OnshapeError } from "@/lib/onshape/client";
 import { refreshThumbnails } from "@/lib/onshape/thumbnails";

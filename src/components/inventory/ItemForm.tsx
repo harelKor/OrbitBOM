@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { saveItem, type ItemInput } from "@/app/(app)/inventory/actions";
 import { CATEGORY_GROUPS, type CategoryGroupId } from "@/config/inventory";
 import { activeFields, buildName, dropInactive, getCategory } from "@/lib/inventory/categories";
-import { formatStock, isSheetGoods, parseStock } from "@/lib/inventory/stock";
+import { formatStockExact as formatStock, isSheetGoods, parseStock } from "@/lib/inventory/stock";
 import { useManage } from "@/components/shell/ModeContext";
 import { FieldInput } from "./fields";
 import { hostOf } from "./ItemCard";

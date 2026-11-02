@@ -71,6 +71,8 @@ export function ItemListRow({
   const stepper = editable && onStep && onCount;
   const color = condition ? conditionColor(condition.color) : undefined;
   const sheetWord = item.sheet && isSheetGoods(category?.label ?? item.name);
+  // Raw stock rows go without the picture and the 📍 pill (Harel, 2026-11-02).
+  const rawStock = item.sheet || category?.group === "consumables";
   const stepBtn = "press flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-lg font-bold text-white shadow-sm active:scale-[0.98] disabled:opacity-30";
   return (
     <ListRow
@@ -79,6 +81,7 @@ export function ItemListRow({
       style={standingTint(item, view)}
       picture={item.thumbUrl ?? category?.imageUrl ?? null}
       dimPicture={!item.thumbUrl}
+      hidePicture={rawStock}
       title={item.name}
       href={item.cotsLinks[0]?.url}
       detail={
@@ -122,7 +125,7 @@ export function ItemListRow({
                 </button>
               </span>
             )}
-            {locations && (
+            {locations && !rawStock && (
               <LocationPicker
                 locations={locations}
                 value={item.locationId ?? location?.id ?? null}
@@ -162,7 +165,7 @@ export function ItemListRow({
           </span>
         ) : (
           <>
-            {location && <ListPill>📍 {location.name}</ListPill>}
+            {location && !rawStock && <ListPill>📍 {location.name}</ListPill>}
             {condition && <ListPill color={conditionColor(condition.color)}>{condition.label}</ListPill>}
             <SeasonTag itemId={item.id} tag={item.seasonTag} className="rounded-full border border-transparent px-2.5 py-0.5 text-[11px]" />
             {showStanding && <ListPill color={STANDING[state].color}>{STANDING[state].label(formatStock(gap, item.sheet))}</ListPill>}

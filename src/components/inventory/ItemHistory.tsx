@@ -4,7 +4,7 @@ import { useState } from "react";
 import { timeAgo } from "@/components/actions/RecentActions";
 import type { ItemHistoryEntry, OrderHistoryCard } from "@/lib/data/inventory";
 import { getCategory } from "@/lib/inventory/categories";
-import { formatStock } from "@/lib/inventory/stock";
+import { formatStockExact as formatStock } from "@/lib/inventory/stock";
 import type { Condition, InvCategory, Location } from "./types";
 
 // DD/MM in Israel time.

@@ -17,8 +17,17 @@ export function snapStock(n: number, sheet: boolean): number {
   return sheet ? Math.round(n * 12) / 12 : Math.round(n);
 }
 
-// "2 ¾" for a sheet, "3" otherwise. An amount between the pieces shows in twelfths ("1 5/12").
+// A count to read at a glance: whole units. A sheet item holding part of a sheet shows the
+// nearest whole number with a "~" ("~3"); the exact pieces live in the pieces menu and Spread.
 export function formatStock(n: number, sheet = false): string {
+  const whole = Math.round(n);
+  if (!sheet || Math.abs(n - whole) <= 1e-6) return String(whole);
+  return `~${whole}`;
+}
+
+// The exact amount, for typing boxes, history and exports: "2 ¾" for a sheet, "3" otherwise.
+// An amount between the pieces shows in twelfths ("1 5/12").
+export function formatStockExact(n: number, sheet = false): string {
   if (!sheet) return String(Math.round(n));
   const twelfths = Math.round(n * 12);
   const whole = Math.floor(twelfths / 12);

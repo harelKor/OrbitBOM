@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatStock, parseStock, snapStock } from "./stock";
+import { formatStock, formatStockExact, parseStock, snapStock } from "./stock";
 import { applyPieceOp, canTakePiece, fractionText, parseSize, pieceBase, pieceLabel, stepStock } from "./stock";
 
 it("keeps sheets in twelfths and counts in whole units", () => {
@@ -9,9 +9,12 @@ it("keeps sheets in twelfths and counts in whole units", () => {
 });
 
 it("shows sheet pieces as fractions", () => {
-  expect(formatStock(2.75, true)).toBe("2 ¾");
-  expect(formatStock(1 / 3, true)).toBe("⅓");
-  expect(formatStock(5 / 12, true)).toBe("5/12");
+  expect(formatStockExact(2.75, true)).toBe("2 ¾");
+  expect(formatStockExact(1 / 3, true)).toBe("⅓");
+  expect(formatStockExact(5 / 12, true)).toBe("5/12");
+  expect(formatStock(2.75, true)).toBe("~3");
+  expect(formatStock(1 / 3, true)).toBe("~0");
+  expect(formatStock(4, true)).toBe("4");
   expect(formatStock(3, false)).toBe("3");
 });
 

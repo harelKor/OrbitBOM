@@ -14,7 +14,7 @@ import { Icon } from "@/components/ui/Icon";
 import { softStatusTint } from "@/components/ui/statusTint";
 import { getCategory } from "@/lib/inventory/categories";
 import { hasSeasonNeed, missing, neededFor, orderHref, standing, type NeedView, type Standing } from "@/lib/inventory/season";
-import { type PieceBase, canTakePiece, formatStock, isSheetGoods, parseSize, parseStock, pieceBase, pieceLabel, pieceRatio, pieceRows, sortedRows } from "@/lib/inventory/stock";
+import { type PieceBase, canTakePiece, formatStock, formatStockExact, isSheetGoods, parseSize, parseStock, pieceBase, pieceLabel, pieceRatio, pieceRows, sortedRows } from "@/lib/inventory/stock";
 import { useCan } from "@/components/shell/ModeContext";
 import { useInventoryPopup } from "./InventoryPopup";
 import { LocationPicker } from "./LocationPicker";
@@ -122,8 +122,8 @@ export function ItemCard({
   const work = useCan("work");
   const { openItem } = useInventoryPopup();
   const category = getCategory(categories, item.category);
-  const short = item.usage?.short ?? 0;
-  const usedBy = item.usage?.parts.length ?? 0;
+  // Raw stock cards leave out the 📍 tag (Harel, 2026-11-02).
+  const rawStock = item.sheet || category?.group === "consumables";
   const needed = neededFor(item, view);
   const gap = missing(item, view);
   const tinted = standingTint(item, view);
@@ -190,7 +190,7 @@ export function ItemCard({
       </div>
       <div className="card-overlay absolute top-2 right-2 flex max-w-[38%] flex-col items-end gap-1">
         {(gap > 0 || item.openOrder) && <CartButton item={item} gap={gap} />}
-        {location && locations ? (
+        {rawStock ? null : location && locations ? (
           // Opens the workshop map with this item's spot lit: a team member moves the item to the pin
           // tapped; a member without a team can filter the page to it (Harel, 2026-10-28).
           <span onClick={stop} className="max-w-full">
@@ -269,16 +269,6 @@ export function ItemCard({
       <div className="flex min-w-0 flex-col gap-1.5 p-3 pt-2">
         <ProductName item={item} wrap className="text-[17px] leading-snug font-semibold" />
         <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-[11px]">
-          {usedBy > 0 && (
-            <span
-              className={`rounded-full border px-2 py-0.5 font-semibold ${
-                short ? "border-amber-500/60 text-amber-600 dark:text-amber-400" : "border-emerald-500/60 text-emerald-600 dark:text-emerald-400"
-              }`}
-            >
-              {usedBy} part{usedBy === 1 ? "" : "s"}
-              {!item.sheet && (short ? ` · ${short} short` : " · covered")}
-            </span>
-          )}
           {item.cotsLinks[0] && <span className="truncate rounded-full bg-raised px-2 py-0.5 text-fg-2">{item.cotsLinks[0].site || hostOf(item.cotsLinks[0].url)}</span>}
           {item.price != null && <ItemPrice price={item.price} />}
         </div>
@@ -369,7 +359,7 @@ export function CountBox({ item, onCount, big = false }: { item: Pick<Item, "inS
         type="button"
         onClick={(e) => {
           e.stopPropagation();
-          setText(formatStock(item.inStock, item.sheet));
+          setText(formatStockExact(item.inStock, item.sheet));
         }}
         className={`rounded px-0.5 underline decoration-dotted decoration-white/40 underline-offset-4 hover:decoration-current ${big ? "text-3xl sm:text-4xl" : ""}`}
         title="Type the real count"

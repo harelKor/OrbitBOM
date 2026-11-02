@@ -10,6 +10,7 @@ import { Icon } from "./Icon";
 export function ListRow({
   picture,
   dimPicture = false,
+  hidePicture = false,
   placeholder,
   title,
   href,
@@ -25,6 +26,7 @@ export function ListRow({
 }: {
   picture: string | null;
   dimPicture?: boolean; // a stand-in picture (the category's), shown fainter
+  hidePicture?: boolean; // no picture box at all (raw stock)
   placeholder?: React.ReactNode;
   title: React.ReactNode;
   href?: string | null;
@@ -51,14 +53,16 @@ export function ListRow({
       } ${className}`}
       {...rest}
     >
-      <span className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white">
-        {picture ? (
-          // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
-          <img src={picture} alt="" loading="lazy" className={`h-full w-full object-contain p-1 ${dimPicture ? "opacity-60" : ""}`} />
-        ) : (
-          (placeholder ?? <Icon name="box" className="h-6 w-6 text-slate-400" />)
-        )}
-      </span>
+      {!hidePicture && (
+        <span className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white">
+          {picture ? (
+            // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
+            <img src={picture} alt="" loading="lazy" className={`h-full w-full object-contain p-1 ${dimPicture ? "opacity-60" : ""}`} />
+          ) : (
+            (placeholder ?? <Icon name="box" className="h-6 w-6 text-slate-400" />)
+          )}
+        </span>
+      )}
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         {href && !onToggleSelect ? (
           <a

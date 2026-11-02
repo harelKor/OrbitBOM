@@ -10,7 +10,7 @@ import type { Condition, InvCategory, Item, Location } from "@/components/invent
 import { CATEGORY_GROUPS, groupOf } from "@/config/inventory";
 import { getCategory, specLine } from "@/lib/inventory/categories";
 import { missing, standing, type Standing } from "@/lib/inventory/season";
-import { formatStock } from "@/lib/inventory/stock";
+import { formatStockExact as formatStock } from "@/lib/inventory/stock";
 import { zip } from "@/lib/zip";
 
 type Column = {

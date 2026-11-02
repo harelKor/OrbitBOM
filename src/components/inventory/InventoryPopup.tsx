@@ -28,7 +28,7 @@ import { materialCategory } from "@/config/materials";
 import { activeFields, getCategory } from "@/lib/inventory/categories";
 import { hasSeasonNeed, missing, orderHref } from "@/lib/inventory/season";
 import type { PartChanges } from "@/lib/parts/changes";
-import { type PieceOp, applyPieceOp, countPieces, formatStock, isSheetGoods, parseStock, pieceBase, pieceLabel, pieceRows, snapStock, sortedRows, stepStock } from "@/lib/inventory/stock";
+import { type PieceOp, applyPieceOp, countPieces, formatStock, formatStockExact, isSheetGoods, parseStock, pieceBase, pieceLabel, pieceRows, snapStock, sortedRows, stepStock } from "@/lib/inventory/stock";
 import { ProductSearch } from "./ProductSearch";
 import { CartButton, CountBox, ItemPrice, NewSize, PieceStepper, conditionColor, hostOf } from "./ItemCard";
 import { ItemForm, draftOf } from "./ItemForm";
@@ -271,7 +271,7 @@ function ItemNotesBox({ item, onSaved, onError }: { item: Item; onSaved: () => v
 // the count. Blank or 0 clears it. Saves on Enter or when the box loses focus.
 function SeasonBox({ item, onChange, onError }: { item: Item; onChange: ChangeItem; onError: (m: string | null) => void }) {
   const work = useCan("work");
-  const current = hasSeasonNeed(item) ? formatStock(item.seasonNeed!, item.sheet) : "";
+  const current = hasSeasonNeed(item) ? formatStockExact(item.seasonNeed!, item.sheet) : "";
   const [text, setText] = useState<string | null>(null);
   // The new need shows at once ("Season needs 10 · 7 short"); the save follows.
   const save = () => {
