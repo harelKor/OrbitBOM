@@ -9,12 +9,14 @@ export function LinkAssemblyForm({
   robots,
   layoutsFor,
   onshapeConnected,
+  isAdmin,
 }: {
   assemblyUrl: string;
   documentUrl: string;
   robots: { id: string; name: string }[];
   layoutsFor: string[]; // robots whose Batch Layouts document this is
   onshapeConnected: boolean;
+  isAdmin: boolean; // only admins can set the robot's main assembly
 }) {
   const [state, action, pending] = useActionState(
     linkAssembly.bind(null, assemblyUrl),
@@ -42,6 +44,7 @@ export function LinkAssemblyForm({
           ✓ Used as Batch Layouts document for {layoutsFor.join(", ")}
         </p>
       )}
+      {isAdmin && (
       <form action={mainAction} className="space-y-3">
         <h1 className="text-base font-semibold">Is this the whole robot?</h1>
         <p className="text-muted">
@@ -60,9 +63,10 @@ export function LinkAssemblyForm({
           {mainPending ? "Linking…" : "Use as main assembly"}
         </button>
       </form>
-      <form action={action} className="space-y-3 border-t border-line pt-5">
+      )}
+      <form action={action} className={isAdmin ? "space-y-3 border-t border-line pt-5" : "space-y-3"}>
         <h2 className="text-base font-semibold">
-          Or add it to a robot as a system
+          {isAdmin ? "Or add it to a robot as a system" : "Add it to a robot as a system"}
         </h2>
         <div>
           <label className="label" htmlFor="panel-robot">

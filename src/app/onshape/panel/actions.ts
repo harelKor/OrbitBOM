@@ -43,8 +43,10 @@ export async function linkAssembly(assemblyUrl: string, _: { error?: string } | 
 }
 
 // Makes the assembly the panel is open on the robot's main assembly: the 3D view's source.
+// Admins only: other members can link subsystem assemblies, not the whole robot.
 export async function linkMainAssembly(assemblyUrl: string, _: { error?: string } | undefined, formData: FormData) {
-  await requireCapability("sync");
+  const member = await requireCapability("sync");
+  if (!member.isAdmin) return { error: "Only an admin can set the robot's main assembly." };
   const ref = parseOnshapeUrl(assemblyUrl);
   const robotId = z.uuid().safeParse(formData.get("robotId"));
   if (!ref?.eid) return { error: "Open this panel from an Onshape assembly." };

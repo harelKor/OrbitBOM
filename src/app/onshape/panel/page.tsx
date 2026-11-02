@@ -66,6 +66,7 @@ async function panelBody(ref: ReturnType<typeof parseOnshapeUrl>) {
       robots={robots.map(({ id, name }) => ({ id, name }))}
       layoutsFor={robots.filter((r) => r.layoutsDid === ref.did).map((r) => r.name)}
       onshapeConnected={member.onshapeConnected}
+      isAdmin={member.isAdmin}
     />
   );
 }
