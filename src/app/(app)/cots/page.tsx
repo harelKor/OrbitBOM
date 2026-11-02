@@ -2,12 +2,13 @@ import Link from "next/link";
 import { COTS_IN_STOCK, COTS_RELEASED, ORDER_STATUSES } from "@/config/cots";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { requireMember } from "@/lib/auth";
+import { countOrderHistory } from "@/lib/data/inventory";
 import { countCotsStatuses } from "@/lib/data/parts";
 
-// The COTS page: two big boxes, Released and Order List.
+// The COTS page: two big boxes, Released and Order List, and a long Order History box below them.
 export default async function CotsPage() {
   await requireMember();
-  const counts = await countCotsStatuses();
+  const [counts, history] = await Promise.all([countCotsStatuses(), countOrderHistory()]);
   const ordering = ORDER_STATUSES.filter((s) => s !== COTS_IN_STOCK).reduce((n, s) => n + (counts.get(s) ?? 0), 0);
   const boxes = [
     { href: "/cots/released", title: "Released", count: counts.get(COTS_RELEASED) ?? 0, text: "Ready to be ordered", icon: "list" as IconName },
@@ -40,6 +41,20 @@ export default async function CotsPage() {
             </span>
           </Link>
         ))}
+        <Link
+          href="/cots/history"
+          className="card-interactive group relative col-span-full flex min-h-28 items-center gap-5 p-5 active:scale-[0.98] sm:min-h-36 sm:gap-7 sm:p-6"
+        >
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-line bg-raised text-accent transition-colors group-hover:border-accent/40 sm:h-14 sm:w-14">
+            <Icon name="clock" className="h-7 w-7 sm:h-8 sm:w-8" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block display text-3xl text-fg sm:text-4xl">Order History</span>
+            <span className="mt-0.5 block text-sm text-muted sm:text-base">Every order, from In Route to arrived</span>
+          </span>
+          <span className="display font-mono text-5xl text-accent tabular-nums sm:text-6xl">{history}</span>
+          <Icon name="arrow" className="h-7 w-7 shrink-0 text-subtle transition-transform group-hover:translate-x-1 group-hover:text-accent" />
+        </Link>
       </div>
     </div>
   );

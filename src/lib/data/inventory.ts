@@ -374,5 +374,11 @@ async function orderHistoryRows(itemId?: string): Promise<OrderHistoryCard[]> {
 // The Order History page: every card not dismissed, newest order first (the page groups by vendor).
 export const listOrderHistory = () => orderHistoryRows();
 
+// How many cards the COTS page's Order History box counts.
+export async function countOrderHistory() {
+  const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(schema.cotsOrderHistory).where(isNull(schema.cotsOrderHistory.dismissedAt));
+  return row?.n ?? 0;
+}
+
 // An item's Past orders, newest first.
 export const itemOrderHistory = (itemId: string) => orderHistoryRows(itemId);
