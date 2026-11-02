@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { SQL, asc, eq, getTableColumns, inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { currentVisit } from "@/lib/visits";
+import { recordOrderHistory } from "./orderHistory";
 
 const { parts, partHistory } = schema;
 
@@ -63,10 +64,14 @@ export async function applyUndo(reverts: Revert[], memberId: string, via: "ui" |
   await db.transaction(async (tx) => {
     for (const partId of new Set(reverts.map((r) => r.partId))) {
       const mine = reverts.filter((r) => r.partId === partId);
-      await tx
+      // An undone status move takes its COTS Order History card along (24h rule in orderHistory.ts).
+      const [before] = mine.some((r) => r.field === "designState") ? await tx.select().from(parts).where(eq(parts.id, partId)).for("update") : [];
+      const [after] = await tx
         .update(parts)
         .set({ ...Object.fromEntries(mine.map((r) => [r.field, restorable(r.field, r.to)])), lastModifiedAt: new Date(), lastModifiedBy: memberId })
-        .where(eq(parts.id, partId));
+        .where(eq(parts.id, partId))
+        .returning();
+      if (before && after) await recordOrderHistory(tx, before, after);
       await tx.insert(partHistory).values(
         mine.map((r) => ({ partId, field: r.field, oldValue: r.from, newValue: restorable(r.field, r.to), memberId, via, batchId, visitId: visit?.id, page: visit?.page })),
       );

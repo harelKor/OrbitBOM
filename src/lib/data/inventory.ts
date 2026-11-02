@@ -345,3 +345,34 @@ export async function shelfOfParts(rows: ShelfPart[]) {
   return { shelf, suggestion };
 }
 
+
+// ---------- COTS Order History (Harel, 2026-11-02; rows from lib/parts/orderHistory.ts) ----------
+
+export type OrderHistoryCard = Omit<typeof schema.cotsOrderHistory.$inferSelect, "dismissedAt"> & { thumbUrl: string | null };
+
+// The order's date for sorting: when it went In Route, else when it arrived, else when it was recorded.
+const orderDate = (r: { inRouteAt: Date | null; arrivedAt: Date | null; createdAt: Date }) => (r.inRouteAt ?? r.arrivedAt ?? r.createdAt).getTime();
+
+async function orderHistoryRows(itemId?: string): Promise<OrderHistoryCard[]> {
+  const h = schema.cotsOrderHistory;
+  const rows = await db
+    .select({ card: h, item: { id: inventoryItems.id, name: inventoryItems.name, category: inventoryItems.category, imagePath: inventoryItems.imagePath } })
+    .from(h)
+    .leftJoin(inventoryItems, eq(inventoryItems.id, h.inventoryItemId))
+    .where(and(isNull(h.dismissedAt), itemId ? eq(h.inventoryItemId, itemId) : undefined));
+  const items = [...new Map(rows.filter((r) => r.item).map((r) => [r.item!.id, r.item!])).values()];
+  const thumbs = items.length ? await itemThumbs(items, await listCategories()) : new Map<string, string>();
+  return rows
+    .map(({ card }) => {
+      const { dismissedAt, ...rest } = card;
+      void dismissedAt;
+      return { ...rest, thumbUrl: (card.inventoryItemId && thumbs.get(card.inventoryItemId)) || null };
+    })
+    .sort((a, b) => orderDate(b) - orderDate(a));
+}
+
+// The Order History page: every card not dismissed, newest order first (the page groups by vendor).
+export const listOrderHistory = () => orderHistoryRows();
+
+// An item's Past orders, newest first.
+export const itemOrderHistory = (itemId: string) => orderHistoryRows(itemId);

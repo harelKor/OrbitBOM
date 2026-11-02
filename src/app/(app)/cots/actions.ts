@@ -72,3 +72,29 @@ export async function clearInStock(ids: string[]): Promise<ActionResult> {
   revalidatePath("/cots", "layout");
   return {};
 }
+
+// The ✕ on an Order History card: it leaves the Order History page and the item's Past orders.
+export async function dismissOrderHistory(id: string): Promise<ActionResult> {
+  await requireCapability("work");
+  if (!isUuid(id)) return { error: "Unknown order." };
+  await db.update(schema.cotsOrderHistory).set({ dismissedAt: new Date() }).where(eq(schema.cotsOrderHistory.id, id));
+  revalidatePath("/cots", "layout");
+  revalidatePath("/inventory");
+  return {};
+}
+
+// The "-" on an Order History card whose In Route or arrival date was never recorded: typed text
+// shows in its place. Empty text puts the "-" back.
+export async function setOrderHistoryDateText(id: string, side: "inRoute" | "arrived", text: string): Promise<ActionResult> {
+  await requireCapability("work");
+  if (!isUuid(id) || (side !== "inRoute" && side !== "arrived") || typeof text !== "string") return { error: "Unknown order." };
+  const value = text.trim().slice(0, 40) || null;
+  const h = schema.cotsOrderHistory;
+  await db
+    .update(h)
+    .set(side === "inRoute" ? { inRouteText: value } : { arrivedText: value })
+    .where(eq(h.id, id));
+  revalidatePath("/cots", "layout");
+  revalidatePath("/inventory");
+  return {};
+}

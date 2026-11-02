@@ -749,6 +749,31 @@ export const inventoryMoves = pgTable(
   (t) => [index("inventory_moves_item_idx").on(t.itemId, t.at), index("inventory_moves_batch_idx").on(t.batchId), index("inventory_moves_visit_idx").on(t.visitId)],
 );
 
+// Every COTS order, one card each on the COTS Order History page and in the item's Past orders:
+// when it went In Route and when it arrived (Arrived or In Stock). Status moves undone within a
+// day take the card back; later ones leave it (lib/parts/orderHistory.ts, Harel 2026-11-02).
+// A date the team never recorded can hold typed text instead (in_route_text, arrived_text).
+export const cotsOrderHistory = pgTable(
+  "cots_order_history",
+  {
+    id: id(),
+    inventoryItemId: uuid("inventory_item_id").references(() => inventoryItems.id, { onDelete: "cascade" }),
+    partId: uuid("part_id").references(() => parts.id, { onDelete: "set null" }),
+    name: text("name").notNull(),
+    quantity: integer("quantity").notNull(),
+    unitPrice: real("unit_price"),
+    vendor: text("vendor"),
+    productUrl: text("product_url"),
+    inRouteAt: timestamp("in_route_at", { withTimezone: true }),
+    arrivedAt: timestamp("arrived_at", { withTimezone: true }),
+    inRouteText: text("in_route_text"),
+    arrivedText: text("arrived_text"),
+    dismissedAt: timestamp("dismissed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("cots_order_history_part_idx").on(t.partId), index("cots_order_history_item_idx").on(t.inventoryItemId)],
+);
+
 // A suggested inventory link someone rejected: auto-link doesn't suggest that pair again.
 export const inventoryLinkRejections = pgTable(
   "inventory_link_rejections",

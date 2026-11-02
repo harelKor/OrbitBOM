@@ -12,6 +12,7 @@ import { computeStatus } from "@/lib/status";
 import { isReleaseMove, lockRelease } from "@/lib/versions/release";
 import { currentVisit } from "@/lib/visits";
 import { planPartUpdate, type PartChanges, type Plan } from "./changes";
+import { recordOrderHistory } from "./orderHistory";
 
 const { parts, partHistory, inventoryItems, inventoryCategories } = schema;
 const ORDERING = ORDER_STATUSES.filter((s) => s !== COTS_IN_STOCK) as string[];
@@ -115,6 +116,8 @@ export async function applyEachPartChanges(
           page: visit?.page,
         })),
       );
+      // A COTS order went In Route, arrived, or was taken back: its Order History card follows.
+      if (set.designState !== undefined) await recordOrderHistory(tx, row, after);
       // Sent to fab: To Fab keeps this state until the part is released again (plan/fab-version-lock.md).
       if (isReleaseMove(row, after)) await lockRelease(tx, after, { memberId: ctx.memberId, batchId });
       if (received) await moveStock(tx, { itemId: after.inventoryItemId!, delta: received, reason: "received", partId: row.id }, { memberId: ctx.memberId, via: ctx.via, batchId });
