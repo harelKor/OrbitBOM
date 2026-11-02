@@ -838,7 +838,7 @@ function HistorySection({ item, categories, locations, conditions }: { item: Ite
       </summary>
       {history ? (
         <div className="max-h-56 overflow-y-auto">
-          <ItemHistory history={history} sheet={item.sheet} categories={categories} locations={locations} conditions={conditions} />
+          <ItemHistory history={history.history} orders={history.orders} sheet={item.sheet} categories={categories} locations={locations} conditions={conditions} />
         </div>
       ) : (
         <p className="text-sm text-muted">Loading…</p>

@@ -13,7 +13,7 @@ import { requireMember } from "@/lib/auth";
 import { requireCapability } from "@/lib/mode";
 import { listBomTargets } from "@/lib/data/robots";
 import { listCategories } from "@/lib/data/categories";
-import { inventoryItemWithLists, itemHistory, listFitTargets, listInventory, robotInventory, usageOf } from "@/lib/data/inventory";
+import { inventoryItemWithLists, itemHistory, itemOrderHistory, listFitTargets, listInventory, robotInventory, usageOf } from "@/lib/data/inventory";
 import { autoLink } from "@/lib/inventory/autolink";
 import { categoryOf, getCategory, slugify, type InvCategory } from "@/lib/inventory/categories";
 import type { ImportRow } from "@/lib/inventory/import";
@@ -869,8 +869,9 @@ async function openOrderPart(partId: string) {
 
 export async function loadItemHistory(itemId: string) {
   await requireMember();
-  if (!isUuid(itemId)) return [];
-  return (await itemHistory(itemId)).history;
+  if (!isUuid(itemId)) return { history: [], orders: [] };
+  const [{ history }, orders] = await Promise.all([itemHistory(itemId), itemOrderHistory(itemId)]);
+  return { history, orders };
 }
 
 export async function materialPopup(material: string) {
