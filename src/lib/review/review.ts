@@ -15,8 +15,9 @@ import { currentVisit } from "@/lib/visits";
 import { itemFieldLabel, itemValueText, locationNames, revertInventoryBatch } from "./inventory";
 import { listCategories } from "@/lib/data/categories";
 import { listRawStock } from "@/lib/data/materials";
-import { getCategory } from "@/lib/inventory/categories";
+import { categoryOf, getCategory } from "@/lib/inventory/categories";
 import { sizeOf, suggestSetup, wallThickness, type Learned } from "./rules";
+import { matchByName, nameMatchSetup, type NameMatchItem, type NameMatchPart } from "./nameMatch";
 import { analyzeShape } from "./shape";
 
 const { parts, systems, partReviews, partHistory, members, aiLogs } = schema;
@@ -195,8 +196,48 @@ export async function partsToSetUp(robotId: string, systemId?: string, opts: { u
       ),
     );
   const measured = await measureParts(robotId, rows.map((r) => ({ ...r.part, systemName: r.systemName })));
-  const [learned, stock] = await Promise.all([learnedProcesses(), listRawStock()]);
-  return measured.map((p) => ({ part: p, guess: suggestSetup(p, learned, stock) }));
+  const [learned, stock, byName] = await Promise.all([learnedProcesses(), listRawStock(), nameMatcher()]);
+  const named = byName(measured.filter((p) => !p.inventoryItemId));
+  return measured.map((p) => ({ part: p, guess: guessSetup(p, learned, stock, named) }));
+}
+
+// Suggest's search by name (nameMatch.ts): every inventory item, and the links someone rejected,
+// read once; the returned function finds descriptively named parts' items.
+async function nameMatcher() {
+  const [items, rejected, cats] = await Promise.all([db.select().from(schema.inventoryItems), db.select().from(schema.inventoryLinkRejections), listCategories()]);
+  const list: NameMatchItem[] = items.map((i) => {
+    const categoryId = categoryOf(i, cats);
+    const cat = getCategory(cats, categoryId);
+    return {
+      id: i.id,
+      name: i.name,
+      aliases: i.aliases,
+      category: cat,
+      specs: i.specs,
+      urls: [],
+      onshapeKey: null,
+      docKeys: [],
+      thumbHashes: [],
+      group: cat?.group ?? null,
+      categoryId: cat ? categoryId : null,
+      cotsLinks: i.cotsLinks,
+      price: i.price,
+    };
+  });
+  const no = new Set(rejected.map((r) => `${r.partId}:${r.itemId}`));
+  return (ps: NameMatchPart[]) => (ps.length && list.length ? matchByName(ps, list, (p, i) => no.has(`${p}:${i}`)) : new Map<string, never>());
+}
+
+// A part's suggested setup: an inventory item its descriptive name matches (outside Raw Stock:
+// it's COTS) comes first; otherwise the rules' guess from its material and shape.
+function guessSetup(
+  p: Part,
+  learned: Learned,
+  stock: Awaited<ReturnType<typeof listRawStock>>,
+  named: ReturnType<Awaited<ReturnType<typeof nameMatcher>>>,
+): { changes: PartChanges; reason: string } | null {
+  const hit = named.get(p.id);
+  return (hit && nameMatchSetup(p, hit)) || suggestSetup(p, learned, stock);
 }
 
 // Auto-link for these parts (imported when used: autolink.ts imports this file).
@@ -231,8 +272,8 @@ export async function suggestOnePart(partId: string, memberId: string) {
     .where(eq(parts.id, partId));
   if (!row) return null;
   const [measured] = row.part.isManual ? [row.part] : await measureParts(row.robotId, [{ ...row.part, systemName: row.systemName }]);
-  const [learned, stock] = await Promise.all([learnedProcesses(), listRawStock()]);
-  const guess = suggestSetup(measured, learned, stock);
+  const [learned, stock, byName] = await Promise.all([learnedProcesses(), listRawStock(), nameMatcher()]);
+  const guess = guessSetup(measured, learned, stock, byName(measured.inventoryItemId ? [] : [measured]));
   let setUp = 0;
   if (guess) {
     const { changed, batchId } = await applySuggestions([{ id: partId, ...guess }], { memberId, source: "rule", via: "ui" });
@@ -261,9 +302,13 @@ export async function suggestPickedParts(partIds: string[], memberId: string) {
   for (const [robotId, list] of byRobot) {
     measured.push(...list.filter((p) => p.isManual), ...(await measureParts(robotId, list.filter((p) => !p.isManual))));
   }
-  const [learned, stock] = await Promise.all([learnedProcesses(), listRawStock()]);
+  const [learned, stock, byName] = await Promise.all([learnedProcesses(), listRawStock(), nameMatcher()]);
+  const named = byName(measured);
   const blankProcesses = { preProcess: null, process1: null, process2: null };
   const edits = measured.flatMap((p) => {
+    const hit = named.get(p.id);
+    const byItem = hit && nameMatchSetup(p, hit);
+    if (byItem) return [{ id: p.id, ...byItem }];
     const fresh = suggestSetup({ ...p, ...blankProcesses, material: null, inventoryItemId: null }, learned, stock);
     const guess = fresh?.changes.material ? fresh : suggestSetup({ ...p, ...blankProcesses }, learned, stock);
     return guess ? [{ id: p.id, ...guess }] : [];
