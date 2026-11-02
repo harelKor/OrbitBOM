@@ -16,7 +16,7 @@ import {
   countStock,
 } from "@/app/(app)/inventory/actions";
 import { Dialog } from "@/components/Dialog";
-import { EditOnly, useManage } from "@/components/shell/ModeContext";
+import { EditOnly, useManage, usePermissions } from "@/components/shell/ModeContext";
 import { useEscape } from "@/components/ui/useEscape";
 import {
   CategoryBoxes,
@@ -123,6 +123,8 @@ export function InventoryView({
   const [notice, setNotice] = useState<string | null>(null);
   // Move / Delete: taps select cards, the bar at the bottom acts on them.
   const edit = useManage();
+  // The Build Team has no Export spreadsheet button (Harel, 2026-11-02).
+  const hideExport = usePermissions().mode === "build";
   const [picking, setPicking] = useState<"move" | "delete" | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [moveCat, setMoveCat] = useState("");
@@ -749,7 +751,7 @@ export function InventoryView({
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 {filters}
                 <span className="ml-auto" />
-                {!edit && exportButton}
+                {!edit && !hideExport && exportButton}
                 {layoutSwitch}
               </div>
               {grid(
@@ -771,7 +773,7 @@ export function InventoryView({
             {specRows.length > 0 && <SpecFilterBar rows={specRows} picks={picks} open={filtersOpen} onToggle={toggleFilters} onPick={togglePick} onClear={() => setSpecPick(null)} />}
             {showBoxes && filters}
             <span className="ml-auto" />
-            {!edit && exportButton}
+            {!edit && !hideExport && exportButton}
             {layoutSwitch}
           </div>
           {filtersOpen && specRows.length > 0 && <SpecFilterRows rows={specRows} picks={picks} onPick={togglePick} />}
