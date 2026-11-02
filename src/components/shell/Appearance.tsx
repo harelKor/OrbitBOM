@@ -15,6 +15,12 @@ const DEFAULTS: Prefs = { scale: 1, hue: DEFAULT_HUE };
 const MIN_SCALE = 0.3;
 const MAX_SCALE = 2.5;
 const GRIDS = ".card-grid, .category-grid, .list-stack";
+
+// A window (like the workshop map) is open over the cards, or the gesture is inside one: its
+// own zoom wins and the cards behind it stay the same size. A dialog opened from a card row
+// still sits inside that row in the DOM, so .closest(GRIDS) alone would match it.
+const inDialog = (target: EventTarget | null) =>
+  !!document.querySelector("dialog[open]") || !!(target as Element | null)?.closest?.("dialog, [role=dialog]");
 const clampScale = (n: number) => Math.round(Math.min(MAX_SCALE, Math.max(MIN_SCALE, n)) * 1000) / 1000;
 
 function apply({ scale, hue }: Prefs) {
@@ -65,7 +71,7 @@ export function AppearanceControls() {
   // the browser's own zoom keeps working.
   useEffect(() => {
     const onWheel = (e: WheelEvent) => {
-      if (!e.ctrlKey || !(e.target as Element | null)?.closest?.(GRIDS)) return;
+      if (!e.ctrlKey || inDialog(e.target) || !(e.target as Element | null)?.closest?.(GRIDS)) return;
       e.preventDefault();
       const step = Math.max(-0.15, Math.min(0.15, -e.deltaY * (e.deltaMode === 1 ? 0.03 : 0.0008)));
       setScale(latest.current.scale * (1 + step));
@@ -80,7 +86,7 @@ export function AppearanceControls() {
     let pinch: { dist: number; scale: number } | null = null;
     const gap = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
     const onStart = (e: TouchEvent) => {
-      if (e.touches.length !== 2 || !(e.target as Element | null)?.closest?.(GRIDS)) return;
+      if (e.touches.length !== 2 || inDialog(e.target) || !(e.target as Element | null)?.closest?.(GRIDS)) return;
       e.preventDefault();
       pinch = { dist: gap(e.touches) || 1, scale: latest.current.scale };
     };
