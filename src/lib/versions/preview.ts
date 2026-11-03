@@ -1,7 +1,7 @@
 import "server-only";
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, lt, ne } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { studioMeshes, TESS_VERSION } from "@/lib/model/build";
 import { encodeMeshes } from "@/lib/model/mesh";
@@ -79,17 +79,25 @@ export async function previewModel(systemId: string, member: { id: string; onsha
 }
 
 // A committed part state (After), or the part's state in the version before it (Before).
+// Two indexed reads (the row, and for Before the part's row just under it), not the system's
+// whole version history.
 async function committedState(systemId: string, rowId: string, side: "before" | "after") {
-  const rows = await db
-    .select({ id: partVersions.id, partId: partVersions.partId, versionId: partVersions.versionId, seq: systemVersions.seq, snapshot: partVersions.snapshot, change: partVersions.change })
+  const columns = { id: partVersions.id, partId: partVersions.partId, versionId: partVersions.versionId, seq: systemVersions.seq, snapshot: partVersions.snapshot };
+  const committed = and(eq(systemVersions.systemId, systemId), eq(systemVersions.state, "committed"));
+  const [row] = await db
+    .select(columns)
     .from(partVersions)
     .innerJoin(systemVersions, eq(systemVersions.id, partVersions.versionId))
-    .where(and(eq(systemVersions.systemId, systemId), eq(systemVersions.state, "committed")));
-  const row = rows.find((r) => r.id === rowId);
+    .where(and(eq(partVersions.id, rowId), committed))
+    .limit(1);
   if (!row) return null;
   if (side === "after") return { snapshot: row.snapshot, versionId: row.versionId };
-  const before = rows
-    .filter((r) => r.partId === row.partId && (r.seq ?? 0) < (row.seq ?? 0) && r.change !== "removed")
-    .sort((a, b) => (b.seq ?? 0) - (a.seq ?? 0))[0];
+  const [before] = await db
+    .select(columns)
+    .from(partVersions)
+    .innerJoin(systemVersions, eq(systemVersions.id, partVersions.versionId))
+    .where(and(eq(partVersions.partId, row.partId), committed, lt(systemVersions.seq, row.seq ?? 0), ne(partVersions.change, "removed")))
+    .orderBy(desc(systemVersions.seq))
+    .limit(1);
   return before ? { snapshot: before.snapshot, versionId: row.versionId } : null;
 }

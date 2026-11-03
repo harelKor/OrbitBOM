@@ -63,15 +63,28 @@ export async function robotModelBuiltAt(robotId: string): Promise<string | null>
   return row?.builtAt ?? null;
 }
 
-// The built model with short-lived links to its mesh files, for the viewer.
-export async function robotModel(robotId: string) {
+// The built model with short-lived links to its mesh files, for the viewer. With `systemId` (a
+// system page, which only ever draws its own subsystem) just the placements of the groups that
+// system is in, and only the Part Studio files they use: a phone downloads and decodes a few
+// meshes instead of the whole robot. A model built before groups existed is sent whole.
+export async function robotModel(robotId: string, systemId?: string) {
   const { built } = await loadState(robotId);
   if (!built || !storageConfigured()) return null;
+  const groups = built.groups ?? [];
+  let { studios, placements } = built;
+  if (systemId && groups.length) {
+    const own = new Set(groups.flatMap((g, i) => (g.systemIds.includes(systemId) ? [i] : [])));
+    const kept = placements.filter((p) => p.g !== undefined && own.has(p.g));
+    const used = [...new Set(kept.map((p) => p.s))];
+    const index = new Map(used.map((s, i) => [s, i]));
+    studios = used.map((s) => built.studios[s]);
+    placements = kept.map((p) => ({ ...p, s: index.get(p.s)! }));
+  }
   return {
     builtAt: built.builtAt,
-    studios: await Promise.all(built.studios.map((key) => imageUrl(key))),
-    placements: built.placements,
-    groups: built.groups ?? [],
+    studios: await Promise.all(studios.map((key) => imageUrl(key))),
+    placements,
+    groups,
   };
 }
 

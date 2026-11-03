@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { importSetup } from "@/config/autoSetup";
 import { db, schema } from "@/db";
 import { partKey, type BomRow } from "@/lib/onshape/bom";
@@ -123,43 +123,55 @@ export async function applyBomRows(
     });
   }
 
+  const history: (typeof partHistory.$inferInsert)[] = [];
   for (const u of plan.update) {
     const part = byId.get(u.id)!;
     // A finished part whose CAD quantity went up goes back to the shop for the extra pieces.
     const reopen = moreToMake(part, u.changes);
-    const { set, history } = planPartUpdate(part, reopen ? { ...u.changes, ...reopen } : u.changes, "sync");
+    const { set, history: changed } = planPartUpdate(part, reopen ? { ...u.changes, ...reopen } : u.changes, "sync");
     // A part nobody had typed that now has a process from Onshape (a PLA part on the Bambu) is made in-house.
     if (part.classification === "undefined" && (set.preProcess || set.process1 || set.process2)) {
       set.classification = "inhouse";
-      history.push({ field: "classification", oldValue: "undefined", newValue: "inhouse" });
+      changed.push({ field: "classification", oldValue: "undefined", newValue: "inhouse" });
     }
-    if (history.length) result.updated++;
+    if (changed.length) result.updated++;
     if (u.relinked) result.relinked.push(u.identity.onshapeName);
     if (u.restore) result.restored.push(u.identity.onshapeName);
     result.idByRow.set(partKey(u.identity), u.id);
     const sig = sigs[sigKey(u.identity)];
+    const geometry = { ...(part.geometry ?? {}), onshapeMaterial: u.onshapeMaterial ?? undefined };
+    // Most parts of a sync are as they were: nothing to write for them (a sync of a big system
+    // used to be one UPDATE per part).
+    const same =
+      !changed.length &&
+      !reopen &&
+      !part.removedFromCadAt &&
+      (!sig || sig === part.shapeSig) &&
+      (part.geometry?.onshapeMaterial ?? null) === (u.onshapeMaterial ?? null) &&
+      Object.entries(u.identity).every(([k, v]) => (part as Record<string, unknown>)[k] === v);
+    if (same) continue;
     await tx
       .update(parts)
       .set({
         ...set,
         ...u.identity,
-        geometry: { ...(part.geometry ?? {}), onshapeMaterial: u.onshapeMaterial ?? undefined },
+        geometry,
         removedFromCadAt: null,
         ...(reopen ? { fabFinishedAt: null } : {}),
         ...(sig ? { shapeSig: sig } : {}),
-        ...(history.length ? { lastModifiedAt: now, lastModifiedBy: memberId } : {}),
+        ...(changed.length ? { lastModifiedAt: now, lastModifiedBy: memberId } : {}),
       })
       .where(eq(parts.id, u.id));
-    if (history.length) {
-      await tx.insert(partHistory).values(history.map((h) => ({ partId: u.id, ...h, memberId, via: "sync" as const, batchId })));
-    }
+    history.push(...changed.map((h) => ({ partId: u.id, ...h, memberId, via: "sync" as const, batchId })));
   }
+  // The whole sync's history in a few inserts, not one per part.
+  for (let i = 0; i < history.length; i += 500) await tx.insert(partHistory).values(history.slice(i, i + 500));
 
-  for (const id of plan.remove) {
+  if (plan.remove.length) {
     await tx
       .update(parts)
       .set({ removedFromCadAt: now })
-      .where(and(eq(parts.id, id), eq(parts.isManual, false)));
+      .where(and(inArray(parts.id, plan.remove), eq(parts.isManual, false)));
   }
   return result;
 }

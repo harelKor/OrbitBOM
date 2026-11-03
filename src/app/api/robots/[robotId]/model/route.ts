@@ -11,12 +11,14 @@ import { isUuid } from "@/lib/uuid";
 export const maxDuration = 300;
 
 // The robot's 3D model for the dashboard viewer: placements plus short-lived mesh links.
-// Reads the database only; Onshape is called by POST.
-export async function GET(_: Request, { params }: { params: Promise<{ robotId: string }> }) {
+// ?system= (a system page) sends only that subsystem's part. Reads the database only; Onshape
+// is called by POST.
+export async function GET(request: Request, { params }: { params: Promise<{ robotId: string }> }) {
   if (!(await getMember())) return new NextResponse("Sign in first.", { status: 401 });
   const { robotId } = await params;
   if (!isUuid(robotId)) return new NextResponse("Not found", { status: 404 });
-  return NextResponse.json({ model: await robotModel(robotId) });
+  const system = new URL(request.url).searchParams.get("system");
+  return NextResponse.json({ model: await robotModel(robotId, system && isUuid(system) ? system : undefined) });
 }
 
 // One build step of the model on the member's Onshape account; the viewer calls again while

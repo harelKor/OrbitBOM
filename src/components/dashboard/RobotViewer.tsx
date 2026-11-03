@@ -103,7 +103,7 @@ export function RobotViewer({
   useEffect(() => {
     if (!version) return;
     let cancelled = false;
-    fetch(`/api/robots/${robotId}/model`)
+    fetch(`/api/robots/${robotId}/model${systemId ? `?system=${systemId}` : ""}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d: { model: ViewerModel | null } | null) => !cancelled && setModel(d?.model ?? null))
       .catch(() => {
@@ -114,7 +114,7 @@ export function RobotViewer({
     return () => {
       cancelled = true;
     };
-  }, [robotId, version]);
+  }, [robotId, systemId, version]);
 
   const buildRef = useRef(build);
   useEffect(() => {

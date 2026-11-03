@@ -477,6 +477,13 @@
       "when": 1793727249523,
       "tag": "0067_deleted_records",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1793729252950,
+      "tag": "0068_group_merge_indexes",
+      "breakpoints": true
     }
   ]
 }

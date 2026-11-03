@@ -304,15 +304,19 @@ export const partFiles = pgTable(
   (t) => [index("part_files_part_idx").on(t.partId)],
 );
 
-export const merges = pgTable("merges", {
-  id: id(),
-  systemId: uuid("system_id")
-    .notNull()
-    .references(() => systems.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  overrides: jsonb("overrides").$type<Record<string, unknown>>().notNull().default({}),
-  createdAt: createdAt(),
-});
+export const merges = pgTable(
+  "merges",
+  {
+    id: id(),
+    systemId: uuid("system_id")
+      .notNull()
+      .references(() => systems.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    overrides: jsonb("overrides").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: createdAt(),
+  },
+  (t) => [index("merges_system_idx").on(t.systemId)],
+);
 
 export const mergeMembers = pgTable(
   "merge_members",
@@ -327,23 +331,27 @@ export const mergeMembers = pgTable(
   (t) => [primaryKey({ columns: [t.mergeId, t.partId] }), uniqueIndex("merge_members_part_uq").on(t.partId)],
 );
 
-export const partGroups = pgTable("part_groups", {
-  id: id(),
-  robotId: uuid("robot_id")
-    .notNull()
-    .references(() => robots.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  color: text("color"),
-  description: text("description"),
-  priority: priority("priority").notNull().default("normal"),
-  machine: text("machine"), // set on a To Fab batch: the machine (config id) its parts are made on
-  madeBy: text("made_by"), // a To Fab batch's member, by name (who created it, changeable)
-  // The Auto Layout window's last state (positions, turns, gap, margin, sheet), restored on open,
-  // and the "Batch - <name>" assembly it made in Onshape (src/lib/fab/onshapeLayout.ts). Saving
-  // one half merges into the column (jsonb ||), never wiping the other.
-  layoutData: jsonb("layout_data").$type<LayoutData>(),
-  createdAt: createdAt(),
-});
+export const partGroups = pgTable(
+  "part_groups",
+  {
+    id: id(),
+    robotId: uuid("robot_id")
+      .notNull()
+      .references(() => robots.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    color: text("color"),
+    description: text("description"),
+    priority: priority("priority").notNull().default("normal"),
+    machine: text("machine"), // set on a To Fab batch: the machine (config id) its parts are made on
+    madeBy: text("made_by"), // a To Fab batch's member, by name (who created it, changeable)
+    // The Auto Layout window's last state (positions, turns, gap, margin, sheet), restored on open,
+    // and the "Batch - <name>" assembly it made in Onshape (src/lib/fab/onshapeLayout.ts). Saving
+    // one half merges into the column (jsonb ||), never wiping the other.
+    layoutData: jsonb("layout_data").$type<LayoutData>(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("part_groups_robot_idx").on(t.robotId)],
+);
 
 // A copy's place on the sheet: its flat-frame origin (mm) and turn about Z (degrees, any angle).
 export type LayoutPlacement = { partId: string; copy: number; x: number; y: number; rotation: number };

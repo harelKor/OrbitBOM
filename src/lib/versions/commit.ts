@@ -3,6 +3,7 @@ import { and, eq, inArray, isNull, max, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { VersionChange } from "@/db/schema";
 import { autoLink } from "@/lib/inventory/autolink";
+import { afterResponse } from "@/lib/later";
 import { partKey } from "@/lib/onshape/bom";
 import { applyBomRows, sigKey } from "@/lib/sync/applyBom";
 import type { DraftRows } from "./detect";
@@ -148,14 +149,22 @@ export async function commitDraft(
   });
 
   // A new part that is an Onshape library part (or product) the inventory knows is linked to
-  // its item, and waits in To Review.
+  // its item, and waits in To Review. After the answer: it reads every item and part, and can
+  // fingerprint up to 120 thumbnails, which the member's Commit shouldn't wait for.
   const { newIds, ...out } = result;
-  await autoLink({ partIds: newIds }, { memberId, via: "sync" });
+  if (newIds.length) await afterResponse(() => autoLink({ partIds: newIds }, { memberId, via: "sync" }));
   return out;
 }
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 async function pointAt(tx: Tx, rows: { id: string; partId: string }[]) {
-  for (const r of rows) await tx.update(parts).set({ versionRowId: r.id }).where(eq(parts.id, r.partId));
+  // One statement per 500 parts, not one per part.
+  for (let i = 0; i < rows.length; i += 500) {
+    const values = sql.join(
+      rows.slice(i, i + 500).map((r) => sql`(${r.id}::uuid, ${r.partId}::uuid)`),
+      sql`, `,
+    );
+    await tx.execute(sql`update ${parts} set version_row_id = v.id from (values ${values}) as v(id, part_id) where ${parts.id} = v.part_id`);
+  }
 }

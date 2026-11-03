@@ -82,26 +82,34 @@ export async function syncOnshapeDrawings(
     .where(and(inArray(partFiles.partId, rows.map((r) => r.id)), eq(partFiles.type, "drawing")));
   const keyOf = new Map(existing.map((f) => [f.partId, f.r2Key]));
 
-  // Each drawing tab is exported once, however many parts it matches.
+  // Each drawing tab is exported once, however many parts it matches. Up to 4 at a time: an
+  // export is mostly waiting on Onshape to make the PDF, so one after another took minutes.
   const pdfs = new Map<string, Promise<ArrayBuffer>>();
-  for (const r of rows) {
+  const queue = rows.flatMap((r) => {
     const tab = matched.get(r.id);
-    if (!tab) continue;
+    if (!tab) return [];
     const key = onshapeDrawingKey(r.id, tab.eid, tab.mv);
     if (tab.mv && keyOf.get(r.id) === key) {
       summary.unchanged.push(r.id);
-      continue;
+      return [];
     }
-    if (Date.now() > deadline) {
-      summary.left.push(r.id);
-      continue;
+    return [{ r, tab, key }];
+  });
+  const worker = async () => {
+    for (let job = queue.shift(); job; job = queue.shift()) {
+      const { r, tab, key } = job;
+      if (Date.now() > deadline) {
+        summary.left.push(r.id);
+        continue;
+      }
+      if (!pdfs.has(tab.path)) pdfs.set(tab.path, exportDrawingPdf(client, tab.path, deadline));
+      const pdf = await pdfs.get(tab.path)!;
+      await putObject(key, pdf, "application/pdf");
+      await replacePartFile(r.id, "drawing", { key, filename: `${tab.name}.pdf`, contentType: "application/pdf", memberId });
+      summary.linked.push(r.id);
     }
-    if (!pdfs.has(tab.path)) pdfs.set(tab.path, exportDrawingPdf(client, tab.path, deadline));
-    const pdf = await pdfs.get(tab.path)!;
-    await putObject(key, pdf, "application/pdf");
-    await replacePartFile(r.id, "drawing", { key, filename: `${tab.name}.pdf`, contentType: "application/pdf", memberId });
-    summary.linked.push(r.id);
-  }
+  };
+  await Promise.all(Array.from({ length: 4 }, worker));
   return summary;
 }
 

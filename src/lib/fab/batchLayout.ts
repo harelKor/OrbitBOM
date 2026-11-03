@@ -51,22 +51,31 @@ export async function batchFlatParts(groupId: string): Promise<{ parts: FlatPart
   const robots = [...new Set(rows.map((r) => r.robotId).filter((r): r is string => !!r))];
   const built = new Map<string, Map<string, string>>(await Promise.all(robots.map(async (r) => [r, await builtStudios(r)] as const)));
   const byFile = new Map<string, (typeof rows)[number]["part"][]>();
-  for (const { part, robotId } of rows) {
+  const builtFile = ({ part, robotId }: (typeof rows)[number]) =>
+    part.sourceDid && part.sourceEid && part.onshapePartId && robotId ? built.get(robotId)?.get(partKey(part.sourceDid, part.sourceEid, part.onshapePartId)) : undefined;
+  // Parts the robot model doesn't hold may have their own saved shape: checked side by side,
+  // not one R2 request after another.
+  const ownFiles = new Map(
+    await Promise.all(
+      rows
+        .filter((r) => r.part.sourceDid && r.part.sourceEid && r.part.onshapePartId && !builtFile(r))
+        .map(async ({ part }) => [part.id, (await objectExists(partModelFile(part))) ? partModelFile(part) : undefined] as const),
+    ),
+  );
+  for (const row of rows) {
+    const { part } = row;
     if (!part.sourceDid || !part.sourceEid || !part.onshapePartId) {
       missing.push({ partId: part.id, name: nameOf(part), reason: "Not from Onshape." });
       continue;
     }
-    const key = partKey(part.sourceDid, part.sourceEid, part.onshapePartId);
-    let file = robotId ? built.get(robotId)?.get(key) : undefined;
-    if (!file) {
-      const own = partModelFile(part);
-      if (await objectExists(own)) file = own;
-    }
+    const file = builtFile(row) ?? ownFiles.get(part.id);
     if (!file) {
       missing.push({ partId: part.id, name: nameOf(part), reason: "No 3D shape saved yet: open its 3D preview once." });
       continue;
     }
-    byFile.set(file, [...(byFile.get(file) ?? []), part]);
+    const list = byFile.get(file);
+    if (list) list.push(part);
+    else byFile.set(file, [part]);
   }
 
   const queue = [...byFile.entries()];

@@ -15,10 +15,12 @@ type Exec = Tx | typeof db;
 
 export type Row = { id: string; partId: string; versionId: string; seq: number; change: string; snapshot: PartSnapshot };
 
+const rowColumns = { id: partVersions.id, partId: partVersions.partId, versionId: partVersions.versionId, seq: systemVersions.seq, change: partVersions.change, snapshot: partVersions.snapshot };
+
 // Every committed part state of a system, oldest version first.
 async function rowsOf(x: Exec, systemId: string): Promise<Row[]> {
   const rows = await x
-    .select({ id: partVersions.id, partId: partVersions.partId, versionId: partVersions.versionId, seq: systemVersions.seq, change: partVersions.change, snapshot: partVersions.snapshot })
+    .select(rowColumns)
     .from(partVersions)
     .innerJoin(systemVersions, eq(systemVersions.id, partVersions.versionId))
     .where(and(eq(systemVersions.systemId, systemId), eq(systemVersions.state, "committed")));
@@ -29,13 +31,21 @@ async function rowsOf(x: Exec, systemId: string): Promise<Row[]> {
 // part whose committed state differs from its newest one. Part id → its newest state. Checks
 // leave these parts alone, so a Revert sticks until the part is updated.
 export async function heldParts(x: Exec, systemId: string): Promise<Map<string, Row>> {
-  const [rows, pointers] = await Promise.all([
-    rowsOf(x, systemId),
+  // Each part's newest row and the row it points at, not the system's whole history (every
+  // check and every Update System runs this).
+  const [newestRows, pointers] = await Promise.all([
+    x
+      .selectDistinctOn([partVersions.partId], rowColumns)
+      .from(partVersions)
+      .innerJoin(systemVersions, eq(systemVersions.id, partVersions.versionId))
+      .where(and(eq(systemVersions.systemId, systemId), eq(systemVersions.state, "committed")))
+      .orderBy(partVersions.partId, desc(systemVersions.seq)),
     x.select({ id: parts.id, rowId: parts.versionRowId }).from(parts).where(and(eq(parts.systemId, systemId), eq(parts.isManual, false))),
   ]);
-  const latest = new Map<string, Row>();
-  const byId = new Map(rows.map((r) => [r.id, r]));
-  for (const r of rows) latest.set(r.partId, r);
+  const latest = new Map(newestRows.map((r) => [r.partId, { ...r, seq: r.seq ?? 0 }]));
+  const wanted = pointers.flatMap((p) => (p.rowId && latest.get(p.id)?.id !== p.rowId ? [p.rowId] : []));
+  const pointed = wanted.length ? await x.select(rowColumns).from(partVersions).innerJoin(systemVersions, eq(systemVersions.id, partVersions.versionId)).where(inArray(partVersions.id, wanted)) : [];
+  const byId = new Map(pointed.map((r) => [r.id, { ...r, seq: r.seq ?? 0 }]));
   const held = new Map<string, Row>();
   for (const p of pointers) {
     const newest = latest.get(p.id);
