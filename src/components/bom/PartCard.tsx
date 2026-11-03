@@ -84,19 +84,8 @@ function MadePartCard({
   // Edit: name, type and the manual part menu. Work (any team): status, amount, material, counters.
   const { canManage: edit, canWork: work, canClassify } = usePermissions();
   const { versions } = useBom();
-  const machines = SLOTS.filter((s) => part[s.key]);
-  // The process being worked on: the first slot whose done counter hasn't reached the quantity.
-  const current = machines.find((s) => part[s.done] < Math.max(part.quantity, 1));
+  const { machines, current, counted, finished, takeBack, addOne } = fabSteps(part, save);
   const showCounter = !!current && part.classification !== "cots" && fabStage(part) !== null;
-  // On To Fab, + counts one more and − takes back the last one counted. When − would leave nothing
-  // counted, the part goes back to In process if it was finished, else to Released.
-  const counted = machines.slice(0, current ? machines.indexOf(current) + 1 : machines.length).reverse().find((s) => part[s.done] > 0);
-  const finished = isFabFinished(part);
-  const takeBack = () => {
-    const left = part.donePreprocess + part.doneProcess1 + part.doneProcess2 - 1;
-    if (counted && left > 0) save({ add: { [counted.done]: -1 } });
-    else save({ status: finished ? IN_PROCESS_STATUS : READY_STATUS });
-  };
   const fabControls = fabCounter && work && part.classification !== "cots" && machines.length > 0;
   const format = cadFormat(part);
   const showDetails = usePartDetails(part, save);
@@ -248,7 +237,7 @@ function MadePartCard({
             </button>
             <button
               type="button"
-              onClick={() => current && save({ add: { [current.done]: 1 } })}
+              onClick={addOne}
               disabled={!current}
               className="overlay-btn absolute right-2 bottom-2 text-lg font-bold disabled:opacity-30"
               aria-label="One more made"
@@ -285,6 +274,23 @@ function MadePartCard({
       )}
     </div>
   );
+}
+
+// To Fab's − / + on a made part: + counts one more at the machine being worked on (the first slot
+// whose done counter hasn't reached the quantity) and − takes back the last one counted. When −
+// would leave nothing counted, the part goes back to In process if it was finished, else to Released.
+export function fabSteps(part: CardPart, save: SaveFn) {
+  const machines = SLOTS.filter((s) => part[s.key]);
+  const current = machines.find((s) => part[s.done] < Math.max(part.quantity, 1));
+  const counted = machines.slice(0, current ? machines.indexOf(current) + 1 : machines.length).reverse().find((s) => part[s.done] > 0);
+  const finished = isFabFinished(part);
+  const takeBack = () => {
+    const left = part.donePreprocess + part.doneProcess1 + part.doneProcess2 - 1;
+    if (counted && left > 0) save({ add: { [counted.done]: -1 } });
+    else save({ status: finished ? IN_PROCESS_STATUS : READY_STATUS });
+  };
+  const addOne = () => current && save({ add: { [current.done]: 1 } });
+  return { machines, current, counted, finished, takeBack, addOne };
 }
 
 // To Fab's rows: the status (its own menu inside a batch, else read-only) and how many are made of

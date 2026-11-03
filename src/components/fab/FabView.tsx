@@ -26,12 +26,19 @@ import { Icon } from "@/components/ui/Icon";
 import { ShallowLink } from "@/components/ui/FastLink";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { useEscape } from "@/components/ui/useEscape";
+import { Segmented } from "@/components/ui/Segmented";
+import { useStoredChoice } from "@/components/ui/useStoredChoice";
 import { FINISHED_STATUS, IN_PROCESS_STATUS, READY_STATUS, fabBatchName, fabStage, isFabFinished, machinesOf } from "@/lib/fab";
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { computeStatus, statusMachine } from "@/lib/status";
 import { downloadExport, prepareExport } from "@/components/bom/downloadExport";
 import { BatchLayoutDialog } from "./BatchLayoutDialog";
 import { OnshapeLayoutButton } from "./OnshapeLayoutButton";
+import { FabPartListRow } from "./FabListRow";
+
+// Cards (the default) or List: horizontal rows, batches folding open below their row.
+export type FabLayout = "cards" | "list";
+const LAYOUTS = ["cards", "list"] as const;
 
 export type Batch = {
   id: string;
@@ -200,6 +207,7 @@ export function FabView({
 
   const machine = useFabMachine();
   const { filters } = useFilters();
+  const [layout, setLayout] = useStoredChoice("orbit-fab-view", LAYOUTS, "cards");
   const [fab, setFab] = useState(false);
   const searchParams = useSearchParams();
   // Only the batches made by the signed-in member; the dashboard's My Batches box opens it on (?mine=1).
@@ -349,6 +357,17 @@ export function FabView({
     const inherit = inBatch && (!p.material || !machinesOf(p).length) ? inheritFromBatch(p, inBatch.batch, inBatch.members) : null;
     // A loose Released card: a long press on a phone starts the Fab picking with it.
     const longPress = work && !fab && !inBatch && partStage(p) === "ready";
+    const spark = inherit && work && (
+      <button
+        type="button"
+        onClick={() => save([p.id], inherit)}
+        className="press flex h-7 w-7 animate-pulse items-center justify-center rounded-full border border-amber-300 bg-amber-400 text-slate-950 shadow-[0_0_12px_3px_rgba(245,158,11,0.65)] hover:animate-none active:scale-[0.98]"
+        aria-label={`Give ${partTitle(p)} the batch's machine and material`}
+        title={`No ${[!p.material && "material", !machinesOf(p).length && "machine"].filter(Boolean).join(" or ")}: take the batch's`}
+      >
+        <Icon name="spark" className="h-4 w-4" />
+      </button>
+    );
     return (
       <div
         key={p.id}
@@ -388,29 +407,29 @@ export function FabView({
         }}
         className={fab && !pickable ? "opacity-40" : undefined}
       >
-        <PartCard
-          part={p}
-          save={(c) => save([p.id], c)}
-          showSystem
-          fabCounter
-          fabStatusEditable={!!inBatch}
-          style={fabTint(p)}
-          selected={selected.has(p.id)}
-          onToggleSelect={pickable ? () => toggle(p.id) : undefined}
-          thumbBadge={
-            inherit && work && (
-              <button
-                type="button"
-                onClick={() => save([p.id], inherit)}
-                className="press flex h-7 w-7 animate-pulse items-center justify-center rounded-full border border-amber-300 bg-amber-400 text-slate-950 shadow-[0_0_12px_3px_rgba(245,158,11,0.65)] hover:animate-none active:scale-[0.98]"
-                aria-label={`Give ${partTitle(p)} the batch's machine and material`}
-                title={`No ${[!p.material && "material", !machinesOf(p).length && "machine"].filter(Boolean).join(" or ")}: take the batch's`}
-              >
-                <Icon name="spark" className="h-4 w-4" />
-              </button>
-            )
-          }
-        />
+        {layout === "list" ? (
+          <FabPartListRow
+            part={p}
+            save={(c) => save([p.id], c)}
+            editStatus={!!inBatch}
+            style={fabTint(p)}
+            selected={selected.has(p.id)}
+            onToggleSelect={pickable ? () => toggle(p.id) : undefined}
+            lead={spark}
+          />
+        ) : (
+          <PartCard
+            part={p}
+            save={(c) => save([p.id], c)}
+            showSystem
+            fabCounter
+            fabStatusEditable={!!inBatch}
+            style={fabTint(p)}
+            selected={selected.has(p.id)}
+            onToggleSelect={pickable ? () => toggle(p.id) : undefined}
+            thumbBadge={spark}
+          />
+        )}
       </div>
     );
   };
@@ -421,6 +440,7 @@ export function FabView({
       members={b.members}
       save={save}
       card={card}
+      layout={layout}
       draggable={!fab && work}
       memberNames={memberNames}
       me={me}
@@ -471,10 +491,21 @@ export function FabView({
             href={machineHref}
           />
           <MaterialFilters counts={counts.byMaterial} active={mat} />
+          <div className="ml-auto self-center">
+            <Segmented
+              label="To Fab view"
+              value={layout}
+              onChange={setLayout}
+              options={[
+                { value: "cards", label: "Cards" },
+                { value: "list", label: "List" },
+              ]}
+            />
+          </div>
           <button
             onClick={() => setMine((m) => !m)}
             aria-pressed={mine}
-            className={`press ml-auto self-center ${mine ? "btn-primary" : "btn"}`}
+            className={`press self-center ${mine ? "btn-primary" : "btn"}`}
           >
             My batches
           </button>
@@ -493,7 +524,7 @@ export function FabView({
 
         {view.post.length > 0 && (
           <div id="post-process" className="scroll-mt-20 rounded-xl border p-3" style={{ borderColor: "color-mix(in srgb, #f302f7 40%, transparent)", backgroundColor: "color-mix(in srgb, #f302f7 4%, transparent)" }}>
-            <Section title="To Post Process" count={view.post.reduce((n, b) => n + b.post.filter((p) => !postChecked.has(p.id)).length, 0)}>
+            <Section layout={layout} title="To Post Process" count={view.post.reduce((n, b) => n + b.post.filter((p) => !postChecked.has(p.id)).length, 0)}>
               {view.post.map((b) => (
                 <BatchCard
                   key={b.id}
@@ -501,9 +532,22 @@ export function FabView({
                   members={b.post}
                   save={save}
                   draggable={false}
+                  layout={layout}
                   memberNames={memberNames}
                   me={me}
-                  card={(p) => (
+                  card={(p) =>
+                    layout === "list" ? (
+                      <FabPartListRow
+                        key={p.id}
+                        part={p}
+                        save={(c) => save([p.id], c)}
+                        checked={postChecked.has(p.id)}
+                        onCheck={() => checkPost(p)}
+                        checkFrom={POST_PROCESSING}
+                        checkTo={FINISHED_STATUS}
+                        post={{ done: p.postDone, onChange: (n) => countPost(p, n) }}
+                      />
+                    ) : (
                     <PartCard
                       key={p.id}
                       part={p}
@@ -515,16 +559,17 @@ export function FabView({
                       checkTo={FINISHED_STATUS}
                       post={{ done: p.postDone, onChange: (n) => countPost(p, n) }}
                     />
-                  )}
+                    )
+                  }
                 />
               ))}
             </Section>
           </div>
         )}
-        <Section title="Released" count={view.ready.length} empty="No parts are waiting to be made." onDropParts={fab || !work ? undefined : drop("ready")}>
+        <Section layout={layout} title="Released" count={view.ready.length} empty="No parts are waiting to be made." onDropParts={fab || !work ? undefined : drop("ready")}>
           {view.ready.map((p) => card(p))}
         </Section>
-        <Section
+        <Section layout={layout}
           title="Ready to Fab"
           count={view.batches.readyToFab.length}
           empty="Drag a Released part here, or use ＋ Fab, to make a batch."
@@ -532,7 +577,7 @@ export function FabView({
         >
           {view.batches.readyToFab.map(batchCard)}
         </Section>
-        <Section
+        <Section layout={layout}
           title="In process"
           count={view.batches.inProcess.length + view.inProcess.length}
           empty="Nothing is being made right now."
@@ -541,7 +586,7 @@ export function FabView({
           {view.batches.inProcess.map(batchCard)}
           {view.inProcess.map((p) => card(p))}
         </Section>
-        <Section
+        <Section layout={layout}
           title="Finished"
           count={view.batches.finished.length + view.finished.length}
           empty="Parts land here once all of them are made."
@@ -551,7 +596,7 @@ export function FabView({
           {view.finished.map((p) => card(p))}
         </Section>
         {machine && view.other.length > 0 && (
-          <Section title={`Other parts on ${getMachine(machine)?.name ?? "this machine"}`} count={view.other.length} small defaultOpen={false}>
+          <Section layout={layout} title={`Other parts on ${getMachine(machine)?.name ?? "this machine"}`} count={view.other.length} small defaultOpen={false}>
             {view.other.map((p) => card(p))}
           </Section>
         )}
@@ -782,6 +827,7 @@ function MaterialBoxes({ counts, active }: { counts: Map<string, number>; active
 function Section({
   title,
   count,
+  layout = "cards",
   empty,
   onDropParts,
   small = false,
@@ -790,6 +836,7 @@ function Section({
 }: {
   title: string;
   count: number;
+  layout?: FabLayout;
   empty?: string;
   onDropParts?: (load: DragLoad) => void;
   small?: boolean; // a quieter section at the bottom, with smaller cards
@@ -829,7 +876,11 @@ function Section({
         <p className={`text-sm text-subtle ${onDropParts ? "rounded-lg border border-dashed border-line py-6 text-center" : ""}`}>{empty}</p>
       ) : (
         <OpenBatchContext.Provider value={{ id: openBatch, set: setOpenBatch }}>
-          <div className="card-grid" style={{ "--card-min": small ? "150px" : "220px" } as React.CSSProperties}>{children}</div>
+          {layout === "list" ? (
+            <div className="list-stack">{children}</div>
+          ) : (
+            <div className="card-grid" style={{ "--card-min": small ? "150px" : "220px" } as React.CSSProperties}>{children}</div>
+          )}
         </OpenBatchContext.Provider>
       )}
     </section>
@@ -883,6 +934,7 @@ function BatchCard({
   members,
   save,
   card,
+  layout = "cards",
   draggable,
   memberNames,
   me,
@@ -892,6 +944,7 @@ function BatchCard({
   members: CardPart[];
   save: (ids: string[], changes: PartChanges) => void;
   card: (p: CardPart, inBatch?: { batch: Batch; members: CardPart[] }) => React.ReactNode;
+  layout?: FabLayout;
   draggable: boolean;
   memberNames: string[];
   me: string;
@@ -939,6 +992,7 @@ function BatchCard({
   // it doesn't fit there), laying its parts out at the grid's card width, as many across as it has
   // parts and room for. Closed cards beside it keep their own height (self-start).
   const ref = useRef<HTMLDivElement>(null);
+  const list = layout === "list";
   const [place, setPlace] = useState<Place | null>(null);
   const transitionName = `batch-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const toggle = () => {
@@ -946,7 +1000,7 @@ function BatchCard({
     withTransition(() => {
       // Close the section's other open batch first, so this one is measured in a settled grid.
       if (next && section?.id) flushSync(() => section.set(null));
-      const nextPlace = next ? measurePlace(ref.current, members.length) : null;
+      const nextPlace = next && !list ? measurePlace(ref.current, members.length) : null;
       flushSync(() => {
         setPlace(nextPlace);
         setOpen(next);
@@ -955,12 +1009,13 @@ function BatchCard({
   };
   useLayoutEffect(() => {
     const grid = ref.current?.parentElement;
-    if (!open || !grid) return;
+    if (!open || !grid || list) return;
     const observer = new ResizeObserver(() => setPlace(measurePlace(ref.current, members.length)));
     observer.observe(grid);
     return () => observer.disconnect();
-  }, [open, members.length]);
+  }, [open, members.length, list]);
   const wide = open && (place?.span ?? 1) >= 2;
+  const batchTint = stage === "finished" || isFabFinished(lowest) ? tint(FINISHED_COLOR) : statusTint(computeStatus(lowest));
   const userBox = (
     <select
       value={madeBy}
@@ -1012,20 +1067,217 @@ function BatchCard({
     },
   };
 
+  const dragStart = (e: React.DragEvent) =>
+    e.dataTransfer.setData(
+      DRAG_TYPE,
+      JSON.stringify({ ids: (notDone.length ? notDone : members).map((p) => p.id), from: stage, batch: batch.id, whole: true } satisfies DragLoad),
+    );
+  const nameInput = (
+    <input
+      autoFocus
+      defaultValue={batch.name}
+      aria-label="Fab name"
+      className="input py-1 text-base font-semibold"
+      onClick={stop}
+      onBlur={(e) => rename(e.target.value)}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") rename(e.currentTarget.value);
+        if (e.key === "Escape") setRenaming(false);
+      }}
+    />
+  );
+  const statusMenu = (
+    <Popover locked={!edit || mode === "cad"} trigger={<StatusPill status={shared ?? "Mixed"} label={shared ? label(shared) : undefined} size={list ? "sm" : "md"} />}>
+      {(close) => (
+        <OptionList
+          options={statusOptions}
+          value={shared}
+          placeholder="Set status for all…"
+          onPick={(v) => {
+            if (v) save(members.map((p) => p.id), { status: v as StatusName });
+            close();
+          }}
+        />
+      )}
+    </Popover>
+  );
+  const prioritySelect = (
+    <select
+      value={priority}
+      disabled={!edit}
+      onChange={(e) => {
+        const next = e.target.value as Priority;
+        setPriority(next);
+        startTransition(() => void updateGroup(batch.id, { priority: next }));
+      }}
+      aria-label={`Priority of ${batch.name}`}
+      className="cursor-pointer rounded-full border border-line-strong bg-surface px-2 py-1 text-xs font-bold"
+      style={textColor ? { color: textColor } : undefined}
+    >
+      <option value="normal">No priority</option>
+      {BATCH_PRIORITIES.map((p) => (
+        <option key={p.value} value={p.value}>
+          {p.label}
+        </option>
+      ))}
+    </select>
+  );
+  const autoLayoutButton = (
+    <button
+      className="press flex items-center gap-1 rounded-full border border-line-strong bg-surface px-2.5 py-1 text-xs font-bold text-fg-2 transition-colors duration-150 hover:border-sky-400/40 hover:text-sky-500 active:scale-[0.98]"
+      onClick={() => setLayoutOpen(true)}
+      title="Lay the parts flat and nest them on the smallest plate on the shelf"
+    >
+      <Icon name="layers" className="h-3.5 w-3.5" />
+      Auto Layout
+    </button>
+  );
+  const layoutDialog =
+    layoutOpen &&
+    createPortal(
+      // The window sits outside the card in the page, but React still hands its clicks to the card.
+      <div onClick={stop} onDoubleClick={stop}>
+        <BatchLayoutDialog groupId={batch.id} name={batch.name} open onClose={() => setLayoutOpen(false)} />
+      </div>,
+      document.body,
+    );
+  const downloadButtons = (
+    <>
+      {downloads.length > 0 && !(batch.gcode && !open) && (
+        <button className="overlay-btn" onClick={() => void downloadAll(downloads)} aria-label={`Download ${downloads.length} files`} title={`Download ${downloads.length} files`}>
+          <Icon name="download" />
+        </button>
+      )}
+      {dxfZip && downloads.length > 0 && (
+        <button
+          className="overlay-btn w-auto gap-1 px-2 text-xs font-semibold"
+          onClick={() => void downloadExport(`/api/groups/${batch.id}/dxf`)}
+          aria-label={`Download ${batch.name} flat DXFs as a zip`}
+          title="All flat DXFs in one zip, named with each part's quantity"
+        >
+          <Icon name="download" />
+          DXF zip
+        </button>
+      )}
+      {!open && batch.gcode && (
+        <a className="overlay-btn" href={`/api/files/${batch.gcode.id}?download=1`} aria-label={`Download G-code ${batch.gcode.filename}`} title={`G-code: ${batch.gcode.filename}`}>
+          <Icon name="gcode" />
+        </a>
+      )}
+    </>
+  );
+  const deleteButton = (
+    <button
+      className="press shrink-0 text-xs text-subtle hover:text-rose-700"
+      onClick={() => {
+        if (confirm(`Delete ${batch.name}? Its parts stay on the BOM with their status.`)) startTransition(() => void deleteGroup(batch.id));
+      }}
+    >
+      Delete fab
+    </button>
+  );
+  const removeButton = (p: CardPart) =>
+    edit && (
+      <button className="self-start text-xs text-subtle hover:text-rose-700" onClick={() => startTransition(() => void removeFromGroup(batch.id, p.id))}>
+        Remove from {batch.name}
+      </button>
+    );
+
+  if (list) {
+    // The List view: one row (collage, name, material · machine, who makes it, status, downloads,
+    // chevron); a click folds the batch open below it, with its actions and then its parts as rows.
+    const small = members.slice(0, 4);
+    return (
+      <div
+        ref={ref}
+        {...dropProps}
+        draggable={draggable && !renaming}
+        onDragStart={dragStart}
+        className="min-w-0"
+        style={open ? { gridColumn: "1 / -1" } : undefined}
+      >
+        <div
+          role="button"
+          tabIndex={0}
+          aria-expanded={open}
+          onClick={toggle}
+          onKeyDown={(e) => e.key === "Enter" && e.target === e.currentTarget && toggle()}
+          style={{ ...batchTint, ...(mine && { boxShadow: "0 0 0 2px rgba(56,189,248,0.75), 0 0 18px 3px rgba(56,189,248,0.35)" }) }}
+          className={`flex min-w-0 cursor-pointer items-center gap-3 rounded-2xl border border-line bg-surface/90 py-2.5 pr-2.5 pl-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] transition-all duration-150 hover:border-sky-400/40 active:not-[:has(:is(button,a,input,select,textarea,[role=dialog]):active)]:scale-[0.99] ${over ? "ring-2 ring-accent" : ""}`}
+        >
+          <span className="grid h-14 w-14 shrink-0 gap-px overflow-hidden rounded-xl bg-white" style={collageGrid(small.length)}>
+            {small.map((p) => (
+              <span key={p.id} className="flex min-h-0 min-w-0 items-center justify-center bg-white">
+                {p.thumbUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links
+                  <img src={p.thumbUrl} alt="" loading="lazy" className="h-full w-full object-contain p-0.5" />
+                ) : (
+                  <Icon name="box" className="h-4 w-4 text-slate-400" />
+                )}
+              </span>
+            ))}
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            {renaming ? (
+              nameInput
+            ) : (
+              <span className="truncate text-base font-bold text-accent" style={textColor ? { color: textColor } : undefined}>
+                {batch.name}
+              </span>
+            )}
+            <span className={`truncate text-xs font-medium ${textColor ? "" : "text-muted"}`} style={textColor ? { color: textColor } : undefined}>
+              {material}
+              {machineName && ` · ${machineName}`}
+            </span>
+            <span className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5" onClick={stop}>
+              <span className="min-w-0 max-w-40">{userBox}</span>
+              {statusMenu}
+            </span>
+          </span>
+          <span className="flex shrink-0 items-center gap-1" onClick={stop}>
+            {downloadButtons}
+          </span>
+          <Chevron open={open} small />
+        </div>
+        {open && (
+          <div className="mt-2 space-y-2 border-l-2 border-accent/40 pl-3 sm:pl-5" onClick={stop}>
+            <div className="flex flex-wrap items-center gap-2">
+              {prioritySelect}
+              {autoLayoutButton}
+              <OnshapeLayoutButton groupId={batch.id} url={batch.onshapeLayoutUrl} where="card" />
+              {edit && !renaming && (
+                <button className="press shrink-0 text-xs text-subtle hover:text-accent" onClick={() => setRenaming(true)}>
+                  Rename
+                </button>
+              )}
+              {edit && <span className="ml-auto">{deleteButton}</span>}
+            </div>
+            <GcodeRow batch={batch} />
+            <div className="list-stack" style={{ zoom: 1 }}>
+              {members.map((p) => (
+                <div key={p.id} className="flex min-w-0 flex-col gap-1">
+                  {card(p, { batch, members })}
+                  {removeButton(p)}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {layoutDialog}
+      </div>
+    );
+  }
+
   return (
     <div
       ref={ref}
       {...dropProps}
       draggable={draggable && !renaming}
-      onDragStart={(e) =>
-        e.dataTransfer.setData(
-          DRAG_TYPE,
-          JSON.stringify({ ids: (notDone.length ? notDone : members).map((p) => p.id), from: stage, batch: batch.id, whole: true } satisfies DragLoad),
-        )
-      }
+      onDragStart={dragStart}
       onClick={toggle}
       style={{
-        ...(stage === "finished" || isFabFinished(lowest) ? tint(FINISHED_COLOR) : statusTint(computeStatus(lowest))),
+        ...batchTint,
         ...(open && place && { gridColumn: `span ${place.span}` }),
         ...(mine && { boxShadow: "0 0 0 2px rgba(56,189,248,0.75), 0 0 22px 4px rgba(56,189,248,0.4)" }),
         viewTransitionName: transitionName,
@@ -1061,18 +1313,7 @@ function BatchCard({
         <div className={`flex flex-1 flex-col gap-2 ${wide ? "min-w-[12rem] py-3 pl-1" : "min-w-0 p-3"}`}>
           <div className="min-w-0" style={textColor ? { color: textColor } : undefined}>
             {renaming ? (
-              <input
-                autoFocus
-                defaultValue={batch.name}
-                aria-label="Fab name"
-                className="input py-1 text-base font-semibold"
-                onClick={stop}
-                onBlur={(e) => rename(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") rename(e.currentTarget.value);
-                  if (e.key === "Escape") setRenaming(false);
-                }}
-              />
+              nameInput
             ) : (
               <div className="flex items-center gap-2">
                 <span className="display min-w-0 truncate text-xl text-accent" style={textColor ? { color: textColor } : undefined}>
@@ -1097,94 +1338,17 @@ function BatchCard({
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2" onClick={stop}>
-            <Popover locked={!edit || mode === "cad"} trigger={<StatusPill status={shared ?? "Mixed"} label={shared ? label(shared) : undefined} size="md" />}>
-              {(close) => (
-                <OptionList
-                  options={statusOptions}
-                  value={shared}
-                  placeholder="Set status for all…"
-                  onPick={(v) => {
-                    if (v) save(members.map((p) => p.id), { status: v as StatusName });
-                    close();
-                  }}
-                />
-              )}
-            </Popover>
-            {open && (
-              <select
-                value={priority}
-                disabled={!edit}
-                onChange={(e) => {
-                  const next = e.target.value as Priority;
-                  setPriority(next);
-                  startTransition(() => void updateGroup(batch.id, { priority: next }));
-                }}
-                aria-label={`Priority of ${batch.name}`}
-                className="cursor-pointer rounded-full border border-line-strong bg-surface px-2 py-1 text-xs font-bold"
-                style={textColor ? { color: textColor } : undefined}
-              >
-                <option value="normal">No priority</option>
-                {BATCH_PRIORITIES.map((p) => (
-                  <option key={p.value} value={p.value}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
-            )}
-            {open && (
-              <button
-                className="press flex items-center gap-1 rounded-full border border-line-strong bg-surface px-2.5 py-1 text-xs font-bold text-fg-2 transition-colors duration-150 hover:border-sky-400/40 hover:text-sky-500 active:scale-[0.98]"
-                onClick={() => setLayoutOpen(true)}
-                title="Lay the parts flat and nest them on the smallest plate on the shelf"
-              >
-                <Icon name="layers" className="h-3.5 w-3.5" />
-                Auto Layout
-              </button>
-            )}
+            {statusMenu}
+            {open && prioritySelect}
+            {open && autoLayoutButton}
             {open && <OnshapeLayoutButton groupId={batch.id} url={batch.onshapeLayoutUrl} where="card" />}
-            {layoutOpen &&
-              createPortal(
-                // The window sits outside the card in the page, but React still hands its clicks to the card.
-                <div onClick={stop} onDoubleClick={stop}>
-                  <BatchLayoutDialog groupId={batch.id} name={batch.name} open onClose={() => setLayoutOpen(false)} />
-                </div>,
-                document.body,
-              )}
-            <span className="ml-auto flex items-center gap-1.5">
-              {downloads.length > 0 && !(batch.gcode && !open) && (
-                <button className="overlay-btn" onClick={() => void downloadAll(downloads)} aria-label={`Download ${downloads.length} files`} title={`Download ${downloads.length} files`}>
-                  <Icon name="download" />
-                </button>
-              )}
-              {dxfZip && downloads.length > 0 && (
-                <button
-                  className="overlay-btn w-auto gap-1 px-2 text-xs font-semibold"
-                  onClick={() => void downloadExport(`/api/groups/${batch.id}/dxf`)}
-                  aria-label={`Download ${batch.name} flat DXFs as a zip`}
-                  title="All flat DXFs in one zip, named with each part's quantity"
-                >
-                  <Icon name="download" />
-                  DXF zip
-                </button>
-              )}
-              {!open && batch.gcode && (
-                <a className="overlay-btn" href={`/api/files/${batch.gcode.id}?download=1`} aria-label={`Download G-code ${batch.gcode.filename}`} title={`G-code: ${batch.gcode.filename}`}>
-                  <Icon name="gcode" />
-                </a>
-              )}
-            </span>
+            {layoutDialog}
+            <span className="ml-auto flex items-center gap-1.5">{downloadButtons}</span>
           </div>
           {open && <GcodeRow batch={batch} />}
           {open && edit && (
-            <div className="mt-auto flex" onClick={stop}>
-              <button
-                className="press ml-auto shrink-0 text-xs text-subtle hover:text-rose-700"
-                onClick={() => {
-                  if (confirm(`Delete ${batch.name}? Its parts stay on the BOM with their status.`)) startTransition(() => void deleteGroup(batch.id));
-                }}
-              >
-                Delete fab
-              </button>
+            <div className="mt-auto flex justify-end" onClick={stop}>
+              {deleteButton}
             </div>
           )}
         </div>
@@ -1200,14 +1364,7 @@ function BatchCard({
           {members.map((p) => (
             <div key={p.id} className="flex flex-col gap-1">
               {card(p, { batch, members })}
-              {edit && (
-                <button
-                  className="self-start text-xs text-subtle hover:text-rose-700"
-                  onClick={() => startTransition(() => void removeFromGroup(batch.id, p.id))}
-                >
-                  Remove from {batch.name}
-                </button>
-              )}
+              {removeButton(p)}
             </div>
           ))}
         </div>
