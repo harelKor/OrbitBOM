@@ -459,10 +459,17 @@ export function FabView({
     <BomProvider value={{ inventory, isAdmin, robotId }}>
       <div className="space-y-6">
         <div className="flex flex-wrap items-stretch gap-2">
-          <MachineBox href={machineHref(null)} name="All machines" count={counts.total} active={!machine} />
+          <MachineBox href={machineHref(null)} name="All machines" count={counts.total} active={!machine} className="hidden sm:flex" />
           {machinesWithParts.map((m) => (
-            <MachineBox key={m.id} href={machineHref(m.id)} name={m.name} count={counts.byMachine.get(m.id)!} active={machine === m.id} />
+            <MachineBox key={m.id} href={machineHref(m.id)} name={m.name} count={counts.byMachine.get(m.id)!} active={machine === m.id} className="hidden sm:flex" />
           ))}
+          <MobileMachines
+            total={counts.total}
+            machines={machinesWithParts.map((m) => ({ id: m.id, name: m.name, count: counts.byMachine.get(m.id)! }))}
+            active={machine ? (getMachine(machine)?.name ?? machine) : null}
+            activeId={machine ?? null}
+            href={machineHref}
+          />
           <MaterialFilters counts={counts.byMaterial} active={mat} />
           <button
             onClick={() => setMine((m) => !m)}
@@ -636,16 +643,63 @@ export function FabHeading({ robotName }: { robotName: string }) {
   );
 }
 
-function MachineBox({ href, name, count, active }: { href: string; name: string; count: number; active: boolean }) {
+function MachineBox({ href, name, count, active, className = "flex", onClick }: { href: string; name: string; count: number; active: boolean; className?: string; onClick?: () => void }) {
   return (
     <ShallowLink
       href={href}
       data-selected={active}
-      className="card-interactive flex min-w-32 flex-col px-4 py-2.5"
+      onClick={onClick}
+      className={`card-interactive min-w-32 flex-col px-4 py-2.5 ${className}`}
     >
       <span className="display text-2xl text-accent tabular-nums">{count}</span>
       <span className="truncate text-xs font-medium text-fg-2">{name}</span>
     </ShallowLink>
+  );
+}
+
+// Phones only: the machine boxes fold behind a Machines toggle (closed by default) left of
+// Materials. Closed, the machine picked sits beside it with ✕ back to All machines; open, the
+// boxes take their own row under the toolbar and close again once one is picked.
+function MobileMachines({ total, machines, active, activeId, href }: {
+  total: number;
+  machines: { id: string; name: string; count: number }[];
+  active: string | null;
+  activeId: string | null;
+  href: (id: string | null) => string;
+}) {
+  const [open, setOpen] = useState(false);
+  const close = () => setOpen(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className={`press inline-flex min-h-9 items-center gap-1 self-center rounded-full border pr-3 pl-1.5 text-xs font-semibold transition-colors duration-150 hover:border-sky-400/40 active:scale-[0.98] sm:hidden ${active ? "border-accent text-accent" : "border-line-strong text-fg-2"}`}
+      >
+        <Chevron open={open} small className="hover:bg-transparent" />
+        Machines
+        {active && <span className="ml-0.5 rounded-full bg-accent px-1.5 font-mono text-[10px] text-white tabular-nums">1</span>}
+      </button>
+      {!open && active && (
+        <ShallowLink
+          href={href(null)}
+          title={`Show all machines, not just ${active}`}
+          className="press inline-flex min-h-9 items-center gap-1.5 self-center rounded-full border border-accent bg-accent px-3 text-xs font-semibold text-white active:scale-[0.98] sm:hidden"
+        >
+          {active}
+          <Icon name="close" className="h-3 w-3" />
+        </ShallowLink>
+      )}
+      {open && (
+        <div className="order-last flex basis-full flex-wrap gap-2 sm:hidden">
+          <MachineBox href={href(null)} name="All machines" count={total} active={!activeId} onClick={close} />
+          {machines.map((m) => (
+            <MachineBox key={m.id} href={href(m.id)} name={m.name} count={m.count} active={activeId === m.id} onClick={close} />
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -665,7 +719,8 @@ function MaterialFilters({ counts, active }: { counts: Map<string, number>; acti
         className={`press inline-flex min-h-9 items-center gap-1 self-center rounded-full border pr-3 pl-1.5 text-xs font-semibold transition-colors duration-150 hover:border-sky-400/40 active:scale-[0.98] ${active ? "border-accent text-accent" : "border-line-strong text-fg-2"}`}
       >
         <Chevron open={open} small className="hover:bg-transparent" />
-        Filters
+        <span className="sm:hidden">Materials</span>
+        <span className="hidden sm:inline">Filters</span>
         {active && <span className="ml-0.5 rounded-full bg-accent px-1.5 font-mono text-[10px] text-white tabular-nums">1</span>}
       </button>
       {!open && active && (
