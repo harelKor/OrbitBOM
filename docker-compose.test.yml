@@ -1,0 +1,14 @@
+# The database tests' Postgres, the same image CI uses (.github/workflows/ci.yml). Started by
+# `npm run test:db`; port 54329 so it doesn't clash with a Postgres already on 5432. Its data
+# lives in memory (tmpfs): every start is a fresh, empty database.
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: postgres
+    ports: ["54329:5432"]
+    tmpfs: /var/lib/postgresql/data
+    healthcheck:
+      test: pg_isready -U postgres
+      interval: 2s
+      retries: 15

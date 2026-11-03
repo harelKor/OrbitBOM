@@ -37,7 +37,9 @@ npm run dev
 ```
 
 Checks: `npm run lint`, `npm run typecheck`, `npm test`. Database tests run when
-`TEST_DATABASE_URL` points at a migrated Postgres (CI does this).
+`TEST_DATABASE_URL` points at a migrated Postgres (CI does this). `npm run test:db` does it
+locally: it starts CI's Postgres in Docker (Docker Desktop must be running), migrates it and runs
+every test; `npm run test:db -- --down` stops it.
 
 After changing `src/db/schema.ts`, run `npm run db:generate` and commit the new file in
 `drizzle/`.
