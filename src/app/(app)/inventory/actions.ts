@@ -26,9 +26,10 @@ import { type PieceOp, SIZE_KEY, parseStock, snapStock } from "@/lib/inventory/s
 import { applyEachPartChanges } from "@/lib/parts/apply";
 import { StorageNotConfiguredError, deleteObject, objectExists, presignUpload } from "@/lib/storage/r2";
 import { deleteToTrash } from "@/lib/trash";
+import { createItem } from "@/lib/inventory/create";
 import { isUuid } from "@/lib/uuid";
 
-const { inventoryItems, inventoryGroups, inventoryConditions, inventoryLocations, inventoryMoves, inventoryCategories, parts } = schema;
+const { inventoryItems, inventoryGroups, inventoryConditions, inventoryLocations, inventoryCategories, parts } = schema;
 
 export type ActionResult = { error?: string; message?: string };
 
@@ -116,11 +117,10 @@ export async function saveItem(itemId: string | null, input: ItemInput): Promise
         ...(JSON.stringify(before.cotsLinks) !== JSON.stringify(values.cotsLinks) && { cotsLinks: values.cotsLinks }),
         ...(before.price !== values.price && { price: values.price }),
       });
+      await setStock(tx, id, inStock, ctx);
     } else {
-      [{ id }] = await tx.insert(inventoryItems).values(values).returning({ id: inventoryItems.id });
-      await recordItemChanges(tx, id!, null, values, ctx);
+      id = await createItem(tx, values, inStock, ctx);
     }
-    await setStock(tx, id!, inStock, ctx);
     return id!;
   });
   if (!id) return { error: "That item was deleted." };
@@ -499,26 +499,6 @@ export async function stepShelfStock(partIds: string[], delta: number): Promise<
   return {};
 }
 
-// "Add to inventory" on a COTS card with no item: a new item named after the part, with its
-// product link and price, and the part (or every part the card stands for) linked to it.
-export async function createItemFromPart(partIds: string[]): Promise<ActionResult> {
-  const member = await requireCapability("work");
-  if (!partIds.length || partIds.some((id) => !isUuid(id))) return { error: "Unknown part." };
-  const rows = await db.select().from(parts).where(inArray(parts.id, partIds));
-  const [first] = rows;
-  if (!first) return { error: "Unknown part." };
-  const name = first.displayName ?? first.onshapeName ?? "Unnamed part";
-  const cats = await listCategories();
-  const [item] = await db
-    .insert(inventoryItems)
-    .values({ name, category: guessCategory(name, cats.map((c) => c.id)), cotsLinks: first.cotsLinks, price: first.unitPrice })
-    .returning({ id: inventoryItems.id });
-  await applyEachPartChanges(rows.map((p) => ({ id: p.id, changes: { inventoryItemId: item.id } })), { memberId: member.id, via: "ui" });
-  await autoLink({ itemIds: [item.id] }, { memberId: member.id, via: "ui" });
-  refresh({ cots: true, robots: true });
-  return { message: `Added ${name} to the inventory.` };
-}
-
 // The robot inventory page's button: this robot's COTS parts the shelf can't cover, still in
 // Not Started or Released, go to the Order List.
 export async function sendShortagesToOrder(robotId: string): Promise<ActionResult> {
@@ -717,11 +697,9 @@ export async function importItems(rows: ImportRow[]): Promise<ActionResult> {
         counts.updated++;
         continue;
       }
-      const inStock = snapStock(row.inStock ?? 0, sheet);
-      const [item] = await tx.insert(inventoryItems).values({
+      const values = {
         name: row.name,
-        inStock,
-        specs: row.material ? { material: row.material } : {},
+        specs: (row.material ? { material: row.material } : {}) as Record<string, string>,
         locationId: await locationId(row.location),
         conditionId: await conditionId(row.condition),
         groupId: await groupId(path),
@@ -730,10 +708,13 @@ export async function importItems(rows: ImportRow[]): Promise<ActionResult> {
         price: row.price,
         note: row.note,
         cotsLinks: row.url ? [{ url: row.url, site: vendorOfUrl(row.url) }] : [],
-      }).returning();
+      };
+      // Through createItem, so an imported item has its history line like any other.
+      const id = await createItem(tx, values, snapStock(row.inStock ?? 0, sheet), ctx);
+      // A later row of the same item in the file updates it.
+      const [item] = await tx.select().from(inventoryItems).where(eq(inventoryItems.id, id));
       existing.set(k, item);
       counts.added++;
-      if (inStock) await tx.insert(inventoryMoves).values({ itemId: item.id, delta: inStock, reason: "counted", memberId: member.id, via: "ui" });
     }
     return counts;
   });

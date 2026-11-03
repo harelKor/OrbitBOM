@@ -4,13 +4,13 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { backUpNow, downloadBackup, restoreFromBackup } from "@/app/(app)/storage-actions";
 import { Dialog } from "@/components/Dialog";
+import { LocalTime } from "@/components/ui/LocalTime";
 import { BACKUP_DAYS } from "@/config/storage";
 import type { BackupFile } from "@/lib/storage/backup";
 
 export type ScopeInfo = { id: string; label: string; text: string };
 
 const size = (n: number) => (n >= 1024 ** 2 ? `${(n / 1024 ** 2).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
-const when = (at: string) => new Date(at).toLocaleString(undefined, { dateStyle: "full", timeStyle: "short" });
 // "before-restore" copies are the ones a restore saved first.
 const isSafetyCopy = (b: BackupFile) => b.name.includes("-before-restore-");
 
@@ -55,7 +55,7 @@ export function BackupsSettings({ backups, scopes, isAdmin }: { backups: BackupF
           <li key={b.key} className="flex flex-wrap items-center gap-2 px-3 py-2.5 transition-colors duration-150 hover:bg-raised">
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-semibold">
-                {when(b.at)}
+                <LocalTime at={b.at} style="full" />
                 {isSafetyCopy(b) && <span className="ml-2 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-600 dark:text-amber-300">Before a restore</span>}
               </span>
               <span className="block truncate font-mono text-xs text-subtle tabular-nums">
@@ -120,7 +120,7 @@ function RestoreDialog({
     <Dialog open onClose={onClose} title="Restore from backup" width="w-[min(34rem,calc(100vw-2rem))]">
       <div className="space-y-4 text-sm">
         <p>
-          Put things back the way they were on <span className="font-semibold">{when(backup.at)}</span>.
+          Put things back the way they were on <span className="font-semibold"><LocalTime at={backup.at} style="full" /></span>.
         </p>
         <div className="space-y-2">
           {scopes.map((s) => (

@@ -3,12 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { restoreDeleted } from "@/app/(app)/storage-actions";
+import { LocalTime } from "@/components/ui/LocalTime";
 
 export type DeletedEntry = { id: string; kind: "robot" | "system" | "part" | "item"; label: string; deletedAt: string; by: string | null; rows: number };
 
 const KIND = { robot: "Robot", system: "System", part: "Part", item: "Inventory item" } as const;
-const when = (at: string) => new Date(at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-
 // Settings → Recently deleted: robots, systems, manual parts and inventory items deleted in the
 // last 30 days, each with what went with it (parts, history, versions, stock moves). An admin's
 // Bring back puts it all back as it was.
@@ -46,7 +45,7 @@ export function RecentlyDeleted({ entries, isAdmin, keepDays }: { entries: Delet
                 <span className="ml-2 rounded-full bg-raised px-2 py-0.5 text-[11px] font-semibold text-muted">{KIND[e.kind]}</span>
               </span>
               <span className="block truncate text-xs text-subtle">
-                {when(e.deletedAt)}
+                <LocalTime at={e.deletedAt} />
                 {e.by ? ` · ${e.by}` : ""} · <span className="font-mono tabular-nums">{e.rows}</span> {e.rows === 1 ? "row" : "rows"}
               </span>
             </span>
