@@ -364,6 +364,7 @@ export function AddBox({
       const el = document.querySelector(`[data-item="${CSS.escape(id)}"]`);
       if (el) {
         el.scrollIntoView({ behavior: "smooth", block: "center" });
+        haloItem(el);
         return onAdded?.(id);
       }
       if (category) return router.push(`/inventory/c/${encodeURIComponent(category)}?added=${encodeURIComponent(id)}`);
@@ -397,17 +398,17 @@ export function AddBox({
             {onAdded && (
               <button
                 type="button"
-                className="btn min-h-12 min-w-14 shrink-0 px-5 text-lg active:scale-[0.98]"
+                className="btn min-h-14 min-w-16 shrink-0 px-6 text-xl active:scale-[0.98]"
                 title="Go to item"
                 aria-label="Go to item"
                 onClick={() => jumpTo(saved.id, saved.category)}
               >
-                <Icon name="arrow" className="h-6 w-6" />
+                <Icon name="arrow" className="h-7 w-7" />
               </button>
             )}
             <button
               type="button"
-              className="btn min-h-12 shrink-0 px-5 text-base active:scale-[0.98]"
+              className="btn min-h-14 shrink-0 px-6 text-lg active:scale-[0.98]"
               onClick={() => {
                 setSaved(null);
                 openItem(saved.id);
@@ -535,6 +536,15 @@ export function AddBox({
       {addedPopup}
     </div>
   );
+}
+
+// The halo around an item the popup's arrow brought you to: set straight on the element so no
+// re-render can lose it, and gone at the next tap or click anywhere.
+export function haloItem(el: Element) {
+  document.querySelectorAll("[data-halo]").forEach((x) => x.removeAttribute("data-halo"));
+  el.setAttribute("data-halo", "on");
+  const off = () => el.removeAttribute("data-halo");
+  setTimeout(() => window.addEventListener("pointerdown", off, { once: true }), 300);
 }
 
 export const bestOffer = (g: ProductGroup) => g.offers.filter((o) => o.price != null).sort((a, b) => a.price! - b.price!)[0] ?? g.offers[0];

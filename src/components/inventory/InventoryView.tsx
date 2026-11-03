@@ -42,7 +42,7 @@ import {
 import { matchesSearch } from "@/lib/inventory/searchWords";
 import { keepPicks, matchesPicks, specGroups, type SpecGroup, type SpecPicks } from "@/lib/inventory/specFilters";
 import { countPieces, stepStock } from "@/lib/inventory/stock";
-import { AddBox } from "./AddBox";
+import { AddBox, haloItem } from "./AddBox";
 import { ImportDialog } from "./ImportDialog";
 import { RecentActions } from "@/components/actions/RecentActions";
 import type { RecentAction } from "@/lib/data/actions";
@@ -132,7 +132,10 @@ export function InventoryView({
     let frame = 0;
     const find = () => {
       const el = document.querySelector(`[data-item="${CSS.escape(addedParam)}"]`);
-      if (el) return el.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        return haloItem(el);
+      }
       if (++tries < 300) frame = requestAnimationFrame(find);
     };
     frame = requestAnimationFrame(find);

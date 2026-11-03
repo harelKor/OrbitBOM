@@ -442,6 +442,17 @@ body {
   .data-table tbody tr:is([data-new="lit"], [data-new="fade"]) > td:first-child {
     box-shadow: inset 3px 0 0 #fcd34d, inset 0 1px 0 rgba(252, 211, 77, 0.9), inset 0 -1px 0 rgba(252, 211, 77, 0.9);
   }
+  /* The halo the Added popup's arrow puts on the item it brings you to, until the next tap. */
+  [data-item][data-halo] {
+    border-color: rgb(252 211 77) !important;
+    box-shadow: 0 0 0 3px rgba(252, 211, 77, 0.95), 0 0 32px 8px rgba(250, 204, 21, 0.6) !important;
+    border-radius: 0.75rem;
+    position: relative;
+    z-index: 1;
+  }
+  .data-table tbody tr[data-halo] > td {
+    background-image: linear-gradient(rgba(250, 204, 21, 0.2), rgba(250, 204, 21, 0.2));
+  }
   .card-interactive[data-new="fade"] {
     animation: new-glow-out 800ms ease-out forwards;
   }
