@@ -47,14 +47,21 @@ export function Dialog({
       onClose={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
-      className={`m-auto ${width ?? (wide ? "w-[min(40rem,calc(100vw-2rem))]" : "w-[min(28rem,calc(100vw-2rem))]")} modal p-0 outline-none ${sheet ? SHEET : ""}`}
+      // Never taller than the visible screen (dvh: a phone's browser bars and keyboard taken off);
+      // the window scrolls inside, its title bar staying on top with ✕.
+      className={`m-auto ${width ?? (wide ? "w-[min(40rem,calc(100vw-2rem))]" : "w-[min(28rem,calc(100vw-2rem))]")} max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain modal p-0 outline-none ${sheet ? SHEET : ""}`}
     >
-      <div className={`flex items-center justify-between gap-2 border-b border-line px-5 py-3 ${actions && !compact ? "max-sm:flex-wrap" : ""} ${compact ? "max-sm:px-3 max-sm:py-2" : ""} ${sheet ? "sticky top-0 z-[2] bg-surface max-sm:px-4" : ""}`}>
+      <div className={`flex items-center justify-between gap-2 border-b border-line px-5 py-3 ${actions && !compact ? "max-sm:flex-wrap" : ""} ${compact ? "max-sm:px-3 max-sm:py-2" : ""} sticky top-0 z-[2] bg-surface ${sheet ? "max-sm:px-4" : ""}`}>
         <h2 className={`min-w-0 flex-1 font-semibold ${compact ? "max-sm:text-sm max-sm:leading-tight" : ""}`}>{title}</h2>
         {actions && (
           <div className={`flex flex-wrap items-center justify-end gap-1.5 ${compact ? "max-sm:shrink-0 max-sm:flex-nowrap" : "max-sm:order-last max-sm:basis-full max-sm:justify-start"}`}>{actions}</div>
         )}
-        <button type="button" onClick={onClose} className="press rounded p-1 text-muted hover:text-fg" aria-label="Close">
+        <button
+          type="button"
+          onClick={onClose}
+          className="press -my-1 -mr-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted transition-colors duration-150 hover:bg-raised hover:text-fg"
+          aria-label="Close"
+        >
           ✕
         </button>
       </div>

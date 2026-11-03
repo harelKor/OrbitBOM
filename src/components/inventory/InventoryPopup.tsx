@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { createContext, useContext, useEffect, useState, useTransition } from "react";
+import { createContext, useContext, useEffect, useRef, useState, useTransition } from "react";
 import {
   adjustStock,
   editItemPieces,
@@ -56,7 +56,7 @@ type MaterialData = Awaited<ReturnType<typeof materialPopup>>;
 // order status, and saves through the card (so the COTS page updates with it).
 export type CotsOrderContext = { info: CotsOrderInfo; save: (changes: PartChanges) => void };
 type State =
-  | { kind: "item"; id: string; preview: Item | null; data: ItemData | null; order: CotsOrderContext | null }
+  | { kind: "item"; id: string; preview: Item | null; data: ItemData | null; order: CotsOrderContext | null; missing?: boolean }
   | { kind: "material"; name: string; data: MaterialData | null }
   | null;
 
@@ -81,11 +81,32 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
   const [, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  const loadItem = (id: string) =>
+  // Changes made in the window while its item loads. Saves wait behind the load (the browser runs
+  // server actions one at a time), so the loaded item doesn't have them yet: they're applied to
+  // it on arrival, or a + tapped right after opening would flash and vanish.
+  const sinceLoad = useRef<{ id: string; changes: ((i: Item) => Partial<Item>)[] } | null>(null);
+  const loadItem = (id: string) => {
+    sinceLoad.current = { id, changes: [] };
     startTransition(async () => {
-      const data = await itemPopup(id);
-      setState((s) => (s?.kind === "item" && s.id === id ? { ...s, data } : s));
+      let data: Awaited<ReturnType<typeof itemPopup>>;
+      try {
+        data = await itemPopup(id);
+      } catch {
+        setError("Couldn't load this item. Check the connection and try again.");
+        return;
+      }
+      const late: ((i: Item) => Partial<Item>)[] = sinceLoad.current?.id === id ? sinceLoad.current.changes : [];
+      sinceLoad.current = null;
+      setState((s) => {
+        if (s?.kind !== "item" || s.id !== id) return s;
+        // A deleted item (or a wrong ?item= link) says so instead of loading forever.
+        if (!data) return { ...s, missing: true };
+        let item = data.item;
+        for (const change of late) item = { ...item, ...change(item) } as typeof item;
+        return { ...s, missing: false, data: { ...data, item } };
+      });
     });
+  };
   const loadMaterial = (name: string) =>
     startTransition(async () => {
       const data = await materialPopup(name);
@@ -125,13 +146,15 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
 
   // Every control in the window shows its change at once (outside the transition, so React
   // paints it before the save answers) and saves behind it; only a failed save reloads.
-  const patchItem = (itemId: string, change: (i: Item) => Partial<Item>) =>
+  const patchItem = (itemId: string, change: (i: Item) => Partial<Item>) => {
+    if (sinceLoad.current?.id === itemId) sinceLoad.current.changes.push(change);
     setState((s) => {
       const patch = <T extends Item>(i: T): T => (i.id === itemId ? { ...i, ...change(i) } : i);
       if (s?.kind === "material") return { ...s, data: s.data && { ...s.data, items: s.data.items.map(patch) } };
       if (s?.kind !== "item" || s.id !== itemId) return s;
       return { ...s, preview: s.preview && patch(s.preview), data: s.data && { ...s.data, item: patch(s.data.item) } };
     });
+  };
   const reload = () => {
     if (state?.kind === "item") loadItem(state.id);
     else if (state?.kind === "material") loadMaterial(state.name);
@@ -160,8 +183,16 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
       {children}
       <Dialog open={!!state} onClose={close} title={title} width={state?.kind === "item" ? "w-[min(36rem,calc(100vw-2rem))]" : undefined} wide compact>
         {error && <p className="mb-3 rounded-md bg-rose-50 p-2 text-sm text-rose-700">Couldn&apos;t save: {error}</p>}
-        {state?.kind === "item" && !item && <p className="py-8 text-center text-sm text-muted">Loading…</p>}
-        {state?.kind === "item" && item && (
+        {state?.kind === "item" && state.missing && (
+          <div className="py-6 text-center">
+            <p className="text-sm text-muted">This item isn&apos;t in the inventory anymore. It was deleted, or the link is wrong.</p>
+            <button type="button" className="btn mt-4 min-h-10 active:scale-[0.98]" onClick={close}>
+              Close
+            </button>
+          </div>
+        )}
+        {state?.kind === "item" && !state.missing && !item && <p className="py-8 text-center text-sm text-muted">Loading…</p>}
+        {state?.kind === "item" && !state.missing && item && (
           <ItemBody
             key={state.id}
             item={item}

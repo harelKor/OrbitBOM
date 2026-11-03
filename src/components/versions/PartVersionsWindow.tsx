@@ -91,7 +91,7 @@ export function PartVersionsButton({ partId, lock, released }: { partId: string;
           {!data && !error && <p className="text-sm text-muted">Loading…</p>}
           {data && !data.entries.length && <p className="text-sm text-muted">No committed versions changed this part yet.</p>}
           {data && data.entries.length > 0 && (
-            <ul className="max-h-[65vh] space-y-2 overflow-y-auto pr-1">
+            <ul className="max-h-[65dvh] space-y-2 overflow-y-auto pr-1">
               {data.entries.map((v) => {
                 const tagged = v.released.length > 0;
                 const reproduction = v.released.some((s) => s !== "Released");

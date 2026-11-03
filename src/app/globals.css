@@ -598,3 +598,13 @@ body {
     background-image: linear-gradient(transparent, transparent);
   }
 }
+
+/* Touch screens: every field at 16px at least, or iOS zooms the whole page in when one is tapped
+   (the search box, a count, a popover's search). Beats the text-sm on the fields themselves. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
+  textarea,
+  select {
+    font-size: max(16px, 1em);
+  }
+}

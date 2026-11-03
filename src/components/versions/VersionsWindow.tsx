@@ -83,7 +83,7 @@ export function VersionsWindow({ systemId, list, thumbs }: { systemId: string; l
         <div className="space-y-3">
           {message && <p className={`text-sm ${message.error ? "text-rose-600" : "text-emerald-600"}`}>{message.text}</p>}
           {list.versions.length === 0 && <p className="text-sm text-muted">No versions yet. Update system checks Onshape for the first one.</p>}
-          <ul className="max-h-[65vh] space-y-2 overflow-y-auto pr-1">
+          <ul className="max-h-[65dvh] space-y-2 overflow-y-auto pr-1">
             {list.versions.map((v) => (
               <VersionBox
                 key={v.id}

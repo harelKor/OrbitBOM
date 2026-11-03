@@ -88,7 +88,7 @@ export function LeftNav({
                     <ShallowLink
                       key={m.id}
                       href={`${base}/fab?machine=${m.id}`}
-                      className={`press flex items-center gap-2 rounded-md px-2 py-1 text-xs ${
+                      className={`press flex items-center gap-2 rounded-md px-2 py-1 text-xs pointer-coarse:min-h-9 ${
                         active ? "bg-accent/15 text-white" : n ? "text-fg-2 hover:bg-raised hover:text-fg" : "text-subtle hover:bg-raised hover:text-fg-2"
                       }`}
                     >
@@ -130,7 +130,7 @@ export function LeftNav({
                   <FastLink
                     key={l.href}
                     href={l.href}
-                    className={`press flex items-center gap-2 rounded-md px-2 py-1 text-xs ${
+                    className={`press flex items-center gap-2 rounded-md px-2 py-1 text-xs pointer-coarse:min-h-9 ${
                       pathname === l.href ? "bg-accent/15 text-white" : "text-fg-2 hover:bg-raised hover:text-fg"
                     }`}
                   >

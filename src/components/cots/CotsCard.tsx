@@ -19,6 +19,7 @@ import { cotsTotal, siteOf } from "@/lib/cots";
 import { formatStock } from "@/lib/inventory/stock";
 import { computeStatus } from "@/lib/status";
 import { stepShelfStock } from "@/app/(app)/inventory/actions";
+import { toast } from "@/components/ui/Toaster";
 import { LinkTag, ShelfCoversPrompt, ShelfPill } from "./ShelfPill";
 import { formatPrice, setCurrency, useCurrency } from "./currency";
 
@@ -89,7 +90,9 @@ export function CotsCard({
     if (onShelf) {
       startShelf(async () => {
         stepShelf(d);
-        await stepShelfStock(part.memberIds ?? [part.id], d);
+        // The optimistic count goes back by itself when the transition ends; say why.
+        const r = await stepShelfStock(part.memberIds ?? [part.id], d);
+        if (r.error) toast(`Couldn't change the stock: ${r.error}`, true);
       });
       return;
     }

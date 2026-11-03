@@ -276,10 +276,13 @@ export function SheetViewport({
       </div>
       <div
         className={`absolute right-3 bottom-3 z-30 flex items-center gap-0.5 rounded-lg border border-line bg-surface/90 p-0.5 text-xs shadow-sm backdrop-blur-md transition-opacity duration-150 ${
-          flashing ? "opacity-100" : "pointer-events-none opacity-0 group-hover/sheet:pointer-events-auto group-hover/sheet:opacity-100"
+          flashing
+            ? "opacity-100"
+            : // Touch screens have no hover: the controls stay shown there.
+              "pointer-events-none opacity-0 group-hover/sheet:pointer-events-auto group-hover/sheet:opacity-100 pointer-coarse:pointer-events-auto pointer-coarse:opacity-100"
         }`}
       >
-        <button type="button" onClick={() => setZoom(zoom.current / 1.15)} className="press h-7 w-7 rounded-md font-bold text-fg-2 hover:bg-raised active:scale-[0.98]" aria-label="Zoom out">
+        <button type="button" onClick={() => setZoom(zoom.current / 1.15)} className="press h-7 w-7 rounded-md font-bold pointer-coarse:h-9 pointer-coarse:w-9 text-fg-2 hover:bg-raised active:scale-[0.98]" aria-label="Zoom out">
           −
         </button>
         <button
@@ -290,7 +293,7 @@ export function SheetViewport({
         >
           {Math.round(shownZoom * 100)}%
         </button>
-        <button type="button" onClick={() => setZoom(zoom.current * 1.15)} className="press h-7 w-7 rounded-md font-bold text-fg-2 hover:bg-raised active:scale-[0.98]" aria-label="Zoom in">
+        <button type="button" onClick={() => setZoom(zoom.current * 1.15)} className="press h-7 w-7 rounded-md font-bold pointer-coarse:h-9 pointer-coarse:w-9 text-fg-2 hover:bg-raised active:scale-[0.98]" aria-label="Zoom in">
           +
         </button>
         {sized && (

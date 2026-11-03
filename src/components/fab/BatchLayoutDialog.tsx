@@ -484,7 +484,9 @@ function SheetPreview({
       <svg
         ref={svg}
         viewBox={`${-pad} ${-pad} ${sheetW + 2 * pad} ${sheetH + 2 * pad}`}
-        className="block max-h-[60vh] w-full touch-none select-none"
+        // Half the visible screen at most: a swipe on the sheet drags parts, so on a phone the window
+        // needs room around it to scroll to the controls.
+        className="block max-h-[50dvh] w-full touch-none select-none"
         onPointerDown={(e) => {
           if (e.target === e.currentTarget) setSelected(null);
         }}

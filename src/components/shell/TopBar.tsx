@@ -9,7 +9,8 @@ import { ModeToggle } from "./ModeContext";
 import { UndoRedo } from "./UndoRedo";
 
 // The two panel buttons (pages on the left, robots on the right) match the Undo/Redo squares.
-const square = "press flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-white/30 hover:bg-white/10";
+// 36px on touch screens: the bar's menus are tapped all day in the shop.
+const square = "press flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-white/30 hover:bg-white/10 pointer-coarse:h-9 pointer-coarse:w-9";
 
 export function TopBar({ onMenu, onRobots, navHidden }: { onMenu: () => void; onRobots: () => void; navHidden: boolean }) {
   const pathname = usePathname();
@@ -71,7 +72,7 @@ export function TopBar({ onMenu, onRobots, navHidden }: { onMenu: () => void; on
                   }}
                   aria-label="Clear search"
                   title="Clear search"
-                  className="press flex h-6 w-6 items-center justify-center rounded-md border border-line-strong bg-raised text-muted hover:border-accent hover:bg-accent hover:text-white active:scale-[0.98]"
+                  className="press flex h-6 w-6 items-center justify-center rounded-md border border-line-strong bg-raised text-muted pointer-coarse:h-8 pointer-coarse:w-8 hover:border-accent hover:bg-accent hover:text-white active:scale-[0.98]"
                 >
                   <Icon name="close" className="h-3.5 w-3.5" />
                 </button>
@@ -83,8 +84,9 @@ export function TopBar({ onMenu, onRobots, navHidden }: { onMenu: () => void; on
       <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
         <UndoRedo />
         <ModeToggle />
+        {/* Not a second ☰: this one opens the robots and systems, the left one the pages. */}
         <button onClick={onRobots} className={`${square} xl:hidden`} aria-label="Robots and systems" title="Show robots and systems">
-          ☰
+          <Icon name="layers" className="h-5 w-5" />
         </button>
       </div>
     </header>

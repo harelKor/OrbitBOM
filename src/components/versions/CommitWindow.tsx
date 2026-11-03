@@ -111,7 +111,7 @@ export function CommitWindow({
         )}
         {error && <p className="text-sm text-rose-600">{error}</p>}
 
-        <ul className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
+        <ul className="max-h-[55dvh] space-y-2 overflow-y-auto pr-1">
           {draft.changes.map((c) => (
             <ChangeBox
               key={`${c.change}:${c.key}`}

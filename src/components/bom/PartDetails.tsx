@@ -50,7 +50,7 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
   const format = cadFormat(part);
   const title = partTitle(part);
   const canLocate = !part.isManual && !!robotId && !!part.modelKey;
-  const overlay = "btn h-7 gap-1.5 bg-surface/95 px-2 text-xs shadow-sm sm:h-8 sm:px-3";
+  const overlay = "btn h-7 gap-1.5 bg-surface/95 px-2 text-xs shadow-sm sm:h-8 sm:px-3 pointer-coarse:h-9";
   const phone = usePhone();
   const suggest = useSuggest(part, !part.memberIds);
   const was = (field: string) => suggest.was[field];
@@ -160,14 +160,18 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
                     <NameField part={part} save={save} />
                   </span>
                   {canReset && (
+                    // Not a ✕ next to the window's own ✕: a reset icon with a question first, so a
+                    // tap meant to close the window can't wipe the part's setup.
                     <button
                       type="button"
-                      onClick={() => save(RESET_SPECS)}
+                      onClick={() => {
+                        if (confirm(`Reset "${title}"? Its type, status, material, machines, inventory link and counts go back to blank.`)) save(RESET_SPECS);
+                      }}
                       title="Reset part configuration to defaults"
                       aria-label="Reset part configuration to defaults"
-                      className="shrink-0 rounded-md px-1.5 py-0.5 text-sm text-muted transition-colors duration-150 hover:bg-rose-500/10 hover:text-rose-500 active:scale-[0.98]"
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted transition-colors duration-150 hover:bg-rose-500/10 hover:text-rose-500 active:scale-[0.98] pointer-coarse:h-10 pointer-coarse:w-10"
                     >
-                      ✕
+                      <Icon name="undo" className="h-4 w-4" />
                     </button>
                   )}
                 </span>
@@ -218,7 +222,7 @@ function MoreMenu({ children }: { children: React.ReactNode }) {
     <div ref={box} className="relative">
       <button
         type="button"
-        className="btn h-8 w-8 justify-center p-0 text-base leading-none font-bold active:scale-[0.98]"
+        className="btn h-8 w-8 justify-center p-0 text-base leading-none font-bold active:scale-[0.98] pointer-coarse:h-9 pointer-coarse:w-9"
         aria-label="More"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
@@ -228,6 +232,13 @@ function MoreMenu({ children }: { children: React.ReactNode }) {
       <div
         role="menu"
         aria-hidden={!open}
+        // Off screen it stays mounted (see above) but out of Tab order; Escape closes it and not the window.
+        inert={!open}
+        onKeyDown={(e) => {
+          if (e.key !== "Escape") return;
+          e.preventDefault();
+          setOpen(false);
+        }}
         className={
           open
             ? "absolute top-full right-0 z-30 mt-1.5 flex w-52 flex-col items-stretch gap-1.5 rounded-xl border border-line-strong bg-surface p-2 shadow-[0_16px_40px_-12px_rgba(5,8,20,0.55)] [&_.btn]:w-full [&_.btn]:justify-start [&>span]:flex"

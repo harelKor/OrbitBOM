@@ -518,7 +518,7 @@ export function AddBox({
               float.host,
             )
           : (
-            <div className={`absolute top-full right-0 left-0 z-40 mt-1.5 max-h-[70vh] ${panel}`} onMouseDown={(e) => e.preventDefault()}>
+            <div className={`absolute top-full right-0 left-0 z-40 mt-1.5 max-h-[min(70dvh,32rem)] ${panel}`} onMouseDown={(e) => e.preventDefault()}>
               {results}
             </div>
           ))}

@@ -95,7 +95,8 @@ export function Popover({
 
   useEffect(() => {
     if (!open) return;
-    const onDown = (e: MouseEvent) => {
+    // pointerdown, like the part window's ⋮ menu: a tap outside on a phone closes it too.
+    const onDown = (e: PointerEvent) => {
       const t = e.target as Node;
       if (!button.current?.contains(t) && !panel.current?.contains(t)) setOpen(false);
     };
@@ -105,10 +106,10 @@ export function Popover({
       e.preventDefault();
       setOpen(false);
     };
-    document.addEventListener("mousedown", onDown);
+    document.addEventListener("pointerdown", onDown);
     document.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("pointerdown", onDown);
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
@@ -120,6 +121,7 @@ export function Popover({
       <button
         ref={button}
         type="button"
+        aria-haspopup="dialog"
         aria-expanded={open}
         onClick={(e) => {
           setPos(null);

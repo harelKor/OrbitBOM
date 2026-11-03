@@ -10,17 +10,18 @@ import { toast } from "@/components/ui/Toaster";
 import { partTitle, type CardPart } from "./types";
 
 // What this browser just did to a part's suggestion (true: suggested, false: approved or
-// rejected), shown until the page's next data says the same. Kept outside the card so it survives
-// the card re-mounting when the BOM re-sorts.
-const overrides = new Map<string, boolean>();
+// rejected), shown until the page's next data says the same, or says something new (a suggestion
+// that came in since, from Claude or the Suggest bar). `server`: what the page said when it was
+// set. Kept outside the card so it survives the card re-mounting when the BOM re-sorts.
+const overrides = new Map<string, { on: boolean; server: boolean }>();
 const listeners = new Set<() => void>();
 const subscribe = (l: () => void) => {
   listeners.add(l);
   return () => listeners.delete(l);
 };
-const setOverride = (id: string, on: boolean | null) => {
+const setOverride = (id: string, on: boolean | null, server = false) => {
   if (on === null) overrides.delete(id);
-  else overrides.set(id, on);
+  else overrides.set(id, { on, server });
   listeners.forEach((l) => l());
 };
 
@@ -31,12 +32,13 @@ const setOverride = (id: string, on: boolean | null) => {
 // its own Suggest with the full "old → new" rows.
 export function CardSuggest({ part, variant = "card" }: { part: CardPart; variant?: "card" | "row" }) {
   const review = useCan("review");
-  const override = useSyncExternalStore(subscribe, () => overrides.get(part.id), () => undefined);
+  const override = useSyncExternalStore(subscribe, () => overrides.get(part.id)?.on, () => undefined);
   const [busy, setBusy] = useState<"suggest" | "approve" | "reject" | null>(null);
   const fromServer = !!part.review;
   // The page's data caught up: drop what this browser remembered.
   useEffect(() => {
-    if (overrides.get(part.id) === fromServer) setOverride(part.id, null);
+    const o = overrides.get(part.id);
+    if (o && (o.on === fromServer || o.server !== fromServer)) setOverride(part.id, null);
   }, [part.id, fromServer]);
   if (!review || part.isManual || part.memberIds) return null;
   const waiting = override ?? fromServer;
@@ -49,7 +51,7 @@ export function CardSuggest({ part, variant = "card" }: { part: CardPart; varian
       const r = kind === "suggest" ? await suggestPart(part.id) : kind === "approve" ? await approveParts([part.id]) : await rejectParts([part.id]);
       if (r.error) return toast(r.error, true);
       // Suggest's "nothing to suggest" comes back as a message; anything else waits in To Review.
-      if (kind !== "suggest" || !r.message) setOverride(part.id, kind === "suggest");
+      if (kind !== "suggest" || !r.message) setOverride(part.id, kind === "suggest", fromServer);
       if (r.message) toast(r.message);
     } finally {
       setBusy(null);

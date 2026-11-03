@@ -10,16 +10,23 @@ import type { FitPart } from "@/lib/drawing/download";
 export type FitTarget = { kind: "part" | "item"; id: string; name: string; thumbUrl: string | null; category?: string };
 type Items = Awaited<ReturnType<typeof fitTargets>>;
 
-// Every inventory item's name and picture, loaded once per page for the picker and the notes.
+// Every inventory item's name and picture, for the picker and the notes. Kept 5 minutes, so items
+// added meanwhile show up without reloading the page.
+const FRESH_MS = 5 * 60_000;
 let cache: Promise<Items> | null = null;
+let cachedAt = 0;
 export function useFitItems(): Items | null {
   const [items, setItems] = useState<Items | null>(null);
   useEffect(() => {
     let live = true;
-    cache ??= fitTargets().catch((e) => {
-      cache = null;
-      throw e;
-    });
+    if (cache && Date.now() - cachedAt > FRESH_MS) cache = null;
+    if (!cache) {
+      cachedAt = Date.now();
+      cache = fitTargets().catch((e) => {
+        cache = null;
+        throw e;
+      });
+    }
     cache.then((r) => live && setItems(r)).catch(() => live && setItems([]));
     return () => {
       live = false;

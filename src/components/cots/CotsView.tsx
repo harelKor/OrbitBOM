@@ -140,7 +140,13 @@ export function CotsView({
     startTransition(async () => {
       addOptimistic(edits);
       const r = await updateCotsParts(edits);
-      if (r.error) setError(r.error);
+      if (r.error) {
+        setError(r.error);
+        // Nothing saved: the cards it crossed out come back as they were.
+        const ids = new Set(edits.map((e) => e.id));
+        setStruck((s) => new Set([...s].filter((id) => !ids.has(id))));
+        setArrivedStruck((s) => new Set([...s].filter((id) => !ids.has(id))));
+      }
     });
   }
   const saveRow = (row: Row) => (changes: PartChanges) =>
@@ -164,7 +170,10 @@ export function CotsView({
     setCleared((s) => new Set([...s, ...ids]));
     startTransition(async () => {
       const r = await clearInStock(ids);
-      if (r.error) setError(r.error);
+      if (r.error) {
+        setError(r.error);
+        setCleared((s) => new Set([...s].filter((id) => !ids.includes(id))));
+      }
     });
   };
   const addItem = (itemId: string) => {
@@ -508,7 +517,7 @@ export function CotsView({
       {list === "released" && (
         <Section title="In order list" count={queued.length} small defaultOpen={false} onDropParts={draggable ? dropTo("ordered") : undefined}>
           {queued.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-line py-6 text-center text-sm text-subtle">Drag parts here to put them on the order list.</p>
+            <p className="rounded-lg border border-dashed border-line py-6 text-center text-sm text-subtle">Drag parts here, or set a card&apos;s status to In Order List (phones can&apos;t drag).</p>
           ) : (
             byPlace(queued, { small: true, from: "ordered" })
           )}

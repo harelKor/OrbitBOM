@@ -7,6 +7,7 @@ import { InventoryPopupProvider } from "@/components/inventory/InventoryPopup";
 import { PartDetailsProvider } from "@/components/bom/PartDetailsHost";
 import { Toaster } from "@/components/ui/Toaster";
 import { Icon } from "@/components/ui/Icon";
+import { useEscape } from "@/components/ui/useEscape";
 import { FilterProvider } from "./FilterContext";
 import { LeftNav } from "./LeftNav";
 import { MaterialColorsProvider } from "./MaterialColors";
@@ -48,6 +49,21 @@ export function Shell({
   // A drawer closes by itself once the page changes.
   const open = drawer?.at === pathname ? drawer.side : null;
   const [collapsed, setCollapsed] = useState({ left: false, right: false });
+  // Which columns are on screen as columns (not drawers). A drawer that's slid away is inert, so
+  // Tab and screen readers skip its links; Escape closes an open one.
+  const [wide, setWide] = useState({ left: true, right: true });
+  useEffect(() => {
+    const lists = { left: matchMedia(WIDE.left), right: matchMedia(WIDE.right) };
+    const sync = () => setWide({ left: lists.left.matches, right: lists.right.matches });
+    sync();
+    lists.left.addEventListener("change", sync);
+    lists.right.addEventListener("change", sync);
+    return () => {
+      lists.left.removeEventListener("change", sync);
+      lists.right.removeEventListener("change", sync);
+    };
+  }, []);
+  useEscape(!!open, () => setDrawer(null));
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(COLLAPSE_KEY) ?? "null");
@@ -77,6 +93,7 @@ export function Shell({
                 className={`flex min-h-dvh max-w-full overflow-x-clip [--shell-left:0px] [--shell-right:0px] ${collapsed.left ? "" : "lg:[--shell-left:14rem]"} ${collapsed.right ? "" : "xl:[--shell-right:18rem]"}`}
               >
                 <aside
+                  inert={!wide.left && open !== "left"}
                   className={`fixed inset-y-0 left-0 z-40 w-56 shrink-0 bg-surface lg:sticky lg:top-0 lg:h-dvh lg:translate-x-0 ${collapsed.left ? "lg:hidden" : ""} ${
                     open === "left" ? "translate-x-0" : "-translate-x-full"
                   } transition-transform duration-150`}
@@ -93,6 +110,7 @@ export function Shell({
                   <Shortcuts robots={robots} lastRobotId={lastRobotId} />
                 </div>
                 <aside
+                  inert={!wide.right && open !== "right"}
                   className={`fixed inset-y-0 right-0 z-40 w-72 shrink-0 border-l border-line bg-surface xl:sticky xl:top-0 xl:h-dvh xl:translate-x-0 ${collapsed.right ? "xl:hidden" : ""} ${
                     open === "right" ? "translate-x-0" : "translate-x-full"
                   } transition-transform duration-150`}
