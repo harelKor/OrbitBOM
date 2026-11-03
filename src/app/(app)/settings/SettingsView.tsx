@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { addCondition, addLocation, deleteCondition, deleteLocation } from "@/app/(app)/inventory/actions";
 import { CategorySettings } from "@/components/inventory/CategorySettings";
 import { BackupsSettings, type ScopeInfo } from "@/components/settings/BackupsSettings";
+import { RecentlyDeleted, type DeletedEntry } from "@/components/settings/RecentlyDeleted";
 import { LayoutsDocumentSettings, type RobotLayoutsDoc } from "@/components/settings/LayoutsDocumentSettings";
 import type { Condition, InvCategory, Location } from "@/components/inventory/types";
 import { pushQuery } from "@/components/ui/CategoryBoxes";
@@ -18,6 +19,7 @@ const TABS = [
   { id: "conditions", label: "Conditions" },
   { id: "layouts", label: "Batch layouts" },
   { id: "backups", label: "Backups" },
+  { id: "deleted", label: "Recently deleted" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 type BaseMaterial = { id: string; name: string };
@@ -32,6 +34,8 @@ export function SettingsView({
   restoreScopes,
   isAdmin,
   robots,
+  deleted,
+  keepDays,
 }: {
   categories: InvCategory[];
   materials: BaseMaterial[];
@@ -42,6 +46,8 @@ export function SettingsView({
   restoreScopes: ScopeInfo[];
   isAdmin: boolean;
   robots: RobotLayoutsDoc[];
+  deleted: DeletedEntry[];
+  keepDays: number;
 }) {
   const params = useSearchParams();
   const raw = params.get("tab");
@@ -71,6 +77,7 @@ export function SettingsView({
       {tab === "conditions" && <ConditionsSettings conditions={conditions} />}
       {tab === "layouts" && <LayoutsDocumentSettings robots={robots} />}
       {tab === "backups" && <BackupsSettings backups={backups} scopes={restoreScopes} isAdmin={isAdmin} />}
+      {tab === "deleted" && <RecentlyDeleted entries={deleted} isAdmin={isAdmin} keepDays={keepDays} />}
     </div>
   );
 }

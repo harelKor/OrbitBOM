@@ -68,8 +68,8 @@ else
       // The member who last edited the part left: the restored part keeps no link to them.
       await db.delete(schema.members).where(eq(schema.members.id, member.id));
 
-      const r = await restoreBackup(backupKey, ["inventory"]);
-      expect(r.safetyCopy).toMatch(/before-restore-\d{4}\.json\.gz$/);
+      const r = await restoreBackup(backupKey, ["inventory"], { removeAdded: true });
+      expect(r.safetyCopy).toMatch(/before-restore-\d{6}\.json\.gz$/);
       const [back] = await db.select().from(schema.inventoryItems).where(eq(schema.inventoryItems.id, item.id));
       expect(back).toMatchObject({ name: `Bearing ${tag}`, inStock: 10, locationId: location.id });
       expect(await db.select().from(schema.inventoryItems).where(eq(schema.inventoryItems.id, added.id))).toHaveLength(0);
@@ -77,11 +77,22 @@ else
       expect(part.note).toBe("changed after");
     });
 
+    it("keeps what was added since unless asked to remove it", async () => {
+      const [added] = await db.insert(schema.parts).values({ systemId: system.id, onshapeName: `Since ${tag}` }).returning();
+      await db.update(schema.parts).set({ note: "edited" }).where(eq(schema.parts.id, kept.id));
+      await restoreBackup(backupKey, ["bom"]);
+      const [stays] = await db.select().from(schema.parts).where(eq(schema.parts.id, added.id));
+      expect(stays?.onshapeName).toBe(`Since ${tag}`);
+      const [plate] = await db.select().from(schema.parts).where(eq(schema.parts.id, kept.id));
+      expect(plate.note).toBeNull();
+      await db.delete(schema.parts).where(eq(schema.parts.id, added.id));
+    });
+
     it("puts the BOM back, keeping the history of parts that were in the backup", async () => {
       await db.delete(schema.parts).where(eq(schema.parts.id, gone.id));
       const [extra] = await db.insert(schema.parts).values({ systemId: system.id, onshapeName: `Extra ${tag}` }).returning();
 
-      await restoreBackup(backupKey, ["bom"]);
+      await restoreBackup(backupKey, ["bom"], { removeAdded: true });
       const parts = await db.select().from(schema.parts).where(eq(schema.parts.systemId, system.id));
       expect(parts.map((p) => p.onshapeName).sort()).toEqual([`Plate ${tag}`, `Spacer ${tag}`]);
       expect(parts.find((p) => p.id === extra.id)).toBeUndefined();

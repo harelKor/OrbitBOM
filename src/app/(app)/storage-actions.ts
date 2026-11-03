@@ -6,6 +6,7 @@ import { requireCapability } from "@/lib/mode";
 import { backupUrl, latestBackupUrl, saveNightlyBackup } from "@/lib/storage/backup";
 import { RESTORE_SCOPES, restoreBackup, type RestoreScope } from "@/lib/storage/restore";
 import { cleanUpStorage, deleteVersionPreviews, recountStorage, storageUsage, type StorageUsage } from "@/lib/storage/usage";
+import { restoreFromTrash } from "@/lib/trash";
 import { isUuid } from "@/lib/uuid";
 
 // The storage window's contents (database only).
@@ -59,18 +60,33 @@ export async function downloadBackup(key: string): Promise<{ url?: string; error
 
 // Settings → Backups → Restore (admins): the chosen parts of the app go back to the backup. A
 // copy of how things are now is saved first, so the restore can be undone the same way.
-export async function restoreFromBackup(key: string, scopes: string[]): Promise<{ message?: string; error?: string }> {
+export async function restoreFromBackup(key: string, scopes: string[], removeAdded = false): Promise<{ message?: string; error?: string }> {
   const member = await requireCapability("manage");
   if (!member.isAdmin) return { error: "Only admins can restore a backup." };
   const chosen = scopes.filter((s): s is RestoreScope => s in RESTORE_SCOPES);
   try {
-    const r = await restoreBackup(key, chosen);
+    const r = await restoreBackup(key, chosen, { removeAdded });
     const restored = r.tables.reduce((n, t) => n + t.restored, 0);
     const removed = r.tables.reduce((n, t) => n + t.removed, 0);
     revalidatePath("/", "layout");
     return {
       message: `Restored ${chosen.map((s) => RESTORE_SCOPES[s].label).join(" and ")}: ${restored} rows back${removed ? `, ${removed} added since removed` : ""}. To undo, restore ${r.safetyCopy?.replace("backups/", "")}.`,
     };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+// Settings → Recently deleted (admins): brings back a deleted robot, system, part or item with
+// everything that went with it (lib/trash.ts).
+export async function restoreDeleted(id: string): Promise<{ message?: string; error?: string }> {
+  const member = await requireMember();
+  if (!member.isAdmin) return { error: "Only admins can bring back what was deleted." };
+  if (!isUuid(id)) return { error: "Unknown entry." };
+  try {
+    const r = await restoreFromTrash(id);
+    revalidatePath("/", "layout");
+    return { message: `Brought back ${r.label} (${r.restored} ${r.restored === 1 ? "row" : "rows"}).` };
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) };
   }

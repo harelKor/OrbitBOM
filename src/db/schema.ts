@@ -902,3 +902,27 @@ export const mcpTokens = pgTable("mcp_tokens", {
   lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
   createdAt: createdAt(),
 });
+
+// ---------- Recently deleted ----------
+
+// What a delete removed, kept 30 days so an admin can bring it back (lib/trash.ts): the row and
+// every row the database cascaded with it (systems, parts, history, versions, stock moves...),
+// table by table in parent-first order, plus links that were emptied. Its R2 files are deleted
+// only when the entry is purged.
+export type DeletedRows = {
+  tables: { table: string; rows: Record<string, unknown>[] }[];
+  links: { table: string; column: string; value: unknown; ids: Record<string, unknown>[] }[];
+};
+export const deletedRecords = pgTable(
+  "deleted_records",
+  {
+    id: id(),
+    kind: text("kind").$type<"robot" | "system" | "part" | "item">().notNull(),
+    label: text("label").notNull(),
+    rows: jsonb("rows").$type<DeletedRows>().notNull(),
+    fileKeys: text("file_keys").array().notNull().default(sql`'{}'::text[]`),
+    deletedBy: uuid("deleted_by").references(() => members.id, { onDelete: "set null" }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("deleted_records_at_idx").on(t.deletedAt)],
+);

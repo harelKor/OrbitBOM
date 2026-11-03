@@ -470,6 +470,13 @@
       "when": 1793620221287,
       "tag": "0066_condition_short_names",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1793727249523,
+      "tag": "0067_deleted_records",
+      "breakpoints": true
     }
   ]
 }

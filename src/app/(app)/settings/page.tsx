@@ -7,17 +7,18 @@ import { listBaseMaterials } from "@/lib/data/baseMaterials";
 import { listCategories } from "@/lib/data/categories";
 import { backupInfo } from "@/lib/storage/backup";
 import { RESTORE_SCOPES } from "@/lib/storage/restore";
+import { KEEP_DAYS, listTrash } from "@/lib/trash";
 import { SettingsView } from "./SettingsView";
 
 const { inventoryItems, inventoryConditions, inventoryLocations } = schema;
 
 // The team's lists in one place: inventory categories, base materials, locations, conditions and
-// the nightly backups. BOM materials are inventory items now, so they're edited in Inventory.
+// the nightly backups, and what was deleted lately. BOM materials are inventory items now, so they're edited in Inventory.
 export default async function SettingsPage() {
   const member = await requireMember();
   // Settings is for admins in Edit mode; the teams land back on their home page.
   if (!(await isEditMode())) redirect("/");
-  const [categories, materials, conditions, locations, items, backups, robots] = await Promise.all([
+  const [categories, materials, conditions, locations, items, backups, robots, deleted] = await Promise.all([
     listCategories(),
     listBaseMaterials(),
     db.select().from(inventoryConditions).orderBy(asc(inventoryConditions.label)),
@@ -29,6 +30,7 @@ export default async function SettingsPage() {
       .from(schema.robots)
       .where(eq(schema.robots.archived, false))
       .orderBy(desc(schema.robots.year), asc(schema.robots.name)),
+    listTrash(),
   ]);
 
   return (
@@ -49,6 +51,8 @@ export default async function SettingsPage() {
         restoreScopes={Object.entries(RESTORE_SCOPES).map(([id, s]) => ({ id, label: s.label, text: s.text }))}
         isAdmin={member.isAdmin}
         robots={robots}
+        deleted={deleted.map((d) => ({ ...d, deletedAt: d.deletedAt.toISOString() }))}
+        keepDays={KEEP_DAYS}
       />
     </div>
   );

@@ -93,7 +93,7 @@ export function BackupsSettings({ backups, scopes, isAdmin }: { backups: BackupF
           scopes={scopes}
           pending={pending}
           onClose={() => setRestoring(null)}
-          onRestore={(chosen) => run(() => restoreFromBackup(restoring.key, chosen), () => setRestoring(null))}
+          onRestore={(chosen, removeAdded) => run(() => restoreFromBackup(restoring.key, chosen, removeAdded), () => setRestoring(null))}
         />
       )}
     </div>
@@ -111,9 +111,10 @@ function RestoreDialog({
   scopes: ScopeInfo[];
   pending: boolean;
   onClose: () => void;
-  onRestore: (scopes: string[]) => void;
+  onRestore: (scopes: string[], removeAdded: boolean) => void;
 }) {
   const [chosen, setChosen] = useState<string[]>([scopes[0].id]);
+  const [removeAdded, setRemoveAdded] = useState(false);
   const toggle = (id: string) => setChosen((c) => (c.includes(id) ? c.filter((x) => x !== id) : [...c, id]));
   return (
     <Dialog open onClose={onClose} title="Restore from backup" width="w-[min(34rem,calc(100vw-2rem))]">
@@ -132,9 +133,16 @@ function RestoreDialog({
             </label>
           ))}
         </div>
+        <label className="flex cursor-pointer items-start gap-3 px-1">
+          <input type="checkbox" className="mt-0.5 h-4 w-4 accent-rose-500" checked={removeAdded} onChange={(e) => setRemoveAdded(e.target.checked)} />
+          <span>
+            <span className="block font-semibold">Also remove what was added since</span>
+            <span className="block text-xs text-muted">Robots, systems, parts and items created after the backup are deleted, with their history and versions.</span>
+          </span>
+        </label>
         <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
-          Everything changed since then in what you pick goes back, and anything added since is removed. A copy of how things are now is saved first, so
-          you can restore that copy to undo this.
+          Everything changed since then in what you pick goes back{removeAdded ? ", and anything added since is removed" : "; anything added since stays"}. A copy of
+          how things are now is saved first, so you can restore that copy to undo this.
         </p>
         <div className="flex justify-end gap-2">
           <button type="button" className="btn min-h-11 active:scale-[0.98]" onClick={onClose} disabled={pending}>
@@ -144,7 +152,7 @@ function RestoreDialog({
             type="button"
             className="btn min-h-11 border-rose-500/60 bg-rose-500/10 font-semibold text-rose-600 active:scale-[0.98] dark:text-rose-300"
             disabled={pending || !chosen.length}
-            onClick={() => onRestore(chosen)}
+            onClick={() => onRestore(chosen, removeAdded)}
           >
             {pending ? "Restoring…" : "Restore"}
           </button>

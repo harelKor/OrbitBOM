@@ -16,7 +16,8 @@ import { partChangesSchema, resolveCounterAdds, type PartChanges } from "@/lib/p
 import { settleSuggestedLink, suggestPickedParts } from "@/lib/review/review";
 import { refreshSystem } from "@/lib/sync/refresh";
 import { updateBomFromOnshape } from "@/lib/sync/updateBom";
-import { deleteObjects, fileKeysFor } from "@/lib/storage/cleanup";
+import { fileKeysFor } from "@/lib/storage/cleanup";
+import { deleteToTrash } from "@/lib/trash";
 import { isUuid } from "@/lib/uuid";
 import { getPart } from "@/lib/data/parts";
 
@@ -103,15 +104,17 @@ export async function addManualPart(
 }
 
 // Only manual parts can be deleted; Onshape parts come back on the next sync.
+// Kept in Recently deleted (Settings) for 30 days.
 export async function deleteManualPart(partId: string): Promise<ActionResult> {
-  await requireCapability("manage");
+  const member = await requireCapability("manage");
   if (!isUuid(partId)) return { error: "Unknown part." };
-  const keys = await fileKeysFor({ partId });
-  const deleted = await db
-    .delete(schema.parts)
-    .where(and(eq(schema.parts.id, partId), eq(schema.parts.isManual, true)))
-    .returning({ id: schema.parts.id });
-  if (deleted.length) await deleteObjects(keys);
+  const where = and(eq(schema.parts.id, partId), eq(schema.parts.isManual, true))!;
+  const [part] = await db.select({ name: schema.parts.displayName, onshapeName: schema.parts.onshapeName }).from(schema.parts).where(where);
+  if (part) {
+    const fileKeys = await fileKeysFor({ partId });
+    const label = part.name ?? part.onshapeName ?? "Manual part";
+    await db.transaction((tx) => deleteToTrash(tx, { kind: "part", label, root: schema.parts, where, memberId: member.id, fileKeys }));
+  }
   revalidatePath("/robots", "layout");
   revalidatePath("/cots", "layout");
   return {};
@@ -132,6 +135,10 @@ export async function syncSystem(systemId: string): Promise<SyncResult> {
     const warning = s.unknownMachines.length
       ? ` Unknown machines in Onshape: ${s.unknownMachines.join(", ")}.`
       : "";
+    if (s.skipped === "review")
+      return {
+        error: `Onshape's BOM leaves out ${s.removed.length} of this system's parts, so nothing was applied. Open Update System to check the changes and commit them if they're right.`,
+      };
     if (s.skipped) return { message: `BOM is up to date (${s.calls} Onshape calls).` };
     return { message: `BOM updated as ${s.version}: ${parts.join(", ")} (${s.calls} Onshape calls).${warning}` };
   } catch (err) {

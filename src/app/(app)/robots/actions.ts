@@ -7,8 +7,8 @@ import { z } from "zod";
 import { db, schema } from "@/db";
 import { requireAdmin } from "@/lib/auth";
 import { requireCapability } from "@/lib/mode";
-import { deleteObjects, fileKeysFor } from "@/lib/storage/cleanup";
-import { deleteRobotModel } from "@/lib/model/build";
+import { fileKeysFor } from "@/lib/storage/cleanup";
+import { deleteToTrash } from "@/lib/trash";
 import { saveLayoutsDocument } from "@/lib/fab/layoutsDocument";
 import { onshapeUrl, parseOnshapeUrl } from "@/lib/onshape/url";
 
@@ -74,12 +74,15 @@ export async function setRobotArchived(robotId: string, archived: boolean) {
   revalidatePath("/", "layout");
 }
 
+// Deleting keeps a copy in Recently deleted (Settings) for 30 days, with its files and its
+// built 3D model (lib/trash.ts), so an admin can bring the robot back.
 export async function deleteRobot(robotId: string) {
-  await requireAdmin();
-  const keys = await fileKeysFor({ robotId });
-  await db.delete(schema.robots).where(eq(schema.robots.id, robotId));
-  await deleteRobotModel(robotId);
-  await deleteObjects(keys);
+  const member = await requireAdmin();
+  const [robot] = await db.select({ name: schema.robots.name }).from(schema.robots).where(eq(schema.robots.id, robotId));
+  if (!robot) redirect("/");
+  const fileKeys = await fileKeysFor({ robotId });
+  const where = eq(schema.robots.id, robotId);
+  await db.transaction((tx) => deleteToTrash(tx, { kind: "robot", label: robot.name, root: schema.robots, where, memberId: member.id, fileKeys }));
   revalidatePath("/", "layout");
   redirect("/");
 }
@@ -129,11 +132,15 @@ export async function updateSystem(systemId: string, _: FormState, formData: For
   return { saved: true };
 }
 
+// Kept in Recently deleted for 30 days, like a robot.
 export async function deleteSystem(robotId: string, systemId: string) {
-  await requireAdmin();
-  const keys = await fileKeysFor({ systemId });
-  await db.delete(schema.systems).where(eq(schema.systems.id, systemId));
-  await deleteObjects(keys);
+  const member = await requireAdmin();
+  const [system] = await db.select({ name: schema.systems.name }).from(schema.systems).where(eq(schema.systems.id, systemId));
+  if (system) {
+    const fileKeys = await fileKeysFor({ systemId });
+    const where = eq(schema.systems.id, systemId);
+    await db.transaction((tx) => deleteToTrash(tx, { kind: "system", label: system.name, root: schema.systems, where, memberId: member.id, fileKeys }));
+  }
   revalidatePath("/", "layout");
   redirect(`/robots/${robotId}`);
 }

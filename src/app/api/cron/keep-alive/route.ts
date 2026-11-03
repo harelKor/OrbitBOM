@@ -3,13 +3,15 @@ import { NextResponse, type NextRequest } from "next/server";
 import { db, schema } from "@/db";
 import { saveNightlyBackup } from "@/lib/storage/backup";
 import { cleanUpStorage, recountStorage } from "@/lib/storage/usage";
+import { purgeTrash } from "@/lib/trash";
 
 export const maxDuration = 300;
 
 // Daily Vercel Cron (vercel.json). Supabase pauses a free project after 7 days without
 // activity; one query a day keeps it awake. It also recounts R2 storage and, above the clean-up
 // line, frees space (src/config/storage.ts), and forgets Recent actions members closed more than
-// two weeks ago (the list only shows the last 7 days) and sync log rows older than two weeks. First it saves the nightly backup of the
+// two weeks ago (the list only shows the last 7 days), sync log rows older than two weeks and
+// Recently deleted entries older than 30 days (with their files). First it saves the nightly backup of the
 // BOM and inventory to R2 (src/lib/storage/backup.ts).
 export async function GET(request: NextRequest) {
   if (request.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -33,5 +35,6 @@ export async function GET(request: NextRequest) {
     .where(lt(schema.syncJobs.startedAt, sql`now() - interval '14 days'`))
     .then((r) => r.rowCount ?? 0)
     .catch(() => null);
-  return NextResponse.json({ ok: true, members: row?.members ?? 0, backup, storage, dismissedPruned: dismissed, syncJobsPruned: syncJobs, at: new Date().toISOString() });
+  const trashPurged = await purgeTrash().catch((err) => ({ error: err instanceof Error ? err.message : String(err) }));
+  return NextResponse.json({ ok: true, members: row?.members ?? 0, backup, storage, dismissedPruned: dismissed, syncJobsPruned: syncJobs, trashPurged, at: new Date().toISOString() });
 }

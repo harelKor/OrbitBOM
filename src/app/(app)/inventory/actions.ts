@@ -25,6 +25,7 @@ import { missing, newestOpenOrders, orderHref } from "@/lib/inventory/season";
 import { type PieceOp, SIZE_KEY, parseStock, snapStock } from "@/lib/inventory/stock";
 import { applyEachPartChanges } from "@/lib/parts/apply";
 import { StorageNotConfiguredError, deleteObject, objectExists, presignUpload } from "@/lib/storage/r2";
+import { deleteToTrash } from "@/lib/trash";
 import { isUuid } from "@/lib/uuid";
 
 const { inventoryItems, inventoryGroups, inventoryConditions, inventoryLocations, inventoryMoves, inventoryCategories, parts } = schema;
@@ -192,19 +193,30 @@ export async function removeItemPhoto(itemId: string): Promise<ActionResult> {
 }
 
 export async function deleteItem(itemId: string) {
-  await requireCapability("manage");
+  const member = await requireCapability("manage");
   if (!isUuid(itemId)) return;
-  await db.delete(inventoryItems).where(eq(inventoryItems.id, itemId));
+  await trashItems([itemId], member.id);
   refresh();
 }
 
 // The Inventory page's Delete mode.
 export async function bulkDeleteItems(itemIds: string[]): Promise<ActionResult> {
-  await requireCapability("manage");
+  const member = await requireCapability("manage");
   if (!itemIds.length || itemIds.some((id) => !isUuid(id))) return { error: "Unknown item." };
-  await db.delete(inventoryItems).where(inArray(inventoryItems.id, itemIds));
+  await trashItems(itemIds, member.id);
   refresh();
-  return { message: `Deleted ${itemIds.length} item${itemIds.length === 1 ? "" : "s"}.` };
+  return { message: `Deleted ${itemIds.length} item${itemIds.length === 1 ? "" : "s"}. An admin can bring them back from Settings → Recently deleted.` };
+}
+
+// Each item goes to Recently deleted on its own (with its stock moves, history and orders, and
+// the parts that were linked to it), so one can come back without the others.
+async function trashItems(itemIds: string[], memberId: string) {
+  const items = await db.select({ id: inventoryItems.id, name: inventoryItems.name }).from(inventoryItems).where(inArray(inventoryItems.id, itemIds));
+  await db.transaction(async (tx) => {
+    for (const item of items) {
+      await deleteToTrash(tx, { kind: "item", label: item.name, root: inventoryItems, where: eq(inventoryItems.id, item.id), memberId });
+    }
+  });
 }
 
 // The Inventory page's Move mode: a new category and / or location for every selected item.

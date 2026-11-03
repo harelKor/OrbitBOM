@@ -1,9 +1,12 @@
 import "server-only";
+import { and, count, eq, isNull } from "drizzle-orm";
+import { db, schema } from "@/db";
 import { checkSystem } from "@/lib/versions/detect";
 import { commitDraft } from "@/lib/versions/commit";
 
 export type SyncSummary = {
-  skipped?: "unchanged";
+  // "review": too many parts would leave the BOM at once; the changes wait in the draft.
+  skipped?: "unchanged" | "review";
   added: string[];
   updated: number;
   removed: string[];
@@ -23,6 +26,24 @@ export async function updateBomFromOnshape(
 ): Promise<SyncSummary> {
   const check = await checkSystem(systemId, memberId, { force });
   if (!check.draft) return { skipped: "unchanged", added: [], updated: 0, removed: [], unknownMachines: [], calls: check.calls };
+  // An empty or cut-off BOM from Onshape (a suppressed subassembly, a broken reference, the wrong
+  // configuration) would mark most of the system removed. Then nothing is committed without a
+  // member: the changes stay in the draft for Update System's Commit window.
+  const removed = check.draft.changes.filter((c) => c.change === "removed").map((c) => c.name);
+  if (removed.length && (await tooManyRemoved(systemId, removed.length))) {
+    return { skipped: "review", added: [], updated: 0, removed, unknownMachines: [], calls: check.calls };
+  }
   const c = await commitDraft(systemId, memberId, { draftId: check.draft.id, name: name ?? check.draft.name });
   return { added: c.added, updated: c.updated, removed: c.removed, unknownMachines: c.unknownMachines, calls: check.calls, version: c.label };
+}
+
+// Every part, or at least 5 and more than a fifth of the system's parts from Onshape.
+export const MASS_REMOVAL = { min: 5, share: 0.2 };
+async function tooManyRemoved(systemId: string, removed: number) {
+  const [row] = await db
+    .select({ n: count() })
+    .from(schema.parts)
+    .where(and(eq(schema.parts.systemId, systemId), eq(schema.parts.isManual, false), isNull(schema.parts.removedFromCadAt)));
+  const live = row?.n ?? 0;
+  return removed >= live || (removed >= MASS_REMOVAL.min && removed > live * MASS_REMOVAL.share);
 }

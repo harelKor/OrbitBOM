@@ -26,7 +26,8 @@ export const RESTORE_SCOPES = {
 export type RestoreScope = keyof typeof RESTORE_SCOPES;
 
 // Link tables are replaced whole; the rest are matched by id, so rows that were in the backup
-// keep their history and only rows added since are removed.
+// keep their history. Rows added since stay unless `removeAdded` is chosen: removing a robot,
+// system or part also removes its history and versions, which no backup holds.
 const REPLACE_WHOLE: BackupTable[] = ["groupMembers", "mergeMembers"];
 // Names that must stay unique while rows swap them.
 const UNIQUE_NAMES: Partial<Record<BackupTable, string>> = { inventoryLocations: "name", inventoryConditions: "label", baseMaterials: "name" };
@@ -45,10 +46,11 @@ export async function readBackup(key: string): Promise<{ at: string; tables: Rec
 // Puts the chosen parts of the app back the way a backup has them. A copy of how things are now
 // is saved first (orbitparts-YYYY-MM-DD-before-restore-HHMM), so a restore can itself be undone
 // by restoring that copy. Tables an older backup doesn't hold are left as they are.
-export async function restoreBackup(key: string, scopes: RestoreScope[]): Promise<RestoreResult> {
+export async function restoreBackup(key: string, scopes: RestoreScope[], { removeAdded = false }: { removeAdded?: boolean } = {}): Promise<RestoreResult> {
   if (!scopes.length) throw new Error("Pick what to restore.");
   const backup = await readBackup(key);
-  const stamp = new Date().toISOString().slice(11, 16).replace(":", "");
+  // To the second, so two restores in the same minute don't overwrite each other's copy.
+  const stamp = new Date().toISOString().slice(11, 19).replace(/:/g, "");
   const safety = await saveNightlyBackup(`before-restore-${stamp}`);
   if ("skipped" in safety) throw new Error(`Not restored: ${safety.skipped}.`);
   const names = new Set<BackupTable>(scopes.flatMap((s) => RESTORE_SCOPES[s].tables));
@@ -59,19 +61,24 @@ export async function restoreBackup(key: string, scopes: RestoreScope[]): Promis
 
   const tables = await db.transaction(async (tx) => {
     const out: RestoreResult["tables"] = [];
-    for (const name of order) out.push({ table: name, ...(await restoreTable(tx, name, backup.tables[name], inScope)) });
+    for (const name of order) out.push({ table: name, ...(await restoreTable(tx, name, backup.tables[name], inScope, removeAdded)) });
     return out;
   });
   return { safetyCopy: safety.key, tables };
 }
 
-async function restoreTable(tx: Tx, name: BackupTable, saved: Row[], inScope: Set<string>) {
+async function restoreTable(tx: Tx, name: BackupTable, saved: Row[], inScope: Set<string>, removeAdded: boolean) {
   const table = BACKUP_TABLES[name] as PgTable;
   const columns = getTableColumns(table as Table) as Record<string, PgTable["_"]["columns"][string]>;
   const pk = Object.entries(columns).filter(([, c]) => c.primary);
   const rows = await cleanRows(tx, table, columns, saved, inScope);
 
   if (REPLACE_WHOLE.includes(name) || pk.length !== 1) {
+    // Kept: the backup's links are added back next to the ones made since.
+    if (!removeAdded) {
+      for (let i = 0; i < rows.length; i += 500) await tx.insert(table).values(rows.slice(i, i + 500)).onConflictDoNothing();
+      return { restored: rows.length, removed: 0 };
+    }
     const removed = (await tx.delete(table)).rowCount ?? 0;
     for (let i = 0; i < rows.length; i += 500) await tx.insert(table).values(rows.slice(i, i + 500));
     return { restored: rows.length, removed: Math.max(0, removed - rows.length) };
@@ -79,8 +86,9 @@ async function restoreTable(tx: Tx, name: BackupTable, saved: Row[], inScope: Se
 
   const [pkKey, pkCol] = pk[0];
   const ids = rows.map((r) => r[pkKey]);
-  // Rows added since the backup go (with what hangs off them, as deleting them in the app would).
-  const removed = (await tx.delete(table).where(ids.length ? notInArray(pkCol, ids) : undefined)).rowCount ?? 0;
+  // Rows added since the backup go only when asked (with what hangs off them, as deleting them in
+  // the app would).
+  const removed = removeAdded ? ((await tx.delete(table).where(ids.length ? notInArray(pkCol, ids) : undefined)).rowCount ?? 0) : 0;
   const unique = UNIQUE_NAMES[name];
   if (unique && ids.length) {
     const col = columns[unique];
