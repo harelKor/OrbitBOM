@@ -133,7 +133,7 @@ export function InventoryView({
     const find = () => {
       const el = document.querySelector(`[data-item="${CSS.escape(addedParam)}"]`);
       if (el) return el.scrollIntoView({ behavior: "smooth", block: "center" });
-      if (++tries < 60) frame = requestAnimationFrame(find);
+      if (++tries < 300) frame = requestAnimationFrame(find);
     };
     frame = requestAnimationFrame(find);
     return () => cancelAnimationFrame(frame);

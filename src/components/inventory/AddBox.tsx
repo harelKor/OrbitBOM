@@ -87,7 +87,7 @@ export function AddBox({
   const [reading, startRead] = useTransition();
   const [readError, setReadError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [saved, setSaved] = useState<{ id: string; name: string; draft: Draft; message?: string } | null>(null);
+  const [saved, setSaved] = useState<{ id: string; name: string; category: string | null; draft: Draft; message?: string } | null>(null);
   const [, startSave] = useTransition();
   const box = useRef<HTMLInputElement>(null);
   const phone = usePhone();
@@ -196,7 +196,7 @@ export function AddBox({
         return;
       }
       if (onPick) return onPick(r.id);
-      setSaved({ id: r.id, name: input.name, draft, message: r.message });
+      setSaved({ id: r.id, name: input.name, category: input.category || draft.category, draft, message: r.message });
       onAdded?.(r.id);
     });
   };
@@ -397,17 +397,17 @@ export function AddBox({
             {onAdded && (
               <button
                 type="button"
-                className="btn min-h-11 min-w-12 shrink-0 px-4 text-base active:scale-[0.98]"
+                className="btn min-h-12 min-w-14 shrink-0 px-5 text-lg active:scale-[0.98]"
                 title="Go to item"
                 aria-label="Go to item"
-                onClick={() => jumpTo(saved.id, saved.draft.category)}
+                onClick={() => jumpTo(saved.id, saved.category)}
               >
-                <Icon name="arrow" className="h-5 w-5" />
+                <Icon name="arrow" className="h-6 w-6" />
               </button>
             )}
             <button
               type="button"
-              className="btn min-h-11 shrink-0 active:scale-[0.98]"
+              className="btn min-h-12 shrink-0 px-5 text-base active:scale-[0.98]"
               onClick={() => {
                 setSaved(null);
                 openItem(saved.id);
