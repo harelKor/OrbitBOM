@@ -10,9 +10,10 @@ const { systems, systemVersions } = schema;
 // and not committed yet. A database read only.
 export type SystemSync = { outdated: "reverted" | "partial" | null; waiting: number };
 
-export async function listSystemSync(): Promise<Map<string, SystemSync>> {
+// `systemRows`: the systems already read by the caller (the right panel), so they aren't read twice.
+export async function listSystemSync(systemRows?: { id: string; currentVersionId: string | null }[]): Promise<Map<string, SystemSync>> {
   const [rows, latest, drafts] = await Promise.all([
-    db.select({ id: systems.id, currentVersionId: systems.currentVersionId }).from(systems),
+    systemRows ?? db.select({ id: systems.id, currentVersionId: systems.currentVersionId }).from(systems),
     db
       .selectDistinctOn([systemVersions.systemId], { systemId: systemVersions.systemId, id: systemVersions.id })
       .from(systemVersions)

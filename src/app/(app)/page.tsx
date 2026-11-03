@@ -4,26 +4,35 @@ import { redirect } from "next/navigation";
 import { ROBOT_COOKIE } from "@/components/shell/mode";
 import { FastLink } from "@/components/ui/FastLink";
 import { requireMember } from "@/lib/auth";
-import { listRobots } from "@/lib/data/robots";
+import { asc, desc } from "drizzle-orm";
+import { db, schema } from "@/db";
+import { getRobot } from "@/lib/data/robots";
 import { landingPath } from "@/lib/teams";
 
 // The landing page: one full-height picture card per app. Robots are picked in the right sidebar. Opening the app
 // takes a member with a team to their page; the sidebar's Home link (?home) keeps the tiles.
 export default async function HomePage({ searchParams }: { searchParams: Promise<{ home?: string }> }) {
   const member = await requireMember();
-  const [robots, jar, { home }] = await Promise.all([listRobots(), cookies(), searchParams]);
+  // Only the robots' ids first: most members are sent on to their team's page, and working out
+  // completion (every part's status) is left for the tiles.
+  const [robots, jar, { home }] = await Promise.all([
+    db.select({ id: schema.robots.id, archived: schema.robots.archived }).from(schema.robots).orderBy(desc(schema.robots.year), asc(schema.robots.name)),
+    cookies(),
+    searchParams,
+  ]);
   const last = jar.get(ROBOT_COOKIE)?.value;
-  const robot = robots.find((r) => r.id === last) ?? robots.find((r) => !r.archived);
+  const picked = robots.find((r) => r.id === last) ?? robots.find((r) => !r.archived);
   if (home === undefined) {
-    const path = await landingPath(member, robot?.id ?? null);
+    const path = await landingPath(member, picked?.id ?? null);
     if (path) redirect(path);
   }
+  const robot = picked ? await getRobot(picked.id) : null;
 
   const tiles = [
     {
-      href: robot ? `/robots/${robot.id}` : "/robots/new",
+      href: robot ? `/robots/${robot.robot.id}` : "/robots/new",
       title: "BOM",
-      text: robot ? `${robot.name} · ${robot.breakdown.percent}% complete` : "Create the first robot",
+      text: robot ? `${robot.robot.name} · ${robot.breakdown.percent}% complete` : "Create the first robot",
       image: "/apps/bom.png",
     },
     { href: "/inventory", title: "Inventory", text: null, image: "/apps/inventory.png" },

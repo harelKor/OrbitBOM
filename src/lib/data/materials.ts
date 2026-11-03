@@ -27,7 +27,9 @@ export async function listMaterialGroups(exec: Exec = db): Promise<MaterialGroup
   const byCat = new Map<string, typeof items>();
   for (const i of items) {
     const c = categoryOf(i, cats);
-    byCat.set(c, [...(byCat.get(c) ?? []), i]);
+    const list = byCat.get(c);
+    if (list) list.push(i);
+    else byCat.set(c, [i]);
   }
   const groupRank = (g: string) => (g === "consumables" ? -1 : CATEGORY_GROUPS.findIndex((x) => x.id === g));
   return cats

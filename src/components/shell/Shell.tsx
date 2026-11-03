@@ -2,7 +2,6 @@
 
 import { usePathname } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import type { MaterialGroup } from "@/lib/data/materials";
 import type { ShellCategory, ShellRobot } from "@/lib/data/shell";
 import { InventoryPopupProvider } from "@/components/inventory/InventoryPopup";
 import { PartDetailsProvider } from "@/components/bom/PartDetailsHost";
@@ -31,7 +30,7 @@ export function Shell({
   categories,
   mode,
   materialColors,
-  materials,
+  materialsStamp,
   member,
   children,
 }: {
@@ -40,7 +39,7 @@ export function Shell({
   categories: ShellCategory[];
   mode: Mode;
   materialColors: Record<string, string>;
-  materials: MaterialGroup[];
+  materialsStamp: number;
   member: { name: string; email: string; isAdmin: boolean };
   children: React.ReactNode;
 }) {
@@ -71,7 +70,7 @@ export function Shell({
   return (
     <ModeProvider initial={mode} isAdmin={member.isAdmin}>
       <FilterProvider>
-        <MaterialColorsProvider initial={materialColors} materials={materials}>
+        <MaterialColorsProvider initial={materialColors} stamp={materialsStamp}>
           <InventoryPopupProvider>
             <PartDetailsProvider>
               <div

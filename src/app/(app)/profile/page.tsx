@@ -25,23 +25,26 @@ export default async function ProfilePage({
 }) {
   const member = await requireMember();
   const { onshape } = await searchParams;
-  const [token] = await db
-    .select({ callsToday: schema.onshapeTokens.callsToday, callsDay: schema.onshapeTokens.callsDay })
-    .from(schema.onshapeTokens)
-    .where(eq(schema.onshapeTokens.memberId, member.id))
-    .limit(1);
+  const [[token], mcpTokens, h, systems] = await Promise.all([
+    db
+      .select({ callsToday: schema.onshapeTokens.callsToday, callsDay: schema.onshapeTokens.callsDay })
+      .from(schema.onshapeTokens)
+      .where(eq(schema.onshapeTokens.memberId, member.id))
+      .limit(1),
+    db
+      .select({
+        id: schema.mcpTokens.id,
+        label: schema.mcpTokens.label,
+        createdAt: schema.mcpTokens.createdAt,
+        lastUsedAt: schema.mcpTokens.lastUsedAt,
+      })
+      .from(schema.mcpTokens)
+      .where(eq(schema.mcpTokens.memberId, member.id))
+      .orderBy(desc(schema.mcpTokens.createdAt)),
+    headers(),
+    listTeamSystems(),
+  ]);
   const today = new Date().toISOString().slice(0, 10);
-  const mcpTokens = await db
-    .select({
-      id: schema.mcpTokens.id,
-      label: schema.mcpTokens.label,
-      createdAt: schema.mcpTokens.createdAt,
-      lastUsedAt: schema.mcpTokens.lastUsedAt,
-    })
-    .from(schema.mcpTokens)
-    .where(eq(schema.mcpTokens.memberId, member.id))
-    .orderBy(desc(schema.mcpTokens.createdAt));
-  const [h, systems] = await Promise.all([headers(), listTeamSystems()]);
   const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host")}`;
   const calls = token?.callsDay === today ? token.callsToday : 0;
 
