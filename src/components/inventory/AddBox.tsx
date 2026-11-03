@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { readProductLink, saveItem, type ItemInput } from "@/app/(app)/inventory/actions";
+import { useRouter } from "next/navigation";
 import { Dialog } from "@/components/Dialog";
 import { useCan } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
@@ -73,6 +74,7 @@ export function AddBox({
   // Any team adds items; without a team it is only a search box.
   const edit = useCan("work");
   const { openItem } = useInventoryPopup();
+  const router = useRouter();
   const [focus, setFocus] = useState(false);
   const [found, setFound] = useState<Found | null>(null);
   const [searching, setSearching] = useState(false);
@@ -353,51 +355,81 @@ export function AddBox({
       )}
     </>
   );
-  // The banner's jump icon: closes the phone sheet, scrolls to the item's card or row and lights it
-  // up again; an item not shown on this page (home's group boxes) opens in its window instead.
-  const jumpTo = (id: string) => {
-    if (phone) setSaved(null);
+  // The popup's arrow: closes it, scrolls the item's card or row to the middle of the screen and
+  // lights it until the next tap. An item not on this page (home's group boxes, another
+  // category) opens its category page, which does the same (?added=).
+  const jumpTo = (id: string, category: string | null) => {
+    setSaved(null);
     requestAnimationFrame(() => {
       const el = document.querySelector(`[data-item="${CSS.escape(id)}"]`);
-      if (!el) return openItem(id);
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
-      onAdded?.(id);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        return onAdded?.(id);
+      }
+      if (category) return router.push(`/inventory/c/${encodeURIComponent(category)}?added=${encodeURIComponent(id)}`);
+      openItem(id);
     });
   };
-  const addedBanner = saved && (
-    <div className={`flex flex-wrap items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-300 ${phone ? "" : "mt-2"}`}>
-      <span className="min-w-0 flex-1">
-        Added <span className="font-semibold">{saved.name}</span>.{saved.message && ` ${saved.message}`}
-      </span>
-      {onAdded && (
-        <button type="button" className="btn min-h-10 px-3 active:scale-[0.98]" title="Go to item" aria-label="Go to item" onClick={() => jumpTo(saved.id)}>
-          <Icon name="arrow" className="h-4 w-4" />
-        </button>
-      )}
-      <button
-        type="button"
-        className="btn min-h-10 active:scale-[0.98]"
-        onClick={() => {
-          if (phone) setSaved(null);
-          openItem(saved.id);
-        }}
-      >
-        Edit
-      </button>
-      <button type="button" className="btn min-h-10 active:scale-[0.98]" onClick={() => setDraft({ ...saved.draft, inStock: newStock, links: [], imageUrl: null, price: null, photo: null })}>
-        Add another like this
-      </button>
-      {phone ? (
-        <button type="button" className="btn-primary min-h-10 w-full active:scale-[0.98]" onClick={() => start({ category: saved.draft.category, locationId: saved.draft.locationId, locationTouched: true })}>
-          + Add a different item
-        </button>
-      ) : (
-        <button type="button" className="press text-emerald-700" aria-label="Dismiss" onClick={() => setSaved(null)}>
-          <Icon name="close" className="h-4 w-4" />
-        </button>
-      )}
-    </div>
-  );
+  // After adding: a borderless card floating near the bottom over a lightly blurred page; a tap
+  // anywhere outside it closes it (Harel, 2026-11-03).
+  useEffect(() => {
+    if (!saved || draft) return;
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setSaved(null);
+    window.addEventListener("keydown", esc);
+    return () => window.removeEventListener("keydown", esc);
+  }, [saved, draft]);
+  const addedPopup =
+    saved &&
+    !draft &&
+    createPortal(
+      <>
+        <div aria-hidden className="fixed inset-0 z-50 bg-black/20 backdrop-blur-[1.5px]" onClick={() => setSaved(null)} />
+        <div
+          role="dialog"
+          aria-label="Item added"
+          className="fixed inset-x-3 bottom-4 z-[51] mx-auto max-w-md space-y-2.5 rounded-2xl border border-emerald-500/50 bg-surface/95 p-3.5 text-sm text-emerald-800 shadow-2xl ring-1 ring-emerald-400/30 backdrop-blur-md dark:text-emerald-300"
+          style={{ paddingBottom: "max(0.875rem, env(safe-area-inset-bottom))" }}
+        >
+          <div className="flex items-center gap-2">
+            <span className="min-w-0 flex-1">
+              Added <span className="font-semibold">{saved.name}</span>.{saved.message && ` ${saved.message}`}
+            </span>
+            {onAdded && (
+              <button
+                type="button"
+                className="btn min-h-11 min-w-12 shrink-0 px-4 text-base active:scale-[0.98]"
+                title="Go to item"
+                aria-label="Go to item"
+                onClick={() => jumpTo(saved.id, saved.draft.category)}
+              >
+                <Icon name="arrow" className="h-5 w-5" />
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn min-h-11 shrink-0 active:scale-[0.98]"
+              onClick={() => {
+                setSaved(null);
+                openItem(saved.id);
+              }}
+            >
+              Edit
+            </button>
+          </div>
+          <button
+            type="button"
+            className="btn-primary min-h-11 w-full active:scale-[0.98]"
+            onClick={() => {
+              setSaved(null);
+              start({ category: saved.draft.category, locationId: saved.draft.locationId, locationTouched: true });
+            }}
+          >
+            + Add a different item
+          </button>
+        </div>
+      </>,
+      document.body,
+    );
   const form = draft && (
     <ItemForm
       itemId={null}
@@ -493,16 +525,14 @@ export function AddBox({
       {readError && <p className="mt-2 text-sm text-amber-700">{readError}</p>}
       {phone ? (
         // On phones the form is a sheet from the bottom, the whole width, its Add button always
-        // in view; after adding it stays open to add the next one.
-        <Dialog open={!!draft || !!saved} onClose={() => (setDraft(null), setSaved(null))} title={draft ? "Add an item" : "Added"} sheet>
-          {saved && !draft ? addedBanner : form}
+        // in view.
+        <Dialog open={!!draft} onClose={() => setDraft(null)} title="Add an item" sheet>
+          {form}
         </Dialog>
       ) : (
-        <>
-          {saved && !draft && addedBanner}
-          {draft && <div className="panel mt-3 p-4">{form}</div>}
-        </>
+        draft && <div className="panel mt-3 p-4">{form}</div>
       )}
+      {addedPopup}
     </div>
   );
 }

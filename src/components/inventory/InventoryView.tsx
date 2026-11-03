@@ -119,6 +119,25 @@ export function InventoryView({
   const params = useSearchParams();
   const locationId = params.get("loc") ?? "";
   const setLocationId = (id: string) => pushQuery({ loc: id || null });
+  // The Added popup's arrow from another page lands here with ?added=<id>: the item is lit,
+  // scrolled to the middle of the screen, and the param leaves the URL (Harel, 2026-11-03).
+  const addedParam = params.get("added");
+  useEffect(() => {
+    if (!addedParam) return;
+    onAdded(addedParam);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("added");
+    window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+    let tries = 0;
+    let frame = 0;
+    const find = () => {
+      const el = document.querySelector(`[data-item="${CSS.escape(addedParam)}"]`);
+      if (el) return el.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (++tries < 60) frame = requestAnimationFrame(find);
+    };
+    frame = requestAnimationFrame(find);
+    return () => cancelAnimationFrame(frame);
+  }, [addedParam]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   // Move / Delete: taps select cards, the bar at the bottom acts on them.
