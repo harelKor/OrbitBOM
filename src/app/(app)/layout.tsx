@@ -4,19 +4,20 @@ import { Shell } from "@/components/shell/Shell";
 import { requireMember } from "@/lib/auth";
 import { listCategories } from "@/lib/data/categories";
 import { listMaterialColors } from "@/lib/data/materialColors";
-import { listMaterialGroups } from "@/lib/data/materials";
 import { listShellRobots } from "@/lib/data/shell";
 import { getMode } from "@/lib/mode";
 
+// When this render happened: a new value on every server render of the layout.
+const renderStamp = () => Date.now();
+
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const member = await requireMember();
-  const [robots, mode, jar, materialColors, categories, materials] = await Promise.all([
+  const [robots, mode, jar, materialColors, categories] = await Promise.all([
     listShellRobots(),
     getMode(),
     cookies(),
     listMaterialColors(),
     listCategories(),
-    listMaterialGroups(),
   ]);
 
   return (
@@ -26,7 +27,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       categories={categories.map((c) => ({ id: c.id, label: c.label, group: c.group }))}
       mode={mode}
       materialColors={materialColors}
-      materials={materials.map((g) => ({ ...g, items: g.items.map((i) => ({ ...i, specs: {} })) }))}
+      // A new render (a save, a refresh) has the material pickers fetch their list again.
+      materialsStamp={renderStamp()}
       member={{ name: member.name, email: member.email, isAdmin: member.isAdmin }}
     >
       {children}

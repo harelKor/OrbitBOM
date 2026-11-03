@@ -6,6 +6,7 @@ import { listRobotParts } from "@/lib/data/parts";
 import { getRobot } from "@/lib/data/robots";
 import { listInventoryReviews } from "@/lib/review/inventory";
 import { listRobotReviews } from "@/lib/review/review";
+import { isUuid } from "@/lib/uuid";
 
 // To Review: parts whose material, processes or type were set automatically, by Suggest setup
 // or by a member's Claude, and suggested inventory links, waiting for their designer to approve
@@ -13,14 +14,16 @@ import { listRobotReviews } from "@/lib/review/review";
 export default async function ReviewPage({ params }: { params: Promise<{ robotId: string }> }) {
   await requireMember();
   const { robotId } = await params;
-  const data = await getRobot(robotId);
-  if (!data) notFound();
-  const [parts, reviews, inventory, inventoryReviews] = await Promise.all([
-    listRobotParts(data.robot.id),
-    listRobotReviews(data.robot.id),
+  if (!isUuid(robotId)) notFound();
+  // All in one round: the robot's own read only decides the 404.
+  const [data, parts, reviews, inventory, inventoryReviews] = await Promise.all([
+    getRobot(robotId),
+    listRobotParts(robotId),
+    listRobotReviews(robotId),
     listInventoryNames(),
     listInventoryReviews(),
   ]);
+  if (!data) notFound();
   const byPart = new Map(parts.map((p) => [p.id, p]));
   // An inventory link shows the item's name, not its id.
   const itemName = new Map(inventory.map((i) => [i.id, i.name]));

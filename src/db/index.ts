@@ -23,13 +23,15 @@ function connectionConfig(raw: string): { connectionString: string; ssl?: { reje
 // answered (pipelining), and through Supabase's transaction pooler that mixed up results in
 // production ("toISOString is not a function", ".map of undefined" while mapping rows) and left
 // queries that never finished. pg runs one query at a time per connection. Each warm serverless
-// instance keeps its own pool, so it stays small and drops connections that stall.
+// instance keeps its own pool and drops connections that stall. A page and the layout run about
+// 20 queries side by side, and the transaction pooler shares its server connections, so each
+// instance may hold 12 (5 queued a page's queries in rounds).
 const globalForDb = globalThis as unknown as { pg?: Pool };
 const client =
   globalForDb.pg ??
   new Pool({
     ...connectionConfig(process.env.DATABASE_URL!),
-    max: 5,
+    max: 12,
     connectionTimeoutMillis: 10_000,
     idleTimeoutMillis: 20_000,
     maxLifetimeSeconds: 600,

@@ -4,7 +4,7 @@ import { db, schema } from "@/db";
 import { categoryOf, getCategory } from "./categories";
 import { listCategories } from "@/lib/data/categories";
 import { currentVisit } from "@/lib/visits";
-import { type PieceOp, type PieceRow, type StoredPieces, applyPieceOp, snapStock, stepStock } from "./stock";
+import { type PieceOp, type PieceRow, type StoredPieces, applyPieceOp, countPieces, snapStock, stepStock } from "./stock";
 
 const { inventoryItems, inventoryMoves } = schema;
 
@@ -66,11 +66,11 @@ async function changeStock(
   return { name: item.name, from: item.inStock, to };
 }
 
-// Set the stock to a counted amount (the item form, a stocktake).
+// Set the stock to a counted amount (the item form, a stocktake). Worked out on the locked row,
+// the way the page shows it (countPieces): a + that lands meanwhile can't be lost, and a sheet
+// item keeps the amount typed rather than stepping one piece of it.
 export async function setStock(tx: Tx, itemId: string, amount: number, ctx: MoveCtx) {
-  const [item] = await tx.select({ inStock: inventoryItems.inStock }).from(inventoryItems).where(eq(inventoryItems.id, itemId));
-  if (!item) return null;
-  return moveStock(tx, { itemId, delta: amount - item.inStock, reason: "counted" }, ctx);
+  return changeStock(tx, itemId, (item) => countPieces(item, amount), "counted", null, ctx);
 }
 
 // Reverse a batch's stock changes (undo_batch), as new moves in a new batch.

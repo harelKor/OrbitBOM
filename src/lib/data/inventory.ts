@@ -5,7 +5,7 @@ import { cotsStatusOf } from "@/config/cots";
 import { categoryOf, getCategory, type InvCategory } from "@/lib/inventory/categories";
 import { categoryImageUrl, listCategories } from "./categories";
 import type { Shelf, ShelfSuggestion } from "@/components/bom/types";
-import { suggestItem } from "@/lib/inventory/match";
+import { itemMatcher, suggestItem } from "@/lib/inventory/match";
 import { computeUsage, type ItemUsage, type UsagePart } from "@/lib/inventory/usage";
 import { newestOpenOrders, type OpenOrder } from "@/lib/inventory/season";
 import { thumbKey } from "@/lib/onshape/thumbnails";
@@ -91,15 +91,21 @@ export async function usageOf(itemIds: string[], exec: Exec = db) {
   return { items, cats, usage: computeUsage(new Map(items.map((i) => [i.id, i.inStock])), used, sheetSet(items, cats)) };
 }
 
-export async function listInventory() {
+// The shelf, or with `itemIds` only those items (an item's page or window reads just its own
+// usage, order and picture, not the whole shop's).
+export async function listInventory({ itemIds }: { itemIds?: string[] } = {}) {
   const [items, groups, conditions, locations, used, categories, orders] = await Promise.all([
-    db.select().from(inventoryItems).orderBy(asc(inventoryItems.name)),
+    db
+      .select()
+      .from(inventoryItems)
+      .where(itemIds ? inArray(inventoryItems.id, itemIds) : undefined)
+      .orderBy(asc(inventoryItems.name)),
     db.select().from(inventoryGroups).orderBy(asc(inventoryGroups.name)),
     db.select().from(inventoryConditions).orderBy(asc(inventoryConditions.label)),
     db.select().from(inventoryLocations).orderBy(asc(inventoryLocations.name)),
-    usageParts(),
+    usageParts(db, { itemIds }),
     listCategories(),
-    openOrders(),
+    openOrders(itemIds),
   ]);
   const sheets = sheetSet(items, categories);
   const usage = computeUsage(new Map(items.map((i) => [i.id, i.inStock])), used, sheets);
@@ -133,11 +139,18 @@ export async function listFitTargets() {
 }
 
 // Each item's newest COTS card on its way (lib/inventory/season.ts says which count).
-async function openOrders() {
+async function openOrders(itemIds?: string[]) {
   const rows = await db
     .select({ itemId: parts.inventoryItemId, partId: parts.id, designState: parts.designState, systemId: parts.systemId, restock: parts.restock, at: parts.createdAt })
     .from(parts)
-    .where(and(isNotNull(parts.inventoryItemId), isNull(parts.removedFromCadAt), eq(parts.classification, "cots")));
+    .where(
+      and(
+        isNotNull(parts.inventoryItemId),
+        isNull(parts.removedFromCadAt),
+        eq(parts.classification, "cots"),
+        itemIds ? inArray(parts.inventoryItemId, itemIds) : undefined,
+      ),
+    );
   return newestOpenOrders(rows.map((r) => ({ ...r, itemId: r.itemId!, status: cotsStatusOf(r.designState) })));
 }
 
@@ -173,7 +186,21 @@ export async function inventoryItemDetail(itemId: string) {
   const { item } = base;
   const [candidates, { moves, history }] = await Promise.all([
     db
-      .select({ part: parts, systemName: systems.name, robotId: robots.id, robotName: robots.name })
+      .select({
+        part: {
+          id: parts.id,
+          displayName: parts.displayName,
+          onshapeName: parts.onshapeName,
+          quantity: parts.quantity,
+          sourceDid: parts.sourceDid,
+          sourceEid: parts.sourceEid,
+          onshapePartId: parts.onshapePartId,
+          cotsLinks: parts.cotsLinks,
+        },
+        systemName: systems.name,
+        robotId: robots.id,
+        robotName: robots.name,
+      })
       .from(parts)
       .innerJoin(systems, eq(systems.id, parts.systemId))
       .innerJoin(robots, eq(robots.id, systems.robotId))
@@ -191,7 +218,7 @@ export async function inventoryItemDetail(itemId: string) {
 
 // One item as the shelf list has it, with the lists its pills need (the item window).
 export async function inventoryItemWithLists(itemId: string) {
-  const { items, conditions, locations, groups, categories } = await listInventory();
+  const { items, conditions, locations, groups, categories } = await listInventory({ itemIds: [itemId] });
   const item = items.find((i) => i.id === itemId);
   return item ? { item, conditions, locations, groups, categories } : null;
 }
@@ -308,11 +335,13 @@ export async function shelfOfParts(rows: ShelfPart[]) {
       : [],
   ]);
   // A waiting link's item, when the parts had no COTS part to load every item for.
-  const missing = [...new Set(waiting.map((w) => w.itemId))].filter((id) => !all.some((i) => i.id === id));
-  const known = missing.length ? [...all, ...(await db.select(itemCols).from(inventoryItems).where(inArray(inventoryItems.id, missing)))] : all;
+  const allById = new Map(all.map((i) => [i.id, i]));
+  const missing = [...new Set(waiting.map((w) => w.itemId))].filter((id) => !allById.has(id));
+  const known = missing.length ? new Map([...allById, ...(await db.select(itemCols).from(inventoryItems).where(inArray(inventoryItems.id, missing))).map((i) => [i.id, i] as const)]) : allById;
   const thumbs = await itemThumbs(items, cats);
+  const itemById = new Map(items.map((i) => [i.id, i]));
   for (const p of linked) {
-    const item = items.find((i) => i.id === p.inventoryItemId);
+    const item = itemById.get(p.inventoryItemId!);
     if (!item) continue;
     const u = usage.get(item.id);
     const total = Math.max(u?.need ?? 0, item.seasonNeed ?? 0);
@@ -332,14 +361,15 @@ export async function shelfOfParts(rows: ShelfPart[]) {
     });
   }
   for (const w of waiting) {
-    const item = known.find((i) => i.id === w.itemId);
+    const item = known.get(w.itemId);
     if (item) suggestion.set(w.partId, { itemId: item.id, itemName: item.name, inStock: item.inStock, sheet: isSheet(item, cats), reason: "review", pending: true });
   }
   const no = new Set(rejected.map((r) => `${r.partId}:${r.itemId}`));
+  const match = itemMatcher(all);
   for (const p of unlinked) {
     if (suggestion.has(p.id)) continue;
-    const hit = suggestItem(p, all);
-    const item = hit && !no.has(`${p.id}:${hit.itemId}`) && all.find((i) => i.id === hit.itemId);
+    const hit = match(p);
+    const item = hit && !no.has(`${p.id}:${hit.itemId}`) && allById.get(hit.itemId);
     if (item) suggestion.set(p.id, { itemId: item.id, itemName: item.name, inStock: item.inStock, sheet: isSheet(item, cats), reason: hit.reason });
   }
   return { shelf, suggestion };

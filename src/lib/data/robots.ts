@@ -32,8 +32,10 @@ async function statusRows(systemIds: string[]) {
 export type RobotSummary = typeof robots.$inferSelect & { breakdown: Breakdown };
 
 export async function listRobots(): Promise<RobotSummary[]> {
-  const all = await db.select().from(robots).orderBy(desc(robots.year), asc(robots.name));
-  const allSystems = await db.select({ id: systems.id, robotId: systems.robotId }).from(systems);
+  const [all, allSystems] = await Promise.all([
+    db.select().from(robots).orderBy(desc(robots.year), asc(robots.name)),
+    db.select({ id: systems.id, robotId: systems.robotId }).from(systems),
+  ]);
   const rows = await statusRows(allSystems.map((s) => s.id));
   const robotOf = new Map(allSystems.map((s) => [s.id, s.robotId]));
   return all.map((robot) => ({

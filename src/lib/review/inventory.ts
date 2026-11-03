@@ -1,6 +1,6 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { count, desc, eq, inArray } from "drizzle-orm";
+import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { CategoryField } from "@/db/schema";
 import { listCategories } from "@/lib/data/categories";
@@ -242,6 +242,28 @@ export async function rejectInventoryReviews(ids: string[], memberId: string) {
 
 // ---------- Revert (AI logs) ----------
 
+// Which of these items something outside the batch has touched: a stock move or edit from another
+// batch, a BOM part linked to it, or an order recorded for it.
+async function usedSince(tx: Tx, itemIds: string[], batchId: string) {
+  const { inventoryMoves, inventoryItemHistory, parts, cotsOrderHistory } = schema;
+  // The run's own rows (its stock-in, its "created" entry) don't count. Run one after another:
+  // a transaction has one connection.
+  const rows = [
+    await tx
+      .selectDistinct({ id: inventoryMoves.itemId })
+      .from(inventoryMoves)
+      .where(and(inArray(inventoryMoves.itemId, itemIds), sql`${inventoryMoves.batchId} is distinct from ${batchId}`)),
+    await tx
+      .selectDistinct({ id: inventoryItemHistory.itemId })
+      .from(inventoryItemHistory)
+      .where(and(inArray(inventoryItemHistory.itemId, itemIds), sql`${inventoryItemHistory.batchId} is distinct from ${batchId}`)),
+    // The run's own links were already put back (revertAiBatch undoes part fields first).
+    await tx.selectDistinct({ id: parts.inventoryItemId }).from(parts).where(inArray(parts.inventoryItemId, itemIds)),
+    await tx.selectDistinct({ id: cotsOrderHistory.inventoryItemId }).from(cotsOrderHistory).where(inArray(cotsOrderHistory.inventoryItemId, itemIds)),
+  ];
+  return new Set(rows.flat().map((r) => r.id).filter((id): id is string => !!id));
+}
+
 // Reverses a batch's inventory changes, other than stock: items it created are deleted, fields it
 // edited go back (unless edited since), categories it added are removed, and its To Review
 // entries go. Returns what it did.
@@ -251,7 +273,12 @@ export async function revertInventoryBatch(tx: Tx, batchId: string, ctx: MoveCtx
     .from(schema.inventoryItemHistory)
     .where(eq(schema.inventoryItemHistory.batchId, batchId))
     .orderBy(schema.inventoryItemHistory.at);
-  const created = [...new Set(history.filter((h) => h.field === "created").map((h) => h.itemId))];
+  const added = [...new Set(history.filter((h) => h.field === "created").map((h) => h.itemId))];
+  // An item the run added is removed only while nothing else uses it: once a member stocked,
+  // edited, ordered or linked a part to it, deleting it would take that work along (its moves,
+  // history and order history cascade). Those items stay and are reported as kept.
+  const used = added.length ? await usedSince(tx, added, batchId) : new Set<string>();
+  const created = added.filter((id) => !used.has(id));
   if (created.length) await tx.delete(inventoryItems).where(inArray(inventoryItems.id, created));
 
   // A field edited several times in the batch goes back to its value before the first edit.
@@ -262,7 +289,7 @@ export async function revertInventoryBatch(tx: Tx, batchId: string, ctx: MoveCtx
     const s = span.get(k);
     span.set(k, { itemId: h.itemId, field: h.field, from: s ? s.from : h.oldValue, to: h.newValue });
   }
-  let kept = 0;
+  let kept = used.size;
   let edited = 0;
   const byItem = new Map<string, Record<string, { from: unknown; to: unknown }>>();
   for (const s of span.values()) byItem.set(s.itemId, { ...(byItem.get(s.itemId) ?? {}), [s.field]: { from: s.from, to: s.to } });

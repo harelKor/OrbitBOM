@@ -27,20 +27,36 @@ export function normUrl(url: string) {
 }
 
 export function suggestItem(part: MatchPart, items: MatchItem[]): { itemId: string; reason: MatchReason } | null {
-  const key = onshapeKeyOf(part);
-  if (key) {
-    const hit = items.find((i) => i.onshapeKey === key);
-    if (hit) return { itemId: hit.id, reason: "onshape" };
-  }
-  const urls = new Set((part.cotsLinks ?? []).map((l) => normUrl(l.url)));
-  if (urls.size) {
-    const hit = items.find((i) => i.cotsLinks.some((l) => urls.has(normUrl(l.url))));
-    if (hit) return { itemId: hit.id, reason: "link" };
-  }
-  const names = new Set([normName(part.displayName), normName(part.onshapeName)].filter(Boolean));
-  if (names.size) {
-    const hit = items.find((i) => [i.name, ...i.aliases].some((n) => names.has(normName(n))));
-    if (hit) return { itemId: hit.id, reason: "name" };
-  }
-  return null;
+  return itemMatcher(items)(part);
+}
+
+// suggestItem for many parts against the same items: the items are indexed once, so each part
+// is a few lookups, not a scan of every item. The first item in `items` order wins, as before.
+export function itemMatcher(items: MatchItem[]) {
+  const first = <K>(map: Map<K, number>, key: K, i: number) => {
+    if (!map.has(key)) map.set(key, i);
+  };
+  const byKey = new Map<string, number>();
+  const byUrl = new Map<string, number>();
+  const byName = new Map<string, number>();
+  items.forEach((item, i) => {
+    if (item.onshapeKey) first(byKey, item.onshapeKey, i);
+    for (const l of item.cotsLinks) first(byUrl, normUrl(l.url), i);
+    for (const n of [item.name, ...item.aliases]) first(byName, normName(n), i);
+  });
+  const best = (map: Map<string, number>, keys: Iterable<string>) => {
+    let at = Infinity;
+    for (const k of keys) at = Math.min(at, map.get(k) ?? Infinity);
+    return at === Infinity ? null : items[at];
+  };
+  return (part: MatchPart): { itemId: string; reason: MatchReason } | null => {
+    const key = onshapeKeyOf(part);
+    const byOnshape = key ? best(byKey, [key]) : null;
+    if (byOnshape) return { itemId: byOnshape.id, reason: "onshape" };
+    const byLink = best(byUrl, (part.cotsLinks ?? []).map((l) => normUrl(l.url)));
+    if (byLink) return { itemId: byLink.id, reason: "link" };
+    const byNameHit = best(byName, [normName(part.displayName), normName(part.onshapeName)].filter(Boolean));
+    if (byNameHit) return { itemId: byNameHit.id, reason: "name" };
+    return null;
+  };
 }

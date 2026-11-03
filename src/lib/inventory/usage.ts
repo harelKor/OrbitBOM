@@ -35,7 +35,11 @@ const rank = (status?: string) => (status === COTS_IN_STOCK ? 0 : status && (ORD
 
 export function computeUsage(stock: Map<string, number>, parts: UsagePart[], sheetItems: Set<string> = new Set()): Map<string, ItemUsage> {
   const byItem = new Map<string, UsagePart[]>();
-  for (const part of parts) byItem.set(part.inventoryItemId, [...(byItem.get(part.inventoryItemId) ?? []), part]);
+  for (const part of parts) {
+    const list = byItem.get(part.inventoryItemId);
+    if (list) list.push(part);
+    else byItem.set(part.inventoryItemId, [part]);
+  }
   const result = new Map<string, ItemUsage>();
   for (const [itemId, itemParts] of byItem) {
     const inStock = stock.get(itemId) ?? 0;

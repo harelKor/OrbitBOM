@@ -70,7 +70,7 @@ export const partChangesSchema = z
     cotsSentBack: text,
     // Counts one more (or takes one back) from the saved count rather than the page's copy, so
     // two people counting the same part at once never lose a piece (resolveCounterAdds).
-    add: z.partialRecord(z.enum(["donePreprocess", "doneProcess1", "doneProcess2", "postDone"]), z.number().int().min(-1000).max(1000)),
+    add: z.partialRecord(z.enum(["donePreprocess", "doneProcess1", "doneProcess2", "postDone", "stockCount"]), z.number().int().min(-1000).max(1000)),
     // Marked In Stock from the "In Stock?" tag: the shelf already had these units, so nothing
     // arrived (no Order History row, no stock added). Not a part field.
     fromShelfPrompt: z.literal(true),
@@ -127,7 +127,8 @@ export type Plan = { set: Partial<PartRow>; history: HistoryEntry[] };
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
-// Turns `add` into counts from the part as it is saved now, between 0 and the quantity. Counts
+// Turns `add` into counts from the part as it is saved now, between 0 and the quantity (a
+// stock count has no top). Counts
 // the same change also sets keep their value.
 export function resolveCounterAdds(part: PartRow, changes: PartChanges): PartChanges {
   const { add, ...rest } = changes;
@@ -135,7 +136,9 @@ export function resolveCounterAdds(part: PartRow, changes: PartChanges): PartCha
   const out: PartChanges = { ...rest };
   for (const [field, delta] of Object.entries(add) as [keyof typeof add, number][]) {
     if (out[field] !== undefined || !delta) continue;
-    out[field] = Math.min(Math.max(part[field] + delta, 0), Math.max(part.quantity, 1));
+    const next = Math.max(part[field] + delta, 0);
+    // A COTS card's stock count may go past the quantity (extras on hand); done counts can't.
+    out[field] = field === "stockCount" ? next : Math.min(next, Math.max(part.quantity, 1));
   }
   return out;
 }
