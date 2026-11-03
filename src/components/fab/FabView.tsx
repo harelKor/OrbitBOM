@@ -694,9 +694,9 @@ function MachineBox({ href, name, count, active, className = "flex", onClick }: 
       href={href}
       data-selected={active}
       onClick={onClick}
-      className={`card-interactive min-w-32 flex-col px-4 py-2.5 ${className}`}
+      className={`card-interactive min-w-0 flex-col px-3 py-1.5 sm:min-w-32 sm:px-4 sm:py-2.5 ${className}`}
     >
-      <span className="display text-2xl text-accent tabular-nums">{count}</span>
+      <span className="display text-xl text-accent tabular-nums sm:text-2xl">{count}</span>
       <span className="truncate text-xs font-medium text-fg-2">{name}</span>
     </ShallowLink>
   );
@@ -737,7 +737,7 @@ function MobileMachines({ total, machines, active, activeId, href }: {
         </ShallowLink>
       )}
       {open && (
-        <div className="order-last flex basis-full flex-wrap gap-2 sm:hidden">
+        <div className="order-last grid basis-full grid-cols-3 gap-2 sm:hidden">
           <MachineBox href={href(null)} name="All machines" count={total} active={!activeId} onClick={close} />
           {machines.map((m) => (
             <MachineBox key={m.id} href={href(m.id)} name={m.name} count={m.count} active={activeId === m.id} onClick={close} />

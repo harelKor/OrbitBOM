@@ -29,7 +29,7 @@ export const MACHINES = [
   { id: "lathe", kind: "machining", name: "LATHE", stage: "Process", cadFormat: "PDF" },
   { id: "cnc", kind: "machining", name: "CNC", stage: "Process", cadFormat: "STEP", sheetFormat: "STEP_FLAT" },
   { id: "zivudim", kind: "factory", name: "Zivudim", stage: "Process", cadFormat: "PARASOLID" },
-  { id: "3d-bambu", kind: "print", name: "3D Print - Bambu", stage: "Process", cadFormat: "STL" },
+  { id: "3d-bambu", kind: "print", name: "Bambu", stage: "Process", cadFormat: "STL" },
   { id: "3d-markforged", kind: "print", name: "3D Print - Markforged", stage: "Process", cadFormat: "STL" },
   { id: "3d-aran", kind: "print", name: "3D Print - ARAN", stage: "Process", cadFormat: "STL" },
   { id: "beth-el", kind: "factory", name: "Beth El", stage: "Process", cadFormat: "PARASOLID" },
