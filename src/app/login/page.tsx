@@ -24,6 +24,12 @@ export default async function LoginPage({
         <div className="mt-6">
           <SignInButton next={safeNext(next)} />
         </div>
+        {/* Local development against the local Supabase only (app/auth/dev/route.ts). */}
+        {process.env.NODE_ENV !== "production" && process.env.DEV_LOGIN === "1" && (
+          <a href={`/auth/dev?next=${encodeURIComponent(safeNext(next))}`} className="mt-3 block text-center text-sm text-muted underline hover:text-fg">
+            Dev sign-in (local database)
+          </a>
+        )}
       </div>
     </main>
   );

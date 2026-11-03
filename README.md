@@ -29,12 +29,22 @@ Action backs up the database (see `docs/runbook.md`).
 
 ## Local development
 
+Against a local Supabase in Docker, never the real project (Docker Desktop must be running):
+
 ```sh
 npm install
-cp .env.example .env.local   # fill in the Supabase values
-npm run db:migrate           # apply migrations to the database in DIRECT_URL
-npm run dev
+npx supabase start           # local Postgres + Auth from supabase/config.toml; prints its URL and keys
+# .env.local: NEXT_PUBLIC_SUPABASE_URL / _PUBLISHABLE_KEY / SUPABASE_SERVICE_ROLE_KEY from that
+# output, DATABASE_URL = DIRECT_URL = its DB_URL, DEV_LOGIN=1, DEV_LOGIN_EMAIL, DEV_LOGIN_PASSWORD,
+# and the same email in ADMIN_EMAILS (see .env.example for the rest)
+DIRECT_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres npm run db:migrate
+npm run dev                  # then "Dev sign-in (local database)" on the login page
 ```
+
+Google sign-in can't reach the local Supabase, so `/auth/dev` signs in the DEV_LOGIN account by
+password; it answers 404 in production and whenever Supabase isn't on this machine. Leave Onshape
+and R2 unset locally so nothing spends the team's Onshape calls or touches the real bucket.
+`npx supabase stop` stops it (its data is kept for the next start).
 
 Checks: `npm run lint`, `npm run typecheck`, `npm test`. Database tests run when
 `TEST_DATABASE_URL` points at a migrated Postgres (CI does this). `npm run test:db` does it
