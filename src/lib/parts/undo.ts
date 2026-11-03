@@ -29,7 +29,6 @@ async function planUndoRows(rows: (typeof partHistory.$inferSelect)[]) {
     .select()
     .from(parts)
     .where(inArray(parts.id, [...new Set(rows.map((r) => r.partId))]));
-  const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
   const span = new Map<string, { first: (typeof rows)[number]; last: (typeof rows)[number] }>();
   for (const r of rows) {
     const k = `${r.partId}|${r.field}`;
@@ -58,24 +57,40 @@ export function restorable(field: string, to: unknown) {
   return col?.notNull && col.hasDefault && !(col.default instanceof SQL) ? col.default : null;
 }
 
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+type Visit = { id: string; page: string } | null;
+const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
 export async function applyUndo(reverts: Revert[], memberId: string, via: "ui" | "mcp") {
   const batchId = randomUUID();
   const visit = via === "ui" ? await currentVisit() : null;
-  await db.transaction(async (tx) => {
-    for (const partId of new Set(reverts.map((r) => r.partId))) {
-      const mine = reverts.filter((r) => r.partId === partId);
-      // An undone status move takes its COTS Order History card along (24h rule in orderHistory.ts).
-      const [before] = mine.some((r) => r.field === "designState") ? await tx.select().from(parts).where(eq(parts.id, partId)).for("update") : [];
-      const [after] = await tx
-        .update(parts)
-        .set({ ...Object.fromEntries(mine.map((r) => [r.field, restorable(r.field, r.to)])), lastModifiedAt: new Date(), lastModifiedBy: memberId })
-        .where(eq(parts.id, partId))
-        .returning();
-      if (before && after) await recordOrderHistory(tx, before, after);
-      await tx.insert(partHistory).values(
-        mine.map((r) => ({ partId, field: r.field, oldValue: r.from, newValue: restorable(r.field, r.to), memberId, via, batchId, visitId: visit?.id, page: visit?.page })),
-      );
-    }
-  });
+  await db.transaction((tx) => applyUndoIn(tx, reverts, { memberId, via, batchId, visit }));
   return batchId;
+}
+
+// The undo inside a caller's transaction. Each part is locked first and a field is put back only
+// if it still holds the value the plan saw: an edit that landed after planning is kept (returned
+// as `kept`), never overwritten.
+export async function applyUndoIn(tx: Tx, reverts: Revert[], { memberId, via, batchId, visit }: { memberId: string; via: "ui" | "mcp"; batchId: string; visit: Visit }) {
+  let kept = 0;
+  const ids = [...new Set(reverts.map((r) => r.partId))].sort();
+  for (const partId of ids) {
+    const [before] = await tx.select().from(parts).where(eq(parts.id, partId)).for("update");
+    if (!before) continue;
+    const now = before as unknown as Record<string, unknown>;
+    const mine = reverts.filter((r) => r.partId === partId && same(now[r.field], r.from));
+    kept += reverts.filter((r) => r.partId === partId).length - mine.length;
+    if (!mine.length) continue;
+    const [after] = await tx
+      .update(parts)
+      .set({ ...Object.fromEntries(mine.map((r) => [r.field, restorable(r.field, r.to)])), lastModifiedAt: new Date(), lastModifiedBy: memberId })
+      .where(eq(parts.id, partId))
+      .returning();
+    // An undone status move takes its COTS Order History card along (24h rule in orderHistory.ts).
+    if (after && mine.some((r) => r.field === "designState")) await recordOrderHistory(tx, before, after);
+    await tx.insert(partHistory).values(
+      mine.map((r) => ({ partId, field: r.field, oldValue: r.from, newValue: restorable(r.field, r.to), memberId, via, batchId, visitId: visit?.id, page: visit?.page })),
+    );
+  }
+  return { kept };
 }

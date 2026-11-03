@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getMachine } from "@/config/machines";
@@ -15,7 +15,7 @@ import { computeStatus } from "@/lib/status";
 import { deleteObjects, fileKeysForGroup } from "@/lib/storage/cleanup";
 import { isUuid } from "@/lib/uuid";
 
-const { partGroups, groupMembers, parts, systems } = schema;
+const { partGroups, groupMembers, parts, robots, systems } = schema;
 
 export type ActionResult = { error?: string; message?: string };
 
@@ -249,27 +249,38 @@ export async function createFabBatch(
   const denied = move.length ? await statusChangeDenied(move.map(({ part }) => part.id), { status: status ?? READY_STATUS }) : null;
   if (denied) return { error: denied };
 
-  const names = new Set(
-    (await db.select({ name: partGroups.name }).from(partGroups).where(eq(partGroups.robotId, robotId))).map((g) => g.name),
-  );
   // The name typed in the Fab bar, else "<machine> D/M".
   const base = customName?.trim().slice(0, 80) || fabBatchName(machine.name);
-  let name = base;
-  for (let n = 2; names.has(name); n++) name = `${base} (${n})`;
 
-  await db.transaction(async (tx) => {
+  // One transaction: the batch, its parts and their status save together. The robot is locked so
+  // two members pressing Fab at once get "Laser 03/11" and "Laser 03/11 (2)", and a part already
+  // in another fab batch (someone just batched it) is refused rather than put in two.
+  const result = await db.transaction(async (tx) => {
+    await tx.select({ id: robots.id }).from(robots).where(eq(robots.id, robotId)).for("update");
+    const taken = await tx
+      .select({ partId: groupMembers.partId, name: partGroups.name })
+      .from(groupMembers)
+      .innerJoin(partGroups, eq(partGroups.id, groupMembers.groupId))
+      .where(and(inArray(groupMembers.partId, rows.map(({ part }) => part.id)), isNotNull(partGroups.machine)))
+      .limit(1);
+    if (taken.length) return { error: `A part you picked is already in ${taken[0].name}. Refresh and pick again.` };
+    const names = new Set((await tx.select({ name: partGroups.name }).from(partGroups).where(eq(partGroups.robotId, robotId))).map((g) => g.name));
+    let name = base;
+    for (let n = 2; names.has(name); n++) name = `${base} (${n})`;
     const [group] = await tx.insert(partGroups).values({ robotId, name, machine: machine.id, madeBy: member.name }).returning({ id: partGroups.id });
     await tx.insert(groupMembers).values(rows.map(({ part }) => ({ groupId: group.id, partId: part.id, keySnapshot: snapshot(part) })));
+    if (move.length) {
+      await applyPartChanges(
+        move.map(({ part }) => part.id),
+        { status: status ?? READY_STATUS },
+        { memberId: member.id, via: "ui", tx },
+      );
+    }
+    return { name };
   });
-  if (move.length) {
-    await applyPartChanges(
-      move.map(({ part }) => part.id),
-      { status: status ?? READY_STATUS },
-      { memberId: member.id, via: "ui" },
-    );
-  }
+  if ("error" in result) return result;
   refresh();
-  return { message: `Created ${name} with ${rows.length} part${rows.length === 1 ? "" : "s"}.` };
+  return { message: `Created ${result.name} with ${rows.length} part${rows.length === 1 ? "" : "s"}.` };
 }
 
 // Dragging cards onto a fab batch on To Fab: they join it (leaving the batch they came from) and
@@ -285,6 +296,8 @@ export async function moveToFabBatch(groupId: string, partIds: string[], fromGro
   const ids = rows.map((p) => p.id);
   const denied = status ? await statusChangeDenied(ids, { status }) : null;
   if (denied) return { error: denied };
+  // The move and the status change save together, so a failure never leaves parts in the new
+  // batch with their old status.
   await db.transaction(async (tx) => {
     if (fromGroupId && fromGroupId !== groupId) {
       await tx.delete(groupMembers).where(and(eq(groupMembers.groupId, fromGroupId), inArray(groupMembers.partId, ids)));
@@ -293,8 +306,8 @@ export async function moveToFabBatch(groupId: string, partIds: string[], fromGro
       .insert(groupMembers)
       .values(rows.map((p) => ({ groupId, partId: p.id, keySnapshot: snapshot(p) })))
       .onConflictDoNothing();
+    if (status) await applyPartChanges(ids, { status }, { memberId: member.id, via: "ui", tx });
   });
-  if (status) await applyPartChanges(ids, { status }, { memberId: member.id, via: "ui" });
   refresh();
   return { message: `Added ${rows.length} part${rows.length === 1 ? "" : "s"} to ${group.name}.` };
 }

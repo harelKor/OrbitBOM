@@ -127,7 +127,10 @@ export async function refreshDueSystems(deadline: number): Promise<RefreshResult
   for (const s of due) {
     // Leave room for a full BOM pull before Vercel's 60 s limit.
     if (Date.now() > deadline - 20_000) break;
-    const r = await refreshSystem(s.id, s.memberId, deadline, interval);
+    // One system's failure (a database error, a bad assembly) is reported and the run goes on.
+    const r = await refreshSystem(s.id, s.memberId, deadline, interval).catch(
+      (err): RefreshResult => ({ systemId: s.id, changed: false, calls: 0, error: (err as Error).message || "Check failed" }),
+    );
     if (r) results.push(r);
     // Out of yearly API calls (402) on every account at once: the other systems would only fail too.
     if (r?.outOfCalls) break;

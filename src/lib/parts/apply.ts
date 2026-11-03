@@ -30,6 +30,8 @@ type Ctx = {
   afterEach?: (tx: Tx, row: typeof parts.$inferSelect, plan: Plan) => Promise<void>;
   // Leaves a part alone unless its locked, current row passes (a change meant for a status it had).
   onlyIf?: (row: typeof parts.$inferSelect) => boolean;
+  // The caller's transaction, so its own writes and these changes save or fail together.
+  tx?: Tx;
 };
 
 // Applies the same changes to each part in one transaction and records every field change in
@@ -58,7 +60,7 @@ export async function applyEachPartChanges(
   // Changes made from a page belong to that page visit (Recent actions on the dashboard).
   const visit = ctx.via === "ui" ? await currentVisit() : null;
 
-  return db.transaction(async (tx) => {
+  const run = async (tx: Tx) => {
     // Locked in id order, so two bulk edits over the same parts wait for each other instead of deadlocking.
     const rows = await tx.select().from(parts).where(inArray(parts.id, [...byId.keys()])).orderBy(asc(parts.id)).for("update");
     let changed = 0;
@@ -133,7 +135,8 @@ export async function applyEachPartChanges(
       await ctx.afterEach?.(tx, row, plan);
     }
     return { batchId, changed };
-  });
+  };
+  return ctx.tx ? run(ctx.tx) : db.transaction(run);
 }
 
 // What linking a part to each item in these edits sets besides the link (Harel, 2026-10-31): a Raw

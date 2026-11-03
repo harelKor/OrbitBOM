@@ -93,9 +93,10 @@ export function CotsCard({
       });
       return;
     }
+    // One more (or one less) from the saved count, so two people receiving the same order both count.
     const next = Math.max(0, stock + d);
     // Enough on the shelf: the part is in stock.
-    save(next >= Math.max(part.quantity, 1) && status !== COTS_IN_STOCK ? { stockCount: next, status: COTS_IN_STOCK } : { stockCount: next });
+    save(next >= Math.max(part.quantity, 1) && status !== COTS_IN_STOCK ? { add: { stockCount: d }, status: COTS_IN_STOCK } : { add: { stockCount: d } });
   };
   // A click anywhere but the card's own controls (and their popovers) opens it: a grouped card
   // shows each system's part, any other card the part's details window.

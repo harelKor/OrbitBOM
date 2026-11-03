@@ -9,7 +9,7 @@ import { decodeMeshes } from "@/lib/model/mesh";
 import { undoMoves } from "@/lib/inventory/moves";
 import { applyEachPartChanges } from "@/lib/parts/apply";
 import type { PartChanges } from "@/lib/parts/changes";
-import { applyUndo, planUndo, restorable as restoreValue } from "@/lib/parts/undo";
+import { applyUndoIn, planUndo, restorable as restoreValue } from "@/lib/parts/undo";
 import { getObject, storageConfigured } from "@/lib/storage/r2";
 import { currentVisit } from "@/lib/visits";
 import { itemFieldLabel, itemValueText, locationNames, revertInventoryBatch } from "./inventory";
@@ -522,18 +522,22 @@ export async function dismissReviews(partIds: string[]) {
 
 // Approve keeps the suggestion, makes the changes that were waiting (an inventory link), and
 // takes the part off To Review.
+// One transaction: if the waiting change can't be made, the review stays (it used to be gone
+// while the link was never made).
 export async function approveReviews(partIds: string[], memberId: string | null = null) {
   if (!partIds.length) return 0;
-  const rows = await db.delete(partReviews).where(inArray(partReviews.partId, partIds)).returning({ id: partReviews.partId, pending: partReviews.pending });
-  // A suggested link to an item deleted since can't be made; the rest of the review still is.
-  const live = await liveItems(rows.flatMap((r) => [r.pending.inventoryItemId]));
-  const waiting = rows.flatMap((r) => {
-    const changes = { ...r.pending } as PartChanges;
-    if (typeof changes.inventoryItemId === "string" && !live.has(changes.inventoryItemId)) delete changes.inventoryItemId;
-    return Object.keys(changes).length ? [{ id: r.id, changes }] : [];
+  return db.transaction(async (tx) => {
+    const rows = await tx.delete(partReviews).where(inArray(partReviews.partId, partIds)).returning({ id: partReviews.partId, pending: partReviews.pending });
+    // A suggested link to an item deleted since can't be made; the rest of the review still is.
+    const live = await liveItems(rows.flatMap((r) => [r.pending.inventoryItemId]), tx);
+    const waiting = rows.flatMap((r) => {
+      const changes = { ...r.pending } as PartChanges;
+      if (typeof changes.inventoryItemId === "string" && !live.has(changes.inventoryItemId)) delete changes.inventoryItemId;
+      return Object.keys(changes).length ? [{ id: r.id, changes }] : [];
+    });
+    if (waiting.length) await applyEachPartChanges(waiting, { memberId, via: "ui", tx });
+    return rows.length;
   });
-  if (waiting.length) await applyEachPartChanges(waiting, { memberId, via: "ui" });
-  return rows.length;
 }
 
 // The card's Link tag settles just the suggested link, leaving the rest of a part's review in To
@@ -632,12 +636,19 @@ export async function rejectReviews(partIds: string[], memberId: string) {
 // Revert change on the AI logs page (and undo_batch): everything one AI run changed goes back.
 // Part fields and item fields edited again since are kept; stock moves are reversed; items and
 // categories the run added are removed; its To Review entries go.
+// A run reverts once: its log is locked and marked in the same transaction as every change, so
+// two managers (or a retried undo_batch) can't reverse its stock twice, and a failure leaves
+// nothing half reverted.
 export async function revertAiBatch(batchId: string, memberId: string, via: "ui" | "mcp") {
   const plan = await planUndo(batchId);
   const reverts = plan?.reverts ?? [];
-  const undoBatch = reverts.length ? await applyUndo(reverts, memberId, via) : randomUUID();
+  const undoBatch = randomUUID();
+  const visit = via === "ui" ? await currentVisit() : null;
   const ctx = { memberId, via, batchId: undoBatch } as const;
-  const { inventory, stock } = await db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
+    const logs = await tx.select({ revertedAt: aiLogs.revertedAt }).from(aiLogs).where(eq(aiLogs.batchId, batchId)).for("update");
+    if (logs.some((l) => l.revertedAt)) return null;
+    const { kept: late } = await applyUndoIn(tx, reverts, { memberId, via, batchId: undoBatch, visit });
     // Deleting the items it created takes their stock moves with them, so they're not reversed twice.
     const inventory = await revertInventoryBatch(tx, batchId, ctx);
     const stock = await undoMoves(tx, batchId, ctx);
@@ -655,11 +666,14 @@ export async function revertAiBatch(batchId: string, memberId: string, via: "ui"
       else await tx.update(partReviews).set({ changes, pending: {} }).where(eq(partReviews.partId, part.id));
     }
     await tx.update(aiLogs).set({ revertedAt: new Date() }).where(eq(aiLogs.batchId, batchId));
-    return { inventory, stock };
+    return { inventory, stock, late };
   });
-  const kept = (plan?.skipped.length ?? 0) + inventory.kept;
+  if (!result) return { batchId: undoBatch, reverted: 0, message: "This run was already reverted." };
+  const { inventory, stock, late } = result;
+  const partFields = reverts.length - late;
+  const kept = (plan?.skipped.length ?? 0) + late + inventory.kept;
   const done = [
-    reverts.length && `${reverts.length} part ${reverts.length === 1 ? "field" : "fields"}`,
+    partFields && `${partFields} part ${partFields === 1 ? "field" : "fields"}`,
     inventory.edited && `${inventory.edited} item ${inventory.edited === 1 ? "field" : "fields"}`,
     inventory.created && `removed ${inventory.created} added ${inventory.created === 1 ? "item" : "items"}`,
     inventory.categories && `removed ${inventory.categories} ${inventory.categories === 1 ? "category" : "categories"}`,
@@ -667,7 +681,7 @@ export async function revertAiBatch(batchId: string, memberId: string, via: "ui"
   ].filter(Boolean);
   return {
     batchId: undoBatch,
-    reverted: reverts.length + inventory.edited + inventory.created + inventory.categories + stock,
+    reverted: partFields + inventory.edited + inventory.created + inventory.categories + stock,
     message:
       (done.length ? `Reverted ${done.join(", ")}.` : "Nothing left to revert.") +
       (kept ? ` ${kept} ${kept === 1 ? "field was" : "fields were"} edited again since and kept.` : ""),

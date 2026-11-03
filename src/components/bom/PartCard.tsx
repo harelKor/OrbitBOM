@@ -401,7 +401,8 @@ export function DownloadMenu({ part, format }: { part: CardPart; format: ExportF
 export function DoneCounter({ part, save, slot }: { part: CardPart; save: SaveFn; slot: (typeof SLOTS)[number] }) {
   const work = useCan("work");
   const done = part[slot.done];
-  const step = (d: number) => save({ [slot.done]: Math.max(0, done + d) });
+  // One more (or one less) from the saved count, so two phones counting the same part both count.
+  const step = (d: number) => save({ add: { [slot.done]: d } });
   return (
     <span className="ml-auto inline-flex shrink-0 items-center rounded-full border border-line-strong bg-ink text-[11px] tabular-nums">
       {work && <button onClick={() => step(-1)} disabled={done === 0} className="press px-1.5 text-muted hover:text-fg disabled:opacity-30" aria-label="One less done">

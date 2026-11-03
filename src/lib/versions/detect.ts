@@ -15,6 +15,7 @@ import { shapeFingerprints } from "./shape";
 import { sameState, snapshotOfRow } from "./snapshot";
 
 const { onshapeCache, parts, systems, systemVersions } = schema;
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 // What a draft keeps to be applied as it is on commit.
 // `held`: parts a Revert holds behind the latest version (history.ts), left alone unless listed.
@@ -161,14 +162,36 @@ export async function checkSystem(systemId: string, memberId: string, { force = 
   const seenMv = microversion ? { docMicroversions: { ...system.docMicroversions, [ref.did]: microversion } } : {};
   const account = force ? { refreshMemberId: memberId } : {};
 
+  // The Onshape calls above take seconds. Before saving, the system is locked and its draft read
+  // again: a member may have committed it (the draft row became the version), reverted the
+  // system, or another check saved first. Then this check's list is out of date, so it saves
+  // nothing and returns what is there now (it used to delete or overwrite the new version).
+  const stillCurrent = async (tx: Tx) => {
+    const [locked] = await tx.select({ currentVersionId: systems.currentVersionId }).from(systems).where(eq(systems.id, systemId)).for("update");
+    const [draft] = await tx
+      .select()
+      .from(systemVersions)
+      .where(and(eq(systemVersions.systemId, systemId), eq(systemVersions.state, "draft")))
+      .for("update");
+    const same =
+      !!locked &&
+      locked.currentVersionId === system.currentVersionId &&
+      (draft?.id ?? null) === (current?.id ?? null) &&
+      (!draft || !current || +draft.detectedAt === +current.detectedAt);
+    return { same, draft: draft ?? null };
+  };
+  const superseded = (draft: typeof systemVersions.$inferSelect | null): CheckResult => ({ draft: draft ? draftOf(draft) : null, unchanged: false, calls: client.calls });
+
   if (!changes.length) {
     // Up to date. Same parts in a newer reference (or a first microversion) are taken as they are.
-    await db.transaction(async (tx) => {
+    return db.transaction(async (tx) => {
+      const { same, draft } = await stillCurrent(tx);
+      if (!same) return superseded(draft);
       if (moved) await applyBomRows(tx, systemId, parsed.rows, { memberId, batchId: randomUUID(), sigs, partSigs, skip: new Set(keep) });
-      if (current) await tx.delete(systemVersions).where(eq(systemVersions.id, current.id));
+      if (current) await tx.delete(systemVersions).where(and(eq(systemVersions.id, current.id), eq(systemVersions.state, "draft")));
       await tx.update(systems).set({ lastCheckedAt: now, ...seenMv, ...account }).where(eq(systems.id, systemId));
+      return { draft: null, unchanged: false, applied: moved, calls: client.calls };
     });
-    return { draft: null, unchanged: false, applied: moved, calls: client.calls };
   }
 
   // 5. Keep it in the draft. A draft whose list didn't change keeps its time, so a member
@@ -177,11 +200,19 @@ export async function checkSystem(systemId: string, memberId: string, { force = 
   const name = current?.name ?? null;
   const same = current && stable(current.changes) === stable(changes);
   const values = { name, onshapeRef, changes, rows, ...(same ? {} : { detectedAt: now, detectedBy: memberId }) };
-  const [row] = current
-    ? await db.update(systemVersions).set(values).where(eq(systemVersions.id, current.id)).returning()
-    : await db.insert(systemVersions).values({ systemId, state: "draft", detectedBy: memberId, ...values }).returning();
-  await db.update(systems).set({ lastCheckedAt: now, ...account }).where(eq(systems.id, systemId));
-  return { draft: draftOf(row), unchanged: false, calls: client.calls };
+  return db.transaction(async (tx) => {
+    const fresh = await stillCurrent(tx);
+    if (!fresh.same) return superseded(fresh.draft);
+    const [row] = current
+      ? await tx
+          .update(systemVersions)
+          .set(values)
+          .where(and(eq(systemVersions.id, current.id), eq(systemVersions.state, "draft")))
+          .returning()
+      : await tx.insert(systemVersions).values({ systemId, state: "draft", detectedBy: memberId, ...values }).returning();
+    await tx.update(systems).set({ lastCheckedAt: now, ...account }).where(eq(systems.id, systemId));
+    return { draft: draftOf(row), unchanged: false, calls: client.calls };
+  });
 }
 
 // JSON with sorted keys: Postgres stores jsonb keys in its own order.
