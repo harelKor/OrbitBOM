@@ -1,14 +1,23 @@
 import "server-only";
-import { eq, sql } from "drizzle-orm";
+import { eq, gte, sql, sum } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { decrypt, encrypt } from "@/lib/crypto";
+import {
+  BACKGROUND_SHARE,
+  CALLS_BEFORE_COUNTING,
+  MEMBER_DAILY_CALLS,
+  TEAM_DAILY_CALLS,
+  YEAR_BACKGROUND_STOP,
+  YEAR_STARTS,
+  YEARLY_CALLS,
+} from "@/config/onshapeBudget";
 
 // Onshape API access on a member's own OAuth connection (plan §4). Tokens never leave the
-// server. Every call is counted per account per day; past the budget, calls stop and the
-// app reads from its own data instead.
+// server. Every call is counted per account and for the whole team (config/onshapeBudget.ts);
+// past a budget, calls stop and the app reads from its own data instead.
 
 export const OAUTH_BASE = "https://oauth.onshape.com";
-export const DAILY_CALL_BUDGET = 2200;
+export const DAILY_CALL_BUDGET = MEMBER_DAILY_CALLS;
 export const STATE_COOKIE = "onshape_oauth_state";
 
 export class OnshapeError extends Error {
@@ -27,6 +36,24 @@ export class NotConnectedError extends OnshapeError {
 export class BudgetError extends OnshapeError {
   constructor() {
     super(`Your Onshape account reached today's ${DAILY_CALL_BUDGET}-call budget. Try again tomorrow.`);
+  }
+}
+
+// The team's own limits (config/onshapeBudget.ts), reached before Onshape's: today's calls for the
+// whole team, or the year's allowance nearly gone. Not a BudgetError: another member's account
+// wouldn't help.
+export class TeamBudgetError extends OnshapeError {
+  constructor(what: "day" | "year", background: boolean) {
+    super(
+      what === "year"
+        ? background
+          ? "The team has used most of this year's Onshape calls, so automatic thumbnails and previews are off. Update BOM still works."
+          : "The team has used this year's Onshape calls. Ask an admin before anything else calls Onshape."
+        : background
+          ? "The team's Onshape calls for today are kept for Update BOM, so new thumbnails and previews wait until tomorrow."
+          : "The team reached today's Onshape call limit. Try again tomorrow.",
+      429,
+    );
   }
 }
 
@@ -79,7 +106,10 @@ export async function disconnect(memberId: string) {
   await db.update(schema.members).set({ onshapeConnected: false }).where(eq(schema.members.id, memberId));
 }
 
-// `fresh` skips the stored access token (Onshape rejected it before it expired).
+// `fresh` skips the stored access token (Onshape rejected it before it expired). A refresh holds
+// the member's token row: eight thumbnail workers reaching an expired token at once refresh it
+// once, and the others take the new one (a second refresh with the used refresh token was
+// refused, which disconnected the member mid-sync).
 async function accessToken(memberId: string, fresh = false): Promise<string> {
   const [row] = await db
     .select()
@@ -88,21 +118,68 @@ async function accessToken(memberId: string, fresh = false): Promise<string> {
     .limit(1);
   if (!row) throw new NotConnectedError();
   if (!fresh && row.expiresAt.getTime() - Date.now() > 60_000) return decrypt(row.accessTokenEnc);
-  try {
-    const t = await requestToken({ grant_type: "refresh_token", refresh_token: decrypt(row.refreshTokenEnc) });
-    await saveTokens(memberId, t);
-    return t.access_token;
-  } catch (err) {
-    if (err instanceof OnshapeError && err.status && err.status < 500) {
-      await disconnect(memberId);
-      throw new NotConnectedError();
+  const result = await db.transaction(async (tx) => {
+    const [locked] = await tx.select().from(schema.onshapeTokens).where(eq(schema.onshapeTokens.memberId, memberId)).for("update");
+    if (!locked) return { gone: true as const, token: undefined };
+    // Someone refreshed it while this one waited.
+    if (locked.accessTokenEnc !== row.accessTokenEnc && locked.expiresAt.getTime() - Date.now() > 60_000) return { token: decrypt(locked.accessTokenEnc) };
+    try {
+      const t = await requestToken({ grant_type: "refresh_token", refresh_token: decrypt(locked.refreshTokenEnc) });
+      await tx
+        .update(schema.onshapeTokens)
+        .set({ accessTokenEnc: encrypt(t.access_token), refreshTokenEnc: encrypt(t.refresh_token), expiresAt: new Date(Date.now() + t.expires_in * 1000) })
+        .where(eq(schema.onshapeTokens.memberId, memberId));
+      return { token: t.access_token };
+    } catch (err) {
+      if (err instanceof OnshapeError && err.status && err.status < 500) return { gone: true as const, token: undefined };
+      throw err;
     }
-    throw err;
-  }
+  });
+  if (result.token !== undefined) return result.token;
+  await disconnect(memberId);
+  throw new NotConnectedError();
 }
 
-// Counts one call against today's budget; throws when the budget is spent.
-async function countCall(memberId: string) {
+// This allowance year's calls (config/onshapeBudget.ts), read at most once a minute per server.
+let yearCache: { at: number; calls: number } | null = null;
+export async function yearCalls(): Promise<number> {
+  if (yearCache && Date.now() - yearCache.at < 60_000) return yearCache.calls;
+  const [row] = await db.select({ n: sum(schema.onshapeUsage.calls) }).from(schema.onshapeUsage).where(gte(schema.onshapeUsage.day, YEAR_STARTS));
+  yearCache = { at: Date.now(), calls: CALLS_BEFORE_COUNTING + Number(row?.n ?? 0) };
+  return yearCache.calls;
+}
+
+// For the Profile page: the team's calls today and this allowance year.
+export async function teamUsage() {
+  const today = new Date().toISOString().slice(0, 10);
+  const [[row], year] = await Promise.all([db.select({ calls: schema.onshapeUsage.calls }).from(schema.onshapeUsage).where(eq(schema.onshapeUsage.day, today)), yearCalls()]);
+  return { today: row?.calls ?? 0, year };
+}
+
+// The team's count of one more call, refused (nothing counted) past today's cap or the year's.
+async function countTeamCall(background: boolean) {
+  const year = await yearCalls();
+  if (year >= YEARLY_CALLS) throw new TeamBudgetError("year", false);
+  if (background && year >= YEARLY_CALLS * YEAR_BACKGROUND_STOP) throw new TeamBudgetError("year", true);
+  const cap = background ? Math.floor(TEAM_DAILY_CALLS * BACKGROUND_SHARE) : TEAM_DAILY_CALLS;
+  const today = new Date().toISOString().slice(0, 10);
+  const { onshapeUsage } = schema;
+  const [row] = await db
+    .insert(onshapeUsage)
+    .values({ day: today, calls: 1, background: background ? 1 : 0 })
+    .onConflictDoUpdate({
+      target: onshapeUsage.day,
+      set: { calls: sql`${onshapeUsage.calls} + 1`, background: sql`${onshapeUsage.background} + ${background ? 1 : 0}` },
+      setWhere: sql`${onshapeUsage.calls} < ${cap}`,
+    })
+    .returning({ calls: onshapeUsage.calls });
+  if (!row) throw new TeamBudgetError("day", background);
+  if (yearCache) yearCache.calls++;
+}
+
+// Counts one call against the team's and the member's budgets; throws when either is spent.
+async function countCall(memberId: string, background: boolean) {
+  await countTeamCall(background);
   const today = new Date().toISOString().slice(0, 10);
   const [row] = await db
     .update(schema.onshapeTokens)
@@ -124,12 +201,14 @@ export type OnshapeClient = {
 };
 
 // A client bound to one member and one Onshape host (cad.onshape.com or the Enterprise domain).
-export function onshapeClient(memberId: string, baseUrl: string): OnshapeClient {
+// `background`: work nobody is waiting on (thumbnails after a sync, previews re-made when opened),
+// which stops first when the team's calls run low.
+export function onshapeClient(memberId: string, baseUrl: string, { background = false }: { background?: boolean } = {}): OnshapeClient {
   async function call(pathOrUrl: string, init: RequestInit, accept: string) {
     const url = /^https:\/\//.test(pathOrUrl) ? pathOrUrl : `${baseUrl}/api/v10/${pathOrUrl}`;
     // Never send the member's token anywhere but their Onshape host.
     if (new URL(url).origin !== new URL(baseUrl).origin) throw new OnshapeError("Unexpected Onshape link.");
-    await countCall(memberId);
+    await countCall(memberId, background);
     client.calls++;
     const send = async (fresh: boolean) => {
       const headers = {

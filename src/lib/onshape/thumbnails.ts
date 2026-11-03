@@ -36,7 +36,8 @@ export async function refreshThumbnails(systemId: string, memberId: string, dead
   const [system] = await db.select().from(systems).where(eq(systems.id, systemId));
   const ref = system?.assemblyUrl ? parseOnshapeUrl(system.assemblyUrl) : null;
   if (!ref) return summary;
-  const client = onshapeClient(memberId, ref.baseUrl);
+  // Background: thumbnails stop first when the team's Onshape calls run low.
+  const client = onshapeClient(memberId, ref.baseUrl, { background: true });
 
   const rows = await db
     .select()
@@ -127,7 +128,7 @@ export async function missingAssemblyThumbnails(systemId: string, memberId: stri
   const [system] = await db.select().from(systems).where(eq(systems.id, systemId));
   const ref = system?.assemblyUrl ? parseOnshapeUrl(system.assemblyUrl) : null;
   if (!ref || system.thumbnailPath) return 0;
-  const client = onshapeClient(memberId, ref.baseUrl);
+  const client = onshapeClient(memberId, ref.baseUrl, { background: true });
   await assemblyThumbnails(client, system);
   return client.calls;
 }

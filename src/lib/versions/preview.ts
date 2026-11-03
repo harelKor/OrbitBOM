@@ -70,7 +70,7 @@ export async function previewModel(systemId: string, member: { id: string; onsha
   if (!frozen || !(await objectExists(key))) {
     if (!member.onshapeConnected) throw new NeedsOnshapeError("Connect your Onshape account first (Profile → Connect Onshape).");
     const ref = system.assemblyUrl ? parseOnshapeUrl(system.assemblyUrl) : null;
-    const client = onshapeClient(member.id, ref?.baseUrl ?? "https://cad.onshape.com");
+    const client = onshapeClient(member.id, ref?.baseUrl ?? "https://cad.onshape.com", { background: true });
     const meshes = (await studioMeshes(client, studio, `&partId=${encodeURIComponent(partId)}`)).filter((m) => m.partId === partId);
     if (!meshes.length) throw new OnshapeError("Onshape sent no shape for this part.");
     await putObject(key, gzipSync(encodeMeshes(meshes)), "application/gzip", owner);

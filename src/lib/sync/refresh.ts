@@ -2,7 +2,7 @@ import "server-only";
 import { and, asc, eq, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { refreshIntervalMinutes } from "@/config/refresh";
-import { BudgetError, DAILY_CALL_BUDGET, NotConnectedError, OnshapeError, QuotaError } from "@/lib/onshape/client";
+import { BudgetError, DAILY_CALL_BUDGET, NotConnectedError, OnshapeError, QuotaError, TeamBudgetError } from "@/lib/onshape/client";
 import { missingAssemblyThumbnails, refreshThumbnails } from "@/lib/onshape/thumbnails";
 import { checkSystem } from "@/lib/versions/detect";
 
@@ -89,7 +89,8 @@ export async function refreshSystem(
         lastError = err.message;
         continue;
       }
-      if (err instanceof OnshapeError) return { systemId, changed: false, calls: 0, error: err.message, outOfCalls: err instanceof QuotaError };
+      // Out of the yearly allowance, or the team's own cap: the other systems would only fail too.
+      if (err instanceof OnshapeError) return { systemId, changed: false, calls: 0, error: err.message, outOfCalls: err instanceof QuotaError || err instanceof TeamBudgetError };
       throw err;
     }
   }

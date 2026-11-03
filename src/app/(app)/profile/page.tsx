@@ -2,7 +2,8 @@ import { desc, eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { db, schema } from "@/db";
 import { requireMember } from "@/lib/auth";
-import { DAILY_CALL_BUDGET } from "@/lib/onshape/client";
+import { TEAM_DAILY_CALLS, YEARLY_CALLS } from "@/config/onshapeBudget";
+import { DAILY_CALL_BUDGET, teamUsage } from "@/lib/onshape/client";
 import { TEAMS } from "@/config/teams";
 import { TeamPicker } from "@/components/teams/TeamPicker";
 import { listTeamSystems } from "@/lib/teams";
@@ -25,7 +26,7 @@ export default async function ProfilePage({
 }) {
   const member = await requireMember();
   const { onshape } = await searchParams;
-  const [[token], mcpTokens, h, systems] = await Promise.all([
+  const [[token], mcpTokens, h, systems, team] = await Promise.all([
     db
       .select({ callsToday: schema.onshapeTokens.callsToday, callsDay: schema.onshapeTokens.callsDay })
       .from(schema.onshapeTokens)
@@ -43,6 +44,7 @@ export default async function ProfilePage({
       .orderBy(desc(schema.mcpTokens.createdAt)),
     headers(),
     listTeamSystems(),
+    teamUsage(),
   ]);
   const today = new Date().toISOString().slice(0, 10);
   const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host")}`;
@@ -72,6 +74,12 @@ export default async function ProfilePage({
 
       <section className="panel space-y-3 p-5">
         <h2 className="font-semibold">Onshape</h2>
+        {/* The team shares one yearly allowance (config/onshapeBudget.ts); thumbnails and previews stop first when it runs low. */}
+        <p className="text-sm text-fg-2">
+          Team: <span className="font-mono tabular-nums">{team.today}</span> of {TEAM_DAILY_CALLS} Onshape calls today ·{" "}
+          <span className={`font-mono tabular-nums ${team.year >= YEARLY_CALLS * 0.75 ? "font-semibold text-amber-600 dark:text-amber-300" : ""}`}>{team.year.toLocaleString("en-US")}</span> of{" "}
+          {YEARLY_CALLS.toLocaleString("en-US")} this year.
+        </p>
         {member.onshapeConnected ? (
           <>
             <p className="text-sm text-fg-2">

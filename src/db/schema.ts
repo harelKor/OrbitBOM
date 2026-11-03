@@ -861,6 +861,14 @@ export const onshapeTokens = pgTable("onshape_tokens", {
   callsDay: date("calls_day"),
 });
 
+// Every Onshape call the team made, per day (config/onshapeBudget.ts): the team's daily cap
+// and the yearly allowance are counted from here.
+export const onshapeUsage = pgTable("onshape_usage", {
+  day: date("day").primaryKey(),
+  calls: integer("calls").notNull().default(0),
+  background: integer("background").notNull().default(0), // of them, automatic (thumbnails, previews)
+});
+
 export const onshapeCache = pgTable("onshape_cache", {
   key: text("key").primaryKey(),
   microversion: text("microversion"),
