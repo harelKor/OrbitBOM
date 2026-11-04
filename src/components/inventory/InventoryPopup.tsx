@@ -193,7 +193,7 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
   return (
     <Ctx.Provider value={{ openItem, openMaterial }}>
       {children}
-      <Dialog open={!!state} onClose={close} title={title} width={state?.kind === "item" ? "w-[min(36rem,calc(100vw-2rem))]" : undefined} wide compact>
+      <Dialog open={!!state} onClose={close} title={title} width={state?.kind === "item" ? "w-[min(40rem,calc(100vw-2rem))]" : undefined} wide compact>
         {error && <p className="mb-3 rounded-md bg-rose-50 p-2 text-sm text-rose-700">Couldn&apos;t save: {error}</p>}
         {state?.kind === "item" && state.missing && (
           <div className="py-6 text-center">
@@ -597,7 +597,9 @@ function ItemBody({
     <div className="space-y-2.5">
       {picker.inputs}
       <div className="flex flex-wrap gap-x-3 gap-y-2.5 sm:flex-nowrap">
-        <div className="thumb-well relative flex h-36 w-full shrink-0 items-center justify-center rounded-xl sm:h-44 sm:w-44">
+        {/* A little bigger on larger screens since 2026-11-04, the window a little wider for it;
+            phones keep their size (Harel). */}
+        <div className="thumb-well relative flex h-36 w-full shrink-0 items-center justify-center rounded-xl sm:h-52 sm:w-52">
           {picture || filler ? (
             // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
             <img src={(picture ?? filler)!} alt="" className={`h-full w-full object-contain p-2 ${picker.busy ? "opacity-50" : picture ? "" : "opacity-60"}`} />
