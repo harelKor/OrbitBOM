@@ -344,6 +344,12 @@ export function BatchCard({
   // The strip under the batch's row: its actions, then its parts (cards, or rows in the List view).
   const radius = list ? 16 : 12; // the card's corners (rounded-2xl rows, rounded-xl cards)
   const joined = open && tab;
+  // Your own batch, open: the whole shape (card, neck, strip) takes the sky outline and glow, not
+  // just the card, so the glow isn't cut off at the join (Harel, 2026-11-04). Each piece's glow is
+  // clipped where it meets the next.
+  const edge = mine ? "rgb(56 189 248)" : "var(--color-accent)";
+  const glow = "0 0 22px 4px rgba(56,189,248,0.4)";
+  const topRadii = joined ? { tl: tab.left < radius ? 0 : radius, tr: tab.left + tab.width > tab.strip - radius ? 0 : radius } : { tl: radius, tr: radius };
   const panel = mounted && (
     <div
       ref={panelRef}
@@ -352,12 +358,28 @@ export function BatchCard({
       style={{ gridColumn: "1 / -1", gridRow: row ?? undefined, gridTemplateRows: shown ? "1fr" : "0fr", ...(!shown && { marginBottom: 0 }) }}
       className="relative grid cursor-default transition-[grid-template-rows,margin-bottom] duration-200 ease-out motion-reduce:transition-none"
     >
+      {/* The strip's glow, outside its clipped fold. */}
+      {joined && mine && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          style={{ boxShadow: glow, borderRadius: `${topRadii.tl}px ${topRadii.tr}px ${radius}px ${radius}px` }}
+        />
+      )}
       {/* The neck: the card's sides carried down across the gap to the strip. */}
       {joined && (
         <span
           aria-hidden
-          className="pointer-events-none absolute border-x-2 border-accent bg-surface"
-          style={{ left: tab.left, width: tab.width, top: -tab.gap, height: tab.gap + 2, backgroundColor: batchTint?.backgroundColor }}
+          className="pointer-events-none absolute border-x-2 bg-surface"
+          style={{
+            left: tab.left,
+            width: tab.width,
+            top: -tab.gap,
+            height: tab.gap + 2,
+            backgroundColor: batchTint?.backgroundColor,
+            borderColor: edge,
+            ...(mine && { boxShadow: glow, clipPath: "inset(0 -40px)" }),
+          }}
         />
       )}
       <div className="min-h-0 overflow-hidden">
@@ -366,15 +388,15 @@ export function BatchCard({
             ...batchTint,
             borderRadius: radius,
             ...(joined && {
-              borderColor: "var(--color-accent)",
+              borderColor: edge,
               // The top edge is cut where the neck comes in; a corner under the card goes square.
               maskImage: "linear-gradient(#000 0 0), linear-gradient(#000 0 0)",
               maskSize: `100% 100%, ${tab.width - 4}px 2px`,
               maskPosition: `0 0, ${tab.left + 2}px 0`,
               maskRepeat: "no-repeat",
               maskComposite: "exclude",
-              ...(tab.left < radius && { borderTopLeftRadius: 0 }),
-              ...(tab.left + tab.width > tab.strip - radius && { borderTopRightRadius: 0 }),
+              borderTopLeftRadius: topRadii.tl,
+              borderTopRightRadius: topRadii.tr,
             }),
           }}
           className="space-y-3 border-2 border-accent/60 bg-surface p-3"
@@ -420,7 +442,8 @@ export function BatchCard({
           style={{
             ...batchTint,
             ...(mine && { boxShadow: "0 0 0 2px rgba(56,189,248,0.75), 0 0 18px 3px rgba(56,189,248,0.35)" }),
-            ...(open && { borderColor: "var(--color-accent)", borderBottomColor: "transparent" }),
+            ...(open && { borderColor: edge, borderBottomColor: "transparent" }),
+            ...(open && mine && { boxShadow: glow, clipPath: "inset(-40px -40px 0 -40px)" }),
           }}
           className={`flex min-w-0 cursor-pointer items-center gap-3 rounded-2xl border-2 border-line-strong bg-surface py-2.5 pr-2.5 pl-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_2px_8px_rgba(0,0,0,0.25)] transition-all duration-150 hover:border-sky-400/50 active:not-[:has(:is(button,a,input,select,textarea,[role=dialog]):active)]:scale-[0.99] ${open ? "rounded-b-none" : ""} ${over ? "ring-2 ring-accent" : ""}`}
         >
@@ -476,12 +499,13 @@ export function BatchCard({
       style={{
         ...batchTint,
         ...(mine && { boxShadow: "0 0 0 2px rgba(56,189,248,0.75), 0 0 22px 4px rgba(56,189,248,0.4)" }),
-        ...(open && { borderColor: "var(--color-accent)", borderBottomColor: "transparent" }),
+        ...(open && { borderColor: edge, borderBottomColor: "transparent" }),
+        ...(open && mine && { boxShadow: glow, clipPath: "inset(-40px -40px 0 -40px)" }),
       }}
       className={`card-interactive flex cursor-pointer flex-col self-start text-sm ${open ? "rounded-b-none" : ""} ${over ? "ring-2 ring-accent" : ""}`}
     >
       {/* Open: a second pixel inside the card's own border, so its outline is as strong as the strip's. */}
-      {open && <span aria-hidden className="pointer-events-none absolute inset-0 z-10 rounded-t-[11px] border border-b-0 border-accent" />}
+      {open && <span aria-hidden className="pointer-events-none absolute inset-0 z-10 rounded-t-[11px] border border-b-0" style={{ borderColor: edge }} />}
       <div className="flex flex-col">
         <div className="relative w-full shrink-0">
           <button
