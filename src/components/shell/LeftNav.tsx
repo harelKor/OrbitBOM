@@ -47,8 +47,10 @@ export function LeftNav({
       <div className="flex min-h-11 items-center overflow-visible bg-bar px-3">
         <Brand />
       </div>
-      {/* The column's edge line starts under the blue bar, so it never runs through the logo. */}
-      <div className="flex min-h-0 flex-1 flex-col border-r border-line">
+      {/* The column's edge line starts under the blue bar, so it never runs through the logo. The
+          links zoom when the column is dragged wider than they need (Shell's NavResizer); the
+          logo bar doesn't, so it stays level with the top bar. */}
+      <div data-nav-body style={{ zoom: "var(--nav-zoom, 1)" }} className="flex min-h-0 flex-1 flex-col border-r border-line">
         <nav className="flex-1 space-y-0.5 overflow-y-auto p-2 text-sm">
           <Item href="/?home" icon="home" active={pathname === "/"}>
             Home
