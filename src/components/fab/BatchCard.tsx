@@ -73,6 +73,7 @@ export function BatchCard({
   me,
   onDropParts,
   pack = false,
+  title,
 }: {
   batch: Batch;
   members: CardPart[];
@@ -84,6 +85,7 @@ export function BatchCard({
   me: string;
   onDropParts?: (load: DragLoad) => void;
   pack?: boolean;
+  title?: string; // a pack's name on the card (Zivudim's: its material)
 }) {
   // Fab batches are Build Team work: any team renames, deletes and re-statuses them.
   const edit = useCan("work");
@@ -110,7 +112,7 @@ export function BatchCard({
   const material = materials.length === 1 ? materials[0] || "No material" : "Mixed materials";
   const machineName = batch.machine ? (getMachine(batch.machine)?.name ?? batch.machine) : null;
   // What the batch is called in labels and questions, now that it shows no name.
-  const what = pack ? "the pack" : `the ${[machineName, material].filter(Boolean).join(" ")} batch`;
+  const what = pack ? (title ? `the ${title} pack` : "the pack") : `the ${[machineName, material].filter(Boolean).join(" ")} batch`;
   const downloads = members.flatMap((p) => {
     const f = cadFormat(p);
     return f ? [`/api/parts/${p.id}/export?format=${f}${p.fabView ? "&fab=1" : ""}`] : [];
@@ -421,10 +423,10 @@ export function BatchCard({
           className="space-y-3 border-2 border-accent/60 bg-surface p-3"
         >
           <div className="flex flex-wrap items-center gap-2">
-            {!pack && (
+            {(!pack || title) && (
               <span className={`min-w-0 truncate text-sm font-semibold ${textColor ? "" : "text-fg"}`} style={textColor ? { color: textColor } : undefined}>
-                {material}
-                {machineName && ` · ${machineName}`}
+                {pack ? title : material}
+                {!pack && machineName && ` · ${machineName}`}
               </span>
             )}
             {prioritySelect}
@@ -487,7 +489,7 @@ export function BatchCard({
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="flex min-w-0 items-baseline gap-2">
               <span className={`min-w-0 flex-1 truncate text-sm font-semibold ${textColor ? "" : "text-fg"}`} style={textColor ? { color: textColor } : undefined}>
-                {pack ? `${members.length} part${members.length === 1 ? "" : "s"}` : material}
+                {pack ? (title ?? `${members.length} part${members.length === 1 ? "" : "s"}`) : material}
                 {!pack && machineName && ` · ${machineName}`}
               </span>
               <BatchDate at={batch.createdAt} />
@@ -560,10 +562,10 @@ export function BatchCard({
           </div>
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-2 p-3">
-          {!pack && (
+          {(!pack || title) && (
             <div className={`min-w-0 truncate text-sm font-semibold ${textColor ? "" : "text-fg"}`} style={textColor ? { color: textColor } : undefined}>
-              {material}
-              {machineName && ` · ${machineName}`}
+              {pack ? title : material}
+              {!pack && machineName && ` · ${machineName}`}
             </div>
           )}
           {/* Only the controls keep their clicks: the rest of the card opens the batch. */}
