@@ -24,6 +24,7 @@ import { Popover } from "@/components/bom/Popover";
 import { useCan } from "@/components/shell/ModeContext";
 import { Chevron } from "@/components/ui/Chevron";
 import { Icon } from "@/components/ui/Icon";
+import { GoToButton } from "@/components/ui/GoToButton";
 import { materialCategory } from "@/config/materials";
 import { activeFields, getCategory } from "@/lib/inventory/categories";
 import { hasSeasonNeed, missing, orderHref } from "@/lib/inventory/season";
@@ -177,7 +178,18 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
 
   const item = state?.kind === "item" ? (state.data?.item ?? state.preview) : null;
   // Every item has a picture box (its photo or its category's drawing), so the title is the same for all.
-  const title = state?.kind === "item" ? (item?.name ?? "Inventory item") : state?.kind === "material" ? state.name : "";
+  const name = state?.kind === "item" ? (item?.name ?? "Inventory item") : state?.kind === "material" ? state.name : "";
+  // The arrow beside an item's name takes you to it on its category's page (Harel, 2026-11-04). It
+  // only shuts the window: the new address has no ?item, and rewriting this one would cancel the move.
+  const title =
+    item?.category && state?.kind === "item" && !state.missing ? (
+      <span className="flex min-w-0 items-center gap-2">
+        <span className="min-w-0 truncate">{name}</span>
+        <GoToButton href={`/inventory/c/${encodeURIComponent(item.category)}?goto=${encodeURIComponent(item.id)}`} label="Go to this item in the inventory" onGo={() => setState(null)} />
+      </span>
+    ) : (
+      name
+    );
   return (
     <Ctx.Provider value={{ openItem, openMaterial }}>
       {children}

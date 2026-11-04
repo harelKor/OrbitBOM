@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { matchesSearch, searchAlternatives, toEnglishQuery } from "./searchWords";
+import { matchesSearch, searchAlternatives, toEnglishQuery, searchRank } from "./searchWords";
 
 describe("matchesSearch", () => {
   it("finds English names from Hebrew words and back", () => {
@@ -40,5 +40,23 @@ describe("toEnglishQuery", () => {
   it("leaves English alone and gives up on unknown Hebrew", () => {
     expect(toEnglishQuery("kraken x60")).toBeNull();
     expect(toEnglishQuery("שלום עולם")).toBeNull();
+  });
+});
+
+describe("matching anywhere in the name", () => {
+  it("finds words in the middle or end, ignoring spaces, dashes and dots", () => {
+    expect(matchesSearch("Bearing block", "block")).toBe(true);
+    expect(matchesSearch("Side plate", "sideplate")).toBe(true);
+    expect(matchesSearch("1691-26-501-01A", "26501")).toBe(true);
+    expect(matchesSearch("1691-26-501-01A", "501 01a")).toBe(true);
+    expect(matchesSearch("Side plate", "side pl")).toBe(true);
+    expect(matchesSearch("Side plate", "gusset")).toBe(false);
+  });
+
+  it("ranks a name that starts with the query first", () => {
+    expect(searchRank("Spacer 10mm", "spa")).toBe(3);
+    expect(searchRank("Shaft spacer", "spa")).toBe(2);
+    expect(searchRank("Hexspacer", "spa")).toBe(1);
+    expect(searchRank("Shaft", "spa")).toBe(0);
   });
 });

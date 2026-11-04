@@ -29,6 +29,7 @@ import { upload } from "./FilesField";
 import { MachineField, MaterialField, NameField, QuantityField, StatusField, TypeField, machineSlotsShown, type SaveFn } from "./fields";
 import { DownloadMenu, MergedBadge, cadFormat } from "./PartCard";
 import { ownerPartId, partTitle, type CardPart } from "./types";
+import { GoToButton } from "@/components/ui/GoToButton";
 
 type Stage = StageView | "thumb";
 
@@ -49,6 +50,9 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
   const cots = part.classification === "cots";
   const format = cadFormat(part);
   const title = partTitle(part);
+  // Where the part lives: its system page (the COTS lists' parts carry their robot themselves).
+  const placeRobot = robotId ?? (part as CardPart & { robotId?: string | null }).robotId ?? null;
+  const place = placeRobot && part.systemId ? `/robots/${placeRobot}/systems/${part.systemId}` : null;
   const canLocate = !part.isManual && !!robotId && !!part.modelKey;
   const overlay = "btn h-7 gap-1.5 bg-surface/95 px-2 text-xs shadow-sm sm:h-8 sm:px-3 pointer-coarse:h-9";
   const phone = usePhone();
@@ -159,6 +163,7 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
                   <span className="min-w-0 flex-1">
                     <NameField part={part} save={save} />
                   </span>
+                  {place && <GoToButton href={place} partId={part.id} label="Go to this part in its system" onGo={onClose} />}
                   {canReset && (
                     // Not a ✕ next to the window's own ✕: a reset icon with a question first, so a
                     // tap meant to close the window can't wipe the part's setup.

@@ -121,12 +121,16 @@ export function InventoryView({
   const setLocationId = (id: string) => pushQuery({ loc: id || null });
   // The Added popup's arrow from another page lands here with ?added=<id>: the item is lit,
   // scrolled to the middle of the screen, and the param leaves the URL (Harel, 2026-11-03).
-  const addedParam = params.get("added");
+  // An item window's arrow does the same with ?goto=<id>, without listing it as added.
+  const goto = params.get("goto");
+  const addedParam = params.get("added") ?? goto;
   useEffect(() => {
     if (!addedParam) return;
-    onAdded(addedParam);
+    if (goto) setLit((l) => [addedParam, ...l.filter((x) => x !== addedParam)]);
+    else onAdded(addedParam);
     const url = new URL(window.location.href);
     url.searchParams.delete("added");
+    url.searchParams.delete("goto");
     window.history.replaceState(null, "", url.pathname + url.search + url.hash);
     let tries = 0;
     let frame = 0;
@@ -140,7 +144,7 @@ export function InventoryView({
     };
     frame = requestAnimationFrame(find);
     return () => cancelAnimationFrame(frame);
-  }, [addedParam]);
+  }, [addedParam, goto]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   // Move / Delete: taps select cards, the bar at the bottom acts on them.

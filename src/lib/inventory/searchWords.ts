@@ -82,14 +82,38 @@ export function searchAlternatives(word: string): string[] {
   return [...out];
 }
 
-// Every typed word must be found in the text, in either language.
+// Letters and digits only: "Side plate" and "sideplate", "1691-26-501" and "169126501" meet.
+const compact = (s: string) => s.replace(/[^\p{L}\p{N}]+/gu, "");
+
+// Every typed word must be found in the text, in either language, anywhere in it (the middle or
+// end of a name too). Spaces, dashes and dots don't count, so "sideplate" finds "Side plate" and
+// "26501" finds "1691-26-501"; failing that, the whole query run together may match (Harel,
+// 2026-11-04).
 export function matchesSearch(text: string, query: string): boolean {
   const t = clean(text);
-  return query
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .every((word) => searchAlternatives(word).some((alt) => t.includes(alt)));
+  const tc = compact(t);
+  const words = query.trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return true;
+  const each = words.every((word) =>
+    searchAlternatives(word).some((alt) => {
+      const a = compact(alt);
+      return t.includes(alt) || (a.length > 0 && tc.includes(a));
+    }),
+  );
+  if (each) return true;
+  const whole = compact(clean(query));
+  return words.length > 1 && whole.length >= 3 && tc.includes(whole);
+}
+
+// How well a text answers a query, for ordering results: the name starting with it first, then
+// a word starting with it, then anywhere. 0 = no match.
+export function searchRank(text: string, query: string): number {
+  if (!matchesSearch(text, query)) return 0;
+  const t = clean(text);
+  const q = clean(query.trim());
+  if (t.startsWith(q) || compact(t).startsWith(compact(q))) return 3;
+  if (t.split(/[^\p{L}\p{N}]+/u).some((w) => w.startsWith(q.split(/\s+/)[0]))) return 2;
+  return 1;
 }
 
 // Store searches are in English (Harel, 2026-10-28): a Hebrew or mixed query is turned into

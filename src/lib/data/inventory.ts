@@ -163,7 +163,7 @@ const isRawStock = (i: Omit<Named, "id">, cats: InvCategory[]) => {
   const cat = getCategory(cats, categoryOf(i, cats));
   return !!cat && (cat.group === "consumables" || cat.sheet);
 };
-async function itemThumbs(items: (Named & { imagePath: string | null })[], cats: InvCategory[]) {
+export async function itemThumbs(items: (Named & { imagePath: string | null })[], cats: InvCategory[]) {
   const raw = new Set(items.filter((i) => isRawStock(i, cats)).map((i) => i.id));
   const photo = (i: { id: string; imagePath: string | null }) => (i.imagePath && !(raw.has(i.id) && PART_THUMB.test(i.imagePath)) ? i.imagePath : null);
   const own = await Promise.all(items.filter((i) => photo(i)).map(async (i) => [i.id, await imageUrl(photo(i)!)] as const));

@@ -1,11 +1,12 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useFilters } from "./FilterContext";
 import { Icon } from "@/components/ui/Icon";
 import { Brand } from "./Brand";
 import { ModeToggle } from "./ModeContext";
+import { SearchDropdown } from "./SearchDropdown";
 import { UndoRedo } from "./UndoRedo";
 
 // The two panel buttons (pages on the left, robots on the right) match the Undo/Redo squares.
@@ -18,8 +19,12 @@ export function TopBar({ onMenu, onRobots, navHidden, robotsHidden }: { onMenu: 
   const { filters, setFilters } = useFilters();
   const search = useRef<HTMLInputElement>(null);
   const header = useRef<HTMLElement>(null);
-  // Part search applies to the robot pages; Inventory has its own.
+  // On the robot pages the search also filters the page's parts. On a PC it's on every page and
+  // opens a dropdown of matching parts and inventory items (Harel, 2026-11-04); phones keep it on
+  // the robot pages only.
   const partPages = pathname.startsWith("/robots/") && pathname !== "/robots/new";
+  const [dropdown, setDropdown] = useState(false);
+  const closeDropdown = useCallback(() => setDropdown(false), []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -50,15 +55,17 @@ export function TopBar({ onMenu, onRobots, navHidden, robotsHidden }: { onMenu: 
       <div className={navHidden ? "" : "lg:hidden"}>
         <Brand compact />
       </div>
-      {partPages && (
-        <>
           {/* On phones the search takes its own row under the buttons, so the buttons fit one row. */}
-          <div className={`relative min-w-40 flex-1 max-sm:order-last max-sm:basis-full md:max-w-sm ${navHidden ? "" : "lg:ml-24"}`}>
+          <div className={`relative min-w-40 flex-1 max-sm:order-last max-sm:basis-full md:max-w-sm ${navHidden ? "" : "lg:ml-24"} ${partPages ? "" : "max-md:hidden"}`}>
             <input
               ref={search}
               value={filters.q}
-              onChange={(e) => setFilters({ q: e.target.value })}
-              placeholder="Search part name"
+              onChange={(e) => {
+                setFilters({ q: e.target.value });
+                setDropdown(true);
+              }}
+              onFocus={() => setDropdown(true)}
+              placeholder="Search parts and inventory"
               className={`input border-white bg-white text-[#111318] ${filters.q ? "pr-9 sm:pr-[5.5rem]" : "sm:pr-16"}`}
             />
             {/* Right edge of the box: the shortcut hint, then the clear button in the far corner. */}
@@ -69,6 +76,7 @@ export function TopBar({ onMenu, onRobots, navHidden, robotsHidden }: { onMenu: 
                   type="button"
                   onClick={() => {
                     setFilters({ q: "" });
+                    setDropdown(false);
                     search.current?.focus();
                   }}
                   aria-label="Clear search"
@@ -79,9 +87,8 @@ export function TopBar({ onMenu, onRobots, navHidden, robotsHidden }: { onMenu: 
                 </button>
               )}
             </div>
+            <SearchDropdown q={filters.q} open={dropdown} onClose={closeDropdown} input={search} />
           </div>
-        </>
-      )}
       <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
         <UndoRedo />
         <ModeToggle />
