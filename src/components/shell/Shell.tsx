@@ -26,9 +26,12 @@ import { VisitTracker } from "./VisitTracker";
 // cover only the page.
 const COLLAPSE_KEY = "orbit-collapsed";
 // The pages column can be dragged wider: first it shows the names it cuts off, past that its
-// text grows (Harel, 2026-11-04). nav = { w: width in px, z: text zoom }, remembered per browser.
+// text grows. Dragged narrower it cuts the names short, then keeps only the icons (Harel,
+// 2026-11-04). nav = { w: width in px, z: text zoom }, remembered per browser.
 const NAV_KEY = "orbit-nav-width";
-const NAV_MIN = 224;
+const NAV_DEFAULT = 224;
+// The round logo and the icons, nothing cut.
+const NAV_SMALLEST = 60;
 const WIDE = { left: "(min-width: 64rem)", right: "(min-width: 80rem)" } as const;
 export function Shell({
   robots,
@@ -54,7 +57,7 @@ export function Shell({
   // A drawer closes by itself once the page changes.
   const open = drawer?.at === pathname ? drawer.side : null;
   const [collapsed, setCollapsed] = useState({ left: false, right: false });
-  const [nav, setNav] = useState({ w: NAV_MIN, z: 1 });
+  const [nav, setNav] = useState({ w: NAV_DEFAULT, z: 1 });
   const root = useRef<HTMLDivElement>(null);
   // Which columns are on screen as columns (not drawers). A drawer that's slid away is inert, so
   // Tab and screen readers skip its links; Escape closes an open one.
@@ -77,7 +80,7 @@ export function Shell({
       // eslint-disable-next-line react-hooks/set-state-in-effect -- browser-only preference
       if (saved) setCollapsed({ left: !!saved.left, right: !!saved.right });
       const width = JSON.parse(localStorage.getItem(NAV_KEY) ?? "null");
-      if (width?.w >= NAV_MIN) setNav({ w: width.w, z: Math.max(1, width.z || 1) });
+      if (width?.w >= NAV_SMALLEST) setNav({ w: width.w, z: Math.max(1, width.z || 1) });
     } catch {}
   }, []);
   const saveNav = (next: { w: number; z: number }) => {
@@ -111,7 +114,7 @@ export function Shell({
               >
                 <aside
                   inert={!wide.left && open !== "left"}
-                  className={`fixed inset-y-0 left-0 z-40 w-[var(--nav-w)] max-w-[calc(100vw-3rem)] shrink-0 bg-surface lg:sticky lg:top-0 lg:h-dvh lg:translate-x-0 ${collapsed.left ? "lg:hidden" : ""} ${
+                  className={`@container fixed inset-y-0 left-0 z-40 w-[var(--nav-w)] max-w-[calc(100vw-3rem)] shrink-0 bg-surface lg:sticky lg:top-0 lg:h-dvh lg:translate-x-0 ${collapsed.left ? "lg:hidden" : ""} ${
                     open === "left" ? "translate-x-0" : "-translate-x-full"
                   } transition-transform duration-150`}
                 >
@@ -170,7 +173,8 @@ function EdgeArrow({ collapsed, onClick }: { collapsed: boolean; onClick: () => 
 // The drag strip on the pages column's right edge. While dragging it writes the CSS variables
 // straight onto the shell (no React render per frame) and saves the result on release. Up to the
 // width where nothing is cut off the column only widens; past it the text zooms with the width,
-// so the names keep filling the column. Double-click goes back to the normal width.
+// so the names keep filling the column. Narrower than normal, LeftNav cuts names short and then
+// shows only icons. Double-click goes back to the normal width.
 function NavResizer({
   root,
   nav,
@@ -187,21 +191,25 @@ function NavResizer({
     e.preventDefault();
     const handle = e.currentTarget;
     handle.setPointerCapture(e.pointerId);
-    // The width the pages need with nothing cut off, measured with the folders open right now.
+    // The width the pages need with nothing cut off, measured with the folders open right now. The
+    // column is made wide for the measurement, so names it hides when narrow are counted too.
+    const aside = handle.parentElement!;
     const zoom = body.style.zoom;
     body.style.zoom = "1";
     body.style.width = "max-content";
-    const fit = Math.max(NAV_MIN, Math.ceil(body.getBoundingClientRect().width) + 2);
+    aside.style.width = "100vw";
+    const fit = Math.max(NAV_DEFAULT, Math.ceil(body.getBoundingClientRect().width) + 2);
     body.style.zoom = zoom;
     body.style.width = "";
+    aside.style.width = "";
     // Half the screen as a column; as a drawer, the aside's own cap (3rem of page left showing).
     const room = window.matchMedia(WIDE.left).matches ? window.innerWidth / 2 : window.innerWidth - 48;
-    const max = Math.max(NAV_MIN, Math.min(room, fit * 1.8));
+    const max = Math.max(NAV_DEFAULT, Math.min(room, fit * 1.8));
     const x0 = e.clientX;
     let next = nav;
     let frame = 0;
     const move = (ev: PointerEvent) => {
-      const w = Math.round(Math.min(max, Math.max(NAV_MIN, nav.w + ev.clientX - x0)));
+      const w = Math.round(Math.min(max, Math.max(NAV_SMALLEST, nav.w + ev.clientX - x0)));
       next = { w, z: w > fit ? w / fit : 1 };
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
@@ -226,10 +234,10 @@ function NavResizer({
     <div
       role="separator"
       aria-orientation="vertical"
-      aria-label="Drag to widen the pages"
-      title="Drag to widen, double-click to reset"
+      aria-label="Drag to resize the pages"
+      title="Drag to resize, double-click to reset"
       onPointerDown={start}
-      onDoubleClick={() => onDone({ w: NAV_MIN, z: 1 })}
+      onDoubleClick={() => onDone({ w: NAV_DEFAULT, z: 1 })}
       className="group absolute inset-y-0 -right-1.5 z-10 w-3 cursor-col-resize touch-none pointer-coarse:-right-3 pointer-coarse:w-6"
     >
       <span className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-accent opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-active:opacity-100" />

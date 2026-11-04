@@ -44,14 +44,16 @@ export function LeftNav({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex min-h-11 items-center overflow-visible bg-bar px-3">
+      {/* Narrower than the full mark, only the round logo stays. */}
+      <div className="flex min-h-11 items-center overflow-visible bg-bar px-3 @max-[13.5rem]:[&_a>span]:hidden">
         <Brand />
       </div>
       {/* The column's edge line starts under the blue bar, so it never runs through the logo. The
           links zoom when the column is dragged wider than they need (Shell's NavResizer); the
-          logo bar doesn't, so it stays level with the top bar. */}
+          logo bar doesn't, so it stays level with the top bar. Dragged narrower than 10rem only
+          the icons stay (each link keeps its name as a tooltip). */}
       <div data-nav-body style={{ zoom: "var(--nav-zoom, 1)" }} className="flex min-h-0 flex-1 flex-col border-r border-line">
-        <nav className="flex-1 space-y-0.5 overflow-y-auto p-2 text-sm">
+        <nav className="flex-1 space-y-0.5 overflow-x-hidden overflow-y-auto p-2 text-sm">
           <Item href="/?home" icon="home" active={pathname === "/"}>
             Home
           </Item>
@@ -69,12 +71,12 @@ export function LeftNav({
               </Item>
               {base && (
                 <>
-                  {robot!.fab.total > 0 && <Count n={robot!.fab.total} className="pointer-events-none absolute right-9" />}
+                  {robot!.fab.total > 0 && <Count n={robot!.fab.total} className="pointer-events-none absolute right-9 @max-[10rem]:hidden" />}
                   <button
                     onClick={() => setToggled(!fabOpen)}
                     aria-expanded={fabOpen}
                     aria-label={fabOpen ? "Hide processes" : "Show processes"}
-                    className="press absolute right-0 flex h-8 w-8 items-center justify-center rounded-md text-subtle hover:bg-line hover:text-fg"
+                    className="press absolute right-0 flex h-8 w-8 items-center justify-center rounded-md text-subtle hover:bg-line hover:text-fg @max-[10rem]:hidden"
                   >
                     <Icon name="chevron" className={`h-4.5 w-4.5 transition-transform duration-150 ${fabOpen ? "rotate-90" : ""}`} />
                   </button>
@@ -82,7 +84,7 @@ export function LeftNav({
               )}
             </div>
             {base && fabOpen && (
-              <div className="mt-0.5 mb-1 ml-5 space-y-px border-l border-line pl-2">
+              <div className="mt-0.5 mb-1 ml-5 @max-[10rem]:hidden space-y-px border-l border-line pl-2">
                 {MACHINES.map((m) => {
                   const n = robot!.fab.byMachine[m.id] ?? 0;
                   const active = onFab && machine === m.id;
@@ -106,7 +108,7 @@ export function LeftNav({
             <Item href={base && `${base}/review`} icon="review" active={!!base && pathname.startsWith(`${base}/review`)} className="flex-1 pr-14">
               To Review
             </Item>
-            {base && robot!.review > 0 && <Count n={robot!.review} className="pointer-events-none absolute right-8" />}
+            {base && robot!.review > 0 && <Count n={robot!.review} className="pointer-events-none absolute right-8 @max-[10rem]:hidden" />}
           </div>
           <div>
             <div className="relative flex items-center">
@@ -117,13 +119,13 @@ export function LeftNav({
                 onClick={() => setCotsToggled(!cotsOpen)}
                 aria-expanded={cotsOpen}
                 aria-label={cotsOpen ? "Hide COTS lists" : "Show COTS lists"}
-                className="press absolute right-0 flex h-8 w-8 items-center justify-center rounded-md text-subtle hover:bg-line hover:text-fg"
+                className="press absolute right-0 flex h-8 w-8 items-center justify-center rounded-md text-subtle hover:bg-line hover:text-fg @max-[10rem]:hidden"
               >
                 <Icon name="chevron" className={`h-4.5 w-4.5 transition-transform duration-150 ${cotsOpen ? "rotate-90" : ""}`} />
               </button>
             </div>
             {cotsOpen && (
-              <div className="mt-0.5 mb-1 ml-5 space-y-px border-l border-line pl-2">
+              <div className="mt-0.5 mb-1 ml-5 @max-[10rem]:hidden space-y-px border-l border-line pl-2">
                 {[
                   { href: "/cots/released", name: "Released" },
                   { href: "/cots/order-list", name: "Order List" },
@@ -151,13 +153,13 @@ export function LeftNav({
                 onClick={() => setInventoryToggled(!inventoryOpen)}
                 aria-expanded={inventoryOpen}
                 aria-label={inventoryOpen ? "Hide inventory categories" : "Show inventory categories"}
-                className="press absolute right-0 flex h-8 w-8 items-center justify-center rounded-md text-subtle hover:bg-line hover:text-fg"
+                className="press absolute right-0 flex h-8 w-8 items-center justify-center rounded-md text-subtle hover:bg-line hover:text-fg @max-[10rem]:hidden"
               >
                 <Icon name="chevron" className={`h-4.5 w-4.5 transition-transform duration-150 ${inventoryOpen ? "rotate-90" : ""}`} />
               </button>
             </div>
             {inventoryOpen && (
-              <div className="mt-0.5 mb-1 ml-5 space-y-px border-l border-line pl-2">
+              <div className="mt-0.5 mb-1 ml-5 @max-[10rem]:hidden space-y-px border-l border-line pl-2">
                 {CATEGORY_GROUPS.map((g) => {
                   const children = categories.filter((c) => c.group === g.id);
                   const open = groupToggled[g.id] ?? shownGroup === g.id;
@@ -227,7 +229,7 @@ export function LeftNav({
               Settings
             </Item>
           )}
-          <div className="px-3 pt-2">
+          <div className="px-3 pt-2 @max-[10rem]:hidden">
             <div className="truncate text-xs font-medium text-fg-2">{member.name}</div>
             <div className="truncate text-[11px] text-subtle">
               {member.email}
@@ -261,22 +263,25 @@ function Item({
   children: React.ReactNode;
 }) {
   const cls = `press relative flex items-center gap-2.5 rounded-md px-3 py-1.5 ${className}`;
+  // Cut short with an ellipsis in a narrowed column; screen readers only once just icons show.
+  const name = <span className="truncate @max-[10rem]:sr-only">{children}</span>;
   if (!href)
     return (
       <span className={`${cls} cursor-default text-faint`} title="Create a robot first">
         <Icon name={icon} />
-        {children}
+        {name}
       </span>
     );
   return (
     <FastLink
       href={href}
       aria-current={active ? "page" : undefined}
+      title={typeof children === "string" ? children : undefined}
       className={`${cls} ${active ? "bg-accent/10 font-semibold text-accent" : "text-muted hover:bg-raised hover:text-fg"}`}
     >
       {active && <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-accent" />}
-      <Icon name={icon} className={`h-4 w-4 ${active ? "text-accent-hover" : ""}`} />
-      {children}
+      <Icon name={icon} className={`h-4 w-4 shrink-0 ${active ? "text-accent-hover" : ""}`} />
+      {name}
     </FastLink>
   );
 }
