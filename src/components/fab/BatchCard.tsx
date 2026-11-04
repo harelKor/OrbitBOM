@@ -62,6 +62,9 @@ function rowBelow(el: HTMLElement | null) {
 // `pack`: a Factory Fab pack, the same card without who makes it, machine and material, Auto
 // Layout or G-code; its status is the big factory status button and its download is one zip of
 // every part (Harel, 2026-11-04).
+// `cart`: an Order List cart (with `pack`): its vendor as the title, its cart button in place of
+// the status and downloads, and no priority, all opening the same way (Harel, 2026-11-04).
+export type CartActions = { button: React.ReactNode; onDelete: () => void; onRemove: (partId: string) => void };
 export function BatchCard({
   batch,
   members,
@@ -74,6 +77,7 @@ export function BatchCard({
   onDropParts,
   pack = false,
   title,
+  cart,
 }: {
   batch: Batch;
   members: CardPart[];
@@ -86,6 +90,7 @@ export function BatchCard({
   onDropParts?: (load: DragLoad) => void;
   pack?: boolean;
   title?: string; // a pack's name on the card (Zivudim's: its material)
+  cart?: CartActions;
 }) {
   // Fab batches are Build Team work: any team renames, deletes and re-statuses them.
   const edit = useCan("work");
@@ -112,7 +117,7 @@ export function BatchCard({
   const material = materials.length === 1 ? materials[0] || "No material" : "Mixed materials";
   const machineName = batch.machine ? (getMachine(batch.machine)?.name ?? batch.machine) : null;
   // What the batch is called in labels and questions, now that it shows no name.
-  const what = pack ? (title ? `the ${title} pack` : "the pack") : `the ${[machineName, material].filter(Boolean).join(" ")} batch`;
+  const what = cart ? `the ${title} cart` : pack ? (title ? `the ${title} pack` : "the pack") : `the ${[machineName, material].filter(Boolean).join(" ")} batch`;
   const downloads = members.flatMap((p) => {
     const f = cadFormat(p);
     return f ? [`/api/parts/${p.id}/export?format=${f}${p.fabView ? "&fab=1" : ""}`] : [];
@@ -243,7 +248,7 @@ export function BatchCard({
       DRAG_TYPE,
       JSON.stringify({ ids: (notDone.length ? notDone : members).map((p) => p.id), from: stage, batch: batch.id, whole: true } satisfies DragLoad),
     );
-  const statusMenu = pack ? (
+  const statusMenu = cart ? null : pack ? (
     <FactoryStatusButton
       status={shared}
       compact={list}
@@ -309,7 +314,9 @@ export function BatchCard({
     );
   // A factory's pack downloads as one zip; a printer's as each part's own file, nothing to unzip
   // (Harel, 2026-11-04).
-  const downloadButtons = pack && areaOfMachine(batch.machine) === "print" ? (
+  const downloadButtons = cart ? (
+    cart.button
+  ) : pack && areaOfMachine(batch.machine) === "print" ? (
     downloads.length > 0 && (
       <button className="overlay-btn" onClick={() => void downloadAll(downloads)} aria-label={`Download ${what}'s ${downloads.length} files`} title={`Download ${downloads.length} files`}>
         <Icon name="download" />
@@ -367,16 +374,18 @@ export function BatchCard({
     <button
       className="press shrink-0 text-xs text-subtle hover:text-rose-700"
       onClick={() => {
-        if (confirm(`Delete ${what}? Its parts stay on the BOM with their status.`)) startTransition(() => void deleteGroup(batch.id));
+        if (cart) {
+          if (confirm(`Delete ${what}? Its parts stay on the Order List.`)) cart.onDelete();
+        } else if (confirm(`Delete ${what}? Its parts stay on the BOM with their status.`)) startTransition(() => void deleteGroup(batch.id));
       }}
     >
-      {pack ? "Delete pack" : "Delete fab"}
+      {cart ? "Delete cart" : pack ? "Delete pack" : "Delete fab"}
     </button>
   );
   const removeButton = (p: CardPart) =>
     edit && (
-      <button className="self-start text-xs text-subtle hover:text-rose-700" onClick={() => startTransition(() => void removeFromGroup(batch.id, p.id))}>
-        {pack ? "Remove from pack" : "Remove from batch"}
+      <button className="self-start text-xs text-subtle hover:text-rose-700" onClick={() => (cart ? cart.onRemove(p.id) : startTransition(() => void removeFromGroup(batch.id, p.id)))}>
+        {cart ? "Remove from cart" : pack ? "Remove from pack" : "Remove from batch"}
       </button>
     );
 
@@ -450,7 +459,8 @@ export function BatchCard({
                 {!pack && machineName && ` · ${machineName}`}
               </span>
             )}
-            {prioritySelect}
+            {!cart && prioritySelect}
+            {cart?.button}
             {!pack && (
               <>
                 {autoLayoutButton}

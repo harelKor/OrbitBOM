@@ -25,6 +25,7 @@ import { cotsTotal, groupSameCots, siteOf, spreadCotsChanges } from "@/lib/cots"
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { computeStatus } from "@/lib/status";
 import type { CotsCart } from "@/lib/data/cotsCarts";
+import { OpenBatchContext } from "@/components/fab/BatchCard";
 import { CartCard } from "./CartCard";
 import { CotsCard, OrderStatusButton } from "./CotsCard";
 import { PartList, PartListRow } from "@/components/bom/PartListRow";
@@ -128,7 +129,7 @@ export function CotsView({
   const [open, setOpen] = useState<Set<string>>(new Set()); // groups shown per system
   const [addTo, setAddTo] = useState<string>(""); // "" = General, else a robot id
   const [cartTarget, setCartTarget] = useState(""); // "" = a new cart, else a cart id
-  const [openCart, setOpenCart] = useState<string | null>(null);
+  const [openCart, setOpenCart] = useState<string | null>(null); // one open cart, as with packs
 
   const places: Place[] = [{ robotId: null, name: "General" }, ...robots.map((r) => ({ robotId: r.id, name: r.name }))];
 
@@ -288,15 +289,9 @@ export function CotsView({
 
   const renderRows = (
     rows: Row[],
-    { small = false, from = "list", clearable: canClear = false, onRemove }: { small?: boolean; from?: DragLoad["from"]; clearable?: boolean; onRemove?: (ids: string[]) => void } = {},
+    { small = false, from = "list", clearable: canClear = false }: { small?: boolean; from?: DragLoad["from"]; clearable?: boolean } = {},
   ) => {
     const clearable = canClear && work;
-    const removeButton = (ids: string[]) =>
-      onRemove && work && (
-        <button type="button" className="press self-start text-xs text-subtle hover:text-rose-700" onClick={() => onRemove(ids)}>
-          Remove from cart
-        </button>
-      );
     return (
     view === "table" ? (
       <CotsTable rows={rows} saveRow={saveRow} struck={struck} orderList={list === "order" && !small} onClear={clearable ? clear : undefined} />
@@ -305,7 +300,7 @@ export function CotsView({
         {rows.map((row) => {
           const ids = row.members.map((m) => m.id);
           return (
-            <div key={row.key} className={`relative flex flex-col gap-1 ${row.members.every((m) => struck.has(m.id)) ? "opacity-60" : ""} ${dim(row)}`} {...dragProps(ids, from)}>
+            <div key={row.key} className={`relative ${row.members.every((m) => struck.has(m.id)) ? "opacity-60" : ""} ${dim(row)}`} {...dragProps(ids, from)}>
               <PartListRow
                 part={row.part}
                 save={saveRow(row)}
@@ -314,7 +309,6 @@ export function CotsView({
                 onOpen={openRow(row)}
               />
               {clearable && <ClearButton name={partTitle(row.part)} onClick={() => clear(ids)} />}
-              {removeButton(ids)}
             </div>
           );
         })}
@@ -337,7 +331,7 @@ export function CotsView({
               </GroupBox>
             );
           return (
-            <div key={row.key} className={`relative flex flex-col gap-1 ${dim(row)}`} {...dragProps(ids, from)}>
+            <div key={row.key} className={`relative ${dim(row)}`} {...dragProps(ids, from)}>
               <CotsCard
                 part={row.part}
                 save={saveRow(row)}
@@ -351,7 +345,6 @@ export function CotsView({
                 onToggleSelect={pick(row)}
               />
               {clearable && <ClearButton name={partTitle(row.part)} onClick={() => clear(ids)} />}
-              {removeButton(ids)}
             </div>
           );
         })}
@@ -415,6 +408,16 @@ export function CotsView({
       if (r.error) setError(r.error);
       else toggleSelecting("cart");
     });
+  };
+  const cartLayout = view === "list" ? "list" : "cards";
+  // A part inside an open cart: the Order List's own card, or its row in the List view.
+  const cartMember = (p: CardPart) => {
+    const row: Row = { key: p.id, part: p, members: [p] };
+    return cartLayout === "list" ? (
+      <PartListRow part={p} save={saveRow(row)} onOpen={openRow(row)} />
+    ) : (
+      <CotsCard part={p} save={saveRow(row)} onOpen={openRow(row)} showSystem variant="order" shelfOnThumb struck={struck.has(p.id)} />
+    );
   };
   const removeFromCart = (cartId: string) => (ids: string[]) =>
     startTransition(async () => {
@@ -591,13 +594,22 @@ export function CotsView({
       {shownCarts.length > 0 && (
         <Section title="Carts" count={shownCarts.length}>
           <BomProvider value={{ inventory: [], isAdmin: false }}>
-            <div className="card-grid" style={{ "--card-min": "220px" } as React.CSSProperties}>
-              {shownCarts.map(({ cart, members }) => (
-                <CartCard key={cart.id} cart={cart} members={members} open={openCart === cart.id} onToggle={() => setOpenCart((c) => (c === cart.id ? null : cart.id))}>
-                  {renderRows(rowsOf(members), { onRemove: removeFromCart(cart.id) })}
-                </CartCard>
-              ))}
-            </div>
+            <OpenBatchContext.Provider value={{ id: openCart, set: setOpenCart }}>
+              {/* Like Factory Fab's packs: cards, or rows in the List view (Table shows cards). */}
+              <div className={cartLayout === "list" ? "list-stack fab-grid" : "card-grid fab-grid"} style={{ "--card-min": "220px" } as React.CSSProperties}>
+                {shownCarts.map(({ cart, members }) => (
+                  <CartCard
+                    key={cart.id}
+                    cart={cart}
+                    members={members}
+                    layout={cartLayout}
+                    save={(ids, changes) => save(ids.map((id) => ({ id, changes })))}
+                    card={cartMember}
+                    onRemove={removeFromCart(cart.id)}
+                  />
+                ))}
+              </div>
+            </OpenBatchContext.Provider>
           </BomProvider>
         </Section>
       )}
