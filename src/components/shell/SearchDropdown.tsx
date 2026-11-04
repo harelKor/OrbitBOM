@@ -12,39 +12,11 @@ type Hit = { kind: "part" | "item"; id: string };
 
 // The top bar search's results (Harel, 2026-11-04): BOM parts by system, then inventory items by
 // category, from every active robot and the whole shelf. Picking one opens its window over the
-// page you're on. ↑ ↓ move, Enter opens, Escape closes. On a phone it's a short list: the best
-// PHONE_MAX results, the full width under the box.
-const PHONE_MAX = 5;
-
-// Cuts the results to the first `max` rows, sections in order, dropping sections left empty.
-function shorten(r: SearchResults, max: number): SearchResults {
-  let left = max;
-  const take = <T,>(list: T[]) => {
-    const out = list.slice(0, Math.max(left, 0));
-    left -= out.length;
-    return out;
-  };
-  const bom = r.bom.map((s) => ({ ...s, parts: take(s.parts), more: 0 })).filter((s) => s.parts.length);
-  const inventory = r.inventory.map((s) => ({ ...s, items: take(s.items), more: 0 })).filter((s) => s.items.length);
-  return { bom, inventory };
-}
-
-function usePhone() {
-  const [phone, setPhone] = useState(false);
-  useEffect(() => {
-    const list = matchMedia("(max-width: 47.99rem)");
-    const sync = () => setPhone(list.matches);
-    sync();
-    list.addEventListener("change", sync);
-    return () => list.removeEventListener("change", sync);
-  }, []);
-  return phone;
-}
+// page you're on. ↑ ↓ move, Enter opens, Escape closes. On a phone it's a short box, the full width
+// under the search, holding every result: a finger scrolls it without moving the page.
 export function SearchDropdown({ q, open, onClose, input }: { q: string; open: boolean; onClose: () => void; input: React.RefObject<HTMLInputElement | null> }) {
   const { openItem } = useInventoryPopup();
-  const [found, setFound] = useState<SearchResults | null>(null);
-  const phone = usePhone();
-  const results = found && phone ? shorten(found, PHONE_MAX) : found;
+  const [results, setResults] = useState<SearchResults | null>(null);
   const [loading, setLoading] = useState(false);
   const [active, setActive] = useState(0);
   const panel = useRef<HTMLDivElement>(null);
@@ -59,7 +31,7 @@ export function SearchDropdown({ q, open, onClose, input }: { q: string; open: b
       try {
         const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`, { signal: ctrl.signal });
         if (res.ok) {
-          setFound(await res.json());
+          setResults(await res.json());
           setActive(0);
         }
       } catch {}
@@ -154,7 +126,7 @@ export function SearchDropdown({ q, open, onClose, input }: { q: string; open: b
     <div
       ref={panel}
       role="listbox"
-      className="absolute top-full left-0 z-50 mt-1.5 max-h-[min(70vh,40rem)] w-[min(40rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-line-strong bg-surface p-1.5 text-fg shadow-2xl max-md:right-0 max-md:max-h-[45vh] max-md:w-auto"
+      className="absolute top-full left-0 z-50 mt-1.5 max-h-[min(70vh,40rem)] w-[min(40rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-xl border border-line-strong bg-surface p-1.5 text-fg shadow-2xl [-webkit-overflow-scrolling:touch] max-md:right-0 max-md:max-h-[min(45vh,20rem)] max-md:w-auto"
     >
       {!results && loading && <p className="px-2 py-3 text-sm text-subtle">Searching…</p>}
       {empty && <p className="px-2 py-3 text-sm text-subtle">Nothing on the BOM or the shelf matches “{query}”.</p>}
