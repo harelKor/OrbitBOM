@@ -90,7 +90,7 @@ export function FabPartListRow({
             {part.fabView?.changed && (
               <span
                 className="rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold tracking-wide text-white uppercase shadow-[0_0_8px_1px_rgba(220,38,38,0.45)]"
-                title={`Changed in the BOM since it was released${part.fabLock?.label ? ` at ${part.fabLock.label}` : ""}. To Fab still shows the released version.`}
+                title={`Changed in the BOM since it was released${part.fabLock?.label ? ` at ${part.fabLock.label}` : ""}. Shop Fab still shows the released version.`}
               >
                 Changed
               </span>

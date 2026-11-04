@@ -3,7 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { CATEGORY_GROUPS } from "@/config/inventory";
-import { FACTORY_FAB_MACHINES, MACHINES } from "@/config/machines";
+import { FACTORY_FAB_MACHINES, MACHINES, PRINTERS, areaOfMachine } from "@/config/machines";
 import type { ShellCategory, ShellRobot } from "@/lib/data/shell";
 import { Brand } from "./Brand";
 import { SignOutButton } from "@/components/SignOutButton";
@@ -31,9 +31,6 @@ export function LeftNav({
   const onFab = !!base && pathname.startsWith(`${base}/fab`);
   const [toggled, setToggled] = useState<boolean | null>(null);
   const fabOpen = toggled ?? onFab;
-  const onFactory = !!base && pathname.startsWith(`${base}/factory`);
-  const [factoryToggled, setFactoryToggled] = useState<boolean | null>(null);
-  const factoryOpen = factoryToggled ?? onFactory;
   const onCots = pathname.startsWith("/cots");
   const [cotsToggled, setCotsToggled] = useState<boolean | null>(null);
   const cotsOpen = cotsToggled ?? onCots;
@@ -70,7 +67,7 @@ export function LeftNav({
           <div>
             <div className="relative flex items-center">
               <Item href={base && `${base}/fab`} icon="fab" active={onFab && !machine} className="flex-1 pr-14">
-                To Fab
+                Shop Fab
               </Item>
               {base && (
                 <>
@@ -88,8 +85,8 @@ export function LeftNav({
             </div>
             {base && fabOpen && (
               <div className="mt-0.5 mb-1 ml-5 @max-[10rem]:hidden space-y-px border-l border-line pl-2">
-                {/* A Factory Fab factory's parts are on Factory Fab, below. */}
-                {MACHINES.filter((m) => !("factoryFab" in m && m.factoryFab)).map((m) => {
+                {/* A factory's or team printer's parts are on Factory Fab or 3D Printing, below. */}
+                {MACHINES.filter((m) => !areaOfMachine(m.id)).map((m) => {
                   const n = robot!.fab.byMachine[m.id] ?? 0;
                   const active = onFab && machine === m.id;
                   return (
@@ -108,46 +105,26 @@ export function LeftNav({
               </div>
             )}
           </div>
-          <div>
-            <div className="relative flex items-center">
-              <Item href={base && `${base}/factory`} icon="factory" active={!!base && pathname === `${base}/factory`} className="flex-1 pr-14">
-                Factory Fab
-              </Item>
-              {base && (
-                <>
-                  {robot!.factory.total > 0 && <Count n={robot!.factory.total} className="pointer-events-none absolute right-9 @max-[10rem]:hidden" />}
-                  <button
-                    onClick={() => setFactoryToggled(!factoryOpen)}
-                    aria-expanded={factoryOpen}
-                    aria-label={factoryOpen ? "Hide factories" : "Show factories"}
-                    className="press absolute right-0 flex h-8 w-8 items-center justify-center rounded-md text-subtle hover:bg-line hover:text-fg @max-[10rem]:hidden"
-                  >
-                    <Icon name="chevron" className={`h-4.5 w-4.5 transition-transform duration-150 ${factoryOpen ? "rotate-90" : ""}`} />
-                  </button>
-                </>
-              )}
-            </div>
-            {base && factoryOpen && (
-              <div className="mt-0.5 mb-1 ml-5 @max-[10rem]:hidden space-y-px border-l border-line pl-2">
-                {FACTORY_FAB_MACHINES.map((m) => {
-                  const n = robot!.factory.byFactory[m.id] ?? 0;
-                  const href = `${base}/factory/${m.id}`;
-                  return (
-                    <FastLink
-                      key={m.id}
-                      href={href}
-                      className={`press flex items-center gap-2 rounded-md px-2 py-1 text-xs pointer-coarse:min-h-9 ${
-                        pathname === href ? "bg-accent/15 text-white" : n ? "text-fg-2 hover:bg-raised hover:text-fg" : "text-subtle hover:bg-raised hover:text-fg-2"
-                      }`}
-                    >
-                      <span className="truncate">{m.name}</span>
-                      {n > 0 && <Count n={n} className="ml-auto" />}
-                    </FastLink>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          <AreaNav
+            base={base && `${base}/printing`}
+            pathname={pathname}
+            icon="printer"
+            label="3D Printing"
+            what="printers"
+            machines={PRINTERS}
+            total={robot?.print.total ?? 0}
+            counts={robot?.print.byPrinter ?? {}}
+          />
+          <AreaNav
+            base={base && `${base}/factory`}
+            pathname={pathname}
+            icon="factory"
+            label="Factory Fab"
+            what="factories"
+            machines={FACTORY_FAB_MACHINES}
+            total={robot?.factory.total ?? 0}
+            counts={robot?.factory.byFactory ?? {}}
+          />
           <div className="relative flex items-center">
             <Item href={base && `${base}/review`} icon="review" active={!!base && pathname.startsWith(`${base}/review`)} className="flex-1 pr-14">
               To Review
@@ -327,5 +304,73 @@ function Item({
       <Icon name={icon} className={`h-4 w-4 shrink-0 ${active ? "text-accent-hover" : ""}`} />
       {name}
     </FastLink>
+  );
+}
+
+// 3D Printing and Factory Fab: the page, its count, and a dropdown of its printers or factories
+// with theirs (Harel, 2026-11-04).
+function AreaNav({
+  base,
+  pathname,
+  icon,
+  label,
+  what,
+  machines,
+  total,
+  counts,
+}: {
+  base: string | null;
+  pathname: string;
+  icon: IconName;
+  label: string;
+  what: string;
+  machines: readonly { id: string; name: string }[];
+  total: number;
+  counts: Record<string, number>;
+}) {
+  const on = !!base && pathname.startsWith(base);
+  const [toggled, setToggled] = useState<boolean | null>(null);
+  const open = toggled ?? on;
+  return (
+    <div>
+      <div className="relative flex items-center">
+        <Item href={base} icon={icon} active={!!base && pathname === base} className="flex-1 pr-14">
+          {label}
+        </Item>
+        {base && (
+          <>
+            {total > 0 && <Count n={total} className="pointer-events-none absolute right-9 @max-[10rem]:hidden" />}
+            <button
+              onClick={() => setToggled(!open)}
+              aria-expanded={open}
+              aria-label={open ? `Hide ${what}` : `Show ${what}`}
+              className="press absolute right-0 flex h-8 w-8 items-center justify-center rounded-md text-subtle hover:bg-line hover:text-fg @max-[10rem]:hidden"
+            >
+              <Icon name="chevron" className={`h-4.5 w-4.5 transition-transform duration-150 ${open ? "rotate-90" : ""}`} />
+            </button>
+          </>
+        )}
+      </div>
+      {base && open && (
+        <div className="mt-0.5 mb-1 ml-5 @max-[10rem]:hidden space-y-px border-l border-line pl-2">
+          {machines.map((m) => {
+            const n = counts[m.id] ?? 0;
+            const href = `${base}/${m.id}`;
+            return (
+              <FastLink
+                key={m.id}
+                href={href}
+                className={`press flex items-center gap-2 rounded-md px-2 py-1 text-xs pointer-coarse:min-h-9 ${
+                  pathname === href ? "bg-accent/15 text-white" : n ? "text-fg-2 hover:bg-raised hover:text-fg" : "text-subtle hover:bg-raised hover:text-fg-2"
+                }`}
+              >
+                <span className="truncate">{m.name}</span>
+                {n > 0 && <Count n={n} className="ml-auto" />}
+              </FastLink>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }

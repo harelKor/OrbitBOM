@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useEffectEvent, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { getMachine } from "@/config/machines";
+import { areaOfMachine, getMachine } from "@/config/machines";
 import type { Priority } from "@/config/priorities";
 import { STATUSES, statusLabel, type StatusName } from "@/config/statuses";
 import { removeBatchGcode } from "@/app/(app)/files-actions";
@@ -244,7 +244,14 @@ export function BatchCard({
       JSON.stringify({ ids: (notDone.length ? notDone : members).map((p) => p.id), from: stage, batch: batch.id, whole: true } satisfies DragLoad),
     );
   const statusMenu = pack ? (
-    <FactoryStatusButton status={shared} compact={list} onPick={(v) => save(members.map((p) => p.id), { status: v as StatusName })} />
+    <FactoryStatusButton
+      status={shared}
+      compact={list}
+      area={areaOfMachine(batch.machine) ?? "factory"}
+      machine={batch.machine ?? ""}
+      count={members.length}
+      onPick={(v) => save(members.map((p) => p.id), { status: v as StatusName })}
+    />
   ) : (
     <Popover locked={!edit || mode === "cad"} trigger={<StatusPill status={shared ?? "Mixed"} label={shared ? label(shared) : undefined} size={list ? "sm" : "md"} />}>
       {(close) => (
@@ -300,7 +307,15 @@ export function BatchCard({
       </div>,
       document.body,
     );
-  const downloadButtons = pack ? (
+  // A factory's pack downloads as one zip; a printer's as each part's own file, nothing to unzip
+  // (Harel, 2026-11-04).
+  const downloadButtons = pack && areaOfMachine(batch.machine) === "print" ? (
+    downloads.length > 0 && (
+      <button className="overlay-btn" onClick={() => void downloadAll(downloads)} aria-label={`Download ${what}'s ${downloads.length} files`} title={`Download ${downloads.length} files`}>
+        <Icon name="download" />
+      </button>
+    )
+  ) : pack ? (
     downloads.length > 0 && (
       <button
         className="overlay-btn"

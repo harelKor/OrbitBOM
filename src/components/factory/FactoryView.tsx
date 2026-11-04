@@ -14,21 +14,24 @@ import { useCan } from "@/components/shell/ModeContext";
 import { Chevron } from "@/components/ui/Chevron";
 import { statusTint } from "@/components/ui/statusTint";
 import { useEscape } from "@/components/ui/useEscape";
-import { FACTORY_IN_STOCK_DAYS } from "@/lib/fab";
+import type { FabArea } from "@/config/machines";
+import { AREA_READY, FACTORY_IN_STOCK_DAYS } from "@/lib/fab";
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { computeStatus } from "@/lib/status";
 import { FactoryStatusButton } from "./FactoryStatusButton";
 
 const IN_STOCK_MS = FACTORY_IN_STOCK_DAYS * 24 * 60 * 60 * 1000;
 const inStock = (p: CardPart) => computeStatus(p) === "In Stock";
-// Released cards are plain, as on To Fab; the rest take their status's colour.
+// Released cards are plain, as on Shop Fab; the rest take their status's colour.
 const tintOf = (p: CardPart) => (computeStatus(p) === "Released" ? {} : statusTint(computeStatus(p)));
 
-// One factory's page (Harel, 2026-11-04): Released (its loose Released parts, each with the big
-// status button), Packs (always open: packs not yet all In Stock, then loose parts already at the
-// factory) and In Stock (folded: packs and parts that got there in the last month). ＋ Pack picks
-// Released parts and makes them a pack, or adds them to an open one, like To Fab's ＋ Fab.
+// One factory's or team 3D printer's page (Harel, 2026-11-04): Released (its loose Released parts,
+// a printer's Reproduction ones too, each with the big status button), Packs (always open: packs
+// not yet all In Stock, then loose parts already being made) and In Stock (folded: packs and parts
+// that got there in the last month). ＋ Pack picks Released parts and makes them a pack, or adds
+// them to an open one, like Shop Fab's ＋ Fab.
 export function FactoryView({
+  area = "factory",
   factory,
   byMaterial = false,
   parts,
@@ -38,7 +41,8 @@ export function FactoryView({
   isAdmin,
   me,
 }: {
-  factory: string;
+  area?: FabArea;
+  factory: string; // the factory's or printer's machine id
   byMaterial?: boolean; // Zivudim: Released parts are packed by material by themselves (lib/factory/autoPack.ts)
   parts: CardPart[];
   packs: Batch[];
@@ -77,14 +81,14 @@ export function FactoryView({
     const visible = (b: (typeof all)[number]) => b.members.some((p) => shown.includes(p));
     return {
       all,
-      released: loose.filter((p) => computeStatus(p) === "Released"),
+      released: loose.filter((p) => AREA_READY[area].includes(computeStatus(p))),
       packs: all.filter((b) => !done.includes(b) && visible(b)),
-      atFactory: loose.filter((p) => !["Not Started", "Released", "In Stock"].includes(computeStatus(p))),
+      atFactory: loose.filter((p) => !["Not Started", "In Stock", ...AREA_READY[area]].includes(computeStatus(p))),
       inStockPacks: done.filter((b) => visible(b) && recent(lastIn(b) || null)),
       inStockParts: loose.filter((p) => inStock(p) && recent(p.fabFinishedAt)),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- recent only reads `now`
-  }, [optimistic, packs, filters]);
+  }, [optimistic, packs, filters, area]);
 
   // ＋ Pack: pick loose Released parts, then make a new pack or add them to an open one.
   const [packing, setPacking] = useState(false);
@@ -124,7 +128,15 @@ export function FactoryView({
           selected={selected.has(p.id)}
           onToggleSelect={pickable ? () => toggle(p.id) : undefined}
           nameNote={byMaterial ? p.material || "No material" : undefined}
-          statusButton={<FactoryStatusButton status={computeStatus(p)} onPick={(s) => save([p.id], { status: s as PartChanges["status"] })} />}
+          statusButton={
+            <FactoryStatusButton
+              status={computeStatus(p)}
+              area={area}
+              machine={factory}
+              part={p}
+              onPick={(s, note) => save([p.id], { status: s as PartChanges["status"], ...(note !== undefined && { note }) })}
+            />
+          }
         />
       </div>
     );

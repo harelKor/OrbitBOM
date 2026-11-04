@@ -243,12 +243,14 @@ async function systemUpdates(scope: ActionScope, limit: number): Promise<RecentA
   });
 }
 
-// "Shooter", "To Fab", "Dashboard"... from the visit's path.
+// "Shooter", "Shop Fab", "Dashboard"... from the visit's path.
 export function pageName(page: string, systemName: Map<string, string>) {
   const path = page.split(/[?#]/)[0];
   const system = /^\/robots\/[^/]+\/systems\/([^/]+)/.exec(path);
   if (system) return systemName.get(system[1]) ?? "A system";
-  if (/^\/robots\/[^/]+\/fab/.test(path)) return "To Fab";
+  if (/^\/robots\/[^/]+\/fab/.test(path)) return "Shop Fab";
+  if (/^\/robots\/[^/]+\/printing/.test(path)) return "3D Printing";
+  if (/^\/robots\/[^/]+\/factory/.test(path)) return "Factory Fab";
   if (/^\/robots\/[^/]+\/review/.test(path)) return "To Review";
   if (/^\/robots\/[^/]+\/main/.test(path)) return "Main assembly";
   if (/^\/robots\/[^/]+\/?$/.test(path)) return "Dashboard";

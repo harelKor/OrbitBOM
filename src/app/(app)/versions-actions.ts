@@ -93,5 +93,5 @@ export async function updateFabVersion(partId: string): Promise<CommitResult> {
   if (!isUuid(partId)) return { error: "Unknown part." };
   if (!(await relockPart(partId, member.id))) return { error: "That part is gone." };
   revalidatePath("/robots", "layout");
-  return { message: "To Fab now shows the part's latest version." };
+  return { message: "Shop Fab now shows the part's latest version." };
 }

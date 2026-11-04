@@ -395,7 +395,7 @@ export function FabView({
           <MaterialFilters counts={counts.byMaterial} active={mat} />
           <div className="ml-auto self-center">
             <Segmented
-              label="To Fab view"
+              label="Shop Fab view"
               value={layout}
               onChange={setLayout}
               options={[
@@ -574,7 +574,7 @@ export function FabHeading({ robotName }: { robotName: string }) {
   return (
     <div>
       <div className="text-xs font-semibold tracking-wide text-subtle uppercase">{robotName}</div>
-      <h1 className="display text-3xl text-accent">To Fab{machine && ` · ${getMachine(machine)!.name}`}</h1>
+      <h1 className="display text-3xl text-accent">Shop Fab{machine && ` · ${getMachine(machine)!.name}`}</h1>
     </div>
   );
 }

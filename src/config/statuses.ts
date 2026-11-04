@@ -55,6 +55,21 @@ export const toFactoryStatus = (s: StatusName): StatusName =>
   (FACTORY_STATUSES as readonly string[]).includes(s) ? s : (FACTORY_EQUIVALENT[s] ?? IN_FACTORY);
 export const isFactoryStatus = (s: string) => (FACTORY_STATUSES as readonly string[]).includes(s);
 
+// The team's 3D printers' parts use only these (Harel, 2026-11-04). Gcoded and In Process 1 read
+// as Sliced and Printing there (MACHINE_STATUS_LABELS); a status they carry from before reads as
+// the nearest of them (computeStatus).
+export const PRINT_STATUSES = ["Not Started", "Released", "Gcoded", "In Process 1", "Ready for QA", "In Stock", "Reproduction"] as const satisfies readonly StatusName[];
+const PRINT_EQUIVALENT: Partial<Record<StatusName, StatusName>> = {
+  "Ready for Process 2": "In Process 1",
+  "Post Processing": "Ready for QA",
+  "In Factory": "In Process 1",
+  "Secondary Production": "Reproduction",
+  "Spare Production": "Reproduction",
+  "In Spare Stock": "In Stock",
+};
+export const toPrintStatus = (s: StatusName): StatusName => ((PRINT_STATUSES as readonly string[]).includes(s) ? s : (PRINT_EQUIVALENT[s] ?? "Released"));
+export const isPrintStatus = (s: string) => (PRINT_STATUSES as readonly string[]).includes(s);
+
 export const DONE_STATUSES: StatusName[] = STATUSES.filter((s) => "done" in s && s.done).map(
   (s) => s.name,
 );

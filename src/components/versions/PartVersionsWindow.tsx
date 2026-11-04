@@ -27,7 +27,7 @@ export function FabVersionBadge({ lock }: { lock: FabLock }) {
   return (
     <span
       className={`ml-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 align-middle text-[11px] font-semibold ${lock.changed ? "bg-red-600/15 text-red-500" : "bg-amber-500/15 text-amber-500"}`}
-      title={`To Fab shows the part as it was released${lock.label ? ` at ${lock.label}` : ""}, ${new Date(lock.at).toLocaleDateString()}.`}
+      title={`Shop Fab shows the part as it was released${lock.label ? ` at ${lock.label}` : ""}, ${new Date(lock.at).toLocaleDateString()}.`}
     >
       <Icon name="lock" className="h-3 w-3" />
       <span className="max-w-[8rem] truncate font-mono tabular-nums">Fab: {label}</span>
@@ -79,7 +79,7 @@ export function PartVersionsButton({ partId, lock, released }: { partId: string;
           Versions
         </button>
         {canSync && released && (!lock || lock.bomLabel || lock.changed) && (
-          <button type="button" className="btn h-8 text-xs active:scale-[0.98]" disabled={pending} onClick={relock} title="To Fab takes this part's latest version; its status stays">
+          <button type="button" className="btn h-8 text-xs active:scale-[0.98]" disabled={pending} onClick={relock} title="Shop Fab takes this part's latest version; its status stays">
             <Icon name="lock" className="h-3.5 w-3.5" />
             Update fab version
           </button>

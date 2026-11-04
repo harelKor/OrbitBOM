@@ -28,7 +28,7 @@ function UnplacedWarning({ count }: { count: number }) {
     <p role="alert" className="flex items-center gap-2 rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm font-medium text-amber-500">
       <span aria-hidden className="font-bold">!</span>
       <span>
-        <span className="font-mono tabular-nums">{count}</span> selected in-house {count === 1 ? "part has" : "parts have"} no machine or material set — they won&apos;t appear under a machine tab in To Fab.
+        <span className="font-mono tabular-nums">{count}</span> selected in-house {count === 1 ? "part has" : "parts have"} no machine or material set — they won&apos;t appear under a machine tab in Shop Fab.
       </span>
     </p>
   );

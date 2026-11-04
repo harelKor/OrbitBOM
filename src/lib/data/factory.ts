@@ -1,18 +1,19 @@
 import "server-only";
 import { and, eq, inArray, isNull } from "drizzle-orm";
-import { FACTORY_FAB_MACHINES, factoryOf } from "@/config/machines";
+import { FACTORY_FAB_MACHINES, PRINTERS, areaOf, type FabArea } from "@/config/machines";
 import { db, schema } from "@/db";
-import { factoryQueue } from "@/lib/fab";
+import { AREA_READY, areaQueue } from "@/lib/fab";
 import { computeStatus } from "@/lib/status";
 
 const { parts, systems, partGroups, groupMembers } = schema;
 
 export type FactoryCount = { id: string; name: string; queue: number; released: number; packs: number };
 
-// Factory Fab's boxes: per factory, the parts waiting there, the loose Released ones and the
-// packs not yet all In Stock. Reads only the status columns, never pictures.
-export async function countFactories(robotId: string): Promise<FactoryCount[]> {
-  const ids = FACTORY_FAB_MACHINES.map((m) => m.id as string);
+// Factory Fab's or 3D Printing's boxes: per factory or printer, the parts waiting there, the loose
+// Released ones and the packs not yet all In Stock. Reads only the status columns, never pictures.
+export async function countArea(robotId: string, area: FabArea): Promise<FactoryCount[]> {
+  const machines = area === "factory" ? FACTORY_FAB_MACHINES : PRINTERS;
+  const ids = machines.map((m) => m.id as string);
   const [rows, packRows] = await Promise.all([
     db
       .select({
@@ -38,19 +39,19 @@ export async function countFactories(robotId: string): Promise<FactoryCount[]> {
   ]);
   const byId = new Map(rows.map((r) => [r.id, r]));
   const packed = new Set(packRows.map((r) => r.partId));
-  const counts = new Map<string, FactoryCount>(FACTORY_FAB_MACHINES.map((m) => [m.id, { id: m.id, name: m.name, queue: 0, released: 0, packs: 0 }]));
+  const counts = new Map<string, FactoryCount>(machines.map((m) => [m.id, { id: m.id, name: m.name, queue: 0, released: 0, packs: 0 }]));
   for (const r of rows) {
-    const f = factoryQueue(r);
+    const f = areaQueue(r, area);
     if (!f) continue;
     const c = counts.get(f)!;
     c.queue += 1;
-    if (!packed.has(r.id) && computeStatus(r) === "Released") c.released += 1;
+    if (!packed.has(r.id) && AREA_READY[area].includes(computeStatus(r))) c.released += 1;
   }
   // A pack counts while any part on the BOM in it isn't In Stock yet.
   const open = new Set<string>();
   for (const r of packRows) {
     const p = byId.get(r.partId);
-    if (p && factoryOf(p) && computeStatus(p) !== "In Stock") open.add(`${r.machine}|${r.groupId}`);
+    if (p && areaOf(p) === area && computeStatus(p) !== "In Stock") open.add(`${r.machine}|${r.groupId}`);
   }
   for (const key of open) {
     const c = counts.get(key.split("|")[0]);

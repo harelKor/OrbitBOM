@@ -154,7 +154,7 @@ export function RecentActions({
           </ul>
         ) : (
           <p className="flex flex-1 items-center justify-center p-4 text-center text-sm text-subtle">
-            {scope === "fab" ? "No status changes in To Fab this week." : "No changes in this system this week."}
+            {scope === "fab" ? "No status changes in Shop Fab this week." : "No changes in this system this week."}
           </p>
         )}
       </section>

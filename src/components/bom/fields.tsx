@@ -3,7 +3,7 @@
 // The popover editors for each part field. The card, the table and the Kanban cards all use
 // these, so a field edits the same way everywhere (ref §2a, §3).
 
-import { factoryOf, getMachine } from "@/config/machines";
+import { areaOf, getMachine } from "@/config/machines";
 import type { PartChanges } from "@/lib/parts/changes";
 import { PART_TAG_LABELS, partTag, type PartTag } from "@/lib/partTag";
 import { computeStatus, partStatusLabel, statusMachine } from "@/lib/status";
@@ -251,15 +251,15 @@ export function StatusField({ part, save, size = "md" }: Props & { size?: "sm" |
   const status = computeStatus(part);
   const cots = part.classification === "cots";
   const machine = cots ? null : statusMachine(part);
-  const factory = !cots && !!factoryOf(part);
-  const pickable = pickableStatuses(mode, factory);
+  const area = cots ? null : areaOf(part);
+  const pickable = pickableStatuses(mode, area);
   let options = cots
     ? COTS_STATUS_OPTIONS
     : machine
       ? STATUSES.map((s) => ({ value: s.name, label: statusLabel(s.name, machine), color: s.color }))
       : STATUS_OPTIONS;
-  // A Factory Fab factory's part: only the factory statuses (the CAD Team releases it with Release).
-  if (factory) options = options.filter((o) => o.value !== null && pickable!.includes(o.value));
+  // A Factory Fab factory's or team printer's part: only that area's statuses.
+  if (area) options = options.filter((o) => o.value !== null && pickable!.includes(o.value));
   else if (mode === "cad") options = [RELEASE_STATUS, ...NOTE_STATUSES].map((name) => ({ value: name, label: name, color: getStatus(name)?.color }));
   // Build: In Process is the part's current process, so Ready for Process 2 only with a second one.
   else if (pickable && !cots) options = options.filter((o) => o.value !== null && pickable.includes(o.value) && (o.value !== "Ready for Process 2" || !!part.process2));
@@ -335,7 +335,7 @@ function ConfirmReleaseDialog({ part, onClose, onConfirm }: { part: CardPart; on
           {part.quantity > 1 && <span className="font-mono tabular-nums"> ×{part.quantity}</span>} to fabrication?
         </p>
         <p className="text-sm text-muted">
-          To Fab will keep the version it is on now. Later BOM commits won&apos;t change it there; they show a red Changed tag until the part is released again or its fab version is updated.
+          Shop Fab will keep the version it is on now. Later BOM commits won&apos;t change it there; they show a red Changed tag until the part is released again or its fab version is updated.
         </p>
         <div className="flex justify-end gap-2">
           <button type="button" className="btn active:scale-[0.98]" onClick={onClose}>
@@ -351,7 +351,7 @@ function ConfirmReleaseDialog({ part, onClose, onConfirm }: { part: CardPart; on
 }
 
 // Why a part needs Reproduction or Secondary Production: Confirm stays off until there is a reason.
-function StatusNoteDialog({ part, status, onClose, onConfirm }: { part: CardPart; status: string; onClose: () => void; onConfirm: (reason: string) => void }) {
+export function StatusNoteDialog({ part, status, onClose, onConfirm }: { part: CardPart; status: string; onClose: () => void; onConfirm: (reason: string) => void }) {
   const [text, setText] = useState("");
   return (
     <Dialog open onClose={onClose} title={`${status}: ${partTitle(part)}`}>

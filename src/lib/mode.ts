@@ -2,7 +2,7 @@ import "server-only";
 import { inArray } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { can, effectiveMode, isSpecReset, MODE_COOKIE, statusDenied, type Capability, type Mode } from "@/components/shell/mode";
-import { factoryOf } from "@/config/machines";
+import { areaOf } from "@/config/machines";
 import { db, schema } from "@/db";
 import { getMember, requireMember, type Member } from "@/lib/auth";
 import { cotsLinkDenied } from "@/lib/parts/cotsLink";
@@ -69,9 +69,14 @@ export async function statusChangeDenied(
   }
   if (!changes.status) return null;
   const mode = await getMode();
-  // Each kind of part once: COTS, made at a Factory Fab factory, or made by the team.
-  const kinds = new Map(rows.map((r) => [`${r.classification === "cots"}|${!!factoryOf(r)}`, { cots: r.classification === "cots", factory: !!factoryOf(r) }]));
-  if (!kinds.size) kinds.set("", { cots: false, factory: false });
+  // Each kind of part once: COTS, made at a Factory Fab factory, on a team printer, or in the shop.
+  const kinds = new Map(
+    rows.map((r) => {
+      const kind = { cots: r.classification === "cots", factory: areaOf(r) === "factory", print: areaOf(r) === "print" };
+      return [JSON.stringify(kind), kind];
+    }),
+  );
+  if (!kinds.size) kinds.set("", { cots: false, factory: false, print: false });
   for (const kind of kinds.values()) {
     const denied = statusDenied(mode, changes.status, { ...kind, note: changes.note, reset: isSpecReset(changes) });
     if (denied) return denied;

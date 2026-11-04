@@ -70,7 +70,20 @@ describe("Factory Fab statuses", () => {
     expect(statusDenied("build", "Not Started", { cots: false, factory: true })).not.toBeNull();
     expect(statusDenied("cad", "Released", { cots: false, factory: true })).toBeNull();
     expect(statusDenied("cad", "In Factory", { cots: false, factory: true })).not.toBeNull();
-    expect(pickableStatuses("build", true)).toEqual(["Released", "In Factory", "Ready for QA", "In Stock"]);
-    expect(pickableStatuses("cad", true)).toEqual(["Released"]);
+    expect(pickableStatuses("build", "factory")).toEqual(["Released", "In Factory", "Ready for QA", "In Stock"]);
+    expect(pickableStatuses("cad", "factory")).toEqual(["Released"]);
+  });
+});
+
+describe("3D Printing statuses", () => {
+  it("let both teams work printer parts, admins set anything of theirs", () => {
+    expect(statusDenied("cad", "In Process 1", { cots: false, print: true })).toBeNull();
+    expect(statusDenied("build", "Gcoded", { cots: false, print: true })).toBeNull();
+    expect(statusDenied("build", "In Stock", { cots: false, print: true })).toBeNull();
+    expect(statusDenied("cad", "Reproduction", { cots: false, print: true })).not.toBeNull();
+    expect(statusDenied("cad", "Reproduction", { cots: false, print: true, note: "warped" })).toBeNull();
+    expect(statusDenied("build", "Not Started", { cots: false, print: true })).not.toBeNull();
+    expect(statusDenied("edit", "Post Processing", { cots: false, print: true })).not.toBeNull();
+    expect(pickableStatuses("cad", "print")).toEqual(["Released", "Gcoded", "In Process 1", "Ready for QA", "In Stock", "Reproduction"]);
   });
 });

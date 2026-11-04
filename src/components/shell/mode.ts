@@ -1,4 +1,5 @@
-import { FACTORY_STATUSES, isFactoryStatus } from "@/config/statuses";
+import type { FabArea } from "@/config/machines";
+import { FACTORY_STATUSES, PRINT_STATUSES, isFactoryStatus, isPrintStatus } from "@/config/statuses";
 
 // The effective mode is what a member can do. Admins pick Edit (everything), CAD or Build (the
 // app exactly as that team sees it); everyone else is locked to their team, or "none" (read only)
@@ -109,10 +110,15 @@ const QA_STATUSES: readonly string[] = ["Ready for QA", "In Stock"];
 // List, from Released to In Stock; the CAD Team only releases them (Harel, 2026-11-04).
 export const FACTORY_BUILD_STATUSES: readonly string[] = ["Released", "In Factory", "Ready for QA", "In Stock"];
 
-// The made-part statuses a mode picks from a card, table, filter or To Fab menu; null = all.
-// `factory`: the part goes to a Factory Fab factory (factoryOf in config/machines.ts).
-export function pickableStatuses(mode: Mode, factory = false): readonly string[] | null {
-  if (factory) return mode === "edit" ? FACTORY_STATUSES : mode === "build" ? FACTORY_BUILD_STATUSES : mode === "cad" ? [RELEASE_STATUS] : [];
+// A team printer's parts: the CAD Team works them too, not only the Build Team (Harel, 2026-11-04).
+// Released from CAD goes through the Release checklist, Reproduction with a note, as elsewhere.
+export const PRINT_WORK_STATUSES: readonly string[] = PRINT_STATUSES.filter((s) => s !== "Not Started");
+
+// The made-part statuses a mode picks from a card, table, filter or Shop Fab menu; null = all.
+// `area`: the part goes to a Factory Fab factory or a team 3D printer (areaOf in config/machines.ts).
+export function pickableStatuses(mode: Mode, area: FabArea | null = null): readonly string[] | null {
+  if (area === "print") return mode === "edit" ? PRINT_STATUSES : mode === "build" || mode === "cad" ? PRINT_WORK_STATUSES : [];
+  if (area === "factory") return mode === "edit" ? FACTORY_STATUSES : mode === "build" ? FACTORY_BUILD_STATUSES : mode === "cad" ? [RELEASE_STATUS] : [];
   if (mode === "cad") return NOTE_STATUSES;
   if (mode === "build") return BUILD_STATUSES;
   return null;
@@ -120,7 +126,15 @@ export function pickableStatuses(mode: Mode, factory = false): readonly string[]
 
 // Why the mode can't give these parts this status, or null when it can. `note` is the note sent
 // with the change: Reproduction and Secondary Production need one.
-export function statusDenied(mode: Mode, status: string | undefined, opts: { cots: boolean; factory?: boolean; note?: string | null; reset?: boolean }): string | null {
+export function statusDenied(mode: Mode, status: string | undefined, opts: { cots: boolean; factory?: boolean; print?: boolean; note?: string | null; reset?: boolean }): string | null {
+  if (status && opts.print && !opts.cots) {
+    if (!isPrintStatus(status)) return "3D printed parts take Not Started, Released, Sliced, Printing, Ready for QA, In Stock or Reproduction.";
+    if (mode === "edit") return null;
+    if (mode !== "build" && mode !== "cad") return "Pick a team on your profile (Build or CAD) to make changes.";
+    if (!PRINT_WORK_STATUSES.includes(status)) return "Only an admin sets a 3D printed part back to Not Started.";
+    if (mode === "cad" && NOTE_STATUSES.includes(status) && !opts.note?.trim()) return "Write why the part needs Reproduction.";
+    return null;
+  }
   if (status && opts.factory && !opts.cots) {
     if (!isFactoryStatus(status)) return `Factory parts take ${FACTORY_STATUSES.join(", ")}.`;
     if (mode === "build" && !FACTORY_BUILD_STATUSES.includes(status)) return `The Build Team can set ${FACTORY_BUILD_STATUSES.join(", ")} on factory parts.`;

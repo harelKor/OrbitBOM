@@ -1,3 +1,4 @@
+import { areaOfMachine } from "@/config/machines";
 import Link from "next/link";
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
@@ -103,7 +104,7 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
         <LaunchCard
           href={`/robots/${robot.id}/fab`}
           icon="fab"
-          title="To Fab"
+          title="Shop Fab"
           count={inProcess + ready}
           detail={`${inProcess} in process, ${ready} released`}
         />
@@ -159,7 +160,7 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
               <ul className="space-y-2">
                 {processes.map((p) => (
                   <li key={p.id}>
-                    <Link href={`/robots/${robot.id}/fab?machine=${p.id}`} className="group block">
+                    <Link href={processHref(robot.id, p.id)} className="group block">
                       <div className="mb-1 flex items-baseline justify-between text-xs">
                         <span className="text-fg-2 group-hover:text-fg">{p.name}</span>
                         <span className="text-subtle tabular-nums">
@@ -263,4 +264,10 @@ function StatBox({ href, icon, color, title, detail, count }: { href: string; ic
       <Icon name="arrow" className="h-5 w-5 shrink-0 text-subtle transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-fg" />
     </Link>
   );
+}
+
+// A process's own page: a printer's on 3D Printing, a factory's on Factory Fab, else Shop Fab's tab.
+function processHref(robotId: string, machine: string) {
+  const area = areaOfMachine(machine);
+  return area === "print" ? `/robots/${robotId}/printing/${machine}` : area === "factory" ? `/robots/${robotId}/factory/${machine}` : `/robots/${robotId}/fab?machine=${machine}`;
 }

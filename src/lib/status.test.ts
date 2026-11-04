@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyCounters, applyStatus, computeStatus, isDone, partStatusLabel, type StatusInput } from "./status";
 import { partTag } from "./partTag";
-import { fabStage, factoryQueue, isFactoryInStock } from "./fab";
+import { areaQueue, fabStage, factoryQueue, isAreaInStock } from "./fab";
 
 const base: StatusInput = {
   classification: "inhouse",
@@ -119,6 +119,26 @@ describe("Factory Fab parts", () => {
     expect(fabStage({ ...base, process1: "hadasas", designState: "Released" })).toBe("ready");
     expect(factoryQueue({ ...zivudim, designState: "In Process 1" })).toBe("zivudim");
     expect(factoryQueue({ ...zivudim, designState: "In Stock" })).toBeNull();
-    expect(isFactoryInStock({ ...zivudim, designState: "In Stock" })).toBe(true);
+    expect(isAreaInStock({ ...zivudim, designState: "In Stock" })).toBe(true);
+  });
+});
+
+describe("3D Printing parts", () => {
+  const bambu: StatusInput = { ...base, process1: "3d-bambu", process2: null };
+  it("read every old status as one of the print statuses", () => {
+    expect(computeStatus({ ...bambu, designState: "Gcoded" })).toBe("Gcoded");
+    expect(partStatusLabel({ ...bambu, designState: "Gcoded" })).toBe("Sliced");
+    expect(partStatusLabel({ ...bambu, designState: "In Process 1" })).toBe("Printing");
+    expect(computeStatus({ ...bambu, designState: "Post Processing" })).toBe("Ready for QA");
+    expect(computeStatus({ ...bambu, designState: "Secondary Production" })).toBe("Reproduction");
+    expect(computeStatus({ ...bambu, designState: "Reproduction" })).toBe("Reproduction");
+    expect(computeStatus({ ...base, process1: "3d-h2d", process2: null, designState: "In Process 1" })).toBe("In Process 1");
+  });
+
+  it("leave Shop Fab; ARAN stays a factory", () => {
+    expect(fabStage({ ...bambu, designState: "Released" })).toBeNull();
+    expect(areaQueue({ ...bambu, designState: "Reproduction" }, "print")).toBe("3d-bambu");
+    expect(areaQueue({ ...base, process1: "3d-aran", process2: null, designState: "Released" }, "print")).toBeNull();
+    expect(areaQueue({ ...base, process1: "3d-aran", process2: null, designState: "Released" }, "factory")).toBe("3d-aran");
   });
 });
