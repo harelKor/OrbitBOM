@@ -27,7 +27,8 @@ const pill = "inline-flex max-w-full min-w-0 items-center truncate rounded-full 
 const stepBtn = "press flex h-8 w-8 items-center justify-center rounded-full border border-line-strong bg-surface text-lg leading-none font-bold text-fg-2 hover:border-sky-400/40 hover:text-accent active:scale-[0.98] disabled:opacity-30";
 
 // A To Fab part in the List view: the card's controls in one row. The picture (with the red
-// Changed tag when the BOM moved past the released version), the name and its system, then the
+// Changed tag when the BOM moved past the released version), the name (no system: To Fab doesn't
+// need it, Harel 2026-11-04), then the
 // status (its own menu inside a batch), the material and the machine it's at, and the drawing. At
 // the right end: − made/amount + (or, in To Post Process, − post-processed/amount + and the check
 // that moves it on, struck through once checked). `lead` goes first there (the batch's spark).
@@ -81,7 +82,6 @@ export function FabPartListRow({
         picture={part.thumbUrl ?? null}
         placeholder={<span className="px-1 text-center text-[10px] leading-tight text-slate-500">{part.isManual ? "Manual" : "No picture"}</span>}
         title={<span className={checked ? "line-through" : undefined}>{title}</span>}
-        detail={part.systemName}
         pills={
           <span className="contents" {...stopAll}>
             {editStatus && work ? <StatusField part={part} save={save} size="sm" /> : <StatusPill status={computeStatus(part)} label={partStatusLabel(part)} />}

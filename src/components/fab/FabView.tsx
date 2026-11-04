@@ -324,7 +324,6 @@ export function FabView({
           <PartCard
             part={p}
             save={(c) => save([p.id], c)}
-            showSystem
             fabCounter
             fabStatusEditable={!!inBatch}
             style={fabTint(p)}
@@ -455,7 +454,6 @@ export function FabView({
                       key={p.id}
                       part={p}
                       save={(c) => save([p.id], c)}
-                      showSystem
                       checked={postChecked.has(p.id)}
                       onCheck={() => checkPost(p)}
                       checkFrom={POST_PROCESSING}

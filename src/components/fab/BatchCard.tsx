@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useRef, useState, useTransition } from "react";
+import { createContext, useContext, useEffect, useEffectEvent, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { getMachine } from "@/config/machines";
 import type { Priority } from "@/config/priorities";
@@ -40,7 +40,9 @@ export const OpenBatchContext = createContext<{ id: string | null; set: (id: str
 // the grid row right under the batch's row. So opening and closing never moves a card sideways or
 // leaves a hole: only the rows below slide down and back (Harel, 2026-11-04). The strip's row is
 // counted from the cards' tops (other batches' strips skipped) and placed explicitly, so the cards
-// after the batch in its row stay beside it.
+// after the batch in its row stay beside it. Card and strip share one outline: the card's runs down
+// a neck into the strip's, whose top edge is cut away under it, so it's plain which card the strip
+// belongs to. A click anywhere off the two closes it.
 const PANEL_MS = 220;
 function rowBelow(el: HTMLElement | null) {
   const grid = el?.parentElement;
@@ -117,8 +119,11 @@ export function BatchCard({
 
   const mine = !!madeBy && madeBy === me;
   const ref = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const list = layout === "list";
   const [row, setRow] = useState<number | null>(null);
+  // Where the card sits over the strip (px, from the strip's top left), for the shared outline.
+  const [tab, setTab] = useState<{ left: number; width: number; gap: number; strip: number } | null>(null);
   const toggle = () => {
     if (!open) setRow(rowBelow(ref.current));
     setOpen(!open);
@@ -144,14 +149,36 @@ export function BatchCard({
       return () => clearTimeout(timer);
     }
   }, [open, mounted, shown]);
-  // Cards around it can move (a filter, the window, another batch's strip): keep the strip's row.
+  // Cards around it can move (a filter, the window, another batch's strip): keep the strip's row
+  // and the outline's neck in step.
   useEffect(() => {
     const grid = ref.current?.parentElement;
     if (!mounted || !grid) return;
-    const observer = new ResizeObserver(() => setRow(rowBelow(ref.current)));
+    const observer = new ResizeObserver(() => {
+      setRow(rowBelow(ref.current));
+      const c = ref.current?.getBoundingClientRect();
+      const s = panelRef.current?.getBoundingClientRect();
+      if (!c || !s) return;
+      const next = { left: c.left - s.left, width: c.width, gap: s.top - c.bottom, strip: s.width };
+      const same = (t: typeof next) => (Object.keys(next) as (keyof typeof next)[]).every((k) => Math.abs(t[k] - next[k]) < 0.25);
+      setTab((t) => (t && same(t) ? t : next));
+    });
     observer.observe(grid);
+    if (panelRef.current) observer.observe(panelRef.current);
     return () => observer.disconnect();
   }, [mounted]);
+  const closeOnOutside = useEffectEvent((e: MouseEvent) => {
+    const t = e.target instanceof Element ? e.target : null;
+    // A batch card's own click opens or closes it; windows and menus (Auto Layout, a part) and
+    // controls that vanished with the click (a menu's option) aren't "outside".
+    if (!t?.isConnected || ref.current?.contains(t) || panelRef.current?.contains(t) || t.closest("[data-batch-card], [role=dialog], dialog")) return;
+    setOpen(false);
+  });
+  useEffect(() => {
+    if (!open) return;
+    document.addEventListener("click", closeOnOutside);
+    return () => document.removeEventListener("click", closeOnOutside);
+  }, [open]);
   const batchTint = stage === "finished" || isFabFinished(lowest) ? tint(FINISHED_COLOR) : statusTint(computeStatus(lowest));
   const userBox = (
     <select
@@ -315,15 +342,43 @@ export function BatchCard({
     );
 
   // The strip under the batch's row: its actions, then its parts (cards, or rows in the List view).
+  const radius = list ? 16 : 12; // the card's corners (rounded-2xl rows, rounded-xl cards)
+  const joined = open && tab;
   const panel = mounted && (
     <div
+      ref={panelRef}
       data-batch-panel=""
       onClick={stop}
       style={{ gridColumn: "1 / -1", gridRow: row ?? undefined, gridTemplateRows: shown ? "1fr" : "0fr", ...(!shown && { marginBottom: 0 }) }}
-      className="grid cursor-default transition-[grid-template-rows,margin-bottom] duration-200 ease-out motion-reduce:transition-none"
+      className="relative grid cursor-default transition-[grid-template-rows,margin-bottom] duration-200 ease-out motion-reduce:transition-none"
     >
+      {/* The neck: the card's sides carried down across the gap to the strip. */}
+      {joined && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute border-x-2 border-accent bg-surface"
+          style={{ left: tab.left, width: tab.width, top: -tab.gap, height: tab.gap + 2, backgroundColor: batchTint?.backgroundColor }}
+        />
+      )}
       <div className="min-h-0 overflow-hidden">
-        <div style={batchTint} className="space-y-3 rounded-2xl border-2 border-accent/60 bg-surface/90 p-3">
+        <div
+          style={{
+            ...batchTint,
+            borderRadius: radius,
+            ...(joined && {
+              borderColor: "var(--color-accent)",
+              // The top edge is cut where the neck comes in; a corner under the card goes square.
+              maskImage: "linear-gradient(#000 0 0), linear-gradient(#000 0 0)",
+              maskSize: `100% 100%, ${tab.width - 4}px 2px`,
+              maskPosition: `0 0, ${tab.left + 2}px 0`,
+              maskRepeat: "no-repeat",
+              maskComposite: "exclude",
+              ...(tab.left < radius && { borderTopLeftRadius: 0 }),
+              ...(tab.left + tab.width > tab.strip - radius && { borderTopRightRadius: 0 }),
+            }),
+          }}
+          className="space-y-3 border-2 border-accent/60 bg-surface p-3"
+        >
           <div className="flex flex-wrap items-center gap-2">
             <span className={`min-w-0 truncate text-sm font-semibold ${textColor ? "" : "text-fg"}`} style={textColor ? { color: textColor } : undefined}>
               {material}
@@ -355,15 +410,19 @@ export function BatchCard({
     const small = members.slice(0, 4);
     return (
       <>
-      <div ref={ref} {...dropProps} draggable={draggable} onDragStart={dragStart} className="min-w-0">
+      <div ref={ref} data-batch-card="" {...dropProps} draggable={draggable} onDragStart={dragStart} className="min-w-0">
         <div
           role="button"
           tabIndex={0}
           aria-expanded={open}
           onClick={toggle}
           onKeyDown={(e) => e.key === "Enter" && e.target === e.currentTarget && toggle()}
-          style={{ ...batchTint, ...(mine && { boxShadow: "0 0 0 2px rgba(56,189,248,0.75), 0 0 18px 3px rgba(56,189,248,0.35)" }) }}
-          className={`flex min-w-0 cursor-pointer items-center gap-3 rounded-2xl border-2 bg-surface/90 py-2.5 pr-2.5 pl-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_2px_8px_rgba(0,0,0,0.25)] transition-all duration-150 hover:border-sky-400/50 active:not-[:has(:is(button,a,input,select,textarea,[role=dialog]):active)]:scale-[0.99] ${open ? "border-accent/60" : "border-line-strong"} ${over ? "ring-2 ring-accent" : ""}`}
+          style={{
+            ...batchTint,
+            ...(mine && { boxShadow: "0 0 0 2px rgba(56,189,248,0.75), 0 0 18px 3px rgba(56,189,248,0.35)" }),
+            ...(open && { borderColor: "var(--color-accent)", borderBottomColor: "transparent" }),
+          }}
+          className={`flex min-w-0 cursor-pointer items-center gap-3 rounded-2xl border-2 border-line-strong bg-surface py-2.5 pr-2.5 pl-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_2px_8px_rgba(0,0,0,0.25)] transition-all duration-150 hover:border-sky-400/50 active:not-[:has(:is(button,a,input,select,textarea,[role=dialog]):active)]:scale-[0.99] ${open ? "rounded-b-none" : ""} ${over ? "ring-2 ring-accent" : ""}`}
         >
           <span className="grid h-14 w-14 shrink-0 gap-px overflow-hidden rounded-xl bg-white" style={collageGrid(small.length)}>
             {small.map((p) => (
@@ -383,13 +442,16 @@ export function BatchCard({
                 {material}
                 {machineName && ` · ${machineName}`}
               </span>
-              {!open && <BatchDate at={batch.createdAt} />}
+              <BatchDate at={batch.createdAt} />
             </span>
-            {/* The downloads share this line, so machine and material get the row's full width. */}
-            <span className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5" onClick={stop}>
+            {/* The downloads share this line, so machine and material get the row's full width. Only
+                the controls keep their clicks: the rest of the row opens the batch. */}
+            <span className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
               <span className="min-w-0 max-w-40">{userBox}</span>
-              {statusMenu}
-              <span className="ml-auto flex shrink-0 items-center gap-1">{downloadButtons}</span>
+              <span onClick={stop}>{statusMenu}</span>
+              <span className="ml-auto flex shrink-0 items-center gap-1" onClick={stop}>
+                {downloadButtons}
+              </span>
             </span>
           </span>
           <Chevron open={open} small />
@@ -406,6 +468,7 @@ export function BatchCard({
     <>
     <div
       ref={ref}
+      data-batch-card=""
       {...dropProps}
       draggable={draggable}
       onDragStart={dragStart}
@@ -413,9 +476,12 @@ export function BatchCard({
       style={{
         ...batchTint,
         ...(mine && { boxShadow: "0 0 0 2px rgba(56,189,248,0.75), 0 0 22px 4px rgba(56,189,248,0.4)" }),
+        ...(open && { borderColor: "var(--color-accent)", borderBottomColor: "transparent" }),
       }}
-      className={`card-interactive flex cursor-pointer flex-col self-start text-sm ${over || open ? "ring-2 ring-accent" : ""}`}
+      className={`card-interactive flex cursor-pointer flex-col self-start text-sm ${open ? "rounded-b-none" : ""} ${over ? "ring-2 ring-accent" : ""}`}
     >
+      {/* Open: a second pixel inside the card's own border, so its outline is as strong as the strip's. */}
+      {open && <span aria-hidden className="pointer-events-none absolute inset-0 z-10 rounded-t-[11px] border border-b-0 border-accent" />}
       <div className="flex flex-col">
         <div className="relative w-full shrink-0">
           <button
@@ -435,9 +501,11 @@ export function BatchCard({
               </span>
             ))}
           </button>
-          <div className="absolute inset-x-2 top-2 flex items-start gap-1.5" onClick={stop}>
-            <span className="min-w-0">{userBox}</span>
-            {!open && <BatchDate at={batch.createdAt} overlay />}
+          <div className="pointer-events-none absolute inset-x-2 top-2 flex items-start gap-1.5">
+            <span className="pointer-events-auto min-w-0" onClick={stop}>
+              {userBox}
+            </span>
+            <BatchDate at={batch.createdAt} overlay />
           </div>
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-2 p-3">
@@ -445,10 +513,13 @@ export function BatchCard({
             {material}
             {machineName && ` · ${machineName}`}
           </div>
-          <div className="flex flex-wrap items-center gap-2" onClick={stop}>
-            {statusMenu}
+          {/* Only the controls keep their clicks: the rest of the card opens the batch. */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span onClick={stop}>{statusMenu}</span>
             {layoutDialog}
-            <span className="ml-auto flex items-center gap-1.5">{downloadButtons}</span>
+            <span className="ml-auto flex items-center gap-1.5" onClick={stop}>
+              {downloadButtons}
+            </span>
           </div>
         </div>
       </div>
