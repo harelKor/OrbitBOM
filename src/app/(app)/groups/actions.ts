@@ -3,7 +3,7 @@
 import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { getMachine } from "@/config/machines";
+import { getMachine, isFactoryFabMachine } from "@/config/machines";
 import { PRIORITIES } from "@/config/priorities";
 import { STATUSES, type StatusName } from "@/config/statuses";
 import { db, schema } from "@/db";
@@ -268,7 +268,8 @@ export async function createFabBatch(
     .where(and(inArray(parts.id, partIds), eq(systems.robotId, robotId)));
   if (!rows.length) return { error: "Pick parts to batch." };
   if (rows.some(({ part }) => !machinesOf(part).includes(machine.id))) return { error: `Every part in the fab must go through ${machine.name}.` };
-  if (new Set(rows.map(({ part }) => part.material ?? "")).size > 1) return { error: "A fab can only hold parts of one material." };
+  // A Factory Fab pack goes to the factory whole, whatever its parts are made of.
+  if (!isFactoryFabMachine(machine.id) && new Set(rows.map(({ part }) => part.material ?? "")).size > 1) return { error: "A fab can only hold parts of one material." };
 
   const move = status ? rows : rows.filter(({ part }) => !(READY_STATUSES as string[]).includes(computeStatus(part)));
   const denied = move.length ? await statusChangeDenied(move.map(({ part }) => part.id), { status: status ?? READY_STATUS }) : null;
@@ -292,7 +293,7 @@ export async function createFabBatch(
     const names = new Set((await tx.select({ name: partGroups.name }).from(partGroups).where(eq(partGroups.robotId, robotId))).map((g) => g.name));
     let name = base;
     for (let n = 2; names.has(name); n++) name = `${base} (${n})`;
-    const [group] = await tx.insert(partGroups).values({ robotId, name, machine: machine.id, madeBy: member.name }).returning({ id: partGroups.id });
+    const [group] = await tx.insert(partGroups).values({ robotId, name, machine: machine.id, madeBy: isFactoryFabMachine(machine.id) ? null : member.name }).returning({ id: partGroups.id });
     await tx.insert(groupMembers).values(rows.map(({ part }) => ({ groupId: group.id, partId: part.id, keySnapshot: snapshot(part) })));
     if (move.length) {
       await applyPartChanges(

@@ -24,6 +24,7 @@ import { statusTint, tint } from "@/components/ui/statusTint";
 import { downloadExport, prepareExport } from "@/components/bom/downloadExport";
 import { BatchLayoutDialog } from "./BatchLayoutDialog";
 import { OnshapeLayoutButton } from "./OnshapeLayoutButton";
+import { FactoryStatusButton } from "@/components/factory/FactoryStatusButton";
 import { type FabLayout, BATCH_PRIORITIES, priorityColor, rank, DRAG_TYPE, batchStage, FINISHED_COLOR, type Batch, type DragLoad } from "./fabModel";
 
 // The collage's grid: one part fills it, two sit side by side, up to four in a 2×2, then 3×3.
@@ -58,6 +59,9 @@ function rowBelow(el: HTMLElement | null) {
 // its G-code. Clicking the card opens it in place, with each part's own status; cards dropped on
 // it join it. Batches show no name: machine and material say which one it is (Harel,
 // 2026-11-04). Delete is in Edit mode.
+// `pack`: a Factory Fab pack, the same card without who makes it, machine and material, Auto
+// Layout or G-code; its status is the big factory status button and its download is one zip of
+// every part (Harel, 2026-11-04).
 export function BatchCard({
   batch,
   members,
@@ -68,6 +72,7 @@ export function BatchCard({
   memberNames,
   me,
   onDropParts,
+  pack = false,
 }: {
   batch: Batch;
   members: CardPart[];
@@ -78,6 +83,7 @@ export function BatchCard({
   memberNames: string[];
   me: string;
   onDropParts?: (load: DragLoad) => void;
+  pack?: boolean;
 }) {
   // Fab batches are Build Team work: any team renames, deletes and re-statuses them.
   const edit = useCan("work");
@@ -104,7 +110,7 @@ export function BatchCard({
   const material = materials.length === 1 ? materials[0] || "No material" : "Mixed materials";
   const machineName = batch.machine ? (getMachine(batch.machine)?.name ?? batch.machine) : null;
   // What the batch is called in labels and questions, now that it shows no name.
-  const what = `the ${[machineName, material].filter(Boolean).join(" ")} batch`;
+  const what = pack ? "the pack" : `the ${[machineName, material].filter(Boolean).join(" ")} batch`;
   const downloads = members.flatMap((p) => {
     const f = cadFormat(p);
     return f ? [`/api/parts/${p.id}/export?format=${f}${p.fabView ? "&fab=1" : ""}`] : [];
@@ -117,7 +123,7 @@ export function BatchCard({
   const statusOptions = STATUSES.filter((s) => !pickable || pickable.includes(s.name)).map((s) => ({ value: s.name, label: s.name === READY_STATUS ? "Ready to Fab" : statusLabel(s.name, batch.machine), color: s.color }));
   const thumbs = members.slice(0, 9);
 
-  const mine = !!madeBy && madeBy === me;
+  const mine = !pack && !!madeBy && madeBy === me;
   const ref = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const list = layout === "list";
@@ -232,7 +238,9 @@ export function BatchCard({
       DRAG_TYPE,
       JSON.stringify({ ids: (notDone.length ? notDone : members).map((p) => p.id), from: stage, batch: batch.id, whole: true } satisfies DragLoad),
     );
-  const statusMenu = (
+  const statusMenu = pack ? (
+    <FactoryStatusButton status={shared} compact={list} onPick={(v) => save(members.map((p) => p.id), { status: v as StatusName })} />
+  ) : (
     <Popover locked={!edit || mode === "cad"} trigger={<StatusPill status={shared ?? "Mixed"} label={shared ? label(shared) : undefined} size={list ? "sm" : "md"} />}>
       {(close) => (
         <OptionList
@@ -287,7 +295,18 @@ export function BatchCard({
       </div>,
       document.body,
     );
-  const downloadButtons = (
+  const downloadButtons = pack ? (
+    downloads.length > 0 && (
+      <button
+        className="overlay-btn"
+        onClick={() => void downloadExport(`/api/groups/${batch.id}/zip`)}
+        aria-label={`Download ${what}'s ${members.length} parts as a zip`}
+        title={`All ${members.length} parts in one zip, named with each part's quantity`}
+      >
+        <Icon name="download" />
+      </button>
+    )
+  ) : (
     <>
       {downloads.length > 0 && !(batch.gcode && !open) && (
         <button className="overlay-btn" onClick={() => void downloadAll(downloads)} aria-label={`Download ${downloads.length} files`} title={`Download ${downloads.length} files`}>
@@ -331,13 +350,13 @@ export function BatchCard({
         if (confirm(`Delete ${what}? Its parts stay on the BOM with their status.`)) startTransition(() => void deleteGroup(batch.id));
       }}
     >
-      Delete fab
+      {pack ? "Delete pack" : "Delete fab"}
     </button>
   );
   const removeButton = (p: CardPart) =>
     edit && (
       <button className="self-start text-xs text-subtle hover:text-rose-700" onClick={() => startTransition(() => void removeFromGroup(batch.id, p.id))}>
-        Remove from batch
+        {pack ? "Remove from pack" : "Remove from batch"}
       </button>
     );
 
@@ -402,14 +421,20 @@ export function BatchCard({
           className="space-y-3 border-2 border-accent/60 bg-surface p-3"
         >
           <div className="flex flex-wrap items-center gap-2">
-            <span className={`min-w-0 truncate text-sm font-semibold ${textColor ? "" : "text-fg"}`} style={textColor ? { color: textColor } : undefined}>
-              {material}
-              {machineName && ` · ${machineName}`}
-            </span>
+            {!pack && (
+              <span className={`min-w-0 truncate text-sm font-semibold ${textColor ? "" : "text-fg"}`} style={textColor ? { color: textColor } : undefined}>
+                {material}
+                {machineName && ` · ${machineName}`}
+              </span>
+            )}
             {prioritySelect}
-            {autoLayoutButton}
-            <OnshapeLayoutButton groupId={batch.id} url={batch.onshapeLayoutUrl} where="card" />
-            <GcodeRow batch={batch} />
+            {!pack && (
+              <>
+                {autoLayoutButton}
+                <OnshapeLayoutButton groupId={batch.id} url={batch.onshapeLayoutUrl} where="card" />
+                <GcodeRow batch={batch} />
+              </>
+            )}
             {edit && <span className="ml-auto">{deleteButton}</span>}
           </div>
           <div className={list ? "list-stack" : "card-grid"} style={list ? { zoom: 1 } : undefined}>
@@ -462,15 +487,15 @@ export function BatchCard({
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="flex min-w-0 items-baseline gap-2">
               <span className={`min-w-0 flex-1 truncate text-sm font-semibold ${textColor ? "" : "text-fg"}`} style={textColor ? { color: textColor } : undefined}>
-                {material}
-                {machineName && ` · ${machineName}`}
+                {pack ? `${members.length} part${members.length === 1 ? "" : "s"}` : material}
+                {!pack && machineName && ` · ${machineName}`}
               </span>
               <BatchDate at={batch.createdAt} />
             </span>
             {/* The downloads share this line, so machine and material get the row's full width. Only
                 the controls keep their clicks: the rest of the row opens the batch. */}
             <span className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
-              <span className="min-w-0 max-w-40">{userBox}</span>
+              {!pack && <span className="min-w-0 max-w-40">{userBox}</span>}
               <span onClick={stop}>{statusMenu}</span>
               <span className="ml-auto flex shrink-0 items-center gap-1" onClick={stop}>
                 {downloadButtons}
@@ -526,20 +551,24 @@ export function BatchCard({
             ))}
           </button>
           <div className="pointer-events-none absolute inset-x-2 top-2 flex items-start gap-1.5">
-            <span className="pointer-events-auto min-w-0" onClick={stop}>
-              {userBox}
-            </span>
+            {!pack && (
+              <span className="pointer-events-auto min-w-0" onClick={stop}>
+                {userBox}
+              </span>
+            )}
             <BatchDate at={batch.createdAt} overlay />
           </div>
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-2 p-3">
-          <div className={`min-w-0 truncate text-sm font-semibold ${textColor ? "" : "text-fg"}`} style={textColor ? { color: textColor } : undefined}>
-            {material}
-            {machineName && ` · ${machineName}`}
-          </div>
+          {!pack && (
+            <div className={`min-w-0 truncate text-sm font-semibold ${textColor ? "" : "text-fg"}`} style={textColor ? { color: textColor } : undefined}>
+              {material}
+              {machineName && ` · ${machineName}`}
+            </div>
+          )}
           {/* Only the controls keep their clicks: the rest of the card opens the batch. */}
           <div className="flex flex-wrap items-center gap-2">
-            <span onClick={stop}>{statusMenu}</span>
+            <span onClick={stop} className={pack ? "min-w-0 flex-1" : undefined}>{statusMenu}</span>
             {layoutDialog}
             <span className="ml-auto flex items-center gap-1.5" onClick={stop}>
               {downloadButtons}

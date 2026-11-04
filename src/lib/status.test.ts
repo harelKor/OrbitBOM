@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyCounters, applyStatus, computeStatus, isDone, partStatusLabel, type StatusInput } from "./status";
 import { partTag } from "./partTag";
+import { fabStage, factoryQueue, isFactoryInStock } from "./fab";
 
 const base: StatusInput = {
   classification: "inhouse",
@@ -91,5 +92,33 @@ describe("partTag", () => {
     expect(partTag(base)).toBe("inhouse");
     expect(partTag({ ...base, process2: "zivudim" })).toBe("factory");
     expect(partTag({ ...base, classification: "cots", process1: "beth-el" })).toBe("cots");
+  });
+});
+
+describe("Factory Fab parts", () => {
+  const zivudim: StatusInput = { ...base, process1: "zivudim", process2: null };
+  it("read every old status as one of the five factory statuses", () => {
+    expect(computeStatus({ ...zivudim, designState: "Released" })).toBe("Released");
+    expect(computeStatus({ ...zivudim, designState: "Gcoded" })).toBe("Released");
+    expect(computeStatus({ ...zivudim, designState: "In Process 1" })).toBe("In Factory");
+    expect(computeStatus({ ...zivudim, designState: "Post Processing" })).toBe("In Factory");
+    expect(computeStatus({ ...zivudim, designState: "In Spare Stock" })).toBe("In Stock");
+    expect(computeStatus({ ...zivudim, doneProcess1: 1 })).toBe("In Factory");
+    expect(computeStatus({ ...zivudim, doneProcess1: 2 })).toBe("Ready for QA");
+  });
+
+  it("leave Hadasa on the usual statuses, tagged In factory", () => {
+    const hadasa = { ...base, process1: "hadasas", process2: null, designState: "Gcoded" };
+    expect(computeStatus(hadasa)).toBe("Gcoded");
+    expect(partTag(hadasa)).toBe("factory");
+    expect(partTag({ ...base, process1: "3d-aran", process2: null })).toBe("factory");
+  });
+
+  it("leave To Fab", () => {
+    expect(fabStage({ ...zivudim, designState: "Released" })).toBeNull();
+    expect(fabStage({ ...base, process1: "hadasas", designState: "Released" })).toBe("ready");
+    expect(factoryQueue({ ...zivudim, designState: "In Process 1" })).toBe("zivudim");
+    expect(factoryQueue({ ...zivudim, designState: "In Stock" })).toBeNull();
+    expect(isFactoryInStock({ ...zivudim, designState: "In Stock" })).toBe(true);
   });
 });

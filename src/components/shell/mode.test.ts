@@ -61,3 +61,16 @@ describe("part window reset (✕)", () => {
     expect(statusDenied("build", "Not Started", { cots: false, reset: true })).not.toBeNull();
   });
 });
+
+describe("Factory Fab statuses", () => {
+  it("allow only the factory statuses on factory parts, in every mode", () => {
+    expect(statusDenied("edit", "Gcoded", { cots: false, factory: true })).not.toBeNull();
+    expect(statusDenied("edit", "In Factory", { cots: false, factory: true })).toBeNull();
+    expect(statusDenied("build", "In Stock", { cots: false, factory: true })).toBeNull();
+    expect(statusDenied("build", "Not Started", { cots: false, factory: true })).not.toBeNull();
+    expect(statusDenied("cad", "Released", { cots: false, factory: true })).toBeNull();
+    expect(statusDenied("cad", "In Factory", { cots: false, factory: true })).not.toBeNull();
+    expect(pickableStatuses("build", true)).toEqual(["Released", "In Factory", "Ready for QA", "In Stock"]);
+    expect(pickableStatuses("cad", true)).toEqual([]);
+  });
+});

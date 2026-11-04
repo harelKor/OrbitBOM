@@ -1,3 +1,5 @@
+import { FACTORY_STATUSES, isFactoryStatus } from "@/config/statuses";
+
 // The effective mode is what a member can do. Admins pick Edit (everything), CAD or Build (the
 // app exactly as that team sees it); everyone else is locked to their team, or "none" (read only)
 // until they pick one on /profile or an admin assigns one on /members. Team members have no
@@ -103,8 +105,14 @@ const COTS_REORDER = "In Order List";
 // The Ready for QA check-off (QaSection, review capability) moves parts to In Stock and back.
 const QA_STATUSES: readonly string[] = ["Ready for QA", "In Stock"];
 
+// A Factory Fab factory's parts: the Build Team works them through the factory like the Order
+// List, from Released to In Stock; the CAD Team only releases them (Harel, 2026-11-04).
+export const FACTORY_BUILD_STATUSES: readonly string[] = ["Released", "In Factory", "Ready for QA", "In Stock"];
+
 // The made-part statuses a mode picks from a card, table, filter or To Fab menu; null = all.
-export function pickableStatuses(mode: Mode): readonly string[] | null {
+// `factory`: the part goes to a Factory Fab factory (factoryOf in config/machines.ts).
+export function pickableStatuses(mode: Mode, factory = false): readonly string[] | null {
+  if (factory) return mode === "edit" ? FACTORY_STATUSES : mode === "build" ? FACTORY_BUILD_STATUSES : [];
   if (mode === "cad") return NOTE_STATUSES;
   if (mode === "build") return BUILD_STATUSES;
   return null;
@@ -112,7 +120,11 @@ export function pickableStatuses(mode: Mode): readonly string[] | null {
 
 // Why the mode can't give these parts this status, or null when it can. `note` is the note sent
 // with the change: Reproduction and Secondary Production need one.
-export function statusDenied(mode: Mode, status: string | undefined, opts: { cots: boolean; note?: string | null; reset?: boolean }): string | null {
+export function statusDenied(mode: Mode, status: string | undefined, opts: { cots: boolean; factory?: boolean; note?: string | null; reset?: boolean }): string | null {
+  if (status && opts.factory && !opts.cots) {
+    if (!isFactoryStatus(status)) return `Factory parts take ${FACTORY_STATUSES.join(", ")}.`;
+    if (mode === "build" && !FACTORY_BUILD_STATUSES.includes(status)) return `The Build Team can set ${FACTORY_BUILD_STATUSES.join(", ")} on factory parts.`;
+  }
   if (!status || mode === "edit") return null;
   // The part window's ✕ puts a part back to Not Started along with its specs.
   if (mode === "cad" && opts.reset && status === RESET_SPECS.status) return null;
@@ -124,7 +136,7 @@ export function statusDenied(mode: Mode, status: string | undefined, opts: { cot
     return "The CAD Team releases parts with Release, or sends them to Reproduction or Secondary Production.";
   }
   if (mode === "build") {
-    if (opts.cots || BUILD_STATUSES.includes(status)) return null;
+    if (opts.cots || opts.factory || BUILD_STATUSES.includes(status)) return null;
     return "The Build Team can set Released, In Process, Post Processing or Ready for QA.";
   }
   return "Pick a team on your profile (Build or CAD) to make changes.";
