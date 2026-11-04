@@ -843,6 +843,17 @@ export function InventoryView({
             >
               {grid(shownMain)}
             </Fold>
+          ) : scope.kind === "category" && shownMain.some((i) => i.seasonTag === "2026") ? (
+            // A category page keeps last season's items (tagged 2026) folded under this season's,
+            // closed at first (Harel, 2026-11-04).
+            <>
+              {shownMain.some((i) => i.seasonTag !== "2026") && grid(shownMain.filter((i) => i.seasonTag !== "2026"))}
+              <div className="pt-2">
+                <Fold id={`season-2026-${scope.id}`} title={`2026 items (${shownMain.filter((i) => i.seasonTag === "2026").length})`} defaultOpen={false}>
+                  {grid(shownMain.filter((i) => i.seasonTag === "2026"))}
+                </Fold>
+              </div>
+            </>
           ) : (
             grid(shownMain)
           )}
