@@ -10,21 +10,26 @@ the BOM from their own Claude through an MCP server.
 - Next.js (App Router, TypeScript) on Vercel Hobby
 - Supabase Free: Postgres, Google sign-in
 - Drizzle for the schema and migrations (`src/db/schema.ts`, `drizzle/`)
-- Cloudflare R2 for files (coming with the files milestone)
+- Cloudflare R2 for files, thumbnails, 3D meshes, exports and the nightly backups
 - Tailwind CSS
 
-All hosting is on free tiers. A daily cron keeps Supabase from pausing, and a nightly GitHub
-Action backs up the database (see `docs/runbook.md`).
+All hosting is on free tiers. A daily Vercel cron keeps Supabase from pausing and saves the
+nightly backup to R2 (Settings → Backups); see `docs/runbook.md`. Working on the code: start with
+`CLAUDE.md` (rules, commands, where each kind of change goes).
 
 ## Where things live
 
 | Path | What |
 |---|---|
-| `src/config/` | Statuses, machines, materials, file types, inventory part types, Onshape property IDs. There is no settings UI: edit these files. |
+| `src/config/` | Fixed lists: statuses, machines, materials, file types, refresh timing, the Onshape call budget. Inventory categories, locations, conditions and base materials are edited on `/settings` instead. |
 | `src/lib/status.ts` | `computeStatus`, the one status function shared by the UI, stats and MCP |
-| `src/lib/auth.ts`, `src/lib/membership.ts` | Sign-in, members, invites and join requests |
-| `src/lib/onshape/` | Onshape helpers |
-| `src/db/schema.ts` | Database schema |
+| `src/lib/auth.ts`, `src/lib/mode.ts`, `src/components/shell/mode.ts` | Sign-in, roles (modes) and the capability checks every action runs |
+| `src/lib/parts/`, `src/lib/inventory/`, `src/lib/versions/` | Part changes with history and undo, stock and items, system versions |
+| `src/lib/onshape/` | The Onshape client (team call budget), BOM, thumbnails, exports |
+| `src/lib/mcp/` | The MCP server's tools, one file per area in `toolsets/` |
+| `src/lib/data/` | What each page loads |
+| `src/db/schema.ts`, `drizzle/` | Database schema and migrations |
+| `plan/` | The design notes features were built from (history) |
 | `scripts/onshape-test.ts` | Pulls one real system from Onshape and counts the API calls |
 
 ## Local development
@@ -60,8 +65,9 @@ After changing `src/db/schema.ts`, run `npm run db:generate` and commit the new 
 - Emails in `ADMIN_EMAILS` become admins the first time they sign in.
 - Everyone else joins with a single-use invite link from the Members page, or signs in and
   waits for an admin to approve their join request.
-- **Member**: edits everything in the BOM and inventory. **Admin**: also invites and removes
-  members, deletes robots, systems and files, and sees the Advanced Onshape panel.
+- Each member works in a mode: Edit (admins), CAD Team, Build Team or read-only; what each may
+  change is in `src/components/shell/mode.ts`. Admins also invite and remove members, delete
+  robots and systems (kept 30 days in Settings → Recently deleted) and restore backups.
 
 ## Onshape test
 
