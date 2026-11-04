@@ -38,19 +38,40 @@ export function collageGrid(count: number): React.CSSProperties {
 export const OpenBatchContext = createContext<{ id: string | null; set: (id: string | null) => void } | null>(null);
 
 // An open batch stays in its slot; its parts open in a strip the whole width of the section, in
-// the grid row right under the batch's row. So opening and closing never moves a card sideways or
+// the grid row right under the batch's row (or beside it, below). So opening and closing never moves a card sideways or
 // leaves a hole: only the rows below slide down and back (Harel, 2026-11-04). The strip's row is
 // counted from the cards' tops (other batches' strips skipped) and placed explicitly, so the cards
 // after the batch in its row stay beside it. Card and strip share one outline: the card's runs down
 // a neck into the strip's, whose top edge is cut away under it, so it's plain which card the strip
 // belongs to. A click anywhere off the two closes it.
+// A batch that ends its row, with room beside it for all its parts, opens sideways instead: the
+// strip fills the rest of its own row, joined to the card's right side (Harel, 2026-11-04).
 const PANEL_MS = 220;
-function rowBelow(el: HTMLElement | null) {
+type Place = { row: number; column: string | null }; // column set: the strip sits beside the card
+function placeOf(el: HTMLElement | null, parts: number): Place | null {
   const grid = el?.parentElement;
   if (!el || !grid) return null;
-  const tops = new Set<number>();
-  for (const c of grid.children) if (c instanceof HTMLElement && !c.dataset.batchPanel) tops.add(Math.round(c.offsetTop));
-  return [...tops].sort((a, b) => a - b).indexOf(Math.round(el.offsetTop)) + 2;
+  const items = [...grid.children].filter((c): c is HTMLElement => c instanceof HTMLElement && c.dataset.batchPanel === undefined);
+  const top = Math.round(el.offsetTop);
+  const row = [...new Set(items.map((c) => Math.round(c.offsetTop)))].sort((a, b) => a - b).indexOf(top) + 1;
+  const sameRow = items.filter((c) => Math.round(c.offsetTop) === top);
+  // The columns as auto-fill makes them, from the grid's width and its smallest card. Not its
+  // computed tracks: an open strip's own column adds a track there.
+  const style = getComputedStyle(grid);
+  const gap = parseFloat(style.columnGap) || 0;
+  const min = grid.classList.contains("list-stack")
+    ? 360
+    : Math.max((parseFloat(style.getPropertyValue("--card-min")) || 220) * (parseFloat(style.getPropertyValue("--card-scale")) || 1), 110);
+  const total = parseFloat(style.width) || grid.clientWidth;
+  const cols = Math.max(1, Math.floor((total + gap) / (min + gap)));
+  const track = (total - (cols - 1) * gap) / cols;
+  const col = sameRow.filter((c) => c.offsetLeft < el.offsetLeft).length;
+  const free = cols - col - 1;
+  const last = !sameRow.some((c) => c.offsetLeft > el.offsetLeft);
+  // The strip's own grid (same column rule) must hold every part in one row: its width less the
+  // strip's border and padding (2px and 12px a side).
+  if (last && free > 0 && parts > 0 && parts * min + (parts - 1) * gap <= free * track + (free - 1) * gap - 28) return { row, column: `${col + 2} / -1` };
+  return { row: row + 1, column: null };
 }
 
 // A fab batch: a collage of its parts, who makes it (on top of the collage; glowing when it's
@@ -134,11 +155,19 @@ export function BatchCard({
   const ref = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const list = layout === "list";
-  const [row, setRow] = useState<number | null>(null);
-  // Where the card sits over the strip (px, from the strip's top left), for the shared outline.
-  const [tab, setTab] = useState<{ left: number; width: number; gap: number; strip: number } | null>(null);
+  const [place, setPlace] = useState<Place | null>(null);
+  const side = !!place?.column;
+  // Where the card sits by the strip (px, from the strip's top left), for the shared outline: over
+  // it (`gap` between them) or, opened sideways, to its left (`gapX`).
+  const [tab, setTab] = useState<{ left: number; width: number; gap: number; strip: number; top: number; height: number; gapX: number; stripHeight: number } | null>(null);
+  const placeNow = () => setPlace((p) => {
+    const next = placeOf(ref.current, members.length);
+    return p && next && p.row === next.row && p.column === next.column ? p : next;
+  });
+  // The observer below keeps the part count it was made with, so it asks through an effect event.
+  const relayout = useEffectEvent(placeNow);
   const toggle = () => {
-    if (!open) setRow(rowBelow(ref.current));
+    if (!open) placeNow();
     setOpen(!open);
   };
   // The strip stays mounted while it folds shut: `shown` drives its height (0fr / 1fr), `mounted`
@@ -169,12 +198,21 @@ export function BatchCard({
     const grid = ref.current?.parentElement;
     if (!mounted || !grid) return;
     const observer = new ResizeObserver(() => {
-      setRow(rowBelow(ref.current));
+      relayout();
       const c = ref.current?.getBoundingClientRect();
       const s = panelRef.current?.getBoundingClientRect();
       if (!c || !s) return;
       const z = (panelRef.current as HTMLElement & { currentCSSZoom?: number }).currentCSSZoom || 1;
-      const next = { left: (c.left - s.left) / z, width: c.width / z, gap: Math.max(s.top - c.bottom, 0) / z, strip: s.width / z };
+      const next = {
+        left: (c.left - s.left) / z,
+        width: c.width / z,
+        gap: Math.max(s.top - c.bottom, 0) / z,
+        strip: s.width / z,
+        top: (c.top - s.top) / z,
+        height: c.height / z,
+        gapX: Math.max(s.left - c.right, 0) / z,
+        stripHeight: s.height / z,
+      };
       const same = (t: typeof next) => (Object.keys(next) as (keyof typeof next)[]).every((k) => Math.abs(t[k] - next[k]) < 0.25);
       setTab((t) => (t && same(t) ? t : next));
     });
@@ -196,6 +234,12 @@ export function BatchCard({
     return () => document.removeEventListener("click", closeOnOutside);
   }, [open]);
   const batchTint = stage === "finished" || isFabFinished(lowest) ? tint(FINISHED_COLOR) : statusTint(computeStatus(lowest));
+  // The card's tint with its border colour given per side, so opening (which recolours some
+  // sides) never mixes the shorthand with its parts.
+  const { borderColor: tintBorder, ...tintFill } = batchTint ?? {};
+  const cardTint: React.CSSProperties = tintBorder
+    ? { ...tintFill, borderTopColor: tintBorder, borderRightColor: tintBorder, borderBottomColor: tintBorder, borderLeftColor: tintBorder }
+    : tintFill;
   const userBox = (
     <select
       value={madeBy}
@@ -397,13 +441,27 @@ export function BatchCard({
   // clipped where it meets the next.
   const edge = mine ? "rgb(56 189 248)" : "var(--color-accent)";
   const glow = "0 0 22px 4px rgba(56,189,248,0.4)";
-  const topRadii = joined ? { tl: tab.left < radius ? 0 : radius, tr: tab.left + tab.width > tab.strip - radius ? 0 : radius } : { tl: radius, tr: radius };
+  // The open card's outline, open on the side the strip is on. Each side on its own: React warns
+  // when a shorthand and its parts swap on rerender.
+  const openEdges = {
+    borderTopColor: edge,
+    borderLeftColor: edge,
+    borderRightColor: side ? "transparent" : edge,
+    borderBottomColor: side ? edge : "transparent",
+  };
+  const topRadii = !joined
+    ? { tl: radius, tr: radius }
+    : side
+      ? { tl: 0, tr: radius }
+      : { tl: tab.left < radius ? 0 : radius, tr: tab.left + tab.width > tab.strip - radius ? 0 : radius };
+  // Sideways, a strip no taller than the card meets it with a square bottom corner too.
+  const bottomLeft = joined && side && tab.stripHeight < tab.top + tab.height + radius ? 0 : radius;
   const panel = mounted && (
     <div
       ref={panelRef}
       data-batch-panel=""
       onClick={stop}
-      style={{ gridColumn: "1 / -1", gridRow: row ?? undefined, gridTemplateRows: shown ? "1fr" : "0fr", ...(!shown && { marginBottom: 0 }) }}
+      style={{ gridColumn: place?.column ?? "1 / -1", gridRow: place?.row, gridTemplateRows: shown ? "1fr" : "0fr", ...(!shown && { marginBottom: 0 }) }}
       className="relative grid cursor-default transition-[grid-template-rows,margin-bottom] duration-200 ease-out motion-reduce:transition-none"
     >
       {/* The strip's glow, outside its clipped fold. */}
@@ -411,12 +469,28 @@ export function BatchCard({
         <span
           aria-hidden
           className="pointer-events-none absolute inset-0"
-          style={{ boxShadow: glow, borderRadius: `${topRadii.tl}px ${topRadii.tr}px ${radius}px ${radius}px` }}
+          style={{ boxShadow: glow, borderRadius: `${topRadii.tl}px ${topRadii.tr}px ${radius}px ${bottomLeft}px` }}
         />
       )}
       {/* The neck: the card's sides carried down across a gap left to the strip. The open card
-          reaches down to the strip itself (`reach`), so normally there's none and no seam shows. */}
-      {joined && tab.gap > 0.5 && (
+          reaches down to the strip itself (`reach`), so normally there's none and no seam shows.
+          Sideways, it carries the card's top and bottom across the column gap. */}
+      {joined && side && tab.gapX > 0.5 && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute border-y-2 bg-surface"
+          style={{
+            left: -tab.gapX,
+            width: tab.gapX + 2,
+            top: tab.top,
+            height: tab.height,
+            backgroundColor: batchTint?.backgroundColor,
+            borderColor: edge,
+            ...(mine && { boxShadow: glow, clipPath: "inset(-40px 0)" }),
+          }}
+        />
+      )}
+      {joined && !side && tab.gap > 0.5 && (
         <span
           aria-hidden
           className="pointer-events-none absolute border-x-2 bg-surface"
@@ -438,14 +512,15 @@ export function BatchCard({
             // Each corner on its own: React warns when a shorthand and its parts swap on rerender.
             borderTopLeftRadius: topRadii.tl,
             borderTopRightRadius: topRadii.tr,
-            borderBottomLeftRadius: radius,
+            borderBottomLeftRadius: bottomLeft,
             borderBottomRightRadius: radius,
             ...(joined && {
               borderColor: edge,
-              // The top edge is cut where the neck comes in; a corner under the card goes square.
+              // The top edge is cut where the neck comes in (sideways, the left edge beside the
+              // card); a corner under the card goes square.
               maskImage: "linear-gradient(#000 0 0), linear-gradient(#000 0 0)",
-              maskSize: `100% 100%, ${tab.width - 4}px 2px`,
-              maskPosition: `0 0, ${tab.left + 2}px 0`,
+              maskSize: side ? `100% 100%, 2px ${Math.max(tab.height - 4, 0)}px` : `100% 100%, ${tab.width - 4}px 2px`,
+              maskPosition: side ? `0 0, 0 ${tab.top + 2}px` : `0 0, ${tab.left + 2}px 0`,
               maskRepeat: "no-repeat",
               maskComposite: "exclude",
             }),
@@ -460,7 +535,6 @@ export function BatchCard({
               </span>
             )}
             {!cart && prioritySelect}
-            {cart?.button}
             {!pack && (
               <>
                 {autoLayoutButton}
@@ -498,14 +572,16 @@ export function BatchCard({
           onClick={toggle}
           onKeyDown={(e) => e.key === "Enter" && e.target === e.currentTarget && toggle()}
           style={{
-            ...batchTint,
+            ...cardTint,
             ...(mine && { boxShadow: "0 0 0 2px rgba(56,189,248,0.75), 0 0 18px 3px rgba(56,189,248,0.35)" }),
             // Open, the row reaches down to its strip (the grid's gap is its own padding), so card
             // and strip meet with no seam (Harel, 2026-11-04).
-            ...(open && { borderColor: edge, borderBottomColor: "transparent", paddingBottom: "calc(0.625rem + var(--fab-gap))", clipPath: "inset(-40px -40px 0 -40px)" }),
+            ...(open && !side && { ...openEdges, paddingBottom: "calc(0.625rem + var(--fab-gap))", clipPath: "inset(-40px -40px 0 -40px)" }),
+            // Sideways, it opens on its right, into the strip beside it.
+            ...(open && side && { ...openEdges, clipPath: "inset(-40px 0 -40px -40px)" }),
             ...(open && mine && { boxShadow: glow }),
           }}
-          className={`flex min-w-0 cursor-pointer items-center gap-3 rounded-2xl border-2 border-line-strong bg-surface py-2.5 pr-2.5 pl-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_2px_8px_rgba(0,0,0,0.25)] transition-all duration-150 hover:border-sky-400/50 active:not-[:has(:is(button,a,input,select,textarea,[role=dialog]):active)]:scale-[0.99] ${open ? "rounded-b-none" : ""} ${over ? "ring-2 ring-accent" : ""}`}
+          className={`flex min-w-0 cursor-pointer items-center gap-3 rounded-2xl border-2 border-line-strong bg-surface py-2.5 pr-2.5 pl-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_2px_8px_rgba(0,0,0,0.25)] transition-all duration-150 hover:border-sky-400/50 active:not-[:has(:is(button,a,input,select,textarea,[role=dialog]):active)]:scale-[0.99] ${open ? (side ? "rounded-r-none" : "rounded-b-none") : ""} ${over ? "ring-2 ring-accent" : ""}`}
         >
           <span className="grid h-14 w-14 shrink-0 gap-px overflow-hidden rounded-xl bg-white" style={collageGrid(small.length)}>
             {small.map((p) => (
@@ -557,17 +633,24 @@ export function BatchCard({
       onDragStart={dragStart}
       onClick={toggle}
       style={{
-        ...batchTint,
+        ...cardTint,
         ...(mine && { boxShadow: "0 0 0 2px rgba(56,189,248,0.75), 0 0 22px 4px rgba(56,189,248,0.4)" }),
         // Open, the card reaches down to its strip (the grid's gap is its own padding), so card
         // and strip meet with no seam (Harel, 2026-11-04).
-        ...(open && { borderColor: edge, borderBottomColor: "transparent", marginBottom: 0, paddingBottom: "var(--fab-gap)", clipPath: "inset(-40px -40px 0 -40px)" }),
+        ...(open && !side && { ...openEdges, marginBottom: 0, paddingBottom: "var(--fab-gap)", clipPath: "inset(-40px -40px 0 -40px)" }),
+        ...(open && side && { ...openEdges, clipPath: "inset(-40px 0 -40px -40px)" }),
         ...(open && mine && { boxShadow: glow }),
       }}
-      className={`card-interactive flex cursor-pointer flex-col self-start text-sm ${open ? "rounded-b-none" : ""} ${over ? "ring-2 ring-accent" : ""}`}
+      className={`card-interactive flex cursor-pointer flex-col self-start text-sm ${open ? (side ? "rounded-r-none" : "rounded-b-none") : ""} ${over ? "ring-2 ring-accent" : ""}`}
     >
       {/* Open: a second pixel inside the card's own border, so its outline is as strong as the strip's. */}
-      {open && <span aria-hidden className="pointer-events-none absolute inset-0 z-10 rounded-t-[11px] border border-b-0" style={{ borderColor: edge }} />}
+      {open && (
+        <span
+          aria-hidden
+          className={`pointer-events-none absolute inset-0 z-10 border ${side ? "rounded-l-[11px] border-r-0" : "rounded-t-[11px] border-b-0"}`}
+          style={{ borderColor: edge }}
+        />
+      )}
       <div className="flex flex-col">
         <div className="relative w-full shrink-0">
           <button
