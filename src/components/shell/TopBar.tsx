@@ -21,7 +21,7 @@ export function TopBar({ onMenu, onRobots, navHidden, robotsHidden }: { onMenu: 
   const header = useRef<HTMLElement>(null);
   // On the robot pages the search also filters the page's parts. On a PC it's on every page and
   // opens a dropdown of matching parts and inventory items (Harel, 2026-11-04); phones keep it on
-  // the robot pages only.
+  // the robot pages only, with a short dropdown (SearchDropdown).
   const partPages = pathname.startsWith("/robots/") && pathname !== "/robots/new";
   const [dropdown, setDropdown] = useState(false);
   const closeDropdown = useCallback(() => setDropdown(false), []);
