@@ -75,6 +75,18 @@ async function readShopify(url: URL, ms: number | undefined, want: string | null
   };
 }
 
+// The variant an Order List cart buys for a Shopify link with no ?variant=: the one the part's
+// name points to, else the product's first (the buyer can change it in the store's cart).
+export async function shopifyVariantId(raw: string, want: string | null, ms = 6000): Promise<string | null> {
+  const url = publicUrl(raw);
+  const handle = url && /\/products\/([^/?#.]+)\/?$/.exec(url.pathname)?.[1];
+  if (!url || !handle) return null;
+  const res = await get(new URL(`/products/${handle}.json`, url), "application/json", 3_000_000, ms);
+  const p = (JSON.parse(new TextDecoder().decode(res.bytes)) as { product?: ShopifyProduct }).product;
+  if (!p?.variants?.length) return null;
+  return String((pickVariant(p, { want }) ?? p.variants[0]).id);
+}
+
 // Prices are kept in dollars, like COTS parts.
 export function toUsd(price: number | null, currency: string | null): number | null {
   if (price == null || !Number.isFinite(price)) return null;

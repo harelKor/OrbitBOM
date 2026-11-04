@@ -387,6 +387,29 @@ export const groupMembers = pgTable(
   (t) => [primaryKey({ columns: [t.groupId, t.partId] }), index("group_members_part_idx").on(t.partId)],
 );
 
+// An Order List cart: COTS parts from one vendor, bought together. Its cart button opens a cart on
+// the vendor's site with them in it (Harel, 2026-11-04). Not per robot, since the Order List isn't.
+export const cotsCarts = pgTable("cots_carts", {
+  id: id(),
+  vendor: text("vendor").notNull(), // the parts' vendor as the Order List names it (siteOf their first link)
+  createdBy: uuid("created_by").references(() => members.id, { onDelete: "set null" }),
+  createdAt: createdAt(),
+});
+
+// A part is in one cart at most.
+export const cotsCartMembers = pgTable(
+  "cots_cart_members",
+  {
+    cartId: uuid("cart_id")
+      .notNull()
+      .references(() => cotsCarts.id, { onDelete: "cascade" }),
+    partId: uuid("part_id")
+      .notNull()
+      .references(() => parts.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.cartId, t.partId] }), uniqueIndex("cots_cart_members_part_uq").on(t.partId)],
+);
+
 export const groupFiles = pgTable("group_files", {
   id: id(),
   groupId: uuid("group_id")

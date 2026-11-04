@@ -667,7 +667,7 @@ export function GcodeRow({ batch }: { batch: Batch }) {
 
 // The day a batch was made, alone in its corner (no "Created" beside it). On the collage it sits on
 // a frosted pill like the maker's, so it reads over any picture.
-function BatchDate({ at, overlay = false }: { at: string; overlay?: boolean }) {
+export function BatchDate({ at, overlay = false }: { at: string; overlay?: boolean }) {
   return (
     <span
       title="Made on"

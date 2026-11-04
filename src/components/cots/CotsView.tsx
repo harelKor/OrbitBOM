@@ -4,7 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useOptimistic, useState, useTransition } from "react";
 import { COTS_ARRIVED, COTS_IN_STOCK, COTS_ORDERED, COTS_RELEASED, IN_STOCK_SHOWN_DAYS, ORDER_STATUSES, getCotsStatus } from "@/config/cots";
 import { CATEGORY_GROUPS, groupOf, isCategoryGroup, type CategoryGroupId } from "@/config/inventory";
-import { addCotsFromItem, clearInStock, updateCotsParts } from "@/app/(app)/cots/actions";
+import { addCotsFromItem, clearInStock, removeFromCotsCart, saveCotsCart, updateCotsParts } from "@/app/(app)/cots/actions";
 import { BomProvider, useBom } from "@/components/bom/BomContext";
 import { PartStage, type StageView } from "@/components/dashboard/PartStage";
 import { AddBox } from "@/components/inventory/AddBox";
@@ -24,6 +24,8 @@ import { Segmented } from "@/components/ui/Segmented";
 import { cotsTotal, groupSameCots, siteOf, spreadCotsChanges } from "@/lib/cots";
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { computeStatus } from "@/lib/status";
+import type { CotsCart } from "@/lib/data/cotsCarts";
+import { CartCard } from "./CartCard";
 import { CotsCard, OrderStatusButton } from "./CotsCard";
 import { PartList, PartListRow } from "@/components/bom/PartListRow";
 import { useStoredChoice } from "@/components/ui/useStoredChoice";
@@ -68,18 +70,22 @@ function shelfOf(members: CardPart[]) {
 // order; the Order List has status filters, and a part set In Stock there is crossed out and
 // moves down to In stock once the page is left. The In stock sections show a part for a week after
 // it arrived, or until its X. ?part=<id> (the cart on an Inventory card) scrolls to that card and
-// makes it glow.
+// makes it glow. On the Order List, Cart picks parts from one vendor and makes them a cart (or
+// adds them to one of that vendor's), shown on top like a Shop Fab batch until none of its parts
+// is left on the list; its cart button opens the vendor's site with them in its cart.
 export function CotsView({
   list,
   parts,
   robots,
   categories,
+  carts = [],
   shelf,
 }: {
   list: "released" | "order";
   parts: CotsViewPart[];
   robots: { id: string; name: string }[];
   categories: InvCategory[];
+  carts?: CotsCart[];
   shelf?: CotsShelf;
 }) {
   const edit = useManage();
@@ -112,12 +118,17 @@ export function CotsView({
   // Cards, List (rows, made for phones) or Table, remembered by this browser.
   const [view, setView] = useStoredChoice("orbit-cots-view", ["cards", "list", "table"] as const, "cards");
   const [byVendor, setByVendor] = useState(false);
-  // Picking cards: "order" (Released's Send to order) or "status" (set one status on all of them).
-  const [selecting, setSelecting] = useState<"order" | "status" | null>(null);
+  // Vendors: a box per vendor on top; a box shows only that vendor's section (Harel, 2026-11-04).
+  const [vendorPick, setVendorPick] = useState<string | null>(null);
+  // Picking cards: "order" (Released's Send to order), "status" (set one status on all of them) or
+  // "cart" (the Order List's Cart: parts from one vendor).
+  const [selecting, setSelecting] = useState<"order" | "status" | "cart" | null>(null);
   const ordering = selecting !== null;
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState<Set<string>>(new Set()); // groups shown per system
   const [addTo, setAddTo] = useState<string>(""); // "" = General, else a robot id
+  const [cartTarget, setCartTarget] = useState(""); // "" = a new cart, else a cart id
+  const [openCart, setOpenCart] = useState<string | null>(null);
 
   const places: Place[] = [{ robotId: null, name: "General" }, ...robots.map((r) => ({ robotId: r.id, name: r.name }))];
 
@@ -195,10 +206,16 @@ export function CotsView({
   const ofCategory = (p: CotsViewPart) => (!group || groupOf(groupOfCat.get(p.category)) === group) && (!category || p.category === category);
   const ofStatus = (p: CardPart) => list !== "order" || !statusFilter || computeStatus(p) === statusFilter || struck.has(p.id);
   const listed = optimistic.filter(inList);
+  const cartOf = new Map<string, CotsCart>();
+  for (const c of list === "order" ? carts : []) for (const id of c.partIds) cartOf.set(id, c);
   // Arrived parts (and ones set In Stock from there on this visit) sit in the Order List's Arrived section.
   const isArrived = (p: CardPart) => list === "order" && (computeStatus(p) === COTS_ARRIVED || (struck.has(p.id) && arrivedStruck.has(p.id)));
-  const main = listed.filter((p) => ofCategory(p) && ofStatus(p) && !isArrived(p));
-  const arrived = listed.filter((p) => ofCategory(p) && isArrived(p));
+  const main = listed.filter((p) => ofCategory(p) && ofStatus(p) && !isArrived(p) && !cartOf.has(p.id));
+  const arrived = listed.filter((p) => ofCategory(p) && isArrived(p) && !cartOf.has(p.id));
+  // A cart shows while any of its parts is on the list (and passes the filters), with all of those.
+  const shownCarts = (list === "order" ? carts : [])
+    .map((cart) => ({ cart, members: listed.filter((p) => cartOf.get(p.id)?.id === cart.id) }))
+    .filter((c) => c.members.some((p) => ofCategory(p) && ofStatus(p)));
   const inStock = optimistic.filter((p) => shownInStock(p) && !struck.has(p.id) && ofCategory(p));
   const counts = new Map<string, { count: number }>();
   for (const p of listed)
@@ -269,8 +286,17 @@ export function CotsView({
     save(load.ids.map((id) => ({ id, changes: to === "ordered" ? { status: COTS_ORDERED, cotsSentBack: null } : { status: COTS_RELEASED } })));
   };
 
-  const renderRows = (rows: Row[], { small = false, from = "list", clearable: canClear = false }: { small?: boolean; from?: DragLoad["from"]; clearable?: boolean } = {}) => {
+  const renderRows = (
+    rows: Row[],
+    { small = false, from = "list", clearable: canClear = false, onRemove }: { small?: boolean; from?: DragLoad["from"]; clearable?: boolean; onRemove?: (ids: string[]) => void } = {},
+  ) => {
     const clearable = canClear && work;
+    const removeButton = (ids: string[]) =>
+      onRemove && work && (
+        <button type="button" className="press self-start text-xs text-subtle hover:text-rose-700" onClick={() => onRemove(ids)}>
+          Remove from cart
+        </button>
+      );
     return (
     view === "table" ? (
       <CotsTable rows={rows} saveRow={saveRow} struck={struck} orderList={list === "order" && !small} onClear={clearable ? clear : undefined} />
@@ -279,15 +305,16 @@ export function CotsView({
         {rows.map((row) => {
           const ids = row.members.map((m) => m.id);
           return (
-            <div key={row.key} className={`relative ${row.members.every((m) => struck.has(m.id)) ? "opacity-60" : ""}`} {...dragProps(ids, from)}>
+            <div key={row.key} className={`relative flex flex-col gap-1 ${row.members.every((m) => struck.has(m.id)) ? "opacity-60" : ""} ${dim(row)}`} {...dragProps(ids, from)}>
               <PartListRow
                 part={row.part}
                 save={saveRow(row)}
                 selected={selected.has(row.key)}
-                onToggleSelect={ordering ? () => setSelected((s) => toggle(s, row.key)) : undefined}
+                onToggleSelect={pick(row)}
                 onOpen={openRow(row)}
               />
               {clearable && <ClearButton name={partTitle(row.part)} onClick={() => clear(ids)} />}
+              {removeButton(ids)}
             </div>
           );
         })}
@@ -310,7 +337,7 @@ export function CotsView({
               </GroupBox>
             );
           return (
-            <div key={row.key} className="relative" {...dragProps(ids, from)}>
+            <div key={row.key} className={`relative flex flex-col gap-1 ${dim(row)}`} {...dragProps(ids, from)}>
               <CotsCard
                 part={row.part}
                 save={saveRow(row)}
@@ -321,9 +348,10 @@ export function CotsView({
                 struck={crossed}
                 group={grouped && !ordering ? { systems: new Set(row.members.map((m) => m.systemId)).size, onOpen: () => setOpen((s) => toggle(s, row.key)) } : undefined}
                 selected={selected.has(row.key)}
-                onToggleSelect={ordering ? () => setSelected((s) => toggle(s, row.key)) : undefined}
+                onToggleSelect={pick(row)}
               />
               {clearable && <ClearButton name={partTitle(row.part)} onClick={() => clear(ids)} />}
+              {removeButton(ids)}
             </div>
           );
         })}
@@ -348,6 +376,15 @@ export function CotsView({
 
   const placeRows = places.map((place) => ({ place, rows: rowsOf(main.filter((p) => p.robotId === place.robotId)) }));
   const allRows = placeRows.flatMap((r) => r.rows);
+  // Cart: the first card picked sets the vendor; only cards with a link from it can join.
+  const cartPick = selecting === "cart" ? (allRows.find((r) => selected.has(r.key)) ?? null) : null;
+  const cartVendor = cartPick && vendorOf(cartPick.part);
+  // Only the list's own cards: a cart's are picked from (and moved by) the list.
+  const listKeys = new Set(allRows.map((r) => r.key));
+  const pickable = (row: Row) =>
+    selecting !== "cart" || (listKeys.has(row.key) && !row.members.some((m) => cartOf.has(m.id)) && vendorOf(row.part) !== NO_VENDOR && (!cartVendor || vendorOf(row.part) === cartVendor));
+  const pick = (row: Row) => (ordering && pickable(row) ? () => setSelected((s) => toggle(s, row.key)) : undefined);
+  const dim = (row: Row) => (ordering && !pickable(row) ? "opacity-40" : "");
   const vendors = [...new Set(main.map(vendorOf))].sort((a, b) => (a === NO_VENDOR ? 1 : b === NO_VENDOR ? -1 : a.localeCompare(b)));
   // Released: the parts already on the order list, in a small section below.
   const queued = list === "released" ? optimistic.filter((p) => computeStatus(p) === COTS_ORDERED && ofCategory(p)) : [];
@@ -363,10 +400,27 @@ export function CotsView({
     setSelecting(null);
     setSelected(new Set());
   };
-  const toggleSelecting = (m: "order" | "status") => {
+  const toggleSelecting = (m: "order" | "status" | "cart") => {
     setSelecting((cur) => (cur === m ? null : m));
     setSelected(new Set());
+    setCartTarget("");
   };
+  const vendorCarts = cartVendor ? shownCarts.filter((c) => c.cart.vendor === cartVendor) : [];
+  const targetCart = vendorCarts.find((c) => c.cart.id === cartTarget)?.cart ?? null;
+  const submitCart = () => {
+    const ids = allRows.filter((r) => selected.has(r.key)).flatMap((r) => r.members.map((m) => m.id));
+    setError(null);
+    startTransition(async () => {
+      const r = await saveCotsCart(targetCart?.id ?? null, ids);
+      if (r.error) setError(r.error);
+      else toggleSelecting("cart");
+    });
+  };
+  const removeFromCart = (cartId: string) => (ids: string[]) =>
+    startTransition(async () => {
+      const r = await removeFromCotsCart(cartId, ids);
+      if (r.error) setError(r.error);
+    });
   useEscape(ordering, () => {
     setSelecting(null);
     setSelected(new Set());
@@ -397,7 +451,10 @@ export function CotsView({
         />
         <button
           type="button"
-          onClick={() => setByVendor((v) => !v)}
+          onClick={() => {
+            setByVendor((v) => !v);
+            setVendorPick(null);
+          }}
           aria-pressed={byVendor}
           className={`press rounded-lg border px-2.5 py-1 text-xs font-semibold sm:px-3.5 sm:py-1.5 transition-colors active:scale-[0.98] ${
             byVendor ? "border-accent bg-accent text-white" : "border-line-strong bg-raised text-muted hover:text-fg"
@@ -446,6 +503,26 @@ export function CotsView({
             {categories.find((c) => c.id === category)?.label ?? groupLabel(group)} ✕
           </button>
         )}
+        {list === "order" && work && (
+          <button
+            type="button"
+            onClick={() => toggleSelecting("cart")}
+            aria-pressed={selecting === "cart"}
+            title="Pick parts from one vendor to buy together"
+            className={`press ml-auto flex min-h-10 items-center gap-1.5 rounded-xl px-5 py-2 text-base font-bold shadow-lg transition-colors active:scale-[0.98] ${
+              selecting === "cart" ? "border border-line-strong bg-surface text-fg" : "bg-amber-400 text-slate-950 shadow-amber-400/40 hover:bg-amber-300"
+            }`}
+          >
+            {selecting === "cart" ? (
+              "Cancel"
+            ) : (
+              <>
+                <Icon name="cart" className="h-5 w-5" />
+                Cart
+              </>
+            )}
+          </button>
+        )}
         {list === "released" && (
           // Phone: the add row (place + search) takes the full width and Send to order sits on its own
           // row under it, so they never overlap; from sm up they share one wrapping row, tops aligned
@@ -486,11 +563,50 @@ export function CotsView({
         </p>
       )}
 
+      {byVendor && vendors.length > 0 && (
+        <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible" role="group" aria-label="Vendors">
+          {vendors.map((v) => {
+            const on = vendorPick === v;
+            return (
+              <button
+                key={v}
+                type="button"
+                aria-pressed={on}
+                onClick={() => setVendorPick(on ? null : v)}
+                className={`card-interactive group flex h-12 shrink-0 items-center gap-2.5 overflow-hidden pr-3 text-left active:scale-[0.98] ${on ? "border-accent ring-2 ring-accent" : ""}`}
+              >
+                <span className="flex h-full w-12 shrink-0 items-center justify-center bg-gradient-to-br from-sky-500/25 via-raised to-amber-400/20 text-sky-400">
+                  <Icon name="cart" className="h-5 w-5" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-xs leading-tight font-bold whitespace-nowrap text-fg">{v}</span>
+                  <span className="font-mono text-[11px] text-subtle tabular-nums">{rowsOf(main.filter((p) => vendorOf(p) === v)).length}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {shownCarts.length > 0 && (
+        <Section title="Carts" count={shownCarts.length}>
+          <BomProvider value={{ inventory: [], isAdmin: false }}>
+            <div className="card-grid" style={{ "--card-min": "220px" } as React.CSSProperties}>
+              {shownCarts.map(({ cart, members }) => (
+                <CartCard key={cart.id} cart={cart} members={members} open={openCart === cart.id} onToggle={() => setOpenCart((c) => (c === cart.id ? null : cart.id))}>
+                  {renderRows(rowsOf(members), { onRemove: removeFromCart(cart.id) })}
+                </CartCard>
+              ))}
+            </div>
+          </BomProvider>
+        </Section>
+      )}
+
       {byVendor ? (
         vendors.length === 0 && arrived.length === 0 ? (
           <Empty list={list} />
         ) : (
-          vendors.map((v) => {
+          vendors.filter((v) => !vendorPick || !vendors.includes(vendorPick) || v === vendorPick).map((v) => {
             const ps = main.filter((p) => vendorOf(p) === v);
             return (
               <Section key={v} title={v} count={rowsOf(ps).length}>
@@ -568,6 +684,32 @@ export function CotsView({
             </button>
             <button className="btn" onClick={() => toggleSelecting("status")}>
               Done
+            </button>
+          </div>
+        </div>
+      )}
+
+      {selecting === "cart" && (
+        <div className="sticky bottom-3 z-30 rounded-xl border border-line-strong bg-surface/95 p-3 shadow-lg backdrop-blur">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="font-semibold tabular-nums">{selected.size} selected</span>
+            <span className="text-subtle">{cartVendor ? `From ${cartVendor}: tap more of its parts.` : "Tap the parts to buy together, all from one vendor."}</span>
+            <span className="ml-auto" />
+            {vendorCarts.length > 0 && (
+              <select className="input w-auto py-1" value={targetCart?.id ?? ""} onChange={(e) => setCartTarget(e.target.value)} aria-label="Cart to add to">
+                <option value="">New cart</option>
+                {vendorCarts.map(({ cart, members }) => (
+                  <option key={cart.id} value={cart.id}>
+                    {`${new Date(cart.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })} · ${members.length} part${members.length === 1 ? "" : "s"}`}
+                  </option>
+                ))}
+              </select>
+            )}
+            <button className="btn-primary active:scale-[0.98]" disabled={pending || selected.size === 0} onClick={submitCart}>
+              {targetCart ? "✓ Add to cart" : "✓ Create cart"}
+            </button>
+            <button className="btn active:scale-[0.98]" onClick={() => setSelected(new Set())} disabled={selected.size === 0}>
+              Clear
             </button>
           </div>
         </div>

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CotsView } from "@/components/cots/CotsView";
 import { requireMember } from "@/lib/auth";
+import { listCotsCarts } from "@/lib/data/cotsCarts";
 import { listInventory } from "@/lib/data/inventory";
 import { listCotsParts } from "@/lib/data/parts";
 
@@ -17,7 +18,11 @@ export default async function CotsListPage({ params }: { params: Promise<{ list:
   const page = LISTS[list as keyof typeof LISTS];
   if (!page) notFound();
   // Released's search box looks through the shelf.
-  const [{ robots, parts, categories }, inventory] = await Promise.all([listCotsParts(), page.list === "released" ? listInventory() : null]);
+  const [{ robots, parts, categories }, inventory, carts] = await Promise.all([
+    listCotsParts(),
+    page.list === "released" ? listInventory() : null,
+    page.list === "order" ? listCotsCarts() : [],
+  ]);
   return (
     <div className="space-y-5">
       <div>
@@ -32,6 +37,7 @@ export default async function CotsListPage({ params }: { params: Promise<{ list:
         parts={parts}
         robots={robots}
         categories={categories}
+        carts={carts}
         shelf={inventory ? { items: inventory.items, categories: inventory.categories, locations: inventory.locations, conditions: inventory.conditions } : undefined}
       />
     </div>
