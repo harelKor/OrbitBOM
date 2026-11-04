@@ -11,7 +11,8 @@ import { pickableStatuses } from "@/components/shell/mode";
 // null there means its parts differ (Mixed).
 export function FactoryStatusButton({ status, onPick, compact = false }: { status: string | null; onPick: (status: string) => void; compact?: boolean }) {
   const { mode } = useMode();
-  const options = pickableStatuses(mode, true) ?? [];
+  // The CAD Team releases parts from the BOM, through the Release checklist, not here.
+  const options = mode === "cad" ? [] : (pickableStatuses(mode, true) ?? []);
   const locked = !useCan("work") || !options.length;
   const color = (status && getStatus(status)?.color) || "#cbd5e1";
   const option = "press flex w-full items-center justify-center rounded-xl border-2 border-black/25 py-3 text-base font-bold shadow-sm";

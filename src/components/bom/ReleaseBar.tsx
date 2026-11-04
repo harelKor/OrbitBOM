@@ -54,11 +54,6 @@ export function ReleaseBar({ count, selected, total, onRelease, onSelectAll, onD
   const releasable = selected.filter((p) => !unlinkedCots(p));
   const releaseCount = releasable.length;
   const [confirming, setConfirming] = useState(false);
-  const [ticked, setTicked] = useState<boolean[]>(() => CHECKS.map(() => false));
-  const open = () => {
-    setTicked(CHECKS.map(() => false));
-    setConfirming(true);
-  };
   return (
     <div className="fixed inset-x-0 bottom-0 z-40 border-t border-line-strong bg-surface/95 p-3 backdrop-blur">
       {(unplaced > 0 || unlinked > 0) && (
@@ -69,7 +64,7 @@ export function ReleaseBar({ count, selected, total, onRelease, onSelectAll, onD
       )}
       <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-2 text-sm">
         <span className="font-mono font-semibold tabular-nums">{count} selected</span>
-        <button className="btn-primary active:scale-[0.98]" disabled={!releaseCount} onClick={open}>
+        <button className="btn-primary active:scale-[0.98]" disabled={!releaseCount} onClick={() => setConfirming(true)}>
           Release
         </button>
         <button className="btn active:scale-[0.98]" onClick={onSelectAll}>
@@ -79,46 +74,58 @@ export function ReleaseBar({ count, selected, total, onRelease, onSelectAll, onD
           Cancel
         </button>
       </div>
-      <Dialog
-        open={confirming}
-        onClose={() => setConfirming(false)}
-        title={
-          <>
-            Release <span className="font-mono tabular-nums">{releaseCount}</span> {releaseCount === 1 ? "part" : "parts"}
-          </>
-        }
-      >
-        <div className="space-y-3">
+      {confirming && (
+        <ReleaseChecklist
+          count={releaseCount}
+          onClose={() => setConfirming(false)}
+          onConfirm={() => {
+            setConfirming(false);
+            onRelease(releasable.map((p) => p.id));
+          }}
+        >
           {unlinked > 0 && <UnlinkedWarning count={unlinked} />}
           {unplaced > 0 && <UnplacedWarning count={unplaced} />}
-          <p className="text-sm text-muted">Tick every box before releasing.</p>
-          <div className="flex flex-col gap-1">
-            {CHECKS.map((text, i) => (
-              <Checkbox key={text} checked={ticked[i]} onChange={(on) => setTicked((t) => t.map((v, j) => (j === i ? on : v)))}>
-                <span>
-                  <span className="font-mono tabular-nums">{i + 1}.</span> {text}
-                </span>
-              </Checkbox>
-            ))}
-          </div>
-          <div className="flex justify-end gap-2">
-            <button type="button" className="btn active:scale-[0.98]" onClick={() => setConfirming(false)}>
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="btn-primary active:scale-[0.98]"
-              disabled={!releaseCount || !ticked.every(Boolean)}
-              onClick={() => {
-                setConfirming(false);
-                onRelease(releasable.map((p) => p.id));
-              }}
-            >
-              Confirm Release
-            </button>
-          </div>
-        </div>
-      </Dialog>
+        </ReleaseChecklist>
+      )}
     </div>
+  );
+}
+
+// The Release checklist: every box ticked before Confirm Release. Used by the Release bar and by a
+// card's status menu when the CAD Team picks Released (Harel, 2026-11-04). `children`: warnings.
+export function ReleaseChecklist({ count, onClose, onConfirm, children }: { count: number; onClose: () => void; onConfirm: () => void; children?: React.ReactNode }) {
+  const [ticked, setTicked] = useState<boolean[]>(() => CHECKS.map(() => false));
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={
+        <>
+          Release <span className="font-mono tabular-nums">{count}</span> {count === 1 ? "part" : "parts"}
+        </>
+      }
+    >
+      <div className="space-y-3">
+        {children}
+        <p className="text-sm text-muted">Tick every box before releasing.</p>
+        <div className="flex flex-col gap-1">
+          {CHECKS.map((text, i) => (
+            <Checkbox key={text} checked={ticked[i]} onChange={(on) => setTicked((t) => t.map((v, j) => (j === i ? on : v)))}>
+              <span>
+                <span className="font-mono tabular-nums">{i + 1}.</span> {text}
+              </span>
+            </Checkbox>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2">
+          <button type="button" className="btn active:scale-[0.98]" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="button" className="btn-primary active:scale-[0.98]" disabled={!count || !ticked.every(Boolean)} onClick={onConfirm}>
+            Confirm Release
+          </button>
+        </div>
+      </div>
+    </Dialog>
   );
 }

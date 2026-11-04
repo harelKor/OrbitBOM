@@ -71,6 +71,6 @@ describe("Factory Fab statuses", () => {
     expect(statusDenied("cad", "Released", { cots: false, factory: true })).toBeNull();
     expect(statusDenied("cad", "In Factory", { cots: false, factory: true })).not.toBeNull();
     expect(pickableStatuses("build", true)).toEqual(["Released", "In Factory", "Ready for QA", "In Stock"]);
-    expect(pickableStatuses("cad", true)).toEqual([]);
+    expect(pickableStatuses("cad", true)).toEqual(["Released"]);
   });
 });

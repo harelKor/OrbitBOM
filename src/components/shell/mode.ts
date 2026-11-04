@@ -112,7 +112,7 @@ export const FACTORY_BUILD_STATUSES: readonly string[] = ["Released", "In Factor
 // The made-part statuses a mode picks from a card, table, filter or To Fab menu; null = all.
 // `factory`: the part goes to a Factory Fab factory (factoryOf in config/machines.ts).
 export function pickableStatuses(mode: Mode, factory = false): readonly string[] | null {
-  if (factory) return mode === "edit" ? FACTORY_STATUSES : mode === "build" ? FACTORY_BUILD_STATUSES : [];
+  if (factory) return mode === "edit" ? FACTORY_STATUSES : mode === "build" ? FACTORY_BUILD_STATUSES : mode === "cad" ? [RELEASE_STATUS] : [];
   if (mode === "cad") return NOTE_STATUSES;
   if (mode === "build") return BUILD_STATUSES;
   return null;

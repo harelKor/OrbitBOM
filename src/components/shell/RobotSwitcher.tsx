@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { FastLink } from "@/components/ui/FastLink";
 import { NewSystemButton } from "@/app/(app)/robots/[robotId]/NewSystemButton";
 import { RobotSettings } from "@/app/(app)/robots/[robotId]/RobotSettings";
@@ -11,10 +12,17 @@ import { EditOnly } from "./ModeContext";
 import { selectRobot, useRobotContext } from "./useRobotContext";
 
 // Robots, and the active robot's systems, one click away on every page. In Edit mode each
-// robot card and system tile has its settings gear in the corner. Clicking another robot selects it
-// (side links and its systems follow it, the page stays); clicking the selected one opens its dashboard.
+// robot card and system tile has its settings gear in the corner. Clicking another robot on one of a
+// robot's pages (dashboard, To Fab, Factory Fab, To Review, inventory) opens the same page for it at
+// once (Harel, 2026-11-04); elsewhere (a system, a page without a robot) it selects the robot (side
+// links and its systems follow it, the page stays). Clicking the selected one opens its dashboard.
+const ROBOT_PAGE = /^\/robots\/[0-9a-f-]{36}((?:\/(?:fab|review|inventory|main|factory(?:\/[\w-]+)?))?)\/?$/;
 export function RobotSwitcher({ robots, lastRobotId, isAdmin }: { robots: ShellRobot[]; lastRobotId: string | null; isAdmin: boolean }) {
   const { pathname, robot: current, systemId } = useRobotContext(robots, lastRobotId);
+  const query = useSearchParams().toString();
+  const page = pathname.match(ROBOT_PAGE);
+  // The same page for another robot, or null where the page stays and only the pick changes.
+  const samePage = (id: string) => (page ? `/robots/${id}${page[1]}${query ? `?${query}` : ""}` : null);
   const active = robots.filter((r) => !r.archived);
   const archived = robots.filter((r) => r.archived);
   const expanded = current;
@@ -38,6 +46,7 @@ export function RobotSwitcher({ robots, lastRobotId, isAdmin }: { robots: ShellR
             current={r.id === current?.id}
             overview={r.id === current?.id && !systemId && !pathname.includes("/fab") && !pathname.includes("/factory") && !pathname.includes("/review")}
             isAdmin={isAdmin}
+            samePage={samePage(r.id)}
             onSelect={() => selectRobot(r.id)}
           />
         ))}
@@ -71,6 +80,7 @@ export function RobotSwitcher({ robots, lastRobotId, isAdmin }: { robots: ShellR
                 current={r.id === current?.id}
                 overview={false}
                 isAdmin={isAdmin}
+                samePage={samePage(r.id)}
                 onSelect={() => selectRobot(r.id)}
               />
             ))}
@@ -89,25 +99,28 @@ function RobotCard({
   current,
   overview,
   isAdmin,
+  samePage,
   onSelect,
 }: {
   robot: ShellRobot;
   current: boolean;
   overview: boolean;
   isAdmin: boolean;
+  samePage: string | null;
   onSelect: () => void;
 }) {
   return (
     <div className="relative">
       <FastLink
-        href={`/robots/${robot.id}`}
+        href={(!current && samePage) || `/robots/${robot.id}`}
         aria-current={overview ? "page" : undefined}
         aria-pressed={current}
         data-selected={current}
-        title={current ? "Open dashboard" : "Select robot"}
+        title={current ? "Open dashboard" : samePage ? "Switch to this robot" : "Select robot"}
         onClick={(e) => {
-          // First click selects the robot without leaving the page; a new-tab click always opens the dashboard.
-          if (current || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+          // On a robot's page the link opens that page for this robot; elsewhere the first click
+          // selects the robot without leaving the page. A new-tab click follows the link.
+          if (current || samePage || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
           e.preventDefault();
           onSelect();
         }}

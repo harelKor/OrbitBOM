@@ -27,7 +27,8 @@ import {
 } from "./options";
 import { useInventoryPopup } from "@/components/inventory/InventoryPopup";
 import { useCan, useManage, useMode } from "@/components/shell/ModeContext";
-import { NOTE_STATUSES, pickableStatuses } from "@/components/shell/mode";
+import { NOTE_STATUSES, RELEASE_STATUS, pickableStatuses } from "@/components/shell/mode";
+import { ReleaseChecklist } from "./ReleaseBar";
 import { Icon } from "@/components/ui/Icon";
 import { StatusPill } from "@/components/ui/StatusPill";
 export { StatusPill };
@@ -239,12 +240,14 @@ export function QuantityField({ part, save }: Props) {
 
 // The status menu names each status as the part's machine calls it ("Printing" on a 3D printer).
 // Each team sees only its own statuses (pickableStatuses in mode.ts); the CAD Team's Reproduction
-// and Secondary Production first ask why, and that reason joins the part's note.
+// and Secondary Production first ask why, and that reason joins the part's note. The CAD Team can
+// also release a part here, through the Release bar's checklist (Harel, 2026-11-04).
 export function StatusField({ part, save, size = "md" }: Props & { size?: "sm" | "md" }) {
   const locked = !useCan("work");
   const { mode } = useMode();
   const [asking, setAsking] = useState<string | null>(null);
   const [releasing, setReleasing] = useState(false);
+  const [checking, setChecking] = useState(false);
   const status = computeStatus(part);
   const cots = part.classification === "cots";
   const machine = cots ? null : statusMachine(part);
@@ -257,9 +260,11 @@ export function StatusField({ part, save, size = "md" }: Props & { size?: "sm" |
       : STATUS_OPTIONS;
   // A Factory Fab factory's part: only the factory statuses (the CAD Team releases it with Release).
   if (factory) options = options.filter((o) => o.value !== null && pickable!.includes(o.value));
-  else if (mode === "cad") options = NOTE_STATUSES.map((name) => ({ value: name, label: name, color: getStatus(name)?.color }));
+  else if (mode === "cad") options = [RELEASE_STATUS, ...NOTE_STATUSES].map((name) => ({ value: name, label: name, color: getStatus(name)?.color }));
   // Build: In Process is the part's current process, so Ready for Process 2 only with a second one.
   else if (pickable && !cots) options = options.filter((o) => o.value !== null && pickable.includes(o.value) && (o.value !== "Ready for Process 2" || !!part.process2));
+  // The CAD Team doesn't release a part that already is.
+  if (mode === "cad" && status === RELEASE_STATUS) options = options.filter((o) => o.value !== RELEASE_STATUS);
   return (
     <>
       <Popover locked={locked || !options.length} trigger={<StatusPill status={status} label={partStatusLabel(part)} size={size} />}>
@@ -272,6 +277,7 @@ export function StatusField({ part, save, size = "md" }: Props & { size?: "sm" |
               // A COTS part goes to Released or the Order List only once it is linked to its inventory item.
               if (v && cots && !part.inventoryItemId && statusNeedsItem(mode === "cad" && NOTE_STATUSES.includes(v) ? COTS_ORDERED : v)) toast(COTS_LINK_REQUIRED, true);
               else if (v && NOTE_STATUSES.includes(v) && mode === "cad") setAsking(v);
+              else if (v === RELEASE_STATUS && mode === "cad") setChecking(true);
               // Edit mode releasing one made part outside the Release bar: confirm first, it locks the version for To Fab.
               else if (v === "Released" && mode === "edit" && !cots && status !== "Released") setReleasing(true);
               else if (v) save({ status: v });
@@ -280,6 +286,16 @@ export function StatusField({ part, save, size = "md" }: Props & { size?: "sm" |
           />
         )}
       </Popover>
+      {checking && (
+        <ReleaseChecklist
+          count={1}
+          onClose={() => setChecking(false)}
+          onConfirm={() => {
+            save({ status: RELEASE_STATUS });
+            setChecking(false);
+          }}
+        />
+      )}
       {releasing && (
         <ConfirmReleaseDialog
           part={part}
