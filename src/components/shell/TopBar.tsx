@@ -9,8 +9,8 @@ import { ModeToggle } from "./ModeContext";
 import { UndoRedo } from "./UndoRedo";
 
 // The two panel buttons (pages on the left, robots on the right) match the Undo/Redo squares.
-// 36px on touch screens: the bar's menus are tapped all day in the shop. No display class here, so
-// each button says when it shows.
+// 36px on touch screens: the bar's menus are tapped all day in the shop. They're the same at every
+// width, as on a phone: on wide screens they collapse and reopen the columns (Harel, 2026-11-04).
 const square = "press h-8 w-8 shrink-0 items-center justify-center rounded-md border border-white/30 hover:bg-white/10 pointer-coarse:h-9 pointer-coarse:w-9";
 
 export function TopBar({ onMenu, onRobots, navHidden, robotsHidden }: { onMenu: () => void; onRobots: () => void; navHidden: boolean; robotsHidden: boolean }) {
@@ -43,7 +43,7 @@ export function TopBar({ onMenu, onRobots, navHidden, robotsHidden }: { onMenu: 
 
   return (
     <header ref={header} className="sticky top-0 z-20 flex min-h-11 flex-wrap items-center gap-1.5 bg-bar px-3 py-1 sm:gap-2 sm:px-4 text-white shadow-[0_2px_8px_rgba(0,0,120,0.25)] md:px-6">
-      <button onClick={onMenu} className={`${square} flex lg:hidden`} aria-label="Pages" title="Show pages">
+      <button onClick={onMenu} className={`${square} flex`} aria-label="Pages" title={navHidden ? "Show pages" : "Pages"}>
         ☰
       </button>
       {/* The mark stays on screen whenever the left panel isn't showing it. */}
@@ -86,18 +86,8 @@ export function TopBar({ onMenu, onRobots, navHidden, robotsHidden }: { onMenu: 
         <UndoRedo />
         <ModeToggle />
         {/* Not a second ☰: this one opens the robots and systems, the left one the pages. */}
-        <button onClick={onRobots} className={`${square} flex xl:hidden`} aria-label="Robots and systems" title="Show robots and systems">
+        <button onClick={onRobots} className={`${square} flex`} aria-label="Robots and systems" title={robotsHidden ? "Show robots and systems" : "Robots and systems"}>
           <Icon name="layers" className="h-5 w-5" />
-        </button>
-        {/* Wide screens: collapses and reopens the robots column. It lives in the bar's corner so
-            the page needs no right gutter for it (Harel, 2026-11-04). Points the way the column moves. */}
-        <button
-          onClick={onRobots}
-          className={`${square} hidden xl:flex`}
-          aria-label={`${robotsHidden ? "Show" : "Hide"} robots and systems`}
-          title={`${robotsHidden ? "Show" : "Hide"} robots and systems`}
-        >
-          <Icon name="chevron" className={`h-4 w-4 stroke-[2.5] transition-transform duration-150 ${robotsHidden ? "rotate-180" : ""}`} />
         </button>
       </div>
     </header>

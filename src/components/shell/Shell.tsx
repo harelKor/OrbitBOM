@@ -6,7 +6,6 @@ import type { ShellCategory, ShellRobot } from "@/lib/data/shell";
 import { InventoryPopupProvider } from "@/components/inventory/InventoryPopup";
 import { PartDetailsProvider } from "@/components/bom/PartDetailsHost";
 import { Toaster } from "@/components/ui/Toaster";
-import { Icon } from "@/components/ui/Icon";
 import { useEscape } from "@/components/ui/useEscape";
 import { FilterProvider } from "./FilterContext";
 import { LeftNav } from "./LeftNav";
@@ -20,10 +19,9 @@ import { VisitTracker } from "./VisitTracker";
 
 // The app's three columns: page navigation on the left, robot and system switcher on the
 // right, search, filters and View | Edit on top. Below the wide breakpoints the side columns
-// slide over the page from the top bar's buttons; on wide screens an arrow on the left column's
-// inner edge and a button at the top bar's right end collapse and reopen them (remembered per
-// browser). --shell-left and --shell-right hold the columns' current widths, for overlays that
-// cover only the page.
+// slide over the page from the top bar's ☰ and robots buttons; on wide screens the same two
+// buttons collapse and reopen them (remembered per browser). --shell-left and --shell-right hold
+// the columns' current widths, for overlays that cover only the page.
 const COLLAPSE_KEY = "orbit-collapsed";
 // The pages column can be dragged wider: first it shows the names it cuts off, past that its
 // text grows. Dragged narrower it cuts the names short, then keeps only the icons (Harel,
@@ -32,6 +30,11 @@ const NAV_KEY = "orbit-nav-width";
 const NAV_DEFAULT = 224;
 // The round logo and the icons, nothing cut.
 const NAV_SMALLEST = 60;
+// The robots column drags too, from its inner edge: wider, its cards and text grow with it;
+// narrower, down to ROBOTS_SMALLEST (Harel, 2026-11-04). Same { w, z } shape, remembered per browser.
+const ROBOTS_KEY = "orbit-robots-width";
+const ROBOTS_DEFAULT = 288;
+const ROBOTS_SMALLEST = 200;
 const WIDE = { left: "(min-width: 64rem)", right: "(min-width: 80rem)" } as const;
 export function Shell({
   robots,
@@ -58,6 +61,7 @@ export function Shell({
   const open = drawer?.at === pathname ? drawer.side : null;
   const [collapsed, setCollapsed] = useState({ left: false, right: false });
   const [nav, setNav] = useState({ w: NAV_DEFAULT, z: 1 });
+  const [robotsCol, setRobotsCol] = useState({ w: ROBOTS_DEFAULT, z: 1 });
   const root = useRef<HTMLDivElement>(null);
   // Which columns are on screen as columns (not drawers). A drawer that's slid away is inert, so
   // Tab and screen readers skip its links; Escape closes an open one.
@@ -81,6 +85,8 @@ export function Shell({
       if (saved) setCollapsed({ left: !!saved.left, right: !!saved.right });
       const width = JSON.parse(localStorage.getItem(NAV_KEY) ?? "null");
       if (width?.w >= NAV_SMALLEST) setNav({ w: width.w, z: Math.max(1, width.z || 1) });
+      const robotsWidth = JSON.parse(localStorage.getItem(ROBOTS_KEY) ?? "null");
+      if (robotsWidth?.w >= ROBOTS_SMALLEST) setRobotsCol({ w: robotsWidth.w, z: Math.max(1, robotsWidth.z || 1) });
     } catch {}
   }, []);
   const saveNav = (next: { w: number; z: number }) => {
@@ -89,13 +95,22 @@ export function Shell({
       localStorage.setItem(NAV_KEY, JSON.stringify(next));
     } catch {}
   };
+  const saveSide = (next: { w: number; z: number }) => {
+    setRobotsCol(next);
+    try {
+      localStorage.setItem(ROBOTS_KEY, JSON.stringify(next));
+    } catch {}
+  };
   const toggle = (side: "left" | "right") => {
     if (window.matchMedia(WIDE[side]).matches) {
-      const next = { ...collapsed, [side]: !collapsed[side] };
-      setCollapsed(next);
-      try {
-        localStorage.setItem(COLLAPSE_KEY, JSON.stringify(next));
-      } catch {}
+      // From the latest state, so two quick presses each count.
+      setCollapsed((prev) => {
+        const next = { ...prev, [side]: !prev[side] };
+        try {
+          localStorage.setItem(COLLAPSE_KEY, JSON.stringify(next));
+        } catch {}
+        return next;
+      });
       return;
     }
     setDrawer(open === side ? null : { side, at: pathname });
@@ -109,8 +124,8 @@ export function Shell({
             <PartDetailsProvider>
               <div
                 ref={root}
-                style={{ "--nav-w": `${nav.w}px`, "--nav-zoom": nav.z } as React.CSSProperties}
-                className={`flex min-h-dvh max-w-full overflow-x-clip [--shell-left:0px] [--shell-right:0px] ${collapsed.left ? "" : "lg:[--shell-left:var(--nav-w)]"} ${collapsed.right ? "" : "xl:[--shell-right:18rem]"}`}
+                style={{ "--nav-w": `${nav.w}px`, "--nav-zoom": nav.z, "--robots-w": `${robotsCol.w}px`, "--robots-zoom": robotsCol.z } as React.CSSProperties}
+                className={`flex min-h-dvh max-w-full overflow-x-clip [--shell-left:0px] [--shell-right:0px] ${collapsed.left ? "" : "lg:[--shell-left:var(--nav-w)]"} ${collapsed.right ? "" : "xl:[--shell-right:var(--robots-w)]"}`}
               >
                 <aside
                   inert={!wide.left && open !== "left"}
@@ -123,8 +138,7 @@ export function Shell({
                 </aside>
                 <div className="flex min-w-0 flex-1 flex-col">
                   <TopBar onMenu={() => toggle("left")} onRobots={() => toggle("right")} navHidden={collapsed.left} robotsHidden={collapsed.right} />
-                  {/* The wide left gutter keeps the collapse arrow clear of the page. */}
-                <main className="min-w-0 flex-1 p-4 md:p-6 lg:pl-11">{children}</main>
+                <main className="min-w-0 flex-1 p-4 md:p-6">{children}</main>
                   <Suspense>
                     <VisitTracker />
                   </Suspense>
@@ -132,13 +146,15 @@ export function Shell({
                 </div>
                 <aside
                   inert={!wide.right && open !== "right"}
-                  className={`fixed inset-y-0 right-0 z-40 w-72 shrink-0 border-l border-line bg-surface xl:sticky xl:top-0 xl:h-dvh xl:translate-x-0 ${collapsed.right ? "xl:hidden" : ""} ${
+                  className={`fixed inset-y-0 right-0 z-40 w-[var(--robots-w)] max-w-[calc(100vw-3rem)] shrink-0 border-l border-line bg-surface xl:sticky xl:top-0 xl:h-dvh xl:translate-x-0 ${collapsed.right ? "xl:hidden" : ""} ${
                     open === "right" ? "translate-x-0" : "translate-x-full"
                   } transition-transform duration-150`}
                 >
-                  <RobotSwitcher robots={robots} lastRobotId={lastRobotId} isAdmin={member.isAdmin} />
+                  <div className="h-full" style={{ zoom: "var(--robots-zoom, 1)" }}>
+                    <RobotSwitcher robots={robots} lastRobotId={lastRobotId} isAdmin={member.isAdmin} />
+                  </div>
+                  <RobotsResizer root={root} side={robotsCol} onDone={saveSide} />
                 </aside>
-                <EdgeArrow collapsed={collapsed.left} onClick={() => toggle("left")} />
                 {open && (
                   <button aria-label="Close" onClick={() => setDrawer(null)} className="fixed inset-0 z-30 bg-black/50 xl:hidden" />
                 )}
@@ -149,24 +165,6 @@ export function Shell({
         </MaterialColorsProvider>
       </FilterProvider>
     </ModeProvider>
-  );
-}
-
-// The wide-screen collapse handle: a slim bright accent tab with an arrow on the pages column's
-// inner edge, at the middle of the screen. It sits in the page's left gutter (main pads for it),
-// so it never covers content. It points the way the column will move. On touch screens (tablets,
-// a phone showing the desktop site) it shrinks to a slim, see-through tab.
-function EdgeArrow({ collapsed, onClick }: { collapsed: boolean; onClick: () => void }) {
-  const label = `${collapsed ? "Show" : "Hide"} pages`;
-  return (
-    <button
-      onClick={onClick}
-      aria-label={label}
-      title={label}
-      className="press fixed top-1/2 left-[calc(var(--shell-left)-1px)] z-50 hidden h-14 w-5 -translate-y-1/2 items-center justify-center rounded-r-xl border border-white/20 bg-bar text-white shadow-[0_0_18px_rgba(0,24,230,0.65)] transition-[filter,box-shadow] duration-150 hover:brightness-125 hover:shadow-[0_0_24px_rgba(0,34,255,0.8)] pointer-coarse:h-10 pointer-coarse:w-3.5 pointer-coarse:bg-bar/60 pointer-coarse:shadow-none lg:flex"
-    >
-      <Icon name="chevron" className={`h-4 w-4 stroke-[2.5] pointer-coarse:h-3 pointer-coarse:w-3 transition-transform duration-150 ${collapsed ? "" : "rotate-180"}`} />
-    </button>
   );
 }
 
@@ -239,6 +237,68 @@ function NavResizer({
       onPointerDown={start}
       onDoubleClick={() => onDone({ w: NAV_DEFAULT, z: 1 })}
       className="group absolute inset-y-0 -right-1.5 z-10 w-3 cursor-col-resize touch-none pointer-coarse:-right-3 pointer-coarse:w-6"
+    >
+      <span className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-accent opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-active:opacity-100" />
+    </div>
+  );
+}
+
+// The drag strip on the robots column's inner (left) edge, like the pages column's: it writes the
+// CSS variables straight onto the shell while dragging and saves on release. Wider than normal the
+// column's content zooms with it, narrower it only narrows. Double-click goes back to normal.
+function RobotsResizer({
+  root,
+  side,
+  onDone,
+}: {
+  root: React.RefObject<HTMLDivElement | null>;
+  side: { w: number; z: number };
+  onDone: (side: { w: number; z: number }) => void;
+}) {
+  const start = (e: React.PointerEvent<HTMLDivElement>) => {
+    const shell = root.current;
+    if (!shell || e.button !== 0) return;
+    e.preventDefault();
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
+    // Half the screen as a column; as a drawer, the aside's own cap (3rem of page left showing).
+    const room = window.matchMedia(WIDE.right).matches ? window.innerWidth / 2 : window.innerWidth - 48;
+    const max = Math.max(ROBOTS_DEFAULT, Math.min(room, ROBOTS_DEFAULT * 1.8));
+    const x0 = e.clientX;
+    let next = side;
+    let frame = 0;
+    const move = (ev: PointerEvent) => {
+      // The column grows leftwards: dragging left widens it.
+      const w = Math.round(Math.min(max, Math.max(ROBOTS_SMALLEST, side.w + x0 - ev.clientX)));
+      next = { w, z: w > ROBOTS_DEFAULT ? w / ROBOTS_DEFAULT : 1 };
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        shell.style.setProperty("--robots-w", `${next.w}px`);
+        shell.style.setProperty("--robots-zoom", String(next.z));
+      });
+    };
+    const end = () => {
+      cancelAnimationFrame(frame);
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", end);
+      handle.removeEventListener("pointercancel", end);
+      document.body.classList.remove("select-none", "cursor-col-resize");
+      onDone(next);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
+    document.body.classList.add("select-none", "cursor-col-resize");
+  };
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Drag to resize the robots"
+      title="Drag to resize, double-click to reset"
+      onPointerDown={start}
+      onDoubleClick={() => onDone({ w: ROBOTS_DEFAULT, z: 1 })}
+      className="group absolute inset-y-0 -left-1.5 z-10 w-3 cursor-col-resize touch-none pointer-coarse:-left-3 pointer-coarse:w-6"
     >
       <span className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-accent opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-active:opacity-100" />
     </div>

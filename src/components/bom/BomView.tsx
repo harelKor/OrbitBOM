@@ -213,7 +213,7 @@ export function BomView({
           // Sticks right under the top bar (whatever its height); the strip bleeds into main's padding so cards scroll
           // under it cleanly. On phones it stays one row that scrolls sideways, so it doesn't cover the cards.
           stickyToolbar
-            ? "sticky top-[var(--topbar-h)] z-10 -mx-4 border-b border-line bg-ink/95 px-4 py-2.5 backdrop-blur max-md:flex-nowrap max-md:overflow-x-auto max-md:[&>*]:shrink-0 md:-mx-6 md:px-6 lg:-ml-11 lg:pl-11 xl:-mr-11 xl:pr-11"
+            ? "sticky top-[var(--topbar-h)] z-10 -mx-4 border-b border-line bg-ink/95 px-4 py-2.5 backdrop-blur max-md:flex-nowrap max-md:overflow-x-auto max-md:[&>*]:shrink-0 md:-mx-6 md:px-6"
             : ""
         }`}
       >
