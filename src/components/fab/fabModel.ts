@@ -18,6 +18,7 @@ export type Batch = {
   madeBy: string | null;
   priority: Priority;
   gcode: { id: string; filename: string } | null;
+  createdAt: string; // ISO; a closed batch shows its date
   onshapeLayoutUrl?: string | null; // the batch's "Batch - <name>" assembly in Onshape, once made
 };
 

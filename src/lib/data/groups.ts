@@ -82,7 +82,7 @@ export async function listGroups(): Promise<GroupSummary[]> {
 export async function listRobotGroups(robotId: string) {
   const [groups, gcodes] = await Promise.all([
     db
-      .select({ id: partGroups.id, name: partGroups.name, color: partGroups.color, machine: partGroups.machine, madeBy: partGroups.madeBy, priority: partGroups.priority, layoutData: partGroups.layoutData })
+      .select({ id: partGroups.id, name: partGroups.name, color: partGroups.color, machine: partGroups.machine, madeBy: partGroups.madeBy, priority: partGroups.priority, layoutData: partGroups.layoutData, createdAt: partGroups.createdAt })
       .from(partGroups)
       .where(eq(partGroups.robotId, robotId))
       .orderBy(asc(partGroups.name)),

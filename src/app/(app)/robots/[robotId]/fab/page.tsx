@@ -31,7 +31,7 @@ export default async function FabPage({ params }: { params: Promise<{ robotId: s
       <FabHeading robotName={data.robot.name} />
       <FabView
         parts={parts}
-        batches={batches.filter(isFabBatch).map(({ id, name, machine, madeBy, priority, gcode }) => ({ id, name, machine, madeBy, priority, gcode }))}
+        batches={batches.filter(isFabBatch).map(({ id, name, machine, madeBy, priority, gcode, createdAt }) => ({ id, name, machine, madeBy, priority, gcode, createdAt: createdAt.toISOString() }))}
         me={member.name}
         memberNames={memberNames}
         robotId={data.robot.id}

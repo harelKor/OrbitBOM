@@ -16,7 +16,7 @@ import { Icon } from "@/components/ui/Icon";
 import { useEscape } from "@/components/ui/useEscape";
 import { Segmented } from "@/components/ui/Segmented";
 import { useStoredChoice } from "@/components/ui/useStoredChoice";
-import { FINISHED_STATUS, fabBatchName, fabStage, machinesOf } from "@/lib/fab";
+import { FINISHED_STATUS, fabStage, machinesOf } from "@/lib/fab";
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { statusMachine } from "@/lib/status";
 import { FabPartListRow } from "./FabListRow";
@@ -118,7 +118,6 @@ export function FabView({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pickedMachine, setPickedMachine] = useState("");
   const [target, setTarget] = useState(""); // the batch the Fab button adds to ("" = a new one)
-  const [batchName, setBatchName] = useState<string | null>(null); // typed in the Fab bar; null = the default
   // Long-pressing a Released card on a phone turns on Fab with that card picked.
   const press = useRef<{ timer: number | null; fired: boolean }>({ timer: null, fired: false });
   const endPress = () => {
@@ -240,15 +239,16 @@ export function FabView({
     setFab(on);
     setSelected(new Set());
     setTarget("");
-    setBatchName(null);
   };
   useEscape(fab, () => startFab(false));
-  const defaultBatchName = fabMachine ? fabBatchName(getMachine(fabMachine)?.name ?? "Batch") : "";
+  // Batches show no name (BatchCard): the Fab bar tells them apart by machine, material and day.
+  const batchLabel = (b: Batch & { members: CardPart[] }) =>
+    [b.machine && (getMachine(b.machine)?.name ?? b.machine), batchMaterial(b) || "No material", new Date(b.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })].filter(Boolean).join(" · ");
   const submitFab = () =>
     startTransition(async () => {
       let r: { error?: string };
       if (targetBatch) r = await moveToFabBatch(targetBatch.id, [...selected], null, batchStatus(targetBatch.members));
-      else r = await createFabBatch(robotId, [...selected], fabMachine!, undefined, batchName ?? undefined);
+      else r = await createFabBatch(robotId, [...selected], fabMachine!);
       setError(r.error ?? null);
       if (!r.error) startFab(false);
     });
@@ -521,7 +521,7 @@ export function FabView({
                 <option value="">New batch</option>
                 {targetOptions.map((b) => (
                   <option key={b.id} value={b.id}>
-                    {b.name}
+                    {batchLabel(b)}
                   </option>
                 ))}
               </select>
@@ -546,22 +546,12 @@ export function FabView({
                   </select>
                 )
               )}
-              {!targetBatch && (
-                <input
-                  className="input w-40 py-1 font-mono tabular-nums sm:w-44"
-                  value={batchName ?? defaultBatchName}
-                  onChange={(e) => setBatchName(e.target.value)}
-                  placeholder={defaultBatchName || "Batch name"}
-                  aria-label="Name of the new batch"
-                  maxLength={80}
-                />
-              )}
               <button
                 className="btn-primary active:scale-[0.98]"
                 disabled={pending || selected.size === 0 || (!targetBatch && !fabMachine)}
                 onClick={submitFab}
               >
-                {targetBatch ? `✓ Add to ${targetBatch.name}` : "✓ Create batch"}
+                {targetBatch ? "✓ Add to batch" : "✓ Create batch"}
               </button>
               <button className="btn active:scale-[0.98]" onClick={() => setSelected(new Set())} disabled={selected.size === 0}>
                 Clear
@@ -644,9 +634,9 @@ function Section({
       ) : (
         <OpenBatchContext.Provider value={{ id: openBatch, set: setOpenBatch }}>
           {layout === "list" ? (
-            <div className="list-stack">{children}</div>
+            <div className="list-stack fab-grid">{children}</div>
           ) : (
-            <div className="card-grid" style={{ "--card-min": small ? "150px" : "220px" } as React.CSSProperties}>{children}</div>
+            <div className="card-grid fab-grid" style={{ "--card-min": small ? "150px" : "220px" } as React.CSSProperties}>{children}</div>
           )}
         </OpenBatchContext.Provider>
       )}

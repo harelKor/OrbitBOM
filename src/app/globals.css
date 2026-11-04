@@ -564,27 +564,20 @@ body {
   animation-duration: 240ms;
   animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
-/* A batch's snapshots keep their own size, pinned top-left, while its box grows or shrinks
-   around them, so the cards don't stretch mid-morph. */
-::view-transition-old(*.fab-batch),
-::view-transition-new(*.fab-batch) {
-  height: 100%;
-  object-fit: none;
-  object-position: left top;
+/* To Fab sections: rows are spaced by each item's bottom margin instead of a row gap, so an open
+   batch's strip (a grid row of its own, BatchCard) adds no space while it folds to nothing. */
+.fab-grid {
+  row-gap: 0;
+  margin-bottom: calc(-1 * var(--fab-gap));
 }
-.batch-open {
-  animation: batch-open 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+.fab-grid > * {
+  margin-bottom: var(--fab-gap);
 }
-@keyframes batch-open {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
+.card-grid.fab-grid {
+  --fab-gap: 0.75rem;
 }
-@media (prefers-reduced-motion: reduce) {
-  .batch-open {
-    animation: none;
-  }
+.list-stack.fab-grid {
+  --fab-gap: 0.625rem;
 }
 
 @keyframes new-glow-out {

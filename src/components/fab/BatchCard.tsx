@@ -1,7 +1,7 @@
 "use client";
 
-import { createContext, useContext, useId, useLayoutEffect, useRef, useState, useTransition } from "react";
-import { createPortal, flushSync } from "react-dom";
+import { createContext, useContext, useEffect, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { getMachine } from "@/config/machines";
 import type { Priority } from "@/config/priorities";
 import { STATUSES, statusLabel, type StatusName } from "@/config/statuses";
@@ -15,6 +15,7 @@ import { useCan, useMode } from "@/components/shell/ModeContext";
 import { pickableStatuses } from "@/components/shell/mode";
 import { Chevron } from "@/components/ui/Chevron";
 import { Icon } from "@/components/ui/Icon";
+import { LocalTime } from "@/components/ui/LocalTime";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { READY_STATUS, isFabFinished } from "@/lib/fab";
 import { type PartChanges } from "@/lib/parts/changes";
@@ -35,30 +36,26 @@ export function collageGrid(count: number): React.CSSProperties {
 // One open batch per section: opening a batch closes the one that was open.
 export const OpenBatchContext = createContext<{ id: string | null; set: (id: string | null) => void } | null>(null);
 
-// How wide an open batch is: as many of the section grid's columns as it has parts, at least two
-// so its header has room, never more than the grid has. The grid places it (span only): in the
-// slot it had when closed if it fits there, else at the start of the next row.
-export type Place = { span: number; colWidth: number };
-export function measurePlace(el: HTMLElement | null, parts: number): Place | null {
+// An open batch stays in its slot; its parts open in a strip the whole width of the section, in
+// the grid row right under the batch's row. So opening and closing never moves a card sideways or
+// leaves a hole: only the rows below slide down and back (Harel, 2026-11-04). The strip's row is
+// counted from the cards' tops (other batches' strips skipped) and placed explicitly, so the cards
+// after the batch in its row stay beside it.
+const PANEL_MS = 220;
+function rowBelow(el: HTMLElement | null) {
   const grid = el?.parentElement;
   if (!el || !grid) return null;
-  const cols = getComputedStyle(grid).gridTemplateColumns.split(" ").filter(Boolean);
-  const colWidth = parseFloat(cols[0]) || 0;
-  return { span: Math.max(1, Math.min(cols.length, Math.max(parts, 2))), colWidth };
-}
-
-// Runs a layout change as a short view transition where the browser has them, so the eye can
-// follow a batch as it opens or closes. The change does its own flushSync.
-export function withTransition(change: () => void) {
-  const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown };
-  if (doc.startViewTransition && !matchMedia("(prefers-reduced-motion: reduce)").matches) doc.startViewTransition(change);
-  else change();
+  const tops = new Set<number>();
+  for (const c of grid.children) if (c instanceof HTMLElement && !c.dataset.batchPanel) tops.add(Math.round(c.offsetTop));
+  return [...tops].sort((a, b) => a - b).indexOf(Math.round(el.offsetTop)) + 2;
 }
 
 // A fab batch: a collage of its parts, who makes it (on top of the collage; glowing when it's
-// you), its machine and material, one status for all of them (named as the machine calls it),
-// download all (on a closed batch only until it has G-code) and its G-code. Clicking the card opens it in place, with
-// each part's own status; cards dropped on it join it. Rename and delete are in Edit mode.
+// you) and, closed, the day it was made, its machine and material, one status for all of them
+// (named as the machine calls it), download all (on a closed batch only until it has G-code) and
+// its G-code. Clicking the card opens it in place, with each part's own status; cards dropped on
+// it join it. Batches show no name: machine and material say which one it is (Harel,
+// 2026-11-04). Delete is in Edit mode.
 export function BatchCard({
   batch,
   members,
@@ -90,7 +87,6 @@ export function BatchCard({
   const [ownOpen, setOwnOpen] = useState(false);
   const open = section ? section.id === batch.id : ownOpen;
   const setOpen = (next: boolean) => (section ? section.set(next ? batch.id : null) : setOwnOpen(next));
-  const [renaming, setRenaming] = useState(false);
   const [layoutOpen, setLayoutOpen] = useState(false);
   const [over, setOver] = useState(false);
   const [madeBy, setMadeBy] = useState(batch.madeBy ?? "");
@@ -105,6 +101,8 @@ export function BatchCard({
   const materials = [...new Set(members.map((p) => p.material ?? ""))];
   const material = materials.length === 1 ? materials[0] || "No material" : "Mixed materials";
   const machineName = batch.machine ? (getMachine(batch.machine)?.name ?? batch.machine) : null;
+  // What the batch is called in labels and questions, now that it shows no name.
+  const what = `the ${[machineName, material].filter(Boolean).join(" ")} batch`;
   const downloads = members.flatMap((p) => {
     const f = cadFormat(p);
     return f ? [`/api/parts/${p.id}/export?format=${f}${p.fabView ? "&fab=1" : ""}`] : [];
@@ -118,33 +116,42 @@ export function BatchCard({
   const thumbs = members.slice(0, 9);
 
   const mine = !!madeBy && madeBy === me;
-  // Opened, the batch grows to the right and down from its slot (or from the next row's start when
-  // it doesn't fit there), laying its parts out at the grid's card width, as many across as it has
-  // parts and room for. Closed cards beside it keep their own height (self-start).
   const ref = useRef<HTMLDivElement>(null);
   const list = layout === "list";
-  const [place, setPlace] = useState<Place | null>(null);
-  const transitionName = `batch-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  const [row, setRow] = useState<number | null>(null);
   const toggle = () => {
-    const next = !open;
-    withTransition(() => {
-      // Close the section's other open batch first, so this one is measured in a settled grid.
-      if (next && section?.id) flushSync(() => section.set(null));
-      const nextPlace = next && !list ? measurePlace(ref.current, members.length) : null;
-      flushSync(() => {
-        setPlace(nextPlace);
-        setOpen(next);
-      });
-    });
+    if (!open) setRow(rowBelow(ref.current));
+    setOpen(!open);
   };
-  useLayoutEffect(() => {
+  // The strip stays mounted while it folds shut: `shown` drives its height (0fr / 1fr), `mounted`
+  // whether it's there at all.
+  const [mounted, setMounted] = useState(open);
+  const [shown, setShown] = useState(open);
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setMounted(true);
+    else setShown(false);
+  }
+  useEffect(() => {
+    if (open && mounted && !shown) {
+      // Two frames, so the folded strip is on screen before it unfolds.
+      let frame = requestAnimationFrame(() => (frame = requestAnimationFrame(() => setShown(true))));
+      return () => cancelAnimationFrame(frame);
+    }
+    if (!open && mounted) {
+      const timer = setTimeout(() => setMounted(false), PANEL_MS);
+      return () => clearTimeout(timer);
+    }
+  }, [open, mounted, shown]);
+  // Cards around it can move (a filter, the window, another batch's strip): keep the strip's row.
+  useEffect(() => {
     const grid = ref.current?.parentElement;
-    if (!open || !grid || list) return;
-    const observer = new ResizeObserver(() => setPlace(measurePlace(ref.current, members.length)));
+    if (!mounted || !grid) return;
+    const observer = new ResizeObserver(() => setRow(rowBelow(ref.current)));
     observer.observe(grid);
     return () => observer.disconnect();
-  }, [open, members.length, list]);
-  const wide = open && (place?.span ?? 1) >= 2;
+  }, [mounted]);
   const batchTint = stage === "finished" || isFabFinished(lowest) ? tint(FINISHED_COLOR) : statusTint(computeStatus(lowest));
   const userBox = (
     <select
@@ -155,7 +162,7 @@ export function BatchCard({
         setMadeBy(e.target.value);
         startTransition(() => void updateGroup(batch.id, { madeBy: e.target.value || null }));
       }}
-      aria-label={`Who makes ${batch.name}`}
+      aria-label={`Who makes ${what}`}
       title={mine ? "You make this batch" : undefined}
       className={`press max-w-full min-w-0 cursor-pointer truncate rounded-full border bg-surface/90 px-2 py-0.5 text-[11px] font-bold shadow-sm backdrop-blur-md transition-shadow hover:border-accent focus:outline-none ${
         mine ? "border-sky-400 text-sky-600 shadow-[0_0_10px_2px_rgba(56,189,248,0.55)] dark:text-sky-300" : "border-line-strong text-fg"
@@ -169,10 +176,6 @@ export function BatchCard({
       ))}
     </select>
   );
-  const rename = (name: string) => {
-    setRenaming(false);
-    if (name.trim() && name.trim() !== batch.name) startTransition(() => void updateGroup(batch.id, { name }));
-  };
   // Controls inside the card don't open or close it.
   const stop = (e: React.MouseEvent) => e.stopPropagation();
   // Cards from elsewhere dropped on the batch join it (a whole batch doesn't).
@@ -202,21 +205,6 @@ export function BatchCard({
       DRAG_TYPE,
       JSON.stringify({ ids: (notDone.length ? notDone : members).map((p) => p.id), from: stage, batch: batch.id, whole: true } satisfies DragLoad),
     );
-  const nameInput = (
-    <input
-      autoFocus
-      defaultValue={batch.name}
-      aria-label="Fab name"
-      className="input py-1 text-base font-semibold"
-      onClick={stop}
-      onBlur={(e) => rename(e.target.value)}
-      onKeyDown={(e) => {
-        e.stopPropagation();
-        if (e.key === "Enter") rename(e.currentTarget.value);
-        if (e.key === "Escape") setRenaming(false);
-      }}
-    />
-  );
   const statusMenu = (
     <Popover locked={!edit || mode === "cad"} trigger={<StatusPill status={shared ?? "Mixed"} label={shared ? label(shared) : undefined} size={list ? "sm" : "md"} />}>
       {(close) => (
@@ -241,7 +229,7 @@ export function BatchCard({
         setPriority(next);
         startTransition(() => void updateGroup(batch.id, { priority: next }));
       }}
-      aria-label={`Priority of ${batch.name}`}
+      aria-label={`Priority of ${what}`}
       className="cursor-pointer rounded-full border border-line-strong bg-surface px-2 py-1 text-xs font-bold"
       style={textColor ? { color: textColor } : undefined}
     >
@@ -268,7 +256,7 @@ export function BatchCard({
     createPortal(
       // The window sits outside the card in the page, but React still hands its clicks to the card.
       <div onClick={stop} onDoubleClick={stop}>
-        <BatchLayoutDialog groupId={batch.id} name={batch.name} machine={batch.machine} open onClose={() => setLayoutOpen(false)} />
+        <BatchLayoutDialog groupId={batch.id} name={[machineName, material].filter(Boolean).join(" · ")} machine={batch.machine} open onClose={() => setLayoutOpen(false)} />
       </div>,
       document.body,
     );
@@ -284,7 +272,7 @@ export function BatchCard({
         <button
           className="overlay-btn w-auto gap-1 px-2 text-xs font-semibold"
           onClick={() => void downloadExport(`/api/groups/${batch.id}/layout-dxf`)}
-          aria-label={`Download ${batch.name} sheet layout as one DXF`}
+          aria-label={`Download ${what}'s sheet layout as one DXF`}
           title="The whole sheet as one DXF: every copy where Auto Layout put it"
         >
           <Icon name="download" />
@@ -295,7 +283,7 @@ export function BatchCard({
         <button
           className="overlay-btn w-auto gap-1 px-2 text-xs font-semibold"
           onClick={() => void downloadExport(`/api/groups/${batch.id}/dxf`)}
-          aria-label={`Download ${batch.name} flat DXFs as a zip`}
+          aria-label={`Download ${what}'s flat DXFs as a zip`}
           title="All flat DXFs in one zip, named with each part's quantity"
         >
           <Icon name="download" />
@@ -313,7 +301,7 @@ export function BatchCard({
     <button
       className="press shrink-0 text-xs text-subtle hover:text-rose-700"
       onClick={() => {
-        if (confirm(`Delete ${batch.name}? Its parts stay on the BOM with their status.`)) startTransition(() => void deleteGroup(batch.id));
+        if (confirm(`Delete ${what}? Its parts stay on the BOM with their status.`)) startTransition(() => void deleteGroup(batch.id));
       }}
     >
       Delete fab
@@ -322,23 +310,52 @@ export function BatchCard({
   const removeButton = (p: CardPart) =>
     edit && (
       <button className="self-start text-xs text-subtle hover:text-rose-700" onClick={() => startTransition(() => void removeFromGroup(batch.id, p.id))}>
-        Remove from {batch.name}
+        Remove from batch
       </button>
     );
 
+  // The strip under the batch's row: its actions, then its parts (cards, or rows in the List view).
+  const panel = mounted && (
+    <div
+      data-batch-panel=""
+      onClick={stop}
+      style={{ gridColumn: "1 / -1", gridRow: row ?? undefined, gridTemplateRows: shown ? "1fr" : "0fr", ...(!shown && { marginBottom: 0 }) }}
+      className="grid cursor-default transition-[grid-template-rows,margin-bottom] duration-200 ease-out motion-reduce:transition-none"
+    >
+      <div className="min-h-0 overflow-hidden">
+        <div style={batchTint} className="space-y-3 rounded-2xl border-2 border-accent/60 bg-surface/90 p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`min-w-0 truncate text-sm font-semibold ${textColor ? "" : "text-fg"}`} style={textColor ? { color: textColor } : undefined}>
+              {material}
+              {machineName && ` · ${machineName}`}
+            </span>
+            {prioritySelect}
+            {autoLayoutButton}
+            <OnshapeLayoutButton groupId={batch.id} url={batch.onshapeLayoutUrl} where="card" />
+            <GcodeRow batch={batch} />
+            {edit && <span className="ml-auto">{deleteButton}</span>}
+          </div>
+          <div className={list ? "list-stack" : "card-grid"} style={list ? { zoom: 1 } : undefined}>
+            {members.map((p) => (
+              <div key={p.id} className="flex min-w-0 flex-col gap-1">
+                {card(p, { batch, members })}
+                {removeButton(p)}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   if (list) {
-    // The List view: one row (collage, name, material · machine, who makes it, status, downloads,
-    // chevron); a click folds the batch open below it, with its actions and then its parts as rows.
+    // The List view: one row (collage, material · machine, the day it was made, who makes it,
+    // status, downloads, chevron); a click opens the strip below it. A batch's row has a heavier
+    // outline than a part's, so the two don't run together in the list.
     const small = members.slice(0, 4);
     return (
-      <div
-        ref={ref}
-        {...dropProps}
-        draggable={draggable && !renaming}
-        onDragStart={dragStart}
-        className="min-w-0"
-        style={open ? { gridColumn: "1 / -1" } : undefined}
-      >
+      <>
+      <div ref={ref} {...dropProps} draggable={draggable} onDragStart={dragStart} className="min-w-0">
         <div
           role="button"
           tabIndex={0}
@@ -346,7 +363,7 @@ export function BatchCard({
           onClick={toggle}
           onKeyDown={(e) => e.key === "Enter" && e.target === e.currentTarget && toggle()}
           style={{ ...batchTint, ...(mine && { boxShadow: "0 0 0 2px rgba(56,189,248,0.75), 0 0 18px 3px rgba(56,189,248,0.35)" }) }}
-          className={`flex min-w-0 cursor-pointer items-center gap-3 rounded-2xl border border-line bg-surface/90 py-2.5 pr-2.5 pl-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] transition-all duration-150 hover:border-sky-400/40 active:not-[:has(:is(button,a,input,select,textarea,[role=dialog]):active)]:scale-[0.99] ${over ? "ring-2 ring-accent" : ""}`}
+          className={`flex min-w-0 cursor-pointer items-center gap-3 rounded-2xl border-2 bg-surface/90 py-2.5 pr-2.5 pl-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_2px_8px_rgba(0,0,0,0.25)] transition-all duration-150 hover:border-sky-400/50 active:not-[:has(:is(button,a,input,select,textarea,[role=dialog]):active)]:scale-[0.99] ${open ? "border-accent/60" : "border-line-strong"} ${over ? "ring-2 ring-accent" : ""}`}
         >
           <span className="grid h-14 w-14 shrink-0 gap-px overflow-hidden rounded-xl bg-white" style={collageGrid(small.length)}>
             {small.map((p) => (
@@ -361,80 +378,50 @@ export function BatchCard({
             ))}
           </span>
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-            {renaming ? (
-              nameInput
-            ) : (
-              <span className="truncate text-base font-bold text-accent" style={textColor ? { color: textColor } : undefined}>
-                {batch.name}
+            <span className="flex min-w-0 items-baseline gap-2">
+              <span className={`min-w-0 flex-1 truncate text-sm font-semibold ${textColor ? "" : "text-fg"}`} style={textColor ? { color: textColor } : undefined}>
+                {material}
+                {machineName && ` · ${machineName}`}
               </span>
-            )}
-            <span className={`truncate text-xs font-medium ${textColor ? "" : "text-muted"}`} style={textColor ? { color: textColor } : undefined}>
-              {material}
-              {machineName && ` · ${machineName}`}
+              {!open && <BatchDate at={batch.createdAt} />}
             </span>
+            {/* The downloads share this line, so machine and material get the row's full width. */}
             <span className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5" onClick={stop}>
               <span className="min-w-0 max-w-40">{userBox}</span>
               {statusMenu}
+              <span className="ml-auto flex shrink-0 items-center gap-1">{downloadButtons}</span>
             </span>
-          </span>
-          <span className="flex shrink-0 items-center gap-1" onClick={stop}>
-            {downloadButtons}
           </span>
           <Chevron open={open} small />
         </div>
-        {open && (
-          <div className="mt-2 space-y-2 border-l-2 border-accent/40 pl-3 sm:pl-5" onClick={stop}>
-            <div className="flex flex-wrap items-center gap-2">
-              {prioritySelect}
-              {autoLayoutButton}
-              <OnshapeLayoutButton groupId={batch.id} url={batch.onshapeLayoutUrl} where="card" />
-              {edit && !renaming && (
-                <button className="press shrink-0 text-xs text-subtle hover:text-accent" onClick={() => setRenaming(true)}>
-                  Rename
-                </button>
-              )}
-              {edit && <span className="ml-auto">{deleteButton}</span>}
-            </div>
-            <GcodeRow batch={batch} />
-            <div className="list-stack" style={{ zoom: 1 }}>
-              {members.map((p) => (
-                <div key={p.id} className="flex min-w-0 flex-col gap-1">
-                  {card(p, { batch, members })}
-                  {removeButton(p)}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
         {layoutDialog}
       </div>
+      {panel}
+      </>
     );
   }
 
+  // The card looks the same open or closed (outlined while its strip is open below).
   return (
+    <>
     <div
       ref={ref}
       {...dropProps}
-      draggable={draggable && !renaming}
+      draggable={draggable}
       onDragStart={dragStart}
       onClick={toggle}
       style={{
         ...batchTint,
-        ...(open && place && { gridColumn: `span ${place.span}` }),
         ...(mine && { boxShadow: "0 0 0 2px rgba(56,189,248,0.75), 0 0 22px 4px rgba(56,189,248,0.4)" }),
-        viewTransitionName: transitionName,
-        viewTransitionClass: "fab-batch",
       }}
-      className={`card-interactive flex cursor-pointer flex-col self-start text-sm ${over ? "ring-2 ring-accent" : ""}`}
+      className={`card-interactive flex cursor-pointer flex-col self-start text-sm ${over || open ? "ring-2 ring-accent" : ""}`}
     >
-      {/* Open and at least two columns wide, the collage sits beside the details (which wrap below
-          it if they'd get narrower than 12rem); one column wide, it stacks like a closed card. */}
-      <div className={wide ? "flex flex-wrap gap-x-4 p-3" : "flex flex-col"}>
-        <div className={`relative shrink-0 ${wide ? "w-40" : "w-full"}`}>
+      <div className="flex flex-col">
+        <div className="relative w-full shrink-0">
           <button
             aria-expanded={open}
-            aria-label={open ? `Close ${batch.name}` : `Open ${batch.name}`}
-            className={`thumb-well grid aspect-[4/3] w-full gap-px overflow-hidden ${wide ? "rounded-lg" : ""}`}
+            aria-label={open ? `Close ${what}` : `Open ${what}`}
+            className="thumb-well grid aspect-[4/3] w-full gap-px overflow-hidden"
             style={collageGrid(thumbs.length)}
           >
             {thumbs.map((p) => (
@@ -448,70 +435,26 @@ export function BatchCard({
               </span>
             ))}
           </button>
-          <div className="absolute inset-x-2 top-2 flex" onClick={stop}>
-            {userBox}
+          <div className="absolute inset-x-2 top-2 flex items-start gap-1.5" onClick={stop}>
+            <span className="min-w-0">{userBox}</span>
+            {!open && <BatchDate at={batch.createdAt} overlay />}
           </div>
         </div>
-        <div className={`flex flex-1 flex-col gap-2 ${wide ? "min-w-[12rem] py-3 pl-1" : "min-w-0 p-3"}`}>
-          <div className="min-w-0" style={textColor ? { color: textColor } : undefined}>
-            {renaming ? (
-              nameInput
-            ) : (
-              <div className="flex items-center gap-2">
-                <span className="display min-w-0 truncate text-xl text-accent" style={textColor ? { color: textColor } : undefined}>
-                  {batch.name}
-                </span>
-                {open && edit && (
-                  <button
-                    className="press shrink-0 text-xs text-subtle hover:text-accent"
-                    onClick={(e) => {
-                      stop(e);
-                      setRenaming(true);
-                    }}
-                  >
-                    Rename
-                  </button>
-                )}
-              </div>
-            )}
-            <div className={`truncate text-xs font-medium ${textColor ? "" : "text-fg-2"}`}>
-              {material}
-              {machineName && ` · ${machineName}`}
-            </div>
+        <div className="flex min-w-0 flex-1 flex-col gap-2 p-3">
+          <div className={`min-w-0 truncate text-sm font-semibold ${textColor ? "" : "text-fg"}`} style={textColor ? { color: textColor } : undefined}>
+            {material}
+            {machineName && ` · ${machineName}`}
           </div>
           <div className="flex flex-wrap items-center gap-2" onClick={stop}>
             {statusMenu}
-            {open && prioritySelect}
-            {open && autoLayoutButton}
-            {open && <OnshapeLayoutButton groupId={batch.id} url={batch.onshapeLayoutUrl} where="card" />}
             {layoutDialog}
             <span className="ml-auto flex items-center gap-1.5">{downloadButtons}</span>
           </div>
-          {open && <GcodeRow batch={batch} />}
-          {open && edit && (
-            <div className="mt-auto flex justify-end" onClick={stop}>
-              {deleteButton}
-            </div>
-          )}
         </div>
       </div>
-      {open && (
-        <div
-          className="batch-open grid cursor-default gap-3 border-t border-line p-3"
-          style={{
-            gridTemplateColumns: `repeat(${Math.max(1, Math.min(members.length, place?.span ?? 1))}, ${place?.colWidth ? `minmax(0, ${place.colWidth}px)` : "minmax(0, 1fr)"})`,
-          }}
-          onClick={stop}
-        >
-          {members.map((p) => (
-            <div key={p.id} className="flex flex-col gap-1">
-              {card(p, { batch, members })}
-              {removeButton(p)}
-            </div>
-          ))}
-        </div>
-      )}
     </div>
+    {panel}
+    </>
   );
 }
 
@@ -554,7 +497,7 @@ export function GcodeRow({ batch }: { batch: Batch }) {
             className={`${btn} hover:border-rose-500 hover:text-rose-700`}
             disabled={busy}
             onClick={() => {
-              if (confirm(`Remove the G-code from ${batch.name}?`)) void run(async () => (await removeBatchGcode(batch.id)).error ?? null);
+              if (confirm("Remove the G-code from this batch?")) void run(async () => (await removeBatchGcode(batch.id)).error ?? null);
             }}
           >
             Remove
@@ -568,6 +511,19 @@ export function GcodeRow({ batch }: { batch: Batch }) {
       )}
       {error && <span className="text-rose-700">{error}</span>}
     </div>
+  );
+}
+
+// The day a batch was made, alone in its corner (no "Created" beside it). On the collage it sits on
+// a frosted pill like the maker's, so it reads over any picture.
+function BatchDate({ at, overlay = false }: { at: string; overlay?: boolean }) {
+  return (
+    <span
+      title="Made on"
+      className={`shrink-0 text-[11px] font-semibold whitespace-nowrap text-muted tabular-nums ${overlay ? "ml-auto rounded-full border border-line-strong bg-surface/90 px-2 py-0.5 shadow-sm backdrop-blur-md" : ""}`}
+    >
+      <LocalTime at={at} style="day" />
+    </span>
   );
 }
 
