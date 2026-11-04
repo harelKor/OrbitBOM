@@ -76,10 +76,12 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
       open
       onClose={onClose}
       title={
-        <>
-          {title}
+        <span className="inline-flex min-w-0 max-w-full items-center gap-2 align-middle">
+          <span className="min-w-0 truncate">{title}</span>
+          {/* Beside the name at the top: takes you to the part on its system page (Harel, 2026-11-04). */}
+          {place && <GoToButton href={place} partId={part.id} label="Go to this part in its system" onGo={onClose} />}
           {part.fabLock && !cots && <FabVersionBadge lock={part.fabLock} />}
-        </>
+        </span>
       }
       actions={
         <>
@@ -163,7 +165,6 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
                   <span className="min-w-0 flex-1">
                     <NameField part={part} save={save} />
                   </span>
-                  {place && <GoToButton href={place} partId={part.id} label="Go to this part in its system" onGo={onClose} />}
                   {canReset && (
                     // Not a ✕ next to the window's own ✕: a reset icon with a question first, so a
                     // tap meant to close the window can't wipe the part's setup.
