@@ -21,7 +21,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ gro
   const { groupId } = await params;
   if (!isUuid(groupId)) return new NextResponse("Unknown batch.", { status: 400 });
 
-  const [group] = await db.select({ name: schema.partGroups.name }).from(schema.partGroups).where(eq(schema.partGroups.id, groupId));
+  const [group] = await db.select({ name: schema.partGroups.name, saved: schema.partGroups.layoutData }).from(schema.partGroups).where(eq(schema.partGroups.id, groupId));
   if (!group) return new NextResponse("Unknown batch.", { status: 404 });
   const rows = await db
     .select({ part: schema.parts, assemblyUrl: schema.systems.assemblyUrl, robotId: schema.systems.robotId })
@@ -43,7 +43,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ gro
         continue;
       }
       try {
-        files.push([plateDxfName(row.part, row.part.quantity), await plateDxf(row, member, true, deadline)]);
+        // Laid on the face chosen in Auto Layout, when one was.
+        files.push([plateDxfName(row.part, row.part.quantity), await plateDxf(row, member, true, deadline, group.saved?.faces?.[row.part.id])]);
       } catch (err) {
         if (err instanceof NeedsOnshapeError) throw err;
         if (err instanceof PlateDxfError || err instanceof OnshapeError) skipped.push(`${label}: ${err.message}`);

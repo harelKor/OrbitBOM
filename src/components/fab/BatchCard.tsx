@@ -268,7 +268,7 @@ export function BatchCard({
     createPortal(
       // The window sits outside the card in the page, but React still hands its clicks to the card.
       <div onClick={stop} onDoubleClick={stop}>
-        <BatchLayoutDialog groupId={batch.id} name={batch.name} open onClose={() => setLayoutOpen(false)} />
+        <BatchLayoutDialog groupId={batch.id} name={batch.name} machine={batch.machine} open onClose={() => setLayoutOpen(false)} />
       </div>,
       document.body,
     );
@@ -277,6 +277,18 @@ export function BatchCard({
       {downloads.length > 0 && !(batch.gcode && !open) && (
         <button className="overlay-btn" onClick={() => void downloadAll(downloads)} aria-label={`Download ${downloads.length} files`} title={`Download ${downloads.length} files`}>
           <Icon name="download" />
+        </button>
+      )}
+      {/* A laser batch's whole sheet, laid out as in Auto Layout, in one DXF. */}
+      {batch.machine === "laser" && (
+        <button
+          className="overlay-btn w-auto gap-1 px-2 text-xs font-semibold"
+          onClick={() => void downloadExport(`/api/groups/${batch.id}/layout-dxf`)}
+          aria-label={`Download ${batch.name} sheet layout as one DXF`}
+          title="The whole sheet as one DXF: every copy where Auto Layout put it"
+        >
+          <Icon name="download" />
+          Layout DXF
         </button>
       )}
       {dxfZip && downloads.length > 0 && (

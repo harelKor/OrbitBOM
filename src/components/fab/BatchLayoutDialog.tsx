@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { saveBatchLayout } from "@/app/(app)/groups/actions";
+import dynamic from "next/dynamic";
+import { saveBatchLayout, setPartFace } from "@/app/(app)/groups/actions";
 import { Dialog } from "@/components/Dialog";
-import type { BatchLayout } from "@/lib/fab/batchLayout";
+import type { BatchLayout, BatchPart } from "@/lib/fab/batchLayout";
 import {
   DEFAULT_GAP,
   DEFAULT_MARGIN,
@@ -18,7 +19,11 @@ import {
   type Pt,
   type Rotation,
 } from "@/lib/fab/layout";
+import { downloadExport } from "@/components/bom/downloadExport";
 import { OnshapeLayoutButton } from "./OnshapeLayoutButton";
+
+// three.js loads only when a part's 3D preview opens.
+const PartFaceViewer = dynamic(() => import("./PartFaceViewer").then((m) => m.PartFaceViewer), { ssr: false });
 
 // The sheet the parts are nested on: the advisor's pick, one stock piece, or a width typed in.
 type Sheet = { kind: "auto" } | { kind: "piece"; size: string } | { kind: "custom"; w: number };
@@ -38,10 +43,12 @@ function sheetFrom(key: string | undefined): Sheet {
 const normDeg = (d: number) => Math.round((((d % 360) + 540) % 360 - 180) * 10) / 10;
 
 // Auto Layout (Harel, 2026-10-31): the batch's parts laid flat, pockets up, nested on the
-// smallest plate on the shelf that takes them. Drag a copy to move it; ←/→ turn it 5° (Shift 1°),
-// R or double-click 90°. The layout is worked out from the 3D shapes already saved (no Onshape
-// calls), and every change is saved on the batch, so reopening shows the same layout.
-export function BatchLayoutDialog({ groupId, name, open, onClose }: { groupId: string; name: string; open: boolean; onClose: () => void }) {
+// smallest plate on the shelf that takes them. Drag a copy to move it; ← turns it 5° to the left
+// and → to the right (Shift 1°), R 90°. A double-click (or double-tap) opens the part's 3D view,
+// where its face on the sheet is brown and can be flipped or picked (2026-11-04). The layout is
+// worked out from the 3D shapes already saved (no Onshape calls), and every change is saved on the
+// batch, so reopening shows the same layout.
+export function BatchLayoutDialog({ groupId, name, machine = null, open, onClose }: { groupId: string; name: string; machine?: string | null; open: boolean; onClose: () => void }) {
   const [data, setData] = useState<BatchLayout | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [gap, setGapRaw] = useState(DEFAULT_GAP);
@@ -53,6 +60,10 @@ export function BatchLayoutDialog({ groupId, name, open, onClose }: { groupId: s
   // While Onshape Layout runs, the layout stays as it is.
   const [busy, setBusy] = useState(false);
   const [onshapeUrl, setOnshapeUrl] = useState<string | null>(null);
+  // The part whose 3D view is open, and a face change on its way.
+  const [preview, setPreview] = useState<string | null>(null);
+  const [faceBusy, setFaceBusy] = useState(false);
+  const [faceError, setFaceError] = useState<string | null>(null);
   // Set by the member's own changes; only then is the layout saved.
   const dirty = useRef(false);
   const touch = () => (dirty.current = true);
@@ -196,12 +207,49 @@ export function BatchLayoutDialog({ groupId, name, open, onClose }: { groupId: s
       else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
         e.preventDefault();
         const step = e.shiftKey ? 1 : 5;
-        rotate(selected, e.key === "ArrowLeft" ? -step : step);
+        // The sheet's Y runs up, so a positive turn is anticlockwise: ← turns left, → right.
+        rotate(selected, e.key === "ArrowLeft" ? step : -step);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
+
+  // A new face down for a part (Flip, a face picked in its 3D view, or Automatic): saved on the
+  // batch, then the batch is read again for the part's new outline. Copies placed by hand keep
+  // their centre and turn; otherwise everything is nested afresh.
+  const setFace = async (partId: string, down: [number, number, number] | null) => {
+    setFaceBusy(true);
+    setFaceError(null);
+    const r = await setPartFace(groupId, partId, down);
+    if (r.error) {
+      setFaceError(r.error);
+      setFaceBusy(false);
+      return;
+    }
+    const res = await fetch(`/api/groups/${groupId}/layout`);
+    const loaded = (await res.json().catch(() => null)) as BatchLayout | null;
+    setFaceBusy(false);
+    if (!res.ok || !loaded?.parts) {
+      setFaceError("The layout didn't reload. Close and reopen Auto Layout.");
+      return;
+    }
+    const before = byId.get(partId);
+    const after = loaded.parts.find((p) => p.partId === partId);
+    if (edited && before && after) {
+      touch();
+      setEdited(
+        edited.map((p) => {
+          if (p.partId !== partId) return p;
+          const [cx, cy] = placePoint([before.w / 2, before.h / 2], p);
+          const [mx, my] = placePoint([after.w / 2, after.h / 2], { x: 0, y: 0, rotation: p.rotation });
+          return { ...p, x: cx - mx, y: cy - my };
+        }),
+      );
+    }
+    setData(loaded);
+  };
+  const previewPart = preview ? (parts.find((p) => p.partId === preview) as BatchPart | undefined) : undefined;
 
   const total = parts.reduce((t, p) => t + p.quantity, 0);
   const field = "w-16 rounded-md border border-line-strong bg-surface px-2 py-1 text-right font-mono text-xs tabular-nums focus:border-sky-400 focus:outline-none";
@@ -215,20 +263,34 @@ export function BatchLayoutDialog({ groupId, name, open, onClose }: { groupId: s
       title={<span>Auto Layout · {name}</span>}
       actions={
         data && (
-          <OnshapeLayoutButton
-            groupId={groupId}
-            placements={placements}
-            url={onshapeUrl}
-            where="dialog"
-            onBusy={(on) => {
-              if (on) {
-                void save();
-                setSelected(null);
-              }
-              setBusy(on);
-            }}
-            onDone={(url) => setOnshapeUrl(url)}
-          />
+          <>
+            {/* The sheet as shown, saved first so the file matches it. */}
+            {machine === "laser" && (
+              <button
+                type="button"
+                className="btn min-h-9 gap-1.5 text-xs font-semibold active:scale-[0.98]"
+                disabled={busy}
+                onClick={() => void save().then(() => downloadExport(`/api/groups/${groupId}/layout-dxf`))}
+                title="The whole sheet as one DXF, as laid out here"
+              >
+                Layout DXF
+              </button>
+            )}
+            <OnshapeLayoutButton
+              groupId={groupId}
+              placements={placements}
+              url={onshapeUrl}
+              where="dialog"
+              onBusy={(on) => {
+                if (on) {
+                  void save();
+                  setSelected(null);
+                }
+                setBusy(on);
+              }}
+              onDone={(url) => setOnshapeUrl(url)}
+            />
+          </>
         )
       }
     >
@@ -308,7 +370,10 @@ export function BatchLayoutDialog({ groupId, name, open, onClose }: { groupId: s
               setPlacements={setPlacements}
               selected={selected}
               setSelected={setSelected}
-              rotate={rotate}
+              onOpen={(partId) => {
+                setFaceError(null);
+                setPreview(partId);
+              }}
               clashes={clashes}
               sheetW={sheetW}
               sheetH={sheetH}
@@ -325,7 +390,7 @@ export function BatchLayoutDialog({ groupId, name, open, onClose }: { groupId: s
             </span>
             {nested.nest.unplaced.length > 0 && <span className="text-amber-500">{nested.nest.unplaced.length} don&apos;t fit on this sheet</span>}
             {clashes.size > 0 && <span className="text-rose-500">{clashes.size} too close or off the sheet</span>}
-            <span>Drag to move · ←/→ rotates 5° (Shift 1°) · R or double-click turns 90°</span>
+            <span>Drag to move · ←/→ turn 5° left / right (Shift 1°) · R turns 90° · double-click a part for its 3D view and the face it lies on</span>
             {selected && !busy && (
               <span className="flex items-center gap-1">
                 <span className="font-mono tabular-nums text-fg">{placements.find((p) => keyOf(p) === selected)?.rotation ?? 0}°</span>
@@ -335,6 +400,58 @@ export function BatchLayoutDialog({ groupId, name, open, onClose }: { groupId: s
               </span>
             )}
           </div>
+
+          {previewPart && (
+            <Dialog
+              open
+              onClose={() => setPreview(null)}
+              width="w-[min(30rem,calc(100vw-2rem))]"
+              title={
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="truncate">{previewPart.name}</span>
+                  <span className="shrink-0 font-mono text-xs font-normal text-muted tabular-nums">
+                    {mm(previewPart.w)} × {mm(previewPart.h)} × {Math.round(previewPart.thickness * 10) / 10}mm
+                  </span>
+                </span>
+              }
+            >
+              <div className="flex flex-col gap-3">
+                <div className="h-[min(22rem,50dvh)] overflow-hidden rounded-lg border border-line bg-ink">
+                  {previewPart.meshUrl ? (
+                    <PartFaceViewer
+                      meshUrl={previewPart.meshUrl}
+                      onshapePartId={previewPart.onshapePartId}
+                      down={previewPart.down}
+                      busy={faceBusy || busy}
+                      onPick={(down) => void setFace(previewPart.partId, down)}
+                    />
+                  ) : (
+                    <p className="p-6 text-center text-sm text-muted">This part&apos;s 3D file isn&apos;t available.</p>
+                  )}
+                </div>
+                <p className="text-xs text-muted">
+                  The <span className="font-semibold text-[#b07a45]">brown</span> face lies on the sheet. Click another flat face to lay the part on it, or
+                  Flip it. Every copy of this part follows, in the layout, Onshape Layout and the DXFs.
+                </p>
+                {faceError && <p className="text-sm text-rose-600">{faceError}</p>}
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {previewPart.chosen && (
+                    <button type="button" className="btn min-h-10 active:scale-[0.98]" disabled={faceBusy || busy} onClick={() => void setFace(previewPart.partId, null)}>
+                      Automatic
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn min-h-10 font-semibold active:scale-[0.98]"
+                    disabled={faceBusy || busy}
+                    onClick={() => void setFace(previewPart.partId, [-previewPart.down[0], -previewPart.down[1], -previewPart.down[2]])}
+                  >
+                    {faceBusy ? "Saving…" : "Flip"}
+                  </button>
+                </div>
+              </div>
+            </Dialog>
+          )}
 
           <PartList parts={parts} />
           {data.missing.length > 0 && (
@@ -433,7 +550,7 @@ function SheetPreview({
   setPlacements,
   selected,
   setSelected,
-  rotate,
+  onOpen,
   clashes,
   sheetW,
   sheetH,
@@ -445,7 +562,7 @@ function SheetPreview({
   setPlacements: (change: (all: Placement[]) => Placement[]) => void;
   selected: string | null;
   setSelected: (k: string | null) => void;
-  rotate: (k: string) => void;
+  onOpen: (partId: string) => void;
   clashes: Set<string>;
   sheetW: number;
   sheetH: number;
@@ -454,6 +571,9 @@ function SheetPreview({
 }) {
   const svg = useRef<SVGSVGElement>(null);
   const drag = useRef<{ k: string; start: Pt; from: Pt } | null>(null);
+  // The last press on a copy: a second one on it within 350 ms, without moving, opens its 3D view
+  // (touch too, where the pointer capture for dragging swallows dblclick).
+  const lastPress = useRef<{ k: string; at: number; x: number; y: number } | null>(null);
   const pad = Math.max(sheetW, sheetH) * 0.03 + 10;
   // Sheet Y runs up; the SVG's runs down, so points are drawn at (x, sheetH - y).
   const toSvg = (p: Pt): Pt => [p[0], sheetH - p[1]];
@@ -529,11 +649,19 @@ function SheetPreview({
               className="cursor-grab active:cursor-grabbing"
               onPointerDown={(e) => {
                 e.stopPropagation();
+                const last = lastPress.current;
+                const now = performance.now();
+                if (last && last.k === k && now - last.at < 350 && Math.hypot(e.clientX - last.x, e.clientY - last.y) < 8) {
+                  lastPress.current = null;
+                  drag.current = null;
+                  onOpen(pl.partId);
+                  return;
+                }
+                lastPress.current = { k, at: now, x: e.clientX, y: e.clientY };
                 (e.currentTarget.ownerSVGElement ?? e.currentTarget).setPointerCapture?.(e.pointerId);
                 setSelected(k);
                 drag.current = { k, start: pointer(e), from: [pl.x, pl.y] };
               }}
-              onDoubleClick={() => rotate(k)}
             >
               <title>{`${part.name} (${pl.copy + 1}/${part.quantity})`}</title>
               <path d={[part.outline, ...part.holes].map((l) => path(l, pl)).join(" ")} fillRule="evenodd" fill={fill} stroke={stroke} strokeWidth={on ? 2 : 1} vectorEffect="non-scaling-stroke" />

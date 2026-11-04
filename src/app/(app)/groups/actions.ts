@@ -136,6 +136,31 @@ export async function saveBatchLayout(groupId: string, state: unknown): Promise<
   return {};
 }
 
+// The layout window's face choice (Flip, or a face clicked in its 3D preview): the part's copies
+// lie on that face in the layout, in Onshape Layout and in the batch's DXFs. `down` is the
+// face's outward normal in Part Studio axes; null goes back to the automatic choice.
+export async function setPartFace(groupId: string, partId: string, down: [number, number, number] | null): Promise<ActionResult> {
+  await requireCapability("work");
+  if (!isUuid(groupId) || !isUuid(partId)) return { error: "Unknown part." };
+  const parsed = z.tuple([z.number().finite(), z.number().finite(), z.number().finite()]).nullable().safeParse(down);
+  if (!parsed.success) return { error: "Unknown face." };
+  const n = parsed.data && Math.hypot(...parsed.data);
+  if (parsed.data && !(n! > 0.5 && n! < 1.5)) return { error: "Unknown face." };
+  const face = parsed.data && (parsed.data.map((x) => Math.round((x / n!) * 1e6) / 1e6) as [number, number, number]);
+  const [member] = await db.select({ id: groupMembers.partId }).from(groupMembers).where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.partId, partId)));
+  if (!member) return { error: "That part isn't in this batch." };
+  const faces = sql`coalesce(${partGroups.layoutData} -> 'faces', '{}'::jsonb)`;
+  await db
+    .update(partGroups)
+    .set({
+      layoutData: face
+        ? sql`coalesce(${partGroups.layoutData}, '{}'::jsonb) || jsonb_build_object('faces', ${faces} || jsonb_build_object(${partId}::text, ${JSON.stringify(face)}::jsonb))`
+        : sql`coalesce(${partGroups.layoutData}, '{}'::jsonb) || jsonb_build_object('faces', ${faces} - ${partId}::text)`,
+    })
+    .where(eq(partGroups.id, groupId));
+  return {};
+}
+
 export async function deleteGroup(groupId: string) {
   await requireCapability("work");
   if (!isUuid(groupId)) return;

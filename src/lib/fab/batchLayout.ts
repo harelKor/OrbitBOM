@@ -7,19 +7,22 @@ import { partKey } from "@/lib/model/assembly";
 import { builtStudios } from "@/lib/model/build";
 import { decodeMeshes, type Mesh } from "@/lib/model/mesh";
 import { partModelFile } from "@/lib/model/part";
-import { getObject, objectExists, storageConfigured } from "@/lib/storage/r2";
+import { getObject, imageUrl, objectExists, storageConfigured } from "@/lib/storage/r2";
 import { pieceBase, pieceLabel, pieceRows, sortedRows } from "@/lib/inventory/stock";
 import { DEFAULT_GAP, DEFAULT_MARGIN, advisePlate, flattenMesh, type FlatGeom, type FlatPart, type Nest, type PlateAdvice, type StockPiece } from "./layout";
 
 const { parts, systems, groupMembers, partGroups, inventoryItems, inventoryLocations, inventoryGroups } = schema;
 
 export type MissingPart = { partId: string; name: string; reason: string };
+// A part as the layout window gets it: flat, plus where its saved 3D mesh is (for the preview)
+// and whether a member chose its face (`chosen`).
+export type BatchPart = FlatPart & { meshUrl: string | null; onshapePartId: string; chosen: boolean };
 export type BatchStock = { itemId: string; name: string; location: string | null; pieces: StockPiece[] } | null;
 export type BatchLayout = {
   groupId: string;
   name: string;
   material: string | null;
-  parts: FlatPart[];
+  parts: BatchPart[];
   missing: MissingPart[];
   stock: BatchStock;
   advice: PlateAdvice;
@@ -35,7 +38,10 @@ const nameOf = (p: { displayName: string | null; onshapeName: string | null }) =
 // The batch's parts laid flat, from the 3D meshes already in R2 (the robot model's Part Studio
 // files, else the part's own preview file). No Onshape calls: a part with no cached mesh is listed
 // as missing (opening its 3D preview, or building the robot model, caches it).
-export async function batchFlatParts(groupId: string): Promise<{ parts: FlatPart[]; missing: MissingPart[] }> {
+export async function batchFlatParts(groupId: string): Promise<{ parts: (FlatPart & { meshFile: string; onshapePartId: string; chosen: boolean })[]; missing: MissingPart[] }> {
+  // The faces members chose in the layout window (the batch's saved layout).
+  const [group] = await db.select({ saved: partGroups.layoutData }).from(partGroups).where(eq(partGroups.id, groupId));
+  const faces = group?.saved?.faces ?? {};
   const rows = await db
     .select({ part: parts, robotId: systems.robotId })
     .from(groupMembers)
@@ -43,7 +49,7 @@ export async function batchFlatParts(groupId: string): Promise<{ parts: FlatPart
     .leftJoin(systems, eq(systems.id, parts.systemId))
     .where(eq(groupMembers.groupId, groupId));
   const missing: MissingPart[] = [];
-  const out: FlatPart[] = [];
+  const out: (FlatPart & { meshFile: string; onshapePartId: string; chosen: boolean })[] = [];
   if (!storageConfigured()) {
     return { parts: [], missing: rows.map(({ part }) => ({ partId: part.id, name: nameOf(part), reason: "File storage isn't set up." })) };
   }
@@ -84,7 +90,8 @@ export async function batchFlatParts(groupId: string): Promise<{ parts: FlatPart
       const [file, waiting] = job;
       let meshes: Map<string, Mesh> | null = null;
       for (const part of waiting) {
-        const cacheKey = `${file}|${part.onshapePartId}`;
+        const face = faces[part.id] ?? null;
+        const cacheKey = `${file}|${part.onshapePartId}|${face?.map((n) => n.toFixed(4)).join(",") ?? "auto"}`;
         if (!flatCache.has(cacheKey)) {
           if (!meshes) {
             const res = await getObject(file);
@@ -93,14 +100,14 @@ export async function batchFlatParts(groupId: string): Promise<{ parts: FlatPart
             meshes = new Map(decodeMeshes(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)).map((m) => [m.partId, m]));
           }
           const mesh = meshes.get(part.onshapePartId!);
-          flatCache.set(cacheKey, mesh ? flattenMesh(mesh.positions, mesh.indices) : null);
+          flatCache.set(cacheKey, mesh ? flattenMesh(mesh.positions, mesh.indices, face) : null);
         }
         const geom = flatCache.get(cacheKey);
         if (!geom) missing.push({ partId: part.id, name: nameOf(part), reason: "Its saved 3D shape couldn't be read." });
-        else out.push({ ...geom, partId: part.id, name: nameOf(part), quantity: Math.max(1, part.quantity) });
+        else out.push({ ...geom, partId: part.id, name: nameOf(part), quantity: Math.max(1, part.quantity), meshFile: file, onshapePartId: part.onshapePartId!, chosen: !!face });
       }
       for (const p of waiting) {
-        if (!flatCache.has(`${file}|${p.onshapePartId}`)) missing.push({ partId: p.id, name: nameOf(p), reason: "Its saved 3D shape is gone." });
+        if (!out.some((o) => o.partId === p.id) && !missing.some((m) => m.partId === p.id)) missing.push({ partId: p.id, name: nameOf(p), reason: "Its saved 3D shape is gone." });
       }
     }
   };
@@ -155,5 +162,7 @@ export async function batchLayout(groupId: string, gap = DEFAULT_GAP, margin = D
   if (!group) return null;
   const [{ parts: flat, missing }, { material, stock }] = await Promise.all([batchFlatParts(groupId), batchStock(groupId)]);
   const { advice, nest } = advisePlate(flat, stock?.pieces ?? [], gap, margin);
-  return { groupId, name: group.name, material, parts: flat, missing, stock, advice, layout: nest, saved: group.saved ?? null };
+  // Each part's mesh file, signed for the 3D preview (the same file the layout was read from).
+  const parts = await Promise.all(flat.map(async ({ meshFile, ...p }) => ({ ...p, meshUrl: await imageUrl(meshFile) })));
+  return { groupId, name: group.name, material, parts, missing, stock, advice, layout: nest, saved: group.saved ?? null };
 }

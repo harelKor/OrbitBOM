@@ -43,25 +43,32 @@ export function plateDxfName(part: Row["part"], qty?: number) {
   return `${part.partNumber ? `${part.partNumber} ` : ""}${name}${qty && qty > 1 ? `_qty${qty}` : ""}.dxf`;
 }
 
-export function plateDxfKey(row: Row, fab: boolean): string | null {
+// The face a member chose to lay the plate on in a batch's Auto Layout (its outward normal), else
+// the pockets-up rule. Stored apart per face, so each is made once.
+type Down = [number, number, number] | null | undefined;
+const faceTag = (down: Down) => (down ? `.f${down.map((n) => Math.round(n * 1000)).join("_")}` : "");
+
+export function plateDxfKey(row: Row, fab: boolean, down?: Down): string | null {
   const { rev, flatPartId } = source(row, fab);
-  return rev ? `exports/${row.part.id}/${rev}.${flatPartId ? "flat" : `plate${PLATE_DXF_VERSION}`}.dxf` : null;
+  return rev ? `exports/${row.part.id}/${rev}.${flatPartId ? "flat" : `plate${PLATE_DXF_VERSION}${faceTag(down)}`}.dxf` : null;
 }
 
 // The DXF text, from R2 when it's stored, else made (and stored when the part has a revision).
-export async function plateDxf(row: Row, member: Member, fab: boolean, deadline: number): Promise<string> {
+// `down`: the face chosen in Auto Layout. An Onshape sheet metal part keeps Onshape's own flat
+// pattern whatever was chosen.
+export async function plateDxf(row: Row, member: Member, fab: boolean, deadline: number, down?: Down): Promise<string> {
   if (!studioPath(row.part)) throw new PlateDxfError("This part isn't from Onshape.");
-  const key = storageConfigured() ? plateDxfKey(row, fab) : null;
+  const key = storageConfigured() ? plateDxfKey(row, fab, down) : null;
   if (key && (await objectExists(key))) {
     const res = await getObject(key);
     if (res) return res.text();
   }
-  const text = await makeDxf(row, member, fab, deadline);
+  const text = await makeDxf(row, member, fab, deadline, down);
   if (key) await putObject(key, new TextEncoder().encode(text), "image/vnd.dxf");
   return text;
 }
 
-async function makeDxf(row: Row, member: Member, fab: boolean, deadline: number): Promise<string> {
+async function makeDxf(row: Row, member: Member, fab: boolean, deadline: number, down: Down): Promise<string> {
   const { lock, flatPartId } = source(row, fab);
   if (flatPartId) {
     // Onshape sheet metal: its own flat pattern (bends unfolded), one translation.
@@ -76,7 +83,7 @@ async function makeDxf(row: Row, member: Member, fab: boolean, deadline: number)
   const frozen = lock && lock.thumbnailRev !== row.part.thumbnailRev ? { studio: lock.studio!, onshapePartId: lock.onshapePartId! } : null;
   const mesh = await partMesh(row, member, frozen);
   if (!mesh) throw new PlateDxfError("This part's 3D shape isn't available.");
-  const flat = flattenMesh(mesh.positions, mesh.indices);
+  const flat = flattenMesh(mesh.positions, mesh.indices, 1000, down);
   // A plate is thin next to its outline (as the drawings' reader decides).
   if (!flat || flat.thickness > 0.25 * Math.min(flat.size[0], flat.size[1])) {
     throw new PlateDxfError("This part isn't a flat plate, so it has no flat DXF. Download its STEP instead.");

@@ -363,6 +363,9 @@ export type LayoutData = {
   sheetKey?: string; // "auto", a stock piece size ("f6", "p500x450"), or "custom:<width>"
   placements?: LayoutPlacement[];
   onshape?: OnshapeLayoutRef;
+  // The face each part lies on, chosen in the layout window's 3D preview: part id → that face's
+  // outward normal in Part Studio axes. A part not listed lies on the side with more flat area.
+  faces?: Record<string, [number, number, number]>;
 };
 
 export const groupMembers = pgTable(

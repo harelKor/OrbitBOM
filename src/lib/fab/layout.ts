@@ -22,6 +22,7 @@ export type FlatGeom = {
   holes: Pt[][]; // inner loops of the back face
   flatten: Mat4; // Part Studio (mm) → flat frame
   plate: boolean; // thin enough to be a plate
+  down: [number, number, number]; // the face on the sheet: its outward normal, Part Studio axes
 };
 
 export type FlatPart = FlatGeom & { partId: string; name: string; quantity: number };
@@ -55,8 +56,10 @@ const neg = (a: V3): V3 => [-a[0], -a[1], -a[2]];
 const PLANE_TOL = 0.05; // mm: a triangle on the top or bottom plane
 const MAX_CLUSTERS = 400;
 
-// `positions` in metres (the .obm file), as Onshape's Part Studio places the part.
-export function flattenMesh(positions: ArrayLike<number>, indices: ArrayLike<number>): FlatGeom | null {
+// `positions` in metres (the .obm file), as Onshape's Part Studio places the part. `down`: the
+// outward normal (Part Studio axes) of the face a member chose to lay on the sheet (the layout
+// window's 3D preview, Flip or a clicked face); without it the side with more flat area goes down.
+export function flattenMesh(positions: ArrayLike<number>, indices: ArrayLike<number>, down?: V3 | null): FlatGeom | null {
   const nv = Math.floor(positions.length / 3);
   if (nv < 3 || indices.length < 3) return null;
   const P: V3[] = Array.from({ length: nv }, (_, i) => [positions[i * 3] * 1000, positions[i * 3 + 1] * 1000, positions[i * 3 + 2] * 1000]);
@@ -79,7 +82,7 @@ export function flattenMesh(positions: ArrayLike<number>, indices: ArrayLike<num
     if (hit) hit.area += t.area;
     else if (clusters.length < MAX_CLUSTERS) clusters.push({ dir: t.n, area: t.area });
   }
-  let N = clusters.reduce((best, c) => (c.area > best.area ? c : best)).dir;
+  let N = down ? norm(neg(down)) : clusters.reduce((best, c) => (c.area > best.area ? c : best)).dir;
 
   // Top and bottom planes along N; the side with more flat area is the back (pockets cut into the
   // other side leave less of it at full height), and N points away from it.
@@ -102,7 +105,7 @@ export function flattenMesh(positions: ArrayLike<number>, indices: ArrayLike<num
     if (onPlane(t, lo, N)) bottomArea += t.area;
     else if (onPlane(t, hi, N)) topArea += t.area;
   }
-  if (topArea > bottomArea * 1.001) {
+  if (!down && topArea > bottomArea * 1.001) {
     N = neg(N);
     [lo, hi] = [-hi, -lo];
   }
@@ -151,7 +154,7 @@ export function flattenMesh(positions: ArrayLike<number>, indices: ArrayLike<num
 
   const w = xmax - xmin;
   const h = ymax - ymin;
-  return { w, h, thickness, outline: simplify(outline), holes: holes.map(simplify), flatten, plate: thickness <= Math.min(w, h) * 0.35 };
+  return { w, h, thickness, outline: simplify(outline), holes: holes.map(simplify), flatten, plate: thickness <= Math.min(w, h) * 0.35, down: neg(N) };
 }
 
 function boundaryLoops(tris: number[][], at: (i: number) => Pt): Pt[][] {
@@ -314,6 +317,14 @@ export function cornerOf(part: { w: number; h: number }, p: { x: number; y: numb
 export function placePoint(pt: Pt, p: { x: number; y: number; rotation: Rotation }): Pt {
   const [rx, ry] = turn(pt, p.rotation);
   return [rx + p.x, ry + p.y];
+}
+
+// Every placed copy's cut loops on the sheet (outline and holes, mm), for the batch's layout DXF.
+export function sheetLoops(parts: Map<string, Pick<FlatGeom, "outline" | "holes">>, placements: Placement[]): Pt[][] {
+  return placements.flatMap((pl) => {
+    const part = parts.get(pl.partId);
+    return part ? [part.outline, ...part.holes].filter((l) => l.length > 2).map((l) => l.map((pt) => placePoint(pt, pl))) : [];
+  });
 }
 
 const mul = (a: Mat4, b: Mat4): Mat4 => {

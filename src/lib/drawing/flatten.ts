@@ -36,8 +36,10 @@ const neg = (a: P3): P3 => [-a[0], -a[1], -a[2]];
 const FLAT_COS = 0.9999; // a facet this parallel to the plate lies in one of its planes (~0.8°)
 const LEVEL_TOL = 0.02; // mm: facets this close in depth are the same plane
 
-// `positions` are in metres (Onshape's tessellation) unless `scale` says otherwise.
-export function flattenMesh(positions: ArrayLike<number>, indices: ArrayLike<number>, scale = 1000): FlatPlate | null {
+// `positions` are in metres (Onshape's tessellation) unless `scale` says otherwise. `down`: the
+// outward normal of the face a member chose to lay on the sheet (To Fab's Auto Layout), in place
+// of the pockets-up rule.
+export function flattenMesh(positions: ArrayLike<number>, indices: ArrayLike<number>, scale = 1000, down?: P3 | null): FlatPlate | null {
   const nv = Math.floor(positions.length / 3);
   if (nv < 3 || indices.length < 3) return null;
   const P: P3[] = new Array(nv);
@@ -80,7 +82,7 @@ export function flattenMesh(positions: ArrayLike<number>, indices: ArrayLike<num
     const s = d > 0 ? t.area : -t.area;
     acc = [acc[0] + t.n[0] * s, acc[1] + t.n[1] * s, acc[2] + t.n[2] * s];
   }
-  let n = unit(acc);
+  let n = down ? unit(neg(down)) : unit(acc);
 
   // Planes across n, by depth: their area and their area facing +n (by the facets' winding).
   const flat = tris.filter((t) => Math.abs(dot(t.n, n)) > FLAT_COS);
@@ -108,7 +110,7 @@ export function flattenMesh(positions: ArrayLike<number>, indices: ArrayLike<num
   }
   const bottomArea = areaAt(lo);
   const topArea = areaAt(hi);
-  const flipped = vote < -1e-6 || (Math.abs(vote) <= 1e-6 && topArea > bottomArea * 1.001);
+  const flipped = !down && (vote < -1e-6 || (Math.abs(vote) <= 1e-6 && topArea > bottomArea * 1.001));
   if (flipped) {
     n = neg(n);
     [lo, hi] = [-hi, -lo];

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { advisePlate, cornerOf, flattenMesh, footprint, nestParts, placementMatrix, type FlatPart } from "./layout";
+import { advisePlate, cornerOf, flattenMesh, footprint, nestParts, placementMatrix, sheetLoops, type FlatPart } from "./layout";
 
 type V = [number, number, number];
 // A 200 × 100 × 6 plate with a 100 × 50 pocket 3mm deep in its top face, as triangles (mm).
@@ -62,10 +62,38 @@ describe("flattenMesh", () => {
   }
 });
 
+describe("flattenMesh with a chosen face down", () => {
+  it("puts the pocketed face down when asked (Flip), still right-handed", () => {
+    const { positions, indices, raw } = mesh(pocketedPlate(), false);
+    const auto = flattenMesh(positions, indices)!;
+    const up: V = [-auto.down[0], -auto.down[1], -auto.down[2]];
+    const g = flattenMesh(positions, indices, up)!;
+    expect(g.thickness).toBeCloseTo(6, 1);
+    expect(det3(g.flatten)).toBeCloseTo(1, 4);
+    const flat = raw.map((p) => apply(g.flatten, p));
+    // The pocket now opens downward: its floor is 3mm above the sheet, under the old back face.
+    expect(Math.min(...flat.map((p) => p[2]))).toBeCloseTo(0, 1);
+    flat.filter((p) => p[2] > 1 && p[2] < 5).forEach((p) => expect(p[2]).toBeCloseTo(3, 1));
+    g.down.forEach((d, i) => expect(d).toBeCloseTo(up[i], 4));
+  });
+
+  it("lays the plate on one of its edges when that face is picked", () => {
+    const { positions, indices } = mesh(pocketedPlate(), false);
+    const auto = flattenMesh(positions, indices)!;
+    // The face along the plate's 200mm side: its normal is the auto frame's −V, back in Part Studio axes.
+    const f = auto.flatten;
+    const side: V = [-f[4], -f[5], -f[6]];
+    const g = flattenMesh(positions, indices, side)!;
+    expect(g.thickness).toBeCloseTo(100, 0);
+    expect(g.plate).toBe(false);
+  });
+});
+
 describe("nesting", () => {
   const part = (id: string, w: number, h: number, quantity: number): FlatPart => ({
     partId: id, name: id, quantity, w, h, thickness: 6, outline: [], holes: [], plate: true,
     flatten: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+    down: [0, 0, -1],
   });
   const parts = [part("a", 200, 100, 2), part("b", 120, 80, 3), part("c", 300, 40, 1)];
 
@@ -133,5 +161,19 @@ describe("nesting", () => {
     const tooBig = advisePlate([part("x", 450, 450, 4)], pieces);
     expect(tooBig.advice.piece).toBeNull();
     expect(tooBig.advice.sheetsNeeded).toBe(4);
+  });
+});
+
+describe("sheetLoops", () => {
+  it("puts every placed copy's outline and holes where it sits on the sheet", () => {
+    const square = { outline: [[0, 0], [10, 0], [10, 10], [0, 10]] as [number, number][], holes: [[[4, 4], [6, 4], [6, 6], [4, 6]]] as [number, number][][] };
+    const loops = sheetLoops(new Map([["a", square]]), [
+      { partId: "a", copy: 0, x: 0, y: 0, rotation: 0 },
+      { partId: "a", copy: 1, x: 100, y: 50, rotation: 90 },
+      { partId: "gone", copy: 0, x: 0, y: 0, rotation: 0 },
+    ]);
+    expect(loops).toHaveLength(4);
+    expect(loops[2][1][0]).toBeCloseTo(100, 6);
+    expect(loops[2][1][1]).toBeCloseTo(60, 6); // (10, 0) turned 90° lands at (0, 10), then moved
   });
 });
