@@ -10,16 +10,18 @@ import { isUuid } from "@/lib/uuid";
 export const maxDuration = 60;
 
 // A laser batch's whole sheet as one 1:1 DXF (2026-11-04): every copy's outline and holes where
-// Auto Layout put it, on the face chosen there. The layout last saved in the window when it holds
-// every copy, else Auto Layout's own nest. Reads the meshes already in R2: no Onshape calls.
+// Auto Layout put it, on the face chosen there (sheet metal: its flat pattern). The layout last
+// saved in the window when it holds every copy, else Auto Layout's own nest. Reads the meshes
+// already in R2: Onshape is called only for a flat pattern not fetched yet.
 export async function GET(_request: Request, { params }: { params: Promise<{ groupId: string }> }) {
-  if (!(await getMember())) return new NextResponse("Sign in first.", { status: 401 });
+  const member = await getMember();
+  if (!member) return new NextResponse("Sign in first.", { status: 401 });
   const { groupId } = await params;
   if (!isUuid(groupId)) return new NextResponse("Unknown batch.", { status: 400 });
   const [group] = await db.select({ machine: schema.partGroups.machine, saved: schema.partGroups.layoutData }).from(schema.partGroups).where(eq(schema.partGroups.id, groupId));
   if (!group) return new NextResponse("Unknown batch.", { status: 404 });
   if (group.machine !== "laser") return new NextResponse("A layout DXF is for laser batches.", { status: 400 });
-  const layout = await batchLayout(groupId, group.saved?.gap ?? DEFAULT_GAP, group.saved?.margin ?? DEFAULT_MARGIN);
+  const layout = await batchLayout(groupId, group.saved?.gap ?? DEFAULT_GAP, group.saved?.margin ?? DEFAULT_MARGIN, member);
   if (!layout) return new NextResponse("Unknown batch.", { status: 404 });
   if (!layout.parts.length) return new NextResponse("No part in this batch has a saved 3D shape yet. Open Auto Layout to see why.", { status: 400 });
 

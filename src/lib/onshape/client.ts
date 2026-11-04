@@ -213,7 +213,8 @@ export function onshapeClient(memberId: string, baseUrl: string, { background = 
     const send = async (fresh: boolean) => {
       const headers = {
         Accept: accept,
-        ...(init.body ? { "Content-Type": "application/json" } : {}),
+        // A file upload (FormData) sets its own multipart type.
+        ...(init.body && !(init.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
         Authorization: `Bearer ${await accessToken(memberId, fresh)}`,
         ...init.headers,
       };

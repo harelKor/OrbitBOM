@@ -530,13 +530,24 @@ function PartList({ parts }: { parts: FlatPart[] }) {
   return (
     <div className="flex flex-wrap gap-1.5 text-xs">
       {parts.map((p) => (
-        <span key={p.partId} className="flex items-center gap-1.5 rounded-full border border-line bg-surface px-2 py-0.5" title={p.plate ? undefined : "Not a flat plate: laid on its biggest face"}>
+        <span
+          key={p.partId}
+          className="flex items-center gap-1.5 rounded-full border border-line bg-surface px-2 py-0.5"
+          title={
+            p.sheetMetal
+              ? "Onshape sheet metal: laid out as its flat pattern"
+              : p.plate
+                ? undefined
+                : "Not a flat plate: laid on its biggest face. If it's bent sheet, make it Sheet Metal in Onshape to lay out its flat pattern."
+          }
+        >
           <span className="h-2 w-2 rounded-full bg-slate-400" />
           <span className="max-w-[12rem] truncate font-medium">{p.name}</span>
           <span className="font-mono tabular-nums text-muted">×{p.quantity}</span>
           <span className="font-mono tabular-nums text-subtle">
             {mm(p.w)}×{mm(p.h)}×{p.thickness.toFixed(1)}
           </span>
+          {p.sheetMetal && <span className="text-sky-500">flat pattern</span>}
           {!p.plate && <span className="text-amber-500">not flat</span>}
         </span>
       ))}

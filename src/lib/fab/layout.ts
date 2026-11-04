@@ -25,7 +25,8 @@ export type FlatGeom = {
   down: [number, number, number]; // the face on the sheet: its outward normal, Part Studio axes
 };
 
-export type FlatPart = FlatGeom & { partId: string; name: string; quantity: number };
+// `sheetMetal`: an Onshape sheet metal part, laid out as its flat pattern.
+export type FlatPart = FlatGeom & { partId: string; name: string; quantity: number; sheetMetal?: boolean };
 
 export type Rotation = number; // degrees about Z
 export type Placement = { partId: string; copy: number; x: number; y: number; rotation: Rotation };

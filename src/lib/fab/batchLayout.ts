@@ -6,7 +6,8 @@ import type { LayoutData } from "@/db/schema";
 import { partKey } from "@/lib/model/assembly";
 import { builtStudios } from "@/lib/model/build";
 import { decodeMeshes, type Mesh } from "@/lib/model/mesh";
-import { partModelFile } from "@/lib/model/part";
+import { flatMesh, flatSource, NeedsOnshapeError, partModelFile } from "@/lib/model/part";
+import { OnshapeError } from "@/lib/onshape/client";
 import { getObject, imageUrl, objectExists, storageConfigured } from "@/lib/storage/r2";
 import { pieceBase, pieceLabel, pieceRows, sortedRows } from "@/lib/inventory/stock";
 import { DEFAULT_GAP, DEFAULT_MARGIN, advisePlate, flattenMesh, type FlatGeom, type FlatPart, type Nest, type PlateAdvice, type StockPiece } from "./layout";
@@ -15,8 +16,10 @@ const { parts, systems, groupMembers, partGroups, inventoryItems, inventoryLocat
 
 export type MissingPart = { partId: string; name: string; reason: string };
 // A part as the layout window gets it: flat, plus where its saved 3D mesh is (for the preview)
-// and whether a member chose its face (`chosen`).
+// and whether a member chose its face (`chosen`). A sheet metal part is its flat pattern, and its
+// `onshapePartId` the flat body's.
 export type BatchPart = FlatPart & { meshUrl: string | null; onshapePartId: string; chosen: boolean };
+type Member = { id: string; onshapeConnected: boolean };
 export type BatchStock = { itemId: string; name: string; location: string | null; pieces: StockPiece[] } | null;
 export type BatchLayout = {
   groupId: string;
@@ -36,14 +39,20 @@ const flatCache = new Map<string, FlatGeom | null>();
 const nameOf = (p: { displayName: string | null; onshapeName: string | null }) => p.displayName ?? p.onshapeName ?? "Unnamed part";
 
 // The batch's parts laid flat, from the 3D meshes already in R2 (the robot model's Part Studio
-// files, else the part's own preview file). No Onshape calls: a part with no cached mesh is listed
-// as missing (opening its 3D preview, or building the robot model, caches it).
-export async function batchFlatParts(groupId: string): Promise<{ parts: (FlatPart & { meshFile: string; onshapePartId: string; chosen: boolean })[]; missing: MissingPart[] }> {
+// files, else the part's own preview file). No Onshape calls for those: a part with no cached mesh
+// is listed as missing (opening its 3D preview, or building the robot model, caches it). An Onshape
+// sheet metal part is laid out as its flat pattern instead of the folded part (Harel, 2026-11-04):
+// fetched once per released revision (1 call) when a `member` with Onshape connected opens the
+// layout, then read from R2.
+export async function batchFlatParts(
+  groupId: string,
+  member: Member | null = null,
+): Promise<{ parts: (FlatPart & { meshFile: string; onshapePartId: string; chosen: boolean })[]; missing: MissingPart[] }> {
   // The faces members chose in the layout window (the batch's saved layout).
   const [group] = await db.select({ saved: partGroups.layoutData }).from(partGroups).where(eq(partGroups.id, groupId));
   const faces = group?.saved?.faces ?? {};
   const rows = await db
-    .select({ part: parts, robotId: systems.robotId })
+    .select({ part: parts, robotId: systems.robotId, assemblyUrl: systems.assemblyUrl })
     .from(groupMembers)
     .innerJoin(parts, eq(parts.id, groupMembers.partId))
     .leftJoin(systems, eq(systems.id, parts.systemId))
@@ -53,6 +62,32 @@ export async function batchFlatParts(groupId: string): Promise<{ parts: (FlatPar
   if (!storageConfigured()) {
     return { parts: [], missing: rows.map(({ part }) => ({ partId: part.id, name: nameOf(part), reason: "File storage isn't set up." })) };
   }
+
+  // Sheet metal: its flat pattern, side by side.
+  const sheetRows = rows.filter((r) => flatSource(r.part, true));
+  const flatQueue = [...sheetRows];
+  const flatWorker = async () => {
+    for (let row = flatQueue.shift(); row; row = flatQueue.shift()) {
+      const { part } = row;
+      try {
+        const got = await flatMesh(row, member, { fab: true, cachedOnly: !member?.onshapeConnected });
+        if (!got) {
+          missing.push({ partId: part.id, name: nameOf(part), reason: "Sheet metal: its flat pattern isn't saved yet. Connect Onshape on your profile and open Auto Layout again." });
+          continue;
+        }
+        const face = faces[part.id] ?? null;
+        const cacheKey = `${got.file}|${got.flatPartId}|${face?.map((n) => n.toFixed(4)).join(",") ?? "auto"}`;
+        if (!flatCache.has(cacheKey)) flatCache.set(cacheKey, flattenMesh(got.mesh.positions, got.mesh.indices, face));
+        const geom = flatCache.get(cacheKey);
+        if (!geom) missing.push({ partId: part.id, name: nameOf(part), reason: "Its flat pattern couldn't be read." });
+        else out.push({ ...geom, partId: part.id, name: nameOf(part), quantity: Math.max(1, part.quantity), meshFile: got.file, onshapePartId: got.flatPartId, chosen: !!face, sheetMetal: true });
+      } catch (err) {
+        if (!(err instanceof OnshapeError || err instanceof NeedsOnshapeError)) throw err;
+        missing.push({ partId: part.id, name: nameOf(part), reason: `Sheet metal: ${err.message}` });
+      }
+    }
+  };
+  const flats = Promise.all(Array.from({ length: 4 }, flatWorker));
 
   const robots = [...new Set(rows.map((r) => r.robotId).filter((r): r is string => !!r))];
   const built = new Map<string, Map<string, string>>(await Promise.all(robots.map(async (r) => [r, await builtStudios(r)] as const)));
@@ -64,12 +99,13 @@ export async function batchFlatParts(groupId: string): Promise<{ parts: (FlatPar
   const ownFiles = new Map(
     await Promise.all(
       rows
-        .filter((r) => r.part.sourceDid && r.part.sourceEid && r.part.onshapePartId && !builtFile(r))
+        .filter((r) => !sheetRows.includes(r) && r.part.sourceDid && r.part.sourceEid && r.part.onshapePartId && !builtFile(r))
         .map(async ({ part }) => [part.id, (await objectExists(partModelFile(part))) ? partModelFile(part) : undefined] as const),
     ),
   );
   for (const row of rows) {
     const { part } = row;
+    if (sheetRows.includes(row)) continue;
     if (!part.sourceDid || !part.sourceEid || !part.onshapePartId) {
       missing.push({ partId: part.id, name: nameOf(part), reason: "Not from Onshape." });
       continue;
@@ -111,7 +147,7 @@ export async function batchFlatParts(groupId: string): Promise<{ parts: (FlatPar
       }
     }
   };
-  await Promise.all(Array.from({ length: 4 }, worker));
+  await Promise.all([...Array.from({ length: 4 }, worker), flats]);
   const order = new Map(rows.map((r, i) => [r.part.id, i]));
   out.sort((a, b) => order.get(a.partId)! - order.get(b.partId)!);
   return { parts: out, missing };
@@ -157,10 +193,10 @@ export async function batchStock(groupId: string): Promise<{ material: string | 
 }
 
 // The batch laid out on the smallest stock piece that takes it all (or a default sheet).
-export async function batchLayout(groupId: string, gap = DEFAULT_GAP, margin = DEFAULT_MARGIN): Promise<BatchLayout | null> {
+export async function batchLayout(groupId: string, gap = DEFAULT_GAP, margin = DEFAULT_MARGIN, member: Member | null = null): Promise<BatchLayout | null> {
   const [group] = await db.select({ id: partGroups.id, name: partGroups.name, saved: partGroups.layoutData }).from(partGroups).where(eq(partGroups.id, groupId));
   if (!group) return null;
-  const [{ parts: flat, missing }, { material, stock }] = await Promise.all([batchFlatParts(groupId), batchStock(groupId)]);
+  const [{ parts: flat, missing }, { material, stock }] = await Promise.all([batchFlatParts(groupId, member), batchStock(groupId)]);
   const { advice, nest } = advisePlate(flat, stock?.pieces ?? [], gap, margin);
   // Each part's mesh file, signed for the 3D preview (the same file the layout was read from).
   const parts = await Promise.all(flat.map(async ({ meshFile, ...p }) => ({ ...p, meshUrl: await imageUrl(meshFile) })));

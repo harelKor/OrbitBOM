@@ -39,7 +39,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ gro
   if (!parsed.success) return new NextResponse("Bad layout.", { status: 400 });
 
   let placements = parsed.data.placements;
-  if (!placements) placements = (await batchLayout(groupId))?.layout.placements ?? [];
+  if (!placements) placements = (await batchLayout(groupId, undefined, undefined, member))?.layout.placements ?? [];
   if (!placements.length) return new NextResponse("No part of this batch has a 3D model to lay out yet.", { status: 400 });
 
   // The Onshape host (cad.onshape.com or the Enterprise domain) from one of the batch's systems.

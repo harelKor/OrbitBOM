@@ -12,8 +12,10 @@
  *   7. with --write: a private scratch document in the API key owner's account, an assembly in
  *      it, the flat body inserted into it, the assembly read back and exported as STEP (the
  *      whole-sheet STEP path). Nothing is written to the part's own document.
+ *   8. with --import --scratch <document id>: the flat STEP from step 5 imported into that
+ *      scratch document, its part inserted, and its position compared with the flat body's.
  *
- *   npm run sheetmetal:spike -- "<Part Studio URL>" <folded part id> [--write]
+ *   npm run sheetmetal:spike -- "<Part Studio URL>" <folded part id> [--write] [--only7] [--import --scratch <id>]
  *
  * Auth as in scripts/onshape-test.ts: ONSHAPE_ACCESS_KEY + ONSHAPE_SECRET_KEY, or ONSHAPE_TOKEN,
  * in .env.local. Files land in scripts/out/sheet-metal/ (git-ignored). Prints the calls it made.
@@ -261,6 +263,76 @@ async function main() {
         tail = `; assembly box ${box.join(" × ")} mm (flat body alone: ${flatBox ? `${flatBox.x} × ${flatBox.y} × ${flatBox.z}` : "?"}); STEP ${file.length} bytes, ${solids(file)} solid(s)`;
       }
       return `${tried.join(" | ")}; ${inst.length} instance(s) [${inst.map((i: any) => `${i.name} partId=${i.partId}`).join(", ")}]${tail}; scratch document ${base}/documents/${doc.id}`;
+    });
+  }
+
+  // 8 (--import, with --scratch): the whole-sheet STEP path that's left, since a flat body can't
+  // go in an assembly: import the flat STEP (from step 5, scripts/out) as a Part Studio, insert
+  // the imported part, and check it sits where the flat body sits in its own Part Studio.
+  if (args.includes("--import") && args.includes("--scratch")) {
+    await step("8 flat STEP imported, inserted, same place as the flat body", async () => {
+      const { readFileSync } = await import("node:fs");
+      const stepFile = readFileSync(`${OUT}/flat.step`);
+      const box = async (path: string) => {
+        const b: any = await call(path);
+        return [b.lowX, b.lowY, b.lowZ, b.highX, b.highY, b.highZ].map(mm);
+      };
+      const own = await box(`parts/${studio}/partid/${encodeURIComponent(flatId!)}/boundingboxes`);
+      const doc: any = await call(`documents/${args[args.indexOf("--scratch") + 1]}`);
+      const wid = doc.defaultWorkspace.id;
+      const form = () => {
+        const f = new FormData();
+        f.append("file", new Blob([new Uint8Array(stepFile)]), "flat.step");
+        f.append("encodedFilename", "flat.step");
+        f.append("flattenAssemblies", "false");
+        f.append("yAxisIsUp", "false");
+        f.append("allowFaultyParts", "true");
+        return f;
+      };
+      // Multipart: no JSON content type, so not through call()'s body handling.
+      const post = async (path: string, f: FormData) => {
+        calls++;
+        const res = await fetch(`${base}/api/v10/${path}`, { method: "POST", headers: { Accept: "application/json", Authorization: authHeader! }, body: f });
+        if (!res.ok) throw new Error(`${res.status} on POST ${path}: ${(await res.text()).replace(/\s+/g, " ").slice(0, 300)}`);
+        return res.json();
+      };
+      const tried: string[] = [];
+      let elementId: string | null = null;
+      for (const [label, path, extra] of [
+        ["translations", `translations/d/${doc.id}/w/${wid}`, {}],
+        ["blobelements + translate", `blobelements/d/${doc.id}/w/${wid}`, { translate: "true" }],
+      ] as const) {
+        try {
+          const f = form();
+          for (const [k, v] of Object.entries(extra)) f.append(k, v);
+          let t: any = await post(path, f);
+          const translationId = t.translationId ?? (t.requestState ? t.id : null);
+          if (!translationId) throw new Error(`no translation started: ${JSON.stringify(t).slice(0, 200)}`);
+          for (let wait = 1500; (t.requestState ?? "ACTIVE") === "ACTIVE"; wait = Math.min(wait * 1.6, 8000)) {
+            await new Promise((r) => setTimeout(r, wait));
+            t = await call(`translations/${translationId}`);
+          }
+          if (t.requestState !== "DONE") throw new Error(`translation ${t.requestState}: ${t.failureReason ?? ""}`);
+          elementId = t.resultElementIds?.[0] ?? null;
+          tried.push(`${label}: element ${elementId}`);
+          break;
+        } catch (e) {
+          tried.push(`${label}: ${(e as Error).message}`);
+        }
+      }
+      if (!elementId) return tried.join(" | ");
+      const parts: any[] = await call(`parts/d/${doc.id}/w/${wid}/e/${elementId}`);
+      const imported = parts[0]?.partId;
+      if (!imported) return `${tried.join(" | ")}; imported Part Studio has no part`;
+      const theirs = await box(`parts/d/${doc.id}/w/${wid}/e/${elementId}/partid/${encodeURIComponent(imported)}/boundingboxes`);
+      const asm: any = await call(`assemblies/d/${doc.id}/w/${wid}`, { method: "POST", body: { name: "Imported flat test" } });
+      await call(`assemblies/d/${doc.id}/w/${wid}/e/${asm.id}/transformedinstances`, {
+        method: "POST",
+        body: { transformGroups: [{ instances: [{ documentId: doc.id, elementId, partId: imported, isAssembly: false, isWholePartStudio: false }], transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] }] },
+      });
+      const inAsm = await box(`assemblies/d/${doc.id}/w/${wid}/e/${asm.id}/boundingboxes`);
+      const same = own.every((v, i) => Math.abs(v - theirs[i]) < 0.05) && own.every((v, i) => Math.abs(v - inAsm[i]) < 0.05);
+      return `${tried.join(" | ")}; ${parts.length} part(s), imported ${imported}; flat body box [${own.join(", ")}]; imported [${theirs.join(", ")}]; in assembly [${inAsm.join(", ")}] → ${same ? "SAME PLACE" : "MOVED"}`;
     });
   }
 

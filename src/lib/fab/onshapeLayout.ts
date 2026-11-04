@@ -5,7 +5,11 @@ import { db, schema } from "@/db";
 import type { OnshapeLayoutRef } from "@/db/schema";
 import { batchFlatParts } from "@/lib/fab/batchLayout";
 import { placementMatrix, type FlatPart, type Placement } from "@/lib/fab/layout";
-import { OnshapeError, type OnshapeClient } from "@/lib/onshape/client";
+import { flatSource } from "@/lib/model/part";
+import { BudgetError, OnshapeError, QuotaError, TeamBudgetError, type OnshapeClient } from "@/lib/onshape/client";
+import { exportPart, importFile } from "@/lib/onshape/export";
+import { PartFileError, partFileTarget } from "@/lib/onshape/partFile";
+import { getObject, objectExists, putObject, storageConfigured } from "@/lib/storage/r2";
 import { parseOnshapeUrl } from "@/lib/onshape/url";
 
 // "Onshape Layout": a batch's nested parts as a "Batch - <name>" assembly in Onshape, every copy
@@ -15,11 +19,16 @@ import { parseOnshapeUrl } from "@/lib/onshape/url";
 //   new tab:   [document lookup] + create assembly + one insert-and-place call   = 2-3
 //   same tab:  read the assembly + delete its old instances + one insert-and-place = 3
 // Failed calls don't count, so a fallback after a refused call costs nothing extra.
+// Sheet metal goes in as its flat pattern. Onshape won't place a flat body in an assembly (spike
+// 2026-11-04), so its flat STEP is imported into the layout's document as a Part Studio, where it
+// keeps the flat body's coordinates, and that part is placed with the same transform. Once per
+// part revision (export, upload, polls, its part: about 5-8 calls, the STEP kept in R2), then one
+// call per push to check the imported tab is still there.
 
 export type LayoutPush = { url: string; calls: number; copies: number; skipped: string[]; live: string[]; fellBack?: boolean };
 
 type Ref = { did: string; wvm: "w" | "v" | "m"; wvmid: string; eid: string; partId: string };
-type Copy = { name: string; ref: Ref; transform: number[] };
+type Copy = { name: string; ref: Ref; transform: number[]; partId: string; sheet: boolean };
 
 const STUDIO = /^d\/([0-9a-f]{24})\/([wvm])\/([0-9a-f]{24})\/e\/([0-9a-f]{24})$/i;
 
@@ -89,7 +98,7 @@ export async function pushOnshapeLayout(
       if (!skipped.includes(name)) skipped.push(name);
       continue;
     }
-    copies.push({ name, ref, transform: toOnshapeTransform(placementMatrix(flat, pl)) });
+    copies.push({ name, ref, transform: toOnshapeTransform(placementMatrix(flat, pl)), partId: pl.partId, sheet: !!flat.sheetMetal });
   }
   if (!copies.length) throw new OnshapeError("None of this batch's parts can be placed in Onshape (no 3D model yet, or not from Onshape).");
 
@@ -122,6 +131,51 @@ export async function pushOnshapeLayout(
   if (!wid) throw new OnshapeError("Couldn't find the Onshape document's workspace.");
   const doc = `d/${did}/w/${wid}`;
   const tabName = `Batch - ${group.name}`;
+
+  // Sheet metal copies: the imported flat part in this document, imported once per revision.
+  const imports = { ...(group.layoutData?.flatImports ?? {}) };
+  const deadline = Date.now() + 40_000;
+  for (const partId of new Set(copies.filter((c) => c.sheet).map((c) => c.partId))) {
+    const row = rowOf.get(partId)!;
+    const src = flatSource(row.part, true);
+    const name = row.part.displayName ?? row.part.onshapeName ?? "Part";
+    let placedAs: Ref | null = null;
+    try {
+      if (!src) throw new OnshapeError("no flat pattern");
+      const source = `${src.rev ?? ""}|${src.studio}|${src.flatPartId}`;
+      const key = `${did}|${partId}`;
+      const hit = imports[key];
+      if (hit && hit.did === did && hit.source === source) {
+        // Still there? (A member may have deleted the tab in Onshape.)
+        const there = await client.json<{ partId: string }[]>(`parts/${doc}/e/${hit.eid}`).catch((err) => {
+          if (err instanceof OnshapeError && (err.status === 404 || err.status === 400)) return [];
+          throw err;
+        });
+        if (there.some((p) => p.partId === hit.partId)) placedAs = { did, wvm: "w", wvmid: wid, eid: hit.eid, partId: hit.partId };
+      }
+      if (!placedAs) {
+        const imported = await importFlat(client, doc, { part: row.part, assemblyUrl: row.assemblyUrl, robotId: group.robotId }, deadline);
+        imports[key] = { did, eid: imported.eid, partId: imported.partId, source };
+        placedAs = { did, wvm: "w", wvmid: wid, ...imported };
+      }
+    } catch (err) {
+      // Out of calls stops the push; a part Onshape couldn't import is left out and named.
+      if (err instanceof BudgetError || err instanceof TeamBudgetError || err instanceof QuotaError) throw err;
+      if (!(err instanceof OnshapeError || err instanceof PartFileError)) throw err;
+      if (!skipped.includes(name)) skipped.push(name);
+    }
+    for (const c of copies) if (c.partId === partId) c.ref = placedAs ?? c.ref;
+    if (!placedAs) copies.splice(0, copies.length, ...copies.filter((c) => c.partId !== partId));
+  }
+  // Kept at once, so a push that fails later (or falls back to another document) doesn't import
+  // the same flat patterns again next time.
+  if (JSON.stringify(imports) !== JSON.stringify(group.layoutData?.flatImports ?? {})) {
+    await db
+      .update(schema.partGroups)
+      .set({ layoutData: sql`coalesce(${schema.partGroups.layoutData}, '{}'::jsonb) || ${JSON.stringify({ flatImports: imports })}::jsonb` })
+      .where(eq(schema.partGroups.id, groupId));
+  }
+  if (!copies.length) throw new OnshapeError("None of this batch's parts could be placed in Onshape.");
 
   // Reuse this batch's tab, emptied; a new one when there is none (or it was deleted in Onshape).
   let eid: string | null = saved?.eid ?? null;
@@ -184,7 +238,24 @@ export async function pushOnshapeLayout(
   const ref: OnshapeLayoutRef = { baseUrl, did, wid, eid, url, rev, createdAt: new Date().toISOString() };
   await db
     .update(schema.partGroups)
-    .set({ layoutData: sql`coalesce(${schema.partGroups.layoutData}, '{}'::jsonb) || ${JSON.stringify({ onshape: ref })}::jsonb` })
+    .set({ layoutData: sql`coalesce(${schema.partGroups.layoutData}, '{}'::jsonb) || ${JSON.stringify({ onshape: ref, flatImports: imports })}::jsonb` })
     .where(eq(schema.partGroups.id, groupId));
   return { url, calls: client.calls, copies: placed.length, skipped, live };
+}
+
+// A sheet metal part's flat STEP (the same file as its Flat STEP download, kept in R2 per
+// revision) imported into the document as its own Part Studio tab: that tab and its one part.
+async function importFlat(client: OnshapeClient, doc: string, row: { part: typeof schema.parts.$inferSelect; assemblyUrl: string | null; robotId: string }, deadline: number) {
+  const target = partFileTarget(row, "STEP_FLAT", true);
+  const stored = storageConfigured() && target.key && (await objectExists(target.key)) ? await getObject(target.key) : null;
+  let file: ArrayBuffer;
+  if (stored) file = await stored.arrayBuffer();
+  else {
+    file = await exportPart(client, target.studio, target.partId, "STEP_FLAT", deadline);
+    if (storageConfigured() && target.key) await putObject(target.key, file, target.type);
+  }
+  const eid = await importFile(client, doc, file, target.filename, deadline);
+  const parts = await client.json<{ partId: string }[]>(`parts/${doc}/e/${eid}`);
+  if (!parts[0]?.partId) throw new OnshapeError("The imported flat pattern has no part.");
+  return { eid, partId: parts[0].partId };
 }

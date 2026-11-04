@@ -29,7 +29,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ part
     .from(schema.parts)
     .innerJoin(schema.systems, eq(schema.systems.id, schema.parts.systemId))
     .where(eq(schema.parts.id, partId));
-  if (row && format === "DXF") return flatDxf(row, member, search.get("fab") === "1", started + 50_000);
+  // A plate's DXF and a sheet metal part's flat DXF are both drawn in the app (plateDxf.ts).
+  if (row && (format === "DXF" || format === "DXF_FLAT")) return flatDxf(row, member, search.get("fab") === "1", started + 50_000);
   if (!row) return new NextResponse("This part isn't from Onshape.", { status: 400 });
   // ?fab=1 (To Fab): the state the part was released at, when it was locked (plan/fab-version-lock.md).
   try {

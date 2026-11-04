@@ -55,6 +55,50 @@ export const partModelFile = (part: { id: string; thumbnailRev: string | null })
     ? `models/parts/${part.id}/${createHash("sha1").update(`${TESS_VERSION}|${part.thumbnailRev}`).digest("hex").slice(0, 20)}.bin.gz`
     : `models/parts/${part.id}/latest.bin.gz`;
 
+// An Onshape sheet metal part's flat pattern: the state released to fab when `fab` and the part is
+// locked there (flat body ids differ between versions), else the live one.
+export function flatSource(part: typeof schema.parts.$inferSelect, fab: boolean) {
+  const lock = fab && part.releasedSnapshot?.studio && part.releasedSnapshot.onshapePartId ? part.releasedSnapshot : null;
+  const flatPartId = lock ? lock.flatPartId : (part.geometry?.sheetMetal?.flatPartId ?? null);
+  const studio = lock ? lock.studio : studioPath(part);
+  if (!flatPartId || !studio) return null;
+  return { studio, flatPartId, rev: lock ? lock.thumbnailRev : part.thumbnailRev };
+}
+
+// Its mesh file in R2, one per revision and flat body.
+export const flatModelFile = (part: { id: string }, src: NonNullable<ReturnType<typeof flatSource>>) =>
+  `models/parts/${part.id}/${createHash("sha1").update(`${TESS_VERSION}|flat|${src.rev ?? "none"}|${src.studio}|${src.flatPartId}`).digest("hex").slice(0, 20)}.flat.bin.gz`;
+
+// The flat pattern's mesh (Part Studio coordinates, metres; it lies on z = 0 at the sheet's
+// thickness). Auto Layout nests it and the part's flat DXF is drawn from it, because Onshape won't
+// translate a flat body to DXF or put one in an assembly (plan/sheet-metal-flatten.md, spike
+// 2026-11-04). One Onshape call per revision, then kept in R2. `cachedOnly`: never call Onshape
+// (null when it isn't stored yet).
+export async function flatMesh(
+  row: { part: typeof schema.parts.$inferSelect; assemblyUrl: string | null },
+  member: { id: string; onshapeConnected: boolean } | null,
+  { fab, cachedOnly = false }: { fab: boolean; cachedOnly?: boolean },
+): Promise<{ mesh: Mesh; file: string; flatPartId: string } | null> {
+  const src = flatSource(row.part, fab);
+  if (!src) return null;
+  if (!storageConfigured()) throw new StorageNotConfiguredError();
+  const file = flatModelFile(row.part, src);
+  const res = (await objectExists(file)) ? await getObject(file) : null;
+  if (res) {
+    const raw = gunzipSync(new Uint8Array(await res.arrayBuffer()));
+    const mesh = decodeMeshes(raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength) as ArrayBuffer).find((m) => m.partId === src.flatPartId);
+    if (mesh) return { mesh, file, flatPartId: src.flatPartId };
+  }
+  if (cachedOnly) return null;
+  const ref = row.assemblyUrl ? parseOnshapeUrl(row.assemblyUrl) : null;
+  if (!ref) return null;
+  if (!member?.onshapeConnected) throw new NeedsOnshapeError("Connect your Onshape account first (Profile → Connect Onshape).");
+  const meshes = (await studioMeshes(onshapeClient(member.id, ref.baseUrl), src.studio, `&partId=${encodeURIComponent(src.flatPartId)}`)).filter((m) => m.partId === src.flatPartId);
+  if (!meshes.length) throw new OnshapeError("Onshape sent no flat pattern for this part.");
+  await putObject(file, gzipSync(encodeMeshes(meshes)), "application/gzip");
+  return { mesh: meshes[0], file, flatPartId: src.flatPartId };
+}
+
 // One part's mesh (Part Studio coordinates, metres) for flat layouts and DXFs. It reads the robot
 // model's or the part's own preview file (no Onshape calls); only when neither has it, it exports
 // the part once (1 call) and keeps that as the preview file. `frozen`: the Part Studio the part was

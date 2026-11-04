@@ -1,18 +1,15 @@
 import "server-only";
 import { type schema } from "@/db";
-import { exportPart } from "@/lib/onshape/export";
-import { onshapeClient } from "@/lib/onshape/client";
 import { studioPath } from "@/lib/onshape/parts";
-import { parseOnshapeUrl } from "@/lib/onshape/url";
-import { partMesh } from "@/lib/model/part";
+import { flatMesh, partMesh } from "@/lib/model/part";
 import { getObject, objectExists, putObject, storageConfigured } from "@/lib/storage/r2";
 import { writeDxf } from "./dxf";
 import { flattenMesh } from "./flatten";
 
 // A plate's flat 1:1 DXF (the part laid on its back face, pockets up, long side level). Made from
-// the part's cached 3D mesh, so usually no Onshape calls; an Onshape sheet metal part gets its own
-// flat pattern instead. Kept in R2 per part revision: downloading it again, or in a batch zip,
-// reads the stored file.
+// the part's cached 3D mesh, so usually no Onshape calls; an Onshape sheet metal part is drawn from
+// its flat pattern's mesh instead (Onshape won't translate a flat body to DXF, spike 2026-11-04).
+// Kept in R2 per part revision: downloading it again, or in a batch zip, reads the stored file.
 
 export const PLATE_DXF_VERSION = 1; // bump when the DXF output changes, so every file is made again
 
@@ -50,34 +47,33 @@ const faceTag = (down: Down) => (down ? `.f${down.map((n) => Math.round(n * 1000
 
 export function plateDxfKey(row: Row, fab: boolean, down?: Down): string | null {
   const { rev, flatPartId } = source(row, fab);
-  return rev ? `exports/${row.part.id}/${rev}.${flatPartId ? "flat" : `plate${PLATE_DXF_VERSION}${faceTag(down)}`}.dxf` : null;
+  return rev ? `exports/${row.part.id}/${rev}.${flatPartId ? `flat${PLATE_DXF_VERSION}${faceTag(down)}` : `plate${PLATE_DXF_VERSION}${faceTag(down)}`}.dxf` : null;
 }
 
 // The DXF text, from R2 when it's stored, else made (and stored when the part has a revision).
-// `down`: the face chosen in Auto Layout. An Onshape sheet metal part keeps Onshape's own flat
-// pattern whatever was chosen.
-export async function plateDxf(row: Row, member: Member, fab: boolean, deadline: number, down?: Down): Promise<string> {
+// `down`: the face chosen in Auto Layout (for sheet metal, which side of its flat pattern).
+// `_deadline` is kept for callers: making a DXF is now one mesh read at most, well inside it.
+export async function plateDxf(row: Row, member: Member, fab: boolean, _deadline: number, down?: Down): Promise<string> {
   if (!studioPath(row.part)) throw new PlateDxfError("This part isn't from Onshape.");
   const key = storageConfigured() ? plateDxfKey(row, fab, down) : null;
   if (key && (await objectExists(key))) {
     const res = await getObject(key);
     if (res) return res.text();
   }
-  const text = await makeDxf(row, member, fab, deadline, down);
+  const text = await makeDxf(row, member, fab, down);
   if (key) await putObject(key, new TextEncoder().encode(text), "image/vnd.dxf");
   return text;
 }
 
-async function makeDxf(row: Row, member: Member, fab: boolean, deadline: number, down: Down): Promise<string> {
+async function makeDxf(row: Row, member: Member, fab: boolean, down: Down): Promise<string> {
   const { lock, flatPartId } = source(row, fab);
   if (flatPartId) {
-    // Onshape sheet metal: its own flat pattern (bends unfolded), one translation.
-    const ref = row.assemblyUrl ? parseOnshapeUrl(row.assemblyUrl) : null;
-    const studio = lock?.studio ?? studioPath(row.part);
-    if (!ref || !studio) throw new PlateDxfError("This part isn't from Onshape.");
-    if (!member.onshapeConnected) throw new PlateDxfError("Connect your Onshape account first (Profile → Connect Onshape).", 403);
-    const body = await exportPart(onshapeClient(member.id, ref.baseUrl), studio, flatPartId, "DXF_FLAT", deadline);
-    return new TextDecoder().decode(body);
+    // Onshape sheet metal: its flat pattern (bends unfolded, Onshape's own bend allowance).
+    const got = await flatMesh(row, member, { fab });
+    if (!got) throw new PlateDxfError("This part's flat pattern isn't available.");
+    const flat = flattenMesh(got.mesh.positions, got.mesh.indices, 1000, down);
+    if (!flat) throw new PlateDxfError("This part's flat pattern couldn't be read.");
+    return writeDxf(flat.loops.map((l) => l.pts));
   }
   // The released state's mesh is read from its frozen Part Studio only when the part changed since.
   const frozen = lock && lock.thumbnailRev !== row.part.thumbnailRev ? { studio: lock.studio!, onshapePartId: lock.onshapePartId! } : null;

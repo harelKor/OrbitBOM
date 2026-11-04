@@ -102,11 +102,16 @@ keys, about 65 calls in all.
 | Flat body into an assembly | **Refused**: "Operation attempted to insert an instance of unknown type during REST assembly operation", placed or plain. The folded part inserts fine. Cross-document inserts also need a saved version ("Linked document references require a version identifier"; a microversion is refused). |
 | Part ids across versions | Not stable: the same part is ZGQRD/ZFQRD in the workspace and ZUwOD/ZTwOD in V125. Cache by version, match by the released snapshot's ids. |
 
-What follows for Auto Layout: nest and draw the DXF from the flat body's tessellation (both
-app-made, so the Onshape DXF failure doesn't matter); for the whole-sheet STEP, import each flat
-STEP into the robot's Layouts document once per part version and insert that imported part instead
-of the folded one. Two scratch documents ("OrbitParts sheet metal spike …") were left in the key
-owner's Onshape account.
+A second run (`--import`) confirmed the way around it: `POST translations/d/{did}/w/{wid}`
+(multipart, the flat STEP) imports it as a Part Studio whose one part sits exactly where the flat
+body sits in its own studio, and that part inserts into an assembly like any other.
+
+Built 2026-11-04 (Harel's go): Auto Layout nests a sheet metal part as its flat body's mesh
+(`flatMesh` in src/lib/model/part.ts, 1 call per released revision, kept in R2); its Flat DXF and
+the laser Layout DXF are drawn from that mesh; Onshape Layout imports the flat STEP into the
+layout's document once per revision and places the imported part (`flatImports` on the batch).
+Two scratch documents ("OrbitParts sheet metal spike …") were left in the key owner's Onshape
+account.
 
 ## Sources
 

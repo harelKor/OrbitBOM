@@ -22,6 +22,7 @@ type Translation = {
   requestState: "ACTIVE" | "DONE" | "FAILED";
   documentId: string;
   resultExternalDataIds?: string[];
+  resultElementIds?: string[]; // an import: the tabs it made
   failureReason?: string;
 };
 
@@ -53,6 +54,33 @@ export function exportDrawingPdf(client: OnshapeClient, drawing: string /* d/<di
   return translate(client, `drawings/${drawing}/translations`, { formatName: "PDF" }, deadline, "this drawing", 4000);
 }
 
+// A file imported into a document as a new tab (a STEP becomes a Part Studio, where it keeps the
+// file's coordinates). Returns the new tab's element id. Upload, polls: 2-4 calls.
+export async function importFile(client: OnshapeClient, doc: string /* d/<did>/w/<wid> */, file: ArrayBuffer, filename: string, deadline: number): Promise<string> {
+  const form = new FormData();
+  form.append("file", new Blob([file]), filename);
+  form.append("encodedFilename", filename);
+  form.append("flattenAssemblies", "false");
+  form.append("yAxisIsUp", "false");
+  form.append("allowFaultyParts", "true");
+  const started = await client.json<Translation>(`translations/${doc}`, { method: "POST", body: form });
+  const t = await finished(client, started, deadline, 1500);
+  const eid = t.resultElementIds?.[0];
+  if (t.requestState !== "DONE" || !eid) throw new OnshapeError(`Onshape couldn't import ${filename}${t.failureReason ? `: ${t.failureReason}` : "."}`);
+  return eid;
+}
+
+// Poll a translation until it's done. Every poll counts against the app's yearly API allowance, so
+// wait longer between them.
+async function finished(client: OnshapeClient, t: Translation, deadline: number, firstWait: number): Promise<Translation> {
+  for (let wait = firstWait; t.requestState === "ACTIVE"; wait = Math.min(wait * 1.6, 8000)) {
+    if (Date.now() > deadline) throw new OnshapeError("Onshape is still preparing this file. Try again in a minute.");
+    await new Promise((r) => setTimeout(r, wait));
+    t = await client.json<Translation>(`translations/${t.id}`);
+  }
+  return t;
+}
+
 // Start an Onshape translation, poll it and download the result.
 async function translate(
   client: OnshapeClient,
@@ -62,16 +90,11 @@ async function translate(
   what: string,
   firstWait = 1500,
 ): Promise<ArrayBuffer> {
-  let t = await client.json<Translation>(path, {
+  const started = await client.json<Translation>(path, {
     method: "POST",
     body: JSON.stringify({ ...params, storeInDocument: false }),
   });
-  // Every poll counts against the app's yearly API allowance, so wait longer between them.
-  for (let wait = firstWait; t.requestState === "ACTIVE"; wait = Math.min(wait * 1.6, 8000)) {
-    if (Date.now() > deadline) throw new OnshapeError("Onshape is still preparing this file. Try again in a minute.");
-    await new Promise((r) => setTimeout(r, wait));
-    t = await client.json<Translation>(`translations/${t.id}`);
-  }
+  const t = await finished(client, started, deadline, firstWait);
   const dataId = t.resultExternalDataIds?.[0];
   if (t.requestState !== "DONE" || !dataId) {
     throw new OnshapeError(`Onshape couldn't export ${what}${t.failureReason ? `: ${t.failureReason}` : "."}`);

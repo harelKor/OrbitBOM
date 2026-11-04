@@ -5,6 +5,8 @@ import { EXPORT_FORMATS, exportPart, type ExportFormat } from "@/lib/onshape/exp
 import { studioPath } from "@/lib/onshape/parts";
 import { parseOnshapeUrl } from "@/lib/onshape/url";
 import { getObject, objectExists, putObject, storageConfigured } from "@/lib/storage/r2";
+import { PlateDxfError, plateDxf } from "@/lib/drawing/plateDxf";
+import { NeedsOnshapeError } from "@/lib/model/part";
 
 export type PartRow = { part: typeof schema.parts.$inferSelect; assemblyUrl: string | null; robotId: string };
 
@@ -55,9 +57,19 @@ export async function ensurePartFile(
   return { cached: true };
 }
 
-// The export's bytes, from R2 when cached.
+// The export's bytes, from R2 when cached. A sheet metal flat DXF is drawn in the app from its flat
+// pattern (Onshape won't translate one), like a plate's.
 export async function partFileBytes(row: PartRow, format: ExportFormat, fab: boolean, member: { id: string; onshapeConnected: boolean }, deadline: number) {
   const target = partFileTarget(row, format, fab);
+  if (format === "DXF_FLAT") {
+    try {
+      return { filename: target.filename, ext: target.ext, bytes: new TextEncoder().encode(await plateDxf(row, member, fab, deadline)) };
+    } catch (err) {
+      if (err instanceof PlateDxfError) throw new PartFileError(err.message, err.status);
+      if (err instanceof NeedsOnshapeError) throw new PartFileError(err.message, 403);
+      throw err;
+    }
+  }
   const got = await ensurePartFile(target, member, deadline);
   if (!got.cached) return { filename: target.filename, ext: target.ext, bytes: new Uint8Array(got.body) };
   const res = await getObject(target.key!);

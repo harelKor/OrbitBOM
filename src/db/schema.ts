@@ -366,6 +366,10 @@ export type LayoutData = {
   // The face each part lies on, chosen in the layout window's 3D preview: part id → that face's
   // outward normal in Part Studio axes. A part not listed lies on the side with more flat area.
   faces?: Record<string, [number, number, number]>;
+  // Sheet metal parts' flat STEPs imported into the layout's document, since Onshape won't place a
+  // flat pattern in an assembly (src/lib/fab/onshapeLayout.ts): "<document id>|<part id>" → the imported part, and
+  // the flat pattern (`source`: revision, Part Studio, flat body) it was made from.
+  flatImports?: Record<string, { did: string; eid: string; partId: string; source: string }>;
 };
 
 export const groupMembers = pgTable(
