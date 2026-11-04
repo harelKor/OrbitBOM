@@ -36,6 +36,9 @@ const ROBOTS_KEY = "orbit-robots-width";
 const ROBOTS_DEFAULT = 288;
 const ROBOTS_SMALLEST = 200;
 const WIDE = { left: "(min-width: 64rem)", right: "(min-width: 80rem)" } as const;
+// Edge swipes on phones: how close to the edge a touch must start, and how far it must travel (px).
+const EDGE = 32;
+const SWIPE = 50;
 export function Shell({
   robots,
   lastRobotId,
@@ -78,6 +81,49 @@ export function Shell({
     };
   }, []);
   useEscape(!!open, () => setDrawer(null));
+  // On a phone a swipe in from the screen's edge opens that side's drawer, and a swipe back the way
+  // it came closes it (Harel, 2026-11-04). Only touches that start in the edge strip open one, so
+  // tables and pictures that scroll sideways keep their swipes. In Safari's tab (not from the home
+  // screen) iOS keeps the left edge's first ~20px for Back, so the strip is a little wider than that.
+  useEffect(() => {
+    let from: { x: number; y: number; side: "left" | "right" | null } | null = null;
+    const down = (e: TouchEvent) => {
+      from = null;
+      const t = e.touches[0];
+      if (e.touches.length !== 1 || !t || document.querySelector("dialog[open]")) return;
+      if ((e.target as Element | null)?.closest?.("[role=separator]")) return;
+      if (open) from = { x: t.clientX, y: t.clientY, side: null };
+      else if (!wide.left && t.clientX <= EDGE) from = { x: t.clientX, y: t.clientY, side: "left" };
+      else if (!wide.right && t.clientX >= window.innerWidth - EDGE) from = { x: t.clientX, y: t.clientY, side: "right" };
+    };
+    const move = (e: TouchEvent) => {
+      const t = e.touches[0];
+      if (!from || !t) return;
+      const dx = t.clientX - from.x;
+      const dy = t.clientY - from.y;
+      // Mostly up or down: a scroll, not a swipe.
+      if (Math.abs(dy) > 30 && Math.abs(dy) > Math.abs(dx)) {
+        from = null;
+        return;
+      }
+      if (Math.abs(dx) < SWIPE || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+      if (from.side === "left" && dx > 0) setDrawer({ side: "left", at: pathname });
+      else if (from.side === "right" && dx < 0) setDrawer({ side: "right", at: pathname });
+      else if (!from.side && ((open === "left" && dx < 0) || (open === "right" && dx > 0))) setDrawer(null);
+      from = null;
+    };
+    const up = () => (from = null);
+    window.addEventListener("touchstart", down, { passive: true });
+    window.addEventListener("touchmove", move, { passive: true });
+    window.addEventListener("touchend", up);
+    window.addEventListener("touchcancel", up);
+    return () => {
+      window.removeEventListener("touchstart", down);
+      window.removeEventListener("touchmove", move);
+      window.removeEventListener("touchend", up);
+      window.removeEventListener("touchcancel", up);
+    };
+  }, [open, wide, pathname]);
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(COLLAPSE_KEY) ?? "null");
