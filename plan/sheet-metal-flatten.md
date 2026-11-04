@@ -85,6 +85,29 @@ Each step is its own branch, combined at the end as usual.
 4. Are the plate thicknesses in `materials.ts` the sheet stock you bend (1, 1.5, 2, 3 mm), or do you need extra sheet entries (for example steel sheet)?
 5. Can I run the spike on one real document? I need a link to a Part Studio with a sheet metal part, opened with a member account that has connected Onshape.
 
+## Spike results for Auto Layout (2026-11-04)
+
+Run with `npm run sheetmetal:spike` (scripts/sheet-metal-spike.ts) on 1690-26-423-09A
+(Polycarbonate 3mm, system 400, the only part flagged sheet metal on the live site), with API
+keys, about 65 calls in all.
+
+| Check | Result |
+|---|---|
+| Parts list `includeFlatParts=true` | Works: folded ZGQRD, flat body ZFQRD (`isFlattenedBody`, `unflattenedPartId`). |
+| Insertables `includeFlattenedBodies=true` | Lists flat bodies; for this part `deterministicId` = the flat part id (ZFQRD). |
+| Tessellating the flat body | Works (1 call): 276.6 × 246.9 × 3 mm, lying on z = 0…3 mm, so `flattenMesh` can use it as is. v10 answers `{ bodies: [...] }` with `{x, y, z}` vertices. |
+| Flat body bounding box | `parts/…/partid/{flat}/boundingboxes` works; `partstudios/…/boundingboxes?partId=` ignores the part and gives the whole studio. |
+| STEP of the flat body | Works (4 calls): one solid, 3 mm thick. |
+| DXF of the flat body | **Fails** every way tried (flat id, `sheetMetalFlat`, the folded id, DXF 2013 + mm). So today's `DXF_FLAT` download (same call) doesn't work either. |
+| Flat body into an assembly | **Refused**: "Operation attempted to insert an instance of unknown type during REST assembly operation", placed or plain. The folded part inserts fine. Cross-document inserts also need a saved version ("Linked document references require a version identifier"; a microversion is refused). |
+| Part ids across versions | Not stable: the same part is ZGQRD/ZFQRD in the workspace and ZUwOD/ZTwOD in V125. Cache by version, match by the released snapshot's ids. |
+
+What follows for Auto Layout: nest and draw the DXF from the flat body's tessellation (both
+app-made, so the Onshape DXF failure doesn't matter); for the whole-sheet STEP, import each flat
+STEP into the robot's Layouts document once per part version and insert that imported part instead
+of the folded one. Two scratch documents ("OrbitParts sheet metal spike …") were left in the key
+owner's Onshape account.
+
 ## Sources
 
 - [Onshape forum: flat parts in the parts list (`includeFlatParts`, `isFlattenedBody`, `unflattenedPartId`)](https://forum.onshape.com/discussion/comment/102420)
