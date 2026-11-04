@@ -45,7 +45,7 @@ const normDeg = (d: number) => Math.round((((d % 360) + 540) % 360 - 180) * 10) 
 // Auto Layout (Harel, 2026-10-31): the batch's parts laid flat, pockets up, nested on the
 // smallest plate on the shelf that takes them. Drag a copy to move it; ← turns it 5° to the left
 // and → to the right (Shift 1°), R 90°. A double-click (or double-tap) opens the part's 3D view,
-// where its face on the sheet is brown and can be flipped or picked (2026-11-04). The layout is
+// where its face on the sheet is green and can be flipped or picked (2026-11-04). The layout is
 // worked out from the 3D shapes already saved (no Onshape calls), and every change is saved on the
 // batch, so reopening shows the same layout.
 export function BatchLayoutDialog({ groupId, name, machine = null, open, onClose }: { groupId: string; name: string; machine?: string | null; open: boolean; onClose: () => void }) {
@@ -430,7 +430,7 @@ export function BatchLayoutDialog({ groupId, name, machine = null, open, onClose
                   )}
                 </div>
                 <p className="text-xs text-muted">
-                  The <span className="font-semibold text-[#b07a45]">brown</span> face lies on the sheet. Click another flat face to lay the part on it, or
+                  The <span className="font-semibold text-emerald-500">green</span> face lies on the sheet. Click another flat face to lay the part on it, or
                   Flip it. Every copy of this part follows, in the layout, Onshape Layout and the DXFs.
                 </p>
                 {faceError && <p className="text-sm text-rose-600">{faceError}</p>}
@@ -607,9 +607,8 @@ function SheetPreview({
         // Half the visible screen at most: a swipe on the sheet drags parts, so on a phone the window
         // needs room around it to scroll to the controls.
         className="block max-h-[50dvh] w-full touch-none select-none"
-        onPointerDown={(e) => {
-          if (e.target === e.currentTarget) setSelected(null);
-        }}
+        // A press anywhere on the sheet but a part (parts stop it) lets go of the selected copy.
+        onPointerDown={() => setSelected(null)}
         onPointerMove={(e) => {
           const d = drag.current;
           if (!d) return;

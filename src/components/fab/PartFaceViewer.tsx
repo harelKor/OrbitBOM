@@ -8,13 +8,13 @@ import { decodeMeshes } from "@/lib/model/mesh";
 type V3 = [number, number, number];
 
 // The face on the sheet, and the rest of the part, in the layout window's preview.
-const DOWN_COLOR = new THREE.Color("#8B5A2B"); // brown, like the spoilboard it lies on
+const DOWN_COLOR = new THREE.Color("#22c55e"); // green: easy to see against the grey part
 const PART_COLOR = new THREE.Color("#9aa1ad");
-const HOVER_COLOR = new THREE.Color("#c08a50");
+const HOVER_COLOR = new THREE.Color("#86efac");
 const FLAT_COS = 0.999;
 
 // One part from the batch's saved mesh file (the same file Auto Layout read: no Onshape calls),
-// lying on its face down, which is brown. A click on another flat face (not a curved or tiny one)
+// lying on its face down, which is green. A click on another flat face (not a curved or tiny one)
 // makes it the face down; `onPick` gets its outward normal in Part Studio axes.
 export function PartFaceViewer({ meshUrl, onshapePartId, down, onPick, busy }: { meshUrl: string; onshapePartId: string; down: V3; onPick: (down: V3) => void; busy: boolean }) {
   const host = useRef<HTMLDivElement>(null);
@@ -47,8 +47,14 @@ export function PartFaceViewer({ meshUrl, onshapePartId, down, onPick, busy }: {
     sun.position.set(2, 4, 3);
     scene.add(sun);
     const camera = new THREE.PerspectiveCamera(35, 1, 0.001, 100);
+    // As the robot viewer (ModelCanvas): left or right drag turns, middle drag moves, the wheel
+    // zooms, and it stops where the drag stops (no damping glide).
     const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
+    controls.enableDamping = false;
+    controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.ROTATE };
+    // A middle click would start the browser's auto-scroll; stop it.
+    const noAutoScroll = (e: MouseEvent) => e.button === 1 && e.preventDefault();
+    renderer.domElement.addEventListener("mousedown", noAutoScroll);
     let frame = 0;
     const resize = () => {
       const { clientWidth: w, clientHeight: h } = el;
@@ -187,7 +193,8 @@ export function PartFaceViewer({ meshUrl, onshapePartId, down, onPick, busy }: {
       return hit?.faceIndex != null ? faceOf[hit.faceIndex] : -1;
     };
     let start: [number, number] | null = null;
-    const onDown = (e: PointerEvent) => (start = [e.clientX, e.clientY]);
+    // Only a left click (or a tap) picks; right and middle drags turn and move the view.
+    const onDown = (e: PointerEvent) => (start = e.button === 0 ? [e.clientX, e.clientY] : null);
     const onMove = (e: PointerEvent) => {
       if (e.buttons) return;
       const f = faceAt(e);
@@ -212,6 +219,7 @@ export function PartFaceViewer({ meshUrl, onshapePartId, down, onPick, busy }: {
       cancelAnimationFrame(frame);
       observer.disconnect();
       controls.dispose();
+      renderer.domElement.removeEventListener("mousedown", noAutoScroll);
       renderer.domElement.removeEventListener("pointerdown", onDown);
       renderer.domElement.removeEventListener("pointermove", onMove);
       renderer.domElement.removeEventListener("pointerup", onUp);
