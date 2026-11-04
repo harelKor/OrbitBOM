@@ -158,7 +158,8 @@ export function BatchCard({
     }
   }, [open, mounted, shown]);
   // Cards around it can move (a filter, the window, another batch's strip): keep the strip's row
-  // and the outline's neck in step.
+  // and the outline's neck in step. The List view is zoomed by the card size slider: rects come in
+  // screen pixels, the strip's styles are in its own (zoomed) pixels, so they're divided back.
   useEffect(() => {
     const grid = ref.current?.parentElement;
     if (!mounted || !grid) return;
@@ -167,11 +168,13 @@ export function BatchCard({
       const c = ref.current?.getBoundingClientRect();
       const s = panelRef.current?.getBoundingClientRect();
       if (!c || !s) return;
-      const next = { left: c.left - s.left, width: c.width, gap: s.top - c.bottom, strip: s.width };
+      const z = (panelRef.current as HTMLElement & { currentCSSZoom?: number }).currentCSSZoom || 1;
+      const next = { left: (c.left - s.left) / z, width: c.width / z, gap: Math.max(s.top - c.bottom, 0) / z, strip: s.width / z };
       const same = (t: typeof next) => (Object.keys(next) as (keyof typeof next)[]).every((k) => Math.abs(t[k] - next[k]) < 0.25);
       setTab((t) => (t && same(t) ? t : next));
     });
     observer.observe(grid);
+    if (ref.current) observer.observe(ref.current);
     if (panelRef.current) observer.observe(panelRef.current);
     return () => observer.disconnect();
   }, [mounted]);
@@ -387,8 +390,9 @@ export function BatchCard({
           style={{ boxShadow: glow, borderRadius: `${topRadii.tl}px ${topRadii.tr}px ${radius}px ${radius}px` }}
         />
       )}
-      {/* The neck: the card's sides carried down across the gap to the strip. */}
-      {joined && (
+      {/* The neck: the card's sides carried down across a gap left to the strip. The open card
+          reaches down to the strip itself (`reach`), so normally there's none and no seam shows. */}
+      {joined && tab.gap > 0.5 && (
         <span
           aria-hidden
           className="pointer-events-none absolute border-x-2 bg-surface"
@@ -407,7 +411,11 @@ export function BatchCard({
         <div
           style={{
             ...batchTint,
-            borderRadius: radius,
+            // Each corner on its own: React warns when a shorthand and its parts swap on rerender.
+            borderTopLeftRadius: topRadii.tl,
+            borderTopRightRadius: topRadii.tr,
+            borderBottomLeftRadius: radius,
+            borderBottomRightRadius: radius,
             ...(joined && {
               borderColor: edge,
               // The top edge is cut where the neck comes in; a corner under the card goes square.
@@ -416,8 +424,6 @@ export function BatchCard({
               maskPosition: `0 0, ${tab.left + 2}px 0`,
               maskRepeat: "no-repeat",
               maskComposite: "exclude",
-              borderTopLeftRadius: topRadii.tl,
-              borderTopRightRadius: topRadii.tr,
             }),
           }}
           className="space-y-3 border-2 border-accent/60 bg-surface p-3"
@@ -459,7 +465,7 @@ export function BatchCard({
     const small = members.slice(0, 4);
     return (
       <>
-      <div ref={ref} data-batch-card="" {...dropProps} draggable={draggable} onDragStart={dragStart} className="min-w-0">
+      <div ref={ref} data-batch-card="" {...dropProps} draggable={draggable} onDragStart={dragStart} className="min-w-0" style={open ? { marginBottom: 0 } : undefined}>
         <div
           role="button"
           tabIndex={0}
@@ -469,8 +475,10 @@ export function BatchCard({
           style={{
             ...batchTint,
             ...(mine && { boxShadow: "0 0 0 2px rgba(56,189,248,0.75), 0 0 18px 3px rgba(56,189,248,0.35)" }),
-            ...(open && { borderColor: edge, borderBottomColor: "transparent" }),
-            ...(open && mine && { boxShadow: glow, clipPath: "inset(-40px -40px 0 -40px)" }),
+            // Open, the row reaches down to its strip (the grid's gap is its own padding), so card
+            // and strip meet with no seam (Harel, 2026-11-04).
+            ...(open && { borderColor: edge, borderBottomColor: "transparent", paddingBottom: "calc(0.625rem + var(--fab-gap))", clipPath: "inset(-40px -40px 0 -40px)" }),
+            ...(open && mine && { boxShadow: glow }),
           }}
           className={`flex min-w-0 cursor-pointer items-center gap-3 rounded-2xl border-2 border-line-strong bg-surface py-2.5 pr-2.5 pl-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_2px_8px_rgba(0,0,0,0.25)] transition-all duration-150 hover:border-sky-400/50 active:not-[:has(:is(button,a,input,select,textarea,[role=dialog]):active)]:scale-[0.99] ${open ? "rounded-b-none" : ""} ${over ? "ring-2 ring-accent" : ""}`}
         >
@@ -526,8 +534,10 @@ export function BatchCard({
       style={{
         ...batchTint,
         ...(mine && { boxShadow: "0 0 0 2px rgba(56,189,248,0.75), 0 0 22px 4px rgba(56,189,248,0.4)" }),
-        ...(open && { borderColor: edge, borderBottomColor: "transparent" }),
-        ...(open && mine && { boxShadow: glow, clipPath: "inset(-40px -40px 0 -40px)" }),
+        // Open, the card reaches down to its strip (the grid's gap is its own padding), so card
+        // and strip meet with no seam (Harel, 2026-11-04).
+        ...(open && { borderColor: edge, borderBottomColor: "transparent", marginBottom: 0, paddingBottom: "var(--fab-gap)", clipPath: "inset(-40px -40px 0 -40px)" }),
+        ...(open && mine && { boxShadow: glow }),
       }}
       className={`card-interactive flex cursor-pointer flex-col self-start text-sm ${open ? "rounded-b-none" : ""} ${over ? "ring-2 ring-accent" : ""}`}
     >
