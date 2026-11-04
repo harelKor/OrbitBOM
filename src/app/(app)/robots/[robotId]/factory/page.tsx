@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Icon } from "@/components/ui/Icon";
+import { FACTORY_FAB_MACHINES, packsByMaterial } from "@/config/machines";
 import { requireMember } from "@/lib/auth";
+import { autoPackByMaterial } from "@/lib/factory/autoPack";
 import { countFactories } from "@/lib/data/factory";
 import { getRobot } from "@/lib/data/robots";
 import { isUuid } from "@/lib/uuid";
@@ -11,7 +13,10 @@ import { isUuid } from "@/lib/uuid";
 export default async function FactoryFabPage({ params }: { params: Promise<{ robotId: string }> }) {
   const { robotId } = await params;
   if (!isUuid(robotId)) notFound();
-  const [, data, factories] = await Promise.all([requireMember(), getRobot(robotId), countFactories(robotId)]);
+  await requireMember();
+  // Factories that pack by material (Zivudim) do it first, so their boxes count packs, not loose parts.
+  await Promise.all(FACTORY_FAB_MACHINES.filter((m) => packsByMaterial(m.id)).map((m) => autoPackByMaterial(robotId, m.id)));
+  const [data, factories] = await Promise.all([getRobot(robotId), countFactories(robotId)]);
   if (!data) notFound();
   return (
     <div className="flex min-h-[calc(100dvh-var(--topbar-h,2.75rem)-2rem)] flex-col gap-5 pb-4 md:min-h-[calc(100dvh-var(--topbar-h,2.75rem)-3rem)]">

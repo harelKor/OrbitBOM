@@ -30,6 +30,7 @@ const tintOf = (p: CardPart) => (computeStatus(p) === "Released" ? {} : statusTi
 // Released parts and makes them a pack, or adds them to an open one, like To Fab's ＋ Fab.
 export function FactoryView({
   factory,
+  byMaterial = false,
   parts,
   packs,
   robotId,
@@ -38,6 +39,7 @@ export function FactoryView({
   me,
 }: {
   factory: string;
+  byMaterial?: boolean; // Zivudim: Released parts are packed by material by themselves (lib/factory/autoPack.ts)
   parts: CardPart[];
   packs: Batch[];
   robotId: string;
@@ -121,13 +123,19 @@ export function FactoryView({
           style={tintOf(p)}
           selected={selected.has(p.id)}
           onToggleSelect={pickable ? () => toggle(p.id) : undefined}
+          nameNote={byMaterial ? p.material || "No material" : undefined}
           statusButton={<FactoryStatusButton status={computeStatus(p)} onPick={(s) => save([p.id], { status: s as PartChanges["status"] })} />}
         />
       </div>
     );
   };
+  // Zivudim's packs are named by their material: the parts' own, unless they differ.
+  const packTitle = (b: (typeof view.all)[number]) => {
+    const materials = [...new Set(b.members.map((p) => p.material || "No material"))];
+    return materials.length === 1 ? materials[0] : b.name;
+  };
   const packCard = (b: (typeof view.all)[number]) => (
-    <BatchCard key={b.id} pack batch={b} members={b.members} save={save} card={card} draggable={false} memberNames={[]} me={me} />
+    <BatchCard key={b.id} pack title={byMaterial ? packTitle(b) : undefined} batch={b} members={b.members} save={save} card={card} draggable={false} memberNames={[]} me={me} />
   );
 
   return (
@@ -135,12 +143,13 @@ export function FactoryView({
       <div className="space-y-6">
         {error && <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">Couldn&apos;t save: {error}</p>}
 
-        <Section
+        {/* Zivudim packs by itself, so Released only shows for the moment before the page reloads. */}
+        {(!byMaterial || view.released.length > 0) && <Section
           title="Released"
           count={view.released.length}
           empty="No parts are waiting to be packed."
           action={
-            work && (
+            work && !byMaterial && (
               <button
                 onClick={() => startPack(!packing)}
                 aria-pressed={packing}
@@ -154,9 +163,9 @@ export function FactoryView({
           }
         >
           {view.released.map((p) => card(p))}
-        </Section>
+        </Section>}
 
-        <Section title="Packs" count={view.packs.length + view.atFactory.length} empty="Use ＋ Pack to put Released parts in a pack.">
+        <Section title="Packs" count={view.packs.length + view.atFactory.length} empty={byMaterial ? "Released parts are packed by material here by themselves." : "Use ＋ Pack to put Released parts in a pack."}>
           {view.packs.map(packCard)}
           {view.atFactory.map((p) => card(p))}
         </Section>

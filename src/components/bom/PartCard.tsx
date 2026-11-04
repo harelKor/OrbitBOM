@@ -64,6 +64,7 @@ function MadePartCard({
   post,
   thumbBadge,
   statusButton,
+  nameNote,
 }: {
   part: CardPart;
   save: SaveFn;
@@ -82,6 +83,7 @@ function MadePartCard({
   post?: { done: number; onChange: (n: number) => void };
   thumbBadge?: React.ReactNode; // To Fab, inside a batch: a control at the very start of the thumbnail's top-left
   statusButton?: React.ReactNode; // Factory Fab: the name, then only this big status button
+  nameNote?: string; // Factory Fab (Zivudim): the material, beside the name
 }) {
   // Edit: name, type and the manual part menu. Work (any team): status, amount, material, counters.
   const { canManage: edit, canWork: work, canClassify } = usePermissions();
@@ -257,6 +259,7 @@ function MadePartCard({
             <div className={`min-w-0 flex-1 truncate text-[13px] font-semibold text-fg ${checked ? "line-through" : ""}`} title={part.displayName ?? part.onshapeName ?? undefined}>
               {edit ? <NameField part={part} save={save} bare /> : (part.displayName ?? part.onshapeName ?? "Unnamed part")}
               {showSystem && <span className="ml-1.5 text-[11px] font-normal text-subtle">{part.systemName}</span>}
+              {nameNote && <span className="ml-1.5 text-[11px] font-normal text-muted">{nameNote}</span>}
             </div>
             {showCounter && <DoneCounter part={part} save={save} slot={current!} />}
             {edit && <EditMenu part={part} />}

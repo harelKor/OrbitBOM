@@ -20,6 +20,8 @@ export type MachineDef = {
   // A partner factory with its own Factory Fab page: its parts take the factory statuses
   // (src/config/statuses.ts) and leave To Fab (Harel, 2026-11-04).
   factoryFab?: boolean;
+  // Factory Fab packs its Released parts by itself, one pack per material (Harel, 2026-11-04).
+  packsByMaterial?: boolean;
 };
 
 export const MACHINES = [
@@ -31,7 +33,7 @@ export const MACHINES = [
   { id: "countersunk", kind: "countersink", name: "Countersunk", stage: "Process", cadFormat: "PDF" },
   { id: "lathe", kind: "machining", name: "LATHE", stage: "Process", cadFormat: "PDF" },
   { id: "cnc", kind: "machining", name: "CNC", stage: "Process", cadFormat: "STEP", sheetFormat: "STEP_FLAT" },
-  { id: "zivudim", kind: "factory", name: "Zivudim", stage: "Process", cadFormat: "PARASOLID", factoryFab: true },
+  { id: "zivudim", kind: "factory", name: "Zivudim", stage: "Process", cadFormat: "PARASOLID", factoryFab: true, packsByMaterial: true },
   { id: "3d-bambu", kind: "print", name: "Bambu", stage: "Process", cadFormat: "STL" },
   { id: "3d-markforged", kind: "print", name: "3D Print - Markforged", stage: "Process", cadFormat: "STL" },
   { id: "3d-aran", kind: "print", name: "3D Print - ARAN", stage: "Process", cadFormat: "STL", factoryFab: true },
@@ -56,6 +58,7 @@ export const isFactoryMachine = (id: string | null | undefined) => !!id && (getM
 // The factories with a Factory Fab page. Hadasa is tagged In factory but is worked like an
 // in-house machine: To Fab and the usual statuses (Harel, 2026-11-04).
 export const FACTORY_FAB_MACHINES = MACHINES.filter((m): m is Extract<(typeof MACHINES)[number], { factoryFab: true }> => "factoryFab" in m && m.factoryFab);
+export const packsByMaterial = (id: string | null | undefined) => !!id && !!getMachine(id)?.packsByMaterial;
 export const isFactoryFabMachine = (id: string | null | undefined) => !!id && !!getMachine(id)?.factoryFab;
 
 // The Factory Fab factory a part goes to (its first such process), or null.

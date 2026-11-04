@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { factoryOf, getMachine, isFactoryFabMachine } from "@/config/machines";
+import { factoryOf, getMachine, isFactoryFabMachine, packsByMaterial } from "@/config/machines";
 import { FactoryView } from "@/components/factory/FactoryView";
 import { requireMember } from "@/lib/auth";
+import { autoPackByMaterial } from "@/lib/factory/autoPack";
 import { listRobotGroups } from "@/lib/data/groups";
 import { listInventoryNames } from "@/lib/data/inventory";
 import { listRobotParts } from "@/lib/data/parts";
@@ -13,8 +14,10 @@ import { isUuid } from "@/lib/uuid";
 export default async function FactoryPage({ params }: { params: Promise<{ robotId: string; factoryId: string }> }) {
   const { robotId, factoryId } = await params;
   if (!isUuid(robotId) || !isFactoryFabMachine(factoryId)) notFound();
-  const [member, data, parts, groups, inventory] = await Promise.all([
-    requireMember(),
+  const member = await requireMember();
+  // Zivudim's Released parts go into packs by material before the page reads them.
+  await autoPackByMaterial(robotId, factoryId);
+  const [data, parts, groups, inventory] = await Promise.all([
     getRobot(robotId),
     listRobotParts(robotId),
     listRobotGroups(robotId),
@@ -33,6 +36,7 @@ export default async function FactoryPage({ params }: { params: Promise<{ robotI
       </div>
       <FactoryView
         factory={factory.id}
+        byMaterial={packsByMaterial(factory.id)}
         parts={parts.filter((p) => p.classification !== "cots" && factoryOf(p) === factory.id)}
         packs={groups
           .filter((g) => g.machine === factory.id)
