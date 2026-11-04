@@ -4,7 +4,7 @@ import { asc, eq, inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { COTS_IN_STOCK, ORDER_STATUSES, cotsStatusOf } from "@/config/cots";
 import { usageOf } from "@/lib/data/inventory";
-import { isFabFinished } from "@/lib/fab";
+import { isFabFinished, isFactoryInStock } from "@/lib/fab";
 import { fillCardFromItem, pushCardToItem } from "@/lib/inventory/cotsSync";
 import { normName, onshapeKeyOf } from "@/lib/inventory/match";
 import { moveStock } from "@/lib/inventory/moves";
@@ -98,8 +98,9 @@ export async function applyEachPartChanges(
         .update(parts)
         .set({
           ...set,
-          // Made parts carry when they were finished; a part sent back to work loses it.
-          fabFinishedAt: isFabFinished({ ...row, ...set }) ? (row.fabFinishedAt ?? new Date()) : null,
+          // Made parts carry when they were finished (a factory's part: when it reached In Stock);
+          // a part sent back to work loses it.
+          fabFinishedAt: isFabFinished({ ...row, ...set }) || isFactoryInStock({ ...row, ...set }) ? (row.fabFinishedAt ?? new Date()) : null,
           // A COTS part keeps when it arrived while it stays In Stock; leaving In Stock un-clears it.
           ...(inStockNow(after) ? { cotsInStockAt: row.cotsInStockAt ?? new Date() } : { cotsInStockAt: null, cotsClearedAt: null }),
           lastModifiedAt: new Date(),

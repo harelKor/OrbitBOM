@@ -19,6 +19,8 @@ export const STATUSES = [
   { name: "In Process 1", color: "#0004ff", kind: "design" },
   { name: "Ready for Process 2", color: "#00ffff", kind: "design" },
   { name: "Post Processing", color: "#f302f7", kind: "design" },
+  // Only for parts made at a Factory Fab factory (FACTORY_STATUSES below).
+  { name: "In Factory", color: "#10b981", kind: "design" },
   { name: "Ready for QA", color: "#fbff00", kind: "design", done: true },
   { name: "Secondary Production", color: "#ff7b00", kind: "design" },
   { name: "Reproduction", color: "#ff0000", kind: "design" },
@@ -43,6 +45,15 @@ export const DERIVED_STATUS = {
   process2: "Ready for Process 2",
   done: "Ready for QA",
 } as const satisfies Record<string, StatusName>;
+
+// A Factory Fab factory's parts (Zivudim, Beth El, ARAN, PCBway) use only these (Harel,
+// 2026-11-04). A status they carry from before reads as the nearest of them (computeStatus).
+export const FACTORY_STATUSES = ["Not Started", "Released", "In Factory", "Ready for QA", "In Stock"] as const satisfies readonly StatusName[];
+export const IN_FACTORY: StatusName = "In Factory";
+const FACTORY_EQUIVALENT: Partial<Record<StatusName, StatusName>> = { Gcoded: "Released", "In Spare Stock": "In Stock" };
+export const toFactoryStatus = (s: StatusName): StatusName =>
+  (FACTORY_STATUSES as readonly string[]).includes(s) ? s : (FACTORY_EQUIVALENT[s] ?? IN_FACTORY);
+export const isFactoryStatus = (s: string) => (FACTORY_STATUSES as readonly string[]).includes(s);
 
 export const DONE_STATUSES: StatusName[] = STATUSES.filter((s) => "done" in s && s.done).map(
   (s) => s.name,

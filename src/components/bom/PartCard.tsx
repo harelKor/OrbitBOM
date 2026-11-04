@@ -63,6 +63,7 @@ function MadePartCard({
   fabStatusEditable = false,
   post,
   thumbBadge,
+  statusButton,
 }: {
   part: CardPart;
   save: SaveFn;
@@ -80,6 +81,7 @@ function MadePartCard({
   // drops the type, amount, material and machines.
   post?: { done: number; onChange: (n: number) => void };
   thumbBadge?: React.ReactNode; // To Fab, inside a batch: a control at the very start of the thumbnail's top-left
+  statusButton?: React.ReactNode; // Factory Fab: the name, then only this big status button
 }) {
   // Edit: name, type and the manual part menu. Work (any team): status, amount, material, counters.
   const { canManage: edit, canWork: work, canClassify } = usePermissions();
@@ -260,7 +262,7 @@ function MadePartCard({
             {edit && <EditMenu part={part} />}
           </div>
 
-          <div className="flex min-w-0 flex-wrap items-center gap-1">
+          {statusButton ?? <div className="flex min-w-0 flex-wrap items-center gap-1">
             <StatusField part={part} save={save} size="sm" />
             {!post && (part.material || part.inventoryItemId || work) && <MaterialField part={part} save={save} className={pill} noOpen />}
             {!post && machines.map((slot) => (
@@ -269,7 +271,7 @@ function MadePartCard({
                 <MachineField part={part} save={save} slot={slot} className={`${pill} ${slot === current ? "border-accent/60 text-accent" : ""}`} />
               </span>
             ))}
-          </div>
+          </div>}
         </div>
       )}
     </div>

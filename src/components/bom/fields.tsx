@@ -3,7 +3,7 @@
 // The popover editors for each part field. The card, the table and the Kanban cards all use
 // these, so a field edits the same way everywhere (ref §2a, §3).
 
-import { getMachine } from "@/config/machines";
+import { factoryOf, getMachine } from "@/config/machines";
 import type { PartChanges } from "@/lib/parts/changes";
 import { PART_TAG_LABELS, partTag, type PartTag } from "@/lib/partTag";
 import { computeStatus, partStatusLabel, statusMachine } from "@/lib/status";
@@ -248,18 +248,21 @@ export function StatusField({ part, save, size = "md" }: Props & { size?: "sm" |
   const status = computeStatus(part);
   const cots = part.classification === "cots";
   const machine = cots ? null : statusMachine(part);
-  const pickable = pickableStatuses(mode);
+  const factory = !cots && !!factoryOf(part);
+  const pickable = pickableStatuses(mode, factory);
   let options = cots
     ? COTS_STATUS_OPTIONS
     : machine
       ? STATUSES.map((s) => ({ value: s.name, label: statusLabel(s.name, machine), color: s.color }))
       : STATUS_OPTIONS;
-  if (mode === "cad") options = NOTE_STATUSES.map((name) => ({ value: name, label: name, color: getStatus(name)?.color }));
+  // A Factory Fab factory's part: only the factory statuses (the CAD Team releases it with Release).
+  if (factory) options = options.filter((o) => o.value !== null && pickable!.includes(o.value));
+  else if (mode === "cad") options = NOTE_STATUSES.map((name) => ({ value: name, label: name, color: getStatus(name)?.color }));
   // Build: In Process is the part's current process, so Ready for Process 2 only with a second one.
   else if (pickable && !cots) options = options.filter((o) => o.value !== null && pickable.includes(o.value) && (o.value !== "Ready for Process 2" || !!part.process2));
   return (
     <>
-      <Popover locked={locked} trigger={<StatusPill status={status} label={partStatusLabel(part)} size={size} />}>
+      <Popover locked={locked || !options.length} trigger={<StatusPill status={status} label={partStatusLabel(part)} size={size} />}>
         {(close) => (
           <OptionList
             options={options}

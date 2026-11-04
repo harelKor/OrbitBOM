@@ -36,7 +36,7 @@ export function RobotSwitcher({ robots, lastRobotId, isAdmin }: { robots: ShellR
             key={r.id}
             robot={r}
             current={r.id === current?.id}
-            overview={r.id === current?.id && !systemId && !pathname.includes("/fab") && !pathname.includes("/review")}
+            overview={r.id === current?.id && !systemId && !pathname.includes("/fab") && !pathname.includes("/factory") && !pathname.includes("/review")}
             isAdmin={isAdmin}
             onSelect={() => selectRobot(r.id)}
           />

@@ -2,6 +2,7 @@ import "server-only";
 import { inArray } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { can, effectiveMode, isSpecReset, MODE_COOKIE, statusDenied, type Capability, type Mode } from "@/components/shell/mode";
+import { factoryOf } from "@/config/machines";
 import { db, schema } from "@/db";
 import { getMember, requireMember, type Member } from "@/lib/auth";
 import { cotsLinkDenied } from "@/lib/parts/cotsLink";
@@ -51,7 +52,14 @@ export async function statusChangeDenied(
   const ids = partIds.filter(isUuid);
   const rows = ids.length
     ? await db
-        .select({ classification: schema.parts.classification, inventoryItemId: schema.parts.inventoryItemId, designState: schema.parts.designState })
+        .select({
+          classification: schema.parts.classification,
+          inventoryItemId: schema.parts.inventoryItemId,
+          designState: schema.parts.designState,
+          preProcess: schema.parts.preProcess,
+          process1: schema.parts.process1,
+          process2: schema.parts.process2,
+        })
         .from(schema.parts)
         .where(inArray(schema.parts.id, ids))
     : [];
@@ -61,11 +69,11 @@ export async function statusChangeDenied(
   }
   if (!changes.status) return null;
   const mode = await getMode();
-  if (mode === "edit") return null;
-  const kinds = new Set(rows.map((r) => r.classification === "cots"));
-  if (!kinds.size) kinds.add(false);
-  for (const cots of kinds) {
-    const denied = statusDenied(mode, changes.status, { cots, note: changes.note, reset: isSpecReset(changes) });
+  // Each kind of part once: COTS, made at a Factory Fab factory, or made by the team.
+  const kinds = new Map(rows.map((r) => [`${r.classification === "cots"}|${!!factoryOf(r)}`, { cots: r.classification === "cots", factory: !!factoryOf(r) }]));
+  if (!kinds.size) kinds.set("", { cots: false, factory: false });
+  for (const kind of kinds.values()) {
+    const denied = statusDenied(mode, changes.status, { ...kind, note: changes.note, reset: isSpecReset(changes) });
     if (denied) return denied;
   }
   return null;

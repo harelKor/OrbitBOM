@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { isFactoryFabMachine } from "@/config/machines";
 import { FabHeading, FabView } from "@/components/fab/FabView";
 import { requireMember } from "@/lib/auth";
 import { listRobotGroups } from "@/lib/data/groups";
@@ -8,7 +9,8 @@ import { getRobot } from "@/lib/data/robots";
 import { isUuid } from "@/lib/uuid";
 
 // Fab batches are part groups with a machine; groups named "FAB n" come from before batches had one.
-const isFabBatch = (g: { name: string; machine: string | null }) => !!g.machine || /^FAB \d+$/.test(g.name);
+// A Factory Fab factory's packs are on Factory Fab instead.
+const isFabBatch = (g: { name: string; machine: string | null }) => (!!g.machine && !isFactoryFabMachine(g.machine)) || /^FAB \d+$/.test(g.name);
 
 // To Fab: the shop's queue per machine, with fab batches (stored as the robot's part groups).
 export default async function FabPage({ params }: { params: Promise<{ robotId: string }> }) {

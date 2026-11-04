@@ -3,7 +3,7 @@ import { and, asc, count, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { thumbKey } from "@/lib/onshape/thumbnails";
 import { imageUrl } from "@/lib/storage/r2";
-import { fabStage, machinesOf } from "@/lib/fab";
+import { fabStage, factoryQueue, machinesOf } from "@/lib/fab";
 import { statusBreakdown } from "@/lib/stats";
 import { listSystemSync, type SystemSync } from "@/lib/versions/sync";
 import { countInventoryReviews } from "@/lib/review/inventory";
@@ -23,6 +23,8 @@ export type ShellRobot = {
   systems: ShellSystem[];
   // Parts in process or released, in total and per machine (To Fab badges).
   fab: { total: number; byMachine: Record<string, number> };
+  // Parts waiting at a Factory Fab factory, in total and per factory.
+  factory: { total: number; byFactory: Record<string, number> };
   review: number; // parts waiting in To Review
 };
 
@@ -103,8 +105,16 @@ export async function listShellRobots(): Promise<ShellRobot[]> {
         fab.total += 1;
         for (const m of machinesOf(row)) fab.byMachine[m] = (fab.byMachine[m] ?? 0) + 1;
       }
+      const factory = { total: 0, byFactory: {} as Record<string, number> };
+      for (const row of rows) {
+        const f = factoryQueue(row);
+        if (!f) continue;
+        factory.total += 1;
+        factory.byFactory[f] = (factory.byFactory[f] ?? 0) + 1;
+      }
       return {
         fab,
+        factory,
         review: own.reduce((n, s) => n + (reviewsOf.get(s.id) ?? 0), 0) + (r.archived ? 0 : inventoryReviews),
         id: r.id,
         name: r.name,

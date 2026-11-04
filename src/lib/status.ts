@@ -3,7 +3,8 @@
 // - a new part is Not Started;
 // - while every done_* counter is 0, the status is the stored design_state;
 // - once any counter is above 0, the status is derived from the first unfinished process slot;
-// - COTS parts use their own statuses (config/cots.ts) and ignore the counters.
+// - COTS parts use their own statuses (config/cots.ts) and ignore the counters;
+// - a Factory Fab factory's parts read as one of FACTORY_STATUSES.
 
 import {
   DEFAULT_STATUS,
@@ -13,8 +14,10 @@ import {
   getStatus,
   isStatusName,
   statusLabel,
+  toFactoryStatus,
   type StatusName,
 } from "@/config/statuses";
+import { factoryOf } from "@/config/machines";
 import { cotsStatusOf, isCotsStatusName, type CotsStatusName } from "@/config/cots";
 
 // A made part's status or a COTS part's.
@@ -50,6 +53,11 @@ export function hasProgress(part: StatusInput): boolean {
 
 export function computeStatus(part: StatusInput): PartStatus {
   if (part.classification === "cots") return cotsStatusOf(part.designState);
+  // A Factory Fab factory's part shows one of the factory statuses, whatever it was set to before.
+  return factoryOf(part) ? toFactoryStatus(madeStatus(part)) : madeStatus(part);
+}
+
+function madeStatus(part: StatusInput): StatusName {
   if (!hasProgress(part)) return storedStatus(part.designState);
   const needed = Math.max(part.quantity, 1);
   for (const slot of SLOTS) {
