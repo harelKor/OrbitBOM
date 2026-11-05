@@ -83,9 +83,10 @@ function placeOf(el: HTMLElement | null, parts: number): Place | null {
 // `pack`: a Factory Fab pack, the same card without who makes it, machine and material, Auto
 // Layout or G-code; its status is the big factory status button and its download is one zip of
 // every part (Harel, 2026-11-04).
-// `cart`: an Order List cart (with `pack`): its vendor as the title, its cart button in place of
-// the status and downloads, and no priority, all opening the same way (Harel, 2026-11-04).
-export type CartActions = { button: React.ReactNode; onDelete: () => void; onRemove: (partId: string) => void };
+// `cart`: an Order List cart (with `pack`): its vendor as the title, its order status, its cart
+// button in place of the downloads, its delivery date where a batch shows who makes it, and no
+// priority, all opening the same way (Harel, 2026-11-05).
+export type CartActions = { button: React.ReactNode; status: React.ReactNode; delivery: React.ReactNode; onDelete: () => void; onRemove: (partId: string) => void };
 export function BatchCard({
   batch,
   members,
@@ -292,7 +293,7 @@ export function BatchCard({
       DRAG_TYPE,
       JSON.stringify({ ids: (notDone.length ? notDone : members).map((p) => p.id), from: stage, batch: batch.id, whole: true } satisfies DragLoad),
     );
-  const statusMenu = cart ? null : pack ? (
+  const statusMenu = cart ? cart.status : pack ? (
     <FactoryStatusButton
       status={shared}
       compact={list}
@@ -545,8 +546,9 @@ export function BatchCard({
             {edit && <span className="ml-auto">{deleteButton}</span>}
           </div>
           <div className={list ? "list-stack" : "card-grid"} style={list ? { zoom: 1 } : undefined}>
+            {/* A part is never wider than the batch's own card, even when one column fills the strip. */}
             {members.map((p) => (
-              <div key={p.id} className="flex min-w-0 flex-col gap-1">
+              <div key={p.id} className="flex min-w-0 flex-col gap-1" style={!list && tab ? { maxWidth: tab.width } : undefined}>
                 {card(p, { batch, members })}
                 {removeButton(p)}
               </div>
@@ -607,6 +609,7 @@ export function BatchCard({
                 the controls keep their clicks: the rest of the row opens the batch. */}
             <span className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
               {!pack && <span className="min-w-0 max-w-40">{userBox}</span>}
+              {cart && <span onClick={stop}>{cart.delivery}</span>}
               <span onClick={stop}>{statusMenu}</span>
               <span className="ml-auto flex shrink-0 items-center gap-1" onClick={stop}>
                 {downloadButtons}
@@ -671,21 +674,22 @@ export function BatchCard({
             ))}
           </button>
           <div className="pointer-events-none absolute inset-x-2 top-2 flex items-start gap-1.5">
-            {!pack && (
+            {(!pack || cart) && (
               <span className="pointer-events-auto min-w-0" onClick={stop}>
-                {userBox}
+                {cart ? cart.delivery : userBox}
               </span>
             )}
             <BatchDate at={batch.createdAt} overlay />
           </div>
         </div>
         {cart ? (
-          // A cart has no status: its vendor, a little bigger, shares one row with the cart button.
-          <div className="flex min-w-0 items-center gap-2 p-3">
-            <span className="min-w-0 flex-1 truncate text-base font-bold text-fg">{title}</span>
-            <span className="shrink-0" onClick={stop}>
-              {cart.button}
-            </span>
+          // A cart: its vendor a little bigger, then its order status and the cart button on one row.
+          <div className="flex min-w-0 flex-col gap-2 p-3">
+            <span className="min-w-0 truncate text-base font-bold text-fg">{title}</span>
+            <div className="flex min-w-0 items-center gap-2" onClick={stop}>
+              <span className="min-w-0 flex-1">{cart.status}</span>
+              <span className="shrink-0">{cart.button}</span>
+            </div>
           </div>
         ) : (
         <div className="flex min-w-0 flex-1 flex-col gap-2 p-3">

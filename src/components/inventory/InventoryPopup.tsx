@@ -193,7 +193,7 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
   return (
     <Ctx.Provider value={{ openItem, openMaterial }}>
       {children}
-      <Dialog open={!!state} onClose={close} title={title} width={state?.kind === "item" ? "w-[min(40rem,calc(100vw-2rem))]" : undefined} wide compact>
+      <Dialog open={!!state} onClose={close} title={title} width={state?.kind === "item" ? "w-[min(42rem,calc(100vw-2rem))]" : undefined} wide compact>
         {error && <p className="mb-3 rounded-md bg-rose-50 p-2 text-sm text-rose-700">Couldn&apos;t save: {error}</p>}
         {state?.kind === "item" && state.missing && (
           <div className="py-6 text-center">
@@ -598,8 +598,9 @@ function ItemBody({
       {picker.inputs}
       <div className="flex flex-wrap gap-x-3 gap-y-2.5 sm:flex-nowrap">
         {/* A little bigger on larger screens since 2026-11-04, the window a little wider for it;
-            phones keep their size (Harel). */}
-        <div className="thumb-well relative flex h-36 w-full shrink-0 items-center justify-center rounded-xl sm:h-52 sm:w-52">
+            phones keep their size (Harel). Bigger again on 2026-11-05, so the Order List's delivery
+            date row still ends above the picture's bottom edge. */}
+        <div className="thumb-well relative flex h-36 w-full shrink-0 items-center justify-center rounded-xl sm:h-56 sm:w-56">
           {picture || filler ? (
             // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
             <img src={(picture ?? filler)!} alt="" className={`h-full w-full object-contain p-2 ${picker.busy ? "opacity-50" : picture ? "" : "opacity-60"}`} />
@@ -705,7 +706,7 @@ function ItemBody({
           )}
           {order && showsOrder(order.info.status) && (
             <div className={wide}>
-              <CotsOrderBox key={`${order.info.status}:${order.info.quantity}`} info={order.info} onSave={order.save} editable={orderEditable} onLeave={onClose} />
+              <CotsOrderBox key={`${order.info.status}:${order.info.quantity}:${order.info.deliveryDate ?? ""}`} info={order.info} onSave={order.save} editable={orderEditable} onLeave={onClose} />
             </div>
           )}
         </div>

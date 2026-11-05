@@ -68,6 +68,10 @@ export const partChangesSchema = z
     cotsCategory: z.string().trim().min(1).max(60).nullable(), // an inventory category id
     stockCount: count,
     cotsSentBack: text,
+    cotsDeliveryDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .nullable(),
     // Counts one more (or takes one back) from the saved count rather than the page's copy, so
     // two people counting the same part at once never lose a piece (resolveCounterAdds).
     add: z.partialRecord(z.enum(["donePreprocess", "doneProcess1", "doneProcess2", "postDone", "stockCount"]), z.number().int().min(-1000).max(1000)),
@@ -119,6 +123,7 @@ export type PartRow = {
   cotsCategory: string | null;
   stockCount: number;
   cotsSentBack: string | null;
+  cotsDeliveryDate: string | null;
   overriddenFields: string[];
 };
 

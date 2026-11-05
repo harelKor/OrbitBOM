@@ -853,11 +853,12 @@ async function openOrderPart(partId: string) {
       cotsLinks: schema.parts.cotsLinks,
       unitPrice: schema.parts.unitPrice,
       cotsSentBack: schema.parts.cotsSentBack,
+      cotsDeliveryDate: schema.parts.cotsDeliveryDate,
       systemId: schema.parts.systemId,
     })
     .from(schema.parts)
     .where(eq(schema.parts.id, partId));
-  return p ? { id: p.id, quantity: p.quantity, status: cotsStatusOf(p.designState), links: p.cotsLinks, unitPrice: p.unitPrice, sentBack: p.cotsSentBack, fromBom: p.systemId !== null } : null;
+  return p ? { id: p.id, quantity: p.quantity, status: cotsStatusOf(p.designState), links: p.cotsLinks, unitPrice: p.unitPrice, sentBack: p.cotsSentBack, deliveryDate: p.cotsDeliveryDate, fromBom: p.systemId !== null } : null;
 }
 
 export async function loadItemHistory(itemId: string) {

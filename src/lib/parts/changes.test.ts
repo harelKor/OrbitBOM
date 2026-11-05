@@ -30,6 +30,7 @@ const part: PartRow = {
   stockCount: 0,
   postDone: 0,
   cotsSentBack: null,
+  cotsDeliveryDate: null,
   overriddenFields: [],
 };
 

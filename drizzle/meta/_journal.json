@@ -498,6 +498,13 @@
       "when": 1793821154323,
       "tag": "0070_cots_carts",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1793874042680,
+      "tag": "0071_cots_delivery_date",
+      "breakpoints": true
     }
   ]
 }

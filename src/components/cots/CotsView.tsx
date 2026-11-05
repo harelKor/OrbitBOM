@@ -173,7 +173,7 @@ export function CotsView({
     return () =>
       openItem(itemId, undefined, {
         cotsOrder: {
-          info: { quantity: p.quantity, status: computeStatus(p), links: p.cotsLinks ?? [], unitPrice: p.unitPrice, sentBack: p.cotsSentBack ?? null, grouped: row.members.length > 1 },
+          info: { quantity: p.quantity, status: computeStatus(p), links: p.cotsLinks ?? [], unitPrice: p.unitPrice, sentBack: p.cotsSentBack ?? null, deliveryDate: p.cotsDeliveryDate ?? null, grouped: row.members.length > 1 },
           save: saveRow(row),
         },
       });

@@ -205,6 +205,8 @@ export const parts = pgTable(
     stockCount: integer("stock_count").notNull().default(0),
     // Why the Order List sent the part back to Released; cleared when it is sent to order again.
     cotsSentBack: text("cots_sent_back"),
+    // When the order is due to arrive (Order List: the item window and its cart; Harel, 2026-11-05).
+    cotsDeliveryDate: date("cots_delivery_date"),
     // When the COTS part reached In Stock (null while it isn't), and when someone cleared it from
     // the COTS page's In Stock sections (they also drop it a week after it arrived).
     cotsInStockAt: timestamp("cots_in_stock_at", { withTimezone: true }),

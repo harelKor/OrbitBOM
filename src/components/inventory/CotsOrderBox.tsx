@@ -10,7 +10,8 @@ import { useCan, useMode } from "@/components/shell/ModeContext";
 import type { PartChanges } from "@/lib/parts/changes";
 
 // The COTS card behind an item, shown in the item window as two small glowing boxes under Needed
-// for Season: the order status and how many are being ordered. They change only when the window
+// for Season: the order status and how many are being ordered, and on the Order List a slim row
+// under them with the delivery date. They change only when the window
 // was opened from the COTS page; anywhere else they are read-only (Harel, 2026-11-02).
 export type CotsOrderInfo = {
   quantity: number;
@@ -18,6 +19,7 @@ export type CotsOrderInfo = {
   links: { url: string; site?: string; priceUsd?: number }[];
   unitPrice: number | null;
   sentBack: string | null;
+  deliveryDate?: string | null; // when the order is due (Harel, 2026-11-05)
   // The same part from several systems: the count is their sum, so it is changed on each card.
   grouped?: boolean;
   // The COTS page that shows the card, when the window was opened from somewhere else.
@@ -38,6 +40,7 @@ export function CotsOrderBox({ info, onSave, editable, onLeave }: { info: CotsOr
   const [status, setStatus] = useState(info.status);
   const [qty, setQty] = useState(info.quantity);
   const [typed, setTyped] = useState<string | null>(null);
+  const [delivery, setDelivery] = useState(info.deliveryDate ?? null);
   const canStatus = editable && work;
   const canCount = editable && work && !info.grouped;
 
@@ -124,6 +127,28 @@ export function CotsOrderBox({ info, onSave, editable, onLeave }: { info: CotsOr
           </span>
         )}
       </label>
+      {/* The delivery date, once the part is on the Order List. */}
+      {(ORDER_STATUSES as readonly string[]).includes(status) && (canStatus || delivery) && (
+        <label className={`${HALO} col-span-2 flex min-h-9 min-w-0 items-center justify-between gap-2 px-3 py-1`}>
+          <span className={LABEL}>Delivery date</span>
+          {canStatus ? (
+            <input
+              type="date"
+              value={delivery ?? ""}
+              onClick={(e) => e.currentTarget.showPicker?.()}
+              onChange={(e) => {
+                const next = e.target.value || null;
+                setDelivery(next);
+                onSave({ cotsDeliveryDate: next });
+              }}
+              aria-label="Delivery date"
+              className="min-w-0 cursor-pointer rounded-md bg-transparent px-1 text-right text-sm font-bold text-fg tabular-nums outline-none [color-scheme:light_dark] hover:bg-surface focus:bg-surface focus:ring-1 focus:ring-sky-400/60"
+            />
+          ) : (
+            <span className="text-sm font-bold text-fg tabular-nums">{delivery}</span>
+          )}
+        </label>
+      )}
     </div>
   );
 }
