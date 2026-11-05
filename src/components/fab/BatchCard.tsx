@@ -100,6 +100,7 @@ export function BatchCard({
   pack = false,
   title,
   cart,
+  arrival = false,
 }: {
   batch: Batch;
   members: CardPart[];
@@ -113,6 +114,7 @@ export function BatchCard({
   pack?: boolean;
   title?: string; // a pack's name on the card (Zivudim's: its material)
   cart?: CartActions;
+  arrival?: boolean; // holds a part this member hasn't seen arrive (src/lib/seen.ts): the card glows
 }) {
   // Fab batches are Build Team work: any team renames, deletes and re-statuses them.
   const edit = useCan("work");
@@ -583,7 +585,7 @@ export function BatchCard({
             ...(open && side && { ...openEdges, clipPath: "inset(-40px 0 -40px -40px)" }),
             ...(open && mine && { boxShadow: glow }),
           }}
-          className={`flex min-w-0 cursor-pointer items-center gap-3 rounded-2xl border-2 border-line-strong bg-surface py-2.5 pr-2.5 pl-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_2px_8px_rgba(0,0,0,0.25)] transition-all duration-150 hover:border-sky-400/50 active:not-[:has(:is(button,a,input,select,textarea,[role=dialog]):active)]:scale-[0.99] ${open ? (side ? "rounded-r-none" : "rounded-b-none") : ""} ${over ? "ring-2 ring-accent" : ""}`}
+          className={`${arrival ? "arrival-halo" : ""} flex min-w-0 cursor-pointer items-center gap-3 rounded-2xl border-2 border-line-strong bg-surface py-2.5 pr-2.5 pl-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_2px_8px_rgba(0,0,0,0.25)] transition-all duration-150 hover:border-sky-400/50 active:not-[:has(:is(button,a,input,select,textarea,[role=dialog]):active)]:scale-[0.99] ${open ? (side ? "rounded-r-none" : "rounded-b-none") : ""} ${over ? "ring-2 ring-accent" : ""}`}
         >
           <span className="grid h-14 w-14 shrink-0 gap-px overflow-hidden rounded-xl bg-white" style={collageGrid(small.length)}>
             {small.map((p) => (
@@ -631,6 +633,7 @@ export function BatchCard({
     <div
       ref={ref}
       data-batch-card=""
+      data-arrival={arrival ? "" : undefined}
       {...dropProps}
       draggable={draggable}
       onDragStart={dragStart}

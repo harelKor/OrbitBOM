@@ -1,4 +1,5 @@
 import { areaOfMachine } from "@/config/machines";
+import { ArrivalMark } from "@/components/shell/Arrivals";
 import Link from "next/link";
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
@@ -101,13 +102,16 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
       </div>
 
       <div className={`grid gap-3 ${build ? "sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]" : "sm:grid-cols-2"}`}>
-        <LaunchCard
-          href={`/robots/${robot.id}/fab`}
-          icon="fab"
-          title="Shop Fab"
-          count={inProcess + ready}
-          detail={`${inProcess} in process, ${ready} released`}
-        />
+        {/* Glows while Shop Fab has parts this member hasn't seen (src/lib/seen.ts). */}
+        <ArrivalMark page={`fab:${robot.id}`}>
+          <LaunchCard
+            href={`/robots/${robot.id}/fab`}
+            icon="fab"
+            title="Shop Fab"
+            count={inProcess + ready}
+            detail={`${inProcess} in process, ${ready} released`}
+          />
+        </ArrivalMark>
         {build ? (
           <div className="grid gap-3">
             <StatBox

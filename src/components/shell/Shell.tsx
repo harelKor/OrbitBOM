@@ -7,6 +7,7 @@ import { InventoryPopupProvider } from "@/components/inventory/InventoryPopup";
 import { PartDetailsProvider } from "@/components/bom/PartDetailsHost";
 import { Toaster } from "@/components/ui/Toaster";
 import { useEscape } from "@/components/ui/useEscape";
+import { ArrivalsProvider } from "./Arrivals";
 import { FilterProvider } from "./FilterContext";
 import { LeftNav } from "./LeftNav";
 import { MaterialColorsProvider } from "./MaterialColors";
@@ -47,6 +48,7 @@ export function Shell({
   materialColors,
   materialsStamp,
   member,
+  arrivals,
   children,
 }: {
   robots: ShellRobot[];
@@ -56,6 +58,7 @@ export function Shell({
   materialColors: Record<string, string>;
   materialsStamp: number;
   member: { name: string; email: string; isAdmin: boolean };
+  arrivals: { newest: Record<string, string>; seen: Record<string, string> };
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -163,6 +166,7 @@ export function Shell({
   };
 
   return (
+    <ArrivalsProvider newest={arrivals.newest} seen={arrivals.seen}>
     <ModeProvider initial={mode} isAdmin={member.isAdmin}>
       <FilterProvider>
         <MaterialColorsProvider initial={materialColors} stamp={materialsStamp}>
@@ -211,6 +215,7 @@ export function Shell({
         </MaterialColorsProvider>
       </FilterProvider>
     </ModeProvider>
+    </ArrivalsProvider>
   );
 }
 

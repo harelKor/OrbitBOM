@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getMachine, isPrinter, printerOf } from "@/config/machines";
 import { FactoryView } from "@/components/factory/FactoryView";
+import { MarkSeen } from "@/components/shell/Arrivals";
 import { requireMember } from "@/lib/auth";
+import { getSeenAt } from "@/lib/data/seen";
 import { listRobotGroups } from "@/lib/data/groups";
 import { listInventoryNames } from "@/lib/data/inventory";
 import { listRobotParts } from "@/lib/data/parts";
@@ -14,12 +16,15 @@ import { isUuid } from "@/lib/uuid";
 export default async function PrinterPage({ params }: { params: Promise<{ robotId: string; printerId: string }> }) {
   const { robotId, printerId } = await params;
   if (!isUuid(robotId) || !isPrinter(printerId)) notFound();
-  const [member, data, parts, groups, inventory] = await Promise.all([
-    requireMember(),
+  const member = await requireMember();
+  // The new parts glow: when this member last opened this printer's page, from before this visit.
+  const seenPage = `print:${robotId}:${printerId}`;
+  const [data, parts, groups, inventory, seenAt] = await Promise.all([
     getRobot(robotId),
     listRobotParts(robotId),
     listRobotGroups(robotId),
     listInventoryNames(),
+    getSeenAt(member.id, seenPage),
   ]);
   if (!data) notFound();
   const printer = getMachine(printerId)!;
@@ -32,7 +37,9 @@ export default async function PrinterPage({ params }: { params: Promise<{ robotI
         </Link>
         <h1 className="display text-3xl text-accent">{printer.name}</h1>
       </div>
+      <MarkSeen page={seenPage} />
       <FactoryView
+        seenAt={seenAt}
         area="print"
         factory={printer.id}
         parts={parts.filter((p) => p.classification !== "cots" && printerOf(p) === printer.id)}

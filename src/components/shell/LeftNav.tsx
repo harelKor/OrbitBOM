@@ -11,6 +11,7 @@ import { Icon, type IconName } from "@/components/ui/Icon";
 import { FastLink, ShallowLink } from "@/components/ui/FastLink";
 import { useManage } from "./ModeContext";
 import { useRobotContext } from "./useRobotContext";
+import { useArrivals } from "./Arrivals";
 
 export function LeftNav({
   robots,
@@ -24,6 +25,8 @@ export function LeftNav({
   member: { name: string; email: string; isAdmin: boolean };
 }) {
   const canManage = useManage();
+  // New parts this member hasn't seen glow in their pages' links (src/lib/seen.ts).
+  const arrivals = useArrivals();
   const { pathname, robot } = useRobotContext(robots, lastRobotId);
   const query = useSearchParams();
   const machine = query.get("machine");
@@ -66,7 +69,7 @@ export function LeftNav({
           </Item>
           <div>
             <div className="relative flex items-center">
-              <Item href={base && `${base}/fab`} icon="fab" active={onFab && !machine} className="flex-1 pr-14">
+              <Item href={base && `${base}/fab`} icon="fab" active={onFab && !machine} glow={!!robot && arrivals.page(`fab:${robot.id}`)} className="flex-1 pr-14">
                 Shop Fab
               </Item>
               {base && (
@@ -97,7 +100,7 @@ export function LeftNav({
                         active ? "bg-accent/15 text-white" : n ? "text-fg-2 hover:bg-raised hover:text-fg" : "text-subtle hover:bg-raised hover:text-fg-2"
                       }`}
                     >
-                      <span className="truncate">{m.name}</span>
+                      <span className={`truncate ${arrivals.tab(`fab:${robot!.id}`, m.id) ? "arrival-text" : ""}`}>{m.name}</span>
                       {n > 0 && <Count n={n} className="ml-auto" />}
                     </ShallowLink>
                   );
@@ -114,6 +117,7 @@ export function LeftNav({
             machines={PRINTERS}
             total={robot?.print.total ?? 0}
             counts={robot?.print.byPrinter ?? {}}
+            glowOf={(id) => !!robot && arrivals.page(`print:${robot.id}:${id}`)}
           />
           <AreaNav
             base={base && `${base}/factory`}
@@ -124,6 +128,7 @@ export function LeftNav({
             machines={FACTORY_FAB_MACHINES}
             total={robot?.factory.total ?? 0}
             counts={robot?.factory.byFactory ?? {}}
+            glowOf={(id) => !!robot && arrivals.page(`factory:${robot.id}:${id}`)}
           />
           <div className="relative flex items-center">
             <Item href={base && `${base}/review`} icon="review" active={!!base && pathname.startsWith(`${base}/review`)} className="flex-1 pr-14">
@@ -133,7 +138,7 @@ export function LeftNav({
           </div>
           <div>
             <div className="relative flex items-center">
-              <Item href="/cots" icon="cart" active={pathname === "/cots"} className="flex-1 pr-8">
+              <Item href="/cots" icon="cart" active={pathname === "/cots"} glow={arrivals.page("cots:released") || arrivals.page("cots:order")} className="flex-1 pr-8">
                 COTS
               </Item>
               <button
@@ -148,9 +153,9 @@ export function LeftNav({
             {cotsOpen && (
               <div className="mt-0.5 mb-1 ml-5 @max-[10rem]:hidden space-y-px border-l border-line pl-2">
                 {[
-                  { href: "/cots/released", name: "Released" },
-                  { href: "/cots/order-list", name: "Order List" },
-                  { href: "/cots/history", name: "Order History" },
+                  { href: "/cots/released", name: "Released", page: "cots:released" },
+                  { href: "/cots/order-list", name: "Order List", page: "cots:order" },
+                  { href: "/cots/history", name: "Order History", page: null },
                 ].map((l) => (
                   <FastLink
                     key={l.href}
@@ -159,7 +164,7 @@ export function LeftNav({
                       pathname === l.href ? "bg-accent/15 text-white" : "text-fg-2 hover:bg-raised hover:text-fg"
                     }`}
                   >
-                    {l.name}
+                    <span className={l.page && arrivals.page(l.page) ? "arrival-text" : undefined}>{l.name}</span>
                   </FastLink>
                 ))}
               </div>
@@ -274,18 +279,20 @@ function Item({
   href,
   icon,
   active = false,
+  glow = false,
   className = "",
   children,
 }: {
   href: string | null;
   icon: IconName;
   active?: boolean;
+  glow?: boolean; // new parts arrived there since this member last looked (src/lib/seen.ts)
   className?: string;
   children: React.ReactNode;
 }) {
   const cls = `press relative flex items-center gap-2.5 rounded-md px-3 py-1.5 ${className}`;
   // Cut short with an ellipsis in a narrowed column; screen readers only once just icons show.
-  const name = <span className="truncate @max-[10rem]:sr-only">{children}</span>;
+  const name = <span className={`truncate @max-[10rem]:sr-only ${glow ? "arrival-text" : ""}`}>{children}</span>;
   if (!href)
     return (
       <span className={`${cls} cursor-default text-faint`} title="Create a robot first">
@@ -301,7 +308,7 @@ function Item({
       className={`${cls} ${active ? "bg-accent/10 font-semibold text-accent" : "text-muted hover:bg-raised hover:text-fg"}`}
     >
       {active && <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-accent" />}
-      <Icon name={icon} className={`h-4 w-4 shrink-0 ${active ? "text-accent-hover" : ""}`} />
+      <Icon name={icon} className={`h-4 w-4 shrink-0 ${active ? "text-accent-hover" : ""} ${glow ? "arrival-text" : ""}`} />
       {name}
     </FastLink>
   );
@@ -318,6 +325,7 @@ function AreaNav({
   machines,
   total,
   counts,
+  glowOf,
 }: {
   base: string | null;
   pathname: string;
@@ -327,6 +335,7 @@ function AreaNav({
   machines: readonly { id: string; name: string }[];
   total: number;
   counts: Record<string, number>;
+  glowOf: (machineId: string) => boolean; // that printer's or factory's page has unseen new parts
 }) {
   const on = !!base && pathname.startsWith(base);
   const [toggled, setToggled] = useState<boolean | null>(null);
@@ -334,7 +343,7 @@ function AreaNav({
   return (
     <div>
       <div className="relative flex items-center">
-        <Item href={base} icon={icon} active={!!base && pathname === base} className="flex-1 pr-14">
+        <Item href={base} icon={icon} active={!!base && pathname === base} glow={machines.some((m) => glowOf(m.id))} className="flex-1 pr-14">
           {label}
         </Item>
         {base && (
@@ -364,7 +373,7 @@ function AreaNav({
                   pathname === href ? "bg-accent/15 text-white" : n ? "text-fg-2 hover:bg-raised hover:text-fg" : "text-subtle hover:bg-raised hover:text-fg-2"
                 }`}
               >
-                <span className="truncate">{m.name}</span>
+                <span className={`truncate ${glowOf(m.id) ? "arrival-text" : ""}`}>{m.name}</span>
                 {n > 0 && <Count n={n} className="ml-auto" />}
               </FastLink>
             );

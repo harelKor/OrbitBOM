@@ -19,6 +19,7 @@ export default async function PrintingPage({ params }: { params: Promise<{ robot
       text="Parts printed on the team's printers, from released to on the shelf."
       base={`/robots/${robotId}/printing`}
       icon="printer"
+      page={(id) => `print:${robotId}:${id}`}
       boxes={printers}
     />
   );

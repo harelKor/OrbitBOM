@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import type { FactoryCount } from "@/lib/data/factory";
+import { ArrivalMark } from "@/components/shell/Arrivals";
 
 // Factory Fab's and 3D Printing's home: one big box per factory or printer, like the COTS page's,
 // with the parts waiting there, how many are released and the open packs (Harel, 2026-11-04).
-export function AreaBoxes({ robotName, title, text, base, icon, boxes }: { robotName: string; title: string; text: string; base: string; icon: IconName; boxes: FactoryCount[] }) {
+// `page`: the box's page key for the new parts glow, by printer or factory id (src/lib/seen.ts).
+export function AreaBoxes({ robotName, title, text, base, icon, boxes, page }: { robotName: string; title: string; text: string; base: string; icon: IconName; boxes: FactoryCount[]; page: (id: string) => string }) {
   return (
     <div className="flex min-h-[calc(100dvh-var(--topbar-h,2.75rem)-2rem)] flex-col gap-5 pb-4 md:min-h-[calc(100dvh-var(--topbar-h,2.75rem)-3rem)]">
       <div>
@@ -14,8 +16,8 @@ export function AreaBoxes({ robotName, title, text, base, icon, boxes }: { robot
       </div>
       <div className="grid flex-1 auto-rows-fr gap-3 sm:grid-cols-2 sm:gap-5">
         {boxes.map((f) => (
+          <ArrivalMark key={f.id} page={page(f.id)}>
           <Link
-            key={f.id}
             href={`${base}/${f.id}`}
             className="card-interactive group relative flex min-h-36 flex-col justify-between p-5 active:scale-[0.98] sm:min-h-64 sm:p-9"
           >
@@ -35,6 +37,7 @@ export function AreaBoxes({ robotName, title, text, base, icon, boxes }: { robot
               <Icon name="arrow" className="h-7 w-7 shrink-0 text-subtle transition-transform group-hover:translate-x-1 group-hover:text-accent" />
             </span>
           </Link>
+          </ArrivalMark>
         ))}
       </div>
     </div>

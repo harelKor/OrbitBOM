@@ -545,6 +545,39 @@ body {
   }
 }
 
+/* New parts glow (src/lib/seen.ts, Harel 2026-11-05): a side panel link's text, a home box, and on
+   the page the cards that arrived since your last visit (until the first tap). A soft gold, the same
+   as the Added halo, breathing slowly. */
+.arrival-text {
+  color: rgb(253 224 71);
+  text-shadow: 0 0 8px rgba(250, 204, 21, 0.7);
+}
+.arrival-halo,
+[data-arrival] > .card-interactive,
+[data-arrival] > [data-part],
+.card-interactive[data-arrival] {
+  border-color: rgb(252 211 77 / 0.9) !important;
+  animation: arrival-breathe 2.4s ease-in-out infinite;
+}
+@keyframes arrival-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px rgba(252, 211, 77, 0.7), 0 0 14px 3px rgba(250, 204, 21, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 0 2px rgba(252, 211, 77, 0.95), 0 0 24px 6px rgba(250, 204, 21, 0.5);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .arrival-halo,
+  [data-arrival] > .card-interactive,
+  [data-arrival] > [data-part],
+  .card-interactive[data-arrival] {
+    animation: none;
+    box-shadow: 0 0 0 2px rgba(252, 211, 77, 0.85), 0 0 18px 4px rgba(250, 204, 21, 0.4);
+  }
+}
+
 /* A part card or row that Recent actions just scrolled to. */
 .focus-flash {
   animation: focus-flash 2.4s var(--ease-snap);

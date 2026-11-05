@@ -19,6 +19,8 @@ import { AREA_READY, FACTORY_IN_STOCK_DAYS } from "@/lib/fab";
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { computeStatus } from "@/lib/status";
 import { FactoryStatusButton } from "./FactoryStatusButton";
+import { useArrivalHalo } from "@/components/shell/Arrivals";
+import { arrivalPage } from "@/lib/seen";
 
 const IN_STOCK_MS = FACTORY_IN_STOCK_DAYS * 24 * 60 * 60 * 1000;
 const inStock = (p: CardPart) => computeStatus(p) === "In Stock";
@@ -33,6 +35,7 @@ const tintOf = (p: CardPart) => (computeStatus(p) === "Released" ? {} : statusTi
 export function FactoryView({
   area = "factory",
   factory,
+  seenAt = null,
   byMaterial = false,
   parts,
   packs,
@@ -43,6 +46,7 @@ export function FactoryView({
 }: {
   area?: FabArea;
   factory: string; // the factory's or printer's machine id
+  seenAt?: string | null; // when this member last opened the page, before this visit (src/lib/seen.ts)
   byMaterial?: boolean; // Zivudim: Released parts are packed by material by themselves (lib/factory/autoPack.ts)
   parts: CardPart[];
   packs: Batch[];
@@ -67,6 +71,10 @@ export function FactoryView({
     });
   };
   const { filters } = useFilters();
+  // Parts that arrived since this member's last visit glow until the first press (Harel, 2026-11-05).
+  const halo = useArrivalHalo(seenAt, me);
+  const page = `${area}:${robotId}:${factory}`;
+  const arrived = (p: CardPart) => halo(p) && arrivalPage(p, robotId)?.page === page;
   const [now] = useState(() => Date.now());
   const recent = (at: Date | string | number | null | undefined) => !!at && now - new Date(at).getTime() < IN_STOCK_MS;
 
@@ -120,7 +128,7 @@ export function FactoryView({
   const card = (p: CardPart) => {
     const pickable = packing && view.released.includes(p);
     return (
-      <div key={p.id} className={packing && !pickable ? "opacity-40" : undefined}>
+      <div key={p.id} className={packing && !pickable ? "opacity-40" : undefined} data-arrival={arrived(p) ? "" : undefined}>
         <PartCard
           part={p}
           save={(c) => save([p.id], c)}
@@ -147,7 +155,7 @@ export function FactoryView({
     return materials.length === 1 ? materials[0] : b.name;
   };
   const packCard = (b: (typeof view.all)[number]) => (
-    <BatchCard key={b.id} pack title={byMaterial ? packTitle(b) : undefined} batch={b} members={b.members} save={save} card={card} draggable={false} memberNames={[]} me={me} />
+    <BatchCard key={b.id} pack title={byMaterial ? packTitle(b) : undefined} batch={b} members={b.members} save={save} card={card} draggable={false} memberNames={[]} me={me} arrival={b.members.some(arrived)} />
   );
 
   return (

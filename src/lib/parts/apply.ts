@@ -5,6 +5,7 @@ import { db, schema } from "@/db";
 import { COTS_IN_STOCK, ORDER_STATUSES, cotsStatusOf } from "@/config/cots";
 import { usageOf } from "@/lib/data/inventory";
 import { isAreaInStock, isFabFinished } from "@/lib/fab";
+import { arrives } from "@/lib/seen";
 import { fillCardFromItem, pushCardToItem } from "@/lib/inventory/cotsSync";
 import { normName, onshapeKeyOf } from "@/lib/inventory/match";
 import { moveStock } from "@/lib/inventory/moves";
@@ -103,6 +104,9 @@ export async function applyEachPartChanges(
           fabFinishedAt: isFabFinished({ ...row, ...set }) || isAreaInStock({ ...row, ...set }) ? (row.fabFinishedAt ?? new Date()) : null,
           // A COTS part keeps when it arrived while it stays In Stock; leaving In Stock un-clears it.
           ...(inStockNow(after) ? { cotsInStockAt: row.cotsInStockAt ?? new Date() } : { cotsInStockAt: null, cotsClearedAt: null }),
+          // Arriving in a page's list (Released, In process, the Order List...) makes it glow there
+          // for members who haven't opened that page since (src/lib/seen.ts).
+          ...(arrives(row, after) && { stageAt: new Date() }),
           lastModifiedAt: new Date(),
           lastModifiedBy: ctx.memberId,
         })

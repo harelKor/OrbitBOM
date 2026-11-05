@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { COTS_IN_STOCK, COTS_RELEASED, ORDER_STATUSES } from "@/config/cots";
 import { Icon, type IconName } from "@/components/ui/Icon";
+import { ArrivalMark } from "@/components/shell/Arrivals";
 import { requireMember } from "@/lib/auth";
 import { countOrderHistory } from "@/lib/data/inventory";
 import { countCotsStatuses } from "@/lib/data/parts";
@@ -11,8 +12,8 @@ export default async function CotsPage() {
   const [counts, history] = await Promise.all([countCotsStatuses(), countOrderHistory()]);
   const ordering = ORDER_STATUSES.filter((s) => s !== COTS_IN_STOCK).reduce((n, s) => n + (counts.get(s) ?? 0), 0);
   const boxes = [
-    { href: "/cots/released", title: "Released", count: counts.get(COTS_RELEASED) ?? 0, text: "Ready to be ordered", icon: "list" as IconName },
-    { href: "/cots/order-list", title: "Order List", count: ordering, text: `Being ordered · ${counts.get(COTS_IN_STOCK) ?? 0} in stock`, icon: "cart" as IconName },
+    { href: "/cots/released", page: "cots:released", title: "Released", count: counts.get(COTS_RELEASED) ?? 0, text: "Ready to be ordered", icon: "list" as IconName },
+    { href: "/cots/order-list", page: "cots:order", title: "Order List", count: ordering, text: `Being ordered · ${counts.get(COTS_IN_STOCK) ?? 0} in stock`, icon: "cart" as IconName },
   ];
   return (
     <div className="flex min-h-[calc(100dvh-var(--topbar-h,2.75rem)-2rem)] flex-col gap-5 pb-4 md:min-h-[calc(100dvh-var(--topbar-h,2.75rem)-3rem)]">
@@ -23,6 +24,8 @@ export default async function CotsPage() {
       </div>
       <div className="grid flex-1 grid-rows-[3fr_3fr_2fr] gap-3 sm:grid-cols-2 sm:grid-rows-[3fr_1fr] sm:gap-5">
         {boxes.map((b) => (
+          // Glows while the list has parts this member hasn't seen (src/lib/seen.ts).
+          <ArrivalMark key={b.href} page={b.page}>
           <Link
             key={b.href}
             href={b.href}
@@ -40,6 +43,7 @@ export default async function CotsPage() {
               <Icon name="arrow" className="h-7 w-7 text-subtle transition-transform group-hover:translate-x-1 group-hover:text-accent" />
             </span>
           </Link>
+          </ArrivalMark>
         ))}
         <Link
           href="/cots/history"

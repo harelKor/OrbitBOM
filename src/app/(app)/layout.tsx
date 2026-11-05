@@ -4,6 +4,7 @@ import { Shell } from "@/components/shell/Shell";
 import { requireMember } from "@/lib/auth";
 import { listCategories } from "@/lib/data/categories";
 import { listMaterialColors } from "@/lib/data/materialColors";
+import { listNewest, listSeen } from "@/lib/data/seen";
 import { listShellRobots } from "@/lib/data/shell";
 import { getMode } from "@/lib/mode";
 
@@ -12,12 +13,15 @@ const renderStamp = () => Date.now();
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const member = await requireMember();
-  const [robots, mode, jar, materialColors, categories] = await Promise.all([
+  const [robots, mode, jar, materialColors, categories, newest, seen] = await Promise.all([
     listShellRobots(),
     getMode(),
     cookies(),
     listMaterialColors(),
     listCategories(),
+    // The new parts glow: the newest arrival per page and when this member last opened each.
+    listNewest(member.id),
+    listSeen(member.id),
   ]);
 
   return (
@@ -30,6 +34,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       // A new render (a save, a refresh) has the material pickers fetch their list again.
       materialsStamp={renderStamp()}
       member={{ name: member.name, email: member.email, isAdmin: member.isAdmin }}
+      arrivals={{ newest, seen }}
     >
       {children}
     </Shell>

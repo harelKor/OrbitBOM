@@ -23,6 +23,7 @@ export default async function FactoryFabPage({ params }: { params: Promise<{ rob
       text="Parts made by our partner factories, from released to on the shelf."
       base={`/robots/${robotId}/factory`}
       icon="factory"
+      page={(id) => `factory:${robotId}:${id}`}
       boxes={factories}
     />
   );

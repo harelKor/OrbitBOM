@@ -20,6 +20,8 @@ import { FINISHED_STATUS, fabStage, machinesOf } from "@/lib/fab";
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { statusMachine } from "@/lib/status";
 import { FabPartListRow } from "./FabListRow";
+import { useArrivalHalo } from "@/components/shell/Arrivals";
+import { arrivalPage } from "@/lib/seen";
 
 // Cards (the default) or List: horizontal rows, batches folding open below their row.
 const LAYOUTS = ["cards", "list"] as const;
@@ -42,6 +44,7 @@ export function FabView({
   isAdmin,
   memberNames,
   me,
+  seenAt = null,
 }: {
   parts: CardPart[];
   batches: Batch[];
@@ -50,6 +53,7 @@ export function FabView({
   isAdmin: boolean;
   memberNames: string[];
   me: string;
+  seenAt?: string | null; // when this member last opened Shop Fab, before this visit (src/lib/seen.ts)
 }) {
   // Any team works the To Fab page; without a team (read only) nothing moves or changes.
   const work = useCan("work");
@@ -110,6 +114,10 @@ export function FabView({
 
   const machine = useFabMachine();
   const { filters } = useFilters();
+  // Parts that arrived (Released, In process, Post Processing) since this member's last visit
+  // glow until the first press anywhere (Harel, 2026-11-05).
+  const halo = useArrivalHalo(seenAt, me);
+  const arrived = (p: CardPart) => halo(p) && arrivalPage(p, robotId)?.page === `fab:${robotId}`;
   const [layout, setLayout] = useStoredChoice("orbit-fab-view", LAYOUTS, "cards");
   const [fab, setFab] = useState(false);
   const searchParams = useSearchParams();
@@ -309,6 +317,7 @@ export function FabView({
           e.preventDefault();
         }}
         className={fab && !pickable ? "opacity-40" : undefined}
+        data-arrival={arrived(p) ? "" : undefined}
       >
         {layout === "list" ? (
           <FabPartListRow
@@ -347,6 +356,7 @@ export function FabView({
       memberNames={memberNames}
       me={me}
       onDropParts={fab || !work ? undefined : (load) => run(() => moveToFabBatch(b.id, load.ids, load.batch, batchStatus(b.members)))}
+      arrival={b.members.some(arrived)}
     />
   );
   const machinesWithParts = MACHINES.filter((m) => counts.byMachine.has(m.id));

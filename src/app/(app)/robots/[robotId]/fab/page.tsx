@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation";
 import { areaOfMachine } from "@/config/machines";
 import { FabHeading, FabView } from "@/components/fab/FabView";
+import { MarkSeen } from "@/components/shell/Arrivals";
 import { requireMember } from "@/lib/auth";
+import { getSeenAt } from "@/lib/data/seen";
 import { listRobotGroups } from "@/lib/data/groups";
 import { listInventoryNames } from "@/lib/data/inventory";
 import { listMemberNames, listRobotParts } from "@/lib/data/parts";
@@ -18,18 +20,22 @@ export default async function FabPage({ params }: { params: Promise<{ robotId: s
   if (!isUuid(robotId)) notFound();
   // One round of queries in parallel; the machine filter (?machine=) runs on the client, so
   // switching machines doesn't come back here.
-  const [member, data, parts, batches, inventory, memberNames] = await Promise.all([
-    requireMember(),
+  const member = await requireMember();
+  // The new parts glow: when this member last opened Shop Fab, from before this visit.
+  const seenPage = `fab:${robotId}`;
+  const [data, parts, batches, inventory, memberNames, seenAt] = await Promise.all([
     getRobot(robotId),
     listRobotParts(robotId),
     listRobotGroups(robotId),
     listInventoryNames(),
     listMemberNames(),
+    getSeenAt(member.id, seenPage),
   ]);
   if (!data) notFound();
 
   return (
     <div className="space-y-5">
+      <MarkSeen page={seenPage} />
       <FabHeading robotName={data.robot.name} />
       <FabView
         parts={parts}
@@ -39,6 +45,7 @@ export default async function FabPage({ params }: { params: Promise<{ robotId: s
         robotId={data.robot.id}
         inventory={inventory}
         isAdmin={member.isAdmin}
+        seenAt={seenAt}
       />
     </div>
   );

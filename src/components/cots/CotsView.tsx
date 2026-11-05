@@ -28,6 +28,8 @@ import type { CotsCart } from "@/lib/data/cotsCarts";
 import { OpenBatchContext } from "@/components/fab/BatchCard";
 import { CartCard } from "./CartCard";
 import { CotsCard, OrderStatusButton } from "./CotsCard";
+import { useArrivalHalo } from "@/components/shell/Arrivals";
+import { arrivalPage } from "@/lib/seen";
 import { PartList, PartListRow } from "@/components/bom/PartListRow";
 import { useStoredChoice } from "@/components/ui/useStoredChoice";
 import { formatPrice, useCurrency } from "./currency";
@@ -81,6 +83,7 @@ export function CotsView({
   categories,
   carts = [],
   shelf,
+  seenAt = null,
 }: {
   list: "released" | "order";
   parts: CotsViewPart[];
@@ -88,9 +91,15 @@ export function CotsView({
   categories: InvCategory[];
   carts?: CotsCart[];
   shelf?: CotsShelf;
+  seenAt?: string | null; // when this member last opened this list, before this visit (src/lib/seen.ts)
 }) {
   const edit = useManage();
   const work = useCan("work");
+  // Cards that arrived in this list since this member's last visit glow until the first press
+  // (Harel, 2026-11-05).
+  const halo = useArrivalHalo(seenAt);
+  const arrivedRow = (row: { members: CardPart[] }) =>
+    row.members.some((m) => halo(m) && arrivalPage(m, null)?.page === (list === "released" ? "cots:released" : "cots:order"));
   const { mode } = useMode();
   // The statuses this team may set on many cards at once, and whether it sends cards to order.
   const bulkStatuses = BULK_STATUSES.filter((s) => !statusDenied(mode, s, { cots: true }));
@@ -300,7 +309,7 @@ export function CotsView({
         {rows.map((row) => {
           const ids = row.members.map((m) => m.id);
           return (
-            <div key={row.key} className={`relative ${row.members.every((m) => struck.has(m.id)) ? "opacity-60" : ""} ${dim(row)}`} {...dragProps(ids, from)}>
+            <div key={row.key} className={`relative ${row.members.every((m) => struck.has(m.id)) ? "opacity-60" : ""} ${dim(row)}`} data-arrival={arrivedRow(row) ? "" : undefined} {...dragProps(ids, from)}>
               <PartListRow
                 part={row.part}
                 save={saveRow(row)}
@@ -331,7 +340,7 @@ export function CotsView({
               </GroupBox>
             );
           return (
-            <div key={row.key} className={`relative ${dim(row)}`} {...dragProps(ids, from)}>
+            <div key={row.key} className={`relative ${dim(row)}`} data-arrival={arrivedRow(row) ? "" : undefined} {...dragProps(ids, from)}>
               <CotsCard
                 part={row.part}
                 save={saveRow(row)}

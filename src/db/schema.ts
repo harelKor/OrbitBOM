@@ -183,6 +183,10 @@ export const parts = pgTable(
     // When the part was first made (reached a done status with a machine); it stays in To Fab's
     // Finished section from then on.
     fabFinishedAt: timestamp("fab_finished_at", { withTimezone: true }),
+    // When the part last arrived in a page's list (src/lib/seen.ts): Shop Fab's Released, In process
+    // or Post Processing, a printer's or factory's Released, COTS Released or Order List. Members
+    // who haven't opened that page since see it glow (Harel, 2026-11-05).
+    stageAt: timestamp("stage_at", { withTimezone: true }),
 
     priority: priority("priority").notNull().default("normal"),
     deadline: date("deadline"),
@@ -973,4 +977,21 @@ export const deletedRecords = pgTable(
     deletedAt: timestamp("deleted_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("deleted_records_at_idx").on(t.deletedAt)],
+);
+
+// ---------- New parts glow ----------
+
+// When each member last opened each page that lists arriving parts (src/lib/seen.ts): "fab:<robot>",
+// "print:<robot>:<printer>", "factory:<robot>:<factory>", "cots:released", "cots:order". A part
+// whose stage_at is later glows for them, in the side panel and on the page (Harel, 2026-11-05).
+export const pageSeen = pgTable(
+  "page_seen",
+  {
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    page: text("page").notNull(),
+    seenAt: timestamp("seen_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.memberId, t.page] })],
 );

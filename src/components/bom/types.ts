@@ -41,6 +41,7 @@ export type CardPart = PartRow & {
   groups: { id: string; name: string; color: string | null }[];
   memberIds?: string[]; // set on a merged row
   fabFinishedAt?: Date | null; // first made (To Fab's Finished section)
+  stageAt?: Date | string | null; // when it last arrived in a page's list (src/lib/seen.ts)
   hasDrawing?: boolean; // a fabrication drawing was made for it (system page → Drawings)
   shelf?: Shelf | null;
   shelfSuggestion?: ShelfSuggestion | null;

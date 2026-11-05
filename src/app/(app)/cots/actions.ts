@@ -58,6 +58,7 @@ export async function addCotsFromItem(itemId: string, robotId: string | null): P
     unitPrice: item.price,
     quantity: 1,
     designState: COTS_RELEASED,
+    stageAt: new Date(), // arrives in COTS Released (src/lib/seen.ts)
     lastModifiedBy: member.id,
   });
   revalidatePath("/cots", "layout");

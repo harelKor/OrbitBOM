@@ -468,6 +468,7 @@ export async function sendItemToReleased(itemId: string): Promise<ActionResult &
         quantity,
         restock: true,
         designState: COTS_RELEASED,
+        stageAt: new Date(), // arrives in COTS Released (src/lib/seen.ts)
         lastModifiedBy: member.id,
       })
       .returning({ id: parts.id });
