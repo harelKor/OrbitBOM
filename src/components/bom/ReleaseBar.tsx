@@ -55,7 +55,7 @@ export function ReleaseBar({ count, selected, total, onRelease, onSelectAll, onD
   const releaseCount = releasable.length;
   const [confirming, setConfirming] = useState(false);
   return (
-    <div className="fixed inset-x-0 bottom-0 z-40 border-t border-line-strong bg-surface/95 p-3 backdrop-blur">
+    <div className="fixed bottom-0 left-[var(--shell-left)] right-[var(--shell-right)] z-40 border-t border-line-strong bg-surface/95 p-3 backdrop-blur">
       {(unplaced > 0 || unlinked > 0) && (
         <div className="mx-auto mb-2 flex max-w-5xl flex-col gap-2">
           {unlinked > 0 && <UnlinkedWarning count={unlinked} />}

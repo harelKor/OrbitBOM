@@ -7,6 +7,8 @@ import { MaterialPicker } from "./fields";
 import { useMaterials } from "@/components/shell/MaterialColors";
 import { STATUSES } from "@/config/statuses";
 import type { PartChanges } from "@/lib/parts/changes";
+import { RESET_SPECS } from "@/components/shell/mode";
+import { useCan } from "@/components/shell/ModeContext";
 
 // FRCBOM's Bulk edit bar (ref §3): N selected · Field · Value · Apply · Select all · Done.
 const FIELDS = [
@@ -56,6 +58,8 @@ export function BulkEditBar({
   onDone: () => void;
 }) {
   const materials = useMaterials();
+  // The part window's reset, for every selected part at once; same people (Harel, 2026-11-05).
+  const canReset = useCan("classify");
   const [field, setField] = useState<FieldId>("status");
   const [value, setValue] = useState("");
 
@@ -68,8 +72,9 @@ export function BulkEditBar({
     onApply({ [field]: value === NONE ? null : value } as PartChanges);
   }
 
+  // Between the side columns, so Done isn't hidden under the robots column.
   return (
-    <div className="fixed inset-x-0 bottom-0 z-40 border-t border-line-strong bg-surface/95 p-3 backdrop-blur">
+    <div className="fixed bottom-0 left-[var(--shell-left)] right-[var(--shell-right)] z-40 border-t border-line-strong bg-surface/95 p-3 backdrop-blur">
       <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-2 text-sm">
         <span className="font-semibold">{count} selected</span>
         <select
@@ -100,6 +105,17 @@ export function BulkEditBar({
         <button className="btn" onClick={onSelectAll}>
           Select all ({total})
         </button>
+        {canReset && (
+          <button
+            className="btn"
+            disabled={!count}
+            onClick={() => {
+              if (confirm(`Reset ${count} part${count === 1 ? "" : "s"}? Their type, status, material, machines, inventory link and counts go back to blank.`)) onApply({ ...RESET_SPECS });
+            }}
+          >
+            Reset specs
+          </button>
+        )}
         <button className="btn ml-auto" onClick={onDone}>
           Done
         </button>
