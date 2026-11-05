@@ -679,6 +679,15 @@ export function BatchCard({
             <BatchDate at={batch.createdAt} overlay />
           </div>
         </div>
+        {cart ? (
+          // A cart has no status: its vendor, a little bigger, shares one row with the cart button.
+          <div className="flex min-w-0 items-center gap-2 p-3">
+            <span className="min-w-0 flex-1 truncate text-base font-bold text-fg">{title}</span>
+            <span className="shrink-0" onClick={stop}>
+              {cart.button}
+            </span>
+          </div>
+        ) : (
         <div className="flex min-w-0 flex-1 flex-col gap-2 p-3">
           {(!pack || title) && (
             <div className={`min-w-0 truncate text-sm font-semibold ${textColor ? "" : "text-fg"}`} style={textColor ? { color: textColor } : undefined}>
@@ -695,6 +704,7 @@ export function BatchCard({
             </span>
           </div>
         </div>
+        )}
       </div>
     </div>
     {panel}
