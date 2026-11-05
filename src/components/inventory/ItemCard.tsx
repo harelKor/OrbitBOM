@@ -399,7 +399,8 @@ export function PieceStepper({ item, onStep }: { item: Pick<Item, "inStock" | "p
     <Popover
       hideCaret
       align="right"
-      triggerClassName="ml-1 rounded-full bg-white/20 px-1.5 text-[10px] hover:bg-white/30"
+      // Bigger on phones so it opens on the first tap in the shop (Harel, 2026-11-05).
+      triggerClassName="ml-1 rounded-full bg-white/20 px-1.5 text-[10px] hover:bg-white/30 pointer-coarse:min-h-8 pointer-coarse:px-3 pointer-coarse:text-xs pointer-coarse:font-semibold"
       panelClassName="ring-1 ring-white/15 shadow-lg"
       trigger={<span>pieces ▾</span>}
     >
