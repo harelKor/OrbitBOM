@@ -1,16 +1,18 @@
 "use client";
 
 import { useTransition } from "react";
-import { ORDER_STATUSES } from "@/config/cots";
+import { BEFORE_IN_ROUTE, COTS_IN_ROUTE, ORDER_STATUSES } from "@/config/cots";
 import { deleteCotsCart } from "@/app/(app)/cots/actions";
 import type { CardPart } from "@/components/bom/types";
 import { BatchCard } from "@/components/fab/BatchCard";
 import type { FabLayout } from "@/components/fab/fabModel";
-import { useCan } from "@/components/shell/ModeContext";
+import { useCan, useMode } from "@/components/shell/ModeContext";
+import { statusDenied } from "@/components/shell/mode";
 import { Icon } from "@/components/ui/Icon";
 import { cartKind } from "@/lib/cotsCart";
 import type { CotsCart } from "@/lib/data/cotsCarts";
 import type { PartChanges } from "@/lib/parts/changes";
+import { cotsLinkDenied } from "@/lib/parts/cotsLink";
 import { computeStatus } from "@/lib/status";
 import { OrderStatusButton } from "./CotsCard";
 
@@ -34,6 +36,7 @@ export function CartCard({
 }) {
   const [, startTransition] = useTransition();
   const work = useCan("work");
+  const { mode } = useMode();
   const ids = members.map((p) => p.id);
   // One status for the whole cart, shown as its least advanced part's; a pick sets every part.
   const order = (p: CardPart) => (ORDER_STATUSES as readonly string[]).indexOf(computeStatus(p));
@@ -45,7 +48,17 @@ export function CartCard({
       value={dates.length === 1 ? dates[0] : null}
       mixed={dates.length > 1}
       editable={work}
-      onChange={(date) => save(ids, { cotsDeliveryDate: date })}
+      onChange={(date) => {
+        // Setting a date moves the parts not yet on their way to In Route (those the status rules
+        // let move: the date saves either way).
+        const moving =
+          date && !statusDenied(mode, COTS_IN_ROUTE, { cots: true })
+            ? members.filter((p) => (BEFORE_IN_ROUTE as string[]).includes(computeStatus(p)) && !cotsLinkDenied(p, { status: COTS_IN_ROUTE })).map((p) => p.id)
+            : [];
+        const rest = ids.filter((id) => !moving.includes(id));
+        if (moving.length) save(moving, { cotsDeliveryDate: date, status: COTS_IN_ROUTE });
+        if (rest.length) save(rest, { cotsDeliveryDate: date });
+      }}
     />
   );
   const fillable = members.some((p) => cartKind(p.cotsLinks?.[0]?.url));

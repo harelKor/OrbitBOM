@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { COTS_ORDERED, COTS_RELEASED, ORDER_STATUSES, getCotsStatus } from "@/config/cots";
+import { BEFORE_IN_ROUTE, COTS_IN_ROUTE, COTS_ORDERED, COTS_RELEASED, ORDER_STATUSES, getCotsStatus } from "@/config/cots";
 import { Popover } from "@/components/bom/Popover";
 import { textOn } from "@/components/bom/options";
 import { statusDenied } from "@/components/shell/mode";
@@ -139,7 +139,11 @@ export function CotsOrderBox({ info, onSave, editable, onLeave }: { info: CotsOr
               onChange={(e) => {
                 const next = e.target.value || null;
                 setDelivery(next);
-                onSave({ cotsDeliveryDate: next });
+                // A date means it was ordered: a part not yet on its way moves to In Route.
+                if (next && (BEFORE_IN_ROUTE as string[]).includes(status) && !statusDenied(mode, COTS_IN_ROUTE, { cots: true })) {
+                  setStatus(COTS_IN_ROUTE);
+                  onSave({ cotsDeliveryDate: next, status: COTS_IN_ROUTE });
+                } else onSave({ cotsDeliveryDate: next });
               }}
               aria-label="Delivery date"
               className="min-w-0 cursor-pointer rounded-md bg-transparent px-1 text-right text-sm font-bold text-fg tabular-nums outline-none [color-scheme:light_dark] hover:bg-surface focus:bg-surface focus:ring-1 focus:ring-sky-400/60"

@@ -18,6 +18,9 @@ export type CotsStatusName = (typeof COTS_STATUSES)[number]["name"];
 export const COTS_DEFAULT_STATUS: CotsStatusName = "Not Started";
 export const COTS_RELEASED: CotsStatusName = "Released";
 export const COTS_ORDERED: CotsStatusName = "In Order List";
+export const COTS_IN_ROUTE: CotsStatusName = "In Route";
+// A delivery date means the order was placed: parts still at these move on to In Route (Harel, 2026-11-05).
+export const BEFORE_IN_ROUTE: CotsStatusName[] = ["In Order List", "Seen"];
 export const COTS_ARRIVED: CotsStatusName = "Arrived";
 export const COTS_IN_STOCK: CotsStatusName = "In Stock";
 // A part stays in the COTS page's In Stock sections this long after it arrived (or until its X).
