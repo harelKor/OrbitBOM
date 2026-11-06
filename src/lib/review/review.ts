@@ -17,7 +17,6 @@ import { listCategories } from "@/lib/data/categories";
 import { listRawStock } from "@/lib/data/materials";
 import { categoryOf, getCategory } from "@/lib/inventory/categories";
 import { PRINT_MATERIALS } from "@/config/autoSetup";
-import { getMachine } from "@/config/machines";
 import { sizeOf, suggestSetup, wallThickness } from "./rules";
 import { isDescriptiveName, looksLikeProduct, matchByName, nameMatchSetup, productSetup, type NameMatchItem, type NameMatchPart } from "./nameMatch";
 import { analyzeShape } from "./shape";
@@ -37,8 +36,8 @@ const MAX_WALL_TRIANGLES = 20_000;
 // ...and the shape reading (hex, tube, plate, ...), which is quicker.
 const MAX_SHAPE_TRIANGLES = 400_000;
 // Bumped when measuring learns something new, so parts measured before are measured again.
-// 3: the stock shape (shape.ts).
-const SIZED_VERSION = 3;
+// 3: the stock shape (shape.ts). 4: counterbores and steps make a plate pocketed.
+const SIZED_VERSION = 4;
 
 // Measures parts from the robot's built 3D model (R2 files only, no Onshape calls) and stores
 // the size in parts.geometry. A part is measured again only when its Part Studio file changed.
@@ -280,8 +279,7 @@ export async function suggestOnePart(partId: string, memberId: string) {
 // The system page's Suggest mode: fresh setups for the picked parts, set up or not. Each part's
 // material and item are worked out as if it had none (classification stays, so a COTS part only
 // turns in-house for plates and prints; a part named like a product stays COTS); when the rules
-// find no Raw Stock item, its own material still picks the processes, and processes a person set
-// stay. Only fields that change are written, and every one waits in To Review with its "from →
+// find no Raw Stock item, its own material still picks the processes. Only fields that change are written, and every one waits in To Review with its "from →
 // to", like Suggest setup. Then auto-link for the ones without an item. `blind`: parts with nothing
 // to read (no Onshape material, no 3D measurement, a numbered name).
 export async function suggestPickedParts(partIds: string[], memberId: string) {
@@ -318,17 +316,8 @@ export async function suggestPickedParts(partIds: string[], memberId: string) {
     const changes = { ...guess.changes };
     // A print gets the plain material and no filament item (Harel, 2026-11-01).
     if (p.inventoryItemId && changes.material && !("inventoryItemId" in changes) && PRINT_MATERIALS.some((m) => m.material === changes.material)) changes.inventoryItemId = null;
-    // Processes a person already set stay, unless they print a part that isn't printed or the
-    // other way round, or add something to a print (Harel, 2026-11-06: "select all" was replacing
-    // the team's machine choices; older Suggests bent prints).
-    const had = [p.preProcess, p.process1, p.process2].filter((m): m is string => !!m);
-    const printing = (ids: (string | null | undefined)[]) => ids.some((id) => !!id && getMachine(id)?.kind === "print");
-    const valid = !printing(had) || had.length === 1;
-    if (had.length && valid && printing(had) === printing([changes.preProcess, changes.process1, changes.process2])) {
-      delete changes.preProcess;
-      delete changes.process1;
-      delete changes.process2;
-    }
+    // Processes are worked out fresh too: the setups on the robots so far are tests, not the
+    // team's choices (Harel, 2026-11-06).
     for (const f of Object.keys(changes) as (keyof typeof changes)[]) if (same(changes[f], p[f as keyof Part])) delete changes[f];
     return Object.keys(changes).length ? [{ id: p.id, changes, reason: guess.reason }] : [];
   });

@@ -217,6 +217,9 @@ function boxWall(tris: Tri[], dirs: V[], total: number): number | undefined {
   return m === undefined ? undefined : r2(m);
 }
 
+// How much of a plate face's area its floors (pockets, counterbores, steps) must cover.
+const POCKET_SHARE = 0.005;
+
 // Reads a part's stock shape from its mesh (positions in metres, as in the .obm file).
 export function analyzeShape(positions: ArrayLike<number>, indices: ArrayLike<number>): Shape | undefined {
   const tris = triangles(positions, indices);
@@ -296,7 +299,9 @@ export function analyzeShape(positions: ArrayLike<number>, indices: ArrayLike<nu
         const z = dot(tr.c, N) - ex.lo;
         return s + (z > 0.2 && z < t - 0.2 ? tr.area : 0);
       }, 0);
-      return { kind: "plate", t: r2(t), d1: r2(across.d1), d2: r2(across.d2), pocketed: floors > (planar / 2) * 0.05 };
+      // Any floor counts: a counterbore or a step along an edge is cut on the CNC like a pocket
+      // (Harel, 2026-11-06: stepped 3 mm plates read as plain).
+      return { kind: "plate", t: r2(t), d1: r2(across.d1), d2: r2(across.d2), pocketed: floors > (planar / 2) * POCKET_SHARE };
     }
   }
 

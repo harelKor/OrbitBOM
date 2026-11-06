@@ -161,9 +161,10 @@ export function boxTubeFor(d1: number, d2: number, wall: number | undefined, fam
   return bestTube(cands, wall);
 }
 
-export function roundTubeFor(od: number, wall: number | undefined, fam: string, stock: StockItem[]) {
+// `fam` undefined: any material (a part Onshape gives no material).
+export function roundTubeFor(od: number, wall: number | undefined, fam: string | undefined, stock: StockItem[]) {
   const cands = stock.flatMap((i) => {
-    const d = (i.category === "round-tubes" || i.category === "carbon-tubes") && itemFamily(i) === fam ? roundDims(i) : undefined;
+    const d = (i.category === "round-tubes" || i.category === "carbon-tubes") && (!fam || itemFamily(i) === fam) ? roundDims(i) : undefined;
     return d ? [{ i, gap: Math.abs(d.od - od), wall: d.wall }] : [];
   });
   return bestTube(cands, wall);
@@ -179,13 +180,16 @@ export function hexShaftFor(flats: number, thunder: boolean, stock: StockItem[])
   return shafts.find((i) => has(i, want)) ?? shafts.find((i) => has(i, other));
 }
 
-// Lathe stock: the thinnest cylinder of the part's material at least as thick as it.
+// Lathe stock: the thinnest cylinder of the part's material at least as thick as it; else the
+// material's cylinder that names no size ("Brass cylinder").
 export function cylinderFor(d: number, fam: string | undefined, stock: StockItem[]) {
-  return stock
-    .filter((i) => i.category === "cylinders-blocks" && !/block/i.test(i.specs.shape ?? "") && (!fam || itemFamily(i) === fam))
-    .map((i) => ({ i, od: num(i.specs.od) ?? (/Ø\s*(\d+(?:\.\d+)?)/.exec(i.name) ? Number(/Ø\s*(\d+(?:\.\d+)?)/.exec(i.name)![1]) : undefined) }))
+  const cylinders = stock
+    .filter((i) => i.category === "cylinders-blocks" && !/block/i.test(i.specs.shape ?? i.name) && (!fam || itemFamily(i) === fam))
+    .map((i) => ({ i, od: num(i.specs.od) ?? (/Ø\s*(\d+(?:\.\d+)?)/.exec(i.name) ? Number(/Ø\s*(\d+(?:\.\d+)?)/.exec(i.name)![1]) : undefined) }));
+  const sized = cylinders
     .filter((c): c is { i: StockItem; od: number } => c.od !== undefined && c.od >= d - 0.1 && c.od <= d + 10)
     .sort((a, b) => a.od - b.od)[0]?.i;
+  return sized ?? (fam ? cylinders.find((c) => c.od === undefined)?.i : undefined);
 }
 
 // Billet: the smallest block of the part's material it fits in; else the material's block item
@@ -308,7 +312,15 @@ function shapePlan(part: SetupInput, stock: StockItem[], linked: StockItem | und
     }
     if (s.kind === "round-tube" && s.d1 && s.d2) {
       const od = (s.d1 + s.d2) / 2;
-      const item = roundTubeFor(od, s.wall, fam === "carbon" || fam === "poly" ? fam : "aluminum", stock);
+      // A short or thick-walled round metal part (a flanged bushing, a spacer), or one in a metal
+      // the shop has no tube of (brass, steel), is turned from a cylinder (Harel, 2026-11-06).
+      const turned = (metal || fam === "delrin") && (fam !== "aluminum" || (s.length !== undefined && s.length < 3 * od) || (s.wall ?? 0) > od * 0.2);
+      if (turned) {
+        const item = cylinderFor(od, fam, stock);
+        return { kind: "spacer", item, set: { process1: SHAPE_MACHINES.turned }, fixed: true, why: `${om}, round part Ø${fmt(od)} mm${s.length ? `, ${fmt(s.length)} mm long` : ""}` };
+      }
+      // No material in Onshape: whichever stock tube has the size (the carbon 16×1).
+      const item = roundTubeFor(od, s.wall, fam === "carbon" || fam === "poly" ? fam : text ? "aluminum" : undefined, stock);
       return { kind: "round-tube", item, category: "round-tubes", why: `round tube Ø${fmt(od)} mm${s.wall ? `, ${fmt(s.wall)} mm wall` : ""}` };
     }
     // Rule 4: round rods, pins and standoffs, and thick round spacers, are turned.
@@ -322,14 +334,26 @@ function shapePlan(part: SetupInput, stock: StockItem[], linked: StockItem | und
       return { kind: "spacer", item, set: { process1: SHAPE_MACHINES.turned }, fixed: true, why: `${om}, round part Ø${fmt(s.d2)} mm, ${fmt(s.d1 ?? 0)} mm thick` };
     }
     // Rule 5: plates, with or without pockets.
-    if (s.kind === "plate" && s.t && fam && PLATE_CATEGORY[fam]) {
-      const category = PLATE_CATEGORY[fam];
+    // A plate Onshape gives no material is taken as aluminum, the shop's usual plate (Harel,
+    // 2026-11-06); it waits in To Review like every guess.
+    const plateFam = fam ?? (text ? undefined : "aluminum");
+    if (s.kind === "plate" && s.t && plateFam && PLATE_CATEGORY[plateFam]) {
+      const category = PLATE_CATEGORY[plateFam];
       const alloy = ALLOY.exec(text)?.[1];
       const item = plateFor(category, s.t, stock, alloy);
       const thick = `${fmt(s.t)} mm thick`;
-      if (s.pocketed) return { kind: "plate", item, category, set: { process1: SHAPE_MACHINES.pocketedPlate }, fixed: true, why: `${om}, plate with pockets and ${thick}` };
-      return { kind: "plate", item, category, why: `${om}, flat and ${thick}` };
+      const what = fam ? om : "no material in Onshape, taken as aluminum";
+      if (s.pocketed) return { kind: "plate", item, category, set: { process1: SHAPE_MACHINES.pocketedPlate }, fixed: true, why: `${what}, plate with pockets or steps and ${thick}` };
+      return { kind: "plate", item, category, why: `${what}, flat and ${thick}` };
     }
+  }
+
+  // Hex stock its name gives ('1/2" Hex (8.087 in)', a cut shaft from the Onshape library) when
+  // no shape was read.
+  const hexName = /\b(1\/2|3\/8)\s*(?:"|in\b)?\s*(thunder\s*)?hex\b/i.exec(name);
+  if (!s && hexName && (metal || !text) && !/\b(gear|pulley|sprocket|bearing|hub|adapter|spacer|bore)\b/i.test(name)) {
+    const item = hexShaftFor(hexName[1] === "3/8" ? 9.525 : 12.7, !!hexName[2], stock);
+    return { kind: "hex", item, set: { process1: SHAPE_MACHINES.hexShaft }, fixed: true, why: `named ${hexName[0]}` };
   }
 
   // Parts measured before shapes were read: bounding box and wall only.
@@ -348,7 +372,8 @@ function shapePlan(part: SetupInput, stock: StockItem[], linked: StockItem | und
     const boxItem = boxTubeFor(box[0], box[1], g.wallMm, tubeFam, stock);
     const roundItem = !boxItem && box[1] - box[0] <= 1.5 ? roundTubeFor(box[1], g.wallMm, tubeFam, stock) : undefined;
     if (roundItem) return { kind: "round-tube", item: roundItem, category: "round-tubes", why: `tube Ø${fmt(box[1])} mm, ${fmt(g.wallMm)} mm wall` };
-    return { kind: "box-tube", item: boxItem, category: "square-tubes", why: `tube ${fmt(box[0])}×${fmt(box[1])} mm, ${fmt(g.wallMm)} mm wall` };
+    // Square or round can't be told from the box, so no team default without a matching item.
+    return { kind: "box-tube", item: boxItem, category: boxItem ? "square-tubes" : undefined, why: `tube ${fmt(box[0])}×${fmt(box[1])} mm, ${fmt(g.wallMm)} mm wall` };
   }
 
   // Bent sheet (and plates measured before shapes were read).
@@ -373,7 +398,7 @@ function shapePlan(part: SetupInput, stock: StockItem[], linked: StockItem | und
 
   // Other metal parts: turned when round, else milled from a block.
   if (s && metal && (s.kind === "block" || s.kind === "rod" || s.kind === "spacer" || s.kind === "plate")) {
-    const size = s.size ?? ([s.d1 ?? 0, s.d2 ?? 0, s.length ?? 0].sort((a, b) => a - b) as [number, number, number]);
+    const size = s.size ?? ([s.t ?? s.length ?? 0, s.d1 ?? 0, s.d2 ?? 0].sort((a, b) => a - b) as [number, number, number]);
     if (s.axisymmetric) {
       const item = cylinderFor(Math.max(s.d1 ?? 0, s.d2 ?? 0), fam, stock);
       return { kind: "block", item, set: { process1: SHAPE_MACHINES.turned }, fixed: true, why: `${om}, round part` };
@@ -398,11 +423,12 @@ function defaultProcesses(material: string, item: StockItem | undefined, categor
   return key ? DEFAULT_PROCESSES[key] : cat ? DEFAULT_PROCESSES[cat] : undefined;
 }
 
-// The team default; a free-text material with no item (Onshape's "Aluminum - 6061") takes its
-// family's plate category.
-function processesFor(material: string | undefined, item: StockItem | undefined, category?: string): { set: ProcessSet; why: string } | undefined {
+// The team default; a free-text material with no item and no shape read (Onshape's "Aluminum -
+// 6061") takes its family's plate category. A shape that names no category (a tube with no
+// matching item) gets none.
+function processesFor(material: string | undefined, item: StockItem | undefined, plan: Plan | undefined): { set: ProcessSet; why: string } | undefined {
   const fam = material ? family(material) : undefined;
-  const set = defaultProcesses(material ?? "", item, category ?? (fam ? PLATE_CATEGORY[fam] : undefined));
+  const set = defaultProcesses(material ?? "", item, plan ? plan.category : fam ? PLATE_CATEGORY[fam] : undefined);
   return set ? { set, why: "the team default" } : undefined;
 }
 
@@ -461,7 +487,7 @@ export function suggestSetup(part: SetupInput, stock: StockItem[]): { changes: S
   material ??= part.material;
 
   if (!part.preProcess && !part.process1 && !part.process2) {
-    const p = plan?.fixed && plan.set ? { set: plan.set, why: "from its shape" } : processesFor(material ?? undefined, item, plan?.category);
+    const p = plan?.fixed && plan.set ? { set: plan.set, why: "from its shape" } : processesFor(material ?? undefined, item, plan);
     let set = p?.set;
     // Metal is never printed; prints get nothing but the printer.
     if (set && plan && plan.kind !== "print" && [set.preProcess, set.process1, set.process2].some(isPrint)) set = undefined;
@@ -478,9 +504,9 @@ export function suggestSetup(part: SetupInput, stock: StockItem[]): { changes: S
         if (part.classification === "cots" || part.classification === "undefined") changes.classification = "inhouse";
       }
     }
-  } else if (changes.inventoryItemId && (part.classification === "cots" || part.classification === "undefined")) {
-    changes.classification = "inhouse";
   }
+  // A part cut from a Raw Stock item is in-house, with or without processes yet.
+  if (changes.inventoryItemId && !changes.classification && (part.classification === "cots" || part.classification === "undefined")) changes.classification = "inhouse";
 
   if (!Object.keys(changes).length) return null;
   return { changes, reason: why.join(". ") + "." };

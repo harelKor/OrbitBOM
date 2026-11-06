@@ -4,7 +4,7 @@
 // The part's shape decides first (src/lib/review/rules.ts): 3D printed parts, pocketed plates
 // (CNC), hex shafts (Manual Mill, LATHE when turned), rods, spacers and other turned parts
 // (LATHE), and solid metal blocks (CNC). Suggest no longer copies what other parts of the same
-// material got (Harel, 2026-11-06); processes a person set on a part stay.
+// material got (Harel, 2026-11-06).
 
 export type ProcessSet = { preProcess?: string; process1?: string; process2?: string };
 

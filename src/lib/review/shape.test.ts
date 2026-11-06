@@ -160,6 +160,18 @@ describe("analyzeShape", () => {
     const p = read(s, 51);
     expect(p).toMatchObject({ kind: "plate", pocketed: true });
     expect(p.t).toBeCloseTo(6, 1);
+
+    // A 3 mm plate with one 10x10 step 1.5 mm deep (a counterbore, a ledge) is pocketed too
+    // (Harel, 2026-11-06).
+    const c = new Solid();
+    const plate = rect(40, 60);
+    const step = rect(10, 10, 15, 25);
+    c.walls(plate, 0, 3);
+    c.cap(plate, 0, false);
+    c.cap(plate, 3, true, step);
+    c.walls(step, 1.5, 3, true);
+    c.cap(step, 1.5, true);
+    expect(read(c, 17)).toMatchObject({ kind: "plate", pocketed: true });
   });
 
   it("leaves a solid block a block", () => {
@@ -190,6 +202,9 @@ const STOCK: StockItem[] = [
   item('3/8" Hex shaft', "shafts", { profile: '3/8" Hex' }),
   item("Aluminum Ø10mm cylinder", "cylinders-blocks", { shape: "Cylinder", material: "Aluminum", od: "10" }),
   item("Aluminum Ø25mm cylinder", "cylinders-blocks", { shape: "Cylinder", material: "Aluminum", od: "25" }),
+  item("Brass cylinder", "cylinders-blocks", { shape: "Cylinder", material: "Brass" }),
+  item("Brass block", "cylinders-blocks", { shape: "Block", material: "Brass" }),
+  item("Carbon Fiber 16x1 tube", "round-tubes", { od: "16", wall: "1", material: "Carbon Fiber" }),
   item("Bambu PLA – Black filament", "filament", { material: "PLA" }),
   item("TPU filament", "filament"),
   item("Markforged Onyx filament", "filament", { material: "Onyx" }),
@@ -299,5 +314,22 @@ describe("suggestSetup with shapes", () => {
     const s = setup({ onshapeMaterial: "Aluminum - 6061", bbox: [20.7, 24.6, 25], wallMm: 2, shape: { kind: "block", size: [20.7, 24.6, 25], axisymmetric: true } });
     expect(s?.changes.process1).toBe("lathe");
     expect(s?.changes.process2 ?? null).toBeNull();
+  });
+
+  it("turns brass bushings from the brass cylinder, also when they read as a short tube", () => {
+    const bushing = setup({ onshapeMaterial: "Brass", shape: { kind: "round-tube", d1: 13.69, d2: 13.9, wall: 4.8, length: 21.2 } });
+    expect(bushing?.changes).toMatchObject({ material: "Brass cylinder", process1: "lathe", classification: "inhouse" });
+    expect(setup({ onshapeMaterial: "Brass", shape: { kind: "spacer", d1: 17.7, d2: 40.4, length: 17.7, axisymmetric: true } })?.changes.material).toBe("Brass cylinder");
+  });
+
+  it("takes a plate with no Onshape material as aluminum, and a tube as whatever stock fits", () => {
+    const s = setup({ shape: { kind: "plate", t: 3, pocketed: true } });
+    expect(s?.changes).toMatchObject({ material: "Aluminum plate 6061 3mm", process1: "cnc" });
+    expect(s?.reason).toContain("taken as aluminum");
+    expect(setup({ shape: { kind: "round-tube", d1: 15.76, d2: 16, wall: 0.94, length: 659 } })?.changes).toMatchObject({ material: "Carbon Fiber 16x1 tube", classification: "inhouse" });
+  });
+
+  it("reads hex stock from the name when nothing was measured", () => {
+    expect(setup({ onshapeMaterial: "7075 Aluminum" }, { onshapeName: '1/2" Hex (8.087 in)' })?.changes).toMatchObject({ material: '1/2" Hex shaft', process1: "manual-mill" });
   });
 });
