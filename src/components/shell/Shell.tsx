@@ -37,9 +37,23 @@ const ROBOTS_KEY = "orbit-robots-width";
 const ROBOTS_DEFAULT = 288;
 const ROBOTS_SMALLEST = 200;
 const WIDE = { left: "(min-width: 64rem)", right: "(min-width: 80rem)" } as const;
-// Edge swipes on phones: how close to the edge a touch must start, and how far it must travel (px).
-const EDGE = 32;
+// Side swipes on phones: how far a swipe must travel sideways (px).
 const SWIPE = 50;
+
+// Where a sideways swipe belongs to the page, not the side panels: typing, sliders, the 3D view,
+// anything marked touch-none or data-no-swipe.
+const OWN_SWIPE = "input, textarea, select, canvas, [role=slider], [data-no-swipe], .touch-none";
+
+// Whether something under the touch can still scroll sideways the way the finger goes (a wide
+// table, a row of cards): then the swipe scrolls it. dx > 0 is a swipe to the right.
+function scrollsSideways(target: EventTarget | null, dx: number) {
+  for (let el = target instanceof Element ? target : null; el && el !== document.body; el = el.parentElement) {
+    const { overflowX } = getComputedStyle(el);
+    if ((overflowX !== "auto" && overflowX !== "scroll") || el.scrollWidth <= el.clientWidth + 1) continue;
+    if (dx > 0 ? el.scrollLeft > 0 : el.scrollLeft + el.clientWidth < el.scrollWidth - 1) return true;
+  }
+  return false;
+}
 export function Shell({
   robots,
   lastRobotId,
@@ -84,20 +98,19 @@ export function Shell({
     };
   }, []);
   useEscape(!!open, () => setDrawer(null));
-  // On a phone a swipe in from the screen's edge opens that side's drawer, and a swipe back the way
-  // it came closes it (Harel, 2026-11-04). Only touches that start in the edge strip open one, so
-  // tables and pictures that scroll sideways keep their swipes. In Safari's tab (not from the home
-  // screen) iOS keeps the left edge's first ~20px for Back, so the strip is a little wider than that.
+  // On a phone a sideways swipe anywhere opens a drawer: to the right the pages, to the left the
+  // robots; a swipe back the way it came closes it (Harel, 2026-11-06, was edge strips only).
+  // Swipes that something under the finger needs (a table scrolling sideways, a slider, typing,
+  // the 3D view) stay with it.
   useEffect(() => {
-    let from: { x: number; y: number; side: "left" | "right" | null } | null = null;
+    let from: { x: number; y: number; target: EventTarget | null } | null = null;
     const down = (e: TouchEvent) => {
       from = null;
       const t = e.touches[0];
       if (e.touches.length !== 1 || !t || document.querySelector("dialog[open]")) return;
-      if ((e.target as Element | null)?.closest?.("[role=separator]")) return;
-      if (open) from = { x: t.clientX, y: t.clientY, side: null };
-      else if (!wide.left && t.clientX <= EDGE) from = { x: t.clientX, y: t.clientY, side: "left" };
-      else if (!wide.right && t.clientX >= window.innerWidth - EDGE) from = { x: t.clientX, y: t.clientY, side: "right" };
+      const el = e.target as Element | null;
+      if (el?.closest?.("[role=separator]") || (!open && el?.closest?.(OWN_SWIPE))) return;
+      from = { x: t.clientX, y: t.clientY, target: e.target };
     };
     const move = (e: TouchEvent) => {
       const t = e.touches[0];
@@ -110,9 +123,12 @@ export function Shell({
         return;
       }
       if (Math.abs(dx) < SWIPE || Math.abs(dx) < Math.abs(dy) * 1.5) return;
-      if (from.side === "left" && dx > 0) setDrawer({ side: "left", at: pathname });
-      else if (from.side === "right" && dx < 0) setDrawer({ side: "right", at: pathname });
-      else if (!from.side && ((open === "left" && dx < 0) || (open === "right" && dx > 0))) setDrawer(null);
+      if (open) {
+        if ((open === "left" && dx < 0) || (open === "right" && dx > 0)) setDrawer(null);
+      } else if (!scrollsSideways(from.target, dx)) {
+        if (dx > 0 && !wide.left) setDrawer({ side: "left", at: pathname });
+        else if (dx < 0 && !wide.right) setDrawer({ side: "right", at: pathname });
+      }
       from = null;
     };
     const up = () => (from = null);
