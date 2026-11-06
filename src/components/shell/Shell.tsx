@@ -83,6 +83,10 @@ export function Shell({
   const [nav, setNav] = useState({ w: NAV_DEFAULT, z: 1 });
   const [robotsCol, setRobotsCol] = useState({ w: ROBOTS_DEFAULT, z: 1 });
   const root = useRef<HTMLDivElement>(null);
+  // The drawers and the dark backdrop, moved straight from touch events while a drawer is dragged.
+  const leftAside = useRef<HTMLElement>(null);
+  const rightAside = useRef<HTMLElement>(null);
+  const backdrop = useRef<HTMLButtonElement>(null);
   // Which columns are on screen as columns (not drawers). A drawer that's slid away is inert, so
   // Tab and screen readers skip its links; Escape closes an open one.
   const [wide, setWide] = useState({ left: true, right: true });
@@ -99,39 +103,89 @@ export function Shell({
   }, []);
   useEscape(!!open, () => setDrawer(null));
   // On a phone a sideways swipe anywhere opens a drawer: to the right the pages, to the left the
-  // robots; a swipe back the way it came closes it (Harel, 2026-11-06, was edge strips only).
-  // Swipes that something under the finger needs (a table scrolling sideways, a slider, typing,
-  // the 3D view) stay with it.
+  // robots (Harel, 2026-11-06, was edge strips only). An open drawer follows the finger anywhere on
+  // the screen: dragged toward closed it slides out, back the other way it comes back in; let go
+  // past a third of its width (or flicked) it closes, else it springs back. Swipes that something
+  // under the finger needs (a table scrolling sideways, a slider, typing, the 3D view) stay with it.
   useEffect(() => {
-    let from: { x: number; y: number; target: EventTarget | null } | null = null;
+    let from: { x: number; y: number; at: number; target: EventTarget | null } | null = null;
+    // While an open drawer follows the finger: how far it's out (px, toward closed) and its width.
+    let drag: { offset: number; width: number; dx: number } | null = null;
+    const panel = () => (open === "left" ? leftAside.current : open === "right" ? rightAside.current : null);
+    const clearDrag = () => {
+      for (const el of [leftAside.current, rightAside.current]) {
+        if (!el) continue;
+        el.style.transition = "";
+        el.style.transform = "";
+      }
+      if (backdrop.current) backdrop.current.style.opacity = "";
+    };
+    clearDrag();
+    const place = (offset: number, width: number) => {
+      const el = panel();
+      if (!el) return;
+      el.style.transition = "none";
+      el.style.transform = `translateX(${open === "left" ? -offset : offset}px)`;
+      if (backdrop.current) backdrop.current.style.opacity = String(1 - offset / width);
+    };
     const down = (e: TouchEvent) => {
       from = null;
+      drag = null;
       const t = e.touches[0];
       if (e.touches.length !== 1 || !t || document.querySelector("dialog[open]")) return;
       const el = e.target as Element | null;
-      if (el?.closest?.("[role=separator]") || (!open && el?.closest?.(OWN_SWIPE))) return;
-      from = { x: t.clientX, y: t.clientY, target: e.target };
+      if (el?.closest?.("[role=separator]") || el?.closest?.(OWN_SWIPE)) return;
+      from = { x: t.clientX, y: t.clientY, at: Date.now(), target: e.target };
     };
     const move = (e: TouchEvent) => {
       const t = e.touches[0];
       if (!from || !t) return;
       const dx = t.clientX - from.x;
       const dy = t.clientY - from.y;
+      if (open) {
+        // Starts following once the finger goes more sideways than up or down.
+        if (!drag) {
+          if (Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx)) return void (from = null);
+          if (Math.abs(dx) < 10) return;
+          const el = panel();
+          if (!el) return void (from = null);
+          drag = { offset: 0, width: el.offsetWidth, dx: 0 };
+        }
+        const toward = open === "left" ? -dx : dx;
+        drag.offset = Math.min(Math.max(toward, 0), drag.width);
+        drag.dx = dx;
+        place(drag.offset, drag.width);
+        return;
+      }
       // Mostly up or down: a scroll, not a swipe.
       if (Math.abs(dy) > 30 && Math.abs(dy) > Math.abs(dx)) {
         from = null;
         return;
       }
       if (Math.abs(dx) < SWIPE || Math.abs(dx) < Math.abs(dy) * 1.5) return;
-      if (open) {
-        if ((open === "left" && dx < 0) || (open === "right" && dx > 0)) setDrawer(null);
-      } else if (!scrollsSideways(from.target, dx)) {
+      if (!scrollsSideways(from.target, dx)) {
         if (dx > 0 && !wide.left) setDrawer({ side: "left", at: pathname });
         else if (dx < 0 && !wide.right) setDrawer({ side: "right", at: pathname });
       }
       from = null;
     };
-    const up = () => (from = null);
+    const up = () => {
+      const el = panel();
+      if (drag && from && el) {
+        const { offset, width } = drag;
+        const fast = offset > 20 && offset / Math.max(Date.now() - from.at, 1) > 0.5;
+        const close = offset > width / 3 || fast;
+        // Glides the rest of the way, then hands back to the classes (closed or open).
+        el.style.transition = "transform 150ms ease-out";
+        el.style.transform = close ? (open === "left" ? "translateX(-100%)" : "translateX(100%)") : "translateX(0)";
+        if (backdrop.current) backdrop.current.style.opacity = close ? "0" : "1";
+        // Closed: the classes take over once the drawer has rendered closed (the effect's start
+        // clears these); sprung back open, the classes already say open.
+        setTimeout(() => (close ? setDrawer(null) : clearDrag()), 160);
+      }
+      from = null;
+      drag = null;
+    };
     window.addEventListener("touchstart", down, { passive: true });
     window.addEventListener("touchmove", move, { passive: true });
     window.addEventListener("touchend", up);
@@ -194,6 +248,7 @@ export function Shell({
                 className={`flex min-h-dvh max-w-full overflow-x-clip [--shell-left:0px] [--shell-right:0px] ${collapsed.left ? "" : "lg:[--shell-left:var(--nav-w)]"} ${collapsed.right ? "" : "xl:[--shell-right:var(--robots-w)]"}`}
               >
                 <aside
+                  ref={leftAside}
                   inert={!wide.left && open !== "left"}
                   className={`@container fixed inset-y-0 left-0 z-40 w-[var(--nav-w)] max-w-[calc(100vw-3rem)] shrink-0 bg-surface lg:sticky lg:top-0 lg:h-dvh lg:translate-x-0 ${collapsed.left ? "lg:hidden" : ""} ${
                     open === "left" ? "translate-x-0" : "-translate-x-full"
@@ -211,6 +266,7 @@ export function Shell({
                   <Shortcuts robots={robots} lastRobotId={lastRobotId} />
                 </div>
                 <aside
+                  ref={rightAside}
                   inert={!wide.right && open !== "right"}
                   className={`fixed inset-y-0 right-0 z-40 w-[var(--robots-w)] max-w-[calc(100vw-3rem)] shrink-0 border-l border-line bg-surface xl:sticky xl:top-0 xl:h-dvh xl:translate-x-0 ${collapsed.right ? "xl:hidden" : ""} ${
                     open === "right" ? "translate-x-0" : "translate-x-full"
@@ -222,7 +278,7 @@ export function Shell({
                   <RobotsResizer root={root} side={robotsCol} onDone={saveSide} />
                 </aside>
                 {open && (
-                  <button aria-label="Close" onClick={() => setDrawer(null)} className="fixed inset-0 z-30 bg-black/50 xl:hidden" />
+                  <button ref={backdrop} aria-label="Close" onClick={() => setDrawer(null)} className="fixed inset-0 z-30 bg-black/50 xl:hidden" />
                 )}
               </div>
             </PartDetailsProvider>
