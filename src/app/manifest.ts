@@ -18,5 +18,13 @@ export default function manifest(): MetadataRoute.Manifest {
       { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
       { src: "/apple-icon.png", sizes: "180x180", type: "image/png" },
     ],
+    // Long-press the installed app's icon (Android) for these (Harel, 2026-11-06). Robot pages go
+    // through /go/<page>, which opens them for the robot last used.
+    shortcuts: [
+      { name: "Shop Fab", url: "/go/fab", icons: [{ src: "/icon-192.png", sizes: "192x192", type: "image/png" }] },
+      { name: "3D Printing", url: "/go/printing", icons: [{ src: "/icon-192.png", sizes: "192x192", type: "image/png" }] },
+      { name: "Order List", short_name: "Order List", url: "/cots/order-list", icons: [{ src: "/icon-192.png", sizes: "192x192", type: "image/png" }] },
+      { name: "Inventory", url: "/inventory", icons: [{ src: "/icon-192.png", sizes: "192x192", type: "image/png" }] },
+    ],
   };
 }
