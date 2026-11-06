@@ -186,14 +186,19 @@ export async function suggestParts(ids: string[]): Promise<ActionResult> {
   const member = await requireCapability("review");
   const partIds = [...new Set(await expandMerges(ids))];
   if (!partIds.length || partIds.some((id) => !isUuid(id))) return { error: "Unknown part." };
-  const { checked, suggested, linked } = await suggestPickedParts(partIds, member.id);
+  const { checked, suggested, linked, blind } = await suggestPickedParts(partIds, member.id);
   revalidatePath("/robots", "layout");
-  if (!suggested && !linked) return { message: `Nothing new to suggest for ${checked === 1 ? "this part" : `these ${checked} parts`}.` };
+  // Parts with nothing to read need the robot's 3D model (Harel, 2026-11-06).
+  const needModel = blind
+    ? ` ${blind} part${blind === 1 ? " has" : "s have"} no Onshape material or 3D measurement: press Update 3D model on the robot page, then Suggest again.`
+    : "";
+  if (!suggested && !linked) return { message: `Nothing new to suggest for ${checked === 1 ? "this part" : `these ${checked} parts`}.${needModel}` };
   return {
     message:
       `Suggested a new setup for ${suggested} of ${checked} part${checked === 1 ? "" : "s"}.` +
       (linked ? ` ${linked} inventory ${linked === 1 ? "link" : "links"} to approve.` : "") +
-      " They wait in To Review for Approve or Reject.",
+      " They wait in To Review for Approve or Reject." +
+      needModel,
   };
 }
 

@@ -80,6 +80,15 @@ const NUM = "(\\d+(?:\\.\\d+)?)";
 // A size in inches: "1", "1.5", "1/8".
 const INCH = "(\\d+(?:[./]\\d+)?)";
 const BY = "\\s*(?:mm)?\\s*[x×*]\\s*";
+// Belt and pulley pitch as vendors and Onshape name it: "5M" is HTD 5mm, "3M" GT2 3mm; "9mm
+// Width", "9mm WD" is the belt width (Harel, 2026-11-06).
+const PITCH_WORDS: Rule[] = [
+  [/\bhtd(?:\s*5\s*mm\b)?|\b5\s*m\b/, () => ({ pitch: "HTD 5mm" })],
+  [/\bgt2(?:\s*3\s*mm\b)?|\b3\s*m\b/, () => ({ pitch: "GT2 3mm" })],
+  [/(\d+(?:\.\d+)?)\s*mm\s*(?:wide|width|wd)\b/, (m) => ({ width: m[1] })],
+];
+// "Rounded hex" is ThunderHex (WCP's "3/8\" Rounded Hex (10.25mm) ID Bearing").
+const ROUNDED_HEX: Rule[] = [[/(3\/8|1\/2)\s*(?:"|in\b)?\s*(?:rounded\s*hex|thunder\s*hex)/, (m) => ({ bore: `${m[1]}" ThunderHex` })]];
 const SHOP_WORDS: Record<string, Rule[]> = {
   // "25x50 2mm wall box tube", "25×50×1.5mm", '1x1" 1/8" box tube': profile, then wall (mm, or
   // inches with their "). A long "1000mm" is a stock length, left for the length field.
@@ -104,9 +113,23 @@ const SHOP_WORDS: Record<string, Rule[]> = {
   ],
   // "8x16x5", "8×16×5mm", "6.35*17.46*7.9 flanged": ID, OD and thickness in mm.
   bearings: [
+    ...ROUNDED_HEX,
+    // "8mm ID x 16mm OD x 5mm WD" (WCP), and Onshape's bare "25-32-4".
+    [/(\d+(?:\.\d+)?)\s*mm\s*id\b\D*?(\d+(?:\.\d+)?)\s*mm\s*od\b(?:\D*?(\d+(?:\.\d+)?)\s*mm\s*(?:wd|wide|width|thick)\b)?/, (m) => ({ bore: m[1], od: m[2], width: m[3] ?? "" })],
+    [/^\s*(\d{1,2}(?:\.\d+)?)-(\d{1,3}(?:\.\d+)?)-(\d{1,2}(?:\.\d+)?)\s*$/, (m) => ({ bore: m[1], od: m[2], width: m[3] })],
     [/(\d+(?:\.\d+)?)\s*[x×*]\s*(\d+(?:\.\d+)?)\s*[x×*]\s*(\d+(?:\.\d+)?)(?:\s*mm\b)?/, (m) => ({ bore: m[1], od: m[2], width: m[3] })],
     [/flange\w*|פלאנג\S*/, () => ({ flanged: "Flanged" })],
     [/\bradial\b|רדיאל\S*/, () => ({ flanged: "Radial" })],
+  ],
+  belts: PITCH_WORDS,
+  pulleys: [...ROUNDED_HEX, ...PITCH_WORDS],
+  gears: ROUNDED_HEX,
+  sprockets: ROUNDED_HEX,
+  // '2.25" Compliant Wheel (35A, 1" Wide, 1/2" Hex Bore)': the size before the wheel word is the
+  // diameter (the 1" is its width), "35A" the durometer.
+  wheels: [
+    [/(\d+(?:\.\d+)?)\s*(?:"|in\b|inch)\s*(?:rev\s*ion\s*)?(?:compliant|stealth|omni|mecanum|colson|traction|star|flex|sushi|pneumatic|wheel|roller)/, (m) => ({ diameter: `${m[1]}"` })],
+    [/\b(\d{2})\s*a\b/, (m) => ({ durometer: `${m[1]}A` })],
   ],
   "adhesives-tapes": [
     [/\bepoxy\b|אפוקסי/, () => ({ type: "Glue", glue: "Epoxy" })],
@@ -147,6 +170,10 @@ const SHOP_WORDS: Record<string, Rule[]> = {
     [/large|big|wide\s*head|ראש\s*גדול/, () => ({ head: "Large head (ראש גדול)" })],
   ],
   fasteners: [
+    // McMaster/Onshape names give the thread pitch: "M5x0.80 x 12", "M5x0.8 x 50 x 22" (12 and 50
+    // are the lengths), "washer M5x0.8".
+    [/\b(m\d+)\s*[x×]\s*\d\.\d+\s*[x×]\s*(\d+(?:\.\d+)?)\b/, (m) => ({ thread: m[1].toUpperCase(), length: m[2] })],
+    [/\b(m\d+)\s*[x×]\s*\d\.\d+(?![\d.])(?!\s*[x×])/, (m) => ({ thread: m[1].toUpperCase() })],
     [/\b(m\d)\s*[x×]\s*(\d+(?:\.\d+)?)\b/, (m) => ({ thread: m[1].toUpperCase(), length: m[2] })],
     [/(#\d+-\d+)\s*[x×]\s*(\d+(?:\.\d+)?)\s*mm\b/, (m) => ({ thread: m[1], length: m[2] })],
     [/button|\bbhcs\b|כיפה/, () => ({ kind: "Button Head (כיפה)" })],

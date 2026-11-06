@@ -21,6 +21,7 @@ import {
 import { getMachine } from "@/config/machines";
 import { plateThicknessMm } from "@/config/materials";
 import type { PartGeometry } from "@/db/schema";
+import type { Shape } from "./shape";
 
 export type SetupInput = {
   classification: "inhouse" | "cots" | "external" | "undefined";
@@ -47,8 +48,9 @@ export type SetupChanges = {
   process2?: string | null;
 };
 
-// Learned processes: the most common process set per material on the team's parts.
-export type Learned = Map<string, ProcessSet & { count: number }>;
+// No learned habits (Harel, 2026-11-06): processes come from the shape and the team defaults in
+// config/autoSetup.ts only. Copying what was set on other parts of the same material also copied
+// their mistakes (bending on prints) and one robot's choices onto another.
 
 const fmt = (n: number) => (Math.round(n * 10) / 10).toString();
 const num = (s: string | undefined) => (s !== undefined && s !== "" && Number.isFinite(Number(s)) ? Number(s) : undefined);
@@ -82,9 +84,18 @@ const PLATE_CATEGORY: Record<string, string> = { aluminum: "aluminum-plates", po
 // ---------- matching inventory items ----------
 
 // Bent sheet: Onshape sheet metal, or a thin wall that isn't flat (an angle, a U channel). Bent
-// plates use the same plate materials as flat ones.
+// plates use the same plate materials as flat ones. A measured wall alone also fits bushings,
+// gears and tubes, so the wall must be sheet-thin and much thinner than the part (Harel,
+// 2026-11-06: Suggest was bending brass bushings and box tubes).
 const isFlat = (bbox: [number, number, number] | undefined) => !!bbox && bbox[0] > 0 && bbox[0] <= bbox[1] * 0.25;
-export const isBent = (g: PartGeometry | null | undefined) => !!g && (!!g.sheetMetal || (!isFlat(g.bbox) && g.wallMm !== undefined));
+const MAX_SHEET_MM = 6.5;
+export const isBent = (g: PartGeometry | null | undefined) => {
+  if (!g) return false;
+  if (g.sheetMetal) return true;
+  const s = g.shape;
+  if (s && (s.axisymmetric || ["hex", "rod", "spacer", "round-tube", "box-tube"].includes(s.kind))) return false;
+  return !isFlat(g.bbox) && g.wallMm !== undefined && g.wallMm <= MAX_SHEET_MM && !!g.bbox && g.bbox[0] >= 3 * g.wallMm;
+};
 
 // An item's plate thickness in mm: its thickness spec, else its material spec ("3mm 6061-T6"),
 // else a "3mm" in its name.
@@ -177,17 +188,49 @@ export function cylinderFor(d: number, fam: string | undefined, stock: StockItem
     .sort((a, b) => a.od - b.od)[0]?.i;
 }
 
-// Billet: the smallest block of the part's material it fits in.
+// Billet: the smallest block of the part's material it fits in; else the material's block item
+// that names no size ("Aluminum block": the shop cuts it to size).
 export function blockFor(size: [number, number, number], fam: string | undefined, stock: StockItem[]) {
-  return stock
+  const blocks = stock
     .filter((i) => i.category === "cylinders-blocks" && /block/i.test(i.specs.shape ?? i.name) && (!fam || itemFamily(i) === fam))
     .map((i) => {
       const xyz = [num(i.specs.x), num(i.specs.y), num(i.specs.z)];
       const s = xyz.every((v) => v !== undefined) ? (xyz as number[]) : dims(i.name).slice(0, 3);
       return { i, s: s.length === 3 ? [...s].sort((a, b) => a - b) : undefined };
-    })
+    });
+  const sized = blocks
     .filter((c): c is { i: StockItem; s: number[] } => !!c.s && c.s.every((v, k) => v >= size[k] - 0.1 && v <= size[k] + 25))
     .sort((a, b) => a.s[0] * a.s[1] * a.s[2] - b.s[0] * b.s[1] * b.s[2])[0]?.i;
+  return sized ?? (fam ? blocks.find((c) => !c.s)?.i : undefined);
+}
+
+// The Raw Stock item an old free-text material names ("6.7mm 6061-T6", "1/2In HEX Shaft",
+// "Box tube 25×25×1.5mm", "Brass Block"): parts set up before materials were inventory items.
+export function stockFromText(text: string, stock: StockItem[]): StockItem | undefined {
+  const fam = family(text);
+  if (/hex/i.test(text) && /shaft|stock/i.test(text)) {
+    const flats = /3\/8/.test(text) ? 9.5 : /1\/2/.test(text) ? 12.7 : undefined;
+    if (flats) return hexShaftFor(flats, /thunder|round/i.test(text), stock);
+  }
+  const box = /(\d+(?:\.\d+)?)\s*[x×*]\s*(\d+(?:\.\d+)?)\s*[x×*]\s*(\d+(?:\.\d+)?)/.exec(text);
+  if (box && /box|tube|profile/i.test(text)) {
+    const [a, b] = [Number(box[1]), Number(box[2])].sort((x, y) => x - y);
+    return boxTubeFor(a, b, Number(box[3]), fam === "carbon" ? "carbon" : "aluminum", stock);
+  }
+  if (/\bblock\b|billet/i.test(text)) return blockFor([0, 0, 0], fam ?? "aluminum", stock);
+  const t = plateThicknessMm(text) ?? (/(\d+(?:\.\d+)?)\s*mm\b/i.exec(text) ? Number(/(\d+(?:\.\d+)?)\s*mm\b/i.exec(text)![1]) : undefined);
+  const category = fam ? PLATE_CATEGORY[fam] : undefined;
+  return category && t !== undefined ? plateFor(category, t, stock, ALLOY.exec(text)?.[1]) : undefined;
+}
+
+// Hex stock by its bounding box alone (parts measured before shapes were read): flat to flat
+// 1/2" or 3/8", corner to corner ~1.15× that (ThunderHex's rounded corners ~1.09×).
+function hexFromBox(bbox: [number, number, number]) {
+  const [a, b, len] = bbox;
+  const flats = Math.abs(a - 12.7) <= 0.3 ? 12.7 : Math.abs(a - 9.525) <= 0.3 ? 9.525 : undefined;
+  const ratio = b / a;
+  if (!flats || ratio < 1.05 || ratio > 1.18 || len < a) return undefined;
+  return { flats, thunder: ratio < 1.13 };
 }
 
 // ---------- what the part is ----------
@@ -197,7 +240,7 @@ type Plan = {
   item?: StockItem;
   material?: string; // a print's plain material ("PLA"), set instead of an item
   set?: ProcessSet; // processes the shape decides
-  fixed?: boolean; // `set` wins over the team's habits
+  fixed?: boolean; // `set` wins over the team default
   category?: string; // inventory category for the team default when no item matched
   why: string;
 };
@@ -209,9 +252,35 @@ function materialText(part: SetupInput, stock: StockItem[]) {
   return `${part.geometry?.onshapeMaterial ?? ""} ${own}`.trim();
 }
 
+// A pocketed plate can read as a box tube (its pocket floors look like walls): a real tube's
+// sides are both 10 mm or more and within 5× of each other (Harel, 2026-11-06: 6.7 mm plates were
+// suggested as "box tube 6.7×241 mm").
+function readShape(s: Shape | undefined): Shape | undefined {
+  if (s?.kind !== "box-tube" || !s.d1 || !s.d2) return s;
+  const [a, b] = [Math.min(s.d1, s.d2), Math.max(s.d1, s.d2)];
+  if (a >= 10 && b / a <= 5) return s;
+  return { kind: "plate", t: a, d1: b, d2: s.length, pocketed: s.wall !== undefined && s.wall < a * 0.8 };
+}
+
+const KIND_OF_CATEGORY: Record<string, Plan["kind"]> = { shafts: "hex", "square-tubes": "box-tube", "round-tubes": "round-tube", "cylinders-blocks": "block" };
+
 function planFor(part: SetupInput, stock: StockItem[], linked: StockItem | undefined): Plan | undefined {
-  const g = part.geometry;
   const text = materialText(part, stock) || (linked ? itemText(linked) : "");
+  const plan = shapePlan(part, stock, linked, text);
+  if (plan?.item || plan?.kind === "print") return plan;
+  // An old free-text material on the part names its stock when the shape can't.
+  const own = part.material && !part.inventoryItemId && !stock.some((i) => i.name === part.material) ? part.material : "";
+  const legacy = own ? stockFromText(`${part.geometry?.onshapeMaterial ?? ""} ${own}`, stock) : undefined;
+  if (!legacy) return plan;
+  if (plan && (!plan.category || plan.category === legacy.category || plan.kind === "block")) return { ...plan, item: legacy, why: `${plan.why}, material "${own}"` };
+  if (plan) return plan;
+  const kind = KIND_OF_CATEGORY[legacy.category] ?? "plate";
+  const set = kind === "hex" ? { process1: SHAPE_MACHINES.hexShaft } : kind === "block" ? { process1: SHAPE_MACHINES.block } : undefined;
+  return { kind, item: legacy, category: legacy.category, set, fixed: !!set, why: `material "${own}"` };
+}
+
+function shapePlan(part: SetupInput, stock: StockItem[], linked: StockItem | undefined, text: string): Plan | undefined {
+  const g = part.geometry;
   const om = text ? `Onshape material ${text}` : "no material in Onshape";
   const fam = family(text);
   const metal = METAL.test(text);
@@ -222,7 +291,7 @@ function planFor(part: SetupInput, stock: StockItem[], linked: StockItem | undef
     return { kind: "print", material: print.material, set: { process1: print.machine }, fixed: true, why: om };
   }
 
-  const s = g?.shape;
+  const s = readShape(g?.shape);
   const name = `${part.displayName ?? ""} ${part.onshapeName ?? ""}`;
   if (s && !g?.sheetMetal) {
     // Rule 2: hex shaft, before any plate rule.
@@ -263,6 +332,25 @@ function planFor(part: SetupInput, stock: StockItem[], linked: StockItem | undef
     }
   }
 
+  // Parts measured before shapes were read: bounding box and wall only.
+  const box = g?.bbox;
+  if (!s && box && !g?.sheetMetal && (metal || !text)) {
+    // Hex stock: 1/2" or 3/8" across the flats, ~1.15× across the corners.
+    const hex = hexFromBox(box);
+    if (hex) {
+      const item = hexShaftFor(hex.flats, hex.thunder || /thunder/i.test(name), stock);
+      return { kind: "hex", item, set: { process1: SHAPE_MACHINES.hexShaft }, fixed: true, why: `hex shaft, ${fmt(hex.flats)} mm across flats` };
+    }
+  }
+  if (!s && box && !g?.sheetMetal && g?.wallMm !== undefined && (metal || fam === "carbon") && box[2] >= 3 * box[1] && box[1] <= box[0] * 2.2) {
+    // A long part with a thin wall and a square, 1:2 or round section is a tube, not bent sheet.
+    const tubeFam = fam === "carbon" ? "carbon" : "aluminum";
+    const boxItem = boxTubeFor(box[0], box[1], g.wallMm, tubeFam, stock);
+    const roundItem = !boxItem && box[1] - box[0] <= 1.5 ? roundTubeFor(box[1], g.wallMm, tubeFam, stock) : undefined;
+    if (roundItem) return { kind: "round-tube", item: roundItem, category: "round-tubes", why: `tube Ø${fmt(box[1])} mm, ${fmt(g.wallMm)} mm wall` };
+    return { kind: "box-tube", item: boxItem, category: "square-tubes", why: `tube ${fmt(box[0])}×${fmt(box[1])} mm, ${fmt(g.wallMm)} mm wall` };
+  }
+
   // Bent sheet (and plates measured before shapes were read).
   const t = isBent(g) ? g!.wallMm : isFlat(g?.bbox) ? g!.bbox![0] : undefined;
   if (t !== undefined && fam && PLATE_CATEGORY[fam] && (!s || isBent(g) || s.kind === "plate")) {
@@ -272,6 +360,15 @@ function planFor(part: SetupInput, stock: StockItem[], linked: StockItem | undef
     const shape = bent ? `bent ${g?.sheetMetal ? "sheet metal" : "sheet"}` : "flat";
     // Without a shape reading, only a matched plate counts (a thick block isn't a plate).
     if (item || s) return { kind: bent ? "bent" : "plate", item, category, why: `${om}, ${shape} and ${fmt(t)} mm thick` };
+  }
+
+  // A solid part as thick as a plate the shop stocks is cut from that plate (10×18×60 from the
+  // 10 mm plate), not milled from a block.
+  const solid = s ? (s.kind === "block" && !s.axisymmetric ? s.size : undefined) : box && !isBent(g) ? box : undefined;
+  if (solid && fam && PLATE_CATEGORY[fam] && solid[0] <= 13) {
+    const category = PLATE_CATEGORY[fam];
+    const item = plateFor(category, solid[0], stock, ALLOY.exec(text)?.[1]);
+    if (item) return { kind: "plate", item, category, why: `${om}, solid part ${solid.map(fmt).join("×")} mm, cut from ${fmt(solid[0])} mm plate` };
   }
 
   // Other metal parts: turned when round, else milled from a block.
@@ -301,10 +398,11 @@ function defaultProcesses(material: string, item: StockItem | undefined, categor
   return key ? DEFAULT_PROCESSES[key] : cat ? DEFAULT_PROCESSES[cat] : undefined;
 }
 
-function processesFor(material: string | undefined, item: StockItem | undefined, learned: Learned, category?: string): { set: ProcessSet; why: string } | undefined {
-  const team = material ? learned.get(material) : undefined;
-  if (team && team.count >= 2) return { set: team, why: `as on ${team.count} other ${material} parts` };
-  const set = defaultProcesses(material ?? "", item, category);
+// The team default; a free-text material with no item (Onshape's "Aluminum - 6061") takes its
+// family's plate category.
+function processesFor(material: string | undefined, item: StockItem | undefined, category?: string): { set: ProcessSet; why: string } | undefined {
+  const fam = material ? family(material) : undefined;
+  const set = defaultProcesses(material ?? "", item, category ?? (fam ? PLATE_CATEGORY[fam] : undefined));
   return set ? { set, why: "the team default" } : undefined;
 }
 
@@ -324,7 +422,7 @@ const names = (s: ProcessSet) =>
 
 // What the rules would set on a part, and why, or null when they can't tell. Only what's missing
 // is filled: a material someone picked and processes someone set stay.
-export function suggestSetup(part: SetupInput, learned: Learned, stock: StockItem[]): { changes: SetupChanges; reason: string } | null {
+export function suggestSetup(part: SetupInput, stock: StockItem[]): { changes: SetupChanges; reason: string } | null {
   if (part.classification === "external") return null;
   const changes: SetupChanges = {};
   const why: string[] = [];
@@ -359,17 +457,17 @@ export function suggestSetup(part: SetupInput, learned: Learned, stock: StockIte
   } else if (!settled && plan) {
     why.push(`${plan.why}${plan.category ? " (no matching item in inventory)" : ""}`);
   }
-  // A free-text material (Onshape's) still names the team's habits.
+  // A free-text material (Onshape's) still picks the team default.
   material ??= part.material;
 
   if (!part.preProcess && !part.process1 && !part.process2) {
-    const p = plan?.fixed && plan.set ? { set: plan.set, why: "from its shape" } : processesFor(material ?? undefined, item, learned, plan?.category);
+    const p = plan?.fixed && plan.set ? { set: plan.set, why: "from its shape" } : processesFor(material ?? undefined, item, plan?.category);
     let set = p?.set;
     // Metal is never printed; prints get nothing but the printer.
     if (set && plan && plan.kind !== "print" && [set.preProcess, set.process1, set.process2].some(isPrint)) set = undefined;
     if (set && plan?.kind === "print") set = { process1: set.process1 };
     if (set && p) {
-      const bent = plan?.kind === "bent" || (!plan && isBent(part.geometry));
+      const bent = plan?.kind === "bent";
       const final = bent ? withBending(set) : set;
       const proc = { preProcess: final.preProcess ?? null, process1: final.process1 ?? null, process2: final.process2 ?? null };
       if (proc.preProcess || proc.process1 || proc.process2) {

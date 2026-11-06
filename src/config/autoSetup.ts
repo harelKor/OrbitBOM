@@ -1,11 +1,10 @@
-// What Suggest setup on To Review picks for a part's processes when the team hasn't made two or
-// more parts of that material yet. Keys are a word in the material's inventory item ("PLA" in
-// "Bambu PLA – Black filament") or, failing that, its inventory category id; values are machine
-// ids from machines.ts. Edit here; there is no settings UI.
-// Once the team has set processes on parts of a material by hand, the most common choice wins,
-// except where the part's shape decides (src/lib/review/rules.ts): 3D printed parts, pocketed
-// plates (CNC), hex shafts (Manual Mill, LATHE when turned), rods, spacers and other turned parts
-// (LATHE), and solid metal blocks (CNC).
+// What Suggest setup picks for a part's processes. Keys are a word in the material's inventory
+// item ("PLA" in "Bambu PLA – Black filament") or, failing that, its inventory category id; values
+// are machine ids from machines.ts. Edit here; there is no settings UI.
+// The part's shape decides first (src/lib/review/rules.ts): 3D printed parts, pocketed plates
+// (CNC), hex shafts (Manual Mill, LATHE when turned), rods, spacers and other turned parts
+// (LATHE), and solid metal blocks (CNC). Suggest no longer copies what other parts of the same
+// material got (Harel, 2026-11-06); processes a person set on a part stay.
 
 export type ProcessSet = { preProcess?: string; process1?: string; process2?: string };
 

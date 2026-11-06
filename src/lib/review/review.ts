@@ -1,7 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { gunzipSync } from "node:zlib";
-import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { partKey } from "@/lib/model/assembly";
 import { builtStudios } from "@/lib/model/build";
@@ -16,8 +16,10 @@ import { itemFieldLabel, itemValueText, locationNames, revertInventoryBatch } fr
 import { listCategories } from "@/lib/data/categories";
 import { listRawStock } from "@/lib/data/materials";
 import { categoryOf, getCategory } from "@/lib/inventory/categories";
-import { sizeOf, suggestSetup, wallThickness, type Learned } from "./rules";
-import { matchByName, nameMatchSetup, type NameMatchItem, type NameMatchPart } from "./nameMatch";
+import { PRINT_MATERIALS } from "@/config/autoSetup";
+import { getMachine } from "@/config/machines";
+import { sizeOf, suggestSetup, wallThickness } from "./rules";
+import { isDescriptiveName, looksLikeProduct, matchByName, nameMatchSetup, productSetup, type NameMatchItem, type NameMatchPart } from "./nameMatch";
 import { analyzeShape } from "./shape";
 
 const { parts, systems, partReviews, partHistory, members, aiLogs } = schema;
@@ -153,25 +155,6 @@ export async function applySuggestions(
   );
 }
 
-// The most common process set per material on the team's parts that a person set up (parts
-// still waiting in To Review don't count).
-async function learnedProcesses(): Promise<Learned> {
-  const rows = await db
-    .select({ material: parts.material, preProcess: parts.preProcess, process1: parts.process1, process2: parts.process2, n: sql<number>`count(*)::int` })
-    .from(parts)
-    .leftJoin(partReviews, eq(partReviews.partId, parts.id))
-    .where(and(isNotNull(parts.material), isNotNull(parts.process1), isNull(partReviews.partId)))
-    .groupBy(parts.material, parts.preProcess, parts.process1, parts.process2);
-  const learned: Learned = new Map();
-  for (const r of rows) {
-    const best = learned.get(r.material!);
-    if (!best || r.n > best.count) {
-      learned.set(r.material!, { preProcess: r.preProcess ?? undefined, process1: r.process1 ?? undefined, process2: r.process2 ?? undefined, count: r.n });
-    }
-  }
-  return learned;
-}
-
 // A robot's live CAD parts that are missing a material or every process and aren't waiting in
 // To Review, measured from the 3D model. `unlinked` adds parts not marked COTS that have no
 // inventory item yet (a material Onshape filled in, "Aluminum - 6061", isn't an item), so Suggest
@@ -196,9 +179,9 @@ export async function partsToSetUp(robotId: string, systemId?: string, opts: { u
       ),
     );
   const measured = await measureParts(robotId, rows.map((r) => ({ ...r.part, systemName: r.systemName })));
-  const [learned, stock, byName] = await Promise.all([learnedProcesses(), listRawStock(), nameMatcher()]);
+  const [stock, byName] = await Promise.all([listRawStock(), nameMatcher()]);
   const named = byName(measured.filter((p) => !p.inventoryItemId));
-  return measured.map((p) => ({ part: p, guess: guessSetup(p, learned, stock, named) }));
+  return measured.map((p) => ({ part: p, guess: guessSetup(p, stock, named) }));
 }
 
 // Suggest's search by name (nameMatch.ts): every inventory item, and the links someone rejected,
@@ -229,16 +212,26 @@ async function nameMatcher() {
 }
 
 // A part's suggested setup: an inventory item its descriptive name matches (outside Raw Stock:
-// it's COTS) comes first; otherwise the rules' guess from its material and shape.
+// it's COTS) comes first; then a name that says it's bought ("18t Aluminum Pulley") keeps it COTS
+// without an item, unless it's printed; otherwise the rules' guess from its material and shape.
 function guessSetup(
   p: Part,
-  learned: Learned,
   stock: Awaited<ReturnType<typeof listRawStock>>,
   named: ReturnType<Awaited<ReturnType<typeof nameMatcher>>>,
 ): { changes: PartChanges; reason: string } | null {
   const hit = named.get(p.id);
-  return (hit && nameMatchSetup(p, hit)) || suggestSetup(p, learned, stock);
+  const byItem = hit && nameMatchSetup(p, hit);
+  if (byItem) return byItem;
+  if (!p.inventoryItemId && !isPrinted(p) && looksLikeProduct(p.displayName ?? p.onshapeName)) return productSetup(p);
+  return suggestSetup(p, stock);
 }
+
+// Onshape's material, or the part's, is a 3D printing material.
+const isPrinted = (p: Pick<Part, "material" | "geometry">) => PRINT_MATERIALS.some((m) => m.match.test(`${p.geometry?.onshapeMaterial ?? ""} ${p.material ?? ""}`));
+
+// A part the rules have nothing to read from: no Onshape material, no 3D measurement and a name
+// that's only a number ("Part 12"). Its robot's 3D model has to be built first.
+const blind = (p: Part) => !p.geometry?.onshapeMaterial && !p.geometry?.bbox && !isDescriptiveName(p.displayName ?? p.onshapeName);
 
 // Auto-link for these parts (imported when used: autolink.ts imports this file).
 async function linkParts(partIds: string[], memberId: string) {
@@ -272,8 +265,8 @@ export async function suggestOnePart(partId: string, memberId: string) {
     .where(eq(parts.id, partId));
   if (!row) return null;
   const [measured] = row.part.isManual ? [row.part] : await measureParts(row.robotId, [{ ...row.part, systemName: row.systemName }]);
-  const [learned, stock, byName] = await Promise.all([learnedProcesses(), listRawStock(), nameMatcher()]);
-  const guess = guessSetup(measured, learned, stock, byName(measured.inventoryItemId ? [] : [measured]));
+  const [stock, byName] = await Promise.all([listRawStock(), nameMatcher()]);
+  const guess = guessSetup(measured, stock, byName(measured.inventoryItemId ? [] : [measured]));
   let setUp = 0;
   if (guess) {
     const { changed, batchId } = await applySuggestions([{ id: partId, ...guess }], { memberId, source: "rule", via: "ui" });
@@ -285,12 +278,14 @@ export async function suggestOnePart(partId: string, memberId: string) {
 }
 
 // The system page's Suggest mode: fresh setups for the picked parts, set up or not. Each part's
-// material, item and processes are worked out as if it had none (classification stays, so a COTS
-// part only turns in-house for plates and prints); when the rules find no Raw Stock item, its own
-// material still picks the processes. Only fields that change are written, and every one waits
-// in To Review with its "from → to", like Suggest setup. Then auto-link for the ones without an item.
+// material and item are worked out as if it had none (classification stays, so a COTS part only
+// turns in-house for plates and prints; a part named like a product stays COTS); when the rules
+// find no Raw Stock item, its own material still picks the processes, and processes a person set
+// stay. Only fields that change are written, and every one waits in To Review with its "from →
+// to", like Suggest setup. Then auto-link for the ones without an item. `blind`: parts with nothing
+// to read (no Onshape material, no 3D measurement, a numbered name).
 export async function suggestPickedParts(partIds: string[], memberId: string) {
-  if (!partIds.length) return { checked: 0, suggested: 0, linked: 0 };
+  if (!partIds.length) return { checked: 0, suggested: 0, linked: 0, blind: 0 };
   const rows = await db
     .select({ part: parts, robotId: systems.robotId, systemName: systems.name })
     .from(parts)
@@ -302,24 +297,51 @@ export async function suggestPickedParts(partIds: string[], memberId: string) {
   for (const [robotId, list] of byRobot) {
     measured.push(...list.filter((p) => p.isManual), ...(await measureParts(robotId, list.filter((p) => !p.isManual))));
   }
-  const [learned, stock, byName] = await Promise.all([learnedProcesses(), listRawStock(), nameMatcher()]);
+  const [stock, byName] = await Promise.all([listRawStock(), nameMatcher()]);
   const named = byName(measured);
+  const stockNames = new Set(stock.map((i) => i.name));
   const blankProcesses = { preProcess: null, process1: null, process2: null };
   const edits = measured.flatMap((p) => {
     const hit = named.get(p.id);
     const byItem = hit && nameMatchSetup(p, hit);
     if (byItem) return [{ id: p.id, ...byItem }];
-    const fresh = suggestSetup({ ...p, ...blankProcesses, material: null, inventoryItemId: null }, learned, stock);
-    const guess = fresh?.changes.material ? fresh : suggestSetup({ ...p, ...blankProcesses }, learned, stock);
-    return guess ? [{ id: p.id, ...guess }] : [];
+    if (!isPrinted(p) && (looksLikeProduct(p.displayName ?? p.onshapeName) || looksBought(p))) {
+      const product = productSetup(p);
+      return product ? [{ id: p.id, ...product }] : [];
+    }
+    // Worked out as if the part had no item: an old free-text material ("6.7mm 6061-T6") stays as
+    // a hint, an item's name doesn't.
+    const material = p.material && !stockNames.has(p.material) ? p.material : null;
+    const fresh = suggestSetup({ ...p, ...blankProcesses, material, inventoryItemId: null }, stock);
+    const guess = fresh?.changes.material ? fresh : suggestSetup({ ...p, ...blankProcesses }, stock);
+    if (!guess) return [];
+    const changes = { ...guess.changes };
+    // A print gets the plain material and no filament item (Harel, 2026-11-01).
+    if (p.inventoryItemId && changes.material && !("inventoryItemId" in changes) && PRINT_MATERIALS.some((m) => m.material === changes.material)) changes.inventoryItemId = null;
+    // Processes a person already set stay, unless they print a part that isn't printed or the
+    // other way round, or add something to a print (Harel, 2026-11-06: "select all" was replacing
+    // the team's machine choices; older Suggests bent prints).
+    const had = [p.preProcess, p.process1, p.process2].filter((m): m is string => !!m);
+    const printing = (ids: (string | null | undefined)[]) => ids.some((id) => !!id && getMachine(id)?.kind === "print");
+    const valid = !printing(had) || had.length === 1;
+    if (had.length && valid && printing(had) === printing([changes.preProcess, changes.process1, changes.process2])) {
+      delete changes.preProcess;
+      delete changes.process1;
+      delete changes.process2;
+    }
+    for (const f of Object.keys(changes) as (keyof typeof changes)[]) if (same(changes[f], p[f as keyof Part])) delete changes[f];
+    return Object.keys(changes).length ? [{ id: p.id, changes, reason: guess.reason }] : [];
   });
   const { changed, batchId } = await applySuggestions(edits, { memberId, source: "rule", via: "ui" });
   if (changed) {
     await logAiAction({ source: "rule", tool: "Suggest setup", memberId, batchId, parts: changed, summary: `Suggested a fresh setup for ${changed} of ${measured.length} picked parts` });
   }
   const linked = await linkParts(measured.map((p) => p.id), memberId);
-  return { checked: measured.length, suggested: changed, linked };
+  return { checked: measured.length, suggested: changed, linked, blind: measured.filter((p) => blind(p) && !edits.some((e) => e.id === p.id)).length };
 }
+
+// A COTS part already linked to its item: the shape rules don't turn it in-house.
+const looksBought = (p: Part) => p.classification === "cots" && !!p.inventoryItemId;
 
 // What a part has waiting in To Review, for its window's Approve and Reject.
 export async function partReview(partId: string) {

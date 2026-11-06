@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { analyzeShape } from "./shape";
-import { suggestSetup, type Learned, type SetupInput, type StockItem } from "./rules";
+import { suggestSetup, type SetupInput, type StockItem } from "./rules";
 
 type P = [number, number];
 type V = [number, number, number];
@@ -194,9 +194,8 @@ const STOCK: StockItem[] = [
   item("TPU filament", "filament"),
   item("Markforged Onyx filament", "filament", { material: "Onyx" }),
 ];
-const none: Learned = new Map();
 const setup = (geometry: SetupInput["geometry"], over: Partial<SetupInput> = {}) =>
-  suggestSetup({ classification: "undefined", material: null, preProcess: null, process1: null, process2: null, geometry, ...over }, none, STOCK);
+  suggestSetup({ classification: "undefined", material: null, preProcess: null, process1: null, process2: null, geometry, ...over }, STOCK);
 const shapeOf = (s: Solid) => read(s);
 
 describe("suggestSetup with shapes", () => {
@@ -223,9 +222,8 @@ describe("suggestSetup with shapes", () => {
     expect(pla?.changes).toEqual({ material: "PLA", preProcess: null, process1: "3d-bambu", process2: null, classification: "inhouse" });
     expect(setup({ onshapeMaterial: "TPU 95A" })?.changes).toMatchObject({ material: "TPU", process1: "3d-bambu", process2: null });
     expect(setup({ onshapeMaterial: "Onyx" })?.changes).toMatchObject({ material: "Onyx", process1: "3d-markforged" });
-    // Learned habits can't add bending to a print.
-    const learned: Learned = new Map([["Bambu PLA – Black filament", { process1: "3d-bambu", process2: "bending", count: 5 }]]);
-    const s = suggestSetup({ classification: "undefined", material: null, preProcess: null, process1: null, process2: null, geometry: { onshapeMaterial: "PLA", sheetMetal: { flatPartId: "x" }, wallMm: 2 } }, learned, STOCK);
+    // Sheet metal printed in PLA is still only printed.
+    const s = setup({ onshapeMaterial: "PLA", sheetMetal: { flatPartId: "x" }, wallMm: 2 });
     expect(s?.changes).toMatchObject({ process1: "3d-bambu", process2: null, preProcess: null });
   });
 
@@ -266,13 +264,40 @@ describe("suggestSetup with shapes", () => {
     const s = setup({ onshapeMaterial: "Aluminum - 6061", shape: { kind: "block", size: [30, 40, 50] } });
     expect(s?.changes).toMatchObject({ process1: "cnc", classification: "inhouse" });
     expect(s?.changes.material).toBeUndefined();
-    const learned: Learned = new Map([["Aluminum plate 6061 4mm", { process1: "3d-bambu", count: 3 }]]);
-    const p = suggestSetup({ classification: "undefined", material: null, preProcess: null, process1: null, process2: null, geometry: { onshapeMaterial: "Aluminum - 6061", shape: { kind: "plate", t: 4 } } }, learned, STOCK);
-    expect(p?.changes.process1).toBeUndefined();
-    expect(p?.changes.material).toBe("Aluminum plate 6061 4mm");
+    const p = setup({ onshapeMaterial: "Aluminum - 6061", shape: { kind: "plate", t: 4 } });
+    expect(p?.changes).toMatchObject({ material: "Aluminum plate 6061 4mm", process1: "cnc" });
   });
 
   it("leaves COTS parts' hex shafts and rods alone", () => {
     expect(setup({ onshapeMaterial: "Steel", shape: { kind: "hex", d1: 12.7, d2: 14.6 } }, { classification: "cots" })).toBeNull();
+  });
+
+  // Harel, 2026-11-06: what the replay on the live robots got wrong.
+  it("reads a pocketed plate misread as a thin box tube as a plate", () => {
+    const s = setup({ onshapeMaterial: "Aluminum - 6061", shape: { kind: "box-tube", d1: 6.71, d2: 241.5, wall: 1.6, length: 304 } });
+    expect(s?.changes).toMatchObject({ material: "Aluminum plate 6061 6.7mm", process1: "cnc" });
+  });
+
+  it("cuts a solid part as thick as a stock plate from that plate", () => {
+    expect(setup({ onshapeMaterial: "Aluminum - 6061", shape: { kind: "block", size: [6.7, 13.2, 43.8] } })?.changes.material).toBe("Aluminum plate 6061 6.7mm");
+    expect(setup({ onshapeMaterial: "Aluminum - 6061", bbox: [6.7, 25, 103.8] })?.changes.material).toBe("Aluminum plate 6061 6.7mm");
+  });
+
+  it("knows hex stock and tubes from a bounding box alone", () => {
+    expect(setup({ onshapeMaterial: "Aluminum - 6061", bbox: [12.7, 14.67, 721.6] })?.changes).toMatchObject({ material: '1/2" Hex shaft', process1: "manual-mill" });
+    const tube = setup({ onshapeMaterial: "Aluminum - 6061", bbox: [25, 50, 600], wallMm: 1.5 });
+    expect(tube?.changes.material).toMatch(/25×50×1.5mm|50x25mm 1.5mm wall/);
+    expect(tube?.changes.process2 ?? null).toBeNull();
+  });
+
+  it("links an old free-text material to its stock item", () => {
+    expect(setup({ onshapeMaterial: "Aluminum - 6061" }, { classification: "inhouse", material: "6.7mm 6061-T6" })?.changes.material).toBe("Aluminum plate 6061 6.7mm");
+    expect(setup({ onshapeMaterial: "7075 Aluminum" }, { classification: "inhouse", material: "1/2In HEX Shaft" })?.changes.material).toBe('1/2" Hex shaft');
+  });
+
+  it("doesn't bend a round block", () => {
+    const s = setup({ onshapeMaterial: "Aluminum - 6061", bbox: [20.7, 24.6, 25], wallMm: 2, shape: { kind: "block", size: [20.7, 24.6, 25], axisymmetric: true } });
+    expect(s?.changes.process1).toBe("lathe");
+    expect(s?.changes.process2 ?? null).toBeNull();
   });
 });

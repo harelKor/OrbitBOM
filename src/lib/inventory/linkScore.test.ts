@@ -40,7 +40,70 @@ describe("bestLinks", () => {
     const p = part({ id: "a", names: ["36T HTD 5mm Pulley"] });
     expect(bestLinks([p], [pulley36, pulley24]).map((l) => l.itemId)).toEqual(["p36"]);
     expect(bestLinks([p], [pulley36], (_, i) => i === "p36")).toEqual([]);
-    const twin = { ...pulley36, id: "twin" };
-    expect(bestLinks([p], [pulley36, twin])).toEqual([]);
+    // The same product entered twice isn't a near tie (Harel, 2026-11-06).
+    const twin = { ...pulley36, id: "twin", docKeys: ["d:e"] };
+    expect(bestLinks([p], [pulley36, twin]).map((l) => l.itemId)).toEqual(["twin"]);
+    // Two different items that score alike are.
+    const other = { ...pulley36, id: "other", name: '36T HTD 5mm 9mm wide 1/2" Hex Pulley (WCP)' };
+    expect(bestLinks([part({ id: "b", names: ["36T HTD Pulley"] })], [pulley36, other])).toEqual([]);
+  });
+});
+
+describe("names from Onshape and vendors", () => {
+  const link = (name: string, i: LinkItem) => scoreLink(part({ names: [name] }), i).score;
+  const screw = (id: string, name: string, kind: string, length: string) => item({ id, name, category: cat("fasteners"), specs: { kind, thread: "M5", length } });
+  const shcs10 = screw("s10", "M5×10 גלילי", "SHCS (רגיל)", "10");
+  const button10 = screw("b10", "M5×10 כיפה", "Button Head (כיפה)", "10");
+  const flat10 = screw("f10", "M5×10 קוני", "Flat Head (קוני)", "10");
+
+  it("links McMaster screws by thread, length and head, not the thread pitch", () => {
+    const parts = ["Hex socket head cap screw M5x0.80 x 10", "Socket button head screw M5x0.8 x 10", "Hex socket countersunk head screw M5x0.8 x 10"].map((n, k) => part({ id: `p${k}`, names: [n] }));
+    expect(bestLinks(parts, [shcs10, button10, flat10]).map((l) => l.itemId)).toEqual(["s10", "b10", "f10"]);
+    expect(link("Hex socket head cap screw M5x0.80 x 12", shcs10)).toBe(0);
+    expect(link("Hex socket head cap screw M5x0.80 x 10 x 22", shcs10)).toBeGreaterThanOrEqual(LINK_THRESHOLD);
+  });
+
+  it("reads 5M and 3M belt pitches", () => {
+    const htd = item({ id: "h", name: "HTD 5mm Belt 225mm (45T) 9mm", category: cat("belts"), specs: { pitch: "HTD 5mm", teeth: "45", width: "9", groove: "Single" } });
+    const gt2 = item({ id: "g", name: "GT2 3mm Belt 135mm (45T) 9mm", category: cat("belts"), specs: { pitch: "GT2 3mm", teeth: "45", width: "9", groove: "Single" } });
+    expect(bestLinks([part({ names: ["45T 5M 9mm Wide Belt"] })], [htd, gt2]).map((l) => l.itemId)).toEqual(["h"]);
+    expect(bestLinks([part({ names: ["45T 3M 9mm Wide Belt"] })], [htd, gt2]).map((l) => l.itemId)).toEqual(["g"]);
+  });
+
+  it("tells spur from bevel and aluminum from steel gears", () => {
+    // The live Gears category has hidden Type and Material fields.
+    const base = cat("gears")!;
+    const gears: InvCategory = {
+      ...base,
+      fields: [
+        ...base.fields,
+        { id: "type", kind: "options", label: "Type", hidden: true, options: ["Spur", "Bevel", "Ball shifter"] },
+        { id: "material", kind: "options", label: "Material", hidden: true, options: ["Aluminum", "Steel", "Plastic"] },
+      ],
+    };
+    const spec = { dp: "20 DP", bore: '1/2" Hex', teeth: "40" };
+    const plain = item({ id: "a", name: '20DP 40T 1/2" Hex Gear', category: gears, specs: spec });
+    const steel = item({ id: "s", name: '20DP 40T 1/2" Hex Steel Gear', category: gears, specs: { ...spec, material: "Steel" } });
+    const bevel = item({ id: "b", name: '20DP 40T 1/2" Hex Bevel Gear', category: gears, specs: { ...spec, type: "Bevel" } });
+    expect(bestLinks([part({ names: ['40t Aluminum Spur Gear (20 DP, 1/2" Hex Bore)'] })], [plain, steel, bevel]).map((l) => l.itemId)).toEqual(["a"]);
+  });
+
+  it("reads wheel diameters and durometers, and bearing sizes", () => {
+    const green = item({ id: "w", name: '2.25" Compliant Wheel, 1/2" Hex, 35A (Green)', category: cat("wheels"), specs: { type: "Compliant", diameter: '2.25"', bore: '1/2" Hex', durometer: "35A" } });
+    const black = item({ id: "k", name: '2.25" Compliant Wheel, 1/2" Hex, 60A (Black)', category: cat("wheels"), specs: { type: "Compliant", diameter: '2.25"', bore: '1/2" Hex', durometer: "60A" } });
+    expect(bestLinks([part({ names: ['2.25" Compliant Wheel (35A, 1" Wide, 1/2" Hex Bore)'] })], [green, black]).map((l) => l.itemId)).toEqual(["w"]);
+    const bearing = item({ id: "r", name: "8x16x5 Flanged Bearing", category: cat("bearings"), specs: { bore: "8", od: "16", width: "5", flanged: "Flanged" } });
+    expect(link("WCP Metric Ball Bearings – 1508 8mm ID x 16mm OD x 5mm WD", bearing)).toBeGreaterThanOrEqual(LINK_THRESHOLD);
+    const bearing25 = item({ id: "r25", name: "25x32x4 Bearing", category: cat("bearings"), specs: { bore: "25", od: "32", width: "4" } });
+    expect(link("25-32-4", bearing25)).toBeGreaterThanOrEqual(LINK_THRESHOLD);
+  });
+
+  it("doesn't take an accessory for its product", () => {
+    expect(link("Kraken X60 Back Cap (WCP)", item({ name: "Kraken X60", category: cat("motors"), specs: { model: "Kraken X60" } }))).toBe(0);
+  });
+
+  it("never links Raw Stock by picture or Part Studio", () => {
+    const filament = item({ name: "Bambu PLA – Black filament", category: cat("filament"), thumbHashes: [{ hash: "f0f0f0f0f0f0f0f0", partName: "a print" }], docKeys: ["d:e"] });
+    expect(scoreLink(part({ names: ["25-32-4"], thumbHash: "f0f0f0f0f0f0f0f0", docKey: "d:e" }), filament).score).toBe(0);
   });
 });

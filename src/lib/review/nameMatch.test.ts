@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isDescriptiveName, matchByName, nameMatchSetup, type NameMatchItem } from "./nameMatch";
+import { isDescriptiveName, looksLikeProduct, matchByName, nameMatchSetup, productSetup, type NameMatchItem } from "./nameMatch";
 
 const item = (id: string, name: string, group: string, extra: Partial<NameMatchItem> = {}): NameMatchItem => ({
   id,
@@ -40,5 +40,17 @@ describe("matchByName", () => {
     expect(matchByName([part("a", "Kraken X60")], items, (p, i) => p === "a" && i === "k").size).toBe(0);
     const m = matchByName([part("c", "Aluminum 6061 plate")], items);
     expect(nameMatchSetup({ ...part("c", "Aluminum 6061 plate"), classification: "undefined", material: null, preProcess: null, process1: null, process2: null }, m.get("c")!)).toBeNull();
+  });
+});
+
+describe("looksLikeProduct", () => {
+  it("knows bought parts by tooth counts, product words and vendors", () => {
+    for (const n of ['18t Aluminum Pulley (HTD 5mm, 9mm Wide, 1/2" Hex Bore)', '2.25" Compliant Wheel (35A, 1" Wide, 1/2" Hex Bore)', "VersaPlanetary Ring Gear", "125T 5M 9mm Wide Belt", "Robot Radio (VH-109)"])
+      expect(looksLikeProduct(n), n).toBe(true);
+    for (const n of ["1691-26-411-04A", "1690-26-411-01A gear plate", '1/2" Hex (8.087 in)', "Part 12", "LshootMid02A"]) expect(looksLikeProduct(n), n).toBe(false);
+  });
+  it("makes such a part COTS and clears an in-house guess", () => {
+    const s = productSetup({ classification: "inhouse", displayName: null, onshapeName: "24t Aluminum Spur Gear (20 DP)", material: "Aluminum - 6061", preProcess: null, process1: "cnc", process2: null });
+    expect(s?.changes).toEqual({ classification: "cots", material: null, process1: null });
   });
 });

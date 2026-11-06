@@ -24,6 +24,36 @@ export function isDescriptiveName(name: string | null | undefined): boolean {
   return /[a-z]{2}/i.test(descriptivePart(name));
 }
 
+// A name that says the part is bought (Harel, 2026-11-06): a tooth count ("18t", "125T") or a
+// product word or vendor. A part with a team part number is made by the team, whatever else its
+// name says ("1690-26-411-01A gear plate").
+const PRODUCT =
+  /\b\d+\s*t\b|\b(gears?|pulleys?|sprockets?|belts?|chains?|bearings?|wheels?|rollers?|motors?|encoders?|sensors?|cameras?|limelight|radio|battery|breakers?|kraken|falcon|neo|vortex|versaplanetary|maxplanetary|planetary|gearbox|screws?|bolts?|nuts?|washers?|rivets?|springs?|servos?|wcp|vex|andymark|thriftybot|rev)\b/i;
+export function looksLikeProduct(name: string | null | undefined): boolean {
+  if (!name || new RegExp(PART_NUMBER.source, "i").test(name)) return false;
+  return isDescriptiveName(name) && PRODUCT.test(descriptivePart(name));
+}
+
+// A part named like a bought product that no inventory item matches: it's COTS (not something
+// the shape rules turn into a CNC or laser job), without an item until one is added or linked.
+export function productSetup(part: {
+  classification: string;
+  displayName: string | null;
+  onshapeName: string | null;
+  material: string | null;
+  preProcess: string | null;
+  process1: string | null;
+  process2: string | null;
+}): { changes: PartChanges; reason: string } | null {
+  const name = part.displayName ?? part.onshapeName;
+  if (!looksLikeProduct(name)) return null;
+  const changes: PartChanges = {};
+  if (part.classification !== "cots") changes.classification = "cots";
+  for (const f of ["material", "preProcess", "process1", "process2"] as const) if (part[f]) changes[f] = null;
+  if (!Object.keys(changes).length) return null;
+  return { changes, reason: `"${descriptivePart(name)}" is named like a bought part, so COTS; no inventory item matches it yet` };
+}
+
 export type NameMatchPart = {
   id: string;
   displayName: string | null;
