@@ -12,6 +12,7 @@ import { FastLink, ShallowLink } from "@/components/ui/FastLink";
 import { useManage } from "./ModeContext";
 import { useRobotContext } from "./useRobotContext";
 import { useArrivals } from "./Arrivals";
+import { InstallApp } from "./InstallApp";
 
 export function LeftNav({
   robots,
@@ -243,6 +244,7 @@ export function LeftNav({
             AI logs
           </Item>
         </nav>
+        <InstallApp />
         <div className="space-y-0.5 border-t border-line p-2 text-sm">
           <Item href="/members" icon="users" active={pathname.startsWith("/members")}>
             Members
