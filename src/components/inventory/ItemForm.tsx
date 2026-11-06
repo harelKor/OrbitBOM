@@ -17,7 +17,8 @@ export type Draft = {
   category: string | null;
   specs: Record<string, string>;
   name: string;
-  nameTouched: boolean;
+  nameTouched: boolean; // the name box wins over the name the specs build
+  nameTyped?: boolean; // typed in the name box during this edit
   inStock: string;
   locationId: string | null;
   locationTouched: boolean;
@@ -110,9 +111,11 @@ export function ItemForm({
     setDraft({ ...d, category: id, locationId: d.locationTouched ? d.locationId : categoryLocation(next, items) });
   };
   // Picking another sub-type clears the values of fields the new one doesn't have.
+  // Changing a spec renames the item from its specs, an item being edited too (its name starts as
+  // the saved one): unless the member typed in the name box during this edit (Harel, 2026-11-06).
   const setSpec = (field: string, value: string) => {
     const specs = { ...d.specs, [field]: value };
-    setDraft({ ...d, specs: cat && field === cat.fields[0]?.id ? dropInactive(cat, specs) : specs });
+    setDraft({ ...d, specs: cat && field === cat.fields[0]?.id ? dropInactive(cat, specs) : specs, nameTouched: d.nameTyped ? d.nameTouched : false });
   };
   const fields = cat ? activeFields(cat, d.specs) : [];
   const step = (by: number) => {
@@ -181,7 +184,7 @@ export function ItemForm({
           id="item-name"
           required
           value={name}
-          onChange={(e) => setDraft({ ...d, name: e.target.value, nameTouched: true })}
+          onChange={(e) => setDraft({ ...d, name: e.target.value, nameTouched: true, nameTyped: true })}
           placeholder={cat ? `Fill the fields or type a name` : "e.g. 608 bearing"}
           className="input min-h-11 text-base"
         />
