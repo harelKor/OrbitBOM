@@ -167,7 +167,7 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
           )}
         </section>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-1 lg:grid-rows-2">
-          <QaBox robotId={robot.id} systems={qaSystems} glow={cad && qaTotal > 0} />
+          <QaBox robotId={robot.id} systems={qaSystems} parts={parts.filter((p) => p.status === "Ready for QA")} inventory={inventoryNames} isAdmin={member.isAdmin} glow={cad && qaTotal > 0} />
           <PostProcessBox robotId={robot.id} parts={postParts} inventory={inventoryNames} isAdmin={member.isAdmin} glow={build && postParts.length > 0} />
         </div>
         <div className="flex min-w-0 flex-col lg:aspect-[11/8]">
