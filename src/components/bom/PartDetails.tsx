@@ -7,7 +7,7 @@ import { Dialog } from "@/components/Dialog";
 import { deleteManualPart } from "@/app/(app)/parts-actions";
 import { inventoryPicker } from "@/app/(app)/inventory/actions";
 import { approveParts, partReviewState, rejectParts, suggestPart, type PartReviewState } from "@/app/(app)/robots/[robotId]/review/actions";
-import { PartModel, type StageView } from "@/components/dashboard/PartStage";
+import { PartModel, PartStage, type StageView } from "@/components/dashboard/PartStage";
 import { DrawingEditor } from "@/components/drawing/DrawingEditor";
 import { DrawingPreview } from "@/components/drawing/DrawingPreview";
 import { syncOnshapeDrawings } from "@/components/drawing/syncOnshape";
@@ -46,6 +46,8 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
   const canReset = useCan("classify");
   const { robotId } = useBom();
   const [stage, setStage] = useState<Stage>(part.isManual ? "thumb" : "part");
+  // The 3D preview, big in a window of its own (a click on the small one).
+  const [big, setBig] = useState(false);
   const [, startTransition] = useTransition();
   const cots = part.classification === "cots";
   const format = cadFormat(part);
@@ -91,9 +93,21 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
       }
       compact
       width="w-[min(74rem,calc(100vw-2rem))]">
+        {/* Outside the small preview, so its pointer cursor doesn't carry into the window. */}
+        {big && stage !== "thumb" && (
+          <PartStage
+            partId={ownerPartId(part)}
+            robotId={robotId ?? null}
+            modelKey={part.modelKey}
+            name={title}
+            view={stage}
+            onView={setStage}
+            onClose={() => setBig(false)}
+          />
+        )}
         <div className="grid gap-3 sm:gap-5 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
           <div className="space-y-2 sm:space-y-3">
-            <div className="relative h-36 overflow-hidden rounded-xl border border-line sm:h-auto sm:aspect-[4/3]">
+            <div className={`relative h-36 overflow-hidden rounded-xl sm:h-auto sm:aspect-[4/3] ${stage === "thumb" ? "border border-line" : "stage-frame stage-glow cursor-pointer"}`}>
               {stage === "thumb" ? (
                 <div className={`thumb-well flex h-full w-full items-center justify-center ${cots ? "thumb-cots" : "thumb-made"}`}>
                   {part.thumbUrl ? (
@@ -111,6 +125,7 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
                   view={stage}
                   onView={setStage}
                   locateButton={false}
+                  onExpand={() => setBig(true)}
                   className="h-full w-full"
                 />
               )}

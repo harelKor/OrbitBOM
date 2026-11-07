@@ -70,7 +70,8 @@ export function PartModel({
   onView,
   className = "",
   locateButton = true,
-}: ModelProps & { className?: string; locateButton?: boolean }) {
+  onExpand,
+}: ModelProps & { className?: string; locateButton?: boolean; onExpand?: () => void }) {
   const [models, setModels] = useState<Partial<Record<StageView, ViewerModel>>>({});
   const [errors, setErrors] = useState<Partial<Record<StageView, string>>>({});
   const [found, setFound] = useState<boolean | null>(null);
@@ -91,9 +92,12 @@ export function PartModel({
     setSelected(null);
     void import("@/components/bom/PartDetailsHost").then((m) => m.openPartWindow(p.id));
   };
+  // A small preview (onExpand: the part window's) opens big with a click on the part, or in the
+  // robot with a click beside the parts when none is picked (Harel, 2026-11-07).
   const onPick = (key: string | null) => {
     const part = key ? robotParts.get(key) : undefined;
-    if (key && key === selected && part) openPicked(part);
+    if (onExpand && (view === "part" || (!key && !selected))) onExpand();
+    else if (key && key === selected && part) openPicked(part);
     else setSelected(key);
   };
   // Esc clears the pick before it closes the window (capture: ahead of the window's own Esc).
@@ -148,7 +152,8 @@ export function PartModel({
           mode="cad"
           locateKey={view === "locate" ? modelKey : null}
           onLocated={onLocated}
-          {...(view === "locate" && { selectedKey: selected, onPick, names: new Map([...robotParts].map(([k, p]) => [k, p.name])) })}
+          onPick={onPick}
+          {...(view === "locate" && { selectedKey: selected, names: new Map([...robotParts].map(([k, p]) => [k, p.name])) })}
         />
       )}
       {view === "locate" && selected && (
