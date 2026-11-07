@@ -89,6 +89,50 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
       : [],
   );
 
+  // The status breakdown: in the row beside QA on a bigger screen; on a phone a folded section
+  // under Inventory, closed at first (Harel, 2026-11-07).
+  const statusBody = (
+    <>
+      {/* A narrow box puts the ring above the list, so the status names aren't cut. */}
+      <div className="flex flex-col items-center gap-5 @min-[22rem]:flex-row">
+        <CompletionRing percent={breakdown.percent} done={breakdown.done} total={breakdown.total} />
+        <ul className="w-full min-w-0 flex-1 space-y-1.5 text-sm">
+          {activeStatuses.map((s) => (
+            <li key={s.name} className="flex items-center gap-2">
+              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: s.color }} />
+              <span className="min-w-0 flex-1 truncate text-fg-2">{s.name}</span>
+              <span className="font-semibold tabular-nums">{s.count}</span>
+              <span className="w-10 text-right text-xs text-subtle tabular-nums">{s.percent}%</span>
+            </li>
+          ))}
+          {activeStatuses.length === 0 && <li className="text-subtle">No parts yet. Pick a system on the right and update its BOM.</li>}
+        </ul>
+      </div>
+      {processes.length > 0 && (
+        <div>
+          <h2 className="mb-2 text-xs font-semibold text-muted">By process</h2>
+          <ul className="space-y-2">
+            {processes.map((p) => (
+              <li key={p.id}>
+                <Link href={processHref(robot.id, p.id)} className="group block">
+                  <div className="mb-1 flex items-baseline justify-between text-xs">
+                    <span className="text-fg-2 group-hover:text-fg">{p.name}</span>
+                    <span className="text-subtle tabular-nums">
+                      {p.done}/{p.total}, {p.percent}%
+                    </span>
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-raised">
+                    <div className="h-full rounded-full bg-gradient-to-r from-accent to-gold" style={{ width: `${p.percent}%` }} />
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </>
+  );
+
   // Sized by the room the page has (container queries on this div), not the screen: the side
   // panels open or closed change it a lot on the same PC (Harel, 2026-11-07).
   return (
@@ -127,44 +171,8 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
 
       {/* On a PC the 3D view is the widest column and keeps its shape, so it sets the row's height (Harel, 2026-11-07). */}
       <div className="grid gap-3 @5xl:min-h-0 @5xl:flex-1 @5xl:grid-cols-[minmax(0,4.2fr)_minmax(0,1.6fr)_minmax(0,6.2fr)] @min-[100rem]:grid-cols-[minmax(0,3.3fr)_minmax(0,1.6fr)_minmax(0,7.1fr)]">
-        <section className="@container panel space-y-5 p-4 @5xl:min-h-0 @5xl:overflow-y-auto">
-          {/* A narrow box puts the ring above the list, so the status names aren't cut. */}
-          <div className="flex flex-col items-center gap-5 @min-[22rem]:flex-row">
-            <CompletionRing percent={breakdown.percent} done={breakdown.done} total={breakdown.total} />
-            <ul className="w-full min-w-0 flex-1 space-y-1.5 text-sm">
-              {activeStatuses.map((s) => (
-                <li key={s.name} className="flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: s.color }} />
-                  <span className="min-w-0 flex-1 truncate text-fg-2">{s.name}</span>
-                  <span className="font-semibold tabular-nums">{s.count}</span>
-                  <span className="w-10 text-right text-xs text-subtle tabular-nums">{s.percent}%</span>
-                </li>
-              ))}
-              {activeStatuses.length === 0 && <li className="text-subtle">No parts yet. Pick a system on the right and update its BOM.</li>}
-            </ul>
-          </div>
-          {processes.length > 0 && (
-            <div>
-              <h2 className="mb-2 text-xs font-semibold text-muted">By process</h2>
-              <ul className="space-y-2">
-                {processes.map((p) => (
-                  <li key={p.id}>
-                    <Link href={processHref(robot.id, p.id)} className="group block">
-                      <div className="mb-1 flex items-baseline justify-between text-xs">
-                        <span className="text-fg-2 group-hover:text-fg">{p.name}</span>
-                        <span className="text-subtle tabular-nums">
-                          {p.done}/{p.total}, {p.percent}%
-                        </span>
-                      </div>
-                      <div className="h-1.5 overflow-hidden rounded-full bg-raised">
-                        <div className="h-full rounded-full bg-gradient-to-r from-accent to-gold" style={{ width: `${p.percent}%` }} />
-                      </div>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+        <section className="@container panel space-y-5 p-4 max-md:hidden @5xl:min-h-0 @5xl:overflow-y-auto">
+          {statusBody}
         </section>
         <div className="grid grid-cols-2 gap-3 @5xl:min-h-0 @5xl:grid-cols-1 @5xl:grid-rows-2">
           <QaBox robotId={robot.id} systems={qaSystems} parts={parts.filter((p) => p.status === "Ready for QA")} inventory={inventoryNames} isAdmin={member.isAdmin} glow={cad && qaTotal > 0} />
@@ -199,6 +207,17 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
         </span>
         <Icon name="arrow" className="h-5 w-5 shrink-0 text-subtle transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-fg" />
       </Link>
+
+      <details className="@container group/status panel md:hidden">
+        <summary className="press flex cursor-pointer list-none items-center gap-3 px-4 py-3 select-none [&::-webkit-details-marker]:hidden">
+          <Icon name="chevron" className="h-5 w-5 shrink-0 text-subtle transition-transform group-open/status:rotate-90" />
+          <span className="flex-1 font-medium text-fg-2">Status</span>
+          <span className="text-sm text-subtle tabular-nums">
+            {breakdown.percent}%, {breakdown.done}/{breakdown.total} done
+          </span>
+        </summary>
+        <div className="space-y-5 px-4 pb-4">{statusBody}</div>
+      </details>
 
       <RecentActions actions={actions} max={8} />
 
