@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useEffectEvent, useRef, useState } from "react";
 import type { ShellCategory, ShellRobot } from "@/lib/data/shell";
 import { InventoryPopupProvider } from "@/components/inventory/InventoryPopup";
 import { PartDetailsProvider } from "@/components/bom/PartDetailsHost";
@@ -234,6 +234,25 @@ export function Shell({
     }
     setDrawer(open === side ? null : { side, at: pathname });
   };
+  // Esc with nothing else to close collapses the side columns: the robots first, then the pages
+  // (Harel, 2026-11-07). It waits until the key has gone everywhere, so a window, popover, mode or
+  // field that used it (preventDefault) keeps it. Drawers close through useEscape above.
+  const escCollapse = useEffectEvent((e: KeyboardEvent) => {
+    if (e.defaultPrevented || open) return;
+    const side = wide.right && !collapsed.right ? "right" : wide.left && !collapsed.left ? "left" : null;
+    if (side) toggle(side);
+  });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || document.querySelector("dialog[open]")) return;
+      // Checked now, not after: a window closes itself on this same Esc.
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName))) return;
+      setTimeout(() => escCollapse(e));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   return (
     <ArrivalsProvider newest={arrivals.newest} seen={arrivals.seen}>

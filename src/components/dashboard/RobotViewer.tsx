@@ -114,6 +114,7 @@ export function RobotViewer({
     if (!large && !selected) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented || document.querySelector("dialog[open]")) return;
+      e.preventDefault(); // used here, so the shell doesn't also collapse a side column
       if (selected) setSelected(null);
       else setLarge(false);
     };

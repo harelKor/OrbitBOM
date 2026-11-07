@@ -375,7 +375,11 @@ export function AddBox({
   // anywhere outside it closes it (Harel, 2026-11-03).
   useEffect(() => {
     if (!saved || draft) return;
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && setSaved(null);
+    const esc = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault(); // the Esc is this popup's, not the side columns'
+      setSaved(null);
+    };
     window.addEventListener("keydown", esc);
     return () => window.removeEventListener("keydown", esc);
   }, [saved, draft]);
