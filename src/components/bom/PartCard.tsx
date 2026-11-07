@@ -34,7 +34,12 @@ type ExportFormat = (typeof EXPORTABLE)[number] | (typeof FLAT)[number];
 const pill = "rounded-full border border-line-strong bg-raised px-2 py-0.5 text-[11px] font-medium text-fg-2 max-w-full truncate";
 
 // A click on a card's body opens the part's details, unless it lands on one of its controls.
-export const isCardBodyClick = (e: React.MouseEvent) => !(e.target as HTMLElement).closest("a, button, input, select, textarea, label, [role=dialog], dialog");
+// A control or a window inside the card (or portalled from it) takes its own clicks; a window the
+// card itself sits in (the dashboard's Post Process) doesn't, so its cards still open.
+export const isCardBodyClick = (e: React.MouseEvent) => {
+  const hit = (e.target as HTMLElement).closest("a, button, input, select, textarea, label, [role=dialog], dialog");
+  return !hit || hit.contains(e.currentTarget as Node);
+};
 
 // The part card: the Onshape thumbnail is the hero, with quantity, type and the Merged tag on its
 // top-left, Download on its top-right (the linked inventory item opens from the details window and
