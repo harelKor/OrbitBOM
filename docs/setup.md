@@ -82,12 +82,13 @@ property IDs it prints for Material, Pre Process, Process 1 and Process 2 into
 Free tier: 10 GB stored, no download fees.
 
 1. Cloudflare dashboard → **R2** → enable it (asks for a card, but the free tier isn't charged) → **Create bucket** named `orbitbom`, location Automatic.
-2. Bucket → **Settings → CORS policy** → add this, with your real site address, so browsers can upload straight to the bucket:
+2. Bucket → **Settings → CORS policy** → add this, with your real site address, so browsers can upload to the bucket and load 3D models and
+   files from it (a missing origin shows as "The 3D model couldn't load"):
 
    ```json
    [
      {
-       "AllowedOrigins": ["https://YOUR-APP.vercel.app", "http://localhost:3000"],
+       "AllowedOrigins": ["https://orbitparts.duckdns.org", "http://localhost:3000"],
        "AllowedMethods": ["GET", "PUT"],
        "AllowedHeaders": ["*"],
        "MaxAgeSeconds": 3600
