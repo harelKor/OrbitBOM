@@ -28,7 +28,7 @@ export default async function RobotInventoryPage({ params }: { params: Promise<{
         <div>
           <h2 className="text-lg font-semibold">Raw stock</h2>
           <p className="max-w-3xl text-sm text-muted">
-            Every plate, tube and box tube part, all copies, laid out on stock pieces of the size you pick: how much material to prepare. Colours are the parts&apos; statuses; done means Post Processing or later.
+            Every plate, tube and box tube part, all copies, laid out on stock pieces of the size you pick: how much material to prepare. Colours are the parts&apos; statuses.
           </p>
         </div>
         <RawStockPlanner robotId={data.robot.id} groups={raw} canEdit={can(mode, "work")} />

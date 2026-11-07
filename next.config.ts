@@ -7,6 +7,10 @@ const nextConfig: NextConfig = {
   // small VM only runs it (Harel, 2026-11-07). The only next/image pictures are the two logos,
   // so they're served as-is: no sharp binary to match the server's CPU, no resizing work there.
   output: "standalone",
+  // Each build names itself by its commit (set on GitHub Actions), so a page from before a deploy
+  // reloads on its next navigation instead of calling server actions the new build renamed
+  // (Harel, 2026-11-07: part windows stopped opening after deploys). Unset locally.
+  deploymentId: process.env.GITHUB_SHA || undefined,
   images: { unoptimized: true },
   experimental: {
     // Keep pages the browser already loaded for 30 seconds, so going back to a system, robot or

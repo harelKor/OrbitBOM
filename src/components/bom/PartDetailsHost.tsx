@@ -16,6 +16,9 @@ type Open = { part: CardPart; save: SaveFn; bom: Bom };
 // whether it opened.
 const OPEN_PART_LOAD_EVENT = "orbit:open-part-load";
 type OpenPartLoadDetail = { partId: string; done: (ok: boolean) => void };
+// The part to open after reloading a page that was older than the deploy; "tried:<id>" once it
+// was opened from there, so a second failure doesn't reload again.
+const RELOAD_OPEN_KEY = "orbit:open-part-after-reload";
 
 // Opens a part's details window where you are: a card for it on this page opens it (with that
 // page's save), else the part is loaded.
@@ -61,7 +64,23 @@ export function PartDetailsProvider({ children }: { children: React.ReactNode })
   useEffect(() => {
     const onLoad = async (e: Event) => {
       const { partId, done } = (e as CustomEvent<OpenPartLoadDetail>).detail;
-      const first = await loadPartWindow(partId).catch(() => null);
+      let first: Awaited<ReturnType<typeof loadPartWindow>>;
+      try {
+        first = await loadPartWindow(partId);
+      } catch {
+        // A page loaded before the last deploy calls this read by a name the new build doesn't
+        // have ("Failed to find Server Action"), and the window never opened (Harel, 2026-11-07).
+        // Reload once to get the new build; the part opens when the page is back.
+        try {
+          if (sessionStorage.getItem(RELOAD_OPEN_KEY) !== `tried:${partId}`) {
+            sessionStorage.setItem(RELOAD_OPEN_KEY, partId);
+            location.reload();
+            return;
+          }
+          sessionStorage.removeItem(RELOAD_OPEN_KEY);
+        } catch {}
+        first = null;
+      }
       if (!first) return done(false);
       const bom: Bom = { inventory: [], isAdmin: first.isAdmin, robotId: first.robotId ?? undefined };
       const save: SaveFn = async (changes) => {
@@ -71,9 +90,21 @@ export function PartDetailsProvider({ children }: { children: React.ReactNode })
         if (next) sync({ part: next.part, save, bom });
       };
       open({ part: first.part, save, bom });
+      try {
+        if (sessionStorage.getItem(RELOAD_OPEN_KEY) === `tried:${partId}`) sessionStorage.removeItem(RELOAD_OPEN_KEY);
+      } catch {}
       done(true);
     };
     window.addEventListener(OPEN_PART_LOAD_EVENT, onLoad);
+    // Back from that reload: open the part (once; a second failure doesn't reload again).
+    let waiting: string | null = null;
+    try {
+      waiting = sessionStorage.getItem(RELOAD_OPEN_KEY);
+    } catch {}
+    if (waiting && !waiting.startsWith("tried:")) {
+      sessionStorage.setItem(RELOAD_OPEN_KEY, `tried:${waiting}`);
+      window.dispatchEvent(new CustomEvent<OpenPartLoadDetail>(OPEN_PART_LOAD_EVENT, { detail: { partId: waiting, done: () => {} } }));
+    }
     return () => window.removeEventListener(OPEN_PART_LOAD_EVENT, onLoad);
   }, [open, sync]);
   const key = stack.map((o) => o.part.id).join(" ");

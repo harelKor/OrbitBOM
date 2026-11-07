@@ -87,30 +87,17 @@ export function RawStockPlanner({ robotId, groups, canEdit }: { robotId: string;
 
 const pct = (n: number) => `${Math.round(n * 100)}%`;
 
-// Material used and parts done, as two thin bars.
+// Material used, as one thin bar. The cards stay simple: how done the parts are shows in the
+// window (Harel, 2026-11-07).
 function Bars({ plan }: { plan: RawPlan }) {
-  const done = plan.copies ? plan.madeCopies / plan.copies : 0;
   return (
-    <div className="grid grid-cols-2 gap-3 text-[11px] text-muted">
-      <div>
-        <div className="flex justify-between">
-          <span>Material used</span>
-          <span className="font-mono text-fg tabular-nums">{pct(plan.usage)}</span>
-        </div>
-        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-raised">
-          <div className="h-full rounded-full bg-accent" style={{ width: pct(plan.usage) }} />
-        </div>
+    <div className="text-[11px] text-muted">
+      <div className="flex justify-between">
+        <span>Material used</span>
+        <span className="font-mono text-fg tabular-nums">{pct(plan.usage)}</span>
       </div>
-      <div>
-        <div className="flex justify-between">
-          <span>Done</span>
-          <span className="font-mono text-fg tabular-nums">
-            {pct(done)} <span className="text-subtle">· {plan.madeCopies}/{plan.copies}</span>
-          </span>
-        </div>
-        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-raised">
-          <div className="h-full rounded-full bg-emerald-500" style={{ width: pct(done) }} />
-        </div>
+      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-raised">
+        <div className="h-full rounded-full bg-accent" style={{ width: pct(plan.usage) }} />
       </div>
     </div>
   );
