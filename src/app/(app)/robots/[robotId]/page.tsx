@@ -91,16 +91,8 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate display text-3xl text-accent">{robot.name}</h1>
-          <div className="text-sm text-subtle tabular-nums">
-            {robot.year}
-            {robot.code && `, robot ${robot.code}`}
-            {robot.archived && ", archived"}
-          </div>
-        </div>
-      </div>
+      {/* No name and year on top: the robot is picked in the side panel (Harel, 2026-11-07). */}
+      <h1 className="sr-only">{robot.name}</h1>
 
       <div className="grid gap-3 lg:grid-cols-2">
         {/* Glows while Shop Fab has parts this member hasn't seen (src/lib/seen.ts), or batches of theirs to make. */}
