@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { sendShortagesToOrder } from "@/app/(app)/inventory/actions";
+import { openPartWindow } from "@/components/bom/PartDetailsHost";
 import { useInventoryPopup } from "@/components/inventory/InventoryPopup";
 import type { RobotShelfItem } from "@/lib/data/inventory";
 import { formatStock } from "@/lib/inventory/stock";
@@ -15,6 +16,14 @@ export function RobotInventory({ robotId, items }: { robotId: string; items: Rob
   const [filter, setFilter] = useState<"all" | "short">("all");
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<{ error?: string; message?: string } | null>(null);
+  // Cards whose parts list is open: a tap on the card opens and closes it (Harel, 2026-11-07).
+  const [openCards, setOpenCards] = useState<Set<string>>(() => new Set());
+  const toggle = (id: string) =>
+    setOpenCards((s) => {
+      const next = new Set(s);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
   const isShort = (i: RobotShelfItem) => !i.sheet && i.covered < i.needed;
   const short = items.filter(isShort);
   const shown = filter === "short" ? short : items;
@@ -68,10 +77,31 @@ export function RobotInventory({ robotId, items }: { robotId: string; items: Rob
         {shown.map((item) => {
           const tone = item.sheet ? "text-fg" : isShort(item) ? "text-amber-600" : "text-emerald-600";
           return (
-            <div key={item.id} className="panel flex flex-col gap-2 p-3">
+            <div
+              key={item.id}
+              role="button"
+              tabIndex={0}
+              aria-expanded={openCards.has(item.id)}
+              onClick={() => toggle(item.id)}
+              onKeyDown={(e) => {
+                if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+                  e.preventDefault();
+                  toggle(item.id);
+                }
+              }}
+              className="panel flex cursor-pointer flex-col gap-2 p-3 hover:border-line-strong"
+            >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <button type="button" onClick={() => openItem(item.id)} className="block max-w-full truncate text-left font-semibold hover:text-accent" title={item.name}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openItem(item.id);
+                    }}
+                    className="block max-w-full truncate text-left font-semibold hover:text-accent"
+                    title={item.name}
+                  >
                     {item.name}
                   </button>
                   {item.group && <div className="truncate text-[11px] text-muted">{item.group}</div>}
@@ -94,21 +124,37 @@ export function RobotInventory({ robotId, items }: { robotId: string; items: Rob
                   )}
                 </div>
               )}
-              <ul className="space-y-0.5 border-t border-line pt-2 text-xs">
-                {item.parts.map((p) => (
-                  <li key={p.partId} className="flex items-center gap-2">
-                    <span className="min-w-0 flex-1 truncate text-muted">
-                      {p.systemName} › <span className="text-fg">{p.partName}</span>
-                    </span>
-                    {p.status && <span className="shrink-0 text-[11px] text-subtle">{p.status}</span>}
-                    {!item.sheet && (
-                      <span className={`shrink-0 font-mono tabular-nums ${p.covered < p.quantity ? "text-amber-600" : "text-emerald-600"}`}>
-                        {p.covered}/{p.quantity}
-                      </span>
-                    )}
-                  </li>
-                ))}
-              </ul>
+              <div className="flex items-center gap-1.5 border-t border-line pt-2 text-xs font-semibold text-muted">
+                <span className={`transition-transform ${openCards.has(item.id) ? "rotate-90" : ""}`}>›</span>
+                {item.parts.length === 1 ? "1 part" : `${item.parts.length} parts`}
+              </div>
+              {openCards.has(item.id) && (
+                <ul className="-mx-1 divide-y divide-line">
+                  {item.parts.map((p) => (
+                    <li key={p.partId}>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void openPartWindow(p.partId);
+                        }}
+                        className="flex min-h-10 w-full items-center gap-2 rounded px-1 py-1.5 text-left text-sm hover:bg-raised active:scale-[0.98]"
+                      >
+                        <span className="min-w-0 flex-1 truncate">
+                          <span className="text-muted">{p.systemName} › </span>
+                          <span className="font-medium">{p.partName}</span>
+                        </span>
+                        {p.status && <span className="shrink-0 text-xs text-subtle">{p.status}</span>}
+                        {!item.sheet && (
+                          <span className={`shrink-0 font-mono text-xs tabular-nums ${p.covered < p.quantity ? "text-amber-600" : "text-emerald-600"}`}>
+                            {p.covered}/{p.quantity}
+                          </span>
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           );
         })}

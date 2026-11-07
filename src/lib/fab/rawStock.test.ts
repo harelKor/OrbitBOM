@@ -128,3 +128,41 @@ describe("helpers", () => {
     expect(parseCustomSize("1000", "plate")).toBeNull();
   });
 });
+
+describe("planGroup with real outlines", () => {
+  it("nests by the flat size and places each outline inside its box", async () => {
+    const { flattenMesh, placePoint } = await import("./layout");
+    // An L-shaped 3 mm plate, 200 × 120 (metres, as the mesh files hold them).
+    const pts: [number, number][] = [
+      [0, 0],
+      [200, 0],
+      [200, 40],
+      [60, 40],
+      [60, 120],
+      [0, 120],
+    ];
+    const positions: number[] = [];
+    for (const z of [0, 3]) for (const [x, y] of pts) positions.push(x / 1000, y / 1000, z / 1000);
+    const n = pts.length;
+    const indices: number[] = [0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 5];
+    indices.push(...indices.map((i) => i + n));
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      indices.push(i, j, j + n, i, j + n, i + n);
+    }
+    const flat = flattenMesh(new Float32Array(positions), new Uint32Array(indices))!;
+    expect([Math.round(flat.w), Math.round(flat.h)]).toEqual([200, 120]);
+    const part = { partId: "L", name: "L", systemName: "", quantity: 5, status: "Released", color: "", made: false, w: 999, h: 999, approx: true };
+    const plan = planGroup({ kind: "plate", parts: [part] }, "p500x450", new Map([["L", flat]]));
+    expect(plan.pieces.flatMap((p) => p.items)).toHaveLength(5);
+    for (const it of plan.pieces.flatMap((p) => p.items)) {
+      for (const pt of flat.outline) {
+        const [x, y] = placePoint(pt, it.place!);
+        expect(x).toBeGreaterThanOrEqual(it.x - 0.01);
+        expect(x).toBeLessThanOrEqual(it.x + it.w + 0.01);
+        expect(y).toBeGreaterThanOrEqual(it.y - 0.01);
+        expect(y).toBeLessThanOrEqual(it.y + it.h + 0.01);
+      }
+    }
+  });
+});

@@ -208,7 +208,9 @@ export function groupRawStock(rows: RawPartRow[], items: RawItemRow[], cats: Inv
 
 // ---------- the layout of one group on one piece size ----------
 
-export type PlanItem = { partId: string; copy: number; x: number; y: number; w: number; h: number };
+// x, y, w, h: the copy's box on the piece. `place`: where its flat-frame origin went and its turn,
+// to draw its real outline (plates).
+export type PlanItem = { partId: string; copy: number; x: number; y: number; w: number; h: number; place?: { x: number; y: number; rotation: number } };
 export type PlanPiece = { items: PlanItem[]; used: number }; // `used`: share of the piece's area or length the parts take
 export type RawPlan = {
   pieceW: number;
@@ -220,20 +222,26 @@ export type RawPlan = {
   madeCopies: number;
 };
 
-export function planGroup(group: Pick<RawGroup, "kind" | "parts">, size: string): RawPlan {
+// `flats`: plate parts' real flat sizes (from their outlines), used in place of the measured
+// rectangle so an outline drawn in its box fits it.
+export function planGroup(group: Pick<RawGroup, "kind" | "parts">, size: string, flats?: Map<string, { w: number; h: number }>): RawPlan {
   const piece = pieceOf(size) ?? { w: 0, h: 0 };
   const copies = group.parts.reduce((t, p) => t + p.quantity, 0);
   const madeCopies = group.parts.reduce((t, p) => t + (p.made ? p.quantity : 0), 0);
-  const byId = new Map(group.parts.map((p) => [p.partId, p]));
   if (group.kind === "plate") {
-    const { sheets, tooBig } = nestOnSheets(group.parts, piece.w, piece.h, PLATE_GAP, PLATE_MARGIN);
+    const sized = group.parts.map((p) => {
+      const f = flats?.get(p.partId);
+      return f ? { ...p, w: f.w, h: f.h } : p;
+    });
+    const byId = new Map(sized.map((p) => [p.partId, p]));
+    const { sheets, tooBig } = nestOnSheets(sized, piece.w, piece.h, PLATE_GAP, PLATE_MARGIN);
     const area = piece.w * piece.h || 1;
     const pieces = sheets.map((s) => {
       const items = s.placements.map((pl) => {
         const part = byId.get(pl.partId)!;
         const [x, y] = cornerOf(part, pl);
         const [w, h] = footprint(part, pl.rotation);
-        return { partId: pl.partId, copy: pl.copy, x, y, w, h };
+        return { partId: pl.partId, copy: pl.copy, x, y, w, h, place: { x: pl.x, y: pl.y, rotation: pl.rotation } };
       });
       return { items, used: items.reduce((t, i) => t + i.w * i.h, 0) / area };
     });
