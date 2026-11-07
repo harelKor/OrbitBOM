@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StatusCount } from "@/lib/stats";
@@ -301,6 +302,12 @@ export function RobotViewer({
                 <button className="btn h-7 px-2.5 text-xs" onClick={() => onOpen(picked.key)} title="Or click the part again">
                   Open part
                 </button>
+              )}
+              {/* Not on the part's own system page: it's already there. */}
+              {picked && picked.systemId !== systemId && (
+                <Link href={`/robots/${robotId}/systems/${picked.systemId}`} onClick={() => setLarge(false)} className="btn h-7 px-2.5 text-xs">
+                  Open system
+                </Link>
               )}
               <button onClick={() => setSelected(null)} className="press text-muted hover:text-fg" aria-label="Clear selection" title="Clear selection (Esc)">
                 ✕
