@@ -8,6 +8,7 @@ import { BomView } from "@/components/bom/BomView";
 import { partTitle } from "@/components/bom/types";
 import { CompletionRing } from "@/components/dashboard/CompletionRing";
 import { RobotViewer } from "@/components/dashboard/RobotViewer";
+import { StatusPanel } from "@/components/dashboard/StatusPanel";
 import { QaBox } from "@/components/qa/QaBox";
 import { PostProcessBox } from "@/components/fab/PostProcessBox";
 import { StorageBox } from "@/components/storage/StorageBox";
@@ -170,11 +171,10 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
       </div>
 
       {/* On a PC the 3D view is the widest column and keeps its shape, so it sets the row's height (Harel, 2026-11-07). */}
-      <div className="grid gap-3 @5xl:min-h-0 @5xl:flex-1 @5xl:grid-cols-[minmax(0,4.2fr)_minmax(0,1.6fr)_minmax(0,6.2fr)] @min-[100rem]:grid-cols-[minmax(0,3.3fr)_minmax(0,1.6fr)_minmax(0,7.1fr)]">
-        <section className="@container panel space-y-5 p-4 max-md:hidden @5xl:min-h-0 @5xl:overflow-y-auto">
-          {statusBody}
-        </section>
-        <div className="grid grid-cols-2 gap-3 @5xl:min-h-0 @5xl:grid-cols-1 @5xl:grid-rows-2">
+      {/* The status box and the QA column size themselves (by the page's width); the 3D view takes the rest, more when the status box is folded. */}
+      <div className="grid gap-3 @5xl:min-h-0 @5xl:flex-1 @5xl:grid-cols-[auto_auto_minmax(0,1fr)]">
+        <StatusPanel percent={breakdown.percent}>{statusBody}</StatusPanel>
+        <div className="grid grid-cols-2 gap-3 @5xl:min-h-0 @5xl:w-[13.3cqw] @5xl:grid-cols-1 @5xl:grid-rows-2">
           <QaBox robotId={robot.id} systems={qaSystems} parts={parts.filter((p) => p.status === "Ready for QA")} inventory={inventoryNames} isAdmin={member.isAdmin} glow={cad && qaTotal > 0} />
           <PostProcessBox robotId={robot.id} parts={postParts} inventory={inventoryNames} isAdmin={member.isAdmin} glow={build && postParts.length > 0} />
         </div>

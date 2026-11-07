@@ -14,6 +14,7 @@ import { MaterialColorsProvider } from "./MaterialColors";
 import { ModeProvider } from "./ModeContext";
 import type { Mode } from "./mode";
 import { RobotSwitcher } from "./RobotSwitcher";
+import { SidePanelsContext } from "./SidePanels";
 import { Shortcuts } from "./Shortcuts";
 import { TopBar } from "./TopBar";
 import { VisitTracker } from "./VisitTracker";
@@ -278,7 +279,9 @@ export function Shell({
                 </aside>
                 <div className="flex min-w-0 flex-1 flex-col">
                   <TopBar onMenu={() => toggle("left")} onRobots={() => toggle("right")} navHidden={collapsed.left} robotsHidden={collapsed.right} />
-                <main className="min-w-0 flex-1 p-4 md:p-6">{children}</main>
+                <main className="min-w-0 flex-1 p-4 md:p-6">
+                  <SidePanelsContext.Provider value={{ left: wide.left && !collapsed.left, right: wide.right && !collapsed.right }}>{children}</SidePanelsContext.Provider>
+                </main>
                   <Suspense>
                     <VisitTracker />
                   </Suspense>
