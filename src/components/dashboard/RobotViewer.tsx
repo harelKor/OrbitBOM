@@ -102,12 +102,18 @@ export function RobotViewer({
       return next;
     });
 
+  // Esc first clears the picked part, then closes the large view (Harel, 2026-11-07). Not while a
+  // window is open over it: that Esc is the window's.
   useEffect(() => {
-    if (!large) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setLarge(false);
+    if (!large && !selected) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented || document.querySelector("dialog[open]")) return;
+      if (selected) setSelected(null);
+      else setLarge(false);
+    };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [large]);
+  }, [large, selected]);
 
   useEffect(() => {
     if (!version) return;
@@ -291,7 +297,7 @@ export function RobotViewer({
                   Open part
                 </button>
               )}
-              <button onClick={() => onPick(null)} className="press text-muted hover:text-fg" aria-label="Clear selection">
+              <button onClick={() => setSelected(null)} className="press text-muted hover:text-fg" aria-label="Clear selection" title="Clear selection (Esc)">
                 ✕
               </button>
             </div>
