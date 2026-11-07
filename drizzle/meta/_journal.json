@@ -512,6 +512,13 @@
       "when": 1793899954091,
       "tag": "0072_new_parts_glow",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1794068016130,
+      "tag": "0073_robot_raw_stock_sizes",
+      "breakpoints": true
     }
   ]
 }

@@ -85,6 +85,9 @@ export const robots = pgTable("robots", {
   layoutsDocumentUrl: text("layouts_document_url"),
   layoutsDocumentId: text("layouts_document_id"),
   layoutsWorkspaceId: text("layouts_workspace_id"),
+  // The Raw stock planner's chosen piece size per stock group (Harel, 2026-11-07): group key (an
+  // inventory item id or "auto:…") → a piece size key ("p500x900", "m1000").
+  rawStockSizes: jsonb("raw_stock_sizes").$type<Record<string, string>>().notNull().default({}),
   createdAt: createdAt(),
 });
 

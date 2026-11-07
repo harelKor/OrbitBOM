@@ -1,0 +1,1 @@
+ALTER TABLE "robots" ADD COLUMN "raw_stock_sizes" jsonb DEFAULT '{}'::jsonb NOT NULL;

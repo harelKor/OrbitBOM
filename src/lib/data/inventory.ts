@@ -2,6 +2,7 @@ import "server-only";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { cotsStatusOf } from "@/config/cots";
+import { NOT_LAID_OUT } from "@/config/rawStock";
 import { categoryOf, getCategory, type InvCategory } from "@/lib/inventory/categories";
 import { categoryImageUrl, listCategories } from "./categories";
 import type { Shelf, ShelfSuggestion } from "@/components/bom/types";
@@ -274,13 +275,19 @@ export type RobotShelfItem = {
   parts: (UsagePart & { covered: number })[];
 };
 
-// A robot's inventory page and dashboard card: what its parts draw from the shared shelf.
+// A robot's inventory page and dashboard card: what its parts draw from the shared shelf. Raw
+// Stock that's laid out on pieces (plates, tubes, shafts) shows in the Raw stock planner instead
+// (Harel, 2026-11-07).
 export async function robotInventory(robotId: string): Promise<RobotShelfItem[]> {
   const mine = await usageParts(db, { robotId });
   if (!mine.length) return [];
   const itemIds = [...new Set(mine.map((p) => p.inventoryItemId))];
   const { items, usage, cats } = await usageOf(itemIds);
   return items
+    .filter((i) => {
+      const cat = getCategory(cats, categoryOf(i, cats));
+      return cat?.group !== "consumables" || NOT_LAID_OUT.includes(cat.id);
+    })
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((i) => {
       const u = usage.get(i.id)!;

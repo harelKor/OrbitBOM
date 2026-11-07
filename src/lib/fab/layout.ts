@@ -27,6 +27,8 @@ export type FlatGeom = {
 
 // `sheetMetal`: an Onshape sheet metal part, laid out as its flat pattern.
 export type FlatPart = FlatGeom & { partId: string; name: string; quantity: number; sheetMetal?: boolean };
+// What the nester needs of a part: its flat bounding box and how many copies.
+export type NestPart = Pick<FlatPart, "partId" | "w" | "h" | "quantity">;
 
 export type Rotation = number; // degrees about Z
 export type Placement = { partId: string; copy: number; x: number; y: number; rotation: Rotation };
@@ -396,7 +398,7 @@ const ORDERS: ((a: Item, b: Item) => number)[] = [
 
 // Every copy of every part on one sheet of `sheetW` × `sheetH` (no height: as short as it gets).
 // Tries a few orders and keeps the one that places most, then the smallest box.
-export function nestParts(parts: FlatPart[], opts: NestOptions): Nest {
+export function nestParts(parts: NestPart[], opts: NestOptions): Nest {
   const gap = opts.gap ?? DEFAULT_GAP;
   const margin = opts.margin ?? DEFAULT_MARGIN;
   const items: Item[] = parts.flatMap((p) => Array.from({ length: Math.max(0, p.quantity) }, (_, copy) => ({ partId: p.partId, copy, w: p.w + gap, h: p.h + gap })));
@@ -478,23 +480,55 @@ export function advisePlate(parts: FlatPart[], pieces: StockPiece[], gap = DEFAU
   const biggest = inStock.at(-1);
   const sheetW = biggest ? Math.max(biggest.x, biggest.y) : DEFAULT_SHEET_W;
   const nest = nestParts(parts, { sheetW, gap, margin });
-  let sheetsNeeded = 0;
-  if (biggest) {
-    let rest = parts.map((p) => ({ ...p }));
-    for (let n = 0; n < 50 && rest.some((p) => p.quantity > 0); n++) {
-      const sheet = nestParts(rest, { sheetW: Math.max(biggest.x, biggest.y), sheetH: Math.min(biggest.x, biggest.y), gap, margin });
-      if (!sheet.placements.length) {
-        sheetsNeeded = 0; // a part bigger than the piece
-        break;
-      }
-      sheetsNeeded++;
-      const leftOver = new Map<string, number>();
-      sheet.unplaced.forEach((u) => leftOver.set(u.partId, (leftOver.get(u.partId) ?? 0) + 1));
-      rest = rest.map((p) => ({ ...p, quantity: leftOver.get(p.partId) ?? 0 }));
-    }
-  }
+  // A part bigger than the piece: no count.
+  const split = biggest ? nestOnSheets(parts, Math.max(biggest.x, biggest.y), Math.min(biggest.x, biggest.y), gap, margin, 50) : null;
+  const sheetsNeeded = split && !split.tooBig.length ? split.sheets.length : 0;
   return {
     advice: { piece: null, sheetW, sheetH: biggest ? Math.min(biggest.x, biggest.y) : 0, pieces: tried.map((t) => ({ ...t.piece, fits: t.fits })), sheetsNeeded },
     nest,
   };
+}
+
+// Every copy laid out sheet after sheet on `sheetW` × `sheetH` until all are placed: how many
+// sheets a set of parts takes. `tooBig`: parts no sheet can hold, left out. Used by the stock plate advisor and the robot's Raw
+// stock planner.
+export function nestOnSheets(parts: NestPart[], sheetW: number, sheetH: number, gap = DEFAULT_GAP, margin = DEFAULT_MARGIN, maxSheets = 200): { sheets: Nest[]; tooBig: string[] } {
+  const fits = (p: NestPart) => nestParts([{ ...p, quantity: 1 }], { sheetW, sheetH, gap, margin }).placements.length > 0;
+  const tooBig = parts.filter((p) => p.quantity > 0 && !fits(p)).map((p) => p.partId);
+  const sheets: Nest[] = [];
+  let rest = parts.filter((p) => p.quantity > 0 && !tooBig.includes(p.partId));
+  while (rest.length && sheets.length < maxSheets) {
+    const sheet = nestParts(rest, { sheetW, sheetH, gap, margin });
+    if (!sheet.placements.length) break;
+    sheets.push(sheet);
+    const leftOver = new Map<string, number>();
+    sheet.unplaced.forEach((u) => leftOver.set(u.partId, (leftOver.get(u.partId) ?? 0) + 1));
+    rest = rest.map((p) => ({ ...p, quantity: leftOver.get(p.partId) ?? 0 })).filter((p) => p.quantity > 0);
+  }
+  return { sheets, tooBig };
+}
+
+// ---------- cutting lengths (tubes, box tubes, shafts) ----------
+
+export type LengthPart = { partId: string; length: number; quantity: number };
+export type Cut = { partId: string; copy: number; start: number; length: number };
+export type Bar = { cuts: Cut[]; used: number }; // `used`: mm taken from the bar, kerfs included
+
+// Every copy cut from bars of `stock` mm, longest first into the first bar it fits (first fit
+// decreasing), `kerf` mm lost to each cut. `tooLong`: parts longer than a bar.
+export function cutLengths(parts: LengthPart[], stock: number, kerf = 3): { bars: Bar[]; tooLong: string[] } {
+  const tooLong = parts.filter((p) => p.quantity > 0 && p.length > stock + 1e-6).map((p) => p.partId);
+  const copies = parts
+    .filter((p) => !tooLong.includes(p.partId))
+    .flatMap((p) => Array.from({ length: Math.max(0, p.quantity) }, (_, copy) => ({ partId: p.partId, copy, length: p.length })))
+    .sort((a, b) => b.length - a.length);
+  const bars: Bar[] = [];
+  for (const c of copies) {
+    // A cut needs a kerf after the part unless the part runs to the bar's end.
+    const bar = bars.find((b) => b.used + c.length <= stock + 1e-6);
+    const target = bar ?? (bars[bars.push({ cuts: [], used: 0 }) - 1] as Bar);
+    target.cuts.push({ ...c, start: target.used });
+    target.used = Math.min(stock, target.used + c.length + kerf);
+  }
+  return { bars, tooLong };
 }

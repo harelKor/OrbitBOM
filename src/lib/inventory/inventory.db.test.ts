@@ -1,4 +1,4 @@
-// Runs against a real Postgres when TEST_DATABASE_URL is set.
+﻿// Runs against a real Postgres when TEST_DATABASE_URL is set.
 import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
@@ -49,6 +49,22 @@ else
       expect(u.coveredOf.get(b.id)).toBe(0);
       const mine = await robotInventory(r2.id);
       expect(mine[0]).toMatchObject({ needed: 8, covered: 0, needAll: 16 });
+    });
+
+    it("leaves Raw Stock out of the robot's items (the Raw stock planner shows it)", async () => {
+      // A fresh test database holds only the categories migrations add, not the plates one.
+      const added = await db
+        .insert(schema.inventoryCategories)
+        .values({ id: "aluminum-plates", label: "Aluminum plates", group: "consumables", sheet: true })
+        .onConflictDoNothing()
+        .returning();
+      const [plate] = await db.insert(schema.parts).values({ systemId: s2.id, onshapeName: "Side plate", classification: "inhouse" as const, inventoryItemId: sheet.id }).returning();
+      try {
+        expect((await robotInventory(r2.id)).map((i) => i.name)).not.toContain(sheet.name);
+      } finally {
+        await db.delete(schema.parts).where(eq(schema.parts.id, plate.id));
+        if (added.length) await db.delete(schema.inventoryCategories).where(eq(schema.inventoryCategories.id, "aluminum-plates"));
+      }
     });
 
     it("adds what was missing when an ordered part arrives", async () => {
