@@ -68,7 +68,7 @@ export class QuotaError extends OnshapeError {
   }
 }
 
-// The OAuth app's credentials from Vercel, with stray spaces or line breaks from pasting removed.
+// The OAuth app's credentials from the server's env, with stray spaces or line breaks from pasting removed.
 export const onshapeClientId = () => process.env.ONSHAPE_CLIENT_ID?.trim() ?? "";
 const onshapeClientSecret = () => process.env.ONSHAPE_CLIENT_SECRET?.trim() ?? "";
 

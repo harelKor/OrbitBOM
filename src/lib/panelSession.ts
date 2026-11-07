@@ -14,7 +14,7 @@ export const panelCookieOptions = {
   maxAge: MAX_AGE,
 } as const;
 
-// Derived from ONSHAPE_TOKEN_KEY so the panel needs no extra setting in Vercel.
+// Derived from ONSHAPE_TOKEN_KEY so the panel needs no extra setting on the server.
 function signingKey(): Buffer | null {
   const secret = process.env.ONSHAPE_TOKEN_KEY?.trim() ?? "";
   if (secret.length < 32) return null;

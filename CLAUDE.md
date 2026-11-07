@@ -5,16 +5,19 @@
 FRC team 1690's BOM, To Fab and inventory app, modelled on FRCBOM and linked to Onshape. Owner:
 Harel. Live: https://orbitparts.duckdns.org. Next.js 16 (App Router, Cache Components off,
 `src/proxy.ts` instead of middleware), React 19, Drizzle + node-postgres on Supabase Free
-(Postgres + Google sign-in, Mumbai), Cloudflare R2 for files, the team's own Oracle Cloud Always Free VM in Mumbai (standalone build
-from GitHub Actions behind Caddy; `deploy/`, `docs/runbook.md`; Vercel Hobby's CPU cap paused the site 2026-11-06), vitest.
+(Postgres + Google sign-in, Mumbai), Cloudflare R2 for files, hosted on the team's own Oracle Cloud
+Always Free VM in Mumbai (see Hosting below; not Vercel any more), vitest.
 Everything must stay on free tiers. Members also drive it from their own Claude through the MCP
 server (`/api/mcp/<token>`).
 
 ## Working with Harel
 
-- Ship straight to `main`: commit, push, the Deploy workflow builds it and ships it to the server. No branches or PRs unless he asks.
-  `.github/workflows/migrate.yml` applies new migrations on push; when deployed code needs a new
-  table on every request, wait for that run before calling it done.
+- Ship straight to `main`: commit, push. The "Deploy" workflow builds it on GitHub and switches
+  the server over (~3 min; check with `gh run list --workflow deploy.yml`). No branches or PRs
+  unless he asks. `.github/workflows/migrate.yml` applies new migrations on the same push; when
+  deployed code needs a new table on every request, wait for that run before calling it done.
+- Everything must cost nothing. Before any new cloud resource or plan change, check it's inside
+  the free tier and say so; he asked to be sure he pays nothing.
 - Build what he asks for (or what blocks real use), nothing optional. Big features: post the plan,
   wait for his go. Reply with results, what to check and blockers, not CI/deploy chatter.
 - Live data changes (bulk renames, seed routes, deletes on production) only after his OK.
@@ -34,6 +37,41 @@ server (`/api/mcp/<token>`).
   and R2 deliberately unset). Never point local dev at production.
 - On Harel's Windows PC, Docker and `gh` aren't on the Bash PATH: run them from PowerShell, or
   `"/c/Program Files/GitHub CLI/gh"`.
+
+## Hosting (own server since 2026-11-07)
+
+Vercel Hobby's 4 Active-CPU-hours a month ran out and paused the site (2026-11-06), so it moved.
+Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
+
+- Site: https://orbitparts.duckdns.org (DuckDNS → the VM's IP). VM `orbitparts-micro`, IP
+  130.210.0.82: Oracle's free AMD `VM.Standard.E2.1.Micro` (x86, 1 GB memory + 2 GB swap, a small
+  CPU slice), Ubuntu 24.04, Caddy (HTTPS) → Next's standalone `server.js` on 127.0.0.1:3000 as
+  systemd service `orbitparts`. Admin SSH from Harel's PC: `ssh -i ~/.ssh/orbitparts_admin
+  ubuntu@130.210.0.82`; logs `sudo journalctl -u orbitparts -f`.
+- Deploy: `.github/workflows/deploy.yml` runs `next build` on GitHub (the VM is too small), uploads
+  the bundle, `deploy/release.sh` swaps `/opt/orbitparts/current`, restarts, and rolls back if
+  `/login` doesn't answer. `next.config.ts` has `output: "standalone"` and unoptimized images.
+- Env vars live in `/opt/orbitparts/shared/.env` (systemd EnvironmentFile), not Vercel. A new one:
+  `printf '%s' "$V" | ssh … "sudo -u orbit /opt/orbitparts/bin/set-env KEY"` (or `--generate`),
+  then `sudo systemctl restart orbitparts`; Harel enters real secrets with
+  `bash deploy/enter-secrets.sh 130.210.0.82 KEY…` (Git Bash). `NEXT_PUBLIC_*` are baked in at
+  build time, so they are also GitHub secrets. Writing GitHub secrets is blocked for Claude: hand
+  Harel the `gh secret set` command. The DB URL comes from `PRODUCTION_DIRECT_URL` via Actions →
+  "Server env".
+- Scheduled work: systemd timers on the VM, not `vercel.json` crons. The old Vercel project still
+  exists, paused until 2026-12-06; Harel left it for now, and it should be disconnected before
+  then or it deploys and runs its cron again next to the server. Daily `orbitparts-keep-alive.timer` (06:00 UTC) calls
+  `/api/cron/keep-alive`. A new cron = a new timer in `deploy/setup.sh` (and on the VM).
+- No serverless limits: `maxDuration` is ignored and requests can run long, but it's one small
+  shared machine: keep heavy CPU/memory work (big meshes, layouts) in the browser or chunked.
+- R2's CORS policy must list the site's origin (browsers load 3D files and upload straight to
+  R2); a missing origin shows as "The 3D model couldn't load".
+- Oracle: free account (not Pay As You Go), home region Mumbai. Quota policy "pay" caps compute
+  at the free shapes (A1 2 OCPU/12 GB, one E2 micro). Free VMs that look idle for 7 days can be
+  stopped by Oracle: if the site is down, start the instance in the console. Wanted: the bigger
+  Ampere A1 VM (Mumbai is usually out of capacity; `~/.oci/grab_server.py` on Harel's PC retries
+  it, OCI CLI config in `~/.oci/config`). Moving to it = `deploy/setup.sh`, copy the `.env`,
+  point DuckDNS and the `DEPLOY_HOST` / `DEPLOY_KNOWN_HOSTS` secrets at it.
 
 ## Rules
 
@@ -83,6 +121,10 @@ server (`/api/mcp/<token>`).
 - A Drizzle query runs again each time it's awaited: wrap it in `Promise.resolve()` to share it.
 - Supabase's transaction pooler (6543): node-postgres, no prepared statements, don't add pool
   startup options without testing them there.
+- Absolute URLs to our own site (OAuth redirect_uri, redirects built from an origin): use
+  `publicOrigin(request)` (`src/lib/origin.ts`). Behind Caddy `request.nextUrl.origin` is
+  `https://localhost:3000`, so build redirects as `new URL(path, publicOrigin(request))`. Only
+  `request.nextUrl.clone()` redirects (as in `src/proxy.ts`) come out right on their own.
 - Next 16 `error.tsx` gets `retry`, not `reset`. Read `node_modules/next/dist/docs/` before using
   an API you haven't checked.
 - Dates in client components: `LocalTime` (`src/components/ui/LocalTime.tsx`), or hydration breaks.

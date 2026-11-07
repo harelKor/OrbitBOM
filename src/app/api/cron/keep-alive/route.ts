@@ -7,7 +7,7 @@ import { purgeTrash } from "@/lib/trash";
 
 export const maxDuration = 300;
 
-// Daily Vercel Cron (vercel.json). Supabase pauses a free project after 7 days without
+// Daily, from the server's orbitparts-keep-alive timer (deploy/setup.sh). Supabase pauses a free project after 7 days without
 // activity; one query a day keeps it awake. It also recounts R2 storage and, above the clean-up
 // line, frees space (src/config/storage.ts), and forgets Recent actions members closed more than
 // two weeks ago (the list only shows the last 7 days), sync log rows older than two weeks and

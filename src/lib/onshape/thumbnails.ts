@@ -27,7 +27,7 @@ function onOwnHost(href: string, baseUrl: string): string | null {
 
 // Part thumbnails (plan §4): one parts-list call per Part Studio tells us each part's
 // microversion and, through its flat pattern body, whether it is sheet metal; only parts whose microversion changed fetch a new image (one call each), and
-// the image is kept in R2. Stops at `deadline` so a request stays inside Vercel's time limit;
+// the image is kept in R2. Stops at `deadline` so one request stays short (it was Vercel's time limit);
 // what's left is fetched on the next Update BOM. A Part Studio or image that fails is skipped
 // and counted, so one bad part never hides every other thumbnail.
 export async function refreshThumbnails(systemId: string, memberId: string, deadline: number): Promise<ThumbSummary> {

@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     });
     await saveTokens(member.id, tokens);
   } catch (err) {
-    // Shows in Vercel → Logs; never includes the code or tokens.
+    // Shows in the server log (journalctl -u orbitparts); never includes the code or tokens.
     console.error("Onshape connect failed:", (err as Error).message);
     return NextResponse.redirect(`${origin}/profile?onshape=failed`);
   }

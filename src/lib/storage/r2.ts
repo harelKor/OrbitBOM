@@ -3,8 +3,8 @@ import { AwsClient } from "aws4fetch";
 import { recordDeleted, recordStored } from "./ledger";
 
 // Cloudflare R2 through its S3 API (plan §1). The browser uploads and downloads with short-lived
-// presigned URLs, so files never pass through a Vercel function (4.5 MB body limit) and the
-// keys stay on the server. R2_ENDPOINT overrides the endpoint for local S3 emulators.
+// presigned URLs, so files never pass through our small app server (on Vercel there was also a
+// 4.5 MB body limit) and the keys stay on the server. R2_ENDPOINT overrides the endpoint for local S3 emulators.
 
 function config() {
   const { R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_ENDPOINT } = process.env;

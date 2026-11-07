@@ -23,22 +23,31 @@ graduation. Steps marked **(Harel)** need the Onshape Enterprise admin.
    Authorized redirect URI: `https://<project-ref>.supabase.co/auth/v1/callback`.
 3. In Supabase, **Authentication → Sign In / Providers → Google**: paste the client ID and secret,
    and enable it.
-4. In Supabase, **Authentication → URL Configuration**: set Site URL to the Vercel URL and add
-   `http://localhost:3000/**` and `https://<vercel-url>/**` to the redirect allow list.
+4. In Supabase, **Authentication → URL Configuration**: set Site URL to
+   `https://orbitparts.duckdns.org` and add `http://localhost:3000/**` and
+   `https://orbitparts.duckdns.org/**` to the redirect allow list.
 
-## 3. Vercel (hosting)
+## 3. Hosting (our own server)
 
-1. Import the GitHub repo into a Vercel Hobby project.
-2. Add the environment variables from `.env.example` (all except the Onshape test keys).
-   `ADMIN_EMAILS` holds the first admin's Google email. `CRON_SECRET` and `MCP_SECRET` are any long random strings.
-3. Deploy. The daily keep-alive cron in `vercel.json` starts on its own.
-4. `vercel.json` pins the app's server functions to `bom1` (Mumbai), next to the Supabase
-   database (ap-south-1). Every page makes several database queries, so a server on another
-   continent adds a visible delay to each click. If the database moves, change `regions` to match.
+Until 2026-11-06 the site ran on Vercel Hobby; its 4 Active-CPU-hours a month ran out and paused
+it, so it moved to an Oracle Cloud Always Free VM in Mumbai (home region `ap-mumbai-1`, next to
+the Supabase database: every page makes several queries, so a server on another continent adds a
+visible delay to each click). Full steps and day-to-day commands: `docs/runbook.md` → "The server".
+
+1. Oracle: one free VM (Ubuntu 24.04; Ampere A1 up to 2 OCPU / 12 GB, or the AMD
+   `VM.Standard.E2.1.Micro`), public subnet with TCP 80/443 open, a quota policy capping compute at
+   the free shapes, a $1 budget alert. Stay on the free account (the Pay As You Go upgrade puts a
+   ~€93 hold on the card).
+2. `deploy/setup.sh` over SSH (Node 22, Caddy, the `orbitparts` service, the daily keep-alive
+   timer, 2 GB swap, user `orbit` for deploys).
+3. A DuckDNS name pointing at the VM's IP (Caddy gets the HTTPS certificate itself).
+4. `bash deploy/enter-secrets.sh <ip>` from Git Bash: GitHub deploy secrets plus each service's key
+   (typed hidden, straight to the server). `CRON_SECRET`, `MCP_SECRET`, `ONSHAPE_TOKEN_KEY` are
+   generated on the server; Actions → "Server env" adds the database URL; Actions → "Deploy".
 5. **Background refresh** (off: `REFRESH.scheduled` in `src/config/refresh.ts` is false to save
-   Onshape's yearly API allowance, so the route below answers `{ disabled: true }`): Vercel's free plan only runs crons once a day,
-   so a free outside scheduler checks Onshape every 10 minutes. At cron-job.org (free account) →
-   **Create cronjob**: URL `https://<vercel-url>/api/cron/refresh`, every 10 minutes, and under
+   Onshape's yearly API allowance, so the route below answers `{ disabled: true }`): a free outside
+   scheduler checks Onshape every 10 minutes (or add a systemd timer like the keep-alive one). At cron-job.org (free account) →
+   **Create cronjob**: URL `https://orbitparts.duckdns.org/api/cron/refresh`, every 10 minutes, and under
    **Advanced → Headers** add `Authorization` = `Bearer <your CRON_SECRET>`. Each system is checked
    every 10 minutes during meeting hours (14:00–23:00 Israel time) and hourly otherwise, on the
    Onshape account of whoever last clicked Update BOM on it; a check costs one Onshape call and
@@ -64,16 +73,16 @@ property IDs it prints for Material, Pre Process, Process 1 and Process 2 into
 **OAuth app (Harel; needed for Connect Onshape and Update BOM):**
 1. dev-portal.onshape.com → **OAuth applications → Create new OAuth application**.
    - Name: OrbitBOM. Primary format: `com.team1690.orbitbom`.
-   - Redirect URLs: `https://<vercel-url>/api/onshape/callback` and
+   - Redirect URLs: `https://orbitparts.duckdns.org/api/onshape/callback` and
      `http://localhost:3000/api/onshape/callback`.
    - Scopes: **Read** and **Write** (Write is only for pushing part names back to Onshape).
-2. Put the client ID and secret into Vercel as `ONSHAPE_CLIENT_ID` and `ONSHAPE_CLIENT_SECRET`,
-   and add `ONSHAPE_TOKEN_KEY` (generate it with `openssl rand -base64 32`).
+2. Put the client ID and secret on the server as `ONSHAPE_CLIENT_ID` and `ONSHAPE_CLIENT_SECRET`
+   (`deploy/enter-secrets.sh`); `ONSHAPE_TOKEN_KEY` is generated there.
 3. As Enterprise admin, allow the application for the Enterprise so students can connect it.
 4. **Panel inside Onshape:** in the same OAuth application, open **Extensions → Add extension**.
    - Name: OrbitBOM. Location: **Element right panel**. Context: **Selected assembly**.
    - Action URL:
-     `https://<vercel-url>/onshape/panel?server={$server}&documentId={$documentId}&workspaceId={$workspaceId}&elementId={$elementId}`
+     `https://orbitparts.duckdns.org/onshape/panel?server={$server}&documentId={$documentId}&workspaceId={$workspaceId}&elementId={$elementId}`
    - Students then subscribe to the app (or it is granted to the Enterprise) and open the OrbitBOM
      icon on an assembly's right side. They sign in once in a popup; the sign-in lasts 60 days.
 
@@ -97,7 +106,7 @@ Free tier: 10 GB stored, no download fees.
    ```
 
 3. R2 overview → **Manage R2 API Tokens** → **Create API token**: permission *Object Read & Write*, applied to the `orbitbom` bucket only. Copy the **Access Key ID** and **Secret Access Key** (shown once).
-4. In Vercel → Settings → Environment Variables set `R2_ACCOUNT_ID` (the account id on the R2 overview page), `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` and `R2_BUCKET=orbitbom`, then redeploy.
+4. On the server set `R2_ACCOUNT_ID` (the account id on the R2 overview page), `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` (`deploy/enter-secrets.sh`) and `R2_BUCKET=orbitbom`, then restart the app.
 
 The bucket stays private: every download goes through `/api/files/…`, which checks the member is signed in and hands out a 5-minute link. Without these variables the app works, and file uploads say storage isn't set up.
 
