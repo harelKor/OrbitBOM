@@ -58,7 +58,7 @@ export function LeftNav({
           the icons stay (each link keeps its name as a tooltip). */}
       <div data-nav-body style={{ zoom: "var(--nav-zoom, 1)" }} className="flex min-h-0 flex-1 flex-col border-r border-line">
         <nav className="flex-1 space-y-0.5 overflow-x-hidden overflow-y-auto p-2 text-sm">
-          <Item href="/?home" icon="home" active={pathname === "/"}>
+          <Item href="/" icon="home" active={pathname === "/"}>
             Home
           </Item>
           <Item

@@ -38,7 +38,7 @@ function bySystem(parts: CardPart[]): [string, CardPart[]][] {
 
 type View = "card" | "list" | "table" | "kanban";
 const LOOKS = ["card", "list"] as const; // the views every mode has, remembered by this browser
-type Chip = "all" | "cots" | "inhouse";
+type Chip = "all" | "cots" | "inhouse" | "review";
 
 // The BOM page body (ref §3): the top bar's search, Material and Process pills, type chips, a Status select,
 // the Cards / List / Table / Kanban views, and (Edit mode) Bulk edit and Merge. Edits show at once and
@@ -162,6 +162,7 @@ export function BomView({
       optimistic.filter((p) => {
         if (chip === "cots" && p.classification !== "cots") return false;
         if (chip === "inhouse" && p.classification !== "inhouse") return false;
+        if (chip === "review" && !p.review) return false;
         if (status && computeStatus(p) !== status) return false;
         return matchesTopBar(p, filters) && matchesPills(p, filters);
       }),
@@ -198,10 +199,14 @@ export function BomView({
     </div>
     );
 
+  // A system page's To review chip: the parts whose suggestion waits for approval, each with its
+  // ✓ / ✕ (CardSuggest), for whoever can review (Harel, 2026-11-07).
+  const toReview = canReview && mergeSystemId ? optimistic.filter((p) => p.review).length : 0;
   const chips: { id: Chip; label: string }[] = [
     { id: "all", label: "All" },
     { id: "cots", label: "COTS" },
     { id: "inhouse", label: "In-house" },
+    ...(canReview && mergeSystemId ? [{ id: "review" as const, label: `To review ${toReview}` }] : []),
   ];
 
   return (

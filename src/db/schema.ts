@@ -39,7 +39,7 @@ export const members = pgTable("members", {
   avatarUrl: text("avatar_url"),
   isAdmin: boolean("is_admin").notNull().default(false),
   onshapeConnected: boolean("onshape_connected").notNull().default(false),
-  // Build Team lands on To Fab, CAD Team on their subsystem's page. Null: the home tiles.
+  // The member's team (sets their mode). Every team opens the app on the home tiles.
   team: memberTeam("team"),
   // CAD Team only: the robot system the member designs.
   systemId: uuid("system_id").references((): AnyPgColumn => systems.id, { onDelete: "set null" }),

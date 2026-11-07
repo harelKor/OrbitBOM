@@ -4,7 +4,7 @@ import Image from "next/image";
 // The 1690 OrbitParts mark: heads the left panel, and the top bar while that panel is hidden.
 export function Brand({ compact = false }: { compact?: boolean }) {
   return (
-    <Link href="/?home" className="press flex shrink-0 items-center gap-2.5 text-white" aria-label="OrbitParts home">
+    <Link href="/" className="press flex shrink-0 items-center gap-2.5 text-white" aria-label="OrbitParts home">
       <Image src="/orbit-logo.png" alt="" width={34} height={34} className="h-[34px] w-[34px] shrink-0 object-contain" priority />
       <span className={`items-center gap-2.5 ${compact ? "hidden sm:flex" : "flex"}`}>
         {/* The team's 1690 lettering (white with a soft shadow). */}

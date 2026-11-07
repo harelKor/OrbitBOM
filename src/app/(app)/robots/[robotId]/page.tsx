@@ -9,7 +9,6 @@ import { partTitle } from "@/components/bom/types";
 import { CompletionRing } from "@/components/dashboard/CompletionRing";
 import { RobotViewer } from "@/components/dashboard/RobotViewer";
 import { QaBox } from "@/components/qa/QaBox";
-import { SyncBox } from "@/components/versions/SyncBox";
 import { StorageBox } from "@/components/storage/StorageBox";
 import { Icon } from "@/components/ui/Icon";
 import { requireMember } from "@/lib/auth";
@@ -20,45 +19,39 @@ import { listRobotParts } from "@/lib/data/parts";
 import { DONE_STATUSES, STATUSES } from "@/config/statuses";
 import { robotModelBuiltAt } from "@/lib/model/build";
 import { getRobot } from "@/lib/data/robots";
-import { fabStage } from "@/lib/fab";
+import { AREA_READY, areaQueue, fabStage } from "@/lib/fab";
 import { can } from "@/components/shell/mode";
 import { getMode } from "@/lib/mode";
 import { isUuid } from "@/lib/uuid";
-import { listRobotReviews } from "@/lib/review/review";
 import { processBreakdown } from "@/lib/stats";
-import { listSystemSync } from "@/lib/versions/sync";
 import { storageTotal } from "@/lib/storage/usage";
 
-// The robot dashboard: launch cards for To Fab and To Review, status and process completion,
-// the 3D stage, a compact Inventory box above Recent actions, and every part of the robot
-// (searched and filtered from the top bar). Build Team gets To Post Process and My Batches in
-// place of To Review, Ready for QA and Onshape sync.
+// The robot dashboard: launch cards for Shop Fab, Factory Fab and 3D Printing, status and process
+// completion, Ready for QA and Post Process, the 3D stage, a compact Inventory box above Recent
+// actions, and every part of the robot (searched and filtered from the top bar). One layout for
+// every team; a box glows when it holds work for the member's team (Harel, 2026-11-07).
 export default async function RobotPage({ params }: { params: Promise<{ robotId: string }> }) {
   const { robotId } = await params;
   if (!isUuid(robotId)) notFound();
   // Everything in one parallel round: the page waits for the slowest query, not their sum.
-  // The effective mode, so an admin previewing Build sees the Build Team layout.
+  // The effective mode, so an admin previewing Build or CAD sees that team's glows.
   const [member, mode] = await Promise.all([requireMember(), getMode()]);
   const build = mode === "build";
+  const cad = mode === "cad";
   // Update 3D model is an Onshape sync: CAD Team and Edit.
   const edit = can(mode, "sync");
-  const [data, parts, inventoryNames, inventory, modelBuiltAt, reviews, actions, sync, stored, groups] = await Promise.all([
+  const [data, parts, inventoryNames, inventory, modelBuiltAt, actions, stored, groups] = await Promise.all([
     getRobot(robotId),
     listRobotParts(robotId),
     listInventoryNames(),
     robotInventory(robotId),
     robotModelBuiltAt(robotId),
-    listRobotReviews(robotId),
     listRecentActions({ robotId, memberId: member.id }),
-    listSystemSync(),
     storageTotal(),
-    build ? listRobotGroups(robotId) : [],
+    listRobotGroups(robotId),
   ]);
   if (!data) notFound();
-  // Build Team sees what they don't use dimmer, still a click away.
-  const dim = build ? "opacity-55 transition-opacity duration-150 hover:opacity-100 focus-within:opacity-100" : "";
   const { robot, breakdown } = data;
-  const aiReviews = reviews.filter((r) => r.source === "ai").length;
   const counted = inventory.filter((i) => !i.sheet);
   const shortItems = counted.filter((i) => i.covered < i.needed).length;
   const neededUnits = counted.reduce((n, i) => n + i.needed, 0);
@@ -70,15 +63,22 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
   const qaCount = new Map<string, number>();
   for (const p of parts) if (p.status === "Ready for QA") qaCount.set(p.systemId, (qaCount.get(p.systemId) ?? 0) + 1);
   const qaSystems = data.systems.flatMap((s) => (qaCount.has(s.id) ? [{ id: s.id, name: s.name, count: qaCount.get(s.id)! }] : []));
-  const syncSystems = data.systems.flatMap((s) => (s.assemblyUrl ? [{ id: s.id, name: s.name, ...(sync.get(s.id) ?? { outdated: null, waiting: 0 }) }] : []));
-  // Build Team: parts waiting for post-processing, and the member's unfinished fab batches.
+  const qaTotal = qaSystems.reduce((n, s) => n + s.count, 0);
   const postProcess = parts.filter((p) => p.status === "Post Processing").length;
-  const myBatches = groups.flatMap((g) => {
-    if (g.madeBy !== member.name) return [];
+  // Factory Fab's and 3D Printing's queues, counted the way their pages and the side panel count them.
+  const area = (a: "factory" | "print") => {
+    const queued = parts.filter((p) => areaQueue(p, a));
+    return { count: queued.length, released: queued.filter((p) => AREA_READY[a].includes(p.status)).length };
+  };
+  const factory = area("factory");
+  const print = area("print");
+  // The member's Shop Fab batches with a part not made yet (below Ready for QA): Shop Fab glows
+  // and says "You have X" (Harel, 2026-11-07).
+  const myBatches = groups.filter((g) => {
+    if (g.madeBy !== member.name || areaOfMachine(g.machine)) return false;
     const members = parts.filter((p) => p.groups.some((x) => x.id === g.id));
-    return members.length && !members.every((p) => (DONE_STATUSES as string[]).includes(p.status)) ? [members.length] : [];
-  });
-  const myBatchParts = myBatches.reduce((n, c) => n + c, 0);
+    return members.some((p) => !(DONE_STATUSES as string[]).includes(p.status));
+  }).length;
   const activeStatuses = breakdown.statuses.filter((s) => s.count > 0);
   // BOM parts by their key in the 3D model, with their status colour.
   const statusColor = new Map<string, string>(STATUSES.map((s) => [s.name, s.color]));
@@ -101,48 +101,31 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
         </div>
       </div>
 
-      <div className={`grid gap-3 ${build ? "sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]" : "sm:grid-cols-2"}`}>
-        {/* Glows while Shop Fab has parts this member hasn't seen (src/lib/seen.ts). */}
+      <div className="grid gap-3 lg:grid-cols-2">
+        {/* Glows while Shop Fab has parts this member hasn't seen (src/lib/seen.ts), or batches of theirs to make. */}
         <ArrivalMark page={`fab:${robot.id}`}>
           <LaunchCard
-            href={`/robots/${robot.id}/fab`}
+            href={myBatches ? `/robots/${robot.id}/fab?mine=1` : `/robots/${robot.id}/fab`}
             icon="fab"
             title="Shop Fab"
             count={inProcess + ready}
             detail={`${inProcess} in process, ${ready} released`}
+            tag={myBatches ? `You have ${myBatches}` : undefined}
+            glow={myBatches > 0}
           />
         </ArrivalMark>
-        {build ? (
-          <div className="grid gap-3">
-            <StatBox
-              href={`/robots/${robot.id}/fab#post-process`}
-              icon="spark"
-              color={statusColorOf("Post Processing")}
-              title="To Post Process"
-              detail={postProcess ? `${postProcess === 1 ? "part" : "parts"} in Post Processing` : "Nothing to post-process"}
-              count={postProcess}
-            />
-            <StatBox
-              href={`/robots/${robot.id}/fab?mine=1`}
-              icon="user"
-              color="#38BDF8"
-              title="My Batches"
-              detail={myBatches.length ? `${myBatchParts} ${myBatchParts === 1 ? "part" : "parts"} to make` : "No batches assigned to you"}
-              count={myBatches.length}
-            />
-          </div>
-        ) : (
-          <LaunchCard
-            href={`/robots/${robot.id}/review`}
-            icon="review"
-            title="To Review"
-            count={reviews.length}
-            detail={reviews.length ? `${aiReviews} set up by Claude, ${reviews.length - aiReviews} by Suggest setup` : "Parts set up automatically wait here"}
-          />
-        )}
+        {/* Factory Fab takes a third, 3D Printing two thirds (Harel, 2026-11-07). */}
+        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-3">
+          <ArrivalMark prefix={`factory:${robot.id}:`}>
+            <AreaCard href={`/robots/${robot.id}/factory`} icon="factory" title="Factory Fab" count={factory.count} released={factory.released} narrow />
+          </ArrivalMark>
+          <ArrivalMark prefix={`print:${robot.id}:`}>
+            <AreaCard href={`/robots/${robot.id}/printing`} icon="printer" title="3D Printing" count={print.count} released={print.released} glow={cad && print.count > 0} />
+          </ArrivalMark>
+        </div>
       </div>
 
-      <div className={`grid gap-3 ${build ? "lg:grid-cols-2" : "lg:grid-cols-[minmax(0,5fr)_minmax(0,2fr)_minmax(0,5fr)]"}`}>
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,5fr)_minmax(0,2fr)_minmax(0,5fr)]">
         <section className="panel space-y-5 p-4">
           <div className="flex items-center gap-5">
             <CompletionRing percent={breakdown.percent} done={breakdown.done} total={breakdown.total} />
@@ -181,12 +164,20 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
             </div>
           )}
         </section>
-        {!build && (
-          <div className="grid grid-rows-2 gap-3">
-            <QaBox robotId={robot.id} systems={qaSystems} />
-            <SyncBox robotId={robot.id} systems={syncSystems} />
-          </div>
-        )}
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-1 lg:grid-rows-2">
+          <QaBox robotId={robot.id} systems={qaSystems} glow={cad && qaTotal > 0} />
+          <Link
+            href={`/robots/${robot.id}/fab#post-process`}
+            data-arrival={build && postProcess > 0 ? "" : undefined}
+            className="card-interactive group flex min-h-32 flex-col justify-between gap-2 overflow-hidden p-4 text-left active:scale-[0.98] sm:p-5"
+          >
+            <span className="flex items-start justify-between gap-2">
+              <span className="text-lg leading-tight font-bold text-fg sm:text-xl">Post Process</span>
+              <Icon name="arrow" className="h-5 w-5 shrink-0 text-subtle transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-fg" />
+            </span>
+            <span className="display font-mono text-6xl leading-none text-accent tabular-nums sm:text-7xl">{postProcess}</span>
+          </Link>
+        </div>
         <RobotViewer
           robotId={robot.id}
           statuses={activeStatuses}
@@ -197,11 +188,9 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
         />
       </div>
 
-      <div className={dim}>
-        <Suspense>
-          <StorageBox total={stored} />
-        </Suspense>
-      </div>
+      <Suspense>
+        <StorageBox total={stored} />
+      </Suspense>
 
       <Link href={`/robots/${robot.id}/inventory`} className="card-interactive group flex items-center gap-3 px-4 py-3">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line-strong bg-raised text-accent-hover group-hover:border-accent/60">
@@ -216,11 +205,9 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
         <Icon name="arrow" className="h-5 w-5 shrink-0 text-subtle transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-fg" />
       </Link>
 
-      <div className={dim}>
-        <RecentActions actions={actions} max={build ? 4 : 8} />
-      </div>
+      <RecentActions actions={actions} max={8} />
 
-      <section className={`space-y-3 ${dim}`}>
+      <section className="space-y-3">
         <h2 className="text-lg font-semibold">All parts</h2>
         <BomView parts={parts} inventory={inventoryNames} isAdmin={member.isAdmin} showSystem allowBulkEdit={false} robotId={robot.id} groupBySystem />
       </section>
@@ -229,43 +216,44 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
   );
 }
 
-const statusColorOf = (name: string) => STATUSES.find((s) => s.name === name)?.color ?? "#38BDF8";
-
-function LaunchCard({ href, icon, title, count, detail }: { href: string; icon: "fab" | "review"; title: string; count: number; detail: string }) {
+function LaunchCard({ href, icon, title, count, detail, tag, glow }: { href: string; icon: "fab"; title: string; count: number; detail: string; tag?: string; glow?: boolean }) {
   return (
-    <Link href={href} className="card-interactive group flex items-center gap-6 p-8 active:scale-[0.98]">
-      <span className="flex h-20 w-20 items-center justify-center rounded-xl border border-line-strong bg-raised text-accent-hover group-hover:border-accent/60">
+    <Link href={href} data-arrival={glow ? "" : undefined} className="card-interactive group flex items-center gap-6 p-6 active:scale-[0.98] sm:p-8">
+      <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl border border-line-strong bg-raised text-accent-hover group-hover:border-accent/60 sm:h-20 sm:w-20">
         <Icon name={icon} className="h-9 w-9" />
       </span>
       <div className="min-w-0 flex-1">
-        <div className="text-lg font-medium text-muted">{title}</div>
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+          <span className="text-lg font-medium text-muted">{title}</span>
+          {tag && <span className="rounded-full border border-amber-400/60 bg-amber-400/15 px-2.5 py-0.5 text-xs font-semibold text-amber-500 tabular-nums">{tag}</span>}
+        </div>
         <div className="display text-6xl text-accent tabular-nums">
           {count} <span className="text-2xl font-medium text-muted">{count === 1 ? "part" : "parts"}</span>
         </div>
         <div className="truncate text-sm text-subtle">{detail}</div>
       </div>
-      <Icon name="arrow" className="h-8 w-8 text-subtle transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-fg" />
+      <Icon name="arrow" className="h-8 w-8 shrink-0 text-subtle transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-fg" />
     </Link>
   );
 }
 
-// A Build Team box in the Ready for QA box's style: an icon ring in `color`, a title, a line of
-// detail and a big count, linking into To Fab.
-function StatBox({ href, icon, color, title, detail, count }: { href: string; icon: "spark" | "user"; color: string; title: string; detail: string; count: number }) {
+// Factory Fab's and 3D Printing's launch boxes: the parts waiting in that area, and how many of
+// them are released (not started yet). `narrow`: the third-wide box keeps only the icon on wide screens.
+function AreaCard({ href, icon, title, count, released, glow, narrow }: { href: string; icon: "factory" | "printer"; title: string; count: number; released: number; glow?: boolean; narrow?: boolean }) {
   return (
-    <Link href={href} className="card-interactive group flex items-center gap-4 p-4 active:scale-[0.98]">
-      <span
-        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2"
-        style={{ color, borderColor: `color-mix(in srgb, ${color} 60%, transparent)`, backgroundColor: `color-mix(in srgb, ${color} 10%, transparent)` }}
-      >
-        <Icon name={icon} className="h-6 w-6" />
+    <Link href={href} data-arrival={glow ? "" : undefined} className="card-interactive group flex min-w-0 items-center gap-5 p-4 active:scale-[0.98] sm:p-6">
+      <span className={`h-16 w-16 shrink-0 items-center justify-center rounded-xl border border-line-strong bg-raised text-accent-hover group-hover:border-accent/60 ${narrow ? "hidden 2xl:flex" : "hidden sm:flex"}`}>
+        <Icon name={icon} className="h-8 w-8" />
       </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-medium text-muted">{title}</span>
-        <span className="block truncate text-xs text-subtle tabular-nums">{detail}</span>
-      </span>
-      <span className="display font-mono text-4xl text-accent tabular-nums">{count}</span>
-      <Icon name="arrow" className="h-5 w-5 shrink-0 text-subtle transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-fg" />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-base font-medium text-muted sm:text-lg">{title}</div>
+        <div className="display text-5xl text-accent tabular-nums sm:text-6xl">
+          {count}
+          {!narrow && <span className="text-xl font-medium text-muted sm:text-2xl"> {count === 1 ? "part" : "parts"}</span>}
+        </div>
+        <div className="truncate text-sm text-subtle tabular-nums">{released} released</div>
+      </div>
+      {!narrow && <Icon name="arrow" className="hidden h-7 w-7 shrink-0 text-subtle transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-fg sm:block" />}
     </Link>
   );
 }
