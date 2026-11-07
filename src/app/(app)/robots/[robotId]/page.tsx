@@ -127,7 +127,7 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
       </div>
 
       {/* On a PC the 3D view is the widest column and keeps its shape, so it sets the row's height (Harel, 2026-11-07). */}
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,4fr)_minmax(0,1.6fr)_minmax(0,6.4fr)]">
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,3.3fr)_minmax(0,1.6fr)_minmax(0,7.1fr)]">
         <section className="panel space-y-5 p-4">
           <div className="flex items-center gap-5">
             <CompletionRing percent={breakdown.percent} done={breakdown.done} total={breakdown.total} />
