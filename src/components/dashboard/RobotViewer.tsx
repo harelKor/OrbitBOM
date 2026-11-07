@@ -21,8 +21,8 @@ export type ViewerPart = { key: string; color: string; id: string; systemId: str
 
 // The 3D robot stage. The model is built from the systems' Onshape assemblies on demand
 // (Edit mode's Update 3D model) and kept in R2; viewing it costs no Onshape calls. On the page it
-// sits in a thin outline on the page's own background that glows on hover, and a click on it (not
-// a drag, which turns the model) opens it large over the page, leaving the side panels and a
+// sits in a thin outline on the page's own background that glows on hover, and a click beside the
+// model (not on a part, which picks it, nor a drag, which turns it) opens it large over the page, leaving the side panels and a
 // margin of background (Harel, 2026-11-07). The
 // Subsystems button shows and hides subsystems (open by default when large). On a system page
 // (systemId) it shows only that subsystem. A click on a part highlights it; a double-click opens
@@ -68,8 +68,9 @@ export function RobotViewer({
     setBar(true);
     setLarge(true);
   };
-  // Small, a click anywhere on the model opens it large; large, it picks a part.
-  const onPick = (key: string | null) => (large ? setSelected(key) : openLarge());
+  // A click on a part picks it, small or large; small, a click beside the model opens it large
+  // (Harel, 2026-11-07).
+  const onPick = (key: string | null) => (key || large ? setSelected(key) : openLarge());
   const onOpen = (key: string) => {
     setSelected(key);
     const part = partByKey.get(key);
