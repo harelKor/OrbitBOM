@@ -213,8 +213,9 @@ function MadePartCard({
           </div>
         )}
         {part.fabView?.changed && (
-          // To Fab only: the BOM moved past the state this part was released at.
-          <div className="pointer-events-none absolute inset-x-0 bottom-2 z-10 flex justify-center">
+          // To Fab only: the BOM moved past the state this part was released at. Above Post
+          // Processing's done count, which sits in the same bottom middle.
+          <div className={`pointer-events-none absolute inset-x-0 z-10 flex justify-center ${post && work ? "bottom-12" : "bottom-2"}`}>
             <span
               className="rounded-full bg-red-600 px-2.5 py-0.5 text-[11px] font-bold tracking-wide text-white uppercase shadow-[0_0_10px_2px_rgba(220,38,38,0.45)]"
               title={`Changed in the BOM since it was released${part.fabLock?.label ? ` at ${part.fabLock.label}` : ""}. Shop Fab still shows the released version.`}
