@@ -222,6 +222,28 @@ body {
   animation: modal-fade 200ms ease-out both;
 }
 
+/* A 3D preview on the page: no box of its own, just a thin outline on the page's background, so
+   the model sits in the page (Harel, 2026-11-07). stage-glow adds the hover glow of a preview a
+   click opens large. */
+@utility stage-frame {
+  border-radius: 0.875rem;
+  border: 1px solid color-mix(in oklab, var(--color-accent) 22%, var(--color-line));
+  background: transparent;
+  transition:
+    border-color 200ms ease-out,
+    box-shadow 200ms ease-out;
+}
+@utility stage-glow {
+  &:hover,
+  &:focus-visible {
+    outline: none;
+    border-color: color-mix(in oklab, var(--color-accent) 60%, var(--color-line));
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--color-accent) 18%, transparent),
+      0 0 22px -6px color-mix(in oklab, var(--color-accent) 55%, transparent);
+  }
+}
+
 /* Just the entrance, for full-screen windows that keep their own look. */
 @utility modal-enter {
   animation: modal-pop 220ms var(--ease-snap) backwards;

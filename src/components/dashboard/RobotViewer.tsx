@@ -20,8 +20,10 @@ type BuildAnswer =
 export type ViewerPart = { key: string; color: string; id: string; systemId: string; name: string; fab: boolean };
 
 // The 3D robot stage. The model is built from the systems' Onshape assemblies on demand
-// (Edit mode's Update 3D model) and kept in R2; viewing it costs no Onshape calls. The expand
-// button opens it large over the page, leaving the side panels and a margin of background. The
+// (Edit mode's Update 3D model) and kept in R2; viewing it costs no Onshape calls. On the page it
+// sits in a thin outline on the page's own background that glows on hover, and a click on it (not
+// a drag, which turns the model) opens it large over the page, leaving the side panels and a
+// margin of background (Harel, 2026-11-07). The
 // Subsystems button shows and hides subsystems (open by default when large). On a system page
 // (systemId) it shows only that subsystem. A click on a part highlights it; a double-click opens
 // its details window over the viewer, which stays as it is behind it (from a page without the
@@ -61,7 +63,12 @@ export function RobotViewer({
   const onLocated = useCallback(() => {}, []);
   const partByKey = useMemo(() => new Map(parts.map((p) => [p.key, p])), [parts]);
   const picked = selected ? partByKey.get(selected) : undefined;
-  const onPick = (key: string | null) => setSelected(key);
+  const openLarge = () => {
+    setBar(true);
+    setLarge(true);
+  };
+  // Small, a click anywhere on the model opens it large; large, it picks a part.
+  const onPick = (key: string | null) => (large ? setSelected(key) : openLarge());
   const onOpen = (key: string) => {
     setSelected(key);
     const part = partByKey.get(key);
@@ -171,13 +178,29 @@ export function RobotViewer({
       )}
       <section
         id="viewer"
+        tabIndex={large ? undefined : 0}
+        aria-label={large ? undefined : "3D view: open large"}
+        title={large ? undefined : "Open large"}
+        onClick={(e) => {
+          // The canvas reports its own clicks (onPick) so a drag can turn the model; the controls
+          // keep theirs.
+          const target = e.target as HTMLElement;
+          if (large || target.tagName === "CANVAS" || target.closest("button, a, input, label, [role=radiogroup], [role=status]")) return;
+          openLarge();
+        }}
+        onKeyDown={(e) => {
+          if (!large && e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+            e.preventDefault();
+            openLarge();
+          }
+        }}
         className={
           large
             ? "fixed inset-y-6 right-[calc(var(--shell-right)+1.5rem)] left-[calc(var(--shell-left)+1.5rem)] z-30 modal flex flex-col overflow-hidden"
-            : "panel flex min-h-80 flex-1 flex-col overflow-hidden"
+            : "stage-frame stage-glow flex min-h-80 flex-1 cursor-pointer flex-col overflow-hidden"
         }
       >
-        <div className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-3">
+        <div className={`flex cursor-auto flex-wrap items-center gap-3 px-4 py-3 ${large ? "border-b border-line" : ""}`}>
           <Icon name="cube" className="h-4 w-4 text-accent-hover" />
           <h2 className="text-sm font-semibold">{systemId ? "3D View" : "3D Assembly Status View"}</h2>
           <div className="ml-auto flex items-center gap-2">
@@ -200,20 +223,22 @@ export function RobotViewer({
                 Subsystems{hiddenGroups.size ? ` ${groups.length - hiddenGroups.size}/${groups.length}` : ""}
               </button>
             )}
-            <button
-              onClick={() => {
-                setBar(!large);
-                setLarge(!large);
-              }}
-              className="btn h-8 w-8 justify-center px-0"
-              aria-label={large ? "Back to the dashboard" : "Open large"}
-              title={large ? "Back to the dashboard (Esc)" : "Open large"}
-            >
-              <Icon name={large ? "shrink" : "expand"} />
-            </button>
+            {large && (
+              <button
+                onClick={() => {
+                  setBar(false);
+                  setLarge(false);
+                }}
+                className="btn h-8 w-8 justify-center px-0"
+                aria-label="Back to the dashboard"
+                title="Back to the dashboard (Esc)"
+              >
+                <Icon name="shrink" />
+              </button>
+            )}
           </div>
         </div>
-        <div className="relative min-h-72 flex-1 overflow-hidden bg-[radial-gradient(ellipse_at_50%_35%,var(--color-surface)_0%,var(--color-raised)_75%)]">
+        <div className="relative min-h-72 flex-1 overflow-hidden">
           {model ? (
             <ModelCanvas
               model={model}

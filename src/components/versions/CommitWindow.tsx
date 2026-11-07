@@ -245,7 +245,7 @@ function Preview({ systemId, req, label }: { systemId: string; req: PreviewReq; 
     };
   }, [systemId, body]);
   return (
-    <div className="relative h-44 overflow-hidden rounded-lg border border-line bg-[radial-gradient(ellipse_at_50%_35%,var(--color-surface)_0%,var(--color-raised)_75%)]">
+    <div className="relative h-44 overflow-hidden stage-frame">
       <span className="absolute top-2 left-2 z-10 rounded-full bg-surface/90 px-2 py-0.5 text-[11px] font-semibold text-muted">{label}</span>
       {model && <ModelCanvas model={model} colors={NO_COLORS} mode="cad" locateKey={null} onLocated={noop} />}
       {!model && <div className="absolute inset-0 flex items-center justify-center p-3 text-center text-xs text-muted">{error ?? "Loading…"}</div>}
