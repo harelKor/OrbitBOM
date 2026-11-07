@@ -89,16 +89,19 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
       : [],
   );
 
+  // Sized by the room the page has (container queries on this div), not the screen: the side
+  // panels open or closed change it a lot on the same PC (Harel, 2026-11-07).
   return (
-    <div className="space-y-5">
+    <div className="@container space-y-5">
       {/* No name and year on top: the robot is picked in the side panel (Harel, 2026-11-07). */}
       <h1 className="sr-only">{robot.name}</h1>
 
-      {/* On a PC the launch boxes and the row below fill the screen down to the Inventory box's top,
-          whatever the screen's height (main's top padding and the gap above Inventory taken off;
-          never under 40rem, so a short screen scrolls instead of crushing them) (Harel, 2026-11-07). */}
-      <div className="space-y-5 lg:flex lg:h-[max(40rem,calc(100dvh-var(--topbar-h,2.75rem)-2.75rem))] lg:flex-col lg:gap-3 lg:space-y-0">
-      <div className="grid gap-3 lg:grid-cols-2">
+      {/* With room for it, the launch boxes and the row below fill the screen so the Inventory box's
+          bottom sits a little above the screen's bottom, whatever the screen's height (8rem: main's
+          top padding, the gap, the Inventory box and that offset; never under 36rem, so a short
+          screen scrolls instead of crushing them) (Harel, 2026-11-07). */}
+      <div className="space-y-5 @5xl:flex @5xl:h-[max(36rem,calc(100dvh-var(--topbar-h,2.75rem)-8rem))] @5xl:flex-col @5xl:gap-3 @5xl:space-y-0">
+      <div className="grid gap-3 @5xl:grid-cols-2">
         {/* Glows while Shop Fab has parts this member hasn't seen (src/lib/seen.ts), or batches of theirs to make. */}
         <ArrivalMark page={`fab:${robot.id}`}>
           <LaunchCard
@@ -117,17 +120,18 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
             <AreaCard href={`/robots/${robot.id}/printing`} icon="printer" title="3D Printing" count={print.count} released={print.released} glow={cad && print.count > 0} />
           </ArrivalMark>
           <ArrivalMark prefix={`factory:${robot.id}:`}>
-            <AreaCard href={`/robots/${robot.id}/factory`} icon="factory" title="Factory Fab" count={factory.count} released={factory.released} narrow />
+            <AreaCard href={`/robots/${robot.id}/factory`} icon="factory" title="Factory Fab" count={factory.count} released={factory.released} />
           </ArrivalMark>
         </div>
       </div>
 
       {/* On a PC the 3D view is the widest column and keeps its shape, so it sets the row's height (Harel, 2026-11-07). */}
-      <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,3.3fr)_minmax(0,1.6fr)_minmax(0,7.1fr)]">
-        <section className="panel space-y-5 p-4 lg:min-h-0 lg:overflow-y-auto">
-          <div className="flex items-center gap-5">
+      <div className="grid gap-3 @5xl:min-h-0 @5xl:flex-1 @5xl:grid-cols-[minmax(0,4.2fr)_minmax(0,1.6fr)_minmax(0,6.2fr)] @min-[100rem]:grid-cols-[minmax(0,3.3fr)_minmax(0,1.6fr)_minmax(0,7.1fr)]">
+        <section className="@container panel space-y-5 p-4 @5xl:min-h-0 @5xl:overflow-y-auto">
+          {/* A narrow box puts the ring above the list, so the status names aren't cut. */}
+          <div className="flex flex-col items-center gap-5 @min-[22rem]:flex-row">
             <CompletionRing percent={breakdown.percent} done={breakdown.done} total={breakdown.total} />
-            <ul className="min-w-0 flex-1 space-y-1.5 text-sm">
+            <ul className="w-full min-w-0 flex-1 space-y-1.5 text-sm">
               {activeStatuses.map((s) => (
                 <li key={s.name} className="flex items-center gap-2">
                   <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: s.color }} />
@@ -162,11 +166,11 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
             </div>
           )}
         </section>
-        <div className="grid grid-cols-2 gap-3 lg:min-h-0 lg:grid-cols-1 lg:grid-rows-2">
+        <div className="grid grid-cols-2 gap-3 @5xl:min-h-0 @5xl:grid-cols-1 @5xl:grid-rows-2">
           <QaBox robotId={robot.id} systems={qaSystems} parts={parts.filter((p) => p.status === "Ready for QA")} inventory={inventoryNames} isAdmin={member.isAdmin} glow={cad && qaTotal > 0} />
           <PostProcessBox robotId={robot.id} parts={postParts} inventory={inventoryNames} isAdmin={member.isAdmin} glow={build && postParts.length > 0} />
         </div>
-        <div className="flex min-w-0 flex-col lg:min-h-0">
+        <div className="flex min-w-0 flex-col @5xl:min-h-0">
           <RobotViewer
             robotId={robot.id}
             statuses={activeStatuses}
@@ -209,23 +213,23 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
 
 function LaunchCard({ href, icon, title, count, detail, tag, glow }: { href: string; icon: "fab"; title: string; count: number; detail: string; tag?: string; glow?: boolean }) {
   return (
-    <Link href={href} data-arrival={glow ? "" : undefined} className="card-interactive group flex items-center gap-6 p-6 active:scale-[0.98] sm:p-8">
+    <Link href={href} data-arrival={glow ? "" : undefined} className="@container card-interactive group flex items-center gap-6 p-6 active:scale-[0.98] sm:p-8">
       <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl border border-line-strong bg-raised text-accent-hover group-hover:border-accent/60 sm:h-20 sm:w-20">
         <Icon name={icon} className="h-9 w-9" />
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
           <span className="text-lg font-medium text-muted">{title}</span>
-          {tag && <span className="rounded-full border border-amber-400/60 bg-amber-400/15 px-2.5 py-0.5 text-xs font-semibold text-amber-500 tabular-nums lg:hidden">{tag}</span>}
+          {tag && <span className="rounded-full border border-amber-400/60 bg-amber-400/15 px-2.5 py-0.5 text-xs font-semibold text-amber-500 tabular-nums @min-[34rem]:hidden">{tag}</span>}
         </div>
         <div className="display text-6xl text-accent tabular-nums">
           {count} <span className="text-2xl font-medium text-muted">{count === 1 ? "part" : "parts"}</span>
         </div>
         <div className="truncate text-sm text-subtle">{detail}</div>
       </div>
-      {/* On a PC the tag fills the card's empty right side (Harel, 2026-11-07). */}
+      {/* A wide card's tag fills its empty right side, bigger the more room there is (Harel, 2026-11-07). */}
       {tag && (
-        <span className="hidden shrink-0 rounded-2xl border-2 border-amber-400/70 bg-amber-400/15 px-6 py-3 text-2xl font-bold whitespace-nowrap text-amber-500 tabular-nums lg:block">
+        <span className="hidden shrink-0 rounded-2xl border-2 border-amber-400/70 bg-amber-400/15 px-4 py-2 text-xl font-bold whitespace-nowrap text-amber-500 tabular-nums @min-[34rem]:block @min-[44rem]:px-6 @min-[44rem]:py-3 @min-[44rem]:text-2xl">
           {tag}
         </span>
       )}
@@ -235,22 +239,23 @@ function LaunchCard({ href, icon, title, count, detail, tag, glow }: { href: str
 }
 
 // Factory Fab's and 3D Printing's launch boxes: the parts waiting in that area, and how many of
-// them are released (not started yet). `narrow`: the third-wide box keeps only the icon on wide screens.
-function AreaCard({ href, icon, title, count, released, glow, narrow }: { href: string; icon: "factory" | "printer"; title: string; count: number; released: number; glow?: boolean; narrow?: boolean }) {
+// them are released (not started yet). The icon, "parts" and the arrow show only when the box has
+// room for them, so a narrow box keeps its name whole.
+function AreaCard({ href, icon, title, count, released, glow }: { href: string; icon: "factory" | "printer"; title: string; count: number; released: number; glow?: boolean }) {
   return (
-    <Link href={href} data-arrival={glow ? "" : undefined} className="card-interactive group flex min-w-0 items-center gap-5 p-4 active:scale-[0.98] sm:p-6">
-      <span className={`h-16 w-16 shrink-0 items-center justify-center rounded-xl border border-line-strong bg-raised text-accent-hover group-hover:border-accent/60 ${narrow ? "hidden 2xl:flex" : "hidden sm:flex"}`}>
+    <Link href={href} data-arrival={glow ? "" : undefined} className="@container card-interactive group flex min-w-0 items-center gap-5 p-4 active:scale-[0.98] @min-[16rem]:p-6">
+      <span className="hidden h-16 w-16 shrink-0 items-center justify-center rounded-xl border border-line-strong bg-raised text-accent-hover group-hover:border-accent/60 @min-[18rem]:flex">
         <Icon name={icon} className="h-8 w-8" />
       </span>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-base font-medium text-muted sm:text-lg">{title}</div>
-        <div className="display text-5xl text-accent tabular-nums sm:text-6xl">
+        <div className="truncate text-base font-medium text-muted @min-[14rem]:text-lg">{title}</div>
+        <div className="display text-5xl text-accent tabular-nums @min-[14rem]:text-6xl">
           {count}
-          {!narrow && <span className="text-xl font-medium text-muted sm:text-2xl"> {count === 1 ? "part" : "parts"}</span>}
+          <span className="hidden text-xl font-medium text-muted @min-[14rem]:inline @min-[20rem]:text-2xl"> {count === 1 ? "part" : "parts"}</span>
         </div>
         <div className="truncate text-sm text-subtle tabular-nums">{released} released</div>
       </div>
-      {!narrow && <Icon name="arrow" className="hidden h-7 w-7 shrink-0 text-subtle transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-fg sm:block" />}
+      <Icon name="arrow" className="hidden h-7 w-7 shrink-0 text-subtle transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-fg @min-[24rem]:block" />
     </Link>
   );
 }

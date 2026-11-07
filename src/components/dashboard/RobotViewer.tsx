@@ -219,7 +219,7 @@ export function RobotViewer({
         <div className={`flex cursor-auto flex-wrap items-center gap-3 px-4 py-3 ${large ? "border-b border-line" : ""}`}>
           <Icon name="cube" className="h-4 w-4 text-accent-hover" />
           <h2 className="text-sm font-semibold">{systemId ? "3D View" : "3D Assembly Status View"}</h2>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             {edit && hasAssembly && (
               <button className="btn h-8 text-xs" onClick={build} disabled={!!building}>
                 {building ?? "Update 3D model"}
