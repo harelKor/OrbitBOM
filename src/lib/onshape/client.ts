@@ -110,6 +110,16 @@ export async function disconnect(memberId: string) {
 // the member's token row: eight thumbnail workers reaching an expired token at once refresh it
 // once, and the others take the new one (a second refresh with the used refresh token was
 // refused, which disconnected the member mid-sync).
+// A token sealed under an older ONSHAPE_TOKEN_KEY can't be opened (the key was replaced when the
+// site moved off Vercel, 2026-11-07): the member counts as not connected and connects again.
+function openSealed(sealed: string): string | null {
+  try {
+    return decrypt(sealed);
+  } catch {
+    return null;
+  }
+}
+
 async function accessToken(memberId: string, fresh = false): Promise<string> {
   const [row] = await db
     .select()
@@ -117,14 +127,18 @@ async function accessToken(memberId: string, fresh = false): Promise<string> {
     .where(eq(schema.onshapeTokens.memberId, memberId))
     .limit(1);
   if (!row) throw new NotConnectedError();
-  if (!fresh && row.expiresAt.getTime() - Date.now() > 60_000) return decrypt(row.accessTokenEnc);
+  const cached = !fresh && row.expiresAt.getTime() - Date.now() > 60_000 ? openSealed(row.accessTokenEnc) : null;
+  if (cached) return cached;
   const result = await db.transaction(async (tx) => {
     const [locked] = await tx.select().from(schema.onshapeTokens).where(eq(schema.onshapeTokens.memberId, memberId)).for("update");
     if (!locked) return { gone: true as const, token: undefined };
     // Someone refreshed it while this one waited.
-    if (locked.accessTokenEnc !== row.accessTokenEnc && locked.expiresAt.getTime() - Date.now() > 60_000) return { token: decrypt(locked.accessTokenEnc) };
+    const theirs = locked.accessTokenEnc !== row.accessTokenEnc && locked.expiresAt.getTime() - Date.now() > 60_000 ? openSealed(locked.accessTokenEnc) : null;
+    if (theirs) return { token: theirs };
+    const refreshToken = openSealed(locked.refreshTokenEnc);
+    if (!refreshToken) return { gone: true as const, token: undefined };
     try {
-      const t = await requestToken({ grant_type: "refresh_token", refresh_token: decrypt(locked.refreshTokenEnc) });
+      const t = await requestToken({ grant_type: "refresh_token", refresh_token: refreshToken });
       await tx
         .update(schema.onshapeTokens)
         .set({ accessTokenEnc: encrypt(t.access_token), refreshTokenEnc: encrypt(t.refresh_token), expiresAt: new Date(Date.now() + t.expires_in * 1000) })

@@ -3,15 +3,16 @@
 # OrbitBOM (shown to users as OrbitParts)
 
 FRC team 1690's BOM, To Fab and inventory app, modelled on FRCBOM and linked to Onshape. Owner:
-Harel. Live: https://orbit-bom.vercel.app. Next.js 16 (App Router, Cache Components off,
+Harel. Live: https://orbitparts.duckdns.org. Next.js 16 (App Router, Cache Components off,
 `src/proxy.ts` instead of middleware), React 19, Drizzle + node-postgres on Supabase Free
-(Postgres + Google sign-in, Mumbai), Cloudflare R2 for files, Vercel Hobby (`bom1`), vitest.
+(Postgres + Google sign-in, Mumbai), Cloudflare R2 for files, the team's own Oracle Cloud Always Free VM in Mumbai (standalone build
+from GitHub Actions behind Caddy; `deploy/`, `docs/runbook.md`; Vercel Hobby's CPU cap paused the site 2026-11-06), vitest.
 Everything must stay on free tiers. Members also drive it from their own Claude through the MCP
 server (`/api/mcp/<token>`).
 
 ## Working with Harel
 
-- Ship straight to `main`: commit, push, Vercel deploys. No branches or PRs unless he asks.
+- Ship straight to `main`: commit, push, the Deploy workflow builds it and ships it to the server. No branches or PRs unless he asks.
   `.github/workflows/migrate.yml` applies new migrations on push; when deployed code needs a new
   table on every request, wait for that run before calling it done.
 - Build what he asks for (or what blocks real use), nothing optional. Big features: post the plan,

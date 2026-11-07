@@ -7,13 +7,13 @@ the BOM from their own Claude through an MCP server.
 
 ## Stack
 
-- Next.js (App Router, TypeScript) on Vercel Hobby
+- Next.js (App Router, TypeScript) on the team's own Oracle Cloud Always Free server (`deploy/`)
 - Supabase Free: Postgres, Google sign-in
 - Drizzle for the schema and migrations (`src/db/schema.ts`, `drizzle/`)
 - Cloudflare R2 for files, thumbnails, 3D meshes, exports and the nightly backups
 - Tailwind CSS
 
-All hosting is on free tiers. A daily Vercel cron keeps Supabase from pausing and saves the
+All hosting is on free tiers. A daily timer on the server keeps Supabase from pausing and saves the
 nightly backup to R2 (Settings → Backups); see `docs/runbook.md`. Working on the code: start with
 `CLAUDE.md` (rules, commands, where each kind of change goes).
 

@@ -3,10 +3,11 @@ import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
 import { getMember } from "@/lib/auth";
 import { OAUTH_BASE, onshapeClientId, STATE_COOKIE } from "@/lib/onshape/client";
+import { publicOrigin } from "@/lib/origin";
 
 // Starts "Connect Onshape": sends the member to Onshape's consent page.
 export async function GET(request: NextRequest) {
-  const origin = request.nextUrl.origin;
+  const origin = publicOrigin(request);
   if (!(await getMember())) return NextResponse.redirect(`${origin}/login`);
   const clientId = onshapeClientId();
   if (!clientId) {

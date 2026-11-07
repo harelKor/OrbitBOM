@@ -2,9 +2,11 @@ import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
 import { getMember } from "@/lib/auth";
 import { requestToken, saveTokens, STATE_COOKIE } from "@/lib/onshape/client";
+import { publicOrigin } from "@/lib/origin";
 
 export async function GET(request: NextRequest) {
-  const { origin, searchParams } = request.nextUrl;
+  const { searchParams } = request.nextUrl;
+  const origin = publicOrigin(request);
   const member = await getMember();
   if (!member) return NextResponse.redirect(`${origin}/login`);
 

@@ -1,0 +1,39 @@
+# Hands the production database connection to the server without anyone seeing it: takes the
+# repo secret PRODUCTION_DIRECT_URL (Supabase session pooler, port 5432), switches it to the
+# transaction pooler on port 6543 (what the app uses, src/db/index.ts) and stores both in
+# /opt/orbitparts/shared/.env through /opt/orbitparts/bin/set-env. Run by hand (Actions → Server
+# env → Run workflow) after setting up a server or changing the database password.
+name: Server env
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Set up SSH
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy
+          chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+
+      - name: Store database URLs on the server
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          DIRECT: ${{ secrets.PRODUCTION_DIRECT_URL }}
+        run: |
+          test -n "$DIRECT"
+          POOLED="$(printf '%s' "$DIRECT" | sed -E 's#(pooler\.supabase\.com):5432#\1:6543#')"
+          case "$POOLED" in *:6543*) ;; *) echo "PRODUCTION_DIRECT_URL is not a Supabase pooler URL on 5432"; exit 1 ;; esac
+          printf '%s' "$POOLED" | ssh -i ~/.ssh/deploy "orbit@$HOST" /opt/orbitparts/bin/set-env DATABASE_URL
+          printf '%s' "$DIRECT" | ssh -i ~/.ssh/deploy "orbit@$HOST" /opt/orbitparts/bin/set-env DIRECT_URL
+          ssh -i ~/.ssh/deploy "orbit@$HOST" sudo /usr/bin/systemctl restart orbitparts

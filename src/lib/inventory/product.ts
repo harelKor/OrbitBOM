@@ -8,7 +8,7 @@ import { pickVariant, variantImage, variantTitle, type ShopifyProduct } from "./
 
 export type { Product };
 
-const UA = "Mozilla/5.0 (compatible; OrbitParts-BOM/1.0; +https://orbit-bom.vercel.app)";
+const UA = "Mozilla/5.0 (compatible; OrbitParts-BOM/1.0; +https://orbitparts.duckdns.org)";
 
 // Only public web pages: no local or private addresses, so a pasted link can't reach inside.
 export function publicUrl(raw: string): URL | null {

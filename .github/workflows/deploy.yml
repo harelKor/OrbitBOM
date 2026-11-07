@@ -1,0 +1,91 @@
+# Deploys main to the team's own server (Oracle Cloud Always Free VM, Mumbai), which replaced
+# Vercel after Hobby's CPU allowance paused the site (Harel, 2026-11-06). Builds Next's
+# standalone bundle here (the free VM is too small to build), uploads it and switches over
+# (deploy/release.sh). Server setup: deploy/setup.sh.
+#
+# Repository secrets (without DEPLOY_HOST the job does nothing):
+#   DEPLOY_HOST         the server's public IP or host name
+#   DEPLOY_SSH_KEY      private key whose public half is in /home/orbit/.ssh/authorized_keys
+#   DEPLOY_KNOWN_HOSTS  the server's line(s) from `ssh-keyscan <host>`
+#   NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY  baked into the browser bundle
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deploy at a time; a newer push waits and then deploys the newest commit.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check secrets
+        id: check
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          if [ -z "$HOST" ]; then
+            echo "Deploy secrets are not set yet; skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.check.outputs.skip != 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.skip != 'true'
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Build
+        if: steps.check.outputs.skip != 'true'
+        env:
+          # Public values (they reach every browser); the server's secrets stay on the server.
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          DATABASE_URL: postgres://user:pass@localhost:5432/db
+          NEXT_TELEMETRY_DISABLED: 1
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          # Next's standalone server needs the static assets and public/ next to it.
+          mkdir -p bundle
+          cp -a .next/standalone/. bundle/
+          cp -a .next/static bundle/.next/static
+          cp -a public bundle/public
+          tar -czf bundle.tar.gz -C bundle .
+
+      - name: Set up SSH
+        if: steps.check.outputs.skip != 'true'
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy
+          chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+
+      - name: Upload commit
+        if: steps.check.outputs.skip != 'true'
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          ssh -i ~/.ssh/deploy "orbit@$HOST" < bundle.tar.gz \
+            "mkdir -p /opt/orbitparts/incoming && cat > /opt/orbitparts/incoming/$GITHUB_SHA.tar.gz"
+
+      - name: Switch
+        if: steps.check.outputs.skip != 'true'
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: ssh -i ~/.ssh/deploy "orbit@$HOST" "bash -s $GITHUB_SHA" < deploy/release.sh
