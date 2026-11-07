@@ -277,6 +277,24 @@ export function Shell({
                   </div>
                   <RobotsResizer root={root} side={robotsCol} onDone={saveSide} />
                 </aside>
+                {/* With a mouse, a hidden column also opens from the screen's edge: the strip past the
+                    page's padding turns blue under the pointer and a click opens it (Harel, 2026-11-07).
+                    Narrower than the page's padding, so it never covers a card. */}
+                {!open &&
+                  (["left", "right"] as const).map(
+                    (side) =>
+                      (!wide[side] || collapsed[side]) && (
+                        <button
+                          key={side}
+                          type="button"
+                          tabIndex={-1}
+                          aria-hidden
+                          title={side === "left" ? "Open the pages" : "Open the robots"}
+                          onClick={() => toggle(side)}
+                          className={`fixed inset-y-0 z-30 hidden w-3 transition-colors duration-150 hover:bg-accent/40 pointer-fine:block ${side === "left" ? "left-0" : "right-0"}`}
+                        />
+                      ),
+                  )}
                 {open && (
                   <button ref={backdrop} aria-label="Close" onClick={() => setDrawer(null)} className="fixed inset-0 z-30 bg-black/50 xl:hidden" />
                 )}
