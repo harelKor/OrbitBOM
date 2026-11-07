@@ -137,7 +137,7 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
   // Sized by the room the page has (container queries on this div), not the screen: the side
   // panels open or closed change it a lot on the same PC (Harel, 2026-11-07).
   return (
-    <div className="@container space-y-5">
+    <div className="@container/dash space-y-5">
       {/* No name and year on top: the robot is picked in the side panel (Harel, 2026-11-07). */}
       <h1 className="sr-only">{robot.name}</h1>
 
@@ -173,7 +173,7 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
       {/* On a PC the 3D view is the widest column and keeps its shape, so it sets the row's height (Harel, 2026-11-07). */}
       {/* The status box and the QA column size themselves (by the page's width); the 3D view takes the rest, more when the status box is folded. */}
       <div className="grid gap-3 @5xl:min-h-0 @5xl:flex-1 @5xl:grid-cols-[auto_auto_minmax(0,1fr)]">
-        <StatusPanel percent={breakdown.percent}>{statusBody}</StatusPanel>
+        <StatusPanel percent={breakdown.percent} done={breakdown.done} total={breakdown.total}>{statusBody}</StatusPanel>
         <div className="grid grid-cols-2 gap-3 @5xl:min-h-0 @5xl:w-[13.3cqw] @5xl:grid-cols-1 @5xl:grid-rows-2">
           <QaBox robotId={robot.id} systems={qaSystems} parts={parts.filter((p) => p.status === "Ready for QA")} inventory={inventoryNames} isAdmin={member.isAdmin} glow={cad && qaTotal > 0} />
           <PostProcessBox robotId={robot.id} parts={postParts} inventory={inventoryNames} isAdmin={member.isAdmin} glow={build && postParts.length > 0} />
