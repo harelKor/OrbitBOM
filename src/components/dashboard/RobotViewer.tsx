@@ -25,8 +25,8 @@ export type ViewerPart = { key: string; color: string; id: string; systemId: str
 // model (not on a part, which picks it, nor a drag, which turns it) opens it large over the page, leaving the side panels and a
 // margin of background (Harel, 2026-11-07). The
 // Subsystems button shows and hides subsystems (open by default when large). On a system page
-// (systemId) it shows only that subsystem. A click on a part highlights it; a double-click opens
-// its details window over the viewer, which stays as it is behind it (from a page without the
+// (systemId) it shows only that subsystem. A click on a part highlights it; a second click on it
+// opens its details window over the viewer, which stays as it is behind it (from a page without the
 // part's card, it goes to the system page and opens it there). (Locate opens a part's own window
 // from its card: PartStage.)
 export function RobotViewer({
@@ -68,9 +68,14 @@ export function RobotViewer({
     setBar(true);
     setLarge(true);
   };
-  // A click on a part picks it, small or large; small, a click beside the model opens it large
+  // A click on a part picks it, and one more click on it opens it. With a part picked, a click
+  // anywhere else only clears it; with none, a click beside the small model opens it large
   // (Harel, 2026-11-07).
-  const onPick = (key: string | null) => (key || large ? setSelected(key) : openLarge());
+  const onPick = (key: string | null) => {
+    if (key && key === selected) onOpen(key);
+    else if (key || selected) setSelected(key);
+    else if (!large) openLarge();
+  };
   const onOpen = (key: string) => {
     setSelected(key);
     const part = partByKey.get(key);
@@ -194,7 +199,8 @@ export function RobotViewer({
           // keep theirs.
           const target = e.target as HTMLElement;
           if (large || target.tagName === "CANVAS" || target.closest("button, a, input, label, [role=radiogroup], [role=status]")) return;
-          openLarge();
+          if (selected) setSelected(null);
+          else openLarge();
         }}
         onKeyDown={(e) => {
           if (!large && e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
@@ -257,7 +263,6 @@ export function RobotViewer({
               hidden={hidden}
               selectedKey={selected}
               onPick={onPick}
-              onOpen={onOpen}
               names={nameByKey}
               panelLeft={bar && !systemId && groups.length > 0 ? 244 : undefined}
             />
@@ -293,7 +298,7 @@ export function RobotViewer({
             <div className="absolute top-3 left-1/2 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 animate-pop flex-wrap items-center justify-center gap-2 rounded-md border border-accent/50 bg-surface/95 px-3 py-2 text-xs shadow-sm backdrop-blur">
               <span className="min-w-0 truncate font-semibold text-fg">{picked?.name ?? "Placed in CAD, not on the BOM"}</span>
               {picked && (
-                <button className="btn h-7 px-2.5 text-xs" onClick={() => onOpen(picked.key)} title="Or double-click the part">
+                <button className="btn h-7 px-2.5 text-xs" onClick={() => onOpen(picked.key)} title="Or click the part again">
                   Open part
                 </button>
               )}
