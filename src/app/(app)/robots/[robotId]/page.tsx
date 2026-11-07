@@ -125,7 +125,8 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
         </div>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,5fr)_minmax(0,2fr)_minmax(0,5fr)]">
+      {/* On a PC the 3D view is the widest column and keeps its shape, so it sets the row's height (Harel, 2026-11-07). */}
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,4fr)_minmax(0,2fr)_minmax(0,6fr)]">
         <section className="panel space-y-5 p-4">
           <div className="flex items-center gap-5">
             <CompletionRing percent={breakdown.percent} done={breakdown.done} total={breakdown.total} />
@@ -178,14 +179,16 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
             <span className="display font-mono text-6xl leading-none text-accent tabular-nums sm:text-7xl">{postProcess}</span>
           </Link>
         </div>
-        <RobotViewer
-          robotId={robot.id}
-          statuses={activeStatuses}
-          parts={viewerParts}
-          builtAt={modelBuiltAt}
-          hasAssembly={!!robot.mainAssemblyUrl || data.systems.some((s) => s.assemblyUrl)}
-          edit={edit}
-        />
+        <div className="flex min-w-0 flex-col lg:aspect-[11/8]">
+          <RobotViewer
+            robotId={robot.id}
+            statuses={activeStatuses}
+            parts={viewerParts}
+            builtAt={modelBuiltAt}
+            hasAssembly={!!robot.mainAssemblyUrl || data.systems.some((s) => s.assemblyUrl)}
+            edit={edit}
+          />
+        </div>
       </div>
 
       <Suspense>
@@ -225,13 +228,19 @@ function LaunchCard({ href, icon, title, count, detail, tag, glow }: { href: str
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
           <span className="text-lg font-medium text-muted">{title}</span>
-          {tag && <span className="rounded-full border border-amber-400/60 bg-amber-400/15 px-2.5 py-0.5 text-xs font-semibold text-amber-500 tabular-nums">{tag}</span>}
+          {tag && <span className="rounded-full border border-amber-400/60 bg-amber-400/15 px-2.5 py-0.5 text-xs font-semibold text-amber-500 tabular-nums lg:hidden">{tag}</span>}
         </div>
         <div className="display text-6xl text-accent tabular-nums">
           {count} <span className="text-2xl font-medium text-muted">{count === 1 ? "part" : "parts"}</span>
         </div>
         <div className="truncate text-sm text-subtle">{detail}</div>
       </div>
+      {/* On a PC the tag fills the card's empty right side (Harel, 2026-11-07). */}
+      {tag && (
+        <span className="hidden shrink-0 rounded-2xl border-2 border-amber-400/70 bg-amber-400/15 px-6 py-3 text-2xl font-bold whitespace-nowrap text-amber-500 tabular-nums lg:block">
+          {tag}
+        </span>
+      )}
       <Icon name="arrow" className="h-8 w-8 shrink-0 text-subtle transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-fg" />
     </Link>
   );
