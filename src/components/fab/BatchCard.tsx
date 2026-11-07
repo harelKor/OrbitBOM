@@ -464,8 +464,17 @@ export function BatchCard({
       ref={panelRef}
       data-batch-panel=""
       onClick={stop}
-      style={{ gridColumn: place?.column ?? "1 / -1", gridRow: place?.row, gridTemplateRows: shown ? "1fr" : "0fr", ...(!shown && { marginBottom: 0 }) }}
-      className="relative grid cursor-default transition-[grid-template-rows,margin-bottom] duration-200 ease-out motion-reduce:transition-none"
+      style={{
+        gridColumn: place?.column ?? "1 / -1",
+        gridRow: place?.row,
+        // Below the card it unfolds downwards; beside it, it slides out of the card to the right and
+        // folds back into it, at full height (Harel, 2026-11-07). The clip leaves room for the glow
+        // and the neck on its left.
+        ...(side
+          ? { gridTemplateRows: "1fr", clipPath: shown ? "inset(-40px -40px -40px -40px)" : "inset(-40px 100% -40px -40px)" }
+          : { gridTemplateRows: shown ? "1fr" : "0fr", ...(!shown && { marginBottom: 0 }) }),
+      }}
+      className="relative grid cursor-default transition-[grid-template-rows,margin-bottom,clip-path] duration-200 ease-out motion-reduce:transition-none"
     >
       {/* The strip's glow, outside its clipped fold. */}
       {joined && mine && (
