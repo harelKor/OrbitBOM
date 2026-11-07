@@ -15,6 +15,11 @@ export type ViewerModel = {
 const PLAIN = "#9aa1ad"; // a part with no Onshape appearance in its file
 const UNKNOWN = "#b8bec9"; // placed in CAD but not on the BOM
 const LOCATED = "#22ff5e"; // the located part: bright green, through a see-through robot
+const HOVER = "#6f9bff"; // a light blue wash over the part under the mouse, like Onshape's
+const GONE = new THREE.Matrix4().makeScale(0, 0, 0); // a hidden instance: drawn at no size, never hit
+
+// A part instance hidden with Y: its mesh, its index there, and its BOM key.
+type Gone = { m: number; i: number; key: string };
 
 async function loadStudio(url: string): Promise<Mesh[]> {
   const res = await fetch(url);
@@ -29,7 +34,9 @@ export type ViewerMode = "status" | "cad";
 // own appearance, see-through parts included, lit by a studio environment like Onshape's). While
 // locating, the robot turns see-through and the located part is drawn solid in bright green.
 // Like Onshape: right drag rotates, middle drag moves, the wheel zooms (left drag also rotates,
-// for touchpads).
+// for touchpads). With a mouse, the part under it is washed in light blue; Y hides it, Shift+Y
+// brings back the last one hidden (again for the one before), and a compact list on the left
+// shows the hidden parts, a click there brings one back (Harel, 2026-11-07).
 export function ModelCanvas({
   model,
   colors,
@@ -40,6 +47,8 @@ export function ModelCanvas({
   selectedKey,
   onPick,
   onOpen,
+  names,
+  panelLeft,
 }: {
   model: ViewerModel;
   colors: Map<string, string>; // part key → status colour
@@ -50,6 +59,8 @@ export function ModelCanvas({
   selectedKey?: string | null; // a part picked with a click: drawn in bright green
   onPick?: (key: string | null) => void; // a click on a part (its key) or on empty space (null)
   onOpen?: (key: string) => void; // a double-click on a part
+  names?: Map<string, string>; // part key -> its name, for the hidden parts list
+  panelLeft?: number; // px from the left for the hidden parts list, past the viewer's own panels
 }) {
   const host = useRef<HTMLDivElement>(null);
   // Recolours the parts and frames the located one; true when it is in the model.
@@ -57,7 +68,9 @@ export function ModelCanvas({
     paint: (colors: Map<string, string>, mode: ViewerMode, locateKey: string | null) => boolean;
     hide: (hidden: Set<number>) => void;
     select: (key: string | null) => void;
+    show: (gone: Gone[]) => void;
   } | null>(null);
+  const [gone, setGone] = useState<Gone[]>([]);
   const pick = useRef(onPick);
   const openPart = useRef(onOpen);
   useEffect(() => {
@@ -195,18 +208,110 @@ export function ModelCanvas({
       }
       render();
     };
-    scene.current = { paint, hide, select };
+    // The part under the mouse, washed over its own surfaces.
+    const hoverLook = new THREE.MeshBasicMaterial({
+      color: HOVER,
+      transparent: true,
+      opacity: 0.32,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    });
+    const hoverLayer = new THREE.Group();
+    root.add(hoverLayer);
+    let hovered: { m: number; i: number } | null = null;
+    const setHover = (h: { m: number; i: number } | null) => {
+      if (h?.m === hovered?.m && h?.i === hovered?.i) return;
+      hovered = h;
+      hoverLayer.clear();
+      if (h) {
+        const { mesh } = meshes[h.m];
+        const lit = new THREE.Mesh(mesh.geometry, hoverLook);
+        mesh.getMatrixAt(h.i, lit.matrix);
+        lit.matrixAutoUpdate = false;
+        hoverLayer.add(lit);
+      }
+      render();
+    };
+    // Hidden instances keep their place here and are drawn at no size meanwhile.
+    const kept = new Map<string, THREE.Matrix4>();
+    let goneList: Gone[] = [];
+    let selectedNow: string | null = null;
+    const hideOne = (g: Gone) => {
+      const { mesh } = meshes[g.m];
+      const was = new THREE.Matrix4();
+      mesh.getMatrixAt(g.i, was);
+      kept.set(`${g.m}:${g.i}`, was);
+      mesh.setMatrixAt(g.i, GONE);
+      mesh.instanceMatrix.needsUpdate = true;
+      goneList = [...goneList, g];
+      setGone(goneList);
+      setHover(null);
+      select(selectedNow);
+    };
+    const show = (back: Gone[]) => {
+      for (const g of back) {
+        const id = `${g.m}:${g.i}`;
+        const was = kept.get(id);
+        if (!was) continue;
+        meshes[g.m].mesh.setMatrixAt(g.i, was);
+        meshes[g.m].mesh.instanceMatrix.needsUpdate = true;
+        kept.delete(id);
+      }
+      goneList = goneList.filter((g) => kept.has(`${g.m}:${g.i}`));
+      setGone(goneList);
+      select(selectedNow);
+    };
+    scene.current = { paint, hide, select: (key) => select((selectedNow = key)), show };
 
     // Left click (not a drag) picks the part under the pointer; a double-click opens it.
     const ray = new THREE.Raycaster();
-    const keyAt = (e: MouseEvent) => {
+    const hitAt = (e: MouseEvent) => {
       const rect = renderer.domElement.getBoundingClientRect();
       ray.setFromCamera(new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -(((e.clientY - rect.top) / rect.height) * 2 - 1)), camera);
-      const shown = meshes.filter((m) => m.mesh.visible);
-      const [hit] = ray.intersectObjects(shown.map((m) => m.mesh), false);
-      const owner = hit && shown.find((m) => m.mesh === hit.object);
-      return owner && hit.instanceId !== undefined ? (owner.keys[hit.instanceId] ?? null) : null;
+      const [hit] = ray.intersectObjects(
+        meshes.filter((m) => m.mesh.visible).map((m) => m.mesh),
+        false,
+      );
+      const m = hit ? meshes.findIndex((x) => x.mesh === hit.object) : -1;
+      return m >= 0 && hit.instanceId !== undefined ? { m, i: hit.instanceId } : null;
     };
+    const keyAt = (e: MouseEvent) => {
+      const h = hitAt(e);
+      return h ? (meshes[h.m].keys[h.i] ?? null) : null;
+    };
+    // Hover: one ray per frame at most, mouse only, not while dragging.
+    let over = false;
+    let frame = 0;
+    const onMove = (e: PointerEvent) => {
+      over = true;
+      cancelAnimationFrame(frame);
+      if (e.pointerType !== "mouse" || e.buttons) return setHover(null);
+      frame = requestAnimationFrame(() => setHover(hitAt(e)));
+    };
+    const onLeave = () => {
+      over = false;
+      cancelAnimationFrame(frame);
+      setHover(null);
+    };
+    // Y (by key position, so it works on a Hebrew layout too) while the mouse is on the model.
+    const onKey = (e: KeyboardEvent) => {
+      if (!over || e.code !== "KeyY" || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+      if ((e.target as HTMLElement | null)?.closest?.("input, textarea, select, [contenteditable=true]")) return;
+      if (e.shiftKey) {
+        const last = goneList.at(-1);
+        if (!last) return;
+        show([last]);
+      } else {
+        if (!hovered) return;
+        hideOne({ ...hovered, key: meshes[hovered.m].keys[hovered.i] });
+      }
+      e.preventDefault();
+    };
+    renderer.domElement.addEventListener("pointermove", onMove);
+    renderer.domElement.addEventListener("pointerleave", onLeave);
+    window.addEventListener("keydown", onKey);
     let down: { x: number; y: number } | null = null;
     const onDown = (e: PointerEvent) => {
       down = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
@@ -292,6 +397,11 @@ export function ModelCanvas({
       renderer.domElement.removeEventListener("pointerdown", onDown);
       renderer.domElement.removeEventListener("pointerup", onUp);
       renderer.domElement.removeEventListener("dblclick", onDouble);
+      renderer.domElement.removeEventListener("pointermove", onMove);
+      renderer.domElement.removeEventListener("pointerleave", onLeave);
+      window.removeEventListener("keydown", onKey);
+      cancelAnimationFrame(frame);
+      hoverLook.dispose();
       geometries.forEach((g) => g.dispose());
       meshes.forEach(({ mesh }) => mesh.dispose());
       material.dispose();
@@ -303,6 +413,7 @@ export function ModelCanvas({
       renderer.dispose();
       renderer.domElement.remove();
       scene.current = null;
+      setGone([]);
     };
   }, [model]);
 
@@ -330,6 +441,37 @@ export function ModelCanvas({
         </div>
       )}
       {error && <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">{error}</div>}
+      {gone.length > 0 && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={panelLeft !== undefined ? { left: panelLeft } : undefined}
+          className="absolute top-3 left-3 z-10 flex max-h-[calc(100%-4rem)] w-44 animate-pop cursor-auto flex-col overflow-hidden rounded-md border border-line bg-surface/95 text-xs shadow-sm backdrop-blur"
+        >
+          <div className="flex items-center justify-between gap-2 border-b border-line px-2.5 py-1.5 font-semibold text-muted">
+            <span className="tabular-nums">Hidden · {gone.length}</span>
+            <button onClick={() => scene.current?.show(gone)} className="press font-medium text-accent-hover hover:underline">
+              Show all
+            </button>
+          </div>
+          <ul className="flex-1 overflow-y-auto p-1">
+            {gone
+              .slice()
+              .reverse()
+              .map((g) => (
+                <li key={`${g.m}:${g.i}`}>
+                  <button
+                    onClick={() => scene.current?.show([g])}
+                    title="Show it again"
+                    className="press block w-full truncate rounded px-2 py-1.5 text-left text-fg-2 hover:bg-raised hover:text-fg pointer-coarse:min-h-9"
+                  >
+                    {names?.get(g.key) ?? "Part"}
+                  </button>
+                </li>
+              ))}
+          </ul>
+          <p className="border-t border-line px-2.5 py-1 text-[10px] text-subtle pointer-coarse:hidden">Y hides · Shift+Y brings back</p>
+        </div>
+      )}
     </div>
   );
 }

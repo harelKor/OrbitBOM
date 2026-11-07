@@ -62,6 +62,7 @@ export function RobotViewer({
   const legend = colors === "status" ? statuses.filter((s) => s.count > 0) : [];
   const onLocated = useCallback(() => {}, []);
   const partByKey = useMemo(() => new Map(parts.map((p) => [p.key, p])), [parts]);
+  const nameByKey = useMemo(() => new Map(parts.map((p) => [p.key, p.name])), [parts]);
   const picked = selected ? partByKey.get(selected) : undefined;
   const openLarge = () => {
     setBar(true);
@@ -250,6 +251,8 @@ export function RobotViewer({
               selectedKey={selected}
               onPick={onPick}
               onOpen={onOpen}
+              names={nameByKey}
+              panelLeft={bar && !systemId && groups.length > 0 ? 244 : undefined}
             />
           ) : (
             <>
