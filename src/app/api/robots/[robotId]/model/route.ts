@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getMember } from "@/lib/auth";
+import { modelPartsOfRobot } from "@/lib/data/parts";
 import { DENIED, hasCapability } from "@/lib/mode";
 import { buildRobotModel, robotModel } from "@/lib/model/build";
 import { OnshapeError } from "@/lib/onshape/client";
@@ -17,8 +18,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ robo
   if (!(await getMember())) return new NextResponse("Sign in first.", { status: 401 });
   const { robotId } = await params;
   if (!isUuid(robotId)) return new NextResponse("Not found", { status: 404 });
-  const system = new URL(request.url).searchParams.get("system");
-  return NextResponse.json({ model: await robotModel(robotId, system && isUuid(system) ? system : undefined) });
+  const url = new URL(request.url);
+  const system = url.searchParams.get("system");
+  // ?parts=1: also the BOM parts by model key, for a view with no cards on its page.
+  const [model, parts] = await Promise.all([
+    robotModel(robotId, system && isUuid(system) ? system : undefined),
+    url.searchParams.get("parts") ? modelPartsOfRobot(robotId) : undefined,
+  ]);
+  return NextResponse.json({ model, parts });
 }
 
 // One build step of the model on the member's Onshape account; the viewer calls again while

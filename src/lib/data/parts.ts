@@ -248,3 +248,17 @@ export async function countCotsStatuses(): Promise<Map<string, number>> {
   for (const r of rows) counts.set(computeStatus(r), (counts.get(computeStatus(r)) ?? 0) + 1);
   return counts;
 }
+
+// The robot's BOM parts by their key in its 3D model, for a 3D view that has no cards to read
+// them from (a part window's Locate in robot): a click there names the part and opens it.
+export type ModelPart = { key: string; id: string; systemId: string; name: string };
+export async function modelPartsOfRobot(robotId: string): Promise<ModelPart[]> {
+  const rows = await db
+    .select({ id: parts.id, systemId: parts.systemId, did: parts.sourceDid, eid: parts.sourceEid, pid: parts.onshapePartId, displayName: parts.displayName, onshapeName: parts.onshapeName })
+    .from(parts)
+    .innerJoin(systems, eq(systems.id, parts.systemId))
+    .where(eq(systems.robotId, robotId));
+  return rows.flatMap((r) =>
+    r.did && r.eid && r.pid && r.systemId ? [{ key: partKey(r.did, r.eid, r.pid), id: r.id, systemId: r.systemId, name: r.displayName ?? r.onshapeName ?? "Unnamed part" }] : [],
+  );
+}

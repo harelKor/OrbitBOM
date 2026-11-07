@@ -1,13 +1,13 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StatusCount } from "@/lib/stats";
 import { Segmented } from "@/components/ui/Segmented";
 import { Icon } from "@/components/ui/Icon";
 import type { ViewerMode, ViewerModel } from "./ModelCanvas";
+import { PickedPart } from "./PickedPart";
 import { MODEL_STALE_EVENT, OPEN_PART_EVENT, OPEN_PART_PENDING, type ModelStaleDetail, type OpenPartDetail } from "./modelEvents";
 
 const ModelCanvas = dynamic(() => import("./ModelCanvas").then((m) => m.ModelCanvas), { ssr: false });
@@ -297,23 +297,14 @@ export function RobotViewer({
             </>
           )}
           {picked || selected ? (
-            <div className="absolute top-3 left-1/2 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 animate-pop flex-wrap items-center justify-center gap-2 rounded-md border border-accent/50 bg-surface/95 px-3 py-2 text-xs shadow-sm backdrop-blur">
-              <span className="min-w-0 truncate font-semibold text-fg">{picked?.name ?? "Placed in CAD, not on the BOM"}</span>
-              {picked && (
-                <button className="btn h-7 px-2.5 text-xs" onClick={() => onOpen(picked.key)} title="Or click the part again">
-                  Open part
-                </button>
-              )}
-              {/* Not on the part's own system page: it's already there. */}
-              {picked && picked.systemId !== systemId && (
-                <Link href={`/robots/${robotId}/systems/${picked.systemId}`} onClick={() => setLarge(false)} className="btn h-7 px-2.5 text-xs">
-                  Open system
-                </Link>
-              )}
-              <button onClick={() => setSelected(null)} className="press text-muted hover:text-fg" aria-label="Clear selection" title="Clear selection (Esc)">
-                ✕
-              </button>
-            </div>
+            <PickedPart
+              name={picked?.name ?? null}
+              onOpen={picked && (() => onOpen(picked.key))}
+              // Not on the part's own system page: it's already there.
+              systemHref={picked && picked.systemId !== systemId ? `/robots/${robotId}/systems/${picked.systemId}` : undefined}
+              onSystem={() => setLarge(false)}
+              onClear={() => setSelected(null)}
+            />
           ) : null}
           {bar && !systemId && groups.length > 0 && (
             <div className="absolute top-3 bottom-3 left-3 flex w-56 flex-col overflow-hidden rounded-md border border-line bg-surface/95 text-sm shadow-sm backdrop-blur">

@@ -3,7 +3,9 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
+import type { ModelPart } from "@/lib/data/parts";
 import type { ViewerModel } from "./ModelCanvas";
+import { PickedPart } from "./PickedPart";
 
 const ModelCanvas = dynamic(() => import("./ModelCanvas").then((m) => m.ModelCanvas), { ssr: false });
 const NO_COLORS = new Map<string, string>();
@@ -57,7 +59,9 @@ type ModelProps = {
 };
 
 // The live 3D stage itself, in a window (PartStage) or inline (the part details window, which
-// draws its own Locate button: `locateButton={false}`).
+// draws its own Locate button: `locateButton={false}`). In the robot (Locate), parts pick as in
+// the robot's own 3D view: a click names a part, one more click opens its window on top, Open
+// system goes to its system page, and a click elsewhere or Esc clears it (Harel, 2026-11-07).
 export function PartModel({
   partId,
   robotId,
@@ -79,6 +83,31 @@ export function PartModel({
   }
   const model = models[view];
   const error = errors[view];
+  const [robotParts, setRobotParts] = useState<Map<string, ModelPart>>(() => new Map());
+  const [selected, setSelected] = useState<string | null>(null);
+  const picked = selected ? robotParts.get(selected) : undefined;
+  // Its window opens on top; the pick clears so Esc there closes that window, not the pick here.
+  const openPicked = (p: ModelPart) => {
+    setSelected(null);
+    void import("@/components/bom/PartDetailsHost").then((m) => m.openPartWindow(p.id));
+  };
+  const onPick = (key: string | null) => {
+    const part = key ? robotParts.get(key) : undefined;
+    if (key && key === selected && part) openPicked(part);
+    else setSelected(key);
+  };
+  // Esc clears the pick before it closes the window (capture: ahead of the window's own Esc).
+  useEffect(() => {
+    if (!selected) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      setSelected(null);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [selected]);
 
   useEffect(() => {
     if (models[view] || errors[view]) return;
@@ -86,11 +115,12 @@ export function PartModel({
     const load =
       view === "part"
         ? fetch(`/api/parts/${partId}/model`, { method: "POST" })
-        : fetch(`/api/robots/${robotId}/model`);
+        : fetch(`/api/robots/${robotId}/model?parts=1`);
     load
       .then(async (res) => {
-        const body = (await res.json().catch(() => ({}))) as { model?: ViewerModel | null; error?: string };
+        const body = (await res.json().catch(() => ({}))) as { model?: ViewerModel | null; parts?: ModelPart[]; error?: string };
         if (cancelled) return;
+        if (body.parts) setRobotParts(new Map(body.parts.map((p) => [p.key, p])));
         if (body.model) setModels((m) => ({ ...m, [view]: body.model! }));
         else
           setErrors((e) => ({
@@ -110,7 +140,28 @@ export function PartModel({
 
   return (
     <div className={`relative ${className}`}>
-      {model && <ModelCanvas key={view} model={model} colors={NO_COLORS} mode="cad" locateKey={view === "locate" ? modelKey : null} onLocated={onLocated} />}
+      {model && (
+        <ModelCanvas
+          key={view}
+          model={model}
+          colors={NO_COLORS}
+          mode="cad"
+          locateKey={view === "locate" ? modelKey : null}
+          onLocated={onLocated}
+          {...(view === "locate" && { selectedKey: selected, onPick, names: new Map([...robotParts].map(([k, p]) => [k, p.name])) })}
+        />
+      )}
+      {view === "locate" && selected && (
+        <PickedPart
+          bottom
+          name={picked?.name ?? null}
+          onOpen={picked && (() => openPicked(picked))}
+          systemHref={picked && robotId ? `/robots/${robotId}/systems/${picked.systemId}` : undefined}
+          // Leaving for the system page closes the windows over this one.
+          onSystem={() => document.querySelectorAll("dialog[open]").forEach((d) => (d as HTMLDialogElement).close())}
+          onClear={() => setSelected(null)}
+        />
+      )}
       {(error || !model || missing) && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">
           {error ?? (missing ? "This part isn't in the robot's linked Onshape assemblies." : view === "part" ? "Loading the part…" : "Loading the robot…")}
