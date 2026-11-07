@@ -32,7 +32,7 @@ export default async function CotsListPage({ params }: { params: Promise<{ list:
     <div className="space-y-5">
       <div>
         <Link href="/cots" className="text-xs font-semibold tracking-wide text-subtle uppercase hover:text-fg">
-          COTS
+          Orders
         </Link>
         <h1 className="display text-3xl text-accent">{page.title}</h1>
         <p className="mt-1 max-w-3xl text-sm text-muted">{page.text}</p>

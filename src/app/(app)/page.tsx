@@ -27,7 +27,7 @@ export default async function HomePage() {
       image: "/apps/bom.png",
     },
     { href: "/inventory", title: "Inventory", text: null, image: "/apps/inventory.png" },
-    { href: "/cots", title: "COTS", text: null, image: "/apps/cots.png" },
+    { href: "/cots", title: "Orders", text: null, image: "/apps/cots.png" },
   ];
 
   // The cards fill the space between the sidebars: the negative margins undo the shell's own

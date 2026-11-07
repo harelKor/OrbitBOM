@@ -140,12 +140,12 @@ export function LeftNav({
           <div>
             <div className="relative flex items-center">
               <Item href="/cots" icon="cart" active={pathname === "/cots"} glow={arrivals.page("cots:released") || arrivals.page("cots:order")} className="flex-1 pr-8">
-                COTS
+                Orders
               </Item>
               <button
                 onClick={() => setCotsToggled(!cotsOpen)}
                 aria-expanded={cotsOpen}
-                aria-label={cotsOpen ? "Hide COTS lists" : "Show COTS lists"}
+                aria-label={cotsOpen ? "Hide Orders lists" : "Show Orders lists"}
                 className="press absolute right-0 flex h-8 w-8 items-center justify-center rounded-md text-subtle hover:bg-line hover:text-fg @max-[10rem]:hidden"
               >
                 <Icon name="chevron" className={`h-4.5 w-4.5 transition-transform duration-150 ${cotsOpen ? "rotate-90" : ""}`} />

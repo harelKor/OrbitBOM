@@ -57,7 +57,7 @@ export function OrderHistoryView({ cards: initial }: { cards: OrderHistoryCard[]
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <Link href="/cots" className="text-xs font-semibold tracking-wide text-subtle uppercase hover:text-fg">
-            COTS
+            Orders
           </Link>
           <h1 className="display text-3xl text-accent">Order History</h1>
           <p className="mt-1 max-w-3xl text-sm text-muted">Every order that went In Route or arrived, by vendor. ✕ removes a card from this page.</p>
