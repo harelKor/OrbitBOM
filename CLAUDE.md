@@ -43,18 +43,21 @@ server (`/api/mcp/<token>`).
 Vercel Hobby's 4 Active-CPU-hours a month ran out and paused the site (2026-11-06), so it moved.
 Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
 
-- Site: https://orbitparts.duckdns.org (DuckDNS → the VM's IP). VM `orbitparts-micro`, IP
-  130.210.0.82: Oracle's free AMD `VM.Standard.E2.1.Micro` (x86, 1 GB memory + 2 GB swap, a small
-  CPU slice), Ubuntu 24.04, Caddy (HTTPS) → Next's standalone `server.js` on 127.0.0.1:3000 as
-  systemd service `orbitparts`. Admin SSH from Harel's PC: `ssh -i ~/.ssh/orbitparts_admin
-  ubuntu@130.210.0.82`; logs `sudo journalctl -u orbitparts -f`.
+- Site: https://orbitparts.duckdns.org (DuckDNS → the VM's IP). Live VM `orbitparts`, IP
+  80.225.254.7: Oracle's free Ampere `VM.Standard.A1.Flex`, 1 OCPU / 6 GB (ARM, aarch64; got on
+  2026-11-07 after the retry script), Ubuntu 24.04, Caddy (HTTPS) → Next's standalone `server.js`
+  on 127.0.0.1:3000 as systemd service `orbitparts`. Admin SSH from Harel's PC:
+  `ssh -i ~/.ssh/orbitparts_admin ubuntu@80.225.254.7`; logs `sudo journalctl -u orbitparts -f`.
+- Spare VM `orbitparts-micro`, 130.210.0.82 (free AMD E2.1.Micro, x86, 1 GB + 2 GB swap): the
+  first home, same setup, app still running but its daily timer disabled. To fall back, point
+  DuckDNS and the `DEPLOY_HOST` / `DEPLOY_KNOWN_HOSTS` secrets at it and enable the timer.
 - Deploy: `.github/workflows/deploy.yml` runs `next build` on GitHub (the VM is too small), uploads
   the bundle, `deploy/release.sh` swaps `/opt/orbitparts/current`, restarts, and rolls back if
   `/login` doesn't answer. `next.config.ts` has `output: "standalone"` and unoptimized images.
 - Env vars live in `/opt/orbitparts/shared/.env` (systemd EnvironmentFile), not Vercel. A new one:
   `printf '%s' "$V" | ssh … "sudo -u orbit /opt/orbitparts/bin/set-env KEY"` (or `--generate`),
   then `sudo systemctl restart orbitparts`; Harel enters real secrets with
-  `bash deploy/enter-secrets.sh 130.210.0.82 KEY…` (Git Bash). `NEXT_PUBLIC_*` are baked in at
+  `bash deploy/enter-secrets.sh 80.225.254.7 KEY…` (Git Bash). `NEXT_PUBLIC_*` are baked in at
   build time, so they are also GitHub secrets. Writing GitHub secrets is blocked for Claude: hand
   Harel the `gh secret set` command. The DB URL comes from `PRODUCTION_DIRECT_URL` via Actions →
   "Server env".
@@ -67,11 +70,12 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
 - R2's CORS policy must list the site's origin (browsers load 3D files and upload straight to
   R2); a missing origin shows as "The 3D model couldn't load".
 - Oracle: free account (not Pay As You Go), home region Mumbai. Quota policy "pay" caps compute
-  at the free shapes (A1 2 OCPU/12 GB, one E2 micro). Free VMs that look idle for 7 days can be
-  stopped by Oracle: if the site is down, start the instance in the console. Wanted: the bigger
-  Ampere A1 VM (Mumbai is usually out of capacity; `~/.oci/grab_server.py` on Harel's PC retries
-  it, OCI CLI config in `~/.oci/config`). Moving to it = `deploy/setup.sh`, copy the `.env`,
-  point DuckDNS and the `DEPLOY_HOST` / `DEPLOY_KNOWN_HOSTS` secrets at it.
+  at the free shapes (A1 2 OCPU/12 GB in total, one E2 micro); 1 OCPU / 6 GB of A1 is still
+  unused. Free VMs that look idle for 7 days can be stopped by Oracle: if the site is down, start
+  the instance in the console. Mumbai is usually out of A1 capacity: `~/.oci/grab_server.py` on
+  Harel's PC (OCI API config in `~/.oci/config`) retries a launch about once a minute, which is
+  Oracle's rate limit. Moving to another VM = `deploy/setup.sh`, copy the `.env` and the current
+  release, point DuckDNS and the `DEPLOY_HOST` / `DEPLOY_KNOWN_HOSTS` secrets at it.
 
 ## Rules
 
