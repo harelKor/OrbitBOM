@@ -162,7 +162,9 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
           <QaBox robotId={robot.id} systems={qaSystems} parts={parts.filter((p) => p.status === "Ready for QA")} inventory={inventoryNames} isAdmin={member.isAdmin} glow={cad && qaTotal > 0} />
           <PostProcessBox robotId={robot.id} parts={postParts} inventory={inventoryNames} isAdmin={member.isAdmin} glow={build && postParts.length > 0} />
         </div>
-        <div className="flex min-w-0 flex-col lg:aspect-[11/8]">
+        {/* At least its usual shape, and stretched to the row when the side panels make it narrower
+            than the status and Post Process boxes are tall, so the bottoms line up (Harel, 2026-11-07). */}
+        <div className="flex min-w-0 flex-col lg:aspect-[11/8] lg:self-stretch">
           <RobotViewer
             robotId={robot.id}
             statuses={activeStatuses}
