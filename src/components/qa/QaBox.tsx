@@ -21,14 +21,14 @@ export function QaBox({ robotId, systems, glow = false }: { robotId: string; sys
         className="card-interactive group flex min-h-32 flex-col justify-between gap-2 overflow-hidden p-4 text-left active:scale-[0.98] sm:p-5"
       >
         <span className="min-w-0">
-          <span className="block text-lg leading-tight font-bold text-fg sm:text-xl">Ready for QA</span>
+          <span className="block text-xl leading-tight font-bold text-fg sm:text-2xl">Ready for QA</span>
           {total > 0 && (
-            <span className="mt-0.5 block truncate text-sm text-subtle tabular-nums">
+            <span className="mt-1 block truncate text-base text-subtle tabular-nums">
               in {systems.length} {systems.length === 1 ? "system" : "systems"}
             </span>
           )}
         </span>
-        <span className="display font-mono text-6xl leading-none text-accent tabular-nums sm:text-7xl">{total}</span>
+        <span className="display font-mono text-7xl leading-none text-accent tabular-nums sm:text-8xl">{total}</span>
       </button>
       <Dialog open={open} onClose={() => setOpen(false)} title="Ready for QA" wide>
         {systems.length === 0 ? (

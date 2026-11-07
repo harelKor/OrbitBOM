@@ -114,19 +114,19 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
             glow={myBatches > 0}
           />
         </ArrivalMark>
-        {/* Factory Fab takes a third, 3D Printing two thirds (Harel, 2026-11-07). */}
-        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-3">
-          <ArrivalMark prefix={`factory:${robot.id}:`}>
-            <AreaCard href={`/robots/${robot.id}/factory`} icon="factory" title="Factory Fab" count={factory.count} released={factory.released} narrow />
-          </ArrivalMark>
+        {/* 3D Printing next to Shop Fab takes two thirds, Factory Fab on the right a third (Harel, 2026-11-07). */}
+        <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-3">
           <ArrivalMark prefix={`print:${robot.id}:`}>
             <AreaCard href={`/robots/${robot.id}/printing`} icon="printer" title="3D Printing" count={print.count} released={print.released} glow={cad && print.count > 0} />
+          </ArrivalMark>
+          <ArrivalMark prefix={`factory:${robot.id}:`}>
+            <AreaCard href={`/robots/${robot.id}/factory`} icon="factory" title="Factory Fab" count={factory.count} released={factory.released} narrow />
           </ArrivalMark>
         </div>
       </div>
 
       {/* On a PC the 3D view is the widest column and keeps its shape, so it sets the row's height (Harel, 2026-11-07). */}
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,4fr)_minmax(0,2fr)_minmax(0,6fr)]">
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,4fr)_minmax(0,1.6fr)_minmax(0,6.4fr)]">
         <section className="panel space-y-5 p-4">
           <div className="flex items-center gap-5">
             <CompletionRing percent={breakdown.percent} done={breakdown.done} total={breakdown.total} />
@@ -173,10 +173,10 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
             className="card-interactive group flex min-h-32 flex-col justify-between gap-2 overflow-hidden p-4 text-left active:scale-[0.98] sm:p-5"
           >
             <span className="flex items-start justify-between gap-2">
-              <span className="text-lg leading-tight font-bold text-fg sm:text-xl">Post Process</span>
+              <span className="text-xl leading-tight font-bold text-fg sm:text-2xl">Post Process</span>
               <Icon name="arrow" className="h-5 w-5 shrink-0 text-subtle transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-fg" />
             </span>
-            <span className="display font-mono text-6xl leading-none text-accent tabular-nums sm:text-7xl">{postProcess}</span>
+            <span className="display font-mono text-7xl leading-none text-accent tabular-nums sm:text-8xl">{postProcess}</span>
           </Link>
         </div>
         <div className="flex min-w-0 flex-col lg:aspect-[11/8]">
