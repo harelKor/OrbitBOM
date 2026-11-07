@@ -94,6 +94,10 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
       {/* No name and year on top: the robot is picked in the side panel (Harel, 2026-11-07). */}
       <h1 className="sr-only">{robot.name}</h1>
 
+      {/* On a PC the launch boxes and the row below fill the screen down to the Inventory box's top,
+          whatever the screen's height (main's top padding and the gap above Inventory taken off;
+          never under 40rem, so a short screen scrolls instead of crushing them) (Harel, 2026-11-07). */}
+      <div className="space-y-5 lg:flex lg:h-[max(40rem,calc(100dvh-var(--topbar-h,2.75rem)-2.75rem))] lg:flex-col lg:gap-3 lg:space-y-0">
       <div className="grid gap-3 lg:grid-cols-2">
         {/* Glows while Shop Fab has parts this member hasn't seen (src/lib/seen.ts), or batches of theirs to make. */}
         <ArrivalMark page={`fab:${robot.id}`}>
@@ -119,8 +123,8 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
       </div>
 
       {/* On a PC the 3D view is the widest column and keeps its shape, so it sets the row's height (Harel, 2026-11-07). */}
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,3.3fr)_minmax(0,1.6fr)_minmax(0,7.1fr)]">
-        <section className="panel space-y-5 p-4">
+      <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,3.3fr)_minmax(0,1.6fr)_minmax(0,7.1fr)]">
+        <section className="panel space-y-5 p-4 lg:min-h-0 lg:overflow-y-auto">
           <div className="flex items-center gap-5">
             <CompletionRing percent={breakdown.percent} done={breakdown.done} total={breakdown.total} />
             <ul className="min-w-0 flex-1 space-y-1.5 text-sm">
@@ -158,13 +162,11 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
             </div>
           )}
         </section>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-1 lg:grid-rows-2">
+        <div className="grid grid-cols-2 gap-3 lg:min-h-0 lg:grid-cols-1 lg:grid-rows-2">
           <QaBox robotId={robot.id} systems={qaSystems} parts={parts.filter((p) => p.status === "Ready for QA")} inventory={inventoryNames} isAdmin={member.isAdmin} glow={cad && qaTotal > 0} />
           <PostProcessBox robotId={robot.id} parts={postParts} inventory={inventoryNames} isAdmin={member.isAdmin} glow={build && postParts.length > 0} />
         </div>
-        {/* At least its usual shape, and stretched to the row when the side panels make it narrower
-            than the status and Post Process boxes are tall, so the bottoms line up (Harel, 2026-11-07). */}
-        <div className="flex min-w-0 flex-col lg:aspect-[11/8] lg:self-stretch">
+        <div className="flex min-w-0 flex-col lg:min-h-0">
           <RobotViewer
             robotId={robot.id}
             statuses={activeStatuses}
@@ -174,6 +176,7 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
             edit={edit}
           />
         </div>
+      </div>
       </div>
 
       <Suspense>
