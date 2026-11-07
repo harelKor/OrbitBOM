@@ -1,7 +1,9 @@
 import type { MetadataRoute } from "next";
 
 // Added to a phone's home screen, the app opens full screen (no address bar or status bar), or on
-// its own without the address bar where full screen isn't offered.
+// its own without the address bar where full screen isn't offered. Installed on a PC, its blue bars
+// take the window's title bar row, with only the window's buttons over them (Harel, 2026-11-07);
+// phones don't offer that and skip to full screen.
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "OrbitParts",
@@ -10,7 +12,7 @@ export default function manifest(): MetadataRoute.Manifest {
     start_url: "/",
     scope: "/",
     display: "fullscreen",
-    display_override: ["fullscreen", "standalone"],
+    display_override: ["window-controls-overlay", "fullscreen", "standalone"],
     background_color: "#f2f2f2",
     theme_color: "#0000cc",
     icons: [

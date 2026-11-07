@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Dialog } from "@/components/Dialog";
 import { Icon } from "@/components/ui/Icon";
 
-// What Chrome on Android hands a page that can be installed (not in the DOM's own types).
+// What Chrome (Android and PC) and Edge hand a page that can be installed (not in the DOM's own types).
 type InstallPrompt = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: "accepted" | "dismissed" }> };
 
 // Chrome fires this once, as soon as the app can be installed, maybe before the side panel is on
@@ -19,16 +19,18 @@ if (typeof window !== "undefined") {
 }
 
 const installed = () =>
-  matchMedia("(display-mode: standalone), (display-mode: fullscreen)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+  matchMedia("(display-mode: standalone), (display-mode: fullscreen), (display-mode: window-controls-overlay)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+const phone = () => matchMedia("(pointer: coarse)").matches;
 const iPhone = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.userAgent.includes("Mac") && navigator.maxTouchPoints > 1);
 
-// Phones only, in the side panel's empty space above Members (Harel, 2026-11-06): puts OrbitParts on
-// the home screen as an app. On Android Chrome it opens the browser's own install prompt; an iPhone
-// has no such prompt (Safari only adds to the home screen from Share), so it shows those steps,
-// and so does any browser that gave no prompt. Hidden once the app runs installed.
+// In the side panel's empty space above Members (Harel, 2026-11-06; PCs too since 2026-11-07): puts
+// OrbitParts on the home screen, or on a PC in its own window, as an app. Chrome and Edge open their
+// own install prompt; an iPhone has no such prompt (Safari only adds to the home screen from Share),
+// so it shows those steps, and any other browser that gave no prompt shows its own. Hidden once the
+// app runs installed.
 export function InstallApp() {
   const [show, setShow] = useState(false);
-  const [help, setHelp] = useState<"ios" | "android" | null>(null);
+  const [help, setHelp] = useState<"ios" | "android" | "pc" | null>(null);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- browser-only: is it installed already?
     setShow(!installed());
@@ -42,10 +44,10 @@ export function InstallApp() {
       if (outcome === "accepted") setShow(false);
       return;
     }
-    setHelp(iPhone() ? "ios" : "android");
+    setHelp(iPhone() ? "ios" : phone() ? "android" : "pc");
   };
   return (
-    <div className="px-2 pb-2 md:hidden @max-[10rem]:hidden">
+    <div className="px-2 pb-2 @max-[10rem]:hidden">
       <button
         type="button"
         onClick={() => void install()}
@@ -68,6 +70,17 @@ export function InstallApp() {
                 Scroll down and tap <span className="font-semibold">Add to Home Screen</span>, then <span className="font-semibold">Add</span>.
               </li>
             </ol>
+          ) : help === "pc" ? (
+            <ol className="list-decimal space-y-2 pl-5">
+              <li>
+                Open this page in <span className="font-semibold">Chrome</span> or <span className="font-semibold">Edge</span>.
+              </li>
+              <li>
+                Click the install icon at the right end of the address bar, or open the menu <span className="font-semibold">⋮</span> /{" "}
+                <span className="font-semibold">…</span> → <span className="font-semibold">Cast, save and share</span> (Chrome) or{" "}
+                <span className="font-semibold">Apps</span> (Edge) → <span className="font-semibold">Install OrbitParts</span>.
+              </li>
+            </ol>
           ) : (
             <ol className="list-decimal space-y-2 pl-5">
               <li>
@@ -79,7 +92,7 @@ export function InstallApp() {
             </ol>
           )}
           {/* An iPhone's home screen app keeps its own sign-in, apart from Safari's. */}
-          <p className="text-muted">OrbitParts then opens from its own icon, full screen.{help === "ios" && " Sign in once more the first time you open it."}</p>
+          <p className="text-muted">OrbitParts then opens from its own icon{help === "pc" ? ", in its own window" : ", full screen"}.{help === "ios" && " Sign in once more the first time you open it."}</p>
           <div className="flex justify-end">
             <button type="button" className="btn-primary min-h-10 active:scale-[0.98]" onClick={() => setHelp(null)}>
               Got it

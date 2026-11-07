@@ -47,6 +47,30 @@
   --topbar-h: 2.75rem;
 }
 
+/* The app installed on a PC: no title bar, the blue bars sit in its row (manifest's
+   window-controls-overlay). The bars' own background drags the window (double-click maximizes);
+   everything on them stays clickable. Whichever bar reaches the right edge keeps clear of the
+   window's buttons: the robots column's, or the top bar's when that column isn't there. */
+@media (display-mode: window-controls-overlay) {
+  :root {
+    --wco-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw));
+  }
+  [data-wco-bar] {
+    -webkit-app-region: drag;
+    app-region: drag;
+  }
+  [data-wco-bar] * {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+  }
+  header[data-wco-bar] {
+    padding-right: max(1.5rem, calc(var(--wco-right) - var(--shell-right, 0px) + 0.5rem));
+  }
+  [data-wco-robots] {
+    padding-right: calc(var(--wco-right) + 0.5rem);
+  }
+}
+
 /* Dark mode: follows the device unless the greyscale slider picked a shade (data-theme on <html>). */
 @layer base {
 :root[data-theme="dark"] {

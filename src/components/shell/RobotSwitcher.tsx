@@ -29,7 +29,7 @@ export function RobotSwitcher({ robots, lastRobotId, isAdmin }: { robots: ShellR
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
-      <div className="flex min-h-11 items-center justify-between bg-bar px-4 text-white">
+      <div data-wco-bar="" data-wco-robots="" className="flex min-h-11 flex-wrap items-center justify-between gap-x-2 bg-bar px-4 text-white">
         <span className="text-sm font-semibold">Robots</span>
         <EditOnly>
           <Link href="/robots/new" className="press rounded-md border border-white/40 px-2 py-1 text-xs font-semibold hover:bg-white/10">

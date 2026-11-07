@@ -47,7 +47,7 @@ export function TopBar({ onMenu, onRobots, navHidden, robotsHidden }: { onMenu: 
   }, []);
 
   return (
-    <header ref={header} className="sticky top-0 z-20 flex min-h-11 flex-wrap items-center gap-1.5 bg-bar px-3 py-1 sm:gap-2 sm:px-4 text-white shadow-[0_2px_8px_rgba(0,0,120,0.25)] md:px-6">
+    <header ref={header} data-wco-bar="" className="sticky top-0 z-20 flex min-h-11 flex-wrap items-center gap-1.5 bg-bar px-3 py-1 sm:gap-2 sm:px-4 text-white shadow-[0_2px_8px_rgba(0,0,120,0.25)] md:px-6">
       <button onClick={onMenu} className={`${square} flex`} aria-label="Pages" title={navHidden ? "Show pages" : "Pages"}>
         ☰
       </button>

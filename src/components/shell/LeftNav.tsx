@@ -49,7 +49,7 @@ export function LeftNav({
   return (
     <div className="flex h-full flex-col">
       {/* Narrower than the full mark, only the round logo stays. */}
-      <div className="flex min-h-11 items-center overflow-visible bg-bar px-3 @max-[13.5rem]:[&_a>span]:hidden">
+      <div data-wco-bar="" className="flex min-h-11 items-center overflow-visible bg-bar px-3 @max-[13.5rem]:[&_a>span]:hidden">
         <Brand />
       </div>
       {/* The column's edge line starts under the blue bar, so it never runs through the logo. The
