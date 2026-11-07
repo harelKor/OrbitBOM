@@ -22,17 +22,16 @@ export default async function RobotInventoryPage({ params }: { params: Promise<{
       <div>
         <div className="text-xs font-semibold tracking-wide text-subtle uppercase">{data.robot.name}</div>
         <h1 className="display text-3xl text-accent">Inventory</h1>
-        <p className="mt-1 max-w-3xl text-sm text-muted">What this robot&apos;s parts take from the team shelf, which every active robot shares.</p>
       </div>
-      <section className="space-y-3">
-        <div>
+      {/* Open at first; its header folds it away (Harel, 2026-11-07). */}
+      <details open className="group/raw space-y-3">
+        <summary className="flex min-h-9 w-fit cursor-pointer list-none items-center gap-2 select-none [&::-webkit-details-marker]:hidden">
+          <span className="text-lg text-muted transition-transform duration-150 group-open/raw:rotate-90">›</span>
           <h2 className="text-lg font-semibold">Raw stock</h2>
-          <p className="max-w-3xl text-sm text-muted">
-            Every plate, tube and box tube part, all copies, laid out on stock pieces of the size you pick: how much material to prepare. Colours are the parts&apos; statuses.
-          </p>
-        </div>
+          <span className="font-mono text-sm text-subtle tabular-nums">{raw.length}</span>
+        </summary>
         <RawStockPlanner robotId={data.robot.id} groups={raw} canEdit={can(mode, "work")} />
-      </section>
+      </details>
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">Items</h2>
         <RobotInventory robotId={data.robot.id} items={items} />
