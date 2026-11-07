@@ -9,6 +9,7 @@ import { partTitle } from "@/components/bom/types";
 import { CompletionRing } from "@/components/dashboard/CompletionRing";
 import { RobotViewer } from "@/components/dashboard/RobotViewer";
 import { QaBox } from "@/components/qa/QaBox";
+import { PostProcessBox } from "@/components/fab/PostProcessBox";
 import { StorageBox } from "@/components/storage/StorageBox";
 import { Icon } from "@/components/ui/Icon";
 import { requireMember } from "@/lib/auth";
@@ -64,7 +65,7 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
   for (const p of parts) if (p.status === "Ready for QA") qaCount.set(p.systemId, (qaCount.get(p.systemId) ?? 0) + 1);
   const qaSystems = data.systems.flatMap((s) => (qaCount.has(s.id) ? [{ id: s.id, name: s.name, count: qaCount.get(s.id)! }] : []));
   const qaTotal = qaSystems.reduce((n, s) => n + s.count, 0);
-  const postProcess = parts.filter((p) => p.status === "Post Processing").length;
+  const postParts = parts.filter((p) => p.status === "Post Processing");
   // Factory Fab's and 3D Printing's queues, counted the way their pages and the side panel count them.
   const area = (a: "factory" | "print") => {
     const queued = parts.filter((p) => areaQueue(p, a));
@@ -167,17 +168,7 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
         </section>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-1 lg:grid-rows-2">
           <QaBox robotId={robot.id} systems={qaSystems} glow={cad && qaTotal > 0} />
-          <Link
-            href={`/robots/${robot.id}/fab#post-process`}
-            data-arrival={build && postProcess > 0 ? "" : undefined}
-            className="card-interactive group flex min-h-32 flex-col justify-between gap-2 overflow-hidden p-4 text-left active:scale-[0.98] sm:p-5"
-          >
-            <span className="flex items-start justify-between gap-2">
-              <span className="text-xl leading-tight font-bold text-fg sm:text-2xl">Post Process</span>
-              <Icon name="arrow" className="h-5 w-5 shrink-0 text-subtle transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-fg" />
-            </span>
-            <span className="display font-mono text-7xl leading-none text-accent tabular-nums sm:text-8xl">{postProcess}</span>
-          </Link>
+          <PostProcessBox robotId={robot.id} parts={postParts} inventory={inventoryNames} isAdmin={member.isAdmin} glow={build && postParts.length > 0} />
         </div>
         <div className="flex min-w-0 flex-col lg:aspect-[11/8]">
           <RobotViewer
