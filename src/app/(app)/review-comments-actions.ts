@@ -33,15 +33,15 @@ export async function setReviewCommentDone(systemId: string, id: string, done: b
 }
 
 export async function approveReviewComment(id: string): Promise<CommentResult> {
-  const member = await requireMember();
+  const [member, mode] = await Promise.all([requireMember(), getMode()]);
   if (!isUuid(id)) return { error: "Unknown comment." };
-  return run(() => approveComment(member, id));
+  return run(() => approveComment(member, mode, id));
 }
 
 export async function rejectReviewComment(id: string, note: string): Promise<CommentResult> {
-  const member = await requireMember();
+  const [member, mode] = await Promise.all([requireMember(), getMode()]);
   if (!isUuid(id)) return { error: "Unknown comment." };
-  return run(() => rejectComment(member, id, note));
+  return run(() => rejectComment(member, mode, id, note));
 }
 
 export async function deleteReviewComment(id: string): Promise<CommentResult> {

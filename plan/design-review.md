@@ -43,7 +43,7 @@ check makes anyway; otherwise the tree's "Refresh from Onshape" reads it (1 call
 
 - Anyone signed in comments (Build Team included); its author (or an admin) deletes an open one.
 - The CAD Team and Edit mode tick comments off (and take a tick back), mentors too.
-- Only mentors (`isMentor`, set by an admin on /members) approve or reject.
+- Mentors (`isMentor`, set by an admin on /members) and admins in Edit mode approve or reject.
 
 ## Not in this plan
 

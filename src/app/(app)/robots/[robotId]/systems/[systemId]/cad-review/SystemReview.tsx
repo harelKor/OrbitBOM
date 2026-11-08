@@ -40,6 +40,7 @@ export function SystemReview({
   me,
   canTick,
   canSync,
+  canApprove,
 }: {
   robotId: string;
   robotName: string;
@@ -53,6 +54,7 @@ export function SystemReview({
   me: { id: string; isAdmin: boolean; isMentor: boolean; onshape: boolean };
   canTick: boolean;
   canSync: boolean;
+  canApprove: boolean; // a mentor, or an admin in Edit mode
 }) {
   const [model, setModel] = useState<ViewerModel | null | undefined>(builtAt ? undefined : null);
   const [colors, setColors] = useState<Colors>("cad");
@@ -183,8 +185,8 @@ export function SystemReview({
               <li className="p-2 text-xs text-muted">No open comments.</li>
             )}
           </Popup>
-          {me.isMentor && (
-            <Popup title="Waiting for you" count={waiting.length} shown={waitList} onToggle={() => setWaitList(flip(waitList))} tone="sky">
+          {canApprove && (
+            <Popup title={me.isMentor ? "Waiting for you" : "Waiting for approval"} count={waiting.length} shown={waitList} onToggle={() => setWaitList(flip(waitList))} tone="sky">
               {waiting.length ? (
                 waiting.map((c) => <WaitingComment key={c.id} c={c} systemId={system.id} isMentor canTick={canTick} onFocus={showPart} />)
               ) : (

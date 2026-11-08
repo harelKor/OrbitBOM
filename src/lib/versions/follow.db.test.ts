@@ -82,11 +82,16 @@ else
       expect(await tickComments(member, "cad", system.id, [a.id, b.id])).toBe(2);
       expect(await reviewCounts(robot.id)).toEqual({ [system.id]: { open: 0, done: 2 } });
 
-      await expect(approveComment(member, a.id)).rejects.toThrow("Only mentors");
-      await approveComment(mentor, a.id);
-      await expect(rejectComment(mentor, b.id, " ")).rejects.toThrow("Write why");
-      await rejectComment(mentor, b.id, "Still sharp");
+      await expect(approveComment(member, "cad", a.id)).rejects.toThrow("Only mentors");
+      await approveComment(mentor, "none", a.id);
+      await expect(rejectComment(mentor, "none", b.id, " ")).rejects.toThrow("Write why");
+      await rejectComment(mentor, "none", b.id, "Still sharp");
       await expect(untickComment(member, "cad", a.id)).rejects.toThrow("already approved");
+
+      // An admin in Edit mode approves like a mentor (Harel, 2026-11-08).
+      const c = await addComment(builder, { systemId: system.id, body: "Label the wires" });
+      await tickComments(member, "cad", system.id, [c.id]);
+      await approveComment(builder, "edit", c.id);
 
       const review = await loadSystemReview(system.id);
       const byId = new Map(review!.comments.map((c) => [c.id, c]));
@@ -104,7 +109,7 @@ else
         ["V1", 1],
       ]);
       expect(review!.tree[1].bom[0].current).toBe(true);
-      // Both comments were added and ticked while V1 was the newest version.
-      expect(review!.tree[1].added).toHaveLength(2);
+      // The comments were added while V1 was the newest version.
+      expect(review!.tree[1].added).toHaveLength(3);
     });
   });

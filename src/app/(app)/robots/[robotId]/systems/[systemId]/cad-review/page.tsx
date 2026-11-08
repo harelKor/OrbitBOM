@@ -7,7 +7,7 @@ import { getSystem } from "@/lib/data/robots";
 import { getMode } from "@/lib/mode";
 import { can } from "@/components/shell/mode";
 import { robotModelBuiltAt } from "@/lib/model/build";
-import { canTick } from "@/lib/reviews/comments";
+import { canApprove, canTick } from "@/lib/reviews/comments";
 import { isUuid } from "@/lib/uuid";
 import { loadDraft } from "@/lib/versions/detect";
 import { loadVersionTags } from "@/lib/versions/tags";
@@ -45,6 +45,7 @@ export default async function SystemReviewPage({ params }: { params: Promise<{ r
       draft={draft}
       latest={tags.latest && { id: tags.latest.id, label: tags.latest.label }}
       me={{ id: member.id, isAdmin: member.isAdmin, isMentor: member.isMentor, onshape: member.onshapeConnected }}
+      canApprove={canApprove(mode, member)}
       canTick={canTick(mode, member)}
       canSync={can(mode, "sync")}
     />

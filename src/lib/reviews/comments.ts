@@ -17,6 +17,11 @@ export function canTick(mode: Mode, member: Pick<Member, "isMentor">) {
   return can(mode, "sync") || member.isMentor;
 }
 
+// Mentors approve and reject; so does an admin in Edit mode (Harel, 2026-11-08).
+export function canApprove(mode: Mode, member: Pick<Member, "isMentor">) {
+  return mode === "edit" || member.isMentor;
+}
+
 export async function addComment(member: Member, input: { systemId: string; body: string; partKey?: string | null; partName?: string | null }) {
   const body = input.body.trim();
   if (!body) throw new CommentError("Write the comment first.");
@@ -66,16 +71,16 @@ export async function untickComment(member: Member, mode: Mode, id: string) {
   return c;
 }
 
-export async function approveComment(member: Member, id: string) {
-  if (!member.isMentor) throw new CommentError("Only mentors approve comments.");
+export async function approveComment(member: Member, mode: Mode, id: string) {
+  if (!canApprove(mode, member)) throw new CommentError("Only mentors approve comments.");
   const c = await commentOf(id);
   if (c.state !== "done") throw new CommentError(c.state === "approved" ? "It's already approved." : "Only a ticked-off comment can be approved.");
   await db.update(reviewComments).set({ state: "approved", approvedAt: new Date(), approvedBy: member.id }).where(and(eq(reviewComments.id, id), eq(reviewComments.state, "done")));
   return c;
 }
 
-export async function rejectComment(member: Member, id: string, note: string) {
-  if (!member.isMentor) throw new CommentError("Only mentors reject comments.");
+export async function rejectComment(member: Member, mode: Mode, id: string, note: string) {
+  if (!canApprove(mode, member)) throw new CommentError("Only mentors reject comments.");
   const why = note.trim();
   if (!why) throw new CommentError("Write why it isn't done yet.");
   const c = await commentOf(id);
