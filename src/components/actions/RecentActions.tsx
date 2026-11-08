@@ -23,7 +23,9 @@ const TILE_REM = 6; // one thumbnail on a dashboard action box
 // mode, Revert undoes an action (plan/system-versioning.md §8).
 // "cards" (the dashboard, above All parts) sizes each box to its thumbnails; "list" (the
 // system page, beside the 3D view) is a compact column of To Fab status changes, or, picked from
-// the title's arrow when systemActions is given, of every change to the system's parts.
+// the title's arrow when systemActions is given, of every change to the system's parts. `side`
+// (a system with a 3D view): on a big screen the list is a column right of the 3D view, and
+// folding it leaves a narrow button box there so the 3D view gets the room (Harel, 2026-11-08).
 export function RecentActions({
   actions: fabActions,
   systemActions,
@@ -32,6 +34,7 @@ export function RecentActions({
   onOpen,
   title = true,
   itemNoun = ["part", "parts"],
+  side = false,
 }: {
   actions: RecentAction[];
   systemActions?: RecentAction[];
@@ -40,6 +43,7 @@ export function RecentActions({
   onOpen?: (a: RecentAction) => void; // a box opens this instead of its page (Inventory: the item's window)
   title?: boolean;
   itemNoun?: [string, string];
+  side?: boolean;
 }) {
   const [scope, setScope] = useState<"fab" | "system">("fab");
   const [shown, setShown] = useShown(variant);
@@ -65,9 +69,34 @@ export function RecentActions({
     },
   });
 
-  if (variant === "list")
+  if (variant === "list" && side && !shown)
     return (
-      <section className={`panel flex min-h-0 flex-col ${shown ? "flex-1" : ""}`}>
+      <>
+        {/* Folded on a small screen: the title bar alone, as before. */}
+        <div className="lg:hidden">{listPanel()}</div>
+        <button
+          type="button"
+          onClick={() => setShown(true)}
+          className="card-interactive group hidden h-full w-20 flex-col items-center gap-4 px-2 py-5 active:scale-[0.98] lg:flex"
+          aria-label="Show recent actions"
+          title="Show recent actions"
+        >
+          <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-line-strong bg-raised text-accent-hover transition-colors group-hover:border-accent/60">
+            <Icon name="chevron" className="h-5 w-5 rotate-180 transition-transform duration-150 group-hover:-translate-x-0.5" />
+          </span>
+          <span className="text-lg font-bold tracking-wide text-fg-2 [writing-mode:vertical-rl] group-hover:text-fg">Recent actions</span>
+          <span className="mt-auto flex flex-col items-center gap-1">
+            <span className="display text-2xl text-accent tabular-nums">{actions.length}</span>
+            <span className="text-xs text-subtle">{scope === "fab" ? "in fab" : "in system"}</span>
+          </span>
+        </button>
+      </>
+    );
+  if (variant === "list") return listPanel();
+
+  function listPanel() {
+    return (
+      <section className={`panel flex min-h-0 flex-col ${shown ? "flex-1" : ""} ${side && shown ? "lg:w-[24rem]" : ""}`}>
         <h2 className="flex items-center gap-2 border-b border-line px-4 py-3 text-sm font-semibold">
           <Icon name={scope === "fab" ? "fab" : "box"} className="h-4 w-4 text-accent" />
           {systemActions ? (
@@ -109,7 +138,16 @@ export function RecentActions({
             aria-label={shown ? "Hide recent actions" : "Show recent actions"}
             className="press ml-auto"
           >
-            <Chevron open={shown} small />
+            {side ? (
+              <>
+                <span className="lg:hidden">
+                  <Chevron open={shown} small />
+                </span>
+                <Icon name="chevron" className="hidden h-5 w-5 text-subtle hover:text-fg lg:block" />
+              </>
+            ) : (
+              <Chevron open={shown} small />
+            )}
           </button>
         </h2>
         {!shown ? null : actions.length ? (
@@ -159,6 +197,7 @@ export function RecentActions({
         )}
       </section>
     );
+  }
 
   if (!actions.length) return null;
   const Box = ({ a, className, children }: { a: RecentAction; className: string; children: React.ReactNode }) =>

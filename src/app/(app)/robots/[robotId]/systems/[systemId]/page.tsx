@@ -101,10 +101,12 @@ export default async function SystemPage({
 
       {system.assemblyUrl && REFRESH.openPages && <AutoRefresh systemId={system.id} />}
 
-      <div className={`grid gap-3 ${system.assemblyUrl ? "lg:h-[26rem] lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]" : ""}`}>
+      {/* With a 3D view: on a big screen Recent actions is a column on its right that folds sideways,
+          and the 3D view takes the rest (Harel, 2026-11-08). */}
+      <div className={`grid gap-3 ${system.assemblyUrl ? "lg:h-[26rem] lg:grid-cols-[minmax(0,1fr)_auto]" : ""}`}>
         {(system.assemblyUrl || systemActions.length > 0) && (
-          <div className="flex max-h-80 min-h-0 flex-col lg:max-h-none">
-            <RecentActions actions={fabActions} systemActions={systemActions} max={30} variant="list" />
+          <div className="flex max-h-80 min-h-0 flex-col lg:order-last lg:max-h-none">
+            <RecentActions actions={fabActions} systemActions={systemActions} max={30} variant="list" side={!!system.assemblyUrl} />
           </div>
         )}
         {system.assemblyUrl && (
