@@ -6,7 +6,7 @@ import { checkForChanges, commitChanges, revertToVersion } from "@/app/(app)/ver
 import { useCan } from "@/components/shell/ModeContext";
 import type { Draft } from "@/lib/versions/detect";
 import { PARTS_UPDATING_EVENT, afterPartsUpdate } from "./afterUpdate";
-import { CommitWindow } from "./CommitWindow";
+import { CommitWindow, type CommitComment } from "./CommitWindow";
 import { CHECK_SYSTEM_EVENT, OPEN_COMMIT_EVENT } from "./events";
 
 // Update System (plan/system-versioning.md §4, §7): checks the Manufacture assembly for
@@ -20,12 +20,16 @@ export function UpdateSystem({
   lastSyncedAt,
   thumbs,
   latest,
+  comments,
+  phone = false,
 }: {
   systemId: string;
   draft: Draft | null;
   lastSyncedAt: Date | null;
   thumbs: Record<string, string | null>;
   latest: { id: string; label: string } | null; // set while a Revert holds the system behind it
+  comments?: CommitComment[]; // open CAD Review comments, ticked off in the Commit window
+  phone?: boolean; // CAD Review's left panel shows the buttons on phones too
 }) {
   const router = useRouter();
   const edit = useCan("sync");
@@ -108,11 +112,11 @@ export function UpdateSystem({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, when opened from the Onshape panel
   }, [params]);
 
-  const commit = (name: string, only?: string) =>
+  const commit = (name: string, only?: string, tick?: string[]) =>
     startCommit(async () => {
       if (!draft) return;
       setCommitError(null);
-      const r = await commitChanges(systemId, draft.id, new Date(draft.detectedAt).toISOString(), name, only);
+      const r = await commitChanges(systemId, draft.id, new Date(draft.detectedAt).toISOString(), name, only, tick);
       if (r.error) return setCommitError(r.error);
       const rest = only ? draft.changes.filter((c) => c.key !== only) : [];
       if (!rest.length) {
@@ -129,7 +133,7 @@ export function UpdateSystem({
     <div className="flex flex-wrap items-center gap-3">
       {edit && latest && (
         <button
-          className="btn-primary max-sm:hidden"
+          className={`btn-primary ${phone ? "" : "max-sm:hidden"}`}
           disabled={committing}
           title="Put every part back on the latest version. Reverting to an older version is in Versions."
           onClick={backToLatest}
@@ -139,7 +143,7 @@ export function UpdateSystem({
       )}
       {edit && !latest && (
         <button
-          className="btn max-sm:hidden"
+          className={`btn ${phone ? "" : "max-sm:hidden"}`}
           disabled={checking || committing}
           title="Check the Onshape assembly for changed, added and removed parts. Nothing reaches the BOM until you commit."
           onClick={() => check(false)}
@@ -179,6 +183,7 @@ export function UpdateSystem({
           committing={committing}
           error={commitError}
           onCommit={commit}
+          comments={comments}
         />
       )}
     </div>

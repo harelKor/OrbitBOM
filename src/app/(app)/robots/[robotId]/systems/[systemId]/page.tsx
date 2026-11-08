@@ -15,6 +15,7 @@ import { VersionsWindow } from "@/components/versions/VersionsWindow";
 import { STATUSES } from "@/config/statuses";
 import { requireMember } from "@/lib/auth";
 import { listRecentActions } from "@/lib/data/actions";
+import { listComments } from "@/lib/data/cadReview";
 import { listInventoryNames } from "@/lib/data/inventory";
 import { listSystemMerges, listSystemParts } from "@/lib/data/parts";
 import { getSystem } from "@/lib/data/robots";
@@ -38,7 +39,7 @@ export default async function SystemPage({
   if (!isUuid(robotId) || !isUuid(systemId)) notFound();
   // Everything in one parallel round: the page waits for the slowest query, not their sum.
   const member = await requireMember();
-  const [data, parts, merges, inventory, edit, modelBuiltAt, fabActions, systemActions, draft, versions, versionList] = await Promise.all([
+  const [data, parts, merges, inventory, edit, modelBuiltAt, fabActions, systemActions, draft, versions, versionList, comments] = await Promise.all([
     getSystem(robotId, systemId),
     listSystemParts(systemId),
     listSystemMerges(systemId),
@@ -50,9 +51,13 @@ export default async function SystemPage({
     loadDraft(systemId),
     loadVersionTags(systemId),
     listVersions(systemId),
+    listComments(systemId),
   ]);
   if (!data) notFound();
   const { system, robot, breakdown } = data;
+  // Open CAD Review comments: ticked off in the Commit window, counted on the chip.
+  const openComments = comments.filter((c) => c.state === "open");
+  const waiting = comments.filter((c) => c.state === "done").length;
   const thumbs = Object.fromEntries(parts.map((p) => [p.id, p.thumbUrl]));
   const statusColor = new Map<string, string>(STATUSES.map((s) => [s.name, s.color]));
   const viewerParts = parts.flatMap((p) =>
@@ -75,8 +80,9 @@ export default async function SystemPage({
               <div className="flex flex-wrap items-center gap-3">
                 <Suspense>
                   <VersionsWindow systemId={system.id} list={versionList} thumbs={thumbs} />
-                  <UpdateSystem systemId={system.id} draft={draft} lastSyncedAt={system.lastSyncedAt} thumbs={thumbs} latest={versions.latest && { id: versions.latest.id, label: versions.latest.label }} />
+                  <UpdateSystem systemId={system.id} draft={draft} lastSyncedAt={system.lastSyncedAt} thumbs={thumbs} latest={versions.latest && { id: versions.latest.id, label: versions.latest.label }} comments={openComments} />
                 </Suspense>
+                <ReviewChip href={`/robots/${robot.id}/systems/${system.id}/cad-review`} open={openComments.length} waiting={waiting} />
               </div>
             )}
           </div>
@@ -135,5 +141,19 @@ export default async function SystemPage({
         </p>
       )}
     </div>
+  );
+}
+
+// The system's CAD Review: its open comments and those waiting for a mentor, one tap away.
+function ReviewChip({ href, open, waiting }: { href: string; open: number; waiting: number }) {
+  return (
+    <Link
+      href={href}
+      className="press inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1 text-sm font-semibold text-fg-2 hover:border-accent/50 hover:text-fg active:scale-[0.98] pointer-coarse:min-h-9"
+    >
+      CAD Review
+      {open > 0 && <span className="rounded-full bg-amber-500/15 px-1.5 text-xs text-amber-600 tabular-nums">{open} open</span>}
+      {waiting > 0 && <span className="rounded-full bg-sky-500/15 px-1.5 text-xs text-sky-600 tabular-nums">{waiting} to approve</span>}
+    </Link>
   );
 }

@@ -9,7 +9,7 @@ import { publicOrigin } from "@/lib/origin";
 // A robot's page by name, for the installed app's long-press shortcuts (src/app/manifest.ts): the
 // manifest can't know a robot, so /go/fab opens Shop Fab of the robot last used, else the newest
 // active one, as the home page picks it. A plain redirect, so it works before any page loads.
-const PAGES = { fab: "fab", printing: "printing", factory: "factory", review: "review" } as const;
+const PAGES = { fab: "fab", printing: "printing", factory: "factory", review: "review", "cad-review": "cad-review" } as const;
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ page: string }> }) {
   const { page } = await params;

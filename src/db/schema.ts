@@ -41,6 +41,8 @@ export const members = pgTable("members", {
   onshapeConnected: boolean("onshape_connected").notNull().default(false),
   // The member's team (sets their mode). Every team opens the app on the home tiles.
   team: memberTeam("team"),
+  // Mentors approve or reject ticked-off CAD Review comments (set by an admin on /members).
+  isMentor: boolean("is_mentor").notNull().default(false),
   // CAD Team only: the robot system the member designs.
   systemId: uuid("system_id").references((): AnyPgColumn => systems.id, { onDelete: "set null" }),
   createdAt: createdAt(),
@@ -641,60 +643,37 @@ export const partVersions = pgTable(
 
 // ---------- CAD Review (plan/design-review.md) ----------
 
-// A design mentors review: a system's assembly or any assembly link (a prototype not in the robot
-// yet), reviewed in rounds the student sends.
-export const reviewStatus = pgEnum("review_status", ["open", "approved", "closed"]);
-export const designReviews = pgTable(
-  "design_reviews",
+// A comment on a system's design: anyone writes one, the CAD Team ticks it off (in the Update
+// system window, or by itself), a mentor approves it or rejects it with a note, which opens it
+// again (Harel, 2026-11-08).
+export const reviewCommentState = pgEnum("review_comment_state", ["open", "done", "approved"]);
+export const reviewComments = pgTable(
+  "review_comments",
   {
     id: id(),
-    robotId: uuid("robot_id")
+    systemId: uuid("system_id")
       .notNull()
-      .references(() => robots.id, { onDelete: "cascade" }),
-    systemId: uuid("system_id").references(() => systems.id, { onDelete: "set null" }),
-    title: text("title").notNull(),
-    assemblyUrl: text("assembly_url").notNull(),
-    ownerId: uuid("owner_id").references(() => members.id, { onDelete: "set null" }),
-    status: reviewStatus("status").notNull().default("open"),
+      .references(() => systems.id, { onDelete: "cascade" }),
+    authorId: uuid("author_id").references(() => members.id, { onDelete: "set null" }),
+    body: text("body").notNull(),
+    // The part it is about (the 3D model's key, did:eid:partId) and its name then, kept for when
+    // the part is gone from a newer version.
+    partKey: text("part_key"),
+    partName: text("part_name"),
+    state: reviewCommentState("state").notNull().default("open"),
+    createdAt: createdAt(),
+    doneAt: timestamp("done_at", { withTimezone: true }),
+    doneBy: uuid("done_by").references(() => members.id, { onDelete: "set null" }),
+    // Ticked off in the Update system window: the version that was committed.
+    doneVersionId: uuid("done_version_id").references(() => systemVersions.id, { onDelete: "set null" }),
     approvedAt: timestamp("approved_at", { withTimezone: true }),
     approvedBy: uuid("approved_by").references(() => members.id, { onDelete: "set null" }),
-    createdAt: createdAt(),
-    // Last round sent (comments too, later): the list's order.
-    activityAt: timestamp("activity_at", { withTimezone: true }).notNull().defaultNow(),
+    // The last rejection: why, by whom and when.
+    rejectNote: text("reject_note"),
+    rejectedAt: timestamp("rejected_at", { withTimezone: true }),
+    rejectedBy: uuid("rejected_by").references(() => members.id, { onDelete: "set null" }),
   },
-  (t) => [index("design_reviews_robot_idx").on(t.robotId, t.activityAt)],
-);
-
-// The frozen Onshape state a round shows: the assembly at a document microversion (or the
-// version it was linked at), so it never changes after it's sent.
-export type ReviewRef = { baseUrl: string; did: string; wvm: "m" | "v"; wvmid: string; eid: string };
-// The round's 3D model: export jobs (R2 files keyed by Part Studio revision, shared with the robot
-// model) and where every part sits; `names`: instance names from Onshape, by part key.
-export type ReviewModel = {
-  jobs: { key: string; path: string; configuration?: string; linkDid?: string; done?: boolean }[];
-  placements: { s: number; k: string; t: number[]; g?: number }[];
-  names?: Record<string, string>;
-};
-export const roundState = pgEnum("review_round_state", ["building", "ready"]);
-export const reviewRounds = pgTable(
-  "review_rounds",
-  {
-    id: id(),
-    reviewId: uuid("review_id")
-      .notNull()
-      .references(() => designReviews.id, { onDelete: "cascade" }),
-    seq: integer("seq").notNull(), // 1, 2, 3…
-    onshapeRef: jsonb("onshape_ref").$type<ReviewRef>().notNull(),
-    state: roundState("state").notNull().default("building"),
-    model: jsonb("model").$type<ReviewModel>(),
-    note: text("note"), // the student's "what changed"
-    error: text("error"), // why the last build step failed; the next one retries
-    calls: integer("calls").notNull().default(0), // Onshape calls the build used
-    sentBy: uuid("sent_by").references(() => members.id, { onDelete: "set null" }),
-    sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
-    builtAt: timestamp("built_at", { withTimezone: true }),
-  },
-  (t) => [uniqueIndex("review_rounds_seq_uq").on(t.reviewId, t.seq)],
+  (t) => [index("review_comments_system_idx").on(t.systemId, t.createdAt)],
 );
 
 // Every time a part was released to fab (Released, Reproduction, Secondary Production) and the

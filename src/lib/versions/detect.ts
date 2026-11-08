@@ -9,6 +9,7 @@ import { studioPath } from "@/lib/onshape/parts";
 import { apiPath, parseOnshapeUrl } from "@/lib/onshape/url";
 import { applyBomRows, sigKey } from "@/lib/sync/applyBom";
 import { planMerge } from "@/lib/sync/merge";
+import { readDocVersions } from "./docVersions";
 import { onshapeName } from "./label";
 import { heldParts } from "./history";
 import { shapeFingerprints } from "./shape";
@@ -279,7 +280,8 @@ async function versionNames(
 // A document's newest Onshape version (1 call). Its name is kept like versionName's, so naming
 // the draft costs nothing more.
 export async function newestVersion(client: OnshapeClient, did: string): Promise<{ id: string; name: string } | null> {
-  const list = await client.json<{ id: string; name?: string; createdAt?: string }[]>(`documents/d/${did}/versions`);
+  // The whole list is kept for the CAD Review version tree, at no extra call.
+  const list = await readDocVersions(client, did);
   const newest = list.reduce<(typeof list)[number] | null>((best, v) => (!best || (v.createdAt ?? "") > (best.createdAt ?? "") ? v : best), null);
   if (!newest) return null;
   if (newest.name) await db.insert(onshapeCache).values({ key: `version-name:${newest.id}`, payload: { name: newest.name } }).onConflictDoNothing();

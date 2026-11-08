@@ -64,7 +64,7 @@ export function LeftNav({
           <Item
             href={base}
             icon="gauge"
-            active={!!base && (pathname === base || pathname.startsWith(`${base}/systems`))}
+            active={!!base && (pathname === base || (pathname.startsWith(`${base}/systems`) && !pathname.endsWith("/cad-review")))}
           >
             Robot Dashboard
           </Item>
@@ -240,7 +240,7 @@ export function LeftNav({
               </div>
             )}
           </div>
-          <Item href="/reviews" icon="cube" active={pathname.startsWith("/reviews")}>
+          <Item href={base && `${base}/cad-review`} icon="cube" active={pathname.includes("/cad-review")}>
             CAD Review
           </Item>
           <Item href="/ai-logs" icon="spark" active={pathname.startsWith("/ai-logs")}>

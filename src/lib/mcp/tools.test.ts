@@ -9,7 +9,7 @@ describe("MCP tool list", async () => {
   const names = listTools().map((t) => t.name);
 
   it("registers every tool once", () => {
-    expect(names).toHaveLength(34);
+    expect(names).toHaveLength(37);
     expect(new Set(names).size).toBe(names.length);
     for (const n of ["list_statuses", "find_parts", "update_parts", "set_up_parts", "undo_batch", "adjust_stock", "set_inventory_info", "update_bom_from_onshape", "edit_drawing", "set_cots_info"]) {
       expect(names).toContain(n);

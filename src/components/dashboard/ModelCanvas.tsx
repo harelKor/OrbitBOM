@@ -21,6 +21,22 @@ const GONE = new THREE.Matrix4().makeScale(0, 0, 0); // a hidden instance: drawn
 // A part instance hidden with Y: its mesh, its index there, and its BOM key.
 type Gone = { m: number; i: number; key: string };
 
+// CAD Review's viewer tools (plan/design-review.md): standard views, a section plane, measuring
+// between two points on the meshes (≈: the export's chord tolerance), hiding or isolating a part.
+export type ViewName = "front" | "top" | "side" | "iso";
+export type Axis = "x" | "y" | "z";
+export type Section = { axis: Axis; at: number; flip: boolean };
+// Directions from the model to the camera, in the scene's Y-up frame (Onshape's Z is up).
+const VIEWS: Record<ViewName, [number, number, number]> = { front: [0, 0, 1], top: [0, 1, 0.0001], side: [1, 0, 0], iso: [1, 1, 1] };
+export type SceneTools = {
+  view: (name: ViewName | "fit") => void;
+  section: (s: Section | null) => void;
+  measure: (on: boolean) => void;
+  hideKey: (key: string) => void;
+  isolate: (key: string | null) => void;
+  partSize: (key: string) => [number, number, number] | null;
+};
+
 async function loadStudio(url: string): Promise<Mesh[]> {
   const res = await fetch(url);
   if (!res.ok || !res.body) throw new Error(`model file ${res.status}`);
@@ -49,6 +65,8 @@ export function ModelCanvas({
   onOpen,
   names,
   panelLeft,
+  onTools,
+  onMeasure,
 }: {
   model: ViewerModel;
   colors: Map<string, string>; // part key → status colour
@@ -61,6 +79,8 @@ export function ModelCanvas({
   onOpen?: (key: string) => void; // a double-click on a part
   names?: Map<string, string>; // part key -> its name, for the hidden parts list
   panelLeft?: number; // px from the left for the hidden parts list, past the viewer's own panels
+  onTools?: (tools: SceneTools | null) => void; // the review tools, once the model is loaded
+  onMeasure?: (m: { points: number; mm: number | null }) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   // Recolours the parts and frames the located one; true when it is in the model.
@@ -69,7 +89,16 @@ export function ModelCanvas({
     hide: (hidden: Set<number>) => void;
     select: (key: string | null) => void;
     show: (gone: Gone[]) => void;
+    tools: SceneTools;
   } | null>(null);
+  const toolsRef = useRef(onTools);
+  useEffect(() => {
+    toolsRef.current = onTools;
+  }, [onTools]);
+  const measureRef = useRef(onMeasure);
+  useEffect(() => {
+    measureRef.current = onMeasure;
+  }, [onMeasure]);
   const [gone, setGone] = useState<Gone[]>([]);
   const pick = useRef(onPick);
   const openPart = useRef(onOpen);
@@ -185,11 +214,7 @@ export function ModelCanvas({
       render();
       return found;
     };
-    // Hiding a subsystem hides its meshes; the framing stays where it is.
-    const hide = (hidden: Set<number>) => {
-      for (const { mesh, g } of meshes) mesh.visible = !hidden.has(g);
-      render();
-    };
+    // Hiding a subsystem hides its meshes (hideGroups below); the framing stays where it is.
     // A clicked part, drawn solid in bright green over its instances (every copy of it).
     const select = (key: string | null) => {
       picks.clear();
@@ -263,7 +288,114 @@ export function ModelCanvas({
       setGone(goneList);
       select(selectedNow);
     };
-    scene.current = { paint, hide, select: (key) => select((selectedNow = key)), show };
+    // Standard views and fit, framed on what's shown.
+    const shownBox = () => {
+      const box = new THREE.Box3();
+      for (const { mesh } of meshes) if (mesh.visible) box.expandByObject(mesh);
+      return box;
+    };
+    const view = (name: ViewName | "fit") => {
+      if (name !== "fit") {
+        const [x, y, z] = VIEWS[name];
+        const d = camera.position.distanceTo(controls.target);
+        camera.position.copy(controls.target).addScaledVector(new THREE.Vector3(x, y, z).normalize(), d);
+      }
+      fit(shownBox());
+    };
+    // One section plane across the model's box, at a fraction of it along an axis.
+    const plane = new THREE.Plane();
+    const section = (s: Section | null) => {
+      for (const m of [material, cad]) {
+        m.side = s ? THREE.DoubleSide : THREE.FrontSide;
+        m.needsUpdate = true;
+      }
+      if (!s) renderer.clippingPlanes = [];
+      else {
+        const box = new THREE.Box3().setFromObject(root);
+        const i = s.axis === "x" ? 0 : s.axis === "y" ? 1 : 2;
+        const at = box.min.getComponent(i) + (box.max.getComponent(i) - box.min.getComponent(i)) * s.at;
+        // Keeps the side below `at` (above it when flipped).
+        plane.set(new THREE.Vector3().setComponent(i, s.flip ? 1 : -1), s.flip ? -at : at);
+        renderer.clippingPlanes = [plane];
+      }
+      render();
+    };
+    // Measure: two picked points on the meshes, with dots and a line between them.
+    let measuring = false;
+    const marks = new THREE.Group();
+    world.add(marks);
+    const dotLook = new THREE.MeshBasicMaterial({ color: 0xff3d71, depthTest: false });
+    const lineLook = new THREE.LineBasicMaterial({ color: 0xff3d71, depthTest: false });
+    let points: THREE.Vector3[] = [];
+    const clearMarks = () => {
+      for (const c of marks.children) (c as THREE.Mesh).geometry?.dispose();
+      marks.clear();
+    };
+    const drawMarks = () => {
+      clearMarks();
+      const r = Math.max(new THREE.Box3().setFromObject(root).getSize(new THREE.Vector3()).length() * 0.004, 0.0015);
+      for (const p of points) {
+        const dot = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 8), dotLook);
+        dot.position.copy(p);
+        dot.renderOrder = 10;
+        marks.add(dot);
+      }
+      if (points.length === 2) {
+        const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), lineLook);
+        line.renderOrder = 10;
+        marks.add(line);
+      }
+      render();
+      measureRef.current?.({ points: points.length, mm: points.length === 2 ? points[0].distanceTo(points[1]) * 1000 : null });
+    };
+    const addPoint = (p: THREE.Vector3) => {
+      points = points.length >= 2 ? [p.clone()] : [...points, p.clone()];
+      drawMarks();
+    };
+    const measure = (on: boolean) => {
+      measuring = on;
+      points = [];
+      drawMarks();
+    };
+    // A part's every copy hidden (the touch way to Y), or only that part shown.
+    const hideKey = (key: string) => {
+      meshes.forEach(({ keys }, m) => keys.forEach((k, i) => k === key && !kept.has(`${m}:${i}`) && hideOne({ m, i, key })));
+    };
+    let isolated: string | null = null;
+    let groupsHidden = new Set<number>();
+    const applyVisible = () => {
+      for (const { mesh, g, keys } of meshes) mesh.visible = !groupsHidden.has(g) && (!isolated || keys.includes(isolated));
+      select(selectedNow);
+    };
+    const hideGroups = (hidden: Set<number>) => {
+      groupsHidden = hidden;
+      applyVisible();
+    };
+    const isolate = (key: string | null) => {
+      isolated = key;
+      applyVisible();
+      fit(shownBox());
+    };
+    // The part's size along the model's axes, in mm (its first copy's box).
+    const partSize = (key: string): [number, number, number] | null => {
+      for (const { mesh, keys } of meshes) {
+        const i = keys.indexOf(key);
+        if (i < 0) continue;
+        if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+        const at = new THREE.Matrix4();
+        mesh.getMatrixAt(i, at);
+        const size = mesh.geometry.boundingBox!.clone().applyMatrix4(at).getSize(new THREE.Vector3());
+        return [size.x * 1000, size.y * 1000, size.z * 1000];
+      }
+      return null;
+    };
+    scene.current = {
+      paint,
+      hide: hideGroups,
+      select: (key) => select((selectedNow = key)),
+      show,
+      tools: { view, section, measure, hideKey, isolate, partSize },
+    };
 
     // Left click (not a drag) picks the part under the pointer; a double-click opens it.
     const ray = new THREE.Raycaster();
@@ -275,7 +407,7 @@ export function ModelCanvas({
         false,
       );
       const m = hit ? meshes.findIndex((x) => x.mesh === hit.object) : -1;
-      return m >= 0 && hit.instanceId !== undefined ? { m, i: hit.instanceId } : null;
+      return m >= 0 && hit.instanceId !== undefined ? { m, i: hit.instanceId, point: hit.point } : null;
     };
     const keyAt = (e: MouseEvent) => {
       const h = hitAt(e);
@@ -288,7 +420,10 @@ export function ModelCanvas({
       over = true;
       cancelAnimationFrame(frame);
       if (e.pointerType !== "mouse" || e.buttons) return setHover(null);
-      frame = requestAnimationFrame(() => setHover(hitAt(e)));
+      frame = requestAnimationFrame(() => {
+        const h = hitAt(e);
+        setHover(h && { m: h.m, i: h.i });
+      });
     };
     const onLeave = () => {
       over = false;
@@ -305,7 +440,7 @@ export function ModelCanvas({
         show([last]);
       } else {
         if (!hovered) return;
-        hideOne({ ...hovered, key: meshes[hovered.m].keys[hovered.i] });
+        hideOne({ m: hovered.m, i: hovered.i, key: meshes[hovered.m].keys[hovered.i] });
       }
       e.preventDefault();
     };
@@ -319,6 +454,11 @@ export function ModelCanvas({
     const onUp = (e: PointerEvent) => {
       if (!down || e.button !== 0 || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
       down = null;
+      if (measuring) {
+        const h = hitAt(e);
+        if (h) addPoint(h.point);
+        return;
+      }
       pick.current?.(keyAt(e));
     };
     const onDouble = (e: MouseEvent) => {
@@ -387,6 +527,7 @@ export function ModelCanvas({
       }
       fit(shown);
       setProgress(null);
+      if (scene.current) toolsRef.current?.(scene.current.tools);
     })().catch(() => !disposed && setError("The 3D model couldn't load. Try reloading the page."));
 
     return () => {
@@ -403,6 +544,9 @@ export function ModelCanvas({
       cancelAnimationFrame(frame);
       hoverLook.dispose();
       geometries.forEach((g) => g.dispose());
+      clearMarks();
+      dotLook.dispose();
+      lineLook.dispose();
       meshes.forEach(({ mesh }) => mesh.dispose());
       material.dispose();
       cad.dispose();
@@ -413,6 +557,7 @@ export function ModelCanvas({
       renderer.dispose();
       renderer.domElement.remove();
       scene.current = null;
+      toolsRef.current?.(null);
       setGone([]);
     };
   }, [model]);

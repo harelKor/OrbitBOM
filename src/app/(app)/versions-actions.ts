@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { requireMember } from "@/lib/auth";
-import { requireCapability } from "@/lib/mode";
+import { getMode, requireCapability } from "@/lib/mode";
+import { tickComments } from "@/lib/reviews/comments";
 import { OnshapeError } from "@/lib/onshape/client";
 import { isUuid } from "@/lib/uuid";
 import { commitDraft, VersionError } from "@/lib/versions/commit";
@@ -33,19 +34,22 @@ export async function checkForChanges(systemId: string, quick = false): Promise<
 export type CommitResult = { error?: string; message?: string };
 
 // Commit changes: the draft the member reviewed becomes the system's next version. With `only`
-// (a change's key), just that part is committed and the rest stay Outdated.
-export async function commitChanges(systemId: string, draftId: string, seen: string, name: string, only?: string): Promise<CommitResult> {
+// (a change's key), just that part is committed and the rest stay Outdated. `tick`: CAD Review
+// comments ticked off in the window, done at the version committed.
+export async function commitChanges(systemId: string, draftId: string, seen: string, name: string, only?: string, tick: string[] = []): Promise<CommitResult> {
   const member = await requireCapability("sync");
   if (!isUuid(systemId) || !isUuid(draftId)) return { error: "Unknown system." };
   try {
     const c = await commitDraft(systemId, member.id, { draftId, seen, name: name.slice(0, 120), only });
+    const ticked = await tickComments(member, await getMode(), systemId, tick.filter(isUuid), c.versionId);
     // The same name in Onshape's version tree; Onshape failing never undoes the commit.
     const named = await syncOnshapeVersionName(systemId, c.versionId, name.slice(0, 120), member);
     revalidatePath("/robots", "layout");
     const label = named.label ?? c.label;
     const warning = (c.unknownMachines.length ? ` Unknown machines in Onshape: ${c.unknownMachines.join(", ")}.` : "") + (named.note ? ` ${named.note}` : "");
-    if (only) return { message: `Committed to ${label}.${named.note ? ` ${named.note}` : ""}` };
-    return { message: `Committed as ${label}: ${c.added.length} added, ${c.updated} updated, ${c.removed.length} removed.${warning}` };
+    const done = ticked ? ` ${ticked} ${ticked === 1 ? "comment" : "comments"} ticked off.` : "";
+    if (only) return { message: `Committed to ${label}.${named.note ? ` ${named.note}` : ""}${done}` };
+    return { message: `Committed as ${label}: ${c.added.length} added, ${c.updated} updated, ${c.removed.length} removed.${warning}${done}` };
   } catch (err) {
     if (err instanceof VersionError) return { error: err.message };
     throw err;

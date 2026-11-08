@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { Dialog } from "@/components/Dialog";
 import { Icon } from "@/components/ui/Icon";
+import { LocalTime } from "@/components/ui/LocalTime";
 import { getMachine } from "@/config/machines";
 import type { VersionChange } from "@/db/schema";
 import type { ViewerModel } from "@/components/dashboard/ModelCanvas";
@@ -40,9 +41,13 @@ function shown(field: string, value: unknown) {
 // A change that is only Onshape fields (material, processes, quantity…) and not the shape.
 const kindOf = (c: VersionChange) => (c.change === "modified" && !c.geometry ? "props" : c.change);
 
+// An open CAD Review comment the commit can tick off.
+export type CommitComment = { id: string; body: string; partName: string | null; author: string | null; createdAt: string };
+
 // The Commit Changes window (plan/system-versioning.md §7): what changed in the Manufacture
 // assembly, a name for the version, and Commit. Each part's box opens its Before → After 3D
-// preview and can commit that part alone. In View mode it is read-only.
+// preview and can commit that part alone. In View mode it is read-only. With open CAD Review
+// comments, a panel on the right ticks them off with this version (Harel, 2026-11-08).
 export function CommitWindow({
   open,
   onClose,
@@ -53,6 +58,7 @@ export function CommitWindow({
   committing,
   error,
   onCommit,
+  comments = [],
 }: {
   open: boolean;
   onClose: () => void;
@@ -62,8 +68,12 @@ export function CommitWindow({
   canCommit: boolean;
   committing: boolean;
   error: string | null;
-  onCommit: (name: string, only?: string) => void;
+  onCommit: (name: string, only?: string, tick?: string[]) => void;
+  comments?: CommitComment[];
 }) {
+  const [tick, setTick] = useState<Set<string>>(() => new Set());
+  const ticked = [...tick].filter((id) => comments.some((c) => c.id === id));
+  const side = comments.length > 0;
   // Starts with the Onshape version's name; another name renames it in Onshape on commit.
   const [name, setName] = useState(draft.name ?? draft.onshape ?? "");
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -72,8 +82,9 @@ export function CommitWindow({
     .filter((c) => c.n > 0);
 
   return (
-    <Dialog open={open} onClose={onClose} title="Changes in Onshape" width="w-[min(46rem,calc(100vw-2rem))]">
-      <div className="space-y-4">
+    <Dialog open={open} onClose={onClose} title="Changes in Onshape" width={side ? "w-[min(68rem,calc(100vw-2rem))]" : "w-[min(46rem,calc(100vw-2rem))]"}>
+      <div className={side ? "grid gap-4 md:grid-cols-[minmax(0,1fr)_18rem]" : ""}>
+      <div className="min-w-0 space-y-4">
         <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
           {draft.onshape && <span className="rounded-full bg-accent/10 px-2 py-0.5 font-mono text-xs font-semibold text-accent">Onshape {draft.onshape}</span>}
           <span>Found {new Date(draft.detectedAt).toLocaleString()}</span>
@@ -89,7 +100,7 @@ export function CommitWindow({
             className="flex flex-wrap items-end gap-2"
             onSubmit={(e) => {
               e.preventDefault();
-              onCommit(name);
+              onCommit(name, undefined, ticked);
             }}
           >
             <label className="min-w-48 flex-1">
@@ -103,7 +114,7 @@ export function CommitWindow({
               {!draft.onshape && name.trim() && <span className="mt-1 block text-xs text-subtle">Saves a version with this name in Onshape too.</span>}
             </label>
             <button type="submit" className="btn-primary" disabled={committing}>
-              {committing ? "Committing…" : "Commit changes"}
+              {committing ? "Committing…" : ticked.length ? `Commit · tick off ${ticked.length}` : "Commit changes"}
             </button>
           </form>
         ) : (
@@ -122,11 +133,49 @@ export function CommitWindow({
               thumb={c.partId ? (thumbs[c.partId] ?? null) : null}
               open={expanded === c.key}
               onToggle={() => setExpanded(expanded === c.key ? null : c.key)}
-              onCommit={canCommit ? () => onCommit(name, c.key) : undefined}
+              onCommit={canCommit ? () => onCommit(name, c.key, ticked) : undefined}
               committing={committing}
             />
           ))}
         </ul>
+      </div>
+      {side && (
+        <aside className="flex min-h-0 flex-col rounded-lg border border-line bg-raised/50 md:max-h-[70dvh]">
+          <div className="border-b border-line px-3 py-2">
+            <h3 className="text-sm font-semibold text-fg">Open comments</h3>
+            <p className="text-xs text-muted">Tick the ones this version fixes. They go to the mentors to approve.</p>
+          </div>
+          <ul className="flex-1 space-y-1 overflow-y-auto p-2">
+            {comments.map((c) => (
+              <li key={c.id}>
+                <label className="flex cursor-pointer gap-2.5 rounded-md p-2 hover:bg-surface pointer-coarse:min-h-11">
+                  <input
+                    type="checkbox"
+                    disabled={!canCommit}
+                    checked={tick.has(c.id)}
+                    onChange={() =>
+                      setTick((t) => {
+                        const next = new Set(t);
+                        if (next.has(c.id)) next.delete(c.id);
+                        else next.add(c.id);
+                        return next;
+                      })
+                    }
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-accent)]"
+                  />
+                  <span className="min-w-0 flex-1 text-sm">
+                    <span className={`block whitespace-pre-wrap break-words ${tick.has(c.id) ? "text-muted line-through" : "text-fg"}`}>{c.body}</span>
+                    <span className="mt-0.5 block text-[11px] text-subtle">
+                      {c.partName && <span className="font-semibold text-fg-2">{c.partName} · </span>}
+                      {c.author ?? "Someone"} · <LocalTime at={c.createdAt} />
+                    </span>
+                  </span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        </aside>
+      )}
       </div>
     </Dialog>
   );

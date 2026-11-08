@@ -16,7 +16,7 @@ import { selectRobot, useRobotContext } from "./useRobotContext";
 // robot's pages (dashboard, To Fab, Factory Fab, To Review, inventory) opens the same page for it at
 // once (Harel, 2026-11-04); elsewhere (a system, a page without a robot) it selects the robot (side
 // links and its systems follow it, the page stays). Clicking the selected one opens its dashboard.
-const ROBOT_PAGE = /^\/robots\/[0-9a-f-]{36}((?:\/(?:fab|review|inventory|main|(?:factory|printing)(?:\/[\w-]+)?))?)\/?$/;
+const ROBOT_PAGE = /^\/robots\/[0-9a-f-]{36}((?:\/(?:fab|review|cad-review|inventory|main|(?:factory|printing)(?:\/[\w-]+)?))?)\/?$/;
 export function RobotSwitcher({ robots, lastRobotId, isAdmin }: { robots: ShellRobot[]; lastRobotId: string | null; isAdmin: boolean }) {
   const { pathname, robot: current, systemId } = useRobotContext(robots, lastRobotId);
   const query = useSearchParams().toString();

@@ -5,19 +5,20 @@ import { FastLink } from "@/components/ui/FastLink";
 import { requireMember } from "@/lib/auth";
 import { asc, desc } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { waitingOnYou } from "@/lib/data/cadReview";
 import { getRobot } from "@/lib/data/robots";
 
 // The landing page: one full-height picture card per app. Robots are picked in the right sidebar. Every team
 // opens the app here, not on To Fab or a dashboard (Harel, 2026-11-07).
 export default async function HomePage() {
-  await requireMember();
+  const member = await requireMember();
   const [robots, jar] = await Promise.all([
     db.select({ id: schema.robots.id, archived: schema.robots.archived }).from(schema.robots).orderBy(desc(schema.robots.year), asc(schema.robots.name)),
     cookies(),
   ]);
   const last = jar.get(ROBOT_COOKIE)?.value;
   const picked = robots.find((r) => r.id === last) ?? robots.find((r) => !r.archived);
-  const robot = picked ? await getRobot(picked.id) : null;
+  const [robot, waiting] = await Promise.all([picked ? getRobot(picked.id) : null, waitingOnYou(member, picked?.id ?? null)]);
 
   const tiles = [
     {
@@ -29,7 +30,8 @@ export default async function HomePage() {
     { href: "/inventory", title: "Inventory", text: null, image: "/apps/inventory.png" },
     { href: "/cots", title: "Orders", text: null, image: "/apps/cots.png" },
     // Harel sends this card's picture later; until then it's the accent wash alone (2026-11-08).
-    { href: "/reviews", title: "CAD Review", text: null, image: null as string | null },
+    // The badge: comments waiting on you (a mentor: to approve; the CAD Team: open on your system).
+    { href: robot ? `/robots/${robot.robot.id}/cad-review` : "/robots/new", title: "CAD Review", text: waiting ? (member.isMentor ? `${waiting} to approve` : `${waiting} open on your system`) : null, image: null as string | null, badge: waiting },
   ];
 
   // The cards fill the space between the sidebars: the negative margins undo the shell's own
@@ -72,6 +74,11 @@ export default async function HomePage() {
                   <span className="display block text-xl text-accent drop-shadow-[0_0_10px_color-mix(in_srgb,var(--color-accent)_40%,transparent)] transition-colors duration-300 group-hover:text-accent-hover md:text-4xl">{t.title}</span>
                   {t.text && <span className="mt-0.5 line-clamp-1 block text-xs text-muted md:mt-1.5 md:text-sm">{t.text}</span>}
                 </div>
+                {"badge" in t && !!t.badge && (
+                  <span className="rounded-full bg-amber-500 px-2.5 py-0.5 text-sm font-bold text-white tabular-nums shadow" aria-label={`${t.badge} waiting on you`}>
+                    {t.badge}
+                  </span>
+                )}
                 <span
                   aria-hidden
                   className="grid size-8 shrink-0 md:size-9 place-items-center rounded-full border border-accent/40 bg-accent/10 text-accent transition-transform duration-300 group-hover:translate-x-1"

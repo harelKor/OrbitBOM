@@ -50,6 +50,13 @@ export async function setAdmin(memberId: string, isAdmin: boolean) {
   revalidatePath("/members");
 }
 
+// Mentors approve or reject ticked-off CAD Review comments (Harel, 2026-11-08).
+export async function setMentor(memberId: string, isMentor: boolean) {
+  await requireAdmin();
+  await db.update(schema.members).set({ isMentor }).where(eq(schema.members.id, memberId));
+  revalidatePath("/members");
+}
+
 export async function removeMember(memberId: string) {
   const admin = await requireAdmin();
   if (memberId === admin.id) throw new Error("You can't remove yourself.");

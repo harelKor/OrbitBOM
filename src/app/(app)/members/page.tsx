@@ -8,6 +8,7 @@ import {
   removeMember,
   revokeInvite,
   setAdmin,
+  setMentor,
 } from "./actions";
 import { TEAMS } from "@/config/teams";
 import { listTeamSystems } from "@/lib/teams";
@@ -76,6 +77,7 @@ export default async function MembersPage() {
                       Admin
                     </span>
                   )}
+                  {m.isMentor && <span className="ml-2 rounded bg-sky-600 px-1.5 py-0.5 text-[11px] text-white">Mentor</span>}
                 </div>
                 <div className="truncate text-sm text-muted">
                   {m.email}
@@ -84,6 +86,13 @@ export default async function MembersPage() {
                 </div>
               </div>
               {me.isAdmin && <MemberTeam memberId={m.id} team={m.team} systemId={m.systemId} systems={systems} />}
+              {me.isAdmin && (
+                <form action={setMentor.bind(null, m.id, !m.isMentor)}>
+                  <button className="btn" title="Mentors approve or reject ticked-off CAD Review comments">
+                    {m.isMentor ? "Not a mentor" : "Make mentor"}
+                  </button>
+                </form>
+              )}
               {me.isAdmin && m.id !== me.id && (
                 <>
                   <form action={setAdmin.bind(null, m.id, !m.isAdmin)}>
