@@ -32,7 +32,7 @@ server (`/api/mcp/<token>`).
   cotsSync.db ×1, updateBom.db "pulls a new system's BOM"): compare against those.
 - Schema: edit `src/db/schema.ts`, `npm run db:generate`, rename the file to a readable name
   (and its `tag` in `drizzle/meta/_journal.json`), add `ALTER TABLE "x" ENABLE ROW LEVEL SECURITY;`
-  for a new table, commit. Next migration: 0074.
+  for a new table, commit. Next migration: 0075.
 - Local site: README "Local development" (local Supabase in Docker, "Dev sign-in" button; Onshape
   and R2 deliberately unset). Never point local dev at production.
 - On Harel's Windows PC, Docker and `gh` aren't on the Bash PATH: run them from PowerShell, or
@@ -110,6 +110,10 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
   every call against the team budget (`src/config/onshapeBudget.ts`, `onshape_usage`); automatic
   work (thumbnails, previews) passes `background: true` so it stops first.
 - Versions: `src/lib/versions/` (check → draft → commit; `checkSystem` re-checks under a lock).
+  A system with `followVersions` is read at its CAD document's newest Onshape version (no
+  Manufacture document).
+- CAD Review: `src/lib/reviews/rounds.ts` (frozen rounds, built with the robot model's
+  `planModel` / `runJobs`; 3D files keyed by Part Studio revision and shared), `/reviews`.
 - Files: `src/lib/storage/r2.ts`; backups and restore: `src/lib/storage/backup.ts`, `restore.ts`.
 - Work the user needn't wait for: `afterResponse` (`src/lib/later.ts`).
 - MCP: `src/lib/mcp/registry.ts` (`read` / `write`, preview → confirm token → apply) and one file

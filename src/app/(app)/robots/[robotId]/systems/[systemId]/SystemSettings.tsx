@@ -1,13 +1,14 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { Popover } from "@/components/bom/Popover";
+import { Checkbox } from "@/components/ui/Checkbox";
 import { Icon } from "@/components/ui/Icon";
 import { deleteSystem, updateSystem, type FormState } from "../../../actions";
 import { GEAR_SMALL, OnshapeLinkField, SaveRow } from "../../RobotSettings";
 
-// Edit mode's gear menu on a system tile: name, Onshape assembly, delete.
+// Edit mode's gear menu on a system tile: name, Onshape assembly, follow its versions, delete.
 export function SystemSettings({
   robotId,
   system,
@@ -15,7 +16,7 @@ export function SystemSettings({
   small = false,
 }: {
   robotId: string;
-  system: { id: string; name: string; assemblyUrl: string | null };
+  system: { id: string; name: string; assemblyUrl: string | null; followVersions?: boolean };
   isAdmin: boolean;
   small?: boolean;
 }) {
@@ -23,6 +24,7 @@ export function SystemSettings({
     (prev: FormState, formData: FormData) => updateSystem(system.id, prev, formData),
     undefined,
   );
+  const [follow, setFollow] = useState(!!system.followVersions);
   return (
     <Popover
       align="right"
@@ -43,6 +45,13 @@ export function SystemSettings({
             </label>
             <input id="system-name" name="name" defaultValue={system.name} required className="input" />
             <OnshapeLinkField id="system-assembly" name="assemblyUrl" label="Onshape assembly" value={system.assemblyUrl} />
+            <input type="hidden" name="followVersions" value={follow ? "1" : ""} />
+            <Checkbox checked={follow} onChange={setFollow}>
+              <span>
+                Follow Onshape versions
+                <span className="block text-xs text-muted">Changes show up when the CAD document gets a new version, not on every edit.</span>
+              </span>
+            </Checkbox>
             <SaveRow pending={pending} state={state} />
           </form>
           {isAdmin && (

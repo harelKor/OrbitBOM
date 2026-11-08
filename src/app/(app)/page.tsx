@@ -28,11 +28,13 @@ export default async function HomePage() {
     },
     { href: "/inventory", title: "Inventory", text: null, image: "/apps/inventory.png" },
     { href: "/cots", title: "Orders", text: null, image: "/apps/cots.png" },
+    // Harel sends this card's picture later; until then it's the accent wash alone (2026-11-08).
+    { href: "/reviews", title: "CAD Review", text: null, image: null as string | null },
   ];
 
   // The cards fill the space between the sidebars: the negative margins undo the shell's own
-  // padding, and the area is exactly one screen tall under the top bar. Phones stack the three
-  // cards as equal-height rows, so all of them fit without scrolling.
+  // padding, and the area is exactly one screen tall under the top bar. Phones stack the four
+  // cards as equal-height rows, so all of them fit without scrolling; wider screens show two by two.
   return (
     <div className="-m-4 flex h-[calc(100dvh-var(--topbar-h,2.75rem))] overflow-hidden md:-m-6 lg:-ml-11 xl:-mr-11 px-5 py-3.5 md:px-6 md:py-5 lg:px-10 lg:py-7">
       <h1 className="sr-only">OrbitParts</h1>
@@ -41,21 +43,25 @@ export default async function HomePage() {
         <p className="mb-3 hidden select-none text-center text-base font-semibold tracking-wide text-muted md:block lg:text-lg">
           Robots change · Spirit remains
         </p>
-        <div className="flex min-h-0 w-full flex-1 flex-col gap-3 md:grid md:max-h-[39rem] md:grid-cols-3 md:gap-6">
+        <div className="flex min-h-0 w-full flex-1 flex-col gap-3 md:grid md:max-h-[39rem] md:grid-cols-2 md:gap-6">
           {tiles.map((t) => (
             <FastLink
               key={t.title}
               href={t.href}
               className="group relative flex min-h-0 w-full flex-1 flex-col md:h-full md:min-h-[16rem] justify-end overflow-hidden rounded-3xl border-[3px] border-accent/55 bg-surface shadow-[0_0_24px_-6px_color-mix(in_srgb,var(--color-accent)_35%,transparent)] transition-all duration-300 hover:border-accent-hover/80 hover:shadow-[0_0_32px_-4px_color-mix(in_srgb,var(--color-accent)_55%,transparent)] active:scale-[0.98]"
             >
-              <Image
-                src={t.image}
-                alt=""
-                fill
-                loading="eager"
-                sizes="(min-width: 768px) 33vw, 100vw"
-                className="object-cover object-[center_20%] saturate-[0.92] contrast-[1.03] transition-transform duration-500 ease-out group-hover:scale-105"
-              />
+              {t.image ? (
+                <Image
+                  src={t.image}
+                  alt=""
+                  fill
+                  loading="eager"
+                  sizes="(min-width: 768px) 50vw, 100vw"
+                  className="object-cover object-[center_20%] saturate-[0.92] contrast-[1.03] transition-transform duration-500 ease-out group-hover:scale-105"
+                />
+              ) : (
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,color-mix(in_srgb,var(--color-accent)_45%,transparent),transparent_65%)]" />
+              )}
               {/* A light tint and wash in the accent colour (Orbit blue unless the colour slider moved), so the
                   three pictures share one colour atmosphere; the fade and dock follow the greyscale slider. */}
               <div className="pointer-events-none absolute inset-0 bg-bar/16 mix-blend-color" />

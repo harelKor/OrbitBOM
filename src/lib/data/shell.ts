@@ -10,7 +10,7 @@ import { countInventoryReviews } from "@/lib/review/inventory";
 
 const { robots, systems, parts, partReviews } = schema;
 
-export type ShellSystem = { id: string; name: string; assemblyUrl: string | null; percent: number; total: number; thumbUrl: string | null; sync: SystemSync };
+export type ShellSystem = { id: string; name: string; assemblyUrl: string | null; followVersions: boolean; percent: number; total: number; thumbUrl: string | null; sync: SystemSync };
 export type ShellRobot = {
   id: string;
   name: string;
@@ -89,6 +89,7 @@ export async function listShellRobots(): Promise<ShellRobot[]> {
         id: s.id,
         name: s.name,
         assemblyUrl: s.assemblyUrl,
+        followVersions: s.followVersions,
         percent: b.percent,
         total: b.total,
         thumbUrl: key ? await imageUrl(key) : null,
@@ -134,7 +135,7 @@ export async function listShellRobots(): Promise<ShellRobot[]> {
         archived: r.archived,
         percent: statusBreakdown(rows).percent,
         thumbUrl: r.thumbnailPath ? await imageUrl(r.thumbnailPath) : (own.find((s) => s.thumbUrl)?.thumbUrl ?? null),
-        systems: own.map((s) => ({ id: s.id, name: s.name, assemblyUrl: s.assemblyUrl, percent: s.percent, total: s.total, thumbUrl: s.thumbUrl, sync: s.sync })),
+        systems: own.map((s) => ({ id: s.id, name: s.name, assemblyUrl: s.assemblyUrl, followVersions: s.followVersions, percent: s.percent, total: s.total, thumbUrl: s.thumbUrl, sync: s.sync })),
       };
     }),
   );

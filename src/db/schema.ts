@@ -113,6 +113,12 @@ export const systems = pgTable(
     thumbnailPath: text("thumbnail_path"),
     // Version control (plan/system-versioning.md): the committed version the system is on.
     currentVersionId: uuid("current_version_id"),
+    // The system follows its assembly's Onshape versions, not its workspace: change detection
+    // reads the document's newest version, so students' edits between versions cost nothing and
+    // no separate Manufacture document is needed (Harel, 2026-11-08).
+    followVersions: boolean("follow_versions").notNull().default(false),
+    // The newest Onshape version the last check saw, so the next one stops after 1 call.
+    followedVersionId: text("followed_version_id"),
     createdAt: createdAt(),
   },
   (t) => [index("systems_robot_idx").on(t.robotId)],
@@ -583,7 +589,8 @@ export type VersionChange = {
 // `parts`: how many of the BOM's parts come from that document; `main`: the document most of
 // them come from, which names the version (label.ts). Versions read before these were kept lack both.
 type DocVersions = Record<string, { versionId: string; name: string; parts?: number; main?: boolean }>;
-export type VersionRef = { mv: string | null; did: string; sources?: DocVersions; from?: DocVersions };
+// `vid`: the assembly's own Onshape version, for a system that follows versions.
+export type VersionRef = { mv: string | null; did: string; vid?: string; sources?: DocVersions; from?: DocVersions };
 
 export const systemVersions = pgTable(
   "system_versions",
@@ -630,6 +637,64 @@ export const partVersions = pgTable(
     meshKey: text("mesh_key"), // the R2 file with this state's 3D preview
   },
   (t) => [index("part_versions_part_idx").on(t.partId, t.versionId), index("part_versions_version_idx").on(t.versionId)],
+);
+
+// ---------- CAD Review (plan/design-review.md) ----------
+
+// A design mentors review: a system's assembly or any assembly link (a prototype not in the robot
+// yet), reviewed in rounds the student sends.
+export const reviewStatus = pgEnum("review_status", ["open", "approved", "closed"]);
+export const designReviews = pgTable(
+  "design_reviews",
+  {
+    id: id(),
+    robotId: uuid("robot_id")
+      .notNull()
+      .references(() => robots.id, { onDelete: "cascade" }),
+    systemId: uuid("system_id").references(() => systems.id, { onDelete: "set null" }),
+    title: text("title").notNull(),
+    assemblyUrl: text("assembly_url").notNull(),
+    ownerId: uuid("owner_id").references(() => members.id, { onDelete: "set null" }),
+    status: reviewStatus("status").notNull().default("open"),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    approvedBy: uuid("approved_by").references(() => members.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    // Last round sent (comments too, later): the list's order.
+    activityAt: timestamp("activity_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("design_reviews_robot_idx").on(t.robotId, t.activityAt)],
+);
+
+// The frozen Onshape state a round shows: the assembly at a document microversion (or the
+// version it was linked at), so it never changes after it's sent.
+export type ReviewRef = { baseUrl: string; did: string; wvm: "m" | "v"; wvmid: string; eid: string };
+// The round's 3D model: export jobs (R2 files keyed by Part Studio revision, shared with the robot
+// model) and where every part sits; `names`: instance names from Onshape, by part key.
+export type ReviewModel = {
+  jobs: { key: string; path: string; configuration?: string; linkDid?: string; done?: boolean }[];
+  placements: { s: number; k: string; t: number[]; g?: number }[];
+  names?: Record<string, string>;
+};
+export const roundState = pgEnum("review_round_state", ["building", "ready"]);
+export const reviewRounds = pgTable(
+  "review_rounds",
+  {
+    id: id(),
+    reviewId: uuid("review_id")
+      .notNull()
+      .references(() => designReviews.id, { onDelete: "cascade" }),
+    seq: integer("seq").notNull(), // 1, 2, 3…
+    onshapeRef: jsonb("onshape_ref").$type<ReviewRef>().notNull(),
+    state: roundState("state").notNull().default("building"),
+    model: jsonb("model").$type<ReviewModel>(),
+    note: text("note"), // the student's "what changed"
+    error: text("error"), // why the last build step failed; the next one retries
+    calls: integer("calls").notNull().default(0), // Onshape calls the build used
+    sentBy: uuid("sent_by").references(() => members.id, { onDelete: "set null" }),
+    sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
+    builtAt: timestamp("built_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("review_rounds_seq_uq").on(t.reviewId, t.seq)],
 );
 
 // Every time a part was released to fab (Released, Reproduction, Secondary Production) and the

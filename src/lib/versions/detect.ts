@@ -59,17 +59,24 @@ export async function loadDraft(systemId: string): Promise<Draft | null> {
 export async function checkSystem(systemId: string, memberId: string, { force = true } = {}): Promise<CheckResult> {
   const [system] = await db.select().from(systems).where(eq(systems.id, systemId)).limit(1);
   if (!system) throw new OnshapeError("System not found.");
-  const ref = system.assemblyUrl ? parseOnshapeUrl(system.assemblyUrl) : null;
-  if (!ref?.eid) throw new OnshapeError("This system has no Onshape assembly URL.");
-  const client = onshapeClient(memberId, ref.baseUrl);
+  const linked = system.assemblyUrl ? parseOnshapeUrl(system.assemblyUrl) : null;
+  if (!linked?.eid) throw new OnshapeError("This system has no Onshape assembly URL.");
+  const client = onshapeClient(memberId, linked.baseUrl);
   const current = await loadDraftRow(systemId);
 
-  // 1. Did anything move? A version or microversion link never changes, so only a workspace is checked.
+  // 1. Did anything move? A system that follows versions reads its document's newest Onshape
+  // version (1 call) and is read at that version; otherwise a workspace's microversion is
+  // checked (a version or microversion link never changes).
+  const followed = system.followVersions ? await newestVersion(client, linked.did) : null;
+  if (system.followVersions && !followed) throw new OnshapeError("Make a version of the assembly's document in Onshape first: this system follows its versions.");
+  const ref = followed ? { ...linked, wvm: "v" as const, wvmid: followed.id } : linked;
   let microversion: string | null = null;
   if (ref.wvm === "w") {
     microversion = (await client.json<{ microversion: string }>(`documents/d/${ref.did}/w/${ref.wvmid}/currentmicroversion`)).microversion;
   }
-  const seen = ref.wvm !== "w" || system.docMicroversions[ref.did] === microversion || current?.onshapeRef?.mv === microversion;
+  const seen = followed
+    ? system.followedVersionId === followed.id || current?.onshapeRef?.vid === followed.id
+    : ref.wvm !== "w" || system.docMicroversions[ref.did] === microversion || current?.onshapeRef?.mv === microversion;
   if (!force && seen) {
     await db.update(systems).set({ lastCheckedAt: new Date() }).where(eq(systems.id, systemId));
     return { draft: current ? draftOf(current) : null, unchanged: true, calls: client.calls };
@@ -159,7 +166,10 @@ export async function checkSystem(systemId: string, memberId: string, { force = 
   const listed = new Set(changes.map((c) => c.partId));
   const keep = [...held.keys()].filter((id) => !listed.has(id));
   const rows: DraftRows = { bom: parsed.rows, sigs, partSigs, unknownMachines: parsed.unknownMachines, held: keep };
-  const seenMv = microversion ? { docMicroversions: { ...system.docMicroversions, [ref.did]: microversion } } : {};
+  const seenMv = {
+    ...(microversion ? { docMicroversions: { ...system.docMicroversions, [ref.did]: microversion } } : {}),
+    ...(followed ? { followedVersionId: followed.id } : {}),
+  };
   const account = force ? { refreshMemberId: memberId } : {};
 
   // The Onshape calls above take seconds. Before saving, the system is locked and its draft read
@@ -196,7 +206,7 @@ export async function checkSystem(systemId: string, memberId: string, { force = 
 
   // 5. Keep it in the draft. A draft whose list didn't change keeps its time, so a member
   // halfway through reviewing it can still commit.
-  const onshapeRef: VersionRef = { mv: microversion, did: ref.did, ...(await versionNames(client, existing, parsed.rows)) };
+  const onshapeRef: VersionRef = { mv: microversion, did: ref.did, ...(followed ? { vid: followed.id } : {}), ...(await versionNames(client, existing, parsed.rows)) };
   const name = current?.name ?? null;
   const same = current && stable(current.changes) === stable(changes);
   const values = { name, onshapeRef, changes, rows, ...(same ? {} : { detectedAt: now, detectedBy: memberId }) };
@@ -210,7 +220,10 @@ export async function checkSystem(systemId: string, memberId: string, { force = 
           .where(and(eq(systemVersions.id, current.id), eq(systemVersions.state, "draft")))
           .returning()
       : await tx.insert(systemVersions).values({ systemId, state: "draft", detectedBy: memberId, ...values }).returning();
-    await tx.update(systems).set({ lastCheckedAt: now, ...account }).where(eq(systems.id, systemId));
+    await tx
+      .update(systems)
+      .set({ lastCheckedAt: now, ...account, ...(followed ? { followedVersionId: followed.id } : {}) })
+      .where(eq(systems.id, systemId));
     return { draft: draftOf(row), unchanged: false, calls: client.calls };
   });
 }
@@ -261,6 +274,16 @@ async function versionNames(
     sources: await named(used(rows)),
     from: await named(used(existing.filter((p) => !p.isManual && !p.removedFromCadAt))),
   };
+}
+
+// A document's newest Onshape version (1 call). Its name is kept like versionName's, so naming
+// the draft costs nothing more.
+export async function newestVersion(client: OnshapeClient, did: string): Promise<{ id: string; name: string } | null> {
+  const list = await client.json<{ id: string; name?: string; createdAt?: string }[]>(`documents/d/${did}/versions`);
+  const newest = list.reduce<(typeof list)[number] | null>((best, v) => (!best || (v.createdAt ?? "") > (best.createdAt ?? "") ? v : best), null);
+  if (!newest) return null;
+  if (newest.name) await db.insert(onshapeCache).values({ key: `version-name:${newest.id}`, payload: { name: newest.name } }).onConflictDoNothing();
+  return { id: newest.id, name: newest.name ?? "" };
 }
 
 async function versionName(client: OnshapeClient, did: string, versionId: string): Promise<string | null> {

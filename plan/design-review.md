@@ -1,6 +1,9 @@
 # Design review (mentors review CAD in the app)
 
-Status: plan. Harel took all four proposed decisions (2026-11-08); waiting for his go on phase 1.
+Status: phase 1 built (2026-11-08): migration 0074, `src/lib/reviews/rounds.ts`, `/reviews`, the
+home card "CAD Review" (picture to come from Harel). Also in phase 1: systems can follow their CAD
+document's Onshape versions (no Manufacture document), and 3D files are keyed by Part Studio
+revision everywhere. The comments table comes with phase 2.
 
 ## Goal
 

@@ -90,6 +90,7 @@ export async function deleteRobot(robotId: string) {
 const systemForm = z.object({
   name: z.string().trim().min(1, "System name is required."),
   assemblyUrl: optionalOnshapeUrl,
+  followVersions: z.string().optional(),
 });
 
 export async function createSystem(
@@ -118,14 +119,20 @@ export async function updateSystem(systemId: string, _: FormState, formData: For
   const parsed = systemForm.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const assemblyUrl = normaliseUrl(parsed.data.assemblyUrl);
-  const [current] = await db.select({ assemblyUrl: schema.systems.assemblyUrl }).from(schema.systems).where(eq(schema.systems.id, systemId));
+  const followVersions = parsed.data.followVersions === "1";
+  const [current] = await db
+    .select({ assemblyUrl: schema.systems.assemblyUrl, followVersions: schema.systems.followVersions })
+    .from(schema.systems)
+    .where(eq(schema.systems.id, systemId));
   await db
     .update(schema.systems)
     .set({
       name: parsed.data.name,
       assemblyUrl,
-      // A new assembly is a new document: the next background check must not skip it.
-      ...(current?.assemblyUrl !== assemblyUrl ? { docMicroversions: {} } : {}),
+      followVersions,
+      // A new assembly is a new document, and following versions reads another state of it:
+      // the next background check must not skip it.
+      ...(current?.assemblyUrl !== assemblyUrl || current?.followVersions !== followVersions ? { docMicroversions: {}, followedVersionId: null } : {}),
     })
     .where(eq(schema.systems.id, systemId));
   revalidatePath("/", "layout");

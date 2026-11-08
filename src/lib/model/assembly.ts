@@ -4,6 +4,7 @@
 
 type Instance = {
   id: string;
+  name?: string; // "Side plate <2>"
   type?: string; // "Part" | "Assembly" | ...
   documentId?: string;
   documentMicroversion?: string;
@@ -43,6 +44,7 @@ export type Placement = {
   studio: StudioRef;
   partId: string;
   transform: number[]; // 4x4, row-major, metres
+  name?: string; // the instance's name without Onshape's " <n>" count
 };
 
 const config = (c?: string) => (c && c !== "default" ? c : "");
@@ -86,6 +88,7 @@ export function flattenAssembly(def: AssemblyDefinition): Placement[] {
       },
       partId: leaf.partId,
       transform: occ.transform,
+      ...(leaf.name ? { name: leaf.name.replace(/\s*<\d+>$/, "") } : {}),
     });
   }
   return out;

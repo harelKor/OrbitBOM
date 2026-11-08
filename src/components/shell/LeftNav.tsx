@@ -240,6 +240,9 @@ export function LeftNav({
               </div>
             )}
           </div>
+          <Item href="/reviews" icon="cube" active={pathname.startsWith("/reviews")}>
+            CAD Review
+          </Item>
           <Item href="/ai-logs" icon="spark" active={pathname.startsWith("/ai-logs")}>
             AI logs
           </Item>
