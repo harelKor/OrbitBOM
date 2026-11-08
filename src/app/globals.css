@@ -394,10 +394,14 @@ body {
 
   /* Part card grids follow the card size slider (right panel). Pass the default card width in
      --card-min; the 220px default matches Inventory's item cards, so a slider position shows as many
-     part cards per row as item cards. A card never grows past its column (min-width: 0), so small cards can't overlap. */
+     part cards per row as item cards. A card never grows past its column (min-width: 0), so small cards can't overlap.
+     Cards are exactly the slider's width (not stretched to fill the row), so resizing is smooth
+     instead of jumping each time a column comes or goes (Harel, 2026-11-08). The one exception:
+     where not even two fit (a phone), the one card fills the width. BatchCard's placeOf follows. */
   .card-grid {
     @apply grid gap-3;
-    grid-template-columns: repeat(auto-fill, minmax(min(max(calc(var(--card-min, 220px) * var(--card-scale, 1)), 110px), 100%), 1fr));
+    --card-w: max(calc(var(--card-min, 220px) * var(--card-scale, 1)), 110px);
+    grid-template-columns: repeat(auto-fill, min(max(var(--card-w), calc((2 * var(--card-w) + 0.75rem - 100%) * 1000)), 100%));
   }
   .card-grid > * {
     @apply w-full max-w-full min-w-0;
@@ -418,10 +422,27 @@ body {
   .list-stack > * {
     @apply min-w-0;
   }
-  /* Category picture boxes (Inventory, COTS): never under 135px, else 210px at 100%. */
+  /* Category picture boxes (Inventory, COTS): never under 135px, else 210px at 100%; exact widths
+     like .card-grid's. */
   .category-grid {
     @apply grid gap-3;
-    grid-template-columns: repeat(auto-fill, minmax(min(max(135px, calc(210px * var(--card-scale, 1))), 100%), 1fr));
+    --card-w: max(135px, calc(210px * var(--card-scale, 1)));
+    grid-template-columns: repeat(auto-fill, min(max(var(--card-w), calc((2 * var(--card-w) + 0.75rem - 100%) * 1000)), 100%));
+  }
+  /* Shift + wheel over cards sets their text size (Appearance.tsx): Tailwind's text sizes read
+     these, so every text-xs … text-4xl inside a card follows (Harel, 2026-11-08). */
+  .card-grid,
+  .category-grid,
+  .list-stack {
+    font-size: calc(1rem * var(--card-text, 1));
+    --text-xs: calc(0.75rem * var(--card-text, 1));
+    --text-sm: calc(0.875rem * var(--card-text, 1));
+    --text-base: calc(1rem * var(--card-text, 1));
+    --text-lg: calc(1.125rem * var(--card-text, 1));
+    --text-xl: calc(1.25rem * var(--card-text, 1));
+    --text-2xl: calc(1.5rem * var(--card-text, 1));
+    --text-3xl: calc(1.875rem * var(--card-text, 1));
+    --text-4xl: calc(2.25rem * var(--card-text, 1));
   }
   .category-grid > * {
     @apply w-full max-w-full min-w-0 overflow-hidden;

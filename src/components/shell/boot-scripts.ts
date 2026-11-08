@@ -10,4 +10,4 @@ export const DEFAULT_HUE = 264; // Orbit blue, #0000cc
 export const SHADE_SCRIPT = `try{var r=document.documentElement,s=localStorage.getItem("${SHADE_KEY}"),t=localStorage.getItem("orbit-theme");if(s==null&&(t==="light"||t==="dark"))s=t==="dark"?"100":"0";if(s!=null){r.dataset.shade=s;r.dataset.theme=Number(s)>=50?"dark":"light";r.style.setProperty("--shade",s+"%")}}catch(e){}`;
 
 // Runs before the page paints, next to the theme script, so the saved size and colour never flash.
-export const APPEARANCE_SCRIPT = `try{var a=JSON.parse(localStorage.getItem("${APPEARANCE_KEY}")||"null");if(a){var r=document.documentElement;if(a.scale)r.style.setProperty("--card-scale",a.scale);if(a.hue!=null&&a.hue!==${DEFAULT_HUE}){r.dataset.hue="";r.style.setProperty("--hue",a.hue)}}}catch(e){}`;
+export const APPEARANCE_SCRIPT = `try{var a=JSON.parse(localStorage.getItem("${APPEARANCE_KEY}")||"null");if(a){var r=document.documentElement;if(a.scale)r.style.setProperty("--card-scale",a.scale);if(a.text&&a.text!==1)r.style.setProperty("--card-text",a.text);if(a.hue!=null&&a.hue!==${DEFAULT_HUE}){r.dataset.hue="";r.style.setProperty("--hue",a.hue)}}}catch(e){}`;

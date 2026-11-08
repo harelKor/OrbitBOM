@@ -63,8 +63,11 @@ function placeOf(el: HTMLElement | null, parts: number): Place | null {
     ? 360
     : Math.max((parseFloat(style.getPropertyValue("--card-min")) || 220) * (parseFloat(style.getPropertyValue("--card-scale")) || 1), 110);
   const total = parseFloat(style.width) || grid.clientWidth;
-  const cols = Math.max(1, Math.floor((total + gap) / (min + gap)));
-  const track = (total - (cols - 1) * gap) / cols;
+  // A list's rows stretch to fill; cards are exactly `min` wide, or the full width when not even two fit.
+  const list = grid.classList.contains("list-stack");
+  const one = !list && total < 2 * min + gap;
+  const cols = one ? 1 : Math.max(1, Math.floor((total + gap) / (min + gap)));
+  const track = list ? (total - (cols - 1) * gap) / cols : one ? total : min;
   const col = sameRow.filter((c) => c.offsetLeft < el.offsetLeft).length;
   const free = cols - col - 1;
   const last = !sameRow.some((c) => c.offsetLeft > el.offsetLeft);
