@@ -109,6 +109,9 @@ function MadePartCard({
   const drawingFile = part.files.find((f) => f.type === "drawing");
   // The BOM's own cards (not To Fab, To Post Process or Ready for QA) offer Suggest on Undefined parts.
   const suggestable = !onCheck && !fabCounter && !post && !onToggleSelect;
+  // Ready for QA (the check without Post Processing's counts): the drawing to check against and
+  // only the machines, no material (Harel, 2026-11-08).
+  const qa = !!onCheck && !post;
 
   return (
     <div id={`part-${part.id}`} data-selected={!!selected} data-part={partIds(part)} style={style ?? statusTint(computeStatus(part))} onClick={openDetails} className={`card-interactive part-card group flex w-full max-w-full min-w-0 overflow-hidden scroll-mt-20 cursor-pointer flex-col text-sm target:border-accent target:ring-2 target:ring-accent ${checked ? "opacity-60" : ""}`}>
@@ -143,7 +146,7 @@ function MadePartCard({
         )}
         <div className="absolute top-2 left-2 flex items-center gap-1">
           {thumbBadge}
-          {(fabCounter || post) && (part.hasDrawing || drawingFile) && (
+          {(fabCounter || post || qa) && (part.hasDrawing || drawingFile) && (
             <button
               type="button"
               onClick={() => setDrawing(true)}
@@ -273,10 +276,10 @@ function MadePartCard({
 
           {statusButton ?? <div className="flex min-w-0 flex-wrap items-center gap-1">
             <StatusField part={part} save={save} size="sm" />
-            {!post && (part.material || part.inventoryItemId || work) && <MaterialField part={part} save={save} className={pill} noOpen />}
-            {!post && machines.map((slot) => (
+            {!post && !qa && (part.material || part.inventoryItemId || work) && <MaterialField part={part} save={save} className={pill} noOpen />}
+            {!post && machines.map((slot, i) => (
               <span key={slot.key} className="contents">
-                <span className="text-[10px] text-faint">→</span>
+                {(!qa || i > 0) && <span className="text-[10px] text-faint">→</span>}
                 <MachineField part={part} save={save} slot={slot} className={`${pill} ${slot === current ? "border-accent/60 text-accent" : ""}`} />
               </span>
             ))}
