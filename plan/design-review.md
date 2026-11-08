@@ -1,6 +1,6 @@
 # Design review (mentors review CAD in the app)
 
-Status: plan, waiting for Harel's go (2026-11-08).
+Status: plan. Harel took all four proposed decisions (2026-11-08); waiting for his go on phase 1.
 
 ## Goal
 
@@ -149,9 +149,9 @@ free 10 GB. No new cloud resources.
 - A send while the team's daily Onshape budget is used up: the round fails with the budget message
   and the student can send again tomorrow; nothing half-built is shown.
 
-## Decisions for Harel
+## Decisions (Harel, 2026-11-08)
 
-1. Mentor = a flag on members (proposed), or a fourth team?
-2. Can students approve, or only mentors? (proposed: only mentors)
-3. Can Build team members comment, or only view? (proposed: comment)
-4. Phase order OK, or tools (section, measure) before comments?
+1. Mentor = an `isMentor` flag on members, not a fourth team.
+2. Only mentors approve; students can't approve their own design.
+3. Build team members can comment.
+4. Phase order as above: comments before section and measure.
