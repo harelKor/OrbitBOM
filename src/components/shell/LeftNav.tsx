@@ -241,7 +241,7 @@ export function LeftNav({
             )}
           </div>
           <Item href={base && `${base}/cad-review`} icon="cube" active={pathname.includes("/cad-review")}>
-            CAD Review
+            CAD
           </Item>
           <Item href="/ai-logs" icon="spark" active={pathname.startsWith("/ai-logs")}>
             AI logs

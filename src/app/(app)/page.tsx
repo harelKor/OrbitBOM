@@ -31,7 +31,7 @@ export default async function HomePage() {
     { href: "/cots", title: "Orders", text: null, image: "/apps/cots.png" },
     // Harel sends this card's picture later; until then it's the accent wash alone (2026-11-08).
     // The badge: comments waiting on you (a mentor: to approve; the CAD Team: open on your system).
-    { href: robot ? `/robots/${robot.robot.id}/cad-review` : "/robots/new", title: "CAD Review", text: waiting ? (member.isMentor ? `${waiting} to approve` : `${waiting} open on your system`) : null, image: null as string | null, badge: waiting },
+    { href: robot ? `/robots/${robot.robot.id}/cad-review` : "/robots/new", title: "CAD", text: waiting ? (member.isMentor ? `${waiting} to approve` : `${waiting} open on your system`) : null, image: null as string | null, badge: waiting },
   ];
 
   // The cards fill the space between the sidebars: the negative margins undo the shell's own

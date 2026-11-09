@@ -23,9 +23,10 @@ function useCommentAction() {
   return { pending, error, run };
 }
 
-function Meta({ c }: { c: ReviewComment }) {
+function Meta({ c, where }: { c: ReviewComment; where?: boolean }) {
   return (
     <span className="mt-0.5 block text-[11px] text-subtle">
+      {where && <span className="font-semibold text-fg-2">{c.systemName ?? "Robot"} · </span>}
       {c.author ?? "Someone"} · <LocalTime at={c.createdAt} />
     </span>
   );
@@ -46,7 +47,8 @@ function PartChip({ c, onFocus }: { c: ReviewComment; onFocus?: (key: string) =>
 }
 
 // An open comment: its tick box ticks it off; a mentor's last rejection shows under it.
-export function OpenComment({ c, systemId, canTick, canDelete, onFocus }: { c: ReviewComment; systemId: string; canTick: boolean; canDelete: boolean; onFocus?: (key: string) => void }) {
+// `where`: show its system (or "Robot"), on the robot's page.
+export function OpenComment({ c, canTick, canDelete, onFocus, where }: { c: ReviewComment; canTick: boolean; canDelete: boolean; onFocus?: (key: string) => void; where?: boolean }) {
   const { pending, error, run } = useCommentAction();
   return (
     <li className={`rounded-md p-2 hover:bg-raised/70 ${pending ? "opacity-60" : ""}`}>
@@ -55,7 +57,7 @@ export function OpenComment({ c, systemId, canTick, canDelete, onFocus }: { c: R
           type="checkbox"
           checked={false}
           disabled={!canTick || pending}
-          onChange={() => run(() => setReviewCommentDone(systemId, c.id, true))}
+          onChange={() => run(() => setReviewCommentDone(c.id, true))}
           aria-label="Tick off"
           title={canTick ? "Tick off: done" : "The CAD Team ticks comments off"}
           className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-accent)] pointer-coarse:h-5 pointer-coarse:w-5"
@@ -65,7 +67,7 @@ export function OpenComment({ c, systemId, canTick, canDelete, onFocus }: { c: R
             {c.body}
           </button>
           <PartChip c={c} onFocus={onFocus} />
-          <Meta c={c} />
+          <Meta c={c} where={where} />
           {c.rejectNote && (
             <p className="mt-1 rounded border border-rose-400/40 bg-rose-500/5 px-2 py-1 text-xs text-rose-600">
               Rejected{c.rejectedBy ? ` by ${c.rejectedBy}` : ""}: {c.rejectNote}
@@ -89,7 +91,7 @@ export function OpenComment({ c, systemId, canTick, canDelete, onFocus }: { c: R
 }
 
 // A ticked-off comment waiting for a mentor: Approve, or Reject with why (it opens again).
-export function WaitingComment({ c, systemId, isMentor, canTick, onFocus }: { c: ReviewComment; systemId: string; isMentor: boolean; canTick: boolean; onFocus?: (key: string) => void }) {
+export function WaitingComment({ c, isMentor, canTick, onFocus, where }: { c: ReviewComment; isMentor: boolean; canTick: boolean; onFocus?: (key: string) => void; where?: boolean }) {
   const { pending, error, run } = useCommentAction();
   const [rejecting, setRejecting] = useState(false);
   const [note, setNote] = useState("");
@@ -100,7 +102,7 @@ export function WaitingComment({ c, systemId, isMentor, canTick, onFocus }: { c:
           type="checkbox"
           checked
           disabled={!canTick || pending}
-          onChange={() => run(() => setReviewCommentDone(systemId, c.id, false))}
+          onChange={() => run(() => setReviewCommentDone(c.id, false))}
           aria-label="Take the tick back"
           title={canTick ? "Take the tick back" : "Ticked off"}
           className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-accent)] pointer-coarse:h-5 pointer-coarse:w-5"
@@ -110,7 +112,7 @@ export function WaitingComment({ c, systemId, isMentor, canTick, onFocus }: { c:
             {c.body}
           </button>
           <PartChip c={c} onFocus={onFocus} />
-          <Meta c={c} />
+          <Meta c={c} where={where} />
           {c.doneAt && (
             <span className="block text-[11px] text-subtle">
               Ticked off{c.doneBy ? ` by ${c.doneBy}` : ""} · <LocalTime at={c.doneAt} />
@@ -172,22 +174,33 @@ export function TreeComment({ c, onFocus }: { c: ReviewComment; onFocus?: (key: 
   );
 }
 
+// Where a comment goes: one system, or on the robot's page the choice of the whole robot or a
+// system (the picked part's, else one picked from the list) (Harel, 2026-11-09).
+export type CommentTarget = { systemId: string } | { systems: { id: string; name: string }[] };
+
 // + Add comment: the text and, picked in the 3D view, the part it's about.
 export function AddCommentDialog({
   open,
   onClose,
-  systemId,
+  robotId,
+  target,
   part,
   onClearPart,
 }: {
   open: boolean;
   onClose: () => void;
-  systemId: string;
-  part: { key: string; name: string | null } | null;
+  robotId: string;
+  target: CommentTarget;
+  part: { key: string; name: string | null; systemId?: string | null } | null;
   onClearPart: () => void;
 }) {
   const [body, setBody] = useState("");
   const { pending, error, run } = useCommentAction();
+  const onRobot = "systems" in target;
+  const [scope, setScope] = useState<"system" | "robot">(onRobot && !part?.systemId ? "robot" : "system");
+  const [picked, setPicked] = useState("");
+  const systemId = !onRobot ? target.systemId : scope === "robot" ? null : (part?.systemId ?? (picked || null));
+  const missing = onRobot && scope === "system" && !systemId;
   return (
     <Dialog open={open} onClose={onClose} title="Add a comment" sheet>
       <form
@@ -195,7 +208,7 @@ export function AddCommentDialog({
         onSubmit={(e) => {
           e.preventDefault();
           run(
-            () => addReviewComment(systemId, body, part),
+            () => addReviewComment(robotId, systemId, body, part && { key: part.key, name: part.name }),
             () => {
               setBody("");
               onClose();
@@ -214,9 +227,41 @@ export function AddCommentDialog({
         ) : (
           <p className="text-xs text-muted">Tap a part in the 3D view first to tie the comment to it.</p>
         )}
+        {onRobot && (
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-1 rounded-md bg-raised p-1" role="radiogroup" aria-label="Where the comment goes">
+              {(["system", "robot"] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  role="radio"
+                  aria-checked={scope === v}
+                  onClick={() => setScope(v)}
+                  className={`press h-9 rounded text-sm font-semibold active:scale-[0.98] ${scope === v ? "bg-surface text-fg shadow-sm" : "text-muted hover:text-fg"}`}
+                >
+                  {v === "system" ? "System" : "Robot"}
+                </button>
+              ))}
+            </div>
+            {scope === "system" &&
+              (part?.systemId ? (
+                <p className="text-xs text-muted">On {target.systems.find((s) => s.id === part.systemId)?.name ?? "the part's system"}, the part&rsquo;s system.</p>
+              ) : (
+                <select className="input w-full" value={picked} onChange={(e) => setPicked(e.target.value)} aria-label="System">
+                  <option value="">Pick the system…</option>
+                  {target.systems.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              ))}
+            {scope === "robot" && <p className="text-xs text-muted">On the whole robot.</p>}
+          </div>
+        )}
         <textarea autoFocus required value={body} onChange={(e) => setBody(e.target.value)} rows={4} maxLength={2000} className="input min-h-28 w-full" placeholder="What should change?" />
         {error && <p className="text-sm text-rose-600">{error}</p>}
-        <button className="btn-primary w-full justify-center active:scale-[0.98]" disabled={pending || !body.trim()}>
+        <button className="btn-primary w-full justify-center active:scale-[0.98]" disabled={pending || !body.trim() || missing}>
           {pending ? "Saving…" : "Add comment"}
         </button>
       </form>

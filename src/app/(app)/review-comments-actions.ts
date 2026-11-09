@@ -20,16 +20,17 @@ async function run(fn: () => Promise<{ id?: string } | unknown>): Promise<Commen
   }
 }
 
-export async function addReviewComment(systemId: string, body: string, part: { key: string; name: string | null } | null): Promise<CommentResult> {
+// `systemId` null: a comment on the whole robot.
+export async function addReviewComment(robotId: string, systemId: string | null, body: string, part: { key: string; name: string | null } | null): Promise<CommentResult> {
   const member = await requireMember();
-  if (!isUuid(systemId)) return { error: "Unknown system." };
-  return run(() => addComment(member, { systemId, body, partKey: part?.key ?? null, partName: part?.name ?? null }));
+  if (!isUuid(robotId) || (systemId !== null && !isUuid(systemId))) return { error: "Unknown system." };
+  return run(() => addComment(member, { robotId, systemId, body, partKey: part?.key ?? null, partName: part?.name ?? null }));
 }
 
-export async function setReviewCommentDone(systemId: string, id: string, done: boolean): Promise<CommentResult> {
+export async function setReviewCommentDone(id: string, done: boolean): Promise<CommentResult> {
   const [member, mode] = await Promise.all([requireMember(), getMode()]);
-  if (!isUuid(systemId) || !isUuid(id)) return { error: "Unknown comment." };
-  return run(() => (done ? tickComments(member, mode, systemId, [id]) : untickComment(member, mode, id)));
+  if (!isUuid(id)) return { error: "Unknown comment." };
+  return run(() => (done ? tickComments(member, mode, null, [id]) : untickComment(member, mode, id)));
 }
 
 export async function approveReviewComment(id: string): Promise<CommentResult> {

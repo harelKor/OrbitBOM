@@ -22,16 +22,25 @@ export function canApprove(mode: Mode, member: Pick<Member, "isMentor">) {
   return mode === "edit" || member.isMentor;
 }
 
-export async function addComment(member: Member, input: { systemId: string; body: string; partKey?: string | null; partName?: string | null }) {
+// A comment on a system, or with `systemId` null on the whole robot (Harel, 2026-11-09).
+export async function addComment(member: Member, input: { robotId?: string; systemId: string | null; body: string; partKey?: string | null; partName?: string | null }) {
   const body = input.body.trim();
   if (!body) throw new CommentError("Write the comment first.");
   if (body.length > MAX_BODY) throw new CommentError(`Keep a comment under ${MAX_BODY} characters.`);
-  const [system] = await db.select({ id: systems.id }).from(systems).where(eq(systems.id, input.systemId));
-  if (!system) throw new CommentError("That system is gone.");
+  let robotId = input.robotId ?? null;
+  if (input.systemId) {
+    const [system] = await db.select({ id: systems.id, robotId: systems.robotId }).from(systems).where(eq(systems.id, input.systemId));
+    if (!system || (robotId && system.robotId !== robotId)) throw new CommentError("That system is gone.");
+    robotId = system.robotId;
+  } else {
+    const [robot] = robotId ? await db.select({ id: schema.robots.id }).from(schema.robots).where(eq(schema.robots.id, robotId)) : [];
+    if (!robot) throw new CommentError("That robot is gone.");
+  }
   const [row] = await db
     .insert(reviewComments)
     .values({
-      systemId: system.id,
+      robotId: robotId!,
+      systemId: input.systemId,
       authorId: member.id,
       body,
       partKey: input.partKey?.slice(0, 300) || null,
@@ -41,15 +50,15 @@ export async function addComment(member: Member, input: { systemId: string; body
   return row;
 }
 
-// Ticks off open comments of one system; `versionId`: the version the Update system window just
-// committed. Returns how many were ticked.
-export async function tickComments(member: Member, mode: Mode, systemId: string, ids: string[], versionId: string | null = null, tx: Pick<typeof db, "update"> = db) {
+// Ticks off open comments (of one system, when `systemId` is given); `versionId`: the version the
+// Update system window just committed. Returns how many were ticked.
+export async function tickComments(member: Member, mode: Mode, systemId: string | null, ids: string[], versionId: string | null = null, tx: Pick<typeof db, "update"> = db) {
   if (!canTick(mode, member)) throw new CommentError("Only the CAD Team ticks comments off.");
   if (!ids.length) return 0;
   const rows = await tx
     .update(reviewComments)
     .set({ state: "done", doneAt: new Date(), doneBy: member.id, doneVersionId: versionId })
-    .where(and(eq(reviewComments.systemId, systemId), inArray(reviewComments.id, ids), eq(reviewComments.state, "open")))
+    .where(and(systemId ? eq(reviewComments.systemId, systemId) : undefined, inArray(reviewComments.id, ids), eq(reviewComments.state, "open")))
     .returning({ id: reviewComments.id });
   return rows.length;
 }

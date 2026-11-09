@@ -13,6 +13,8 @@ const { members, reviewComments, systems, systemVersions } = schema;
 
 export type ReviewComment = {
   id: string;
+  systemId: string | null; // null: on the whole robot
+  systemName: string | null;
   body: string;
   partKey: string | null;
   partName: string | null;
@@ -30,14 +32,23 @@ export type ReviewComment = {
   rejectedBy: string | null;
 };
 
-export async function listComments(systemId: string): Promise<ReviewComment[]> {
-  const rows = await db.select().from(reviewComments).where(eq(reviewComments.systemId, systemId)).orderBy(asc(reviewComments.createdAt));
+// A system's comments, or with `robotId` every comment of the robot (its own and its systems').
+export async function listComments(scope: string | { robotId: string }): Promise<ReviewComment[]> {
+  const rows = await db
+    .select({ c: reviewComments, systemName: systems.name })
+    .from(reviewComments)
+    .leftJoin(systems, eq(systems.id, reviewComments.systemId))
+    .where(typeof scope === "string" ? eq(reviewComments.systemId, scope) : eq(reviewComments.robotId, scope.robotId))
+    .orderBy(asc(reviewComments.createdAt))
+    .then((r) => r.map(({ c, systemName }) => ({ ...c, systemName })));
   const ids = [...new Set(rows.flatMap((r) => [r.authorId, r.doneBy, r.approvedBy, r.rejectedBy]).filter((x): x is string => !!x))];
   const names = new Map((ids.length ? await db.select({ id: members.id, name: members.name }).from(members).where(inArray(members.id, ids)) : []).map((m) => [m.id, m.name]));
   const name = (id: string | null) => (id ? (names.get(id) ?? null) : null);
   const iso = (d: Date | null) => d?.toISOString() ?? null;
   return rows.map((r) => ({
     id: r.id,
+    systemId: r.systemId,
+    systemName: r.systemName,
     body: r.body,
     partKey: r.partKey,
     partName: r.partName,
@@ -111,17 +122,17 @@ export async function loadSystemReview(systemId: string): Promise<SystemReview |
   };
 }
 
-// Open and ticked-off (waiting for a mentor) comments per system of a robot.
+// Open and ticked-off (waiting for a mentor) comments per system of a robot; "robot": those on
+// the whole robot.
 export async function reviewCounts(robotId: string): Promise<Record<string, { open: number; done: number }>> {
   const rows = await db
     .select({ systemId: reviewComments.systemId, state: reviewComments.state, n: count() })
     .from(reviewComments)
-    .innerJoin(systems, eq(systems.id, reviewComments.systemId))
-    .where(and(eq(systems.robotId, robotId), inArray(reviewComments.state, ["open", "done"])))
+    .where(and(eq(reviewComments.robotId, robotId), inArray(reviewComments.state, ["open", "done"])))
     .groupBy(reviewComments.systemId, reviewComments.state);
   const out: Record<string, { open: number; done: number }> = {};
   for (const r of rows) {
-    const c = (out[r.systemId] ??= { open: 0, done: 0 });
+    const c = (out[r.systemId ?? "robot"] ??= { open: 0, done: 0 });
     if (r.state === "open") c.open = r.n;
     else c.done = r.n;
   }
@@ -140,4 +151,21 @@ export async function waitingOnYou(member: Member, robotId: string | null): Prom
     return row?.n ?? 0;
   }
   return 0;
+}
+
+// The robot's CAD page (Harel, 2026-11-09): every comment of the robot, and each linked system's
+// version tree.
+export type RobotReview = {
+  comments: ReviewComment[];
+  systems: { id: string; name: string; tree: TreeNode[] }[];
+};
+
+export async function loadRobotReview(robotId: string): Promise<RobotReview> {
+  const [rows, comments] = await Promise.all([
+    db.select({ id: systems.id, name: systems.name, url: systems.assemblyUrl }).from(systems).where(eq(systems.robotId, robotId)).orderBy(asc(systems.name)),
+    listComments({ robotId }),
+  ]);
+  const linked = rows.filter((r) => r.url);
+  const reviews = await Promise.all(linked.map((r) => loadSystemReview(r.id)));
+  return { comments, systems: linked.map((r, i) => ({ id: r.id, name: r.name, tree: reviews[i]?.tree ?? [] })) };
 }

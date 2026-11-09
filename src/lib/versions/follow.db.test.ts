@@ -80,7 +80,7 @@ else
       const b = await addComment(builder, { systemId: system.id, body: "Add a chamfer" });
       await expect(tickComments(builder, "build", system.id, [a.id])).rejects.toThrow("Only the CAD Team");
       expect(await tickComments(member, "cad", system.id, [a.id, b.id])).toBe(2);
-      expect(await reviewCounts(robot.id)).toEqual({ [system.id]: { open: 0, done: 2 } });
+      expect((await reviewCounts(robot.id))[system.id]).toEqual({ open: 0, done: 2 });
 
       await expect(approveComment(member, "cad", a.id)).rejects.toThrow("Only mentors");
       await approveComment(mentor, "none", a.id);
@@ -97,6 +97,21 @@ else
       const byId = new Map(review!.comments.map((c) => [c.id, c]));
       expect(byId.get(a.id)).toMatchObject({ state: "approved", approvedBy: "Mentor", author: "Builder", partName: "Plate" });
       expect(byId.get(b.id)).toMatchObject({ state: "open", rejectNote: "Still sharp", rejectedBy: "Mentor", doneAt: null });
+    });
+
+    it("comments on the whole robot: listed with the robot, counted apart from its systems", async () => {
+      const r = await addComment(builder, { robotId: robot.id, systemId: null, body: "Bumpers clash with the intake" });
+      expect(r.systemId).toBeNull();
+      expect(r.robotId).toBe(robot.id);
+      const { loadRobotReview } = await import("@/lib/data/cadReview");
+      const all = await loadRobotReview(robot.id);
+      expect(all.comments.find((c) => c.id === r.id)).toMatchObject({ systemId: null, systemName: null });
+      expect(all.systems.map((s) => s.name)).toEqual(["Intake"]);
+      expect((await reviewCounts(robot.id)).robot).toEqual({ open: 1, done: 0 });
+      // A system comment from the robot's page lands on the robot that system belongs to.
+      const other = await db.insert(schema.robots).values({ name: "Other bot", year: 2027 }).returning();
+      await expect(addComment(builder, { robotId: other[0].id, systemId: system.id, body: "x" })).rejects.toThrow("That system is gone.");
+      await db.delete(schema.robots).where(eq(schema.robots.id, other[0].id));
     });
 
     it("the tree lists the kept Onshape versions and marks the one the BOM was updated to", async () => {

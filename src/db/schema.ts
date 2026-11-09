@@ -651,9 +651,11 @@ export const reviewComments = pgTable(
   "review_comments",
   {
     id: id(),
-    systemId: uuid("system_id")
+    robotId: uuid("robot_id")
       .notNull()
-      .references(() => systems.id, { onDelete: "cascade" }),
+      .references(() => robots.id, { onDelete: "cascade" }),
+    // Null: a comment on the whole robot (the robot's CAD page, Harel 2026-11-09).
+    systemId: uuid("system_id").references(() => systems.id, { onDelete: "cascade" }),
     authorId: uuid("author_id").references(() => members.id, { onDelete: "set null" }),
     body: text("body").notNull(),
     // The part it is about (the 3D model's key, did:eid:partId) and its name then, kept for when
@@ -673,7 +675,7 @@ export const reviewComments = pgTable(
     rejectedAt: timestamp("rejected_at", { withTimezone: true }),
     rejectedBy: uuid("rejected_by").references(() => members.id, { onDelete: "set null" }),
   },
-  (t) => [index("review_comments_system_idx").on(t.systemId, t.createdAt)],
+  (t) => [index("review_comments_system_idx").on(t.systemId, t.createdAt), index("review_comments_robot_idx").on(t.robotId, t.createdAt)],
 );
 
 // Every time a part was released to fab (Released, Reproduction, Secondary Production) and the

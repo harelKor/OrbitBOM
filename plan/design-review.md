@@ -17,26 +17,32 @@ robot's built model (Update 3D model, as before). The version tree reads a kept 
 document's Onshape versions: a system that follows versions refreshes it inside the 1 call its
 check makes anyway; otherwise the tree's "Refresh from Onshape" reads it (1 call, CAD Team).
 
-## Pages
+## Pages (named "CAD" in the app since 2026-11-09)
 
-- `/robots/<robot>/cad-review` (home card "CAD Review", left menu; follows the robot picked in the
-  right panel): one 3D box per system with an assembly, its open / waiting counts on its name, and
-  the whole robot in a wide box below. Boxes draw live only while near the screen (browsers allow a
-  limited number of 3D views). A tap on a box (or on a part of the whole robot) opens the system.
-- `/robots/<robot>/systems/<system>/cad-review`:
-  - Left panel: + Add comment, Update system, the version tree (newest Onshape version big on
-    top, older ones down a line; a version the BOM was updated to is marked, "BOM is on this" for
-    the current one). Under each version: the comments added while it was the newest, and those
-    ticked off at its commit or while it was the newest.
-  - 3D view: tap a part → its name, size, Add comment, Hide, Only this. Tools: Fit, Iso / Front /
-    Top / Side, Section (axis, position, flip), Measure (two points, ≈ mm). Colours: CAD, or the
-    changes in the BOM's current version (shape / properties / added, removed listed).
-  - Top right: Open comments (tick box, date, author, part chip; a tap shows the part), and for
-    mentors "Waiting for you" (Approve, or Reject with why, which opens it again). Folded on phones.
+- `/robots/<robot>/cad-review` (home card and left menu "CAD"; follows the robot picked in the
+  right panel): the whole robot in a wide 3D box on top, which opens the robot's CAD page; below
+  it a box per linked system with its open / waiting counts: its 3D view on wide screens (drawn
+  while near the screen), its picture on phones, two per row.
+- `/robots/<robot>/systems/<system>/cad-review` and `/robots/<robot>/cad-review/robot` share one
+  screen (`src/components/review/ReviewScreen.tsx`):
+  - Wide screens: panel on the left (back link, name, + Add comment, then the page's own part),
+    3D view beside it. Phones: the 3D view fills the screen under the top bar; "Versions" (top
+    left) slides the panel in, "Tools" folds under it, + Add comment sits at the bottom; no name.
+  - System panel: Update system and the version tree (newest version big on top, BOM updates
+    marked, a tap folds a version). Robot panel: "Robot comments" and one folding button per
+    system with its tree.
+  - 3D: tap a part → name, size, Add comment, Open system (robot page), Open part, Hide, Only
+    this; a second tap opens its BOM window. Tools: Fit, Iso / Front / Top / Side, Section,
+    Measure, and on a system the colours of its current BOM version's changes.
+  - Top right: Open comments and "Waiting for you / approval" (mentors and Edit mode). The robot
+    page lists all of the robot's comments, each marked with its system or "Robot".
+  - Add comment on the robot page: System (the picked part's system, else picked from a list) or
+    Robot (`review_comments.system_id` null; every comment has its `robot_id`).
+- Right panel system tiles: on a CAD page they open the system's CAD page, on a BOM page its BOM
+  page, anywhere else they ask BOM or CAD.
 - Update system's Commit window has an Open comments panel: the ones ticked there are done at the
   version committed.
-- System page: a "CAD Review" chip with the counts. Home card badge: comments waiting on you
-  (mentor: to approve; CAD Team member: open on their system).
+- System page: a "CAD" chip with the counts. Home card badge: comments waiting on you.
 - MCP: `list_review_comments`, `add_review_comment`, `tick_review_comments`.
 
 ## Who can do what (Harel, 2026-11-08)

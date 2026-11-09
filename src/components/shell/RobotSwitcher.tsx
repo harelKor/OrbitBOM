@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { FastLink } from "@/components/ui/FastLink";
 import { NewSystemButton } from "@/app/(app)/robots/[robotId]/NewSystemButton";
@@ -62,7 +63,7 @@ export function RobotSwitcher({ robots, lastRobotId, isAdmin }: { robots: ShellR
           </div>
           <div className="grid grid-cols-2 gap-2">
             {expanded.systems.map((s) => (
-              <SystemTile key={s.id} robotId={expanded.id} system={s} active={s.id === systemId} isAdmin={isAdmin} />
+              <SystemTile key={s.id} robotId={expanded.id} system={s} active={s.id === systemId} isAdmin={isAdmin} pathname={pathname} />
             ))}
           </div>
           {expanded.systems.length === 0 && <p className="px-2 text-xs text-subtle">No systems yet.</p>}
@@ -143,11 +144,48 @@ function RobotCard({
   );
 }
 
-function SystemTile({ robotId, system, active, isAdmin }: { robotId: string; system: ShellSystem; active: boolean; isAdmin: boolean }) {
+// Where a system tile leads (Harel, 2026-11-09): from a CAD page to the system's CAD page, from a
+// BOM page (a robot's dashboard or a system) to its BOM page; anywhere else it asks which.
+const BOM_PAGE = /^\/robots\/[0-9a-f-]{36}(?:\/systems\/[0-9a-f-]{36})?\/?$/;
+function SystemTile({ robotId, system, active, isAdmin, pathname }: { robotId: string; system: ShellSystem; active: boolean; isAdmin: boolean; pathname: string }) {
+  const [asking, setAsking] = useState(false);
+  const bom = `/robots/${robotId}/systems/${system.id}`;
+  const cad = `${bom}/cad-review`;
+  const inCad = pathname.includes("/cad-review");
+  const ask = !inCad && !BOM_PAGE.test(pathname);
+  useEffect(() => {
+    if (!asking) return;
+    const close = (e: Event) => {
+      if (e instanceof KeyboardEvent && e.key !== "Escape") return;
+      setAsking(false);
+    };
+    const t = setTimeout(() => document.addEventListener("click", close), 0);
+    document.addEventListener("keydown", close);
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener("click", close);
+      document.removeEventListener("keydown", close);
+    };
+  }, [asking]);
   return (
     <div className="relative">
+      {asking && (
+        <div className="absolute inset-x-1 top-1/3 z-20 flex animate-pop gap-1 rounded-md border border-line bg-surface p-1 shadow-lg">
+          <FastLink href={bom} className="btn h-9 flex-1 justify-center px-1 text-xs active:scale-[0.98]">
+            BOM
+          </FastLink>
+          <FastLink href={cad} className="btn h-9 flex-1 justify-center px-1 text-xs active:scale-[0.98]">
+            CAD
+          </FastLink>
+        </div>
+      )}
       <FastLink
-        href={`/robots/${robotId}/systems/${system.id}`}
+        href={inCad ? cad : bom}
+        onClick={(e) => {
+          if (!ask) return;
+          e.preventDefault();
+          setAsking(true);
+        }}
         aria-current={active ? "page" : undefined}
         data-selected={active}
         className="card-interactive group block"

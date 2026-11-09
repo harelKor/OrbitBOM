@@ -39,7 +39,7 @@ export default async function SystemReviewPage({ params }: { params: Promise<{ r
       robotName={robot.name}
       system={{ id: system.id, name: system.name, assemblyUrl: system.assemblyUrl, lastSyncedAt: system.lastSyncedAt }}
       review={review}
-      parts={parts.flatMap((p) => (p.modelKey ? [{ id: p.id, key: p.modelKey, name: partTitle(p) }] : []))}
+      parts={parts.flatMap((p) => (p.modelKey ? [{ id: p.id, key: p.modelKey, name: partTitle(p), systemId }] : []))}
       thumbs={Object.fromEntries(parts.map((p) => [p.id, p.thumbUrl]))}
       builtAt={builtAt}
       draft={draft}

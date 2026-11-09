@@ -88,7 +88,7 @@ export default async function MembersPage() {
               {me.isAdmin && <MemberTeam memberId={m.id} team={m.team} systemId={m.systemId} systems={systems} />}
               {me.isAdmin && (
                 <form action={setMentor.bind(null, m.id, !m.isMentor)}>
-                  <button className="btn" title="Mentors approve or reject ticked-off CAD Review comments">
+                  <button className="btn" title="Mentors approve or reject ticked-off CAD comments">
                     {m.isMentor ? "Not a mentor" : "Make mentor"}
                   </button>
                 </form>

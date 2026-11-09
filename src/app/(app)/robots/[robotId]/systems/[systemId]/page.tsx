@@ -151,7 +151,7 @@ function ReviewChip({ href, open, waiting }: { href: string; open: number; waiti
       href={href}
       className="press inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1 text-sm font-semibold text-fg-2 hover:border-accent/50 hover:text-fg active:scale-[0.98] pointer-coarse:min-h-9"
     >
-      CAD Review
+      CAD
       {open > 0 && <span className="rounded-full bg-amber-500/15 px-1.5 text-xs text-amber-600 tabular-nums">{open} open</span>}
       {waiting > 0 && <span className="rounded-full bg-sky-500/15 px-1.5 text-xs text-sky-600 tabular-nums">{waiting} to approve</span>}
     </Link>
