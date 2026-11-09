@@ -15,6 +15,7 @@ import { ModeProvider } from "./ModeContext";
 import type { Mode } from "./mode";
 import { RobotSwitcher } from "./RobotSwitcher";
 import { SidePanelsContext } from "./SidePanels";
+import { AppFullscreen } from "./AppFullscreen";
 import { Shortcuts } from "./Shortcuts";
 import { TopBar } from "./TopBar";
 import { VisitTracker } from "./VisitTracker";
@@ -286,6 +287,7 @@ export function Shell({
                     <VisitTracker />
                   </Suspense>
                   <Shortcuts robots={robots} lastRobotId={lastRobotId} />
+                  <AppFullscreen />
                 </div>
                 <aside
                   ref={rightAside}
