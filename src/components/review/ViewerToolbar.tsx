@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { Axis, SceneTools, Section, ViewName } from "@/components/dashboard/ModelCanvas";
+import type { Axis, HiddenParts, SceneTools, Section, ViewName } from "@/components/dashboard/ModelCanvas";
 
 const VIEWS: { v: ViewName | "fit"; label: string }[] = [
   { v: "fit", label: "Fit" },
@@ -17,22 +17,25 @@ const box = "rounded-md border border-line bg-surface/95 shadow-sm backdrop-blur
 // CAD's tools on the 3D view: standard views and fit, one section plane, and measuring between two
 // points (≈: the meshes are exported at 0.5 mm, good for clearances, not tolerances). Wide screens
 // show them at the bottom left; phones fold them into a Tools button on the left, under Versions
-// (Harel, 2026-11-09).
+// (Harel, 2026-11-09). Parts hidden with Y or Hide are listed below, folded behind a "Hidden" button.
 export function ViewerToolbar({
   tools,
   measured,
   measuring,
   onMeasuring,
   children,
+  hidden,
 }: {
   tools: SceneTools | null;
   measured: { points: number; mm: number | null };
   measuring: boolean;
   onMeasuring: (on: boolean) => void;
   children?: React.ReactNode; // the colour toggle, above the tools
+  hidden?: HiddenParts | null;
 }) {
   const [section, setSection] = useState<Section | null>(null);
   const [open, setOpen] = useState(false);
+  const [showHidden, setShowHidden] = useState(false);
   const cut = (s: Section | null) => {
     setSection(s);
     tools?.section(s);
@@ -92,6 +95,29 @@ export function ViewerToolbar({
           >
             Measure
           </button>
+        </div>
+      )}
+      {hidden && (
+        <div className={`flex w-48 flex-col overflow-hidden text-xs ${box}`}>
+          <div className="flex items-center gap-2 px-1 py-0.5">
+            <button className={`${tool} flex-1 justify-start tabular-nums`} aria-expanded={showHidden} onClick={() => setShowHidden(!showHidden)}>
+              Hidden · {hidden.items.length} {showHidden ? "▴" : "▾"}
+            </button>
+            <button className={`${tool} text-accent-hover`} onClick={() => hidden.show(null)}>
+              Show all
+            </button>
+          </div>
+          {showHidden && (
+            <ul className="max-h-48 overflow-y-auto border-t border-line p-1">
+              {hidden.items.map((g) => (
+                <li key={g.id}>
+                  <button onClick={() => hidden.show(g.id)} title="Show it again" className="press block w-full truncate rounded px-2 py-1.5 text-left text-fg-2 hover:bg-raised hover:text-fg pointer-coarse:min-h-9">
+                    {g.name}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
     </div>

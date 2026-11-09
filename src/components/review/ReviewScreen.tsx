@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { openPartWindow } from "@/components/bom/PartDetailsHost";
-import type { SceneTools, ViewerModel, ViewerMode } from "@/components/dashboard/ModelCanvas";
+import type { HiddenParts, SceneTools, ViewerModel, ViewerMode } from "@/components/dashboard/ModelCanvas";
 import { AddCommentDialog, OpenComment, WaitingComment, type CommentTarget } from "@/components/review/Comments";
 import { ViewerToolbar } from "@/components/review/ViewerToolbar";
 import { Segmented } from "@/components/ui/Segmented";
@@ -64,6 +64,7 @@ export function ReviewScreen({
   const [isolated, setIsolated] = useState<string | null>(null);
   const [adding, setAdding] = useState<{ key: string; name: string | null; systemId: string | null } | null | false>(false);
   const [drawer, setDrawer] = useState(false);
+  const [hidden, setHidden] = useState<HiddenParts | null>(null);
   // null: as the screen suits (folded on a phone, open on wider screens) until toggled.
   const [openList, setOpenList] = useState<boolean | null>(null);
   const [waitList, setWaitList] = useState<boolean | null>(null);
@@ -174,6 +175,7 @@ export function ReviewScreen({
             names={nameByKey}
             onTools={setTools}
             onMeasure={setMeasured}
+            onHidden={setHidden}
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">
@@ -206,14 +208,12 @@ export function ReviewScreen({
           )}
         </div>
 
-        {/* The picked part: Add comment, Open system (the robot's page), hide, show alone, size. */}
+        {/* The picked part: Open system (the robot's page), Open part, hide, show alone, size. The
+            page's own + Add comment ties a comment to it (Harel, 2026-11-09). */}
         {picked && (
           <div className="absolute z-20 flex w-max max-w-[calc(100%-1.5rem)] animate-pop flex-wrap items-center gap-2 rounded-md border border-accent/50 bg-surface/95 px-3 py-2 text-xs shadow-sm backdrop-blur max-lg:bottom-20 max-lg:left-1/2 max-lg:-translate-x-1/2 max-lg:justify-center lg:top-3 lg:left-3 lg:max-w-[calc(100%-23rem)]">
             <span className="min-w-0 max-w-48 truncate font-semibold text-fg">{picked.name ?? "Placed in CAD, not on the BOM"}</span>
             {size && <span className="text-subtle tabular-nums">≈ {size.map((n) => Math.round(n)).join(" × ")} mm</span>}
-            <button className="btn-primary h-8 px-3 text-xs active:scale-[0.98] pointer-coarse:h-9" onClick={() => setAdding(picked)}>
-              Add comment
-            </button>
             {onRobot && picked.systemId && (
               <Link href={`/robots/${robotId}/systems/${picked.systemId}/cad-review`} className="btn h-8 px-2.5 text-xs pointer-coarse:h-9">
                 Open system
@@ -272,7 +272,7 @@ export function ReviewScreen({
           + Add comment
         </button>
 
-        <ViewerToolbar tools={tools} measured={measured} measuring={measuring} onMeasuring={setMeasuring}>
+        <ViewerToolbar tools={tools} measured={measured} measuring={measuring} onMeasuring={setMeasuring} hidden={hidden}>
           {changes && (
             <>
               <Segmented

@@ -28,6 +28,10 @@ export type Axis = "x" | "y" | "z";
 export type Section = { axis: Axis; at: number; flip: boolean };
 // Directions from the model to the camera, in the scene's Y-up frame (Onshape's Z is up).
 const VIEWS: Record<ViewName, [number, number, number]> = { front: [0, 0, 1], top: [0, 1, 0.0001], side: [1, 0, 0], iso: [1, 1, 1] };
+// The parts hidden with Y or Hide, for a page that lists them itself (CAD folds the list under its
+// Tools on phones, Harel 2026-11-09).
+export type HiddenParts = { items: { id: string; name: string }[]; show: (id: string | null) => void };
+
 export type SceneTools = {
   view: (name: ViewName | "fit") => void;
   section: (s: Section | null) => void;
@@ -67,6 +71,7 @@ export function ModelCanvas({
   panelLeft,
   onTools,
   onMeasure,
+  onHidden,
 }: {
   model: ViewerModel;
   colors: Map<string, string>; // part key → status colour
@@ -81,6 +86,7 @@ export function ModelCanvas({
   panelLeft?: number; // px from the left for the hidden parts list, past the viewer's own panels
   onTools?: (tools: SceneTools | null) => void; // the review tools, once the model is loaded
   onMeasure?: (m: { points: number; mm: number | null }) => void;
+  onHidden?: (h: HiddenParts | null) => void; // the page shows the hidden parts list itself
 }) {
   const host = useRef<HTMLDivElement>(null);
   // Recolours the parts and frames the located one; true when it is in the model.
@@ -562,6 +568,22 @@ export function ModelCanvas({
     };
   }, [model]);
 
+  // The hidden parts, handed to a page that lists them itself; null when none are hidden.
+  const hiddenRef = useRef(onHidden);
+  useEffect(() => {
+    hiddenRef.current = onHidden;
+  }, [onHidden]);
+  useEffect(() => {
+    hiddenRef.current?.(
+      gone.length
+        ? {
+            items: gone.map((g) => ({ id: `${g.m}:${g.i}`, name: names?.get(g.key) ?? "Part" })).reverse(),
+            show: (id) => scene.current?.show(id ? gone.filter((g) => `${g.m}:${g.i}` === id) : gone),
+          }
+        : null,
+    );
+  }, [gone, names]);
+
   // Colours and Locate.
   const loaded = progress === null;
   useEffect(() => {
@@ -586,7 +608,7 @@ export function ModelCanvas({
         </div>
       )}
       {error && <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">{error}</div>}
-      {gone.length > 0 && (
+      {gone.length > 0 && !onHidden && (
         <div
           onClick={(e) => e.stopPropagation()}
           style={panelLeft !== undefined ? { left: panelLeft } : undefined}

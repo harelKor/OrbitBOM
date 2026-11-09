@@ -29,9 +29,9 @@ export default async function HomePage() {
     },
     { href: "/inventory", title: "Inventory", text: null, image: "/apps/inventory.png" },
     { href: "/cots", title: "Orders", text: null, image: "/apps/cots.png" },
-    // Harel sends this card's picture later; until then it's the accent wash alone (2026-11-08).
+    // Harel's picture (2026-11-09): portrait, so the crop aims at the model on the screen.
     // The badge: comments waiting on you (a mentor: to approve; the CAD Team: open on your system).
-    { href: robot ? `/robots/${robot.robot.id}/cad-review` : "/robots/new", title: "CAD", text: waiting ? (member.isMentor ? `${waiting} to approve` : `${waiting} open on your system`) : null, image: null as string | null, badge: waiting },
+    { href: robot ? `/robots/${robot.robot.id}/cad-review` : "/robots/new", title: "CAD", text: waiting ? (member.isMentor ? `${waiting} to approve` : `${waiting} open on your system`) : null, image: "/apps/cad.webp", focus: "object-[center_30%]", badge: waiting },
   ];
 
   // The cards fill the space between the sidebars: the negative margins undo the shell's own
@@ -59,7 +59,7 @@ export default async function HomePage() {
                   fill
                   loading="eager"
                   sizes="(min-width: 768px) 50vw, 100vw"
-                  className="object-cover object-[center_20%] saturate-[0.92] contrast-[1.03] transition-transform duration-500 ease-out group-hover:scale-105"
+                  className={`object-cover ${"focus" in t ? t.focus : "object-[center_20%]"} saturate-[0.92] contrast-[1.03] transition-transform duration-500 ease-out group-hover:scale-105`}
                 />
               ) : (
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,color-mix(in_srgb,var(--color-accent)_45%,transparent),transparent_65%)]" />
