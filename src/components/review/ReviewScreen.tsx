@@ -383,7 +383,7 @@ function Popup({ title, count, shown, onToggle, tone, children }: { title: strin
 
 // The panel's width on wide screens, dragged from its right edge like the shell's side columns
 // (Harel, 2026-11-09): written straight onto the screen while dragging, kept in this browser.
-// Double-click goes back to the normal width.
+// Double-click goes back to the normal width. Narrowest: 100 px (Harel, 2026-11-09).
 const PANEL_KEY = "orbit-cad-panel-w";
 const PANEL_DEFAULT = 320;
 function PanelResizer({ root }: { root: React.RefObject<HTMLDivElement | null> }) {
@@ -413,7 +413,7 @@ function PanelResizer({ root }: { root: React.RefObject<HTMLDivElement | null> }
     let w = w0;
     let frame = 0;
     const move = (ev: PointerEvent) => {
-      w = Math.round(Math.min(max, Math.max(240, w0 + ev.clientX - x0)));
+      w = Math.round(Math.min(max, Math.max(100, w0 + ev.clientX - x0)));
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => set(w));
     };
