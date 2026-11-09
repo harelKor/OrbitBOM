@@ -1,31 +1,29 @@
 import { asc, desc, eq, isNotNull } from "drizzle-orm";
-import { redirect } from "next/navigation";
 import { db, schema } from "@/db";
 import { getMember } from "@/lib/auth";
 import { onshapeUrl, parseOnshapeUrl } from "@/lib/onshape/url";
 import { LinkAssemblyForm } from "./LinkAssemblyForm";
+import { PanelHome } from "./PanelHome";
+import { panelPlace } from "./place";
 import { PanelSignIn } from "./PanelSignIn";
 
 // Linking runs the first Update BOM in the same request, then the new system's thumbnails in after().
 export const maxDuration = 300;
 
 // The right panel of an Onshape assembly (plan §4). Onshape opens it as
-// /onshape/panel?server={$server}&documentId={$documentId}&workspaceId={$workspaceId}&elementId={$elementId}
-// A linked assembly goes straight to its system page, which checks it for changes to commit
-// (?check=1); otherwise the member links it to a robot.
+// /onshape/panel?server={$server}&documentId={$documentId}&workspaceOrVersion={$workspaceOrVersion}&workspaceOrVersionId={$workspaceOrVersionId}&elementId={$elementId}
+// (the older ...&workspaceId={$workspaceId} still works). A linked assembly shows Update system,
+// Comment, View BOM and View CAD (Harel, 2026-11-09); otherwise the member links it to a robot.
 export default async function OnshapePanelPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  const { server, documentId, workspaceId, elementId } = await searchParams;
-  const host = server && /^https:\/\/[a-z0-9-]+\.onshape\.com\/?$/i.test(server) ? server.replace(/\/$/, "") : "https://cad.onshape.com";
-  const ref = parseOnshapeUrl(`${host}/documents/${documentId}/w/${workspaceId}/e/${elementId}`);
-
-  return <div className="p-4 text-sm">{await panelBody(ref)}</div>;
+  const place = panelPlace(await searchParams);
+  return <div className="p-4 text-sm">{await panelBody(place.ref, place.query)}</div>;
 }
 
-async function panelBody(ref: ReturnType<typeof parseOnshapeUrl>) {
+async function panelBody(ref: ReturnType<typeof parseOnshapeUrl>, query: string) {
   if (!ref?.eid) return <p className="text-muted">Open this panel from an Onshape assembly.</p>;
   const member = await getMember();
   if (!member) return <PanelSignIn />;
@@ -40,9 +38,9 @@ async function panelBody(ref: ReturnType<typeof parseOnshapeUrl>) {
     const r = parseOnshapeUrl(s.assemblyUrl!);
     return r?.did === ref.did && r.eid === ref.eid;
   });
-  if (system) redirect(`/robots/${system.robotId}/systems/${system.id}?check=1`);
+  if (system) return <PanelHome robotId={system.robotId} systemId={system.id} query={query} />;
 
-  // A robot's main assembly opens that robot's dashboard and its 3D view.
+  // A robot's main assembly: comments on the robot or one of its systems, its BOM and CAD.
   const mains = await db
     .select({ id: schema.robots.id, url: schema.robots.mainAssemblyUrl })
     .from(schema.robots)
@@ -52,7 +50,10 @@ async function panelBody(ref: ReturnType<typeof parseOnshapeUrl>) {
     const m = parseOnshapeUrl(r.url!);
     return m?.did === ref.did && m.eid === ref.eid;
   });
-  if (robot) redirect(`/robots/${robot.id}`);
+  if (robot) return <PanelHome robotId={robot.id} systemId={null} query={query} />;
+
+  // Linking keeps the assembly's workspace, which a version view doesn't give.
+  if (ref.wvm !== "w") return <p className="text-muted">This assembly isn&apos;t linked yet. Open the document&apos;s workspace (not a version) to link it to a robot.</p>;
 
   const robots = await db
     .select({ id: schema.robots.id, name: schema.robots.name, layoutsDid: schema.robots.layoutsDocumentId })

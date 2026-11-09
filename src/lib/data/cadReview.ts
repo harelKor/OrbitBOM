@@ -18,6 +18,8 @@ export type ReviewComment = {
   body: string;
   partKey: string | null;
   partName: string | null;
+  onshapeVersionId: string | null;
+  onshapeVersionName: string | null;
   state: "open" | "done" | "approved";
   createdAt: string;
   author: string | null;
@@ -52,6 +54,8 @@ export async function listComments(scope: string | { robotId: string }): Promise
     body: r.body,
     partKey: r.partKey,
     partName: r.partName,
+    onshapeVersionId: r.onshapeVersionId,
+    onshapeVersionName: r.onshapeVersionName,
     state: r.state,
     createdAt: r.createdAt.toISOString(),
     author: name(r.authorId),
@@ -110,7 +114,7 @@ export async function loadSystemReview(systemId: string): Promise<SystemReview |
   const tree = buildTree(
     kept?.versions ?? null,
     versions.map(({ v, by }) => ({ id: v.id, label: versionLabel(v), at: v.committedAt?.toISOString() ?? null, by, vid: vidOf(v.onshapeRef), current: v.id === currentId })),
-    comments.map((c) => ({ id: c.id, createdAt: c.createdAt, doneAt: c.doneAt, doneVersionId: c.doneVersionId, state: c.state })),
+    comments.map((c) => ({ id: c.id, createdAt: c.createdAt, doneAt: c.doneAt, doneVersionId: c.doneVersionId, state: c.state, onshapeVersionId: c.onshapeVersionId, onshapeVersionName: c.onshapeVersionName })),
   );
   return {
     comments,

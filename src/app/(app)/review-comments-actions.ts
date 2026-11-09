@@ -20,11 +20,19 @@ async function run(fn: () => Promise<{ id?: string } | unknown>): Promise<Commen
   }
 }
 
-// `systemId` null: a comment on the whole robot.
-export async function addReviewComment(robotId: string, systemId: string | null, body: string, part: { key: string; name: string | null } | null): Promise<CommentResult> {
+// `systemId` null: a comment on the whole robot. `onshapeVersion`: from the Onshape panel, the
+// version it was written on.
+export async function addReviewComment(
+  robotId: string,
+  systemId: string | null,
+  body: string,
+  part: { key: string; name: string | null } | null,
+  onshapeVersion: { id: string; name: string } | null = null,
+): Promise<CommentResult> {
   const member = await requireMember();
   if (!isUuid(robotId) || (systemId !== null && !isUuid(systemId))) return { error: "Unknown system." };
-  return run(() => addComment(member, { robotId, systemId, body, partKey: part?.key ?? null, partName: part?.name ?? null }));
+  if (onshapeVersion && (!systemId || !/^[0-9a-f]{24}$/i.test(onshapeVersion.id) || typeof onshapeVersion.name !== "string")) return { error: "Unknown Onshape version." };
+  return run(() => addComment(member, { robotId, systemId, body, partKey: part?.key ?? null, partName: part?.name ?? null, onshapeVersion: onshapeVersion && { id: onshapeVersion.id.toLowerCase(), name: onshapeVersion.name } }));
 }
 
 export async function setReviewCommentDone(id: string, done: boolean): Promise<CommentResult> {

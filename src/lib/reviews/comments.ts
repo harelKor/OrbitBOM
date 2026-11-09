@@ -23,7 +23,8 @@ export function canApprove(mode: Mode, member: Pick<Member, "isMentor">) {
 }
 
 // A comment on a system, or with `systemId` null on the whole robot (Harel, 2026-11-09).
-export async function addComment(member: Member, input: { robotId?: string; systemId: string | null; body: string; partKey?: string | null; partName?: string | null }) {
+// `onshapeVersion`: the Onshape version it was written on, from the Onshape panel.
+export async function addComment(member: Member, input: { robotId?: string; systemId: string | null; body: string; partKey?: string | null; partName?: string | null; onshapeVersion?: { id: string; name: string } | null }) {
   const body = input.body.trim();
   if (!body) throw new CommentError("Write the comment first.");
   if (body.length > MAX_BODY) throw new CommentError(`Keep a comment under ${MAX_BODY} characters.`);
@@ -45,6 +46,8 @@ export async function addComment(member: Member, input: { robotId?: string; syst
       body,
       partKey: input.partKey?.slice(0, 300) || null,
       partName: input.partKey ? input.partName?.slice(0, 200) || null : null,
+      onshapeVersionId: input.onshapeVersion?.id ?? null,
+      onshapeVersionName: input.onshapeVersion ? input.onshapeVersion.name.slice(0, 200) : null,
     })
     .returning();
   return row;

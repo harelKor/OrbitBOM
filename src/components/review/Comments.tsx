@@ -28,6 +28,7 @@ function Meta({ c, where }: { c: ReviewComment; where?: boolean }) {
     <span className="mt-0.5 block text-[11px] text-subtle">
       {where && <span className="font-semibold text-fg-2">{c.systemName ?? "Robot"} · </span>}
       {c.author ?? "Someone"} · <LocalTime at={c.createdAt} />
+      {c.onshapeVersionId && <span title="Written in the Onshape panel on this Onshape version"> · on {c.onshapeVersionName || "an Onshape version"}</span>}
     </span>
   );
 }

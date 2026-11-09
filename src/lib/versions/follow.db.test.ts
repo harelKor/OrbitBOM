@@ -127,4 +127,19 @@ else
       // The comments were added while V1 was the newest version.
       expect(review!.tree[1].added).toHaveLength(3);
     });
+
+    it("an Onshape panel comment goes on Onshape's newest version, above the BOM's, with no extra call", async () => {
+      const { panelVersion } = await import("@/lib/reviews/panelVersion");
+      onshape.length = 0;
+      // On the workspace: the newest version. The check above just read the list, so no call.
+      const at = await panelVersion(member, system.id, { did: DID, wv: "w", wvId: WID });
+      expect(at).toMatchObject({ version: { id: "v2", name: "V2" }, ahead: true, note: null });
+      expect(onshape).toEqual([]);
+      // Written now, so its date alone would put it on V1; its version puts it on V2.
+      const c = await addComment(builder, { systemId: system.id, body: "Panel comment", onshapeVersion: at!.version });
+      const review = await loadSystemReview(system.id);
+      expect(review!.tree[0]).toMatchObject({ key: "v2", ahead: true });
+      expect(review!.tree[0].added).toEqual([c.id]);
+      expect(review!.comments.find((x) => x.id === c.id)).toMatchObject({ onshapeVersionId: "v2", onshapeVersionName: "V2" });
+    });
   });

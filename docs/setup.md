@@ -82,7 +82,9 @@ property IDs it prints for Material, Pre Process, Process 1 and Process 2 into
 4. **Panel inside Onshape:** in the same OAuth application, open **Extensions → Add extension**.
    - Name: OrbitBOM. Location: **Element right panel**. Context: **Selected assembly**.
    - Action URL:
-     `https://orbitparts.duckdns.org/onshape/panel?server={$server}&documentId={$documentId}&workspaceId={$workspaceId}&elementId={$elementId}`
+     `https://orbitparts.duckdns.org/onshape/panel?server={$server}&documentId={$documentId}&workspaceOrVersion={$workspaceOrVersion}&workspaceOrVersionId={$workspaceOrVersionId}&elementId={$elementId}`
+     (the version fields let a comment written in the panel go on the Onshape version open there;
+     the older `workspaceId={$workspaceId}` URL still works, its comments go on the newest version)
    - Students then subscribe to the app (or it is granted to the Enterprise) and open the OrbitBOM
      icon on an assembly's right side. They sign in once in a popup; the sign-in lasts 60 days.
 

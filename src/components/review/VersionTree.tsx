@@ -88,6 +88,12 @@ function Count({ node, folded }: { node: TreeNode; folded: boolean }) {
 }
 
 function BomMarks({ node }: { node: TreeNode }) {
+  if (node.ahead)
+    return (
+      <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-600" title="A newer Onshape version than the one the BOM is on: Update system hasn't brought it in yet">
+        Newer in Onshape · BOM not updated
+      </span>
+    );
   if (!node.bom.length) return null;
   const current = node.bom.some((b) => b.current);
   return (

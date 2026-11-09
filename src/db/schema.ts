@@ -662,6 +662,11 @@ export const reviewComments = pgTable(
     // the part is gone from a newer version.
     partKey: text("part_key"),
     partName: text("part_name"),
+    // The Onshape version of the design document it was written on, from the Onshape panel: the
+    // version open there, or the document's newest one when Onshape was on the workspace. Null
+    // (written on the site): the tree places it by its date (Harel, 2026-11-09).
+    onshapeVersionId: text("onshape_version_id"),
+    onshapeVersionName: text("onshape_version_name"),
     state: reviewCommentState("state").notNull().default("open"),
     createdAt: createdAt(),
     doneAt: timestamp("done_at", { withTimezone: true }),
