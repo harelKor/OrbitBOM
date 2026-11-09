@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { openPartWindow } from "@/components/bom/PartDetailsHost";
-import type { HiddenParts, SceneTools, ViewerModel, ViewerMode } from "@/components/dashboard/ModelCanvas";
+import type { HiddenParts, MeasureInfo, SceneTools, ViewerModel, ViewerMode } from "@/components/dashboard/ModelCanvas";
 import { AddCommentDialog, OpenComment, WaitingComment, type CommentTarget } from "@/components/review/Comments";
 import { ViewerToolbar } from "@/components/review/ViewerToolbar";
 import { Segmented } from "@/components/ui/Segmented";
@@ -59,8 +59,7 @@ export function ReviewScreen({
   const [selected, setSelected] = useState<string | null>(null);
   const [focus, setFocus] = useState<string | null>(null);
   const [tools, setTools] = useState<SceneTools | null>(null);
-  const [measured, setMeasured] = useState<{ points: number; mm: number | null }>({ points: 0, mm: null });
-  const [measuring, setMeasuring] = useState(false);
+  const [measured, setMeasured] = useState<MeasureInfo>({ picks: [], rows: [] });
   const [isolated, setIsolated] = useState<string | null>(null);
   const [adding, setAdding] = useState<{ key: string; name: string | null; systemId: string | null } | null | false>(false);
   const [drawer, setDrawer] = useState(false);
@@ -272,7 +271,7 @@ export function ReviewScreen({
           + Add comment
         </button>
 
-        <ViewerToolbar tools={tools} measured={measured} measuring={measuring} onMeasuring={setMeasuring} hidden={hidden}>
+        <ViewerToolbar tools={tools} measured={measured} hidden={hidden}>
           {changes && (
             <>
               <Segmented

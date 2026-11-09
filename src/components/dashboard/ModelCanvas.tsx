@@ -5,6 +5,8 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { edgePositions } from "@/lib/model/edges";
+import { measure as measurePicks, placeEdge, placeFace, placePoint, type Picked, type Row } from "@/lib/model/measure";
+import { topology, type Topology, type V3 } from "@/lib/model/topology";
 import { decodeMeshes, type Appearance, type Mesh } from "@/lib/model/mesh";
 
 export type ViewerModel = {
@@ -66,10 +68,15 @@ const VIEWS: Record<ViewName, [number, number, number]> = { front: [0, 0, 1], to
 // Tools on phones, Harel 2026-11-09).
 export type HiddenParts = { items: { id: string; name: string }[]; show: (id: string | null) => void };
 
+// Measure chosen faces, edges and corners like Onshape's selection filter: Any takes a corner, else
+// an edge, else the face under the pointer (Harel, 2026-11-09).
+export type MeasureFilter = "any" | "face" | "edge" | "point";
+export type MeasureInfo = { picks: string[]; rows: Row[] };
+
 export type SceneTools = {
   view: (name: ViewName | "fit") => void;
   section: (s: Section | null) => void;
-  measure: (on: boolean) => void;
+  measure: (filter: MeasureFilter | null) => void;
   hideKey: (key: string) => void;
   isolate: (key: string | null) => void;
   partSize: (key: string) => [number, number, number] | null;
@@ -119,7 +126,7 @@ export function ModelCanvas({
   names?: Map<string, string>; // part key -> its name, for the hidden parts list
   panelLeft?: number; // px from the left for the hidden parts list, past the viewer's own panels
   onTools?: (tools: SceneTools | null) => void; // the review tools, once the model is loaded
-  onMeasure?: (m: { points: number; mm: number | null }) => void;
+  onMeasure?: (m: MeasureInfo) => void;
   onHidden?: (h: HiddenParts | null) => void; // the page shows the hidden parts list itself
 }) {
   const host = useRef<HTMLDivElement>(null);
@@ -135,6 +142,10 @@ export function ModelCanvas({
   useEffect(() => {
     toolsRef.current = onTools;
   }, [onTools]);
+  const namesRef = useRef(names);
+  useEffect(() => {
+    namesRef.current = names;
+  }, [names]);
   const measureRef = useRef(onMeasure);
   useEffect(() => {
     measureRef.current = onMeasure;
@@ -372,42 +383,122 @@ export function ModelCanvas({
       }
       render();
     };
-    // Measure: two picked points on the meshes, with dots and a line between them.
-    let measuring = false;
-    const marks = new THREE.Group();
-    world.add(marks);
-    const dotLook = new THREE.MeshBasicMaterial({ color: 0xff3d71, depthTest: false });
-    const lineLook = new THREE.LineBasicMaterial({ color: 0xff3d71, depthTest: false });
-    let points: THREE.Vector3[] = [];
-    const clearMarks = () => {
-      for (const c of marks.children) (c as THREE.Mesh).geometry?.dispose();
-      marks.clear();
-    };
-    const drawMarks = () => {
-      clearMarks();
-      const r = Math.max(new THREE.Box3().setFromObject(root).getSize(new THREE.Vector3()).length() * 0.004, 0.0015);
-      for (const p of points) {
-        const dot = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 8), dotLook);
-        dot.position.copy(p);
-        dot.renderOrder = 10;
-        marks.add(dot);
+    // Measure: faces, edges and corners picked like Onshape (hover blue, picked orange), up to two;
+    // their sizes, distance and angle go to the page (measure.ts). Each part shape's faces and edges
+    // are worked out once, the first time the pointer meets it.
+    let filter: MeasureFilter | null = null;
+    type Pick = { m: number; i: number; kind: "face" | "edge" | "point"; n: number };
+    let chosen: Pick[] = [];
+    let hoverPick: Pick | null = null;
+    const topo = new Map<THREE.BufferGeometry, Topology>();
+    const topoOf = (m: number) => {
+      const g = meshes[m].mesh.geometry;
+      let t = topo.get(g);
+      if (!t) {
+        t = topology(g.getAttribute("position").array, g.index!.array);
+        topo.set(g, t);
       }
-      if (points.length === 2) {
-        const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), lineLook);
-        line.renderOrder = 10;
-        marks.add(line);
+      return t;
+    };
+    const placeOf = (m: number, i: number) => {
+      const at = new THREE.Matrix4();
+      meshes[m].mesh.getMatrixAt(i, at);
+      return at;
+    };
+    const marks = new THREE.Group();
+    root.add(marks);
+    const PICKED = 0xff8a1f;
+    const looks = {
+      face: [HOVER, PICKED].map((color) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })),
+      line: [HOVER, PICKED].map((color) => new THREE.LineBasicMaterial({ color, depthTest: false, transparent: true })),
+      dot: [HOVER, PICKED].map((color) => new THREE.MeshBasicMaterial({ color, depthTest: false, transparent: true })),
+      gap: new THREE.LineDashedMaterial({ color: 0xffd23f, dashSize: 0.004, gapSize: 0.003, depthTest: false, transparent: true }),
+    };
+    // Each face's own triangles, kept for drawing it lit.
+    const faceGeoms = new Map<string, THREE.BufferGeometry>();
+    const faceGeom = (m: number, f: number) => {
+      const g = meshes[m].mesh.geometry;
+      const id = `${g.uuid}:${f}`;
+      let fg = faceGeoms.get(id);
+      if (!fg) {
+        const idx = g.index!.array;
+        const tris = topoOf(m).faces[f].tris;
+        const sub = new Uint32Array(tris.length * 3);
+        tris.forEach((t, k) => sub.set([idx[t * 3], idx[t * 3 + 1], idx[t * 3 + 2]], k * 3));
+        fg = new THREE.BufferGeometry();
+        fg.setAttribute("position", g.getAttribute("position"));
+        fg.setIndex(new THREE.BufferAttribute(sub, 1));
+        faceGeoms.set(id, fg);
+      }
+      return fg;
+    };
+    const kindName = (pk: Pick) => {
+      const t = topoOf(pk.m);
+      if (pk.kind === "point") return "Point";
+      if (pk.kind === "edge") return { line: "Straight edge", circle: "Round edge", other: "Edge" }[t.edges[pk.n].kind];
+      return { plane: "Flat face", cylinder: "Round face", other: "Face" }[t.faces[pk.n].kind];
+    };
+    const drawMarks = (line: [V3, V3] | null) => {
+      // Lines and dots are made per draw; face geometries are kept (faceGeoms).
+      for (const c of marks.children) if ((c as THREE.Line).isLine || (c as THREE.Mesh).geometry instanceof THREE.SphereGeometry) (c as THREE.Mesh).geometry.dispose();
+      marks.clear();
+      const size = new THREE.Box3().setFromObject(root).getSize(new THREE.Vector3()).length();
+      const r = Math.max(size * 0.004, 0.0012);
+      const draw = (pk: Pick, lit: number) => {
+        const at = placeOf(pk.m, pk.i);
+        const t = topoOf(pk.m);
+        let obj: THREE.Object3D;
+        if (pk.kind === "face") obj = new THREE.Mesh(faceGeom(pk.m, pk.n), looks.face[lit]);
+        else if (pk.kind === "edge") {
+          const e = t.edges[pk.n];
+          const geo = new THREE.BufferGeometry().setFromPoints(e.points.map((q) => new THREE.Vector3(...q)));
+          obj = e.closed ? new THREE.LineLoop(geo, looks.line[lit]) : new THREE.Line(geo, looks.line[lit]);
+        } else {
+          obj = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 8), looks.dot[lit]);
+          obj.position.set(...t.corners[pk.n]);
+          obj.updateMatrix();
+        }
+        obj.matrix.premultiply(at);
+        obj.matrixAutoUpdate = false;
+        obj.renderOrder = 12;
+        marks.add(obj);
+      };
+      if (hoverPick && !chosen.some((q) => same(q, hoverPick!))) draw(hoverPick, 0);
+      for (const pk of chosen) draw(pk, 1);
+      if (line) {
+        const gap = new THREE.Line(new THREE.BufferGeometry().setFromPoints(line.map((q) => new THREE.Vector3(...q))), looks.gap);
+        gap.computeLineDistances();
+        gap.renderOrder = 13;
+        marks.add(gap);
       }
       render();
-      measureRef.current?.({ points: points.length, mm: points.length === 2 ? points[0].distanceTo(points[1]) * 1000 : null });
     };
-    const addPoint = (p: THREE.Vector3) => {
-      points = points.length >= 2 ? [p.clone()] : [...points, p.clone()];
-      drawMarks();
+    const same = (a: Pick, b: Pick) => a.m === b.m && a.i === b.i && a.kind === b.kind && a.n === b.n;
+    let lastLine: [V3, V3] | null = null;
+    const report = () => {
+      const placed: Picked[] = chosen.map((pk) => {
+        const at = placeOf(pk.m, pk.i).elements;
+        const t = topoOf(pk.m);
+        const name = namesRef.current?.get(meshes[pk.m].keys[pk.i]) ?? "Part";
+        if (pk.kind === "face") {
+          const g = meshes[pk.m].mesh.geometry;
+          return placeFace(t.faces[pk.n], g.getAttribute("position").array, g.index!.array, at, name);
+        }
+        if (pk.kind === "edge") return placeEdge(t.edges[pk.n], at, name);
+        return placePoint(t.corners[pk.n], at, name);
+      });
+      const { rows, line } = measurePicks(placed);
+      lastLine = line;
+      drawMarks(line);
+      measureRef.current?.({ picks: chosen.map((pk, k) => `${kindName(pk)} · ${placed[k].name}`), rows });
     };
-    const measure = (on: boolean) => {
-      measuring = on;
-      points = [];
-      drawMarks();
+    const measure = (f: MeasureFilter | null) => {
+      const was = filter;
+      filter = f;
+      if (!f || !was) chosen = [];
+      hoverPick = null;
+      setHover(null);
+      report();
     };
     // A part's every copy hidden (the touch way to Y), or only that part shown.
     const hideKey = (key: string) => {
@@ -449,7 +540,7 @@ export function ModelCanvas({
       tools: { view, section, measure, hideKey, isolate, partSize },
     };
 
-    // Left click (not a drag) picks the part under the pointer; a double-click opens it.
+    // Left click (not a drag) chosen the part under the pointer; a double-click opens it.
     const ray = new THREE.Raycaster();
     const hitAt = (e: MouseEvent) => {
       const rect = renderer.domElement.getBoundingClientRect();
@@ -459,11 +550,57 @@ export function ModelCanvas({
         false,
       );
       const m = hit ? meshes.findIndex((x) => x.mesh === hit.object) : -1;
-      return m >= 0 && hit.instanceId !== undefined ? { m, i: hit.instanceId, point: hit.point } : null;
+      return m >= 0 && hit.instanceId !== undefined ? { m, i: hit.instanceId, point: hit.point, tri: hit.faceIndex ?? 0 } : null;
     };
     const keyAt = (e: MouseEvent) => {
       const h = hitAt(e);
       return h ? (meshes[h.m].keys[h.i] ?? null) : null;
+    };
+    // The face, edge or corner under the pointer, by the filter, on the part the ray meets: corners
+    // and edges within a few pixels of it on screen (more for a finger).
+    const pickAt = (e: MouseEvent, finger: boolean): Pick | null => {
+      const h = hitAt(e);
+      if (!h || !filter) return null;
+      const t = topoOf(h.m);
+      const toScreen = placeOf(h.m, h.i).premultiply(root.matrixWorld);
+      const rect = renderer.domElement.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const v = new THREE.Vector3();
+      const screen = (q: V3): [number, number] => {
+        v.set(q[0], q[1], q[2]).applyMatrix4(toScreen).project(camera);
+        return [((v.x + 1) / 2) * rect.width, ((1 - v.y) / 2) * rect.height];
+      };
+      if (filter === "any" || filter === "point") {
+        let best = finger ? 22 : 10;
+        let n = -1;
+        t.corners.forEach((q, k) => {
+          const [sx, sy] = screen(q);
+          const d = Math.hypot(sx - x, sy - y);
+          if (d < best) [best, n] = [d, k];
+        });
+        if (n >= 0) return { m: h.m, i: h.i, kind: "point", n };
+      }
+      if (filter === "any" || filter === "edge") {
+        let best = finger ? 16 : 7;
+        let n = -1;
+        t.edges.forEach((ed, k) => {
+          const pts = ed.points.map(screen);
+          const count = ed.closed ? pts.length : pts.length - 1;
+          for (let j = 0; j < count; j++) {
+            const [ax, ay] = pts[j];
+            const [bx, by] = pts[(j + 1) % pts.length];
+            const dx = bx - ax, dy = by - ay;
+            const l2 = dx * dx + dy * dy;
+            const u = l2 ? Math.min(1, Math.max(0, ((x - ax) * dx + (y - ay) * dy) / l2)) : 0;
+            const d = Math.hypot(ax + u * dx - x, ay + u * dy - y);
+            if (d < best) [best, n] = [d, k];
+          }
+        });
+        if (n >= 0) return { m: h.m, i: h.i, kind: "edge", n };
+      }
+      if (filter === "any" || filter === "face") return { m: h.m, i: h.i, kind: "face", n: t.triFace[h.tri] };
+      return null;
     };
     // Hover: one ray per frame at most, mouse only, not while dragging.
     let over = false;
@@ -473,6 +610,13 @@ export function ModelCanvas({
       cancelAnimationFrame(frame);
       if (e.pointerType !== "mouse" || e.buttons) return setHover(null);
       frame = requestAnimationFrame(() => {
+        if (filter) {
+          const pk = pickAt(e, false);
+          if (pk === hoverPick || (pk && hoverPick && same(pk, hoverPick))) return;
+          hoverPick = pk;
+          drawMarks(lastLine);
+          return;
+        }
         const h = hitAt(e);
         setHover(h && { m: h.m, i: h.i });
       });
@@ -481,6 +625,10 @@ export function ModelCanvas({
       over = false;
       cancelAnimationFrame(frame);
       setHover(null);
+      if (hoverPick) {
+        hoverPick = null;
+        drawMarks(lastLine);
+      }
     };
     // Y (by key position, so it works on a Hebrew layout too) while the mouse is on the model.
     const onKey = (e: KeyboardEvent) => {
@@ -506,15 +654,19 @@ export function ModelCanvas({
     const onUp = (e: PointerEvent) => {
       if (!down || e.button !== 0 || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
       down = null;
-      if (measuring) {
-        const h = hitAt(e);
-        if (h) addPoint(h.point);
+      if (filter) {
+        // A tap chosen (or drops) one; a third starts over; empty space clears.
+        const pk = pickAt(e, e.pointerType !== "mouse");
+        if (!pk) chosen = [];
+        else if (chosen.some((q) => same(q, pk))) chosen = chosen.filter((q) => !same(q, pk));
+        else chosen = chosen.length >= 2 ? [pk] : [...chosen, pk];
+        report();
         return;
       }
       pick.current?.(keyAt(e));
     };
     const onDouble = (e: MouseEvent) => {
-      if (e.button !== 0 || !openPart.current) return;
+      if (e.button !== 0 || !openPart.current || filter) return;
       const key = keyAt(e);
       if (key) openPart.current(key);
     };
@@ -610,9 +762,9 @@ export function ModelCanvas({
       cancelAnimationFrame(frame);
       hoverLook.dispose();
       geometries.forEach((g) => g.dispose());
-      clearMarks();
-      dotLook.dispose();
-      lineLook.dispose();
+      for (const c of marks.children) if ((c as THREE.Line).isLine || (c as THREE.Mesh).geometry instanceof THREE.SphereGeometry) (c as THREE.Mesh).geometry.dispose();
+      faceGeoms.forEach((g) => g.dispose());
+      [...looks.face, ...looks.line, ...looks.dot, looks.gap].forEach((m) => m.dispose());
       meshes.forEach(({ mesh }) => mesh.dispose());
       material.dispose();
       cad.dispose();
