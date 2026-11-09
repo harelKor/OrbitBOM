@@ -84,6 +84,15 @@ export function ReviewScreen({
     return () => window.removeEventListener("resize", fit);
   }, []);
 
+  // Points, edges and faces are picked at all times, like Onshape (Harel, 2026-11-09).
+  useEffect(() => {
+    tools?.measure("any");
+  }, [tools]);
+  const clearPicks = () => {
+    tools?.measure(null);
+    tools?.measure("any");
+  };
+
   useEffect(() => {
     if (!builtAt) return;
     let cancelled = false;
@@ -118,12 +127,10 @@ export function ReviewScreen({
     setDrawer(false);
     setFocus((f) => (f === key ? null : key));
   }, []);
-  // A second tap on the picked part opens its BOM window, as in the other 3D views.
+  // The part of the newest pick (the 3D view reports it); a tap on a pick again drops it.
   const onPick = (key: string | null) => {
-    setFocus(null);
-    const part = key ? partByKey.get(key) : undefined;
-    if (key && key === selected && part) void openPartWindow(part.id);
-    else setSelected(key);
+    if (key) setFocus(null);
+    setSelected(key);
   };
   const pickedPart = selected ? partByKey.get(selected) : undefined;
   const picked = selected ? { key: selected, name: pickedPart?.name ?? null, systemId: pickedPart?.systemId ?? null } : null;
@@ -138,10 +145,12 @@ export function ReviewScreen({
       if (drawer) return setDrawer(false);
       setSelected(null);
       setFocus(null);
+      tools?.measure(null);
+      tools?.measure("any");
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [selected, focus, drawer]);
+  }, [selected, focus, drawer, tools]);
 
   return (
     <div ref={root} className="-m-4 flex h-[calc(100dvh-var(--topbar-h,2.75rem))] md:-m-6">
@@ -169,7 +178,6 @@ export function ReviewScreen({
             mode={mode}
             locateKey={focus}
             onLocated={onLocated}
-            selectedKey={selected}
             onPick={onPick}
             names={nameByKey}
             onTools={setTools}
@@ -227,7 +235,7 @@ export function ReviewScreen({
               className="btn h-8 px-2.5 text-xs pointer-coarse:h-9"
               onClick={() => {
                 tools?.hideKey(picked.key);
-                setSelected(null);
+                clearPicks();
               }}
             >
               Hide
@@ -240,9 +248,9 @@ export function ReviewScreen({
                 setIsolated(next);
               }}
             >
-              {isolated === picked.key ? "Show all" : "Only this"}
+              {isolated === picked.key ? "Show all" : "Isolate"}
             </button>
-            <button onClick={() => setSelected(null)} className="press text-muted hover:text-fg pointer-coarse:min-h-9 pointer-coarse:min-w-9" aria-label="Clear selection" title="Clear (Esc)">
+            <button onClick={clearPicks} className="press text-muted hover:text-fg pointer-coarse:min-h-9 pointer-coarse:min-w-9" aria-label="Clear selection" title="Clear (Esc)">
               ✕
             </button>
           </div>
@@ -271,7 +279,34 @@ export function ReviewScreen({
           + Add comment
         </button>
 
-        <ViewerToolbar tools={tools} measured={measured} hidden={hidden}>
+        {/* What's picked: its size, or between two picks distance and angle (bottom right; on a
+            phone above the part popup and + Add comment). */}
+        {measured.picks.length > 0 && (
+          <div className="absolute right-3 z-20 w-64 max-w-[calc(100%-1.5rem)] animate-pop rounded-md border border-line bg-surface/95 p-2.5 text-xs shadow-md backdrop-blur max-lg:bottom-40 lg:bottom-3">
+            <ul className="max-h-32 space-y-0.5 overflow-y-auto">
+              {measured.picks.map((p, k) => (
+                <li key={k} className="flex items-center gap-1.5 text-fg-2">
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-[#ff8a1f]" />
+                  <span className="truncate">{p}</span>
+                </li>
+              ))}
+            </ul>
+            <table className="mt-1.5 w-full tabular-nums">
+              <tbody>
+                {measured.rows.map((r) => (
+                  <tr key={r.label} className="border-t border-line">
+                    <td className="py-1 pr-2 text-muted">{r.label}</td>
+                    <td className="py-1 text-right text-base font-bold text-fg">{r.value}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {measured.picks.length === 1 && <p className="mt-1 text-[11px] text-subtle">Pick a second one to measure between them.</p>}
+            {measured.picks.length > 2 && <p className="mt-1 text-[11px] text-subtle">Measures show for one or two picks. Space drops the newest, Esc all.</p>}
+          </div>
+        )}
+
+        <ViewerToolbar tools={tools} hidden={hidden}>
           {changes && (
             <>
               <Segmented

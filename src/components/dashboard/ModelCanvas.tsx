@@ -383,7 +383,7 @@ export function ModelCanvas({
       }
       render();
     };
-    // Measure: faces, edges and corners picked like Onshape (hover blue, picked orange), up to two;
+    // Measure: faces, edges and corners picked like Onshape (hover blue, picked orange), any number;
     // their sizes, distance and angle go to the page (measure.ts). Each part shape's faces and edges
     // are worked out once, the first time the pointer meets it.
     let filter: MeasureFilter | null = null;
@@ -499,6 +499,9 @@ export function ModelCanvas({
       lastLine = line;
       drawMarks(line);
       measureRef.current?.({ picks: chosen.map((pk, k) => `${kindName(pk)} · ${placed[k].name}`), rows });
+      // The part of the newest pick is the page's picked part (its popup), none when cleared.
+      const last = chosen.at(-1);
+      pick.current?.(last ? (meshes[last.m].keys[last.i] ?? null) : null);
     };
     const measure = (f: MeasureFilter | null) => {
       const was = filter;
@@ -622,6 +625,8 @@ export function ModelCanvas({
           const pk = pickAt(e, false);
           if (pk === hoverPick || (pk && hoverPick && same(pk, hoverPick))) return;
           hoverPick = pk;
+          // Y hides the part under the pointer here too.
+          hovered = pk && { m: pk.m, i: pk.i };
           drawMarks(lastLine);
           return;
         }
@@ -638,6 +643,16 @@ export function ModelCanvas({
         drawMarks(lastLine);
       }
     };
+    // Space drops the newest pick, one by one back to the first (Esc, on the page, drops them
+    // all) (Harel, 2026-11-09). Not while typing or with a window open.
+    const onSpace = (e: KeyboardEvent) => {
+      if (e.code !== "Space" || !filter || !chosen.length || e.ctrlKey || e.metaKey || e.altKey) return;
+      if ((e.target as HTMLElement | null)?.closest?.("input, textarea, select, button, [contenteditable=true]") || document.querySelector("dialog[open]")) return;
+      e.preventDefault();
+      chosen = chosen.slice(0, -1);
+      report();
+    };
+    window.addEventListener("keydown", onSpace);
     // Y (by key position, so it works on a Hebrew layout too) while the mouse is on the model.
     const onKey = (e: KeyboardEvent) => {
       if (!over || e.code !== "KeyY" || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
@@ -663,11 +678,12 @@ export function ModelCanvas({
       if (!down || e.button !== 0 || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
       down = null;
       if (filter) {
-        // A tap chosen (or drops) one; a third starts over; empty space clears.
+        // A tap adds a pick, a tap on it again drops it (as for parts elsewhere), empty space
+        // clears.
         const pk = pickAt(e, e.pointerType !== "mouse");
         if (!pk) chosen = [];
         else if (chosen.some((q) => same(q, pk))) chosen = chosen.filter((q) => !same(q, pk));
-        else chosen = chosen.length >= 2 ? [pk] : [...chosen, pk];
+        else chosen = [...chosen, pk];
         report();
         return;
       }
@@ -767,6 +783,7 @@ export function ModelCanvas({
       renderer.domElement.removeEventListener("pointermove", onMove);
       renderer.domElement.removeEventListener("pointerleave", onLeave);
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", onSpace);
       cancelAnimationFrame(frame);
       hoverLook.dispose();
       geometries.forEach((g) => g.dispose());
