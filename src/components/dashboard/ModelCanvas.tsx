@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { edgePositions } from "@/lib/model/edges";
 import { decodeMeshes, type Appearance, type Mesh } from "@/lib/model/mesh";
 
 export type ViewerModel = {
@@ -17,6 +18,39 @@ const UNKNOWN = "#b8bec9"; // placed in CAD but not on the BOM
 const LOCATED = "#22ff5e"; // the located part: bright green, through a see-through robot
 const HOVER = "#6f9bff"; // a light blue wash over the part under the mouse, like Onshape's
 const GONE = new THREE.Matrix4().makeScale(0, 0, 0); // a hidden instance: drawn at no size, never hit
+const EDGE = "#15171d"; // Onshape's dark face borders
+
+// Onshape's colours are sRGB; three.js works in linear light, so they're converted on the way
+// in (read as linear, every colour came out pale: aluminium white, greens pastel).
+const srgb = ([r, g, b]: [number, number, number]) => new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
+
+// The face borders of every copy of a part, drawn in one call: the lines read the part's own
+// instance matrices (so a hidden copy hides its lines too) and honour the section plane.
+function edgeMaterial() {
+  return new THREE.ShaderMaterial({
+    uniforms: { color: { value: new THREE.Color(EDGE) }, opacity: { value: 0.85 } },
+    vertexShader: `#include <common>
+#include <clipping_planes_pars_vertex>
+attribute mat4 instanceMatrix;
+void main() {
+  vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+  gl_Position = projectionMatrix * mvPosition;
+  #include <clipping_planes_vertex>
+}`,
+    fragmentShader: `#include <common>
+#include <clipping_planes_pars_fragment>
+uniform vec3 color;
+uniform float opacity;
+void main() {
+  #include <clipping_planes_fragment>
+  gl_FragColor = vec4(color, opacity);
+  #include <colorspace_fragment>
+}`,
+    transparent: true,
+    depthWrite: false,
+    clipping: true,
+  });
+}
 
 // A part instance hidden with Y: its mesh, its index there, and its BOM key.
 type Gone = { m: number; i: number; key: string };
@@ -127,17 +161,24 @@ export function ModelCanvas({
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     el.appendChild(renderer.domElement);
     const world = new THREE.Scene();
-    world.add(new THREE.HemisphereLight(0xffffff, 0x8a91a2, 2.2));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+    // Lit like Onshape: mostly from the viewer (a light riding on the camera, a little above and
+    // to the left), with a soft sky fill, so faces turned away read darker and edges stay crisp.
+    world.add(new THREE.HemisphereLight(0xffffff, 0x5d6372, 1.1));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.5);
     sun.position.set(2, 4, 3);
     world.add(sun);
-    // CAD mode's studio reflections, so metal parts read as metal.
+    // CAD mode's studio reflections, kept faint, so metal parts read as metal without glare.
     const pmrem = new THREE.PMREMGenerator(renderer);
     const studio = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     pmrem.dispose();
-    world.environmentIntensity = 0.7;
+    world.environmentIntensity = 0.35;
     const camera = new THREE.PerspectiveCamera(40, 1, 0.005, 200);
     camera.position.set(1.4, 1, 1.4);
+    const headlight = new THREE.DirectionalLight(0xffffff, 2.1);
+    headlight.position.set(-0.4, 0.6, 0);
+    headlight.target.position.set(0, 0, -1);
+    camera.add(headlight, headlight.target);
+    world.add(camera);
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = false;
     controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.ROTATE };
@@ -172,8 +213,11 @@ export function ModelCanvas({
       render();
     };
 
-    const material = new THREE.MeshStandardMaterial({ roughness: 0.55, metalness: 0.15 });
-    const cad = new THREE.MeshStandardMaterial({ roughness: 0.42, metalness: 0.35 });
+    // Faces sit a hair behind their edges, so the border lines never flicker through them.
+    const offset = { polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 };
+    const material = new THREE.MeshStandardMaterial({ roughness: 0.6, metalness: 0.05, ...offset });
+    const cad = new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.2, ...offset });
+    const edgeLook = edgeMaterial();
     const ghost = new THREE.MeshStandardMaterial({ roughness: 0.6, transparent: true, opacity: 0.14, depthWrite: false });
     const glow = new THREE.MeshStandardMaterial({ color: LOCATED, emissive: LOCATED, emissiveIntensity: 0.55, roughness: 0.4 });
     const geometries: THREE.BufferGeometry[] = [];
@@ -183,7 +227,7 @@ export function ModelCanvas({
     const seeThrough = (opacity: number) => {
       let m = clear.get(opacity);
       if (!m) {
-        m = new THREE.MeshStandardMaterial({ roughness: 0.3, metalness: 0.1, transparent: true, opacity, depthWrite: false });
+        m = new THREE.MeshStandardMaterial({ roughness: 0.3, metalness: 0.1, transparent: true, opacity, depthWrite: false, ...offset });
         clear.set(opacity, m);
       }
       return m;
@@ -194,13 +238,15 @@ export function ModelCanvas({
     const paint = (colors: Map<string, string>, mode: ViewerMode, locateKey: string | null) => {
       highlights.clear();
       world.environment = mode === "cad" && !locateKey ? studio : null;
+      // Edges fade with the robot while locating, and are lighter over status colours.
+      edgeLook.uniforms.opacity.value = locateKey ? 0.05 : mode === "cad" ? 0.85 : 0.55;
       const plain = new THREE.Color(PLAIN);
       const box = new THREE.Box3();
       const piece = new THREE.Box3();
       for (const { mesh, keys, look } of meshes) {
         const own = mode === "cad" && look;
         mesh.material = locateKey ? ghost : own && look.opacity < 1 ? seeThrough(look.opacity) : mode === "cad" ? cad : material;
-        const onshape = own ? new THREE.Color(...look.color) : plain;
+        const onshape = own ? srgb(look.color) : plain;
         keys.forEach((k, i) => {
           mesh.setColorAt(i, locateKey ? plain : mode === "status" ? new THREE.Color(colors.get(k) ?? UNKNOWN) : onshape);
           if (k !== locateKey) return;
@@ -477,12 +523,12 @@ export function ModelCanvas({
     renderer.domElement.addEventListener("dblclick", onDouble);
 
     (async () => {
-      const shapes: Map<string, { geometry: THREE.BufferGeometry; look?: Appearance }>[] = [];
+      const shapes: Map<string, { geometry: THREE.BufferGeometry; edges: Float32Array; look?: Appearance }>[] = [];
       let done = 0;
       const queue = model.studios.map((url, i) => ({ url, i }));
       const worker = async () => {
         for (let job = queue.shift(); job; job = queue.shift()) {
-          const byPart = new Map<string, { geometry: THREE.BufferGeometry; look?: Appearance }>();
+          const byPart = new Map<string, { geometry: THREE.BufferGeometry; edges: Float32Array; look?: Appearance }>();
           if (job.url) {
             for (const m of await loadStudio(job.url)) {
               const g = new THREE.BufferGeometry();
@@ -490,7 +536,7 @@ export function ModelCanvas({
               g.setIndex(new THREE.BufferAttribute(m.indices, 1));
               g.computeVertexNormals();
               geometries.push(g);
-              byPart.set(m.partId, { geometry: g, look: m.appearance });
+              byPart.set(m.partId, { geometry: g, edges: edgePositions(m.positions, m.indices), look: m.appearance });
             }
           }
           shapes[job.i] = byPart;
@@ -501,7 +547,7 @@ export function ModelCanvas({
       if (disposed) return;
 
       // One instanced mesh per (subsystem, Part Studio, part).
-      const groups = new Map<string, { geometry: THREE.BufferGeometry; look?: Appearance; items: typeof model.placements; g: number }>();
+      const groups = new Map<string, { geometry: THREE.BufferGeometry; edges: Float32Array; look?: Appearance; items: typeof model.placements; g: number }>();
       for (const p of model.placements) {
         const partId = p.k.slice(p.k.lastIndexOf(":") + 1);
         const shape = shapes[p.s]?.get(partId);
@@ -512,7 +558,7 @@ export function ModelCanvas({
         groups.set(id, group);
       }
       const m = new THREE.Matrix4();
-      for (const { geometry, look, items, g } of groups.values()) {
+      for (const { geometry, edges, look, items, g } of groups.values()) {
         const mesh = new THREE.InstancedMesh(geometry, material, items.length);
         items.forEach((p, i) => {
           const t = p.t;
@@ -521,6 +567,20 @@ export function ModelCanvas({
           mesh.setColorAt(i, new THREE.Color(PLAIN));
         });
         mesh.computeBoundingSphere();
+        mesh.computeBoundingBox();
+        if (edges.length) {
+          // A child of its mesh: hidden with it (subsystems, Only this), sharing its matrices.
+          const lines = new THREE.InstancedBufferGeometry();
+          lines.setAttribute("position", new THREE.BufferAttribute(edges, 3));
+          lines.setAttribute("instanceMatrix", mesh.instanceMatrix);
+          lines.instanceCount = items.length;
+          lines.boundingBox = mesh.boundingBox!.clone(); // so framing measures the copies, not the origin
+          geometries.push(lines);
+          const segs = new THREE.LineSegments(lines, edgeLook);
+          segs.frustumCulled = false;
+          segs.raycast = () => {};
+          mesh.add(segs);
+        }
         root.add(mesh);
         meshes.push({ mesh, keys: items.map((p) => p.k), g, look });
       }
@@ -556,6 +616,7 @@ export function ModelCanvas({
       meshes.forEach(({ mesh }) => mesh.dispose());
       material.dispose();
       cad.dispose();
+      edgeLook.dispose();
       studio.dispose();
       clear.forEach((m) => m.dispose());
       ghost.dispose();
