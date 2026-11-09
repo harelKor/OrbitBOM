@@ -71,14 +71,15 @@ export type HiddenParts = { items: { id: string; name: string }[]; show: (id: st
 // Measure chosen faces, edges and corners like Onshape's selection filter: Any takes a corner, else
 // an edge, else the face under the pointer (Harel, 2026-11-09).
 export type MeasureFilter = "any" | "face" | "edge" | "point";
-export type MeasureInfo = { picks: string[]; rows: Row[] };
+// `parts`: the picked parts' keys, each once, in pick order.
+export type MeasureInfo = { picks: string[]; rows: Row[]; parts: string[] };
 
 export type SceneTools = {
   view: (name: ViewName | "fit") => void;
   section: (s: Section | null) => void;
   measure: (filter: MeasureFilter | null) => void;
   hideKey: (key: string) => void;
-  isolate: (key: string | null) => void;
+  isolate: (keys: string[] | null) => void; // show only these parts (all copies)
   partSize: (key: string) => [number, number, number] | null;
 };
 
@@ -498,7 +499,8 @@ export function ModelCanvas({
       const { rows, line } = measurePicks(placed);
       lastLine = line;
       drawMarks(line);
-      measureRef.current?.({ picks: chosen.map((pk, k) => `${kindName(pk)} · ${placed[k].name}`), rows });
+      const parts = [...new Set(chosen.map((pk) => meshes[pk.m].keys[pk.i]).filter(Boolean))];
+      measureRef.current?.({ picks: chosen.map((pk, k) => `${kindName(pk)} · ${placed[k].name}`), rows, parts });
       // The part of the newest pick is the page's picked part (its popup), none when cleared.
       const last = chosen.at(-1);
       pick.current?.(last ? (meshes[last.m].keys[last.i] ?? null) : null);
@@ -515,18 +517,18 @@ export function ModelCanvas({
     const hideKey = (key: string) => {
       meshes.forEach(({ keys }, m) => keys.forEach((k, i) => k === key && !kept.has(`${m}:${i}`) && hideOne({ m, i, key })));
     };
-    let isolated: string | null = null;
+    let isolated: Set<string> | null = null;
     let groupsHidden = new Set<number>();
     const applyVisible = () => {
-      for (const { mesh, g, keys } of meshes) mesh.visible = !groupsHidden.has(g) && (!isolated || keys.includes(isolated));
+      for (const { mesh, g, keys } of meshes) mesh.visible = !groupsHidden.has(g) && (!isolated || keys.some((k) => isolated!.has(k)));
       select(selectedNow);
     };
     const hideGroups = (hidden: Set<number>) => {
       groupsHidden = hidden;
       applyVisible();
     };
-    const isolate = (key: string | null) => {
-      isolated = key;
+    const isolate = (keys: string[] | null) => {
+      isolated = keys?.length ? new Set(keys) : null;
       applyVisible();
       fit(shownBox());
     };

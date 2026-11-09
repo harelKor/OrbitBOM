@@ -3,7 +3,6 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { openPartWindow } from "@/components/bom/PartDetailsHost";
 import type { HiddenParts, MeasureInfo, SceneTools, ViewerModel, ViewerMode } from "@/components/dashboard/ModelCanvas";
 import { AddCommentDialog, OpenComment, WaitingComment, type CommentTarget } from "@/components/review/Comments";
 import { ViewerToolbar } from "@/components/review/ViewerToolbar";
@@ -59,8 +58,8 @@ export function ReviewScreen({
   const [selected, setSelected] = useState<string | null>(null);
   const [focus, setFocus] = useState<string | null>(null);
   const [tools, setTools] = useState<SceneTools | null>(null);
-  const [measured, setMeasured] = useState<MeasureInfo>({ picks: [], rows: [] });
-  const [isolated, setIsolated] = useState<string | null>(null);
+  const [measured, setMeasured] = useState<MeasureInfo>({ picks: [], rows: [], parts: [] });
+  const [isolated, setIsolated] = useState<string[] | null>(null);
   const [adding, setAdding] = useState<{ key: string; name: string | null; systemId: string | null } | null | false>(false);
   const [drawer, setDrawer] = useState(false);
   const [hidden, setHidden] = useState<HiddenParts | null>(null);
@@ -134,7 +133,6 @@ export function ReviewScreen({
   };
   const pickedPart = selected ? partByKey.get(selected) : undefined;
   const picked = selected ? { key: selected, name: pickedPart?.name ?? null, systemId: pickedPart?.systemId ?? null } : null;
-  const size = picked && tools ? tools.partSize(picked.key) : null;
   const focusName = focus ? (nameByKey.get(focus) ?? comments.find((c) => c.partKey === focus)?.partName ?? "The part") : null;
 
   // Esc closes the panel on a phone, then clears the picked or shown part (not under a window).
@@ -215,49 +213,44 @@ export function ReviewScreen({
           )}
         </div>
 
-        {/* The picked part: Open system (the robot's page), Open part, hide, show alone, size. The
-            page's own + Add comment ties a comment to it (Harel, 2026-11-09). */}
-        {picked && (
-          <div className="absolute z-20 flex w-max max-w-[calc(100%-1.5rem)] animate-pop flex-wrap items-center gap-2 rounded-md border border-accent/50 bg-surface/95 px-3 py-2 text-xs shadow-sm backdrop-blur max-lg:bottom-20 max-lg:left-1/2 max-lg:-translate-x-1/2 max-lg:justify-center lg:top-3 lg:left-3 lg:max-w-[calc(100%-23rem)]">
-            <span className="min-w-0 max-w-48 truncate font-semibold text-fg">{picked.name ?? "Placed in CAD, not on the BOM"}</span>
-            {size && <span className="text-subtle tabular-nums">≈ {size.map((n) => Math.round(n)).join(" × ")} mm</span>}
-            {onRobot && picked.systemId && (
-              <Link href={`/robots/${robotId}/systems/${picked.systemId}/cad-review`} className="btn h-8 px-2.5 text-xs pointer-coarse:h-9">
-                Open system
-              </Link>
-            )}
-            {pickedPart && (
-              <button className="btn h-8 px-2.5 text-xs pointer-coarse:h-9" onClick={() => void openPartWindow(pickedPart.id)} title="Or tap the part again">
-                Open part
+        {/* The picked parts, stacked (a pick on another part adds it): Isolate shows only them,
+            Hide hides them (Harel, 2026-11-09). The page's + Add comment ties a comment to the
+            newest one. */}
+        {measured.parts.length > 0 && (
+          <div className="absolute z-20 flex w-60 max-w-[calc(100%-1.5rem)] animate-pop flex-col gap-2 rounded-md border border-accent/50 bg-surface/95 p-2.5 text-xs shadow-sm backdrop-blur max-lg:bottom-20 max-lg:left-1/2 max-lg:-translate-x-1/2 lg:top-3 lg:left-3">
+            <ul className="max-h-36 space-y-0.5 overflow-y-auto">
+              {measured.parts.map((k) => (
+                <li key={k} className="truncate font-semibold text-fg">
+                  {nameByKey.get(k) ?? "Placed in CAD, not on the BOM"}
+                </li>
+              ))}
+            </ul>
+            <div className="flex gap-2">
+              <button
+                className="btn h-8 flex-1 justify-center px-2.5 text-xs pointer-coarse:h-9"
+                onClick={() => {
+                  const next = isolated ? null : measured.parts;
+                  tools?.isolate(next);
+                  setIsolated(next);
+                }}
+              >
+                {isolated ? "Show all" : "Isolate"}
               </button>
-            )}
-            <button
-              className="btn h-8 px-2.5 text-xs pointer-coarse:h-9"
-              onClick={() => {
-                tools?.hideKey(picked.key);
-                clearPicks();
-              }}
-            >
-              Hide
-            </button>
-            <button
-              className="btn h-8 px-2.5 text-xs pointer-coarse:h-9"
-              onClick={() => {
-                const next = isolated === picked.key ? null : picked.key;
-                tools?.isolate(next);
-                setIsolated(next);
-              }}
-            >
-              {isolated === picked.key ? "Show all" : "Isolate"}
-            </button>
-            <button onClick={clearPicks} className="press text-muted hover:text-fg pointer-coarse:min-h-9 pointer-coarse:min-w-9" aria-label="Clear selection" title="Clear (Esc)">
-              ✕
-            </button>
+              <button
+                className="btn h-8 flex-1 justify-center px-2.5 text-xs pointer-coarse:h-9"
+                onClick={() => {
+                  for (const k of measured.parts) tools?.hideKey(k);
+                  clearPicks();
+                }}
+              >
+                Hide
+              </button>
+            </div>
           </div>
         )}
-        {!picked && (focusName || isolated) && (
+        {measured.parts.length === 0 && (focusName || isolated) && (
           <div className="absolute z-20 flex animate-pop items-center gap-2 rounded-full border border-emerald-500/50 bg-surface/95 px-3 py-1.5 text-xs shadow-sm backdrop-blur max-lg:bottom-20 max-lg:left-1/2 max-lg:-translate-x-1/2 lg:top-3 lg:left-3">
-            <span className="font-semibold whitespace-nowrap text-fg">{focusName ? `Showing ${focusName}` : "One part shown"}</span>
+            <span className="font-semibold whitespace-nowrap text-fg">{focusName ? `Showing ${focusName}` : isolated && isolated.length > 1 ? `${isolated.length} parts isolated` : "Isolated"}</span>
             <button
               onClick={() => {
                 setFocus(null);
