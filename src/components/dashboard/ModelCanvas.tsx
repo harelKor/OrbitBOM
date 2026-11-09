@@ -408,10 +408,22 @@ export function ModelCanvas({
     const marks = new THREE.Group();
     root.add(marks);
     const PICKED = 0xff8a1f;
+    const roundDot = (() => {
+      const c = document.createElement("canvas");
+      c.width = c.height = 32;
+      const g = c.getContext("2d")!;
+      g.fillStyle = "#fff";
+      g.beginPath();
+      g.arc(16, 16, 15, 0, Math.PI * 2);
+      g.fill();
+      return new THREE.CanvasTexture(c);
+    })();
     const looks = {
       face: [HOVER, PICKED].map((color) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })),
       line: [HOVER, PICKED].map((color) => new THREE.LineBasicMaterial({ color, depthTest: false, transparent: true })),
-      dot: [HOVER, PICKED].map((color) => new THREE.MeshBasicMaterial({ color, depthTest: false, transparent: true })),
+      // Points: a small round dot of fixed size on screen, whatever the zoom, like Onshape's
+      // (Harel, 2026-11-09).
+      dot: [HOVER, PICKED].map((color) => new THREE.PointsMaterial({ color, size: 7, sizeAttenuation: false, map: roundDot, alphaTest: 0.5, depthTest: false, transparent: true })),
       gap: new THREE.LineDashedMaterial({ color: 0xffd23f, dashSize: 0.004, gapSize: 0.003, depthTest: false, transparent: true }),
     };
     // Each face's own triangles, kept for drawing it lit.
@@ -440,10 +452,8 @@ export function ModelCanvas({
     };
     const drawMarks = (line: [V3, V3] | null) => {
       // Lines and dots are made per draw; face geometries are kept (faceGeoms).
-      for (const c of marks.children) if ((c as THREE.Line).isLine || (c as THREE.Mesh).geometry instanceof THREE.SphereGeometry) (c as THREE.Mesh).geometry.dispose();
+      for (const c of marks.children) if ((c as THREE.Line).isLine || (c as THREE.Points).isPoints) (c as THREE.Mesh).geometry.dispose();
       marks.clear();
-      const size = new THREE.Box3().setFromObject(root).getSize(new THREE.Vector3()).length();
-      const r = Math.max(size * 0.004, 0.0012);
       const draw = (pk: Pick, lit: number) => {
         const at = placeOf(pk.m, pk.i);
         const t = topoOf(pk.m);
@@ -454,9 +464,7 @@ export function ModelCanvas({
           const geo = new THREE.BufferGeometry().setFromPoints(e.points.map((q) => new THREE.Vector3(...q)));
           obj = e.closed ? new THREE.LineLoop(geo, looks.line[lit]) : new THREE.Line(geo, looks.line[lit]);
         } else {
-          obj = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 8), looks.dot[lit]);
-          obj.position.set(...t.corners[pk.n]);
-          obj.updateMatrix();
+          obj = new THREE.Points(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...t.corners[pk.n])]), looks.dot[lit]);
         }
         obj.matrix.premultiply(at);
         obj.matrixAutoUpdate = false;
@@ -762,9 +770,10 @@ export function ModelCanvas({
       cancelAnimationFrame(frame);
       hoverLook.dispose();
       geometries.forEach((g) => g.dispose());
-      for (const c of marks.children) if ((c as THREE.Line).isLine || (c as THREE.Mesh).geometry instanceof THREE.SphereGeometry) (c as THREE.Mesh).geometry.dispose();
+      for (const c of marks.children) if ((c as THREE.Line).isLine || (c as THREE.Points).isPoints) (c as THREE.Mesh).geometry.dispose();
       faceGeoms.forEach((g) => g.dispose());
       [...looks.face, ...looks.line, ...looks.dot, looks.gap].forEach((m) => m.dispose());
+      roundDot.dispose();
       meshes.forEach(({ mesh }) => mesh.dispose());
       material.dispose();
       cad.dispose();
