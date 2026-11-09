@@ -29,6 +29,56 @@ const clamp = (n: number, lo: number, hi: number) => Math.round(Math.min(hi, Mat
 const clampScale = (n: number) => clamp(n, MIN_SCALE, MAX_SCALE);
 const clampText = (n: number) => clamp(n, MIN_TEXT, MAX_TEXT);
 
+// The card sizes at which a whole number of cards exactly fills the row of the grid at `target`
+// (or the page's first card grid), from 2 cards a row up. A hair under the exact width, so the last
+// card is sure to fit.
+function fillScales(target: EventTarget | null): number[] {
+  const grid = (target as Element | null)?.closest?.(".card-grid, .category-grid") ?? document.querySelector("main .card-grid, main .category-grid");
+  if (!(grid instanceof HTMLElement)) return [];
+  const category = grid.classList.contains("category-grid");
+  const style = getComputedStyle(grid);
+  const base = category ? 210 : parseFloat(style.getPropertyValue("--card-min")) || 220;
+  const smallest = category ? 135 : 110; // the grids' own floors (globals.css)
+  const gap = parseFloat(style.columnGap) || 0;
+  const total = grid.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0);
+  const out: number[] = [];
+  for (let n = 2; n <= 40; n++) {
+    const w = (total - (n - 1) * gap) / n - 0.5;
+    if (w < smallest) break;
+    out.push(w / base);
+  }
+  return out;
+}
+
+// The dead zone (Harel, 2026-11-09): a wheel or pinch that reaches a size where the cards fill the
+// row stops there, and only carries on after about 15% more turning, so that full-row size is easy
+// to land on and keep. `stuck` is where it's holding and how far it has been pushed since.
+const DEAD = Math.log(1.15);
+let stuck: { at: number; push: number } | null = null;
+function stickyScale(from: number, to: number, target: EventTarget | null): number {
+  if (stuck && Math.abs(from - stuck.at) > 1e-3) stuck = null; // moved some other way since
+  if (stuck) {
+    stuck.push += Math.log(to / from);
+    if (Math.abs(stuck.push) < DEAD) return stuck.at;
+    const out = stuck.at * Math.exp(stuck.push - Math.sign(stuck.push) * DEAD);
+    stuck = null;
+    return out;
+  }
+  // The first fill size passed on the way, nearest where it started.
+  const passed = fillScales(target)
+    .filter((f) => (to > from ? f > from && f <= to : f < from && f >= to))
+    .sort((a, b) => Math.abs(a - from) - Math.abs(b - from))[0];
+  if (passed === undefined) return to;
+  stuck = { at: passed, push: 0 };
+  return passed;
+}
+
+// The slider has no push to count: within 4% of a fill size it snaps onto it.
+function snapToFill(scale: number): number {
+  const near = fillScales(null).find((f) => Math.abs(Math.log(scale / f)) < 0.04);
+  return near ?? scale;
+}
+
 function apply({ scale, hue, text }: Prefs) {
   const root = document.documentElement;
   root.style.setProperty("--card-scale", String(scale));
@@ -106,7 +156,7 @@ export function AppearanceControls() {
       const step = Math.max(-0.15, Math.min(0.15, -delta * (e.deltaMode === 1 ? 0.03 : 0.0008)));
       // Start from where the size is headed (or, after a slider move, where it is).
       if (!frame) Object.assign(target, { scale: latest.current.scale, text: latest.current.text });
-      if (e.ctrlKey) target.scale = clampScale(target.scale * (1 + step));
+      if (e.ctrlKey) target.scale = clampScale(stickyScale(target.scale, clampScale(target.scale * (1 + step)), e.target));
       else target.text = clampText(target.text * (1 + step));
       if (!frame) frame = requestAnimationFrame(glide);
     };
@@ -120,17 +170,22 @@ export function AppearanceControls() {
   // Two fingers on a card grid (phones): spreading them grows the cards, pinching shrinks them,
   // in step with the fingers, instead of zooming the page.
   useEffect(() => {
-    let pinch: { dist: number; scale: number } | null = null;
+    // `last`: the size the fingers asked for on the last move; each move passes on only its change,
+    // so the dead zone can hold the size while the fingers keep going.
+    let pinch: { dist: number; scale: number; last: number } | null = null;
     const gap = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
     const onStart = (e: TouchEvent) => {
       if (e.touches.length !== 2 || inDialog(e.target) || !(e.target as Element | null)?.closest?.(GRIDS)) return;
       e.preventDefault();
-      pinch = { dist: gap(e.touches) || 1, scale: latest.current.scale };
+      pinch = { dist: gap(e.touches) || 1, scale: latest.current.scale, last: latest.current.scale };
     };
     const onMove = (e: TouchEvent) => {
       if (!pinch || e.touches.length !== 2) return;
       e.preventDefault();
-      setScale(pinch.scale * (gap(e.touches) / pinch.dist));
+      const asked = pinch.scale * (gap(e.touches) / pinch.dist);
+      const now = latest.current.scale;
+      setScale(stickyScale(now, now * (asked / pinch.last), e.target));
+      pinch.last = asked;
     };
     const onEnd = (e: TouchEvent) => {
       if (e.touches.length < 2) pinch = null;
@@ -160,7 +215,7 @@ export function AppearanceControls() {
           max={MAX_SCALE}
           step={0.01}
           value={prefs.scale}
-          onChange={(e) => update({ scale: Number(e.target.value) })}
+          onChange={(e) => update({ scale: snapToFill(Number(e.target.value)) })}
           className="w-full accent-accent"
         />
       </label>
