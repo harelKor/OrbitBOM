@@ -38,14 +38,15 @@ export default async function HomePage() {
   // padding, and the area is exactly one screen tall under the top bar. Phones stack the four
   // cards as equal-height rows, so all of them fit without scrolling; wider screens show two by two.
   return (
-    <div className="-m-4 flex h-[calc(100dvh-var(--topbar-h,2.75rem))] overflow-hidden md:-m-6 lg:-ml-11 xl:-mr-11 px-5 py-3.5 md:px-6 md:py-5 lg:px-10 lg:py-7">
+    <div className="-m-4 flex h-[calc(100dvh-var(--topbar-h,2.75rem))] overflow-hidden md:-m-6 lg:-ml-11 xl:-mr-11 px-5 py-3.5 md:px-6 md:py-[25px] lg:px-10">
       <h1 className="sr-only">OrbitParts</h1>
-      <div className="mx-auto flex h-full w-full max-w-sm flex-col justify-center md:max-w-[72rem]">
+      {/* On a PC: 25px from the top bar to the motto and from the cards to the screen's bottom; the cards fill the rest (Harel, 2026-11-09). */}
+      <div className="mx-auto flex h-full w-full max-w-sm flex-col justify-center md:max-w-[72rem] md:justify-start">
         {/* The team motto: one quiet line on desktop only, so it never pushes the cards down on phones. */}
-        <p className="mb-3 hidden select-none text-center text-base font-semibold tracking-wide text-muted md:block lg:text-lg">
+        <p className="mb-4 hidden select-none text-center text-lg leading-none font-semibold tracking-wide text-muted md:block lg:text-xl">
           Robots change · Spirit remains
         </p>
-        <div className="flex min-h-0 w-full flex-1 flex-col gap-3 md:grid md:max-h-[39rem] md:grid-cols-2 md:gap-6">
+        <div className="flex min-h-0 w-full flex-1 flex-col gap-3 md:grid md:grid-cols-2 md:gap-6">
           {tiles.map((t) => (
             <FastLink
               key={t.title}
