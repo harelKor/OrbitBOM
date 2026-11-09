@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { Line2 } from "three/addons/lines/Line2.js";
+import { LineGeometry } from "three/addons/lines/LineGeometry.js";
+import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { edgePositions } from "@/lib/model/edges";
 import { measure as measurePicks, placeEdge, placeFace, placePoint, type Picked, type Row } from "@/lib/model/measure";
@@ -421,7 +424,8 @@ export function ModelCanvas({
     })();
     const looks = {
       face: [HOVER, PICKED].map((color) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })),
-      line: [HOVER, PICKED].map((color) => new THREE.LineBasicMaterial({ color, depthTest: false, transparent: true })),
+      // Edges: 3 px wide lines (plain WebGL lines are always 1 px) (Harel, 2026-11-09).
+      line: [HOVER, PICKED].map((color) => new LineMaterial({ color, linewidth: 3, depthTest: false, transparent: true })),
       // Points: a small round dot of fixed size on screen, whatever the zoom, like Onshape's
       // (Harel, 2026-11-09).
       dot: [HOVER, PICKED].map((color) => new THREE.PointsMaterial({ color, size: 7, sizeAttenuation: false, map: roundDot, alphaTest: 0.5, depthTest: false, transparent: true })),
@@ -453,7 +457,7 @@ export function ModelCanvas({
     };
     const drawMarks = (line: [V3, V3] | null) => {
       // Lines and dots are made per draw; face geometries are kept (faceGeoms).
-      for (const c of marks.children) if ((c as THREE.Line).isLine || (c as THREE.Points).isPoints) (c as THREE.Mesh).geometry.dispose();
+      for (const c of marks.children) if ((c as THREE.Line).isLine || (c as THREE.Points).isPoints || (c as Line2).isLine2) (c as THREE.Mesh).geometry.dispose();
       marks.clear();
       const draw = (pk: Pick, lit: number) => {
         const at = placeOf(pk.m, pk.i);
@@ -462,8 +466,10 @@ export function ModelCanvas({
         if (pk.kind === "face") obj = new THREE.Mesh(faceGeom(pk.m, pk.n), looks.face[lit]);
         else if (pk.kind === "edge") {
           const e = t.edges[pk.n];
-          const geo = new THREE.BufferGeometry().setFromPoints(e.points.map((q) => new THREE.Vector3(...q)));
-          obj = e.closed ? new THREE.LineLoop(geo, looks.line[lit]) : new THREE.Line(geo, looks.line[lit]);
+          const pts = (e.closed ? [...e.points, e.points[0]] : e.points).flat();
+          const size = renderer.getSize(new THREE.Vector2());
+          looks.line[lit].resolution.set(size.x, size.y);
+          obj = new Line2(new LineGeometry().setPositions(pts), looks.line[lit]);
         } else {
           obj = new THREE.Points(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...t.corners[pk.n])]), looks.dot[lit]);
         }
@@ -595,7 +601,7 @@ export function ModelCanvas({
         if (n >= 0) return { m: h.m, i: h.i, kind: "point", n };
       }
       if (filter === "any" || filter === "edge") {
-        let best = finger ? 16 : 7;
+        let best = finger ? 22 : 11;
         let n = -1;
         t.edges.forEach((ed, k) => {
           const pts = ed.points.map(screen);
@@ -789,7 +795,7 @@ export function ModelCanvas({
       cancelAnimationFrame(frame);
       hoverLook.dispose();
       geometries.forEach((g) => g.dispose());
-      for (const c of marks.children) if ((c as THREE.Line).isLine || (c as THREE.Points).isPoints) (c as THREE.Mesh).geometry.dispose();
+      for (const c of marks.children) if ((c as THREE.Line).isLine || (c as THREE.Points).isPoints || (c as Line2).isLine2) (c as THREE.Mesh).geometry.dispose();
       faceGeoms.forEach((g) => g.dispose());
       [...looks.face, ...looks.line, ...looks.dot, looks.gap].forEach((m) => m.dispose());
       roundDot.dispose();

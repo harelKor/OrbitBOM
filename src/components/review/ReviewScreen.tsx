@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { openPartWindow } from "@/components/bom/PartDetailsHost";
 import type { HiddenParts, MeasureInfo, SceneTools, ViewerModel, ViewerMode } from "@/components/dashboard/ModelCanvas";
 import { AddCommentDialog, OpenComment, WaitingComment, type CommentTarget } from "@/components/review/Comments";
 import { ViewerToolbar } from "@/components/review/ViewerToolbar";
@@ -132,12 +133,19 @@ export function ReviewScreen({
     setSelected(key);
   };
   const pickedPart = selected ? partByKey.get(selected) : undefined;
+  // On the robot's page: the one system all picked parts are in (Open system), else none.
+  const pickedSystems = new Set(measured.parts.map((k) => partByKey.get(k)?.systemId ?? null));
+  const oneSystem = onRobot && pickedSystems.size === 1 ? [...pickedSystems][0] : null;
+  // Every pick on one BOM part: Open part opens its BOM window.
+  const onePart = measured.parts.length === 1 ? partByKey.get(measured.parts[0]) : undefined;
   const picked = selected ? { key: selected, name: pickedPart?.name ?? null, systemId: pickedPart?.systemId ?? null } : null;
   const focusName = focus ? (nameByKey.get(focus) ?? comments.find((c) => c.partKey === focus)?.partName ?? "The part") : null;
 
   // Esc closes the panel on a phone, then clears the picked or shown part (not under a window).
   useEffect(() => {
-    if (!selected && !focus && !drawer) return;
+    if (!selected && !focus && !drawer && !isolated) return;
+    // Esc: closes the phone's panel; else drops the picks and ends Isolate (shows all) (Harel,
+    // 2026-11-09).
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented || document.querySelector("dialog[open]")) return;
       if (drawer) return setDrawer(false);
@@ -145,16 +153,20 @@ export function ReviewScreen({
       setFocus(null);
       tools?.measure(null);
       tools?.measure("any");
+      if (isolated) {
+        tools?.isolate(null);
+        setIsolated(null);
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [selected, focus, drawer, tools]);
+  }, [selected, focus, drawer, tools, isolated]);
 
   return (
     <div ref={root} className="-m-4 flex h-[calc(100dvh-var(--topbar-h,2.75rem))] md:-m-6">
       {drawer && <button aria-label="Close versions" onClick={() => setDrawer(false)} className="fixed inset-0 z-30 modal-backdrop lg:hidden" />}
       <aside
-        className={`flex min-h-0 flex-col gap-4 overflow-y-auto border-line bg-surface p-4 lg:w-80 lg:shrink-0 lg:border-r xl:w-96 max-lg:fixed max-lg:top-[var(--review-top,2.75rem)] max-lg:bottom-0 max-lg:left-0 max-lg:z-40 max-lg:w-[min(22rem,88vw)] max-lg:border-r max-lg:shadow-xl ${drawer ? "max-lg:animate-pop" : "max-lg:hidden"}`}
+        className={`flex min-h-0 flex-col gap-4 overflow-y-auto border-line bg-surface p-4 lg:w-[var(--cad-panel-w,20rem)] lg:shrink-0 lg:border-r max-lg:fixed max-lg:top-[var(--review-top,2.75rem)] max-lg:bottom-0 max-lg:left-0 max-lg:z-40 max-lg:w-[min(22rem,88vw)] max-lg:border-r max-lg:shadow-xl ${drawer ? "max-lg:animate-pop" : "max-lg:hidden"}`}
       >
         <div className="max-lg:hidden">
           <Link href={back.href} className="text-sm text-subtle hover:text-fg">
@@ -167,6 +179,7 @@ export function ReviewScreen({
         </button>
         {panel(showPart, open)}
       </aside>
+      <PanelResizer root={root} />
 
       <section className="relative min-w-0 flex-1 overflow-hidden bg-surface">
         {model ? (
@@ -214,7 +227,8 @@ export function ReviewScreen({
         </div>
 
         {/* The picked parts, stacked (a pick on another part adds it): Isolate shows only them,
-            Hide hides them (Harel, 2026-11-09). The page's + Add comment ties a comment to the
+            Hide hides them; Open part when they're all on one part, and on the robot's page Open
+            system when they're all in one system (Harel, 2026-11-09). The page's + Add comment ties a comment to the
             newest one. */}
         {measured.parts.length > 0 && (
           <div className="absolute z-20 flex w-60 max-w-[calc(100%-1.5rem)] animate-pop flex-col gap-2 rounded-md border border-accent/50 bg-surface/95 p-2.5 text-xs shadow-sm backdrop-blur max-lg:bottom-20 max-lg:left-1/2 max-lg:-translate-x-1/2 lg:top-3 lg:left-3">
@@ -246,6 +260,16 @@ export function ReviewScreen({
                 Hide
               </button>
             </div>
+            {onePart && (
+              <button className="btn h-8 justify-center px-2.5 text-xs pointer-coarse:h-9" onClick={() => void openPartWindow(onePart.id)}>
+                Open part
+              </button>
+            )}
+            {oneSystem && (
+              <Link href={`/robots/${robotId}/systems/${oneSystem}/cad-review`} className="btn h-8 justify-center px-2.5 text-xs pointer-coarse:h-9">
+                Open system
+              </Link>
+            )}
           </div>
         )}
         {measured.parts.length === 0 && (focusName || isolated) && (
@@ -353,6 +377,72 @@ function Popup({ title, count, shown, onToggle, tone, children }: { title: strin
         <span className={`text-xs text-subtle ${shown === null ? "max-sm:rotate-180" : shown ? "" : "rotate-180"}`}>▴</span>
       </button>
       {shown !== false && <ul className={`min-h-0 flex-1 overflow-y-auto border-t border-line p-1 ${shown === null ? "max-sm:hidden" : ""}`}>{children}</ul>}
+    </div>
+  );
+}
+
+// The panel's width on wide screens, dragged from its right edge like the shell's side columns
+// (Harel, 2026-11-09): written straight onto the screen while dragging, kept in this browser.
+// Double-click goes back to the normal width.
+const PANEL_KEY = "orbit-cad-panel-w";
+const PANEL_DEFAULT = 320;
+function PanelResizer({ root }: { root: React.RefObject<HTMLDivElement | null> }) {
+  const set = (w: number) => root.current?.style.setProperty("--cad-panel-w", `${w}px`);
+  useEffect(() => {
+    try {
+      const w = Number(localStorage.getItem(PANEL_KEY));
+      if (w) set(w);
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on load
+  }, []);
+  const save = (w: number) => {
+    set(w);
+    try {
+      localStorage.setItem(PANEL_KEY, String(w));
+    } catch {}
+  };
+  const start = (e: React.PointerEvent<HTMLDivElement>) => {
+    const aside = root.current?.querySelector("aside");
+    if (!aside || e.button !== 0) return;
+    e.preventDefault();
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
+    const w0 = aside.getBoundingClientRect().width;
+    const x0 = e.clientX;
+    const max = Math.max(PANEL_DEFAULT, window.innerWidth / 2);
+    let w = w0;
+    let frame = 0;
+    const move = (ev: PointerEvent) => {
+      w = Math.round(Math.min(max, Math.max(240, w0 + ev.clientX - x0)));
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => set(w));
+    };
+    const end = () => {
+      cancelAnimationFrame(frame);
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", end);
+      handle.removeEventListener("pointercancel", end);
+      document.body.classList.remove("select-none", "cursor-col-resize");
+      save(w);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
+    document.body.classList.add("select-none", "cursor-col-resize");
+  };
+  return (
+    <div className="relative z-10 hidden w-0 lg:block">
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Drag to resize the panel"
+        title="Drag to resize, double-click to reset"
+        onPointerDown={start}
+        onDoubleClick={() => save(PANEL_DEFAULT)}
+        className="group absolute inset-y-0 -left-1.5 w-3 cursor-col-resize touch-none"
+      >
+        <span className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-accent opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-active:opacity-100" />
+      </div>
     </div>
   );
 }
