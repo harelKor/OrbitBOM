@@ -66,7 +66,7 @@ export function ReviewBoard({
 
   return (
     <div className="space-y-4">
-      <div className="stage-frame stage-glow relative h-[42dvh] min-h-64 overflow-hidden lg:h-[52dvh]">
+      <div className="stage-frame stage-glow relative h-[42dvh] min-h-64 overflow-hidden lg:h-[calc(52dvh+30px)]">
         <LazyMount className="absolute inset-0">
           {model ? (
             <ModelCanvas model={model} colors={NO_COLORS} mode="cad" locateKey={null} onLocated={noop} onPick={() => router.push(robotHref)} />
@@ -89,7 +89,7 @@ export function ReviewBoard({
           {systems.map((s) => {
             const own = bySystem.get(s.id);
             return (
-              <div key={s.id} className="stage-frame stage-glow relative aspect-square overflow-hidden lg:aspect-[5/4]">
+              <div key={s.id} className="stage-frame stage-glow relative aspect-square overflow-hidden lg:aspect-auto lg:h-[230px]">
                 {/* Phones: the system's picture. */}
                 <Link href={systemHref(s.id)} className="thumb-well absolute inset-0 flex items-center justify-center lg:hidden" aria-label={s.name}>
                   {s.thumbUrl ? (
