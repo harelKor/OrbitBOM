@@ -6,6 +6,7 @@ import type { MeasureInfo } from "@/components/viewer/measureLayer";
 import type { Paint } from "@/components/viewer/paint";
 import type { MenuTarget } from "@/components/viewer/picking";
 import type { Gone, HiddenParts, SceneTools, ViewerMode, ViewerModel } from "@/components/viewer/types";
+import { ViewCube } from "@/components/viewer/ViewCube";
 import { createViewer } from "@/components/viewer/viewer";
 
 // The viewer itself lives in src/components/viewer/ (plan/cad-3d-viewer.md §3); this is its React
@@ -102,6 +103,7 @@ export function ModelCanvas({
     locatedRef.current = onLocated;
   }, [onLocated]);
   const [error, setError] = useState<string | null>(null);
+  const [cube, setCube] = useState<SceneTools | null>(null); // the view cube, on pages with the tools (CAD)
   const hiddenAtLoad = useRef(hidden);
   useEffect(() => {
     hiddenAtLoad.current = hidden;
@@ -119,6 +121,7 @@ export function ModelCanvas({
       progress: (done, total) => setProgress(done < total ? { done, total } : null),
       ready: (tools) => {
         setLoaded(true);
+        if (toolsRef.current) setCube(tools);
         toolsRef.current?.(tools);
       },
       located: (found) => locatedRef.current(found),
@@ -134,6 +137,7 @@ export function ModelCanvas({
       setGone([]);
       setMenuAt(null);
       setLoaded(false);
+      setCube(null);
     };
   }, [model]);
 
@@ -177,6 +181,7 @@ export function ModelCanvas({
         </div>
       )}
       {menuAt && !progress && <ContextMenu {...menuAt} names={names} page={menu} onClose={closeMenu} />}
+      {cube && <ViewCube tools={cube} />}
       {error && <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">{error}</div>}
       {gone.length > 0 && !onHidden && (
         <div

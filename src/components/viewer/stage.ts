@@ -8,11 +8,43 @@ export type Stage = {
   renderer: THREE.WebGLRenderer;
   world: THREE.Scene;
   root: THREE.Group; // the model, turned Z-up like Onshape; everything in model space goes in here
-  camera: THREE.PerspectiveCamera;
+  camera: ViewCamera; // one object for both projections, so every module can keep its reference
   studio: THREE.Texture; // CAD mode's environment (paint.ts turns it on)
   render: () => void;
+  beforeRender: (() => void)[]; // run before each frame (camera.ts sets the near / far planes there)
   dispose: () => void;
 };
+
+// The view's camera: perspective, or orthographic (Onshape's default) when `ortho` is on. One
+// object switches between the two instead of swapping cameras, because picking, measuring and the
+// controls hold on to it; three.js reads `isPerspectiveCamera` / `isOrthographicCamera` to pick
+// the maths (rays, panning, lighting), so those flags follow `ortho`. In ortho, `orthoHalf` is half
+// the view's height in metres at zoom 1; `left` … `bottom` are kept for OrbitControls' panning.
+export class ViewCamera extends THREE.PerspectiveCamera {
+  ortho = false;
+  orthoHalf = 1;
+  left = -1;
+  right = 1;
+  top = 1;
+  bottom = -1;
+  setOrtho(on: boolean) {
+    this.ortho = on;
+    const flags = this as unknown as { isPerspectiveCamera: boolean; isOrthographicCamera: boolean };
+    flags.isPerspectiveCamera = !on;
+    flags.isOrthographicCamera = on;
+    this.updateProjectionMatrix();
+  }
+  override updateProjectionMatrix() {
+    if (!this.ortho) return super.updateProjectionMatrix();
+    this.top = this.orthoHalf;
+    this.bottom = -this.orthoHalf;
+    this.right = this.orthoHalf * this.aspect;
+    this.left = -this.right;
+    const z = this.zoom;
+    this.projectionMatrix.makeOrthographic(this.left / z, this.right / z, this.top / z, this.bottom / z, this.near, this.far, this.coordinateSystem, this.reversedDepth);
+    this.projectionMatrixInverse.copy(this.projectionMatrix).invert();
+  }
+}
 
 export type Snip = { dataUrl: string; w: number; h: number };
 export type StageTools = {
@@ -36,7 +68,7 @@ export function createStage(el: HTMLElement): Stage {
   const studio = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
   pmrem.dispose();
   world.environmentIntensity = 0.35;
-  const camera = new THREE.PerspectiveCamera(40, 1, 0.005, 200);
+  const camera = new ViewCamera(40, 1, 0.005, 200);
   camera.position.set(1.4, 1, 1.4);
   const headlight = new THREE.DirectionalLight(0xffffff, 2.1);
   headlight.position.set(-0.4, 0.6, 0);
@@ -47,7 +79,11 @@ export function createStage(el: HTMLElement): Stage {
   root.rotation.x = -Math.PI / 2; // Onshape is Z-up
   world.add(root);
 
-  const render = () => renderer.render(world, camera);
+  const beforeRender: (() => void)[] = [];
+  const render = () => {
+    for (const f of beforeRender) f();
+    renderer.render(world, camera);
+  };
   const resize = () => {
     const { clientWidth: w, clientHeight: h } = el;
     if (!w || !h) return;
@@ -67,6 +103,7 @@ export function createStage(el: HTMLElement): Stage {
     camera,
     studio,
     render,
+    beforeRender,
     dispose: () => {
       observer.disconnect();
       studio.dispose();

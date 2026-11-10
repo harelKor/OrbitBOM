@@ -72,7 +72,7 @@ export function Sandbox() {
         <div className="absolute inset-0 flex items-center justify-center text-sm text-muted">{failed ? "The sandbox robot couldn't load." : "Loading the sandbox…"}</div>
       )}
 
-      <p className="absolute top-3 right-3 z-10 rounded-md border border-line bg-surface/95 px-2.5 py-1.5 text-xs font-semibold text-muted shadow-sm">3D sandbox · not real data</p>
+      <p className="absolute top-3 left-1/2 z-10 -translate-x-1/2 rounded-md max-sm:hidden border border-line bg-surface/95 px-2.5 py-1.5 text-xs font-semibold text-muted shadow-sm">3D sandbox · not real data</p>
 
       {measured.parts.length > 0 && (
         <div className="absolute z-20 flex w-60 max-w-[calc(100%-1.5rem)] animate-pop flex-col gap-2 rounded-md border border-accent/50 bg-surface/95 p-2.5 text-xs shadow-sm backdrop-blur max-lg:bottom-20 max-lg:left-1/2 max-lg:-translate-x-1/2 lg:top-3 lg:left-3">

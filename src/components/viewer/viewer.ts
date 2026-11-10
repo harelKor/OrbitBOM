@@ -55,7 +55,7 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
     hoverOff: () => picking?.setHover(null),
     fit: (box) => camera.fit(box),
   });
-  const camera = createCamera(stage, visibility.shownBox);
+  const camera = createCamera(stage, visibility.shownBox, meshes);
   // Repainting a batch that arrived late doesn't frame the located part again (quietFit).
   let quietFit = false;
   const painter = createPaint(stage, meshes, looks, (box, r) => !quietFit && camera.fit(box, r));

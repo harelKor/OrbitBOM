@@ -3,13 +3,9 @@
 import { useState } from "react";
 import type { Axis, HiddenParts, SceneTools, Section, ViewName } from "@/components/dashboard/ModelCanvas";
 
-const VIEWS: { v: ViewName | "fit"; label: string }[] = [
-  { v: "fit", label: "Fit" },
-  { v: "iso", label: "Iso" },
-  { v: "front", label: "Front" },
-  { v: "top", label: "Top" },
-  { v: "side", label: "Side" },
-];
+// The other views moved to the view cube, top right (S1, plan/cad-3d-viewer.md); Fit stays here,
+// a big target on phones.
+const VIEWS: { v: ViewName | "fit"; label: string }[] = [{ v: "fit", label: "Fit" }];
 const tool = "press inline-flex h-8 items-center justify-center rounded-md px-2 text-xs font-semibold text-fg-2 hover:bg-raised hover:text-fg active:scale-[0.98] pointer-coarse:h-9 pointer-coarse:min-w-9";
 const on = "bg-accent/15 text-accent-hover";
 const box = "rounded-md border border-line bg-surface/95 shadow-sm backdrop-blur";
