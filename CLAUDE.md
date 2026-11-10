@@ -117,6 +117,19 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
   `src/components/review/ReviewScreen.tsx`; comments with no system are on the whole robot). Comments: `src/lib/reviews/comments.ts` (anyone adds,
   CAD ticks, `members.isMentor` approves/rejects); version tree `src/lib/reviews/tree.ts` from the
   kept Onshape version list (`src/lib/versions/docVersions.ts`) and the BOM versions. No calls.
+- 3D views (every viewer: CAD pages, BOM pages, part windows, Commit window): `ModelCanvas`
+  (`src/components/dashboard/ModelCanvas.tsx`), tools in `src/components/review/ViewerToolbar.tsx`,
+  picking / measuring maths in `src/lib/model/topology.ts`, `measure.ts`. Being reworked to work
+  like Onshape: see "Work in progress" below.
+
+## Work in progress
+
+- **CAD 3D viewer rework** (planned 2026-11-10): `plan/cad-3d-viewer.md` is the live plan and
+  handoff. Its "Progress" table says which session (S0–S9) is next; each session reads its brief
+  there, owns only its files, and updates the table when it ships. Decided by Harel: Shift+Y
+  brings back the hidden part under the mouse, no parts list, motion along the mates waits for
+  its own plan, the `/dev/viewer` sandbox stays small. Don't touch `ModelCanvas` for other work
+  while S0 (the split into `src/components/viewer/`) is in progress.
 - Files: `src/lib/storage/r2.ts`; backups and restore: `src/lib/storage/backup.ts`, `restore.ts`.
 - Work the user needn't wait for: `afterResponse` (`src/lib/later.ts`).
 - MCP: `src/lib/mcp/registry.ts` (`read` / `write`, preview → confirm token → apply) and one file
