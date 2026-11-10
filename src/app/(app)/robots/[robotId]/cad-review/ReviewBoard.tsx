@@ -64,9 +64,9 @@ export function ReviewBoard({
   const empty = (text: string) => <div className="absolute inset-0 flex items-center justify-center p-4 text-center text-sm text-muted">{text}</div>;
   const missing = edit ? "Press Update 3D model on the robot page to export it from Onshape." : "Shows here once the CAD Team exports the robot's 3D model.";
 
-  return (
-    <div className="space-y-4">
-      <div className="stage-frame stage-glow relative h-[42dvh] min-h-64 overflow-hidden lg:h-[calc(52dvh+30px)]">
+    {/* Wide screens: exactly one screen tall under the top bar (the page keeps 25px above and below), the robot taking what the systems leave (Harel, 2026-11-10). */}
+    <div className="space-y-4 lg:flex lg:h-[calc(100dvh-var(--topbar-h,2.75rem)-50px)] lg:flex-col lg:space-y-0 lg:gap-4">
+      <div className="stage-frame stage-glow relative h-[42dvh] min-h-64 overflow-hidden lg:h-auto lg:flex-1">
         <LazyMount className="absolute inset-0">
           {model ? (
             <ModelCanvas model={model} colors={NO_COLORS} mode="cad" locateKey={null} onLocated={noop} onPick={() => router.push(robotHref)} />
