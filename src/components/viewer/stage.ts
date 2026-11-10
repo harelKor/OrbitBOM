@@ -53,7 +53,7 @@ export type StageTools = {
 };
 
 export function createStage(el: HTMLElement): Stage {
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, stencil: true }); // stencil: section caps (S4)
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   el.appendChild(renderer.domElement);
   const world = new THREE.Scene();
