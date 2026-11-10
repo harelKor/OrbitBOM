@@ -9,6 +9,11 @@ const PUBLIC_PATHS = ["/login", "/auth/", "/invite/", "/api/cron/", "/api/mcp", 
 // Refreshes the Supabase session cookie on every request and sends signed-out visitors to /login.
 // Membership (member, pending, admin) is checked by the pages themselves, against the database.
 export async function updateSession(request: NextRequest) {
+  // Local dev tools (the 3D sandbox, /dev/viewer) need no sign-in and no Supabase at all; in
+  // production they answer 404 themselves and go through the sign-in check like everything else.
+  const devTool = /^\/(api\/)?dev\//.test(request.nextUrl.pathname);
+  if (devTool && process.env.NODE_ENV !== "production") return NextResponse.next({ request });
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(

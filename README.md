@@ -51,6 +51,11 @@ password; it answers 404 in production and whenever Supabase isn't on this machi
 and R2 unset locally so nothing spends the team's Onshape calls or touches the real bucket.
 `npx supabase stop` stops it (its data is kept for the next start).
 
+3D: open `/dev/viewer`. It draws a small made-up robot (`src/lib/model/sandbox.ts`) in the CAD
+viewer with its tools (views, section, picks and measure, hide / Shift+Y, isolate, colours,
+Locate), with no Onshape, no R2 and no sign-in; it needs no `.env.local` at all. It answers 404 in
+production.
+
 Checks: `npm run lint`, `npm run typecheck`, `npm test`. Database tests run when
 `TEST_DATABASE_URL` points at a migrated Postgres (CI does this). `npm run test:db` does it
 locally: it starts CI's Postgres in Docker (Docker Desktop must be running), migrates it and runs
