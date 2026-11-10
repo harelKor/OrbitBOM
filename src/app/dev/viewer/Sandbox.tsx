@@ -27,7 +27,8 @@ export function Sandbox() {
   const [located, setLocated] = useState<boolean | null>(null);
 
   useEffect(() => {
-    fetch("/api/dev/viewer")
+    // ?big=1: the big robot for the loading check (plan/cad-3d-viewer.md S2).
+    fetch(`/api/dev/viewer${new URLSearchParams(window.location.search).get("big") === "1" ? "?big=1" : ""}`)
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then(setData)
       .catch(() => setFailed(true));
@@ -162,7 +163,7 @@ export function Sandbox() {
           className="h-9 max-w-56 rounded-md border border-line bg-surface px-2 text-xs"
         >
           <option value="">Locate a part…</option>
-          {[...names].map(([k, n]) => (
+          {[...names].slice(0, 60).map(([k, n]) => (
             <option key={k} value={k}>
               {n}
             </option>

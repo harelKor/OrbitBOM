@@ -69,7 +69,11 @@ export async function robotModelBuiltAt(robotId: string): Promise<string | null>
 // system page, which only ever draws its own subsystem) just the placements of the groups that
 // system is in, and only the Part Studio files they use: a phone downloads and decodes a few
 // meshes instead of the whole robot. A model built before groups existed is sent whole.
-export async function robotModel(robotId: string, systemId?: string) {
+// `keys` are the files' R2 keys, next to their links: a key names one Part Studio revision, so
+// the browser keeps each file under it and downloads only the ones it hasn't seen
+// (src/components/viewer/meshCache.ts).
+export type RobotModel = { builtAt: string; studios: (string | null)[]; keys: string[]; placements: ModelPlacement[]; groups: ModelGroup[] };
+export async function robotModel(robotId: string, systemId?: string): Promise<RobotModel | null> {
   const { built } = await loadState(robotId);
   if (!built || !storageConfigured()) return null;
   const groups = built.groups ?? [];
@@ -85,6 +89,7 @@ export async function robotModel(robotId: string, systemId?: string) {
   return {
     builtAt: built.builtAt,
     studios: await Promise.all(studios.map((key) => imageUrl(key))),
+    keys: studios,
     placements,
     groups,
   };

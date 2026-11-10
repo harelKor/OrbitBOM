@@ -94,7 +94,13 @@ export function ModelCanvas({
     pick.current = onPick;
     openPart.current = onOpen;
   }, [onPick, onOpen]);
+  // Parts draw as their files arrive: `loaded` once the first are in, `progress` until the last.
   const [progress, setProgress] = useState<{ done: number; total: number } | null>({ done: 0, total: model.studios.length });
+  const [loaded, setLoaded] = useState(false);
+  const locatedRef = useRef(onLocated);
+  useEffect(() => {
+    locatedRef.current = onLocated;
+  }, [onLocated]);
   const [error, setError] = useState<string | null>(null);
   const hiddenAtLoad = useRef(hidden);
   useEffect(() => {
@@ -110,11 +116,12 @@ export function ModelCanvas({
       open: () => openPart.current,
       measured: (m) => measureRef.current?.(m),
       gone: setGone,
-      progress: (done, total) => setProgress({ done, total }),
+      progress: (done, total) => setProgress(done < total ? { done, total } : null),
       ready: (tools) => {
-        setProgress(null);
+        setLoaded(true);
         toolsRef.current?.(tools);
       },
+      located: (found) => locatedRef.current(found),
       failed: () => setError("The 3D model couldn't load. Try reloading the page."),
       menu: (at) => setMenuAt({ at, tools: viewer.tools, hideCopy: viewer.hideCopy }),
       isolated: (keys) => isolatedRef.current?.(keys),
@@ -126,6 +133,7 @@ export function ModelCanvas({
       toolsRef.current?.(null);
       setGone([]);
       setMenuAt(null);
+      setLoaded(false);
     };
   }, [model]);
 
@@ -146,7 +154,6 @@ export function ModelCanvas({
   }, [gone, names]);
 
   // Colours and Locate.
-  const loaded = progress === null;
   useEffect(() => {
     if (loaded) onLocated(scene.current?.paint(colors, mode, locateKey) ?? false);
   }, [loaded, colors, mode, locateKey, onLocated]);
@@ -163,9 +170,10 @@ export function ModelCanvas({
 
   return (
     <div ref={host} className="absolute inset-0">
+      {!loaded && !error && <div className="absolute inset-0 flex items-center justify-center text-sm text-muted">Loading the robot…</div>}
       {progress && !error && (
-        <div className="absolute inset-0 flex items-center justify-center text-sm text-muted tabular-nums">
-          Loading the robot… {progress.total ? Math.round((progress.done / progress.total) * 100) : 0}%
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-line/40" role="progressbar" aria-label="Loading the robot" aria-valuenow={Math.round((progress.done / Math.max(1, progress.total)) * 100)}>
+          <div className="h-full bg-accent transition-[width] duration-200" style={{ width: `${(progress.done / Math.max(1, progress.total)) * 100}%` }} />
         </div>
       )}
       {menuAt && !progress && <ContextMenu {...menuAt} names={names} page={menu} onClose={closeMenu} />}

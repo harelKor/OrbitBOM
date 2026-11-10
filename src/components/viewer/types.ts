@@ -12,6 +12,10 @@ import type { VisibilityTools } from "./visibility";
 
 export type ViewerModel = {
   studios: (string | null)[];
+  // Each studio file's R2 key (it names one Part Studio revision, so the file never changes): the
+  // browser keeps the file under it and skips the download next time (meshCache.ts). Null or
+  // missing for a file that can change under its name; that one is always downloaded.
+  keys?: (string | null)[];
   placements: { s: number; k: string; t: number[]; g?: number }[];
   groups?: { systemIds: string[]; name: string }[]; // subsystems, by placement g
 };

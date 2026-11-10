@@ -197,18 +197,40 @@ const SYSTEMS: { id: string; name: string; parts: Placed[] }[] = [
 ];
 
 // The sandbox robot as the viewer reads it (one Part Studio file at `studioUrl`), with a name per
-// part key. Every copy of a part in one subsystem shares its key, like a BOM part.
-export function sandboxRobot(studioUrl: string) {
+// part key. Every copy of a part in one subsystem shares its key, like a BOM part. `key` makes the
+// file cacheable in the browser like a real one (its R2 key).
+//
+// `big` (/dev/viewer?big=1, the loading check in plan/cad-3d-viewer.md S2): the robot repeated on
+// a grid, ~5000 instances of the same few shapes, spread over BIG_FILES copies of the file (same
+// content, separate links and keys) so they load and draw one by one like a real robot's Part
+// Studios. Each copy's parts get their own keys.
+export const BIG_FILES = 8;
+const BIG_GRID = 14; // 14 × 13 robots
+export function sandboxRobot(studioUrl: string, opts: { key?: string; big?: boolean } = {}) {
   const names: Record<string, string> = {};
-  const placements = SYSTEMS.flatMap((sys, g) =>
-    sys.parts.map((p) => {
-      const k = `sandbox:${sys.id}-${p.name.toLowerCase().replace(/\W+/g, "-")}:${p.part}`;
-      names[k] = p.name;
-      return { s: 0, k, t: p.t, g };
-    }),
-  );
+  const robots = opts.big ? BIG_GRID * (BIG_GRID - 1) : 1;
+  const files = opts.big ? BIG_FILES : 1;
+  const placements = Array.from({ length: robots }, (_, r) => {
+    const dx = (r % BIG_GRID) * 1.4, dy = Math.floor(r / BIG_GRID) * 1.4;
+    return SYSTEMS.flatMap((sys, g) =>
+      sys.parts.map((p) => {
+        const k = `sandbox:${opts.big ? `r${r}-` : ""}${sys.id}-${p.name.toLowerCase().replace(/\W+/g, "-")}:${p.part}`;
+        names[k] = p.name;
+        const t = [...p.t];
+        t[3] += dx;
+        t[7] += dy;
+        return { s: r % files, k, t, g };
+      }),
+    );
+  }).flat();
+  const studios = opts.big ? Array.from({ length: files }, (_, i) => `${studioUrl}?n=${i}`) : [studioUrl];
   return {
-    model: { studios: [studioUrl], placements, groups: SYSTEMS.map((s) => ({ systemIds: [s.id], name: s.name })) },
+    model: {
+      studios,
+      ...(opts.key && { keys: opts.big ? studios.map((_, i) => `${opts.key}/${i}`) : [opts.key] }),
+      placements,
+      groups: SYSTEMS.map((s) => ({ systemIds: [s.id], name: s.name })),
+    },
     names,
   };
 }

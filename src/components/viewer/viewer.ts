@@ -3,7 +3,7 @@
 // this file only wires them, so a session changing one module rarely needs to touch it.
 import type * as THREE from "three";
 import { createCamera } from "./camera";
-import { loadModel, partTools } from "./load";
+import { loadModel, partTools, placementsBox, refitNeeded } from "./load";
 import { createMeasureLayer, type MeasureInfo, type MeasureLayer } from "./measureLayer";
 import { createLooks, createPaint, type Paint } from "./paint";
 import { createMarks, createPicking, createSelection, createTopo, type MenuTarget, type Picking } from "./picking";
@@ -20,7 +20,8 @@ export type ViewerHost = {
   measured: (m: MeasureInfo) => void;
   gone: (gone: Gone[]) => void;
   progress: (done: number, total: number) => void;
-  ready: (tools: SceneTools) => void; // the model is drawn
+  ready: (tools: SceneTools) => void; // the first parts are drawn (the rest follow as they arrive)
+  located?: (found: boolean) => void; // Locate's answer changed once the later parts arrived
   failed: () => void;
   menu: (m: MenuTarget) => void; // right-click / long press: the context menu
   isolated: (keys: string[] | null) => void;
@@ -55,7 +56,9 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
     fit: (box) => camera.fit(box),
   });
   const camera = createCamera(stage, visibility.shownBox);
-  const painter = createPaint(stage, meshes, looks, camera.fit);
+  // Repainting a batch that arrived late doesn't frame the located part again (quietFit).
+  let quietFit = false;
+  const painter = createPaint(stage, meshes, looks, (box, r) => !quietFit && camera.fit(box, r));
   const selection = createSelection(stage, meshes, looks);
   const topo = createTopo(meshes);
   picking = createPicking(stage, meshes, topo, () => measure!, {
@@ -92,30 +95,88 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
     ...stageTools(stage),
   };
 
-  loadModel(stage, model, looks, { meshes, geometries }, host.progress, () => disposed)
+  // Drawn as the files arrive: the first Fit comes from where the parts sit (a subsystem page
+  // frames only its own subsystem), before any mesh is in; each later batch gets the page's
+  // subsystems, colours and selection. The view is framed again at the end only if the guess was
+  // well off and nobody has moved the camera yet.
+  let groupsHidden = host.hiddenAtLoad() ?? new Set<number>();
+  let painted: Parameters<Paint> | null = null;
+  let located = false;
+  let loading = true;
+  let shown = false;
+  let touched = false;
+  camera.controls.addEventListener("start", () => (touched = true));
+  stage.root.updateMatrixWorld();
+  let framed = placementsBox(model.placements, groupsHidden)?.applyMatrix4(stage.root.matrixWorld) ?? null;
+  if (framed) camera.fit(framed);
+  const paint: Paint = (colors, mode, locateKey) => {
+    painted = [colors, mode, locateKey];
+    located = painter.paint(colors, mode, locateKey);
+    visibility.repaint();
+    return located || (loading && !!locateKey); // the located part may still be on its way
+  };
+  const hide = (hidden: Set<number>) => {
+    groupsHidden = hidden;
+    visibility.hideGroups(hidden);
+  };
+  const firstDraw = () => {
+    shown = true;
+    if (!framed) camera.fit((framed = visibility.shownBox()));
+    host.ready(tools);
+  };
+  const loader = loadModel(
+    stage,
+    model,
+    looks,
+    { meshes, geometries },
+    {
+      progress: host.progress,
+      added: () => {
+        visibility.hideGroups(groupsHidden); // also redraws the selection
+        if (painted) {
+          const was = located;
+          quietFit = was;
+          located = painter.paint(...painted);
+          visibility.repaint();
+          quietFit = false;
+          if (located && !was) host.located?.(true);
+        }
+        if (!shown) firstDraw();
+        stage.render();
+      },
+    },
+    () => disposed,
+  );
+  loader.done
     .then((ok) => {
       if (!ok) return;
-      // Frame what's shown: a subsystem page starts with only its own subsystem.
-      const hidden = host.hiddenAtLoad();
-      for (const { mesh, g } of meshes) mesh.visible = !hidden?.has(g);
-      camera.fit(visibility.shownBox());
-      host.ready(tools);
+      loading = false;
+      if (!shown) firstDraw();
+      else if (!touched && framed && refitNeeded(framed, visibility.shownBox())) camera.fit(visibility.shownBox());
+      if (painted?.[2] && !located) host.located?.(false);
     })
     .catch(() => !disposed && host.failed());
 
+  // Phones draw at a lower pixel ratio while the view moves, sharp again when it stops.
+  const sharp = stage.renderer.getPixelRatio();
+  if (sharp > 1 && window.matchMedia("(pointer: coarse)").matches) {
+    camera.controls.addEventListener("start", () => stage.renderer.setPixelRatio(1));
+    camera.controls.addEventListener("end", () => {
+      stage.renderer.setPixelRatio(sharp);
+      stage.render();
+    });
+  }
+
   return {
-    paint: (...a) => {
-      const found = painter.paint(...a);
-      visibility.repaint();
-      return found;
-    },
-    hide: visibility.hideGroups,
+    paint,
+    hide,
     select: selection.select,
     show: visibility.show,
     hideCopy: visibility.hideOne,
     tools,
     dispose: () => {
       disposed = true;
+      loader.dispose();
       camera.dispose();
       picking?.dispose();
       visibility.dispose();

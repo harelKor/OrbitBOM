@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import { decodeMeshes, encodeMeshes } from "./mesh";
-import { sandboxRobot, sandboxStudio } from "./sandbox";
+import { BIG_FILES, sandboxRobot, sandboxStudio } from "./sandbox";
 import { topology } from "./topology";
 
 it("builds the sandbox's parts as real faces: the plate's 24 holes come out round", () => {
@@ -27,4 +27,17 @@ it("places a few dozen parts in three subsystems, each placed part named", () =>
     expect(parts.has(p.k.slice(p.k.lastIndexOf(":") + 1))).toBe(true);
     expect(p.t).toHaveLength(16);
   }
+});
+
+it("the big variant (?big=1) has ~5000 instances over several cacheable files", () => {
+  const { model, names } = sandboxRobot("/studio", { key: "dev/k", big: true });
+  expect(model.placements.length).toBeGreaterThan(4500);
+  expect(model.placements.length).toBeLessThan(6000);
+  expect(model.studios).toHaveLength(BIG_FILES);
+  expect(new Set(model.studios).size).toBe(BIG_FILES);
+  expect(model.keys).toEqual(model.studios.map((_, i) => `dev/k/${i}`));
+  expect(new Set(model.placements.map((p) => p.s)).size).toBe(BIG_FILES);
+  for (const p of model.placements) expect(names[p.k]).toBeTruthy();
+  expect(model.placements.filter((p) => p.k.startsWith("sandbox:r0-")).length).toBe(sandboxRobot("/studio").model.placements.length);
+  expect(sandboxRobot("/studio", { key: "dev/k" }).model.keys).toEqual(["dev/k"]);
 });

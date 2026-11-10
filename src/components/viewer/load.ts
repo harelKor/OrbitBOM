@@ -1,98 +1,216 @@
-// Loading the model: fetch each Part Studio's mesh file, decode it, and build one instanced mesh
-// per (subsystem, Part Studio, part) with its face borders.
+// Loading the model: each Part Studio's mesh file is read, decoded and prepared in Web Workers
+// (meshWorker.ts, from the browser's cache when it has the file), and its parts are drawn as soon
+// as it arrives: one instanced mesh per (subsystem, Part Studio, part) with its face borders.
 import * as THREE from "three";
-import { edgePositions } from "@/lib/model/edges";
-import { decodeMeshes, type Appearance, type Mesh } from "@/lib/model/mesh";
+import { acceleratedRaycast, MeshBVH, type SerializedBVH } from "three-mesh-bvh";
+import type { Shape, WorkerJob, WorkerReply } from "./meshWorker";
 import type { Looks } from "./paint";
 import { PLAIN } from "./paint";
 import type { Stage } from "./stage";
 import type { PartMesh, ViewerModel } from "./types";
 
-async function loadStudio(url: string): Promise<Mesh[]> {
-  const res = await fetch(url);
-  if (!res.ok || !res.body) throw new Error(`model file ${res.status}`);
-  const buf = await new Response(res.body.pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
-  return decodeMeshes(buf);
+// Hover and picks test a part's BVH (built in the worker) instead of every triangle: three's
+// InstancedMesh raycast tests each copy through Mesh.raycast, so swapping that in once speeds up
+// every raycast on the meshes below (picking.ts needs no change). Meshes without a BVH (the hover
+// wash, marks) work as before. The copy's bounding sphere is checked first, as three does, so the
+// thousands of copies the ray misses cost almost nothing and hidden copies (drawn at no size)
+// are never hit.
+const plainRaycast = THREE.Mesh.prototype.raycast;
+const sphere = new THREE.Sphere();
+THREE.Mesh.prototype.raycast = function (this: THREE.Mesh, raycaster: THREE.Raycaster, hits: THREE.Intersection[]) {
+  const geometry = this.geometry;
+  if (!geometry.boundsTree) return plainRaycast.call(this, raycaster, hits);
+  if (!geometry.boundingSphere) geometry.computeBoundingSphere();
+  sphere.copy(geometry.boundingSphere!).applyMatrix4(this.matrixWorld);
+  if (!(sphere.radius > 0) || !raycaster.ray.intersectsSphere(sphere)) return;
+  acceleratedRaycast.call(this, raycaster, hits);
+};
+
+// The box of where the shown parts sit (their placements' origins), in model space, padded a
+// little since parts reach past their origins: the first Fit, before any mesh has arrived.
+// Null when that says nothing useful (one placement, or every part placed at the same spot,
+// as with Part Studios drawn in place), and the view frames the first meshes instead.
+export function placementsBox(placements: ViewerModel["placements"], hidden?: Set<number>): THREE.Box3 | null {
+  const box = new THREE.Box3();
+  const p = new THREE.Vector3();
+  for (const { t, g } of placements) if (!hidden?.has(g ?? 0)) box.expandByPoint(p.set(t[3], t[7], t[11]));
+  if (box.isEmpty()) return null;
+  const size = box.getSize(p).length();
+  if (size < 0.1) return null;
+  return box.expandByScalar(size * 0.08 + 0.05);
 }
 
-type Shape = { geometry: THREE.BufferGeometry; edges: Float32Array; look?: Appearance };
+// Whether the real box of what's drawn is far enough from the first Fit's guess to frame again
+// once everything is in (only if the camera wasn't touched meanwhile): its size off by more than a
+// quarter, or its centre moved by more than a fifth of its size.
+export function refitNeeded(guess: THREE.Box3, real: THREE.Box3): boolean {
+  if (real.isEmpty()) return false;
+  const a = guess.getSize(new THREE.Vector3()).length();
+  const b = real.getSize(new THREE.Vector3()).length();
+  if (!a || b / a > 1.25 || b / a < 0.75) return true;
+  return guess.getCenter(new THREE.Vector3()).distanceTo(real.getCenter(new THREE.Vector3())) > b * 0.2;
+}
 
-// Downloads (6 at a time) and builds the model's meshes into `meshes`, added under the stage's
-// root. Every geometry made goes into `geometries`, for the viewer to dispose of. Resolves false
-// when `cancelled()` turned true on the way (nothing is added then).
-export async function loadModel(
+// Web Workers that prepare the mesh files: a few at once (fewer on small phones), one file each
+// at a time, so the files arrive one by one and draw as they come.
+function workerCount(files: number) {
+  const cores = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 2 : 2;
+  return Math.max(1, Math.min(4, cores - 1, files));
+}
+const newWorker = () => new Worker(new URL("./meshWorker.ts", import.meta.url), { type: "module" });
+
+export type Loading = {
+  done: Promise<boolean>; // every file drawn (false: cancelled); rejects when a file fails
+  dispose: () => void; // stops the workers
+};
+
+// Reads and draws the model's files, adding to `meshes` (in place: every module holds this array)
+// under the stage's root. `added(from)` runs after each Part Studio's parts went in, with the index
+// of its first mesh. Every geometry made goes into `geometries`, for the viewer to dispose of.
+export function loadModel(
   stage: Stage,
   model: ViewerModel,
   looks: Looks,
   out: { meshes: PartMesh[]; geometries: THREE.BufferGeometry[] },
-  progress: (done: number, total: number) => void,
+  on: { progress: (done: number, total: number) => void; added: (from: number) => void },
   cancelled: () => boolean,
-): Promise<boolean> {
+): Loading {
   const { root } = stage;
   const { meshes, geometries } = out;
-  const shapes: Map<string, Shape>[] = [];
-  let done = 0;
-  const queue = model.studios.map((url, i) => ({ url, i }));
-  const worker = async () => {
-    for (let job = queue.shift(); job; job = queue.shift()) {
-      const byPart = new Map<string, Shape>();
-      if (job.url) {
-        for (const m of await loadStudio(job.url)) {
-          const g = new THREE.BufferGeometry();
-          g.setAttribute("position", new THREE.BufferAttribute(m.positions, 3));
-          g.setIndex(new THREE.BufferAttribute(m.indices, 1));
-          g.computeVertexNormals();
-          geometries.push(g);
-          byPart.set(m.partId, { geometry: g, edges: edgePositions(m.positions, m.indices), look: m.appearance });
-        }
-      }
-      shapes[job.i] = byPart;
-      if (!cancelled()) progress(++done, model.studios.length);
-    }
-  };
-  await Promise.all(Array.from({ length: 6 }, worker));
-  if (cancelled()) return false;
+  const jobs = model.studios.flatMap((url, s) => (url ? [{ s, url: new URL(url, location.href).href, key: model.keys?.[s] ?? null }] : []));
+  const total = model.studios.length;
+  let done = total - jobs.length; // files the model doesn't use here count as done
+  on.progress(done, total);
 
-  // One instanced mesh per (subsystem, Part Studio, part).
-  const groups = new Map<string, Shape & { items: typeof model.placements; g: number }>();
+  // Each studio's placements, grouped by (subsystem, part), ready for its file.
+  const byStudio = new Map<number, Map<string, { partId: string; g: number; items: ViewerModel["placements"] }>>();
   for (const p of model.placements) {
     const partId = p.k.slice(p.k.lastIndexOf(":") + 1);
-    const shape = shapes[p.s]?.get(partId);
-    if (!shape) continue;
-    const id = `${p.g ?? 0}|${p.s}|${partId}`;
-    const group = groups.get(id) ?? { ...shape, items: [], g: p.g ?? 0 };
+    const groups = byStudio.get(p.s) ?? new Map();
+    const id = `${p.g ?? 0}|${partId}`;
+    const group = groups.get(id) ?? { partId, g: p.g ?? 0, items: [] };
     group.items.push(p);
     groups.set(id, group);
+    byStudio.set(p.s, groups);
   }
-  const m = new THREE.Matrix4();
-  for (const { geometry, edges, look, items, g } of groups.values()) {
-    const mesh = new THREE.InstancedMesh(geometry, looks.material, items.length);
-    items.forEach((p, i) => {
-      const t = p.t;
-      m.set(t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], t[8], t[9], t[10], t[11], t[12], t[13], t[14], t[15]);
-      mesh.setMatrixAt(i, m);
-      mesh.setColorAt(i, new THREE.Color(PLAIN));
-    });
-    mesh.computeBoundingSphere();
-    mesh.computeBoundingBox();
-    if (edges.length) {
-      // A child of its mesh: hidden with it (subsystems, Only this), sharing its matrices.
-      const lines = new THREE.InstancedBufferGeometry();
-      lines.setAttribute("position", new THREE.BufferAttribute(edges, 3));
-      lines.setAttribute("instanceMatrix", mesh.instanceMatrix);
-      lines.instanceCount = items.length;
-      lines.boundingBox = mesh.boundingBox!.clone(); // so framing measures the copies, not the origin
-      geometries.push(lines);
-      const segs = new THREE.LineSegments(lines, looks.edgeLook);
-      segs.frustumCulled = false;
-      segs.raycast = () => {};
-      mesh.add(segs);
+  // Topology (faces, edges, corners for measuring) is worked out after the drawing, in the same
+  // worker, and kept on each geometry as userData.topology.
+  const geometriesOf = new Map<number, THREE.BufferGeometry[]>();
+
+  const draw = (s: number, shapes: Shape[]) => {
+    const own: THREE.BufferGeometry[] = [];
+    const shapeOf = new Map<string, { geometry: THREE.BufferGeometry; edges: Float32Array; look?: Shape["appearance"] }>();
+    for (const sh of shapes) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.BufferAttribute(sh.positions, 3));
+      g.setAttribute("normal", new THREE.BufferAttribute(sh.normals, 3));
+      g.setIndex(new THREE.BufferAttribute(sh.index, 1));
+      g.boundsTree = MeshBVH.deserialize({ version: 1, roots: sh.bvh, index: sh.index, indirectBuffer: null } as SerializedBVH, g, { setIndex: false }) // version: 1 is the current format; the types leave it out;
+      geometries.push(g);
+      own.push(g);
+      shapeOf.set(sh.partId, { geometry: g, edges: sh.edges, look: sh.appearance });
     }
-    root.add(mesh);
-    meshes.push({ mesh, keys: items.map((p) => p.k), g, look });
-  }
-  root.updateMatrixWorld(true);
-  return true;
+    geometriesOf.set(s, own);
+    const from = meshes.length;
+    const m = new THREE.Matrix4();
+    for (const { partId, g, items } of byStudio.get(s)?.values() ?? []) {
+      const shape = shapeOf.get(partId);
+      if (!shape) continue;
+      const { geometry, edges, look } = shape;
+      const mesh = new THREE.InstancedMesh(geometry, looks.material, items.length);
+      items.forEach((p, i) => {
+        const t = p.t;
+        m.set(t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], t[8], t[9], t[10], t[11], t[12], t[13], t[14], t[15]);
+        mesh.setMatrixAt(i, m);
+        mesh.setColorAt(i, new THREE.Color(PLAIN));
+      });
+      mesh.computeBoundingSphere();
+      mesh.computeBoundingBox();
+      if (edges.length) {
+        // A child of its mesh: hidden with it (subsystems, Only this), sharing its matrices.
+        const lines = new THREE.InstancedBufferGeometry();
+        lines.setAttribute("position", new THREE.BufferAttribute(edges, 3));
+        lines.setAttribute("instanceMatrix", mesh.instanceMatrix);
+        lines.instanceCount = items.length;
+        lines.boundingBox = mesh.boundingBox!.clone(); // so framing measures the copies, not the origin
+        geometries.push(lines);
+        const segs = new THREE.LineSegments(lines, looks.edgeLook);
+        segs.frustumCulled = false;
+        segs.raycast = () => {};
+        mesh.add(segs);
+      }
+      root.add(mesh);
+      meshes.push({ mesh, keys: items.map((p) => p.k), g, look });
+    }
+    root.updateMatrixWorld(true);
+    if (meshes.length > from) on.added(from);
+  };
+
+  const workers: Worker[] = [];
+  const done$ = new Promise<boolean>((resolve, reject) => {
+    if (!jobs.length) return resolve(true);
+    const queue = [...jobs];
+    const ownerOf = new Map<number, Worker>();
+    let finished = false;
+    const finish = (ok: boolean) => {
+      if (finished) return;
+      finished = true;
+      resolve(ok);
+      // Then, quietly: topology for measuring, and the cache clean-up; each worker stops once
+      // it has answered all of it.
+      if (!ok) return;
+      for (const [s, w] of ownerOf) {
+        w.postMessage({ kind: "topology", id: s } satisfies WorkerJob);
+        pending.set(w, (pending.get(w) ?? 0) + 1);
+      }
+      const keys = jobs.flatMap((j) => (j.key ? [j.key] : []));
+      if (keys.length) {
+        workers[0].postMessage({ kind: "sweep", keys } satisfies WorkerJob);
+        pending.set(workers[0], (pending.get(workers[0]) ?? 0) + 1);
+      }
+      workers.forEach(settle);
+    };
+    const pending = new Map<Worker, number>();
+    const settle = (w: Worker) => !pending.get(w) && w.terminate();
+    const next = (w: Worker) => {
+      const job = queue.shift();
+      if (!job) return;
+      ownerOf.set(job.s, w);
+      w.postMessage({ kind: "studio", id: job.s, url: job.url, key: job.key } satisfies WorkerJob);
+    };
+    for (let i = 0; i < workerCount(jobs.length); i++) {
+      const w = newWorker();
+      workers.push(w);
+      w.onerror = () => {
+        if (finished) return;
+        finished = true;
+        reject(new Error("mesh worker failed"));
+      };
+      w.onmessage = (e: MessageEvent<WorkerReply>) => {
+        const msg = e.data;
+        if (msg.kind === "topology" || msg.kind === "swept") {
+          if (msg.kind === "topology") geometriesOf.get(msg.id)?.forEach((g, i) => (g.userData.topology = msg.topology[i]));
+          pending.set(w, (pending.get(w) ?? 1) - 1);
+          return settle(w);
+        }
+        if (finished) return;
+        if (cancelled()) return finish(false);
+        if (msg.kind === "failed") {
+          finished = true;
+          return reject(new Error(msg.error));
+        }
+        draw(msg.id, msg.shapes);
+        on.progress(++done, total);
+        if (done === total) finish(true);
+        else next(w);
+      };
+      next(w);
+    }
+  });
+  return {
+    done: done$,
+    dispose: () => workers.forEach((w) => w.terminate()),
+  };
 }
 
 export type PartTools = { partSize: (key: string) => [number, number, number] | null };
