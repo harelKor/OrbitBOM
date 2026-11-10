@@ -1,11 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { addReviewComment } from "@/app/(app)/review-comments-actions";
 import { OpenComment, TreeComment, WaitingComment } from "@/components/review/Comments";
+import { SnipEditor, SnipMe, SnipPicture, uploadSnip, type SnipDraft } from "@/components/review/Snip";
 import type { ReviewComment } from "@/lib/data/cadReview";
 import type { PanelPlace, PanelVersion } from "@/lib/reviews/panelVersion";
+import { captureScreen, CropShot, usePasteShot, type Shot } from "./PanelSnip";
 
 type Part = { key: string; name: string; systemId: string };
 
@@ -41,6 +43,27 @@ export function PanelComments({
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const version = useVersion(systemId, place);
+  // Snip: a shared screen to cut from, then the drawing window (Harel, 2026-11-10).
+  const [shot, setShot] = useState<Shot | null>(null);
+  const [snip, setSnip] = useState<SnipDraft | null>(null);
+  const [drawing, setDrawing] = useState(false);
+  const [snipHint, setSnipHint] = useState(false);
+  const took = useCallback((s: Shot) => {
+    setShot(null);
+    setSnipHint(false);
+    setSnip({ ...s, strokes: [] });
+    setDrawing(true);
+  }, []);
+  usePasteShot(took, setError);
+  const snipScreen = async () => {
+    setError(null);
+    try {
+      setShot(await captureScreen());
+    } catch (err) {
+      // Cancelled by the member, or Onshape's frame doesn't allow sharing: paste instead.
+      if ((err as Error)?.name !== "AbortError") setSnipHint(true);
+    }
+  };
 
   const partsHere = parts.filter((p) => p.systemId === systemId);
   const part = partsHere.find((p) => p.key === partKey) ?? null;
@@ -54,15 +77,23 @@ export function PanelComments({
     start(async () => {
       setError(null);
       const v = systemId && version.data?.version ? version.data.version : null;
-      const r = await addReviewComment(robotId, systemId, body, part && { key: part.key, name: part.name }, v);
+      let shotUp = null;
+      if (snip) {
+        const up = await uploadSnip(snip);
+        if ("error" in up) return setError(up.error);
+        shotUp = up.snip;
+      }
+      const r = await addReviewComment(robotId, systemId, body, part && { key: part.key, name: part.name }, v, shotUp);
       if (r.error) return setError(r.error);
       setBody("");
       setPartKey("");
+      setSnip(null);
       router.refresh();
     });
   };
 
   return (
+    <SnipMe.Provider value={me.id}>
     <div className="space-y-5">
       <form onSubmit={submit} className="space-y-2.5 rounded-lg border border-line bg-surface p-3">
         {!fixedSystem && (
@@ -77,6 +108,30 @@ export function PanelComments({
         )}
         {systemId && <VersionLine state={version} />}
         <textarea required value={body} onChange={(e) => setBody(e.target.value)} rows={4} maxLength={2000} className="input min-h-24 w-full" placeholder="What should change?" />
+        {snip ? (
+          <div className="flex items-start gap-3">
+            <button type="button" onClick={() => setDrawing(true)} className="press w-36 shrink-0 overflow-hidden rounded border border-line hover:border-accent/60 active:scale-[0.98]" title="Draw on it">
+              <SnipPicture src={snip.dataUrl} w={snip.w} h={snip.h} strokes={snip.strokes} />
+            </button>
+            <div className="flex flex-col gap-1 text-xs">
+              <button type="button" onClick={() => setDrawing(true)} className="press text-left font-semibold text-accent-hover hover:underline pointer-coarse:min-h-9">
+                Draw on it
+              </button>
+              <button type="button" onClick={() => setSnip(null)} className="press text-left text-muted hover:text-rose-500 pointer-coarse:min-h-9">
+                Remove snip
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button type="button" onClick={snipScreen} className="btn h-10 w-full justify-center gap-2 active:scale-[0.98]" title="Share the Onshape tab, cut a rectangle out of it and draw on it">
+            📷 Snip Onshape
+          </button>
+        )}
+        {snipHint && !snip && (
+          <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-xs text-fg-2">
+            Onshape doesn&rsquo;t let the panel share the screen. Snip with <b>Win+Shift+S</b> (Mac: <b>Cmd+Ctrl+Shift+4</b>), then press <b>Ctrl+V</b> (Cmd+V) here.
+          </p>
+        )}
         {partsHere.length > 0 && (
           <select className="input w-full pointer-coarse:min-h-9" value={partKey} onChange={(e) => setPartKey(e.target.value)} aria-label="The part it's about">
             <option value="">Not about one part</option>
@@ -125,7 +180,25 @@ export function PanelComments({
           </ul>
         </details>
       )}
+      {shot && <CropShot shot={shot} onDone={took} onCancel={() => setShot(null)} />}
+      {drawing && snip && (
+        <SnipEditor
+          title="Snip"
+          src={snip.dataUrl}
+          w={snip.w}
+          h={snip.h}
+          initial={snip.strokes.map((l) => ({ ...l, by: me.id }))}
+          me={me.id}
+          isAuthor
+          onClose={() => setDrawing(false)}
+          onConfirm={(lines) => {
+            setSnip({ ...snip, strokes: lines.map(({ c, s, p }) => ({ c, s, p })) });
+            setDrawing(false);
+          }}
+        />
+      )}
     </div>
+    </SnipMe.Provider>
   );
 }
 

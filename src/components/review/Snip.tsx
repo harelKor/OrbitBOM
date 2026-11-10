@@ -18,6 +18,17 @@ export const SnipMe = createContext<string | null>(null);
 type Line = SnipStroke & { from?: number }; // `from`: its place in the saved snip
 export type SnipDraft = { dataUrl: string; w: number; h: number; strokes: Omit<SnipStroke, "by">[] };
 
+// Uploads a taken snip's picture; what addReviewComment stores with the comment.
+export async function uploadSnip(snip: SnipDraft): Promise<{ snip: { path: string; w: number; h: number; strokes: SnipDraft["strokes"] } } | { error: string }> {
+  const blob = await (await fetch(snip.dataUrl)).blob();
+  const form = new FormData();
+  form.append("file", blob, "snip.jpg");
+  const res = await fetch("/api/review-snips", { method: "POST", body: form });
+  const r = (await res.json().catch(() => ({ error: "The snip didn't upload." }))) as { path?: string; error?: string };
+  if (!r.path) return { error: r.error ?? "The snip didn't upload." };
+  return { snip: { path: r.path, w: snip.w, h: snip.h, strokes: snip.strokes } };
+}
+
 // Keeps a drag's pointer on the element; a pointer the browser has already let go of throws.
 function capture(e: React.PointerEvent<Element>) {
   try {

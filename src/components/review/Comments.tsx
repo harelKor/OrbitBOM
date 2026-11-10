@@ -6,7 +6,7 @@ import { addReviewComment, approveReviewComment, deleteReviewComment, rejectRevi
 import { Dialog } from "@/components/Dialog";
 import { LocalTime } from "@/components/ui/LocalTime";
 import type { ReviewComment } from "@/lib/data/cadReview";
-import { CommentSnip, SnipPicture, type SnipDraft } from "./Snip";
+import { CommentSnip, SnipPicture, uploadSnip, type SnipDraft } from "./Snip";
 
 // One action at a time, the page refreshed after it, its error shown under the comment.
 function useCommentAction() {
@@ -234,13 +234,9 @@ export function AddCommentDialog({
             async () => {
               let shot = null;
               if (snip) {
-                const blob = await (await fetch(snip.dataUrl)).blob();
-                const form = new FormData();
-                form.append("file", blob, "snip.jpg");
-                const res = await fetch("/api/review-snips", { method: "POST", body: form });
-                const r = (await res.json().catch(() => ({ error: "The snip didn't upload." }))) as { path?: string; error?: string };
-                if (!r.path) return { error: r.error ?? "The snip didn't upload." };
-                shot = { path: r.path, w: snip.w, h: snip.h, strokes: snip.strokes };
+                const up = await uploadSnip(snip);
+                if ("error" in up) return up;
+                shot = up.snip;
               }
               return addReviewComment(robotId, systemId, body, part && { key: part.key, name: part.name }, null, shot);
             },
