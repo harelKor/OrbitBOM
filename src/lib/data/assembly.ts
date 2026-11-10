@@ -4,12 +4,15 @@ import { db } from "@/db";
 import { assemblySteps, assemblySubs, assemblyTicks, members, parts, systems, type StepCamera } from "@/db/schema";
 import { subCodeOf } from "@/lib/assembly/groups";
 import { partKey } from "@/lib/model/assembly";
+import { thumbKey } from "@/lib/onshape/thumbnails";
 import { imageUrl } from "@/lib/storage/r2";
 
 // Everything the Assembly page shows (plan/assembly-guides.md): the robot's systems, its parts with
 // their sub-assembly (from the part number), the names CAD gave sub-assemblies, and the steps with
 // their ticks. Database only, no Onshape.
-export type AssemblyPart = { key: string; id: string; systemId: string; name: string; number: string | null; qty: number; sub: string | null };
+// `key`: the part's 3D model key, or `id:<part id>` for a part that isn't placed in the model
+// (a COTS card added by hand): it still joins a step's parts list, just not its 3D.
+export type AssemblyPart = { key: string; id: string; systemId: string; name: string; number: string | null; qty: number; sub: string | null; cots: boolean; thumbUrl: string | null };
 export type AssemblyStep = {
   id: string;
   systemId: string;
@@ -21,6 +24,7 @@ export type AssemblyStep = {
   body: string;
   critical: boolean;
   partKeys: string[];
+  stepRefs: string[]; // earlier steps of the same column brought in whole
   camera: StepCamera | null;
   imageKey: string | null;
   imageUrl: string | null;
@@ -49,6 +53,8 @@ export async function loadAssembly(robotId: string): Promise<AssemblyData> {
         onshapeName: parts.onshapeName,
         partNumber: parts.partNumber,
         quantity: parts.quantity,
+        classification: parts.classification,
+        thumbnailRev: parts.thumbnailRev,
       })
       .from(parts)
       .where(and(inArray(parts.systemId, ids), isNull(parts.removedFromCadAt))),
@@ -61,11 +67,18 @@ export async function loadAssembly(robotId: string): Promise<AssemblyData> {
       .where(inArray(assemblySteps.systemId, ids))
       .orderBy(asc(assemblySteps.position), asc(assemblySteps.createdAt)),
   ]);
-  const partsOut: AssemblyPart[] = partRows.flatMap((r) => {
-    if (!r.did || !r.eid || !r.pid || !r.systemId) return [];
-    const name = r.displayName ?? r.onshapeName ?? "Unnamed part";
-    return [{ key: partKey(r.did, r.eid, r.pid), id: r.id, systemId: r.systemId, name, number: r.partNumber, qty: r.quantity, sub: subCodeOf(r.partNumber, r.displayName, r.onshapeName) }];
-  });
+  // Thumbnail links are signed locally (no network), so every part gets one.
+  const partsOut: AssemblyPart[] = (
+    await Promise.all(
+      partRows.map(async (r) => {
+        if (!r.systemId) return null;
+        const name = r.displayName ?? r.onshapeName ?? "Unnamed part";
+        const key = r.did && r.eid && r.pid ? partKey(r.did, r.eid, r.pid) : `id:${r.id}`;
+        const thumbUrl = r.thumbnailRev ? await imageUrl(thumbKey(r.id, r.thumbnailRev)) : null;
+        return { key, id: r.id, systemId: r.systemId, name, number: r.partNumber, qty: r.quantity, sub: subCodeOf(r.partNumber, r.displayName, r.onshapeName), cots: r.classification === "cots", thumbUrl };
+      }),
+    )
+  ).filter((p): p is AssemblyPart => !!p);
   const steps = await Promise.all(
     stepRows.map(async ({ step: s, tickAt, tickBy }) => ({
       id: s.id,
@@ -78,6 +91,7 @@ export async function loadAssembly(robotId: string): Promise<AssemblyData> {
       body: s.body,
       critical: s.critical,
       partKeys: s.partKeys,
+      stepRefs: s.stepRefs,
       camera: s.camera,
       imageKey: s.imageKey,
       imageUrl: s.imageKey ? await imageUrl(s.imageKey) : null,

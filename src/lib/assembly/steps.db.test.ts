@@ -46,6 +46,14 @@ else
       expect((await loadAssembly(robot.id)).steps.find((s) => s.id === a.id)?.tick?.by).toBe("Noa");
       await saveStep(robot.id, member.id, { ...base, id: a.id, title: "A2", partKeys: ["d:e:P1"] });
       expect((await loadAssembly(robot.id)).steps.find((s) => s.id === a.id)?.tick).toBeNull();
+      // Bringing an earlier step in whole: kept, and changing it clears the tick too.
+      await tickStep(robot.id, member.id, a.id, true);
+      const b = (await loadAssembly(robot.id)).steps.find((s) => s.title === "B")!;
+      await saveStep(robot.id, member.id, { ...base, id: a.id, title: "A2", partKeys: ["d:e:P1"], stepRefs: [b.id] });
+      const a2 = (await loadAssembly(robot.id)).steps.find((s) => s.id === a.id)!;
+      expect(a2.stepRefs).toEqual([b.id]);
+      expect(a2.tick).toBeNull();
+      await expect(saveStep(robot.id, member.id, { ...base, subCode: "42", title: "X", partKeys: [], stepRefs: [b.id] })).rejects.toThrow("isn't in this column");
       await deleteStep(robot.id, c.id);
       expect(await order()).toEqual(["A2", "B"]);
     });

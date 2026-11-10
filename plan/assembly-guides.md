@@ -3,8 +3,11 @@
 Built: `src/app/(app)/robots/[robotId]/assembly/`, `src/components/assembly/`, `src/lib/assembly/`,
 `src/lib/data/assembly.ts`, migration 0079. `/dev/assembly` shows it on the 3D sandbox's robot.
 Harel's answers: sub-assembly 2 is ignored; tens digit 0 = loose system parts; any member with a
-team ticks; the branches are a vertical tree with lines, like the version tree. Not built (left
-for later if wanted): MCP read tools.
+team ticks; the branches are a vertical tree with lines, like the version tree. Then (same day):
+the editor's part list became a search over the whole system with pictures, COTS included (parts
+not placed in 3D join as `id:<part id>`), and MCP got `list_assembly_steps` and
+`tick_assembly_steps`. Then: a step may take parts from earlier steps again (search or tap in
+3D), and bring whole earlier steps in (`step_refs`, migration 0080), each drawn in one colour.
 
 One **Assembly** page per robot (`/robots/<id>/assembly`, left nav next to CAD). CAD members (and
 admins in Edit) write the critical assembly steps; everyone ticks steps off as they build, and the

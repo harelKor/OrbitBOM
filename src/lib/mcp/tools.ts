@@ -8,5 +8,6 @@ import "./toolsets/inventory";
 import "./toolsets/drawings";
 import "./toolsets/cots";
 import "./toolsets/cadReview";
+import "./toolsets/assembly";
 
 export { ToolError, callTool, listTools } from "./registry";

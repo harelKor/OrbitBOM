@@ -12,6 +12,7 @@ export type Book = {
   steps: (p: Place) => AssemblyStep[]; // a column's steps, in order
   keys: (p: Place) => string[]; // the parts in a place (a system: all of its parts)
   subOfKey: Map<string, Place>; // part key → its sub-assembly
+  stepById: Map<string, AssemblyStep>;
   subName: (systemId: string, code: string) => string;
   done: (s: AssemblyStep) => boolean;
   progress: (p: Place) => { done: number; total: number };
@@ -55,7 +56,26 @@ export function makeBook(data: AssemblyData): Book {
     const list = steps(p);
     return { done: list.filter(done).length, total: list.length };
   };
-  return { systems, steps, keys, subOfKey, subName, done, progress };
+  return { systems, steps, keys, subOfKey, stepById: new Map(data.steps.map((s) => [s.id, s])), subName, done, progress };
+}
+
+// The colours of earlier steps brought into a step whole, one per step, in the order they were added.
+export const REF_COLORS = ["#14b8a6", "#a78bfa", "#facc15", "#f472b6", "#38bdf8", "#84cc16"];
+
+// Every part a step ends up with: its own and those of the earlier steps it brings in (and theirs).
+export function wholeKeys(book: Book, s: AssemblyStep, seen = new Set<string>()): string[] {
+  if (seen.has(s.id)) return [];
+  seen.add(s.id);
+  const refs = s.stepRefs.flatMap((id) => book.stepById.get(id) ?? []);
+  return [...new Set([...stepKeys(book, s), ...refs.flatMap((r) => wholeKeys(book, r, seen))])];
+}
+
+// The earlier steps a step brings in whole: each with its number in the column, parts and colour.
+export function stepRefsOf(book: Book, list: AssemblyStep[], s: AssemblyStep) {
+  return s.stepRefs.flatMap((id, i) => {
+    const ref = book.stepById.get(id);
+    return ref ? [{ step: ref, n: list.indexOf(ref) + 1, keys: wholeKeys(book, ref), color: REF_COLORS[i % REF_COLORS.length] }] : [];
+  });
 }
 
 // The parts a step shows: the ones it adds (a sub-assembly step: the whole sub-assembly).

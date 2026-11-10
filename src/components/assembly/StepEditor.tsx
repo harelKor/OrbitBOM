@@ -8,9 +8,10 @@ import { Dialog } from "@/components/Dialog";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { toast } from "@/components/ui/Toaster";
 import { subColor, type Place } from "@/lib/assembly/groups";
-import { earlierKeys, stepKeys, subModel, type Book } from "@/lib/assembly/view";
+import { earlierKeys, stepKeys, stepRefsOf, subModel, type Book } from "@/lib/assembly/view";
 import type { AssemblyData, AssemblyStep } from "@/lib/data/assembly";
 import { NEW_PART, OLD_PART, REST_PART } from "./colors";
+import { PartSearch, Thumb } from "./PartSearch";
 import { StepCanvas } from "./StepCanvas";
 
 export type EditorTarget = { kind: "step" | "sub"; step?: AssemblyStep; before?: string };
@@ -64,15 +65,23 @@ export function StepEditor({
   const ownSet = useMemo(() => new Set(own), [own]);
   const rest = useMemo(() => (isSub ? [] : placeKeys.filter((k) => !ownSet.has(k) && !before.includes(k))), [isSub, placeKeys, ownSet, before]);
 
-  const allKeys = useMemo(() => [...new Set([...before, ...placeKeys, ...subKeys])], [before, placeKeys, subKeys]);
+  // Earlier steps brought in whole, each drawn in one colour (Harel, 2026-11-10).
+  const [refs, setRefs] = useState<string[]>(step?.stepRefs ?? []);
+  const earlier = list.slice(0, index).filter((s) => s.id !== step?.id);
+  const refInfo = useMemo(() => stepRefsOf(book, list, { ...(step ?? list[0]), id: step?.id ?? "new", stepRefs: refs }), [book, list, step, refs]);
+  const toggleRef = (id: string) => setRefs((r) => (r.includes(id) ? r.filter((x) => x !== id) : [...r, id]));
+
+  // Parts found with the search (COTS hardware, a part from another sub-assembly) join the view too.
+  const allKeys = useMemo(() => [...new Set([...before, ...placeKeys, ...subKeys, ...picked])], [before, placeKeys, subKeys, picked]);
   const shown = useMemo(() => (model ? subModel(model, allKeys) : null), [model, allKeys]);
   const colors = useMemo(() => {
     const m = new Map<string, string>();
     for (const k of allKeys) m.set(k, REST_PART);
     for (const k of before) m.set(k, OLD_PART);
+    for (const r of refInfo) for (const k of r.keys) m.set(k, r.color);
     for (const k of own) m.set(k, isSub && subRef ? subColor(subRef) : NEW_PART);
     return m;
-  }, [allKeys, before, own, isSub, subRef]);
+  }, [allKeys, before, refInfo, own, isSub, subRef]);
   // Parts the step doesn't use stay see-through, so the new ones are easy to find and tap.
   useEffect(() => {
     if (!tools) return;
@@ -88,17 +97,21 @@ export function StepEditor({
       return next;
     });
   const onPick = (key: string | null) => {
-    if (!key || isSub || before.includes(key)) return;
+    // Parts from earlier steps may join this one too (Harel, 2026-11-10).
+    if (!key || isSub) return;
     toggle(key);
   };
 
-  // The list: parts no step uses yet first (a reminder, not every part needs a step).
-  const usedElsewhere = useMemo(() => new Set(list.filter((s) => s.id !== step?.id).flatMap((s) => stepKeys(book, s))), [list, step, book]);
+  // The search: every part of the system, COTS included (Harel, 2026-11-10), marked with the step
+  // that already uses it.
+  const usedIn = useMemo(() => {
+    const m = new Map<string, number>();
+    list.forEach((s, i) => s.id !== step?.id && stepKeys(book, s).forEach((k) => !m.has(k) && m.set(k, i + 1)));
+    return m;
+  }, [list, step, book]);
+  const systemParts = useMemo(() => data.parts.filter((p) => p.systemId === place.systemId), [data.parts, place.systemId]);
   const partByKey = useMemo(() => new Map(data.parts.map((p) => [p.key, p])), [data.parts]);
-  const choices = placeKeys.filter((k) => !before.includes(k)).flatMap((k) => partByKey.get(k) ?? []);
-  const fresh = choices.filter((p) => !usedElsewhere.has(p.key) || picked.has(p.key));
-  const other = choices.filter((p) => usedElsewhere.has(p.key) && !picked.has(p.key));
-  const [showOther, setShowOther] = useState(false);
+  const chosen = [...picked].flatMap((k) => partByKey.get(k) ?? []);
 
   const save = async () => {
     if (isSub && !subRef) return toast("Pick a sub-assembly.", true);
@@ -126,6 +139,7 @@ export function StepEditor({
       body,
       critical,
       partKeys: isSub ? [] : [...picked],
+      stepRefs: refs,
       camera,
       imageKey,
       before: step ? null : (target.before ?? null),
@@ -181,19 +195,46 @@ export function StepEditor({
               <p className="label mb-1">
                 Parts in this step <span className="text-subtle tabular-nums">· {picked.size}</span>
               </p>
-              <ul className="max-h-60 space-y-0.5 overflow-y-auto rounded-md border border-line p-1">
-                {fresh.map((p) => (
-                  <PartRow key={p.key} name={p.name} number={p.number} qty={p.qty} on={picked.has(p.key)} onChange={() => toggle(p.key)} />
-                ))}
-                {!fresh.length && <li className="px-2 py-1.5 text-xs text-subtle">Every part here is in a step already.</li>}
-                {other.length > 0 && (
-                  <li>
-                    <button className="press w-full px-2 py-1.5 text-left text-xs font-semibold text-muted hover:text-fg" onClick={() => setShowOther((v) => !v)}>
-                      {showOther ? "▾" : "▸"} In other steps · {other.length}
-                    </button>
-                  </li>
-                )}
-                {showOther && other.map((p) => <PartRow key={p.key} name={p.name} number={p.number} qty={p.qty} on={false} onChange={() => toggle(p.key)} />)}
+              <PartSearch parts={systemParts} picked={picked} usedIn={usedIn} onToggle={toggle} />
+              {chosen.length > 0 && (
+                <ul className="mt-2 flex flex-wrap gap-1.5">
+                  {chosen.map((p) => (
+                    <li key={p.key} className="flex max-w-full items-center gap-1.5 rounded-md border border-line bg-raised py-0.5 pr-1 pl-0.5 text-sm">
+                      <Thumb url={p.thumbUrl} small />
+                      <span className="min-w-0 truncate">{p.name}</span>
+                      {p.cots && <span className="shrink-0 rounded bg-amber-500/15 px-1 text-[10px] font-bold text-amber-600">COTS</span>}
+                      <button onClick={() => toggle(p.key)} className="press flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted hover:bg-surface hover:text-fg" aria-label={`Remove ${p.name}`}>
+                        ✕
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="mt-1.5 text-xs text-subtle">Or tap parts in the 3D.</p>
+            </div>
+          )}
+          {earlier.length > 0 && (
+            <div>
+              <p className="label mb-1">Bring in earlier steps</p>
+              <ul className="flex flex-wrap gap-1.5">
+                {earlier.map((e) => {
+                  const r = refInfo.find((x) => x.step.id === e.id);
+                  const n = list.indexOf(e) + 1;
+                  return (
+                    <li key={e.id}>
+                      <button
+                        onClick={() => toggleRef(e.id)}
+                        aria-pressed={!!r}
+                        className={`press flex max-w-64 items-center gap-1.5 rounded-md border px-2 py-1 text-sm pointer-coarse:min-h-10 ${r ? "border-transparent bg-raised font-semibold" : "border-line text-fg-2 hover:bg-raised"}`}
+                        title="Bring the whole step in, drawn in one colour"
+                      >
+                        <span className="h-3 w-3 shrink-0 rounded-sm border border-line" style={r ? { background: r.color, borderColor: r.color } : undefined} />
+                        <span className="shrink-0 tabular-nums">Step {n}</span>
+                        <span className="min-w-0 truncate">{e.title || (e.subRef ? book.subName(e.systemId, e.subRef) : "")}</span>
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           )}
@@ -208,19 +249,6 @@ export function StepEditor({
         </div>
       </div>
     </Dialog>
-  );
-}
-
-function PartRow({ name, number, qty, on, onChange }: { name: string; number: string | null; qty: number; on: boolean; onChange: () => void }) {
-  return (
-    <li>
-      <button onClick={onChange} className={`press flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm pointer-coarse:min-h-10 ${on ? "bg-accent/10" : "hover:bg-raised"}`}>
-        <span className={`h-3 w-3 shrink-0 rounded-sm border ${on ? "border-transparent" : "border-line-strong"}`} style={on ? { background: NEW_PART } : undefined} />
-        <span className="min-w-0 flex-1 truncate">{name}</span>
-        {number && <span className="shrink-0 font-mono text-[11px] text-subtle">{number}</span>}
-        <span className="shrink-0 text-xs text-fg-2 tabular-nums">×{qty}</span>
-      </button>
-    </li>
   );
 }
 

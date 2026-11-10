@@ -19,8 +19,14 @@ function fake(model: ViewerModel, names: Record<string, string>): AssemblyData {
     const subDigit = /standoff|gusset/i.test(name) ? 2 : /tube|rail/i.test(name) ? 1 : 0;
     const old = seen.get(p.k);
     if (old) old.qty++;
-    else seen.set(p.k, { key: p.k, id: p.k, systemId: sysId(g), name, number: `1690-26-${g + 1}${subDigit}1-0${(seen.size % 9) + 1}`, qty: 1, sub: subDigit ? `${g + 1}${subDigit}` : null });
+    else seen.set(p.k, { key: p.k, id: p.k, systemId: sysId(g), name, number: `1690-26-${g + 1}${subDigit}1-0${(seen.size % 9) + 1}`, qty: 1, sub: subDigit ? `${g + 1}${subDigit}` : null, cots: false, thumbUrl: null });
   }
+  // COTS hardware with no 3D placement, as hand-added COTS cards are.
+  systems.forEach((s, g) =>
+    ["#10-32 x 0.5 in SHCS", "#10-32 Nylock nut", "1/2 in hex bearing"].forEach((name, i) =>
+      seen.set(`id:cots-${g}-${i}`, { key: `id:cots-${g}-${i}`, id: `cots-${g}-${i}`, systemId: s.id, name, number: null, qty: 16, sub: null, cots: true, thumbUrl: null }),
+    ),
+  );
   const parts = [...seen.values()];
   const step = (o: Partial<AssemblyStep>): AssemblyStep => ({
     id: crypto.randomUUID(),
@@ -33,6 +39,7 @@ function fake(model: ViewerModel, names: Record<string, string>): AssemblyData {
     body: "",
     critical: false,
     partKeys: [],
+    stepRefs: [],
     camera: null,
     imageKey: null,
     imageUrl: null,
@@ -47,9 +54,10 @@ function fake(model: ViewerModel, names: Record<string, string>): AssemblyData {
     steps.push(step({ systemId: s.id, position: 1, kind: "sub", subRef: `${g + 1}1`, title: "" }));
     steps.push(step({ systemId: s.id, position: 2, kind: "sub", subRef: `${g + 1}2`, title: "", critical: g === 1 }));
     const a = of(g, `${g + 1}1`);
-    steps.push(step({ systemId: s.id, subCode: `${g + 1}1`, position: 0, title: "First tubes", body: "Square them up before tightening.", partKeys: a.slice(0, 1), tick: { by: "Ido", at: new Date().toISOString() } }));
+    const first = step({ systemId: s.id, subCode: `${g + 1}1`, position: 0, title: "First tubes", body: "Square them up before tightening.", partKeys: a.slice(0, 1), tick: { by: "Ido", at: new Date().toISOString() } });
+    steps.push(first);
     steps.push(step({ systemId: s.id, subCode: `${g + 1}1`, position: 1, title: "The rest of the tubes", body: "Torque to 4 N·m, blue Loctite.", critical: true, partKeys: a.slice(1) }));
-    steps.push(step({ systemId: s.id, subCode: `${g + 1}1`, position: 2, title: "Check square", body: "Measure both diagonals; they must match within 1 mm.", partKeys: [] }));
+    steps.push(step({ systemId: s.id, subCode: `${g + 1}1`, position: 2, title: "Check square", body: "Measure both diagonals; they must match within 1 mm.", partKeys: [], stepRefs: [first.id] }));
   });
   return { systems, parts, subNames: { [`${sysId(0)}:11`]: "Frame box" }, steps };
 }

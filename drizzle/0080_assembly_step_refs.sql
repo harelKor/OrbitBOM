@@ -1,0 +1,1 @@
+ALTER TABLE "assembly_steps" ADD COLUMN "step_refs" uuid[] DEFAULT '{}'::uuid[] NOT NULL;

@@ -1093,6 +1093,8 @@ export const assemblySteps = pgTable(
     critical: boolean("critical").notNull().default(false),
     // The parts this step adds (3D model keys, did:eid:partId).
     partKeys: text("part_keys").array().notNull().default(sql`'{}'::text[]`),
+    // Earlier steps of the same column brought in whole, each drawn in one colour (Harel, 2026-11-10).
+    stepRefs: uuid("step_refs").array().notNull().default(sql`'{}'::uuid[]`),
     camera: jsonb("camera").$type<StepCamera>(),
     // A still of the step's 3D, taken when it was saved (R2), for the slides not on screen.
     imageKey: text("image_key"),

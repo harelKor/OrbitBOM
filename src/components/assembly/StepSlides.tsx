@@ -9,9 +9,10 @@ import { Icon } from "@/components/ui/Icon";
 import { LocalTime } from "@/components/ui/LocalTime";
 import { toast } from "@/components/ui/Toaster";
 import { subColor, type Place } from "@/lib/assembly/groups";
-import { earlierKeys, stepKeys, subModel, type Book } from "@/lib/assembly/view";
+import { earlierKeys, stepKeys, stepRefsOf, subModel, type Book } from "@/lib/assembly/view";
 import type { AssemblyData, AssemblyStep } from "@/lib/data/assembly";
 import { NEW_PART, OLD_PART } from "./colors";
+import { Thumb } from "./PartSearch";
 import { Progress } from "./Progress";
 import { StepCanvas } from "./StepCanvas";
 import { StepEditor, type EditorTarget } from "./StepEditor";
@@ -301,14 +302,18 @@ function Slide({
 }) {
   const sub = step.kind === "sub" ? step.subRef : null;
   const own = useMemo(() => stepKeys(book, step), [book, step]);
-  const before = useMemo(() => earlierKeys(book, list, index).filter((k) => !own.includes(k)), [book, list, index, own]);
-  const shown = useMemo(() => (model ? subModel(model, [...before, ...own]) : null), [model, before, own]);
+  // Earlier steps brought in whole: each in its own single colour (Harel, 2026-11-10).
+  const refs = useMemo(() => stepRefsOf(book, list, step), [book, list, step]);
+  const refKeys = useMemo(() => refs.flatMap((r) => r.keys), [refs]);
+  const before = useMemo(() => earlierKeys(book, list, index).filter((k) => !own.includes(k) && !refKeys.includes(k)), [book, list, index, own, refKeys]);
+  const shown = useMemo(() => (model ? subModel(model, [...before, ...refKeys, ...own]) : null), [model, before, refKeys, own]);
   const colors = useMemo(() => {
     const m = new Map<string, string>();
     for (const k of before) m.set(k, OLD_PART);
+    for (const r of refs) for (const k of r.keys) m.set(k, r.color);
     for (const k of own) m.set(k, sub ? subColor(sub) : NEW_PART);
     return m;
-  }, [before, own, sub]);
+  }, [before, refs, own, sub]);
   const partByKey = useMemo(() => new Map(data.parts.map((p) => [p.key, p])), [data.parts]);
   const names = useMemo(() => new Map(data.parts.map((p) => [p.key, p.name])), [data.parts]);
   const ownParts = own.flatMap((k) => partByKey.get(k) ?? []);
@@ -390,14 +395,32 @@ function Slide({
                 Open {book.subName(step.systemId, sub)} →
               </button>
             )}
+            {refs.length > 0 && (
+              <div>
+                <p className="label mb-1">Brings in</p>
+                <ul className="space-y-1 text-sm">
+                  {refs.map((r) => (
+                    <li key={r.step.id}>
+                      <a href={`#step-${r.step.id}`} className="press flex items-center gap-2 rounded px-1 py-0.5 hover:bg-raised pointer-coarse:min-h-9">
+                        <span className="h-3.5 w-3.5 shrink-0 rounded-sm" style={{ background: r.color }} />
+                        <span className="shrink-0 font-semibold tabular-nums">Step {r.n}</span>
+                        <span className="min-w-0 flex-1 truncate text-fg-2">{r.step.title || "Sub-assembly"}</span>
+                        <span className="shrink-0 text-xs text-subtle tabular-nums">{r.keys.length} part{r.keys.length === 1 ? "" : "s"}</span>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {!sub && ownParts.length > 0 && (
               <div>
                 <p className="label mb-1">Parts in this step</p>
-                <ul className="space-y-0.5 text-sm">
+                <ul className="space-y-1 text-sm">
                   {ownParts.map((p) => (
-                    <li key={p.key} className="flex items-baseline gap-2">
-                      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: NEW_PART }} />
+                    <li key={p.key} className="flex items-center gap-2">
+                      <Thumb url={p.thumbUrl} small />
                       <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                      {p.cots && <span className="shrink-0 rounded bg-amber-500/15 px-1 text-[10px] font-bold text-amber-600">COTS</span>}
                       {p.number && <span className="shrink-0 font-mono text-[11px] text-subtle">{p.number}</span>}
                       <span className="shrink-0 text-xs text-fg-2 tabular-nums">×{p.qty}</span>
                     </li>

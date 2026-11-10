@@ -211,7 +211,7 @@ Owns `section.ts` and the section block of `ViewerToolbar.tsx`.
 - Done: in the sandbox, a plate with holes cut through reads clearly at phone width; the edge
   lines respect every plane (they do today for one).
 
-### S6. Saved views and comment pins (Wave 2, needs a migration: 0080, the Assembly page took 0079)
+### S6. Saved views and comment pins (Wave 2, needs a migration: 0081, the Assembly page took 0079 and 0080)
 
 Owns `viewState.ts`, `src/components/review/Comments.tsx`, `src/lib/reviews/comments.ts`, the
 MCP review toolset (`src/lib/mcp/toolsets/cadReview.ts`), schema.

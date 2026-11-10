@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AssemblyData, AssemblyStep } from "@/lib/data/assembly";
-import { earlierKeys, makeBook, stepKeys, subModel } from "./view";
+import { earlierKeys, makeBook, REF_COLORS, stepKeys, stepRefsOf, subModel, wholeKeys } from "./view";
 
 const SYS = "0b5c2a4e-1111-4222-8333-944455556666";
 const step = (over: Partial<AssemblyStep>): AssemblyStep => ({
@@ -14,6 +14,7 @@ const step = (over: Partial<AssemblyStep>): AssemblyStep => ({
   body: "",
   critical: false,
   partKeys: [],
+  stepRefs: [],
   camera: null,
   imageKey: null,
   imageUrl: null,
@@ -26,10 +27,10 @@ function data(steps: AssemblyStep[]): AssemblyData {
   return {
     systems: [{ id: SYS, name: "Intake" }],
     parts: [
-      { key: "a", id: "1", systemId: SYS, name: "Plate", number: "1690-26-421-01", qty: 2, sub: "42" },
-      { key: "b", id: "2", systemId: SYS, name: "Shaft", number: "1690-26-425-02", qty: 1, sub: "42" },
-      { key: "c", id: "3", systemId: SYS, name: "Tube", number: "1690-26-401-01", qty: 1, sub: null },
-      { key: "d", id: "4", systemId: SYS, name: "Bolt", number: null, qty: 8, sub: null },
+      { key: "a", id: "1", systemId: SYS, name: "Plate", number: "1690-26-421-01", qty: 2, sub: "42", cots: false, thumbUrl: null },
+      { key: "b", id: "2", systemId: SYS, name: "Shaft", number: "1690-26-425-02", qty: 1, sub: "42", cots: false, thumbUrl: null },
+      { key: "c", id: "3", systemId: SYS, name: "Tube", number: "1690-26-401-01", qty: 1, sub: null, cots: false, thumbUrl: null },
+      { key: "d", id: "4", systemId: SYS, name: "Bolt", number: null, qty: 8, sub: null, cots: false, thumbUrl: null },
     ],
     subNames: { [`${SYS}:42`]: "Roller arm" },
     steps,
@@ -66,6 +67,25 @@ describe("makeBook", () => {
     expect(book.done(sub)).toBe(false);
     sub.tick = tick;
     expect(book.done(sub)).toBe(true);
+  });
+});
+
+describe("steps brought in whole", () => {
+  it("takes every part of the earlier step and the steps it brought in, with a colour each", () => {
+    const one = step({ position: 0, partKeys: ["c"] });
+    const two = step({ position: 1, partKeys: ["d"], stepRefs: [one.id] });
+    const three = step({ position: 2, partKeys: ["a"], stepRefs: [two.id, "gone"] });
+    const book = makeBook(data([one, two, three]));
+    const list = book.steps({ systemId: SYS, sub: null });
+    expect(wholeKeys(book, three).sort()).toEqual(["a", "c", "d"]);
+    const refs = stepRefsOf(book, list, three);
+    expect(refs.map((r) => [r.n, r.keys.sort(), r.color])).toEqual([[2, ["c", "d"], REF_COLORS[0]]]);
+  });
+  it("doesn't loop on steps that bring each other in", () => {
+    const a = step({ partKeys: ["a"] });
+    const b = step({ partKeys: ["b"], stepRefs: [a.id] });
+    a.stepRefs = [b.id];
+    expect(wholeKeys(makeBook(data([a, b])), a).sort()).toEqual(["a", "b"]);
   });
 });
 

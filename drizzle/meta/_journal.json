@@ -561,6 +561,13 @@
       "when": 1794331810346,
       "tag": "0079_assembly_steps",
       "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1794346481923,
+      "tag": "0080_assembly_step_refs",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, isNull, max, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, max, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { assemblySteps, assemblySubs, assemblyTicks, systems, type StepCamera } from "@/db/schema";
 import { deleteObject } from "@/lib/storage/r2";
@@ -10,6 +10,7 @@ export class StepError extends Error {}
 
 export const STILL_PATH = /^assembly-stills\/[0-9a-f-]{36}\.jpg$/;
 const CODE = /^\d{2}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_TITLE = 200;
 const MAX_BODY = 4000;
 const MAX_PARTS = 2000;
@@ -24,6 +25,7 @@ export type StepInput = {
   body: string;
   critical: boolean;
   partKeys: string[];
+  stepRefs?: string[]; // earlier steps of the same column, brought in whole
   camera: StepCamera | null;
   imageKey: string | null; // a still already uploaded (/api/assembly-stills), or the one it has
   before?: string | null; // a new step goes before this one; at the end when missing
@@ -56,6 +58,11 @@ export async function saveStep(robotId: string, memberId: string, input: StepInp
   if (input.kind === "step" && !title) throw new StepError("Give the step a title.");
   const partKeys = [...new Set((Array.isArray(input.partKeys) ? input.partKeys : []).filter((k): k is string => typeof k === "string" && k.length < 300))].slice(0, MAX_PARTS);
   if (input.imageKey !== null && !STILL_PATH.test(input.imageKey)) throw new StepError("That picture didn't upload.");
+  const stepRefs = [...new Set((Array.isArray(input.stepRefs) ? input.stepRefs : []).filter((id): id is string => typeof id === "string" && UUID.test(id) && id !== input.id))].slice(0, 50);
+  if (stepRefs.length) {
+    const found = await db.select({ id: assemblySteps.id }).from(assemblySteps).where(and(inArray(assemblySteps.id, stepRefs), sameColumn(input.systemId, input.subCode)));
+    if (found.length !== stepRefs.length) throw new StepError("A step it brings in isn't in this column any more. Reload the page.");
+  }
   const values = {
     kind: input.kind,
     subRef: input.kind === "sub" ? input.subRef : null,
@@ -63,6 +70,7 @@ export async function saveStep(robotId: string, memberId: string, input: StepInp
     body,
     critical: !!input.critical,
     partKeys,
+    stepRefs,
     camera: cleanCamera(input.camera),
     imageKey: input.imageKey,
     updatedAt: new Date(),
@@ -74,8 +82,8 @@ export async function saveStep(robotId: string, memberId: string, input: StepInp
       if (!old) throw new StepError("That step is gone. Reload the page.");
       await tx.update(assemblySteps).set(values).where(eq(assemblySteps.id, old.id));
       // New parts make it a different step: it isn't built any more (Harel, 2026-11-10).
-      const before = [...old.partKeys].sort().join("\n");
-      if (before !== [...partKeys].sort().join("\n")) await tx.delete(assemblyTicks).where(eq(assemblyTicks.stepId, old.id));
+      const same = (a: string[], b: string[]) => [...a].sort().join("\n") === [...b].sort().join("\n");
+      if (!same(old.partKeys, partKeys) || !same(old.stepRefs, stepRefs)) await tx.delete(assemblyTicks).where(eq(assemblyTicks.stepId, old.id));
       if (old.imageKey && old.imageKey !== values.imageKey) await deleteObject(old.imageKey).catch(() => {});
       return { id: old.id };
     });
