@@ -42,6 +42,8 @@ export function ModelCanvas({
   onHidden,
   menu,
   onIsolated,
+  onHover,
+  cube: withCube = true,
 }: {
   model: ViewerModel;
   colors: Map<string, string>; // part key → status colour
@@ -59,6 +61,8 @@ export function ModelCanvas({
   onHidden?: (h: HiddenParts | null) => void; // the page shows the hidden parts list itself
   menu?: PageMenu; // the page's own context menu items for the parts it's on
   onIsolated?: (keys: string[] | null) => void; // Isolate turned on / changed / ended (any way)
+  onHover?: (key: string | null) => void; // the part under the mouse (mouse only), or null
+  cube?: boolean; // the view cube, on pages with the tools (false: small views, the Assembly slides)
 }) {
   const host = useRef<HTMLDivElement>(null);
   // Recolours the parts and frames the located one; true when it is in the model.
@@ -76,6 +80,10 @@ export function ModelCanvas({
   useEffect(() => {
     isolatedRef.current = onIsolated;
   }, [onIsolated]);
+  const hoverRef = useRef(onHover);
+  useEffect(() => {
+    hoverRef.current = onHover;
+  }, [onHover]);
   const toolsRef = useRef(onTools);
   useEffect(() => {
     toolsRef.current = onTools;
@@ -128,6 +136,7 @@ export function ModelCanvas({
       failed: () => setError("The 3D model couldn't load. Try reloading the page."),
       menu: (at) => setMenuAt({ at, tools: viewer.tools, hideCopy: viewer.hideCopy }),
       isolated: (keys) => isolatedRef.current?.(keys),
+      hover: (key) => hoverRef.current?.(key),
     });
     scene.current = viewer;
     return () => {
@@ -181,7 +190,7 @@ export function ModelCanvas({
         </div>
       )}
       {menuAt && !progress && <ContextMenu {...menuAt} names={names} page={menu} onClose={closeMenu} />}
-      {cube && <ViewCube tools={cube} />}
+      {cube && withCube && <ViewCube tools={cube} />}
       {error && <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">{error}</div>}
       {gone.length > 0 && !onHidden && (
         <div

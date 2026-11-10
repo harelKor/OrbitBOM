@@ -1056,3 +1056,58 @@ export const pageSeen = pgTable(
   },
   (t) => [primaryKey({ columns: [t.memberId, t.page] })],
 );
+
+// ---------- Assembly page (plan/assembly-guides.md, Harel 2026-11-10) ----------
+// Sub-assemblies come from part numbers (src/lib/assembly/groups.ts); this only keeps the names
+// CAD gives them, per system and code ("42").
+export const assemblySubs = pgTable(
+  "assembly_subs",
+  {
+    systemId: uuid("system_id")
+      .notNull()
+      .references(() => systems.id, { onDelete: "cascade" }),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.systemId, t.code] })],
+);
+
+// The camera a step was saved with (the viewer's ViewPose).
+export type StepCamera = { target: [number, number, number]; dir: [number, number, number]; half: number; projection: "ortho" | "perspective" };
+
+// One assembly step, in a system's own column (sub_code null) or in one of its sub-assemblies.
+// kind "sub": a step that stands for a whole sub-assembly (sub_ref) in the system's column.
+export const assemblySteps = pgTable(
+  "assembly_steps",
+  {
+    id: id(),
+    systemId: uuid("system_id")
+      .notNull()
+      .references(() => systems.id, { onDelete: "cascade" }),
+    subCode: text("sub_code"),
+    position: integer("position").notNull().default(0),
+    kind: text("kind").$type<"step" | "sub">().notNull().default("step"),
+    subRef: text("sub_ref"),
+    title: text("title").notNull().default(""),
+    body: text("body").notNull().default(""),
+    critical: boolean("critical").notNull().default(false),
+    // The parts this step adds (3D model keys, did:eid:partId).
+    partKeys: text("part_keys").array().notNull().default(sql`'{}'::text[]`),
+    camera: jsonb("camera").$type<StepCamera>(),
+    // A still of the step's 3D, taken when it was saved (R2), for the slides not on screen.
+    imageKey: text("image_key"),
+    createdBy: uuid("created_by").references(() => members.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("assembly_steps_place_idx").on(t.systemId, t.subCode, t.position)],
+);
+
+// A built step: one row per step (the robot is the step's system's), with who ticked it.
+export const assemblyTicks = pgTable("assembly_ticks", {
+  stepId: uuid("step_id")
+    .primaryKey()
+    .references(() => assemblySteps.id, { onDelete: "cascade" }),
+  memberId: uuid("member_id").references(() => members.id, { onDelete: "set null" }),
+  doneAt: timestamp("done_at", { withTimezone: true }).notNull().defaultNow(),
+});

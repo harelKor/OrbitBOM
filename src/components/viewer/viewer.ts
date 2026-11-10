@@ -25,6 +25,7 @@ export type ViewerHost = {
   failed: () => void;
   menu: (m: MenuTarget) => void; // right-click / long press: the context menu
   isolated: (keys: string[] | null) => void;
+  hover?: (key: string | null) => void; // the part under the mouse (mouse only)
 };
 
 export type Viewer = {
@@ -69,6 +70,7 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
     anyHidden: () => visibility.gone().length > 0,
     showHidden: (g) => visibility.show([g]),
     names: host.names,
+    hovered: (key) => host.hover?.(key),
     menu: (at) => {
       // On a picked part, the menu acts on every picked part (Onshape acts on the selection).
       const picked = measure?.parts() ?? [];
@@ -88,6 +90,12 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
 
   const tools: SceneTools = {
     ...camera.tools,
+    // A page putting the camera somewhere (a saved view) counts as moving it: the end of loading
+    // doesn't frame the model again over it.
+    setPose: (pose, animate) => {
+      touched = true;
+      camera.tools.setPose(pose, animate);
+    },
     ...section,
     ...measure.tools,
     ...visibility.tools,

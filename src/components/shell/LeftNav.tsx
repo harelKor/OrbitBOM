@@ -243,6 +243,9 @@ export function LeftNav({
           <Item href={base && `${base}/cad-review`} icon="cube" active={pathname.includes("/cad-review")}>
             CAD
           </Item>
+          <Item href={base && `${base}/assembly`} icon="wrench" active={pathname.endsWith("/assembly")}>
+            Assembly
+          </Item>
           <Item href="/ai-logs" icon="spark" active={pathname.startsWith("/ai-logs")}>
             AI logs
           </Item>

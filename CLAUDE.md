@@ -32,7 +32,7 @@ server (`/api/mcp/<token>`).
   cotsSync.db ×1, updateBom.db "pulls a new system's BOM"): compare against those.
 - Schema: edit `src/db/schema.ts`, `npm run db:generate`, rename the file to a readable name
   (and its `tag` in `drizzle/meta/_journal.json`), add `ALTER TABLE "x" ENABLE ROW LEVEL SECURITY;`
-  for a new table, commit. Next migration: 0079.
+  for a new table, commit. Next migration: 0080.
 - Local site: README "Local development" (local Supabase in Docker, "Dev sign-in" button; Onshape
   and R2 deliberately unset). Never point local dev at production.
 - On Harel's Windows PC, Docker and `gh` aren't on the Bash PATH: run them from PowerShell, or
@@ -131,6 +131,10 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
   brings back the hidden part under the mouse, no parts list, motion along the mates waits for
   its own plan, the `/dev/viewer` sandbox stays small. Don't touch `ModelCanvas` for other work
   while S0 (the split into `src/components/viewer/`) is in progress.
+- Assembly page (`/robots/<id>/assembly`, plan/assembly-guides.md): sub-assemblies come from the
+  part number (`src/lib/assembly/groups.ts`, 1690-26-421-01 → "42"), steps and ticks in
+  `src/lib/assembly/steps.ts` (CAD writes with `instruct`, any team member ticks with `work`), page
+  logic in `src/lib/assembly/view.ts`, UI in `src/components/assembly/`. `/dev/assembly` = sandbox.
 - Files: `src/lib/storage/r2.ts`; backups and restore: `src/lib/storage/backup.ts`, `restore.ts`.
 - Work the user needn't wait for: `afterResponse` (`src/lib/later.ts`).
 - MCP: `src/lib/mcp/registry.ts` (`read` / `write`, preview → confirm token → apply) and one file

@@ -207,6 +207,7 @@ export function createPicking(
     showHidden: (g: Gone) => void;
     names: () => Map<string, string> | undefined;
     menu: (at: MenuAt) => void; // right-click without a drag, or a long press
+    hovered?: (key: string | null) => void; // the part under the mouse changed (the Assembly page lights its sub-assembly)
   },
 ): Picking {
   const { el, renderer, root, render } = stage;
@@ -226,6 +227,7 @@ export function createPicking(
   const setHover = (h: { m: number; i: number } | null) => {
     if (h?.m === hovered?.m && h?.i === hovered?.i) return;
     hovered = h;
+    on.hovered?.(h ? meshes[h.m].keys[h.i] : null);
     hoverLayer.clear();
     // A part hidden while measuring: its blue face / edge mark goes with it.
     if (!h) measure()?.hover(null);

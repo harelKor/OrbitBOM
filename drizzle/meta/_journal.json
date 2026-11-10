@@ -554,6 +554,13 @@
       "when": 1794298845089,
       "tag": "0078_review_snips",
       "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1794331810346,
+      "tag": "0079_assembly_steps",
+      "breakpoints": true
     }
   ]
 }
