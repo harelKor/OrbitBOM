@@ -142,6 +142,7 @@ export function SnipEditor({
   const [color, setColor] = useState<string>(SNIP_COLORS[0]);
   const [size, setSize] = useState(4); // on screen, px
   const [erasing, setErasing] = useState(false);
+  const [editing, setEditing] = useState(isAuthor);
   const [drawing, setDrawing] = useState<Line | null>(null);
   const svg = useRef<SVGSVGElement>(null);
   const canErase = (l: Line) => isAuthor || l.by === me;
@@ -179,12 +180,20 @@ export function SnipEditor({
       width="w-[min(64rem,calc(100vw-1rem))]"
       compact
       actions={
-        <button className="btn-primary h-9 px-4 text-sm active:scale-[0.98]" disabled={saving} onClick={() => onConfirm(lines)}>
-          {saving ? "Saving…" : "Confirm"}
-        </button>
+        editing ? (
+          <button className="btn-primary h-9 px-4 text-sm active:scale-[0.98]" disabled={saving} onClick={() => onConfirm(lines)}>
+            {saving ? "Saving…" : "Confirm"}
+          </button>
+        ) : (
+          // Someone else's snip opens to look at; the pencil shows the drawing tools (Harel, 2026-11-10).
+          <button className="btn h-9 px-3 text-sm active:scale-[0.98]" onClick={() => setEditing(true)} aria-label="Draw on it" title="Draw on it">
+            ✏️ Draw
+          </button>
+        )
       }
     >
       <div className="space-y-3">
+        {editing && (
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex rounded-md bg-raised p-0.5" role="radiogroup" aria-label="Tool">
             <button role="radio" aria-checked={!erasing} className={`${tool} ${!erasing ? "bg-surface shadow-sm" : ""}`} onClick={() => setErasing(false)}>
@@ -224,6 +233,7 @@ export function SnipEditor({
             ↶ Undo
           </button>
         </div>
+        )}
         {changed && changed.length > 0 && <p className="text-xs text-muted">{changed.map((c) => `${c.name} changed`).join(" · ")}</p>}
         <div className="relative mx-auto w-full overflow-hidden rounded border border-line bg-raised" style={{ aspectRatio: `${w} / ${h}`, maxHeight: "70dvh", maxWidth: `calc(70dvh * ${w / h})` }}>
           {src && (
@@ -233,7 +243,7 @@ export function SnipEditor({
           <svg
             ref={svg}
             viewBox={`0 0 ${w} ${h}`}
-            className={`absolute inset-0 h-full w-full touch-none ${erasing ? "cursor-cell" : "cursor-crosshair"}`}
+            className={`absolute inset-0 h-full w-full touch-none ${editing ? "" : "pointer-events-none"} ${erasing ? "cursor-cell" : "cursor-crosshair"}`}
             onPointerDown={(e) => {
               capture(e);
               const { x, y, scale } = toPicture(e);
