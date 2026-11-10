@@ -31,7 +31,7 @@ export type CameraTools = {
   view: (name: ViewName | "fit") => void; // animated, framed on what's shown
   look: (dir: [number, number, number]) => void; // from a direction (scene frame), framed on what's shown: the view cube
   orbit: (right: number, up: number) => void; // turn the view about its centre, in degrees (camera moves right / up)
-  zoomTo: (box: THREE.Box3) => void; // frame a box (world space) from the current direction, animated
+  frameBox: (box: THREE.Box3) => void; // frame a box (world space) from the current direction, animated
   projection: () => Projection;
   setProjection: (p: Projection) => void;
   pose: () => ViewPose;
@@ -257,7 +257,7 @@ export function createCamera(stage: Stage, shown: () => THREE.Box3, meshes: Part
     const from = goal ?? current();
     animateTo({ ...from, quat: lookFrom(orbitDir(BACK.clone().applyQuaternion(from.quat), right, up)) });
   };
-  const zoomTo = (b: THREE.Box3) => frameTo(b, direction());
+  const frameBox = (b: THREE.Box3) => frameTo(b, direction());
 
   // Orthographic (Onshape's default) or perspective, remembered on this device.
   const setProjection = (p: Projection, remember = true) => {
@@ -415,7 +415,7 @@ export function createCamera(stage: Stage, shown: () => THREE.Box3, meshes: Part
       view,
       look,
       orbit,
-      zoomTo,
+      frameBox,
       projection: () => (camera.ortho ? "ortho" : "perspective"),
       setProjection: (p) => setProjection(p),
       pose,
