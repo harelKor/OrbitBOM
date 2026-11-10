@@ -33,7 +33,8 @@ export function createTopo(meshes: PartMesh[]): Topo {
     const g = meshes[m].mesh.geometry;
     let t = topo.get(g);
     if (!t) {
-      t = topology(g.getAttribute("position").array, g.index!.array);
+      // Worked out by load.ts's worker when it got there first; else here, on first use.
+      t = (g.userData.topology as Topology | undefined) ?? topology(g.getAttribute("position").array, g.index!.array);
       topo.set(g, t);
     }
     return t;
@@ -178,7 +179,9 @@ export function createSelection(stage: Stage, meshes: PartMesh[], looks: Looks):
 }
 
 // Where a context menu opens (client px) and the part copy under it, if any.
-export type MenuAt = { x: number; y: number; under: Gone | null };
+// `face`: the flat face under it (the clicked point and its outward normal, model frame), for
+// Section here.
+export type MenuAt = { x: number; y: number; under: Gone | null; face: { point: V3; normal: V3 } | null };
 // What the context menu acts on: the part copy under it and its part, or every picked part when
 // that part is one of them; how many copies the part has, and what's hidden / isolated now.
 export type MenuTarget = MenuAt & { keys: string[]; copies: number; hidden: number; isolated: { keys: string[]; ghost: boolean } | null };
@@ -289,11 +292,14 @@ export function createPicking(
   const aim = (x: number, y: number) => {
     const rect = canvas.getBoundingClientRect();
     ray.setFromCamera(new THREE.Vector2(((x - rect.left) / rect.width) * 2 - 1, -(((y - rect.top) / rect.height) * 2 - 1)), stage.camera);
+    ray.firstHitOnly = false;
     return ray;
   };
-  type Hit = { m: number; i: number; tri: number };
-  const hitsAt = (e: { clientX: number; clientY: number }): Hit[] => {
+  type Hit = { m: number; i: number; tri: number; point: THREE.Vector3 };
+  // `all`: every part along the ray (Select other); else the BVH stops at each mesh's nearest hit.
+  const hitsAt = (e: { clientX: number; clientY: number }, all = false): Hit[] => {
     aim(e.clientX, e.clientY);
+    ray.firstHitOnly = !all;
     const out: Hit[] = [];
     for (const hit of ray.intersectObjects(
       meshes.filter((m) => m.mesh.visible).map((m) => m.mesh),
@@ -301,7 +307,7 @@ export function createPicking(
     )) {
       const m = meshes.findIndex((x) => x.mesh === hit.object);
       if (m < 0 || hit.instanceId === undefined || out.some((h) => h.m === m && h.i === hit.instanceId)) continue;
-      out.push({ m, i: hit.instanceId, tri: hit.faceIndex ?? 0 });
+      out.push({ m, i: hit.instanceId, tri: hit.faceIndex ?? 0, point: hit.point });
     }
     return out;
   };
@@ -311,7 +317,7 @@ export function createPicking(
   // meets (0: the front one): corners and edges within a few pixels of it on screen (more for a
   // finger).
   const pickAt = (e: MouseEvent, finger: boolean, filter: MeasureFilter | null, depth = 0): Pick | null => {
-    const h = hitsAt(e)[depth];
+    const h = hitsAt(e, depth > 0)[depth];
     if (!h || !filter) return null;
     const t = topo.topoOf(h.m);
     const toScreen = topo.placeOf(h.m, h.i).premultiply(root.matrixWorld);
@@ -392,7 +398,14 @@ export function createPicking(
   const menuAt = (x: number, y: number) => {
     hideLabel();
     const h = hitAt({ clientX: x, clientY: y });
-    on.menu({ x, y, under: h && { m: h.m, i: h.i, key: meshes[h.m].keys[h.i] } });
+    let face: MenuAt["face"] = null;
+    const f = h && topo.topoOf(h.m).faces[topo.topoOf(h.m).triFace[h.tri]];
+    if (h && f?.kind === "plane" && f.normal) {
+      const at = topo.placeOf(h.m, h.i);
+      const normal = new THREE.Vector3(...f.normal).applyMatrix3(new THREE.Matrix3().getNormalMatrix(at)).normalize();
+      face = { point: root.worldToLocal(h.point.clone()).toArray() as V3, normal: normal.toArray() as V3 };
+    }
+    on.menu({ x, y, under: h && { m: h.m, i: h.i, key: meshes[h.m].keys[h.i] }, face });
   };
 
   // Hover: one ray per frame at most, mouse only, not while dragging.
@@ -509,7 +522,7 @@ export function createPicking(
       return;
     }
     // Plain part picking (no measuring): Alt+click steps back through the parts there.
-    const hits = hitsAt(e);
+    const hits = hitsAt(e, e.altKey);
     const depth = e.altKey ? (same ? lastTap!.depth + 1 : 1) % Math.max(1, hits.length) : 0;
     lastTap = { x: e.clientX, y: e.clientY, depth, pick: null };
     on.pick(keyOf(hits[depth]));

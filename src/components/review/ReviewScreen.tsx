@@ -269,8 +269,9 @@ export function ReviewScreen({
           </button>
         )}
 
-        {/* Top right: open comments, and below them those waiting for approval. */}
-        <div className="absolute top-3 right-3 z-10 flex max-h-[calc(100%-5rem)] w-[min(20rem,calc(100%-1.5rem))] flex-col gap-2 max-sm:w-48">
+        {/* Top right, under the view cube (7 rem, 6.5 on touch): open comments, and below them
+            those waiting for approval. */}
+        <div className="absolute top-[8rem] right-3 z-10 flex max-h-[calc(100%-12.5rem)] pointer-coarse:top-[7.5rem] pointer-coarse:max-h-[calc(100%-12rem)] w-[min(20rem,calc(100%-1.5rem))] flex-col gap-2 max-sm:w-48">
           <Popup title="Open comments" count={open.length} shown={openList} onToggle={() => setOpenList(flip(openList))} tone="amber">
             {open.length ? (
               onRobot ? (
@@ -341,7 +342,7 @@ export function ReviewScreen({
               </button>
             )}
             {oneSystem && (
-              <Link href={`/robots/${robotId}/systems/${oneSystem}/cad-review`} className="btn h-8 justify-center px-2.5 text-xs pointer-coarse:h-9">
+              <Link href={`/robots/${robotId}/cad-review?system=${oneSystem}`} className="btn h-8 justify-center px-2.5 text-xs pointer-coarse:h-9">
                 Open system
               </Link>
             )}

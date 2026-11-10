@@ -84,6 +84,8 @@ export function ContextMenu({
       { label: "Isolate", run: () => tools.isolate(keys) },
       { label: clear ? "Make opaque" : "Make transparent", run: () => tools.setClear(keys, !clear) },
       { label: "Zoom to", run: () => tools.zoomTo(keys) },
+      // A plane on the flat face under the pointer, replacing any section there was.
+      ...(at.face ? [{ label: "Section here", run: () => tools.sectionFromFace(at.face!.point, at.face!.normal) }] : []),
     ]);
     const own = page?.(keys) ?? [];
     if (own.length) groups.push(own);
