@@ -1,7 +1,6 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
 import { fitPose } from "./camera";
-import { sectionPlane } from "./section";
 
 const box = new THREE.Box3(new THREE.Vector3(-1, 0, 2), new THREE.Vector3(1, 4, 6));
 
@@ -35,26 +34,5 @@ describe("fitPose", () => {
     const dir = pose.position.clone().sub(pose.target).normalize();
     expect(dir.toArray().map((x) => Math.sign(x))).toEqual([1, 1, 1]);
     expect(fitPose(new THREE.Box3(), new THREE.Vector3(0, 0, 1), 60)).toBeNull();
-  });
-});
-
-describe("sectionPlane", () => {
-  it("cuts at a fraction of the box along the axis, keeping the side below", () => {
-    const p = sectionPlane(box, { axis: "z", at: 0.25, flip: false });
-    // z from 2 to 6: a quarter is 3. Kept points are where the plane's distance is positive.
-    expect(p.distanceToPoint(new THREE.Vector3(0, 0, 2.9))).toBeGreaterThan(0);
-    expect(p.distanceToPoint(new THREE.Vector3(0, 0, 3.1))).toBeLessThan(0);
-    expect(p.distanceToPoint(new THREE.Vector3(0, 0, 3))).toBeCloseTo(0);
-  });
-
-  it("keeps the side above when flipped", () => {
-    const p = sectionPlane(box, { axis: "y", at: 0.5, flip: true });
-    expect(p.distanceToPoint(new THREE.Vector3(0, 2.1, 0))).toBeGreaterThan(0);
-    expect(p.distanceToPoint(new THREE.Vector3(0, 1.9, 0))).toBeLessThan(0);
-  });
-
-  it("runs along X from the box's min to its max", () => {
-    expect(sectionPlane(box, { axis: "x", at: 0, flip: false }).distanceToPoint(new THREE.Vector3(-1, 0, 0))).toBeCloseTo(0);
-    expect(sectionPlane(box, { axis: "x", at: 1, flip: false }).distanceToPoint(new THREE.Vector3(1, 0, 0))).toBeCloseTo(0);
   });
 });

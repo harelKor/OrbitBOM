@@ -82,11 +82,14 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
   const marks = createMarks(stage, meshes, topo);
   measure = createMeasureLayer(meshes, topo, marks, {
     names: host.names,
-    measured: (m) => host.measured(m),
+    measured: (m) => {
+      section.picked(m.parts, measure?.newest() ?? null);
+      host.measured(m);
+    },
     pick: (key) => host.pick(key),
     hoverOff: () => picking?.setHover(null),
   });
-  const section = createSection(stage, [looks.material, looks.cad]);
+  const section = createSection(stage, meshes, topo);
 
   const tools: SceneTools = {
     ...camera.tools,
@@ -96,7 +99,7 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
       touched = true;
       camera.tools.setPose(pose, animate);
     },
-    ...section,
+    ...section.tools,
     ...measure.tools,
     ...visibility.tools,
     ...partTools(meshes),
@@ -189,6 +192,7 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
       picking?.dispose();
       visibility.dispose();
       measure?.dispose();
+      section.dispose();
       geometries.forEach((g) => g.dispose());
       marks.dispose();
       topo.dispose();
