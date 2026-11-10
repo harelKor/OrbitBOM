@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useSearchParams } from "next/navigation";
-import { useMemo, useOptimistic, useState, useTransition } from "react";
+import { useEffect, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
 import { STATUSES } from "@/config/statuses";
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { computeStatus } from "@/lib/status";
@@ -11,6 +11,7 @@ import { useFilters } from "@/components/shell/FilterContext";
 import { usePermissions } from "@/components/shell/ModeContext";
 import { BUILD_STATUSES } from "@/components/shell/mode";
 import { useEscape } from "@/components/ui/useEscape";
+import { BULK_ASK_EVENT, BULK_SELECTION_EVENT, BULK_TOGGLE_EVENT, type BulkSelectionDetail, type BulkToggleDetail } from "@/components/dashboard/modelEvents";
 import { DrawingsBar } from "./DrawingsBar";
 import { MergeBar, type MergeInfo } from "./MergeBar";
 import { RELEASED_STATUS, ReleaseBar } from "./ReleaseBar";
@@ -176,6 +177,45 @@ export function BomView({
       else next.add(id);
       return next;
     });
+
+  // Bulk edit picks parts in the page's 3D view too (Harel, 2026-11-10): the viewer is told which
+  // parts are selected (a merged row as its members), and a click there toggles the part's row.
+  const rowOf = useMemo(() => {
+    const m = new Map<string, string>(optimistic.map((p) => [p.id, p.id]));
+    for (const merge of merges) for (const id of merge.partIds) m.set(id, `${MERGE_PREFIX}${merge.id}`);
+    return m;
+  }, [optimistic, merges]);
+  const bulkIds = useMemo(() => {
+    if (mode !== "bulk") return null;
+    return [...selected].flatMap((id) => (isMergeId(id) ? (merges.find((m) => `${MERGE_PREFIX}${m.id}` === id)?.partIds ?? []) : [id]));
+  }, [mode, selected, merges]);
+  const bulkRef = useRef(bulkIds);
+  useEffect(() => {
+    bulkRef.current = bulkIds;
+    window.dispatchEvent(new CustomEvent<BulkSelectionDetail>(BULK_SELECTION_EVENT, { detail: { ids: bulkIds } }));
+  }, [bulkIds]);
+  useEffect(() => {
+    const onAsk = () => window.dispatchEvent(new CustomEvent<BulkSelectionDetail>(BULK_SELECTION_EVENT, { detail: { ids: bulkRef.current } }));
+    window.addEventListener(BULK_ASK_EVENT, onAsk);
+    return () => window.removeEventListener(BULK_ASK_EVENT, onAsk);
+  }, []);
+  useEffect(() => {
+    if (mode !== "bulk") return;
+    const onToggle = (e: Event) => {
+      const row = rowOf.get((e as CustomEvent<BulkToggleDetail>).detail.partId);
+      if (!row) return;
+      setSelected((s) => {
+        const next = new Set(s);
+        if (next.has(row)) next.delete(row);
+        else next.add(row);
+        return next;
+      });
+    };
+    window.addEventListener(BULK_TOGGLE_EVENT, onToggle);
+    return () => window.removeEventListener(BULK_TOGGLE_EVENT, onToggle);
+  }, [mode, rowOf]);
+  // Leaving the page while selecting: the viewer goes back to its own picks.
+  useEffect(() => () => void window.dispatchEvent(new CustomEvent<BulkSelectionDetail>(BULK_SELECTION_EVENT, { detail: { ids: null } })), []);
 
   const cards = (list: CardPart[], withSystem: boolean) =>
     view === "list" ? (

@@ -149,18 +149,20 @@ export function createMarks(stage: Stage, meshes: PartMesh[], topo: Topo): Marks
 }
 
 // The selected part (a click on it): drawn solid in bright green over its instances (every copy).
-export type Selection = { select: (key: string | null) => void; refresh: () => void };
+// A BOM page's Bulk edit selects many at once.
+export type Selection = { select: (keys: string | readonly string[] | null) => void; refresh: () => void };
 
 export function createSelection(stage: Stage, meshes: PartMesh[], looks: Looks): Selection {
   const picks = new THREE.Group();
   stage.root.add(picks);
-  let selectedNow: string | null = null;
-  const draw = (key: string | null) => {
+  let selectedNow: string | readonly string[] | null = null;
+  const draw = (chosen: string | readonly string[] | null) => {
     picks.clear();
-    if (key) {
+    const want = new Set(chosen === null ? [] : typeof chosen === "string" ? [chosen] : chosen);
+    if (want.size) {
       for (const { mesh, keys } of meshes) {
         keys.forEach((k, i) => {
-          if (k !== key) return;
+          if (!want.has(k)) return;
           const lit = new THREE.Mesh(mesh.geometry, looks.glow);
           mesh.getMatrixAt(i, lit.matrix);
           lit.matrixAutoUpdate = false;
@@ -172,7 +174,7 @@ export function createSelection(stage: Stage, meshes: PartMesh[], looks: Looks):
     }
     stage.render();
   };
-  return { select: (key) => draw((selectedNow = key)), refresh: () => draw(selectedNow) };
+  return { select: (keys) => draw((selectedNow = keys)), refresh: () => draw(selectedNow) };
 }
 
 // Where a context menu opens (client px) and the part copy under it, if any.

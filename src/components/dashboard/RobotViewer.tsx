@@ -8,7 +8,18 @@ import { Segmented } from "@/components/ui/Segmented";
 import { Icon } from "@/components/ui/Icon";
 import type { ViewerMode, ViewerModel } from "./ModelCanvas";
 import { PickedPart } from "./PickedPart";
-import { MODEL_STALE_EVENT, OPEN_PART_EVENT, OPEN_PART_PENDING, type ModelStaleDetail, type OpenPartDetail } from "./modelEvents";
+import {
+  BULK_ASK_EVENT,
+  BULK_SELECTION_EVENT,
+  BULK_TOGGLE_EVENT,
+  MODEL_STALE_EVENT,
+  OPEN_PART_EVENT,
+  OPEN_PART_PENDING,
+  type BulkSelectionDetail,
+  type BulkToggleDetail,
+  type ModelStaleDetail,
+  type OpenPartDetail,
+} from "./modelEvents";
 
 const ModelCanvas = dynamic(() => import("./ModelCanvas").then((m) => m.ModelCanvas), { ssr: false });
 
@@ -65,6 +76,24 @@ export function RobotViewer({
   const partByKey = useMemo(() => new Map(parts.map((p) => [p.key, p])), [parts]);
   const nameByKey = useMemo(() => new Map(parts.map((p) => [p.key, p.name])), [parts]);
   const picked = selected ? partByKey.get(selected) : undefined;
+  // The page's Bulk edit selection (part ids), while it's on: drawn in green, and a click on a
+  // part adds it or takes it out instead of picking it (Harel, 2026-11-10).
+  const [bulk, setBulk] = useState<string[] | null>(null);
+  useEffect(() => {
+    const onBulk = (e: Event) => {
+      const { ids } = (e as CustomEvent<BulkSelectionDetail>).detail;
+      setBulk(ids);
+      if (ids) setSelected(null);
+    };
+    window.addEventListener(BULK_SELECTION_EVENT, onBulk);
+    window.dispatchEvent(new Event(BULK_ASK_EVENT)); // Bulk edit may be on already
+    return () => window.removeEventListener(BULK_SELECTION_EVENT, onBulk);
+  }, []);
+  const bulkKeys = useMemo(() => {
+    if (!bulk) return null;
+    const keyOf = new Map(parts.map((p) => [p.id, p.key]));
+    return bulk.flatMap((id) => keyOf.get(id) ?? []);
+  }, [bulk, parts]);
   const openLarge = () => {
     setBar(true);
     setLarge(true);
@@ -73,6 +102,12 @@ export function RobotViewer({
   // anywhere else only clears it; with none, a click beside the small model opens it large
   // (Harel, 2026-11-07).
   const onPick = (key: string | null) => {
+    if (bulk) {
+      const part = key ? partByKey.get(key) : undefined;
+      if (part) window.dispatchEvent(new CustomEvent<BulkToggleDetail>(BULK_TOGGLE_EVENT, { detail: { partId: part.id } }));
+      else if (!key && !large) openLarge();
+      return;
+    }
     if (key && key === selected) onOpen(key);
     else if (key || selected) setSelected(key);
     else if (!large) openLarge();
@@ -263,7 +298,7 @@ export function RobotViewer({
               locateKey={null}
               onLocated={onLocated}
               hidden={hidden}
-              selectedKey={selected}
+              selectedKey={bulkKeys ?? selected}
               onPick={onPick}
               names={nameByKey}
               panelLeft={bar && !systemId && groups.length > 0 ? 244 : undefined}
@@ -296,7 +331,11 @@ export function RobotViewer({
               </div>
             </>
           )}
-          {picked || selected ? (
+          {bulk ? (
+            <div className="pointer-events-none absolute top-3 left-1/2 -translate-x-1/2 animate-pop rounded-md border border-accent/40 bg-surface/95 px-3 py-1.5 text-xs font-medium whitespace-nowrap text-fg-2 shadow-sm backdrop-blur">
+              Bulk edit: tap parts to select them
+            </div>
+          ) : picked || selected ? (
             <PickedPart
               name={picked?.name ?? null}
               onOpen={picked && (() => onOpen(picked.key))}

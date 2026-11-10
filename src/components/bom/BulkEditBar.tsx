@@ -23,6 +23,9 @@ type FieldId = (typeof FIELDS)[number]["id"];
 
 const NONE = "__none__";
 
+// Bigger controls than the page's: taller, base-size text.
+const BIG = "[&_.btn]:h-10 [&_.btn]:px-4 [&_.btn]:text-base [&_.btn-primary]:h-10 [&_.btn-primary]:px-5 [&_.btn-primary]:text-base [&_.input]:h-10 [&_.input]:text-base pointer-coarse:[&_.btn]:h-11 pointer-coarse:[&_.btn-primary]:h-11 pointer-coarse:[&_.input]:h-11";
+
 function valueOptions(field: Exclude<FieldId, "material">) {
   switch (field) {
     case "classification":
@@ -72,11 +75,12 @@ export function BulkEditBar({
     onApply({ [field]: value === NONE ? null : value } as PartChanges);
   }
 
-  // Between the side columns, so Done isn't hidden under the robots column.
+  // Between the side columns, so Done isn't hidden under the robots column. A little bigger than
+  // the other bars, with an accent edge and a shadow, so it's quick to hit (Harel, 2026-11-10).
   return (
-    <div className="fixed bottom-0 left-[var(--shell-left)] right-[var(--shell-right)] z-40 border-t border-line-strong bg-surface/95 p-3 backdrop-blur">
-      <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-2 text-sm">
-        <span className="font-semibold">{count} selected</span>
+    <div className="fixed bottom-0 left-[var(--shell-left)] right-[var(--shell-right)] z-40 border-t-2 border-accent/50 bg-surface/95 px-4 py-3.5 shadow-[0_-10px_28px_-12px_rgba(17,19,24,0.35)] backdrop-blur">
+      <div className={`mx-auto flex max-w-5xl flex-wrap items-center gap-2.5 text-base ${BIG}`}>
+        <span className="min-w-28 text-lg font-semibold tabular-nums">{count} selected</span>
         <select
           value={field}
           onChange={(e) => {

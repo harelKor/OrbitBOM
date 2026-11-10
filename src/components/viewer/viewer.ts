@@ -30,7 +30,7 @@ export type ViewerHost = {
 export type Viewer = {
   paint: Paint;
   hide: (hidden: Set<number>) => void; // subsystem groups
-  select: (key: string | null) => void;
+  select: (keys: string | readonly string[] | null) => void;
   show: (gone: Gone[]) => void;
   hideCopy: (g: Gone) => void;
   tools: SceneTools;

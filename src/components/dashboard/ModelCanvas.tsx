@@ -49,7 +49,7 @@ export function ModelCanvas({
   locateKey: string | null;
   onLocated: (found: boolean) => void;
   hidden?: Set<number>; // subsystem groups not drawn
-  selectedKey?: string | null; // a part picked with a click: drawn in bright green
+  selectedKey?: string | readonly string[] | null; // a part picked with a click (or Bulk edit's parts): drawn in bright green
   onPick?: (key: string | null) => void; // a click on a part (its key) or on empty space (null)
   onOpen?: (key: string) => void; // a double-click on a part
   names?: Map<string, string>; // part key -> its name, for the hidden parts list
@@ -65,7 +65,7 @@ export function ModelCanvas({
   const scene = useRef<{
     paint: Paint;
     hide: (hidden: Set<number>) => void;
-    select: (key: string | null) => void;
+    select: (keys: string | readonly string[] | null) => void;
     show: (gone: Gone[]) => void;
     hideCopy: (g: Gone) => void;
     tools: SceneTools;
