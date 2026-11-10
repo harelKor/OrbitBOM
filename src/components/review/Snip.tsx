@@ -98,18 +98,6 @@ export function SnipOverlay({ onSnip, onCancel }: { onSnip: (r: { x: number; y: 
   );
 }
 
-// The camera's flash over the view, once.
-export function SnipFlash({ onDone }: { onDone: () => void }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const a = ref.current?.animate([{ opacity: 0.9 }, { opacity: 0 }], { duration: 320, easing: "ease-out" });
-    if (!a) return onDone();
-    a.onfinish = onDone;
-    return () => a.cancel();
-  }, [onDone]);
-  return <div ref={ref} className="pointer-events-none absolute inset-0 z-50 bg-white" />;
-}
-
 // The drawing window. `mine(line)`: whether the member may erase it.
 export function SnipEditor({
   title,

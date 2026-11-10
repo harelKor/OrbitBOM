@@ -84,11 +84,12 @@ export function ReviewBoard({
       {systems.length === 0 ? (
         <div className="rounded-lg border border-dashed border-line p-10 text-center text-sm text-muted">No system of this robot is linked to Onshape yet.</div>
       ) : (
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+        // As many boxes to a row as fit (at least 13rem each), the row filled edge to edge.
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-[repeat(auto-fit,minmax(13rem,1fr))]">
           {systems.map((s) => {
             const own = bySystem.get(s.id);
             return (
-              <div key={s.id} className="stage-frame stage-glow relative aspect-square overflow-hidden lg:aspect-auto lg:h-64">
+              <div key={s.id} className="stage-frame stage-glow relative aspect-square overflow-hidden lg:aspect-[5/4]">
                 {/* Phones: the system's picture. */}
                 <Link href={systemHref(s.id)} className="thumb-well absolute inset-0 flex items-center justify-center lg:hidden" aria-label={s.name}>
                   {s.thumbUrl ? (

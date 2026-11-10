@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { openPartWindow } from "@/components/bom/PartDetailsHost";
 import type { HiddenParts, MeasureInfo, SceneTools, ViewerModel, ViewerMode } from "@/components/dashboard/ModelCanvas";
 import { AddCommentDialog, OpenComment, WaitingComment, type CommentTarget } from "@/components/review/Comments";
-import { SnipEditor, SnipFlash, SnipMe, SnipOverlay, type SnipDraft } from "@/components/review/Snip";
+import { SnipEditor, SnipMe, SnipOverlay, type SnipDraft } from "@/components/review/Snip";
 import { ViewerToolbar } from "@/components/review/ViewerToolbar";
 import { Segmented } from "@/components/ui/Segmented";
 import type { ReviewComment } from "@/lib/data/cadReview";
@@ -65,9 +65,9 @@ export function ReviewScreen({
   const [adding, setAdding] = useState<{ key: string; name: string | null; systemId: string | null } | null | false>(false);
   const [drawer, setDrawer] = useState(false);
   // Snip (Harel, 2026-11-10): the comment window steps aside while a rectangle is dragged over the
-  // view; a flash, then the drawing window; Confirm brings the comment window back with it.
+  // view, then the drawing window (no flash, Harel 2026-11-10); Confirm brings the comment window
+  // back with it.
   const [snipStep, setSnipStep] = useState<"drag" | "draw" | null>(null);
-  const [flash, setFlash] = useState(false);
   const [snipDraft, setSnipDraft] = useState<SnipDraft | null>(null);
   const section = useRef<HTMLElement>(null);
   const takeSnip = (r: { x: number; y: number; w: number; h: number }) => {
@@ -75,7 +75,6 @@ export function ReviewScreen({
     const shot = tools?.snapshot(r, bg);
     if (!shot) return setSnipStep(null);
     setSnipDraft({ dataUrl: shot.dataUrl, w: shot.w, h: shot.h, strokes: [] });
-    setFlash(true);
     setSnipStep("draw");
   };
   const closeAdding = () => {
@@ -203,7 +202,6 @@ export function ReviewScreen({
 
       <section ref={section} className="relative min-w-0 flex-1 overflow-hidden bg-surface">
         {snipStep === "drag" && <SnipOverlay onSnip={takeSnip} onCancel={() => setSnipStep(null)} />}
-        {flash && <SnipFlash onDone={() => setFlash(false)} />}
         {model ? (
           <ModelCanvas
             model={model}

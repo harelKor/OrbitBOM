@@ -39,7 +39,9 @@ export default async function CadPage({ params }: { params: Promise<{ robotId: s
 
   const board = <ReviewBoard robotId={robotId} robotName={robot.name} robotCounts={counts.robot ?? { open: 0, done: 0 }} systems={systems} builtAt={builtAt} edit={edit} />;
   return (
-    <div className="mx-auto max-w-7xl space-y-4">
+    // The page's full width (no cap): with the side panels closed the robot gets wider and the
+    // systems line up six to a row, with the page's normal margins (Harel, 2026-11-10).
+    <div className="space-y-4">
       <h1 className="display text-3xl text-accent">CAD</h1>
       {sections.length ? (
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem] xl:grid-cols-[minmax(0,1fr)_22rem]">
