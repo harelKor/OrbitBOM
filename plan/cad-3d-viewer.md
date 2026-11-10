@@ -16,11 +16,11 @@ no new cloud resources), heavy work stays in the browser, phones are first-class
 | S0 | Split ModelCanvas + small `/dev/viewer` sandbox | 0 | done (2026-11-10, 636b012) | also `paint.ts`, `types.ts`, `viewer.ts`; proxy lets `/dev/` through outside production |
 | S1 | Navigation like Onshape | 1 | done (2026-11-10, 496b45a, 1c0a696, 0fb2be8) | one camera switching ortho/perspective in place; cube only where the page passes `onTools`; no roll arrows |
 | S2 | Instant loading | 1 | done (2026-11-10, db01e1c) | cache drops old revisions after 2 days unused, anything after 30 days (not "everything unused"); part windows don't use the cache yet |
-| S3 | Context menu, hide / isolate, Shift+Y under the mouse | 1 | done (2026-11-10, 76a3a99, 0b73627) | follow-up running: Section here, S2's picking tweaks, popups below the cube |
+| S3 | Context menu, hide / isolate, Shift+Y under the mouse | 1 | done (2026-11-10, 76a3a99, 0b73627, 215e46b, 68e1c17) | Section here, worker topology, nearest-hit raycasts; comments a column beside the 3D view at ≥ 1280 px |
 | S4 | Section v2 | 1 | done (2026-11-10, c4b701c) | Include / Exclude per part shape per subsystem; red interference not yet seen on real data |
-| S6 | Saved views + comment pins (migration) | 2 | after wave 1 | |
-| S7 | Explode and move | 2 | after S3 | |
-| S9 | Display modes and polish | 2 | after S0 | |
+| S6 | Saved views + comment pins (migration) | 2 | waiting for Harel's OK after wave 1 | |
+| S7 | Explode and move | 2 | waiting for Harel's OK after wave 1 | |
+| S9 | Display modes and polish | 2 | waiting for Harel's OK after wave 1 | |
 | S8 | Motion along the mates | later | needs its own plan first | |
 | ~~S5~~ | ~~Parts list~~ | | dropped (Harel, 2026-11-10) | |
 
