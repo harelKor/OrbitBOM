@@ -14,10 +14,10 @@ no new cloud resources), heavy work stays in the browser, phones are first-class
 | Session | What | Wave | State | Commit / notes |
 |---|---|---|---|---|
 | S0 | Split ModelCanvas + small `/dev/viewer` sandbox | 0 | done (2026-11-10, 636b012) | also `paint.ts`, `types.ts`, `viewer.ts`; proxy lets `/dev/` through outside production |
-| S1 | Navigation like Onshape | 1 | in progress (2026-11-10) | |
-| S2 | Instant loading | 1 | in progress (2026-11-10) | |
-| S3 | Context menu, hide / isolate, Shift+Y under the mouse | 1 | in progress (2026-11-10) | |
-| S4 | Section v2 | 1 | in progress (2026-11-10) | |
+| S1 | Navigation like Onshape | 1 | done (2026-11-10, 496b45a, 1c0a696, 0fb2be8) | one camera switching ortho/perspective in place; cube only where the page passes `onTools`; no roll arrows |
+| S2 | Instant loading | 1 | done (2026-11-10, db01e1c) | cache drops old revisions after 2 days unused, anything after 30 days (not "everything unused"); part windows don't use the cache yet |
+| S3 | Context menu, hide / isolate, Shift+Y under the mouse | 1 | done (2026-11-10, 76a3a99, 0b73627) | follow-up running: Section here, S2's picking tweaks, popups below the cube |
+| S4 | Section v2 | 1 | done (2026-11-10, c4b701c) | Include / Exclude per part shape per subsystem; red interference not yet seen on real data |
 | S6 | Saved views + comment pins (migration) | 2 | after wave 1 | |
 | S7 | Explode and move | 2 | after S3 | |
 | S9 | Display modes and polish | 2 | after S0 | |
@@ -103,6 +103,9 @@ src/components/viewer/load.ts                 fetch / cache / decode / build ins
 src/components/viewer/visibility.ts           hide, isolate, ghost, groups, hidden list           (S3)
 src/components/viewer/picking.ts              raycast, hover, face/edge/point picks, marks        (S3)
 src/components/viewer/section.ts              clipping planes, caps, handle                       (S4)
+src/components/viewer/sectionCaps.ts, sectionHandle.ts, sectionMath.ts                        (S4)
+src/components/viewer/meshWorker.ts, meshCache.ts                                               (S2)
+src/components/viewer/ViewCube.tsx, ContextMenu.tsx                                              (S1, S3)
 src/components/viewer/measureLayer.ts         measure state → measure.ts, report                  (S3)
 src/components/viewer/motion.ts               explode, move triad, mates                          (S7, S8)
 src/components/viewer/viewState.ts            serialise / restore the whole view                  (S6)
