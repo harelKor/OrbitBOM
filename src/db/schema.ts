@@ -647,6 +647,12 @@ export const partVersions = pgTable(
 // system window, or by itself), a mentor approves it or rejects it with a note, which opens it
 // again (Harel, 2026-11-08).
 export const reviewCommentState = pgEnum("review_comment_state", ["open", "done", "approved"]);
+// A snip of the 3D view on a comment, with lines drawn on it (Harel, 2026-11-10): the picture in
+// R2, the lines kept apart so they can still be erased (the author any, others their own). `p`:
+// x, y pairs in the picture's pixels; `s`: the pen's width there. `changed`: members other than
+// the author who drew on it.
+export type SnipStroke = { by: string; c: string; s: number; p: number[] };
+export type Snip = { path: string; w: number; h: number; strokes: SnipStroke[]; changed?: { by: string; name: string; at: string }[] };
 export const reviewComments = pgTable(
   "review_comments",
   {
@@ -668,6 +674,7 @@ export const reviewComments = pgTable(
     onshapeVersionId: text("onshape_version_id"),
     onshapeVersionName: text("onshape_version_name"),
     state: reviewCommentState("state").notNull().default("open"),
+    snip: jsonb("snip").$type<Snip>(),
     createdAt: createdAt(),
     doneAt: timestamp("done_at", { withTimezone: true }),
     doneBy: uuid("done_by").references(() => members.id, { onDelete: "set null" }),

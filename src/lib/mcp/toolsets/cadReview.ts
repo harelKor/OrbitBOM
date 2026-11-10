@@ -23,7 +23,7 @@ const asTool = async <T,>(fn: () => Promise<T>) => {
 
 read(
   "list_review_comments",
-  "A system's CAD Review comments: state (open; done = ticked off, waiting for a mentor; approved), text, the part it's about, who wrote it and when, a mentor's last rejection note, and the version tree (Onshape versions, newest first, which ones the BOM was updated to, and the comment ids added and ticked off at each).",
+  "A system's CAD Review comments (snip: a picture cut from the 3D view with lines drawn on it): state (open; done = ticked off, waiting for a mentor; approved), text, the part it's about, who wrote it and when, a mentor's last rejection note, and the version tree (Onshape versions, newest first, which ones the BOM was updated to, and the comment ids added and ticked off at each).",
   z.object({ system_id: uuid, state: z.enum(["open", "done", "approved"]).optional() }),
   async ({ system_id, state }) => {
     const review = await loadSystemReview(system_id);
@@ -31,7 +31,7 @@ read(
     return {
       comments: review.comments
         .filter((c) => !state || c.state === state)
-        .map((c) => ({ id: c.id, state: c.state, text: c.body, part: c.partName, by: c.author, at: c.createdAt, ticked_by: c.doneBy, approved_by: c.approvedBy, rejected: c.rejectNote ? { note: c.rejectNote, by: c.rejectedBy, at: c.rejectedAt } : null })),
+        .map((c) => ({ id: c.id, state: c.state, text: c.body, part: c.partName, by: c.author, at: c.createdAt, ticked_by: c.doneBy, approved_by: c.approvedBy, rejected: c.rejectNote ? { note: c.rejectNote, by: c.rejectedBy, at: c.rejectedAt } : null, snip: c.snip ? { picture: c.snip.url, lines: c.snip.strokes.length, changed_by: (c.snip.changed ?? []).map((x) => x.name) } : null })),
       versions: review.tree.map((n) => ({ name: n.name, at: n.at, bom: n.bom.map((b) => b.label), bom_current: n.bom.some((b) => b.current), added: n.added, ticked_off: n.done })),
     };
   },

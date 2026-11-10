@@ -3,6 +3,12 @@ import { and, eq, inArray } from "drizzle-orm";
 import { can, type Mode } from "@/components/shell/mode";
 import { db, schema } from "@/db";
 import type { Member } from "@/lib/auth";
+import { deleteObject } from "@/lib/storage/r2";
+import { cleanStrokes, mergeStrokes } from "./snipStrokes";
+
+// A snip as the browser sends it: its picture already uploaded (/api/review-snips), its lines.
+export type SnipInput = { path: string; w: number; h: number; strokes: unknown };
+const SNIP_PATH = /^review-snips\/[0-9a-f-]{36}\.(jpg|png)$/;
 
 const { reviewComments, systems } = schema;
 
@@ -23,8 +29,12 @@ export function canApprove(mode: Mode, member: Pick<Member, "isMentor">) {
 }
 
 // A comment on a system, or with `systemId` null on the whole robot (Harel, 2026-11-09).
-// `onshapeVersion`: the Onshape version it was written on, from the Onshape panel.
-export async function addComment(member: Member, input: { robotId?: string; systemId: string | null; body: string; partKey?: string | null; partName?: string | null; onshapeVersion?: { id: string; name: string } | null }) {
+// `onshapeVersion`: the Onshape version it was written on, from the Onshape panel. `snip`: a
+// picture cut from the 3D view (already uploaded) with its lines.
+export async function addComment(
+  member: Member,
+  input: { robotId?: string; systemId: string | null; body: string; partKey?: string | null; partName?: string | null; onshapeVersion?: { id: string; name: string } | null; snip?: SnipInput | null },
+) {
   const body = input.body.trim();
   if (!body) throw new CommentError("Write the comment first.");
   if (body.length > MAX_BODY) throw new CommentError(`Keep a comment under ${MAX_BODY} characters.`);
@@ -37,6 +47,14 @@ export async function addComment(member: Member, input: { robotId?: string; syst
     const [robot] = robotId ? await db.select({ id: schema.robots.id }).from(schema.robots).where(eq(schema.robots.id, robotId)) : [];
     if (!robot) throw new CommentError("That robot is gone.");
   }
+  let snip = null;
+  if (input.snip) {
+    const { path, strokes } = input.snip;
+    const w = Math.round(Number(input.snip.w));
+    const h = Math.round(Number(input.snip.h));
+    if (!SNIP_PATH.test(path) || !(w > 0 && w <= 8000 && h > 0 && h <= 8000)) throw new CommentError("That snip didn't upload. Take it again.");
+    snip = { path, w, h, strokes: cleanStrokes(strokes, w, h).map((s) => ({ ...s, by: member.id })), changed: [] };
+  }
   const [row] = await db
     .insert(reviewComments)
     .values({
@@ -48,9 +66,22 @@ export async function addComment(member: Member, input: { robotId?: string; syst
       partName: input.partKey ? input.partName?.slice(0, 200) || null : null,
       onshapeVersionId: input.onshapeVersion?.id ?? null,
       onshapeVersionName: input.onshapeVersion ? input.onshapeVersion.name.slice(0, 200) : null,
+      snip,
     })
     .returning();
   return row;
+}
+
+// Lines drawn on a comment's snip: `own` are the saver's lines as they now are; `keep` (its
+// author only) the other members' lines they didn't erase, by position (snipStrokes.ts).
+export async function saveSnipLines(member: Member, id: string, sent: { own: unknown; keep?: unknown }) {
+  const c = await commentOf(id);
+  if (!c.snip) throw new CommentError("That comment has no snip.");
+  const own = cleanStrokes(sent.own, c.snip.w, c.snip.h);
+  const keep = Array.isArray(sent.keep) ? sent.keep.map(Number) : [];
+  const snip = mergeStrokes(c.snip, member, c.authorId === member.id, { own, keep });
+  await db.update(reviewComments).set({ snip }).where(eq(reviewComments.id, id));
+  return c;
 }
 
 // Ticks off open comments (of one system, when `systemId` is given); `versionId`: the version the
@@ -109,6 +140,7 @@ export async function deleteComment(member: Member, id: string) {
   const c = await commentOf(id);
   if (!member.isAdmin && (c.authorId !== member.id || c.state !== "open")) throw new CommentError("Only its author deletes an open comment.");
   await db.delete(reviewComments).where(eq(reviewComments.id, id));
+  if (c.snip) await deleteObject(c.snip.path).catch(() => {});
   return c;
 }
 

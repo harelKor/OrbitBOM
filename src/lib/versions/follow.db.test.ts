@@ -21,7 +21,7 @@ else
     const { checkSystem } = await import("./detect");
     const { commitDraft } = await import("./commit");
     const { docVersionsKey } = await import("./docVersions");
-    const { addComment, approveComment, rejectComment, tickComments, untickComment } = await import("@/lib/reviews/comments");
+    const { addComment, approveComment, rejectComment, saveSnipLines, tickComments, untickComment } = await import("@/lib/reviews/comments");
     const { loadSystemReview, reviewCounts } = await import("@/lib/data/cadReview");
 
     const onshape: string[] = [];
@@ -112,6 +112,22 @@ else
       const other = await db.insert(schema.robots).values({ name: "Other bot", year: 2027 }).returning();
       await expect(addComment(builder, { robotId: other[0].id, systemId: system.id, body: "x" })).rejects.toThrow("That system is gone.");
       await db.delete(schema.robots).where(eq(schema.robots.id, other[0].id));
+    });
+
+    it("a snip: the author's lines saved with the comment, others add theirs and are tagged", async () => {
+      await expect(addComment(builder, { systemId: system.id, body: "Look here", snip: { path: "elsewhere/x.jpg", w: 100, h: 80, strokes: [] } })).rejects.toThrow("didn't upload");
+      const path = `review-snips/${randomUUID()}.jpg`;
+      const c = await addComment(builder, { systemId: system.id, body: "Look here", snip: { path, w: 100, h: 80, strokes: [{ c: "#ef4444", s: 3, p: [1, 1, 50, 40], by: "forged" }] } });
+      expect(c.snip).toMatchObject({ path, w: 100, h: 80, strokes: [{ by: builder.id, c: "#ef4444", s: 3, p: [1, 1, 50, 40] }], changed: [] });
+      await saveSnipLines(member, c.id, { own: [{ c: "#3b82f6", s: 2, p: [5, 5, 9, 9] }] });
+      const { listComments } = await import("@/lib/data/cadReview");
+      const saved = (await listComments(system.id)).find((x) => x.id === c.id)!;
+      expect(saved.snip!.strokes.map((s) => s.by)).toEqual([builder.id, member.id]);
+      expect(saved.snip!.changed?.map((x) => x.name)).toEqual(["Review Tester"]);
+      // Someone else can't erase the author's line: it stays whatever they send.
+      await saveSnipLines(mentor, c.id, { own: [] });
+      expect((await listComments(system.id)).find((x) => x.id === c.id)!.snip!.strokes).toHaveLength(2);
+      await db.delete(schema.reviewComments).where(eq(schema.reviewComments.id, c.id));
     });
 
     it("the tree lists the kept Onshape versions and marks the one the BOM was updated to", async () => {

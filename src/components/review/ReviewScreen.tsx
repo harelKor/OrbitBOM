@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { openPartWindow } from "@/components/bom/PartDetailsHost";
 import type { HiddenParts, MeasureInfo, SceneTools, ViewerModel, ViewerMode } from "@/components/dashboard/ModelCanvas";
 import { AddCommentDialog, OpenComment, WaitingComment, type CommentTarget } from "@/components/review/Comments";
+import { SnipEditor, SnipFlash, SnipMe, SnipOverlay, type SnipDraft } from "@/components/review/Snip";
 import { ViewerToolbar } from "@/components/review/ViewerToolbar";
 import { Segmented } from "@/components/ui/Segmented";
 import type { ReviewComment } from "@/lib/data/cadReview";
@@ -63,6 +64,24 @@ export function ReviewScreen({
   const [isolated, setIsolated] = useState<string[] | null>(null);
   const [adding, setAdding] = useState<{ key: string; name: string | null; systemId: string | null } | null | false>(false);
   const [drawer, setDrawer] = useState(false);
+  // Snip (Harel, 2026-11-10): the comment window steps aside while a rectangle is dragged over the
+  // view; a flash, then the drawing window; Confirm brings the comment window back with it.
+  const [snipStep, setSnipStep] = useState<"drag" | "draw" | null>(null);
+  const [flash, setFlash] = useState(false);
+  const [snipDraft, setSnipDraft] = useState<SnipDraft | null>(null);
+  const section = useRef<HTMLElement>(null);
+  const takeSnip = (r: { x: number; y: number; w: number; h: number }) => {
+    const bg = section.current ? getComputedStyle(section.current).backgroundColor : "#151925";
+    const shot = tools?.snapshot(r, bg);
+    if (!shot) return setSnipStep(null);
+    setSnipDraft({ dataUrl: shot.dataUrl, w: shot.w, h: shot.h, strokes: [] });
+    setFlash(true);
+    setSnipStep("draw");
+  };
+  const closeAdding = () => {
+    setAdding(false);
+    setSnipDraft(null);
+  };
   const [hidden, setHidden] = useState<HiddenParts | null>(null);
   // null: as the screen suits (folded on a phone, open on wider screens) until toggled.
   const [openList, setOpenList] = useState<boolean | null>(null);
@@ -163,6 +182,7 @@ export function ReviewScreen({
   }, [selected, focus, drawer, tools, isolated]);
 
   return (
+    <SnipMe.Provider value={me.id}>
     <div ref={root} className="-m-4 flex h-[calc(100dvh-var(--topbar-h,2.75rem))] md:-m-6">
       {drawer && <button aria-label="Close versions" onClick={() => setDrawer(false)} className="fixed inset-0 z-30 modal-backdrop lg:hidden" />}
       <aside
@@ -181,7 +201,9 @@ export function ReviewScreen({
       </aside>
       <PanelResizer root={root} />
 
-      <section className="relative min-w-0 flex-1 overflow-hidden bg-surface">
+      <section ref={section} className="relative min-w-0 flex-1 overflow-hidden bg-surface">
+        {snipStep === "drag" && <SnipOverlay onSnip={takeSnip} onCancel={() => setSnipStep(null)} />}
+        {flash && <SnipFlash onDone={() => setFlash(false)} />}
         {model ? (
           <ModelCanvas
             model={model}
@@ -350,8 +372,39 @@ export function ReviewScreen({
           )}
         </ViewerToolbar>
       </section>
-      {adding !== false && <AddCommentDialog open onClose={() => setAdding(false)} robotId={robotId} target={target} part={adding} onClearPart={() => setAdding(null)} />}
+      {adding !== false && (
+        <AddCommentDialog
+          // Stays mounted (the text is kept) while the snip is taken and drawn on.
+          open={!snipStep}
+          onClose={() => !snipStep && closeAdding()}
+          robotId={robotId}
+          target={target}
+          part={adding}
+          onClearPart={() => setAdding(null)}
+          snip={snipDraft}
+          onSnip={() => setSnipStep("drag")}
+          onEditSnip={() => setSnipStep("draw")}
+          onRemoveSnip={() => setSnipDraft(null)}
+        />
+      )}
+      {snipStep === "draw" && snipDraft && (
+        <SnipEditor
+          title="Snip"
+          src={snipDraft.dataUrl}
+          w={snipDraft.w}
+          h={snipDraft.h}
+          initial={snipDraft.strokes.map((l) => ({ ...l, by: me.id }))}
+          me={me.id}
+          isAuthor
+          onClose={() => setSnipStep(null)}
+          onConfirm={(lines) => {
+            setSnipDraft({ ...snipDraft, strokes: lines.map(({ c, s, p }) => ({ c, s, p })) });
+            setSnipStep(null);
+          }}
+        />
+      )}
     </div>
+    </SnipMe.Provider>
   );
 }
 

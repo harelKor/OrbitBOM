@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { OpenComment } from "@/components/review/Comments";
+import { SnipMe } from "@/components/review/Snip";
 import type { ReviewComment } from "@/lib/data/cadReview";
 
 export type CommentSection = { id: string | null; name: string; href: string; comments: ReviewComment[] };
@@ -14,6 +15,7 @@ export function OpenCommentsColumn({ sections, me, canTick }: { sections: Commen
   const router = useRouter();
   const total = sections.reduce((n, s) => n + s.comments.length, 0);
   return (
+    <SnipMe.Provider value={me.id}>
     <aside className="space-y-3 lg:sticky lg:top-[calc(var(--topbar-h,2.75rem)+1rem)] lg:max-h-[calc(100dvh-var(--topbar-h,2.75rem)-2rem)] lg:overflow-y-auto">
       <h2 className="flex items-center gap-2 text-sm font-semibold text-fg">
         Open comments
@@ -34,5 +36,6 @@ export function OpenCommentsColumn({ sections, me, canTick }: { sections: Commen
         </section>
       ))}
     </aside>
+    </SnipMe.Provider>
   );
 }

@@ -4,7 +4,9 @@ import { db, schema } from "@/db";
 import type { Member } from "@/lib/auth";
 import { parseOnshapeUrl } from "@/lib/onshape/url";
 import { buildTree, type TreeNode } from "@/lib/reviews/tree";
+import { imageUrl } from "@/lib/storage/r2";
 import { keptDocVersions } from "@/lib/versions/docVersions";
+import type { Snip } from "@/db/schema";
 import { primaryVersion, versionLabel } from "@/lib/versions/label";
 
 const { members, reviewComments, systems, systemVersions } = schema;
@@ -32,6 +34,7 @@ export type ReviewComment = {
   rejectNote: string | null;
   rejectedAt: string | null;
   rejectedBy: string | null;
+  snip: (Snip & { url: string | null }) | null; // the picture's short-lived link
 };
 
 // A system's comments, or with `robotId` every comment of the robot (its own and its systems').
@@ -47,6 +50,8 @@ export async function listComments(scope: string | { robotId: string }): Promise
   const names = new Map((ids.length ? await db.select({ id: members.id, name: members.name }).from(members).where(inArray(members.id, ids)) : []).map((m) => [m.id, m.name]));
   const name = (id: string | null) => (id ? (names.get(id) ?? null) : null);
   const iso = (d: Date | null) => d?.toISOString() ?? null;
+  const paths = rows.flatMap((r) => (r.snip ? [r.snip.path] : []));
+  const urls = new Map(await Promise.all(paths.map(async (p) => [p, await imageUrl(p)] as const)));
   return rows.map((r) => ({
     id: r.id,
     systemId: r.systemId,
@@ -68,6 +73,7 @@ export async function listComments(scope: string | { robotId: string }): Promise
     rejectNote: r.rejectNote,
     rejectedAt: iso(r.rejectedAt),
     rejectedBy: name(r.rejectedBy),
+    snip: r.snip ? { ...r.snip, url: urls.get(r.snip.path) ?? null } : null,
   }));
 }
 

@@ -84,6 +84,8 @@ export type SceneTools = {
   hideKey: (key: string) => void;
   isolate: (keys: string[] | null) => void; // show only these parts (all copies)
   partSize: (key: string) => [number, number, number] | null;
+  // A rectangle of the view (CSS px from its top left) as a JPEG on `background`; null if empty.
+  snapshot: (rect: { x: number; y: number; w: number; h: number }, background: string) => { dataUrl: string; w: number; h: number } | null;
 };
 
 async function loadStudio(url: string): Promise<Mesh[]> {
@@ -551,12 +553,31 @@ export function ModelCanvas({
       }
       return null;
     };
+    // Snip (Harel, 2026-11-10): drawn again and copied out at once, while the frame is still in the
+    // canvas (no preserveDrawingBuffer, which would slow every frame), at the screen's own pixels.
+    const snapshot = (rect: { x: number; y: number; w: number; h: number }, background: string) => {
+      const src = renderer.domElement;
+      const scale = src.width / Math.max(1, src.clientWidth);
+      const sx = Math.max(0, rect.x * scale), sy = Math.max(0, rect.y * scale);
+      const sw = Math.min(src.width - sx, rect.w * scale), sh = Math.min(src.height - sy, rect.h * scale);
+      if (sw < 4 || sh < 4) return null;
+      const k = Math.min(1, 2000 / Math.max(sw, sh));
+      const out = document.createElement("canvas");
+      out.width = Math.round(sw * k);
+      out.height = Math.round(sh * k);
+      const ctx = out.getContext("2d")!;
+      ctx.fillStyle = background;
+      ctx.fillRect(0, 0, out.width, out.height);
+      render();
+      ctx.drawImage(src, sx, sy, sw, sh, 0, 0, out.width, out.height);
+      return { dataUrl: out.toDataURL("image/jpeg", 0.9), w: out.width, h: out.height };
+    };
     scene.current = {
       paint,
       hide: hideGroups,
       select: (key) => select((selectedNow = key)),
       show,
-      tools: { view, section, measure, hideKey, isolate, partSize },
+      tools: { view, section, measure, hideKey, isolate, partSize, snapshot },
     };
 
     // Left click (not a drag) chosen the part under the pointer; a double-click opens it.

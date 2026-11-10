@@ -6,6 +6,7 @@ import { addReviewComment, approveReviewComment, deleteReviewComment, rejectRevi
 import { Dialog } from "@/components/Dialog";
 import { LocalTime } from "@/components/ui/LocalTime";
 import type { ReviewComment } from "@/lib/data/cadReview";
+import { CommentSnip, SnipPicture, type SnipDraft } from "./Snip";
 
 // One action at a time, the page refreshed after it, its error shown under the comment.
 function useCommentAction() {
@@ -68,6 +69,7 @@ export function OpenComment({ c, canTick, canDelete, onFocus, where }: { c: Revi
             {c.body}
           </button>
           <PartChip c={c} onFocus={onFocus} />
+          <CommentSnip c={c} />
           <Meta c={c} where={where} />
           {c.rejectNote && (
             <p className="mt-1 rounded border border-rose-400/40 bg-rose-500/5 px-2 py-1 text-xs text-rose-600">
@@ -113,6 +115,7 @@ export function WaitingComment({ c, isMentor, canTick, onFocus, where }: { c: Re
             {c.body}
           </button>
           <PartChip c={c} onFocus={onFocus} />
+          <CommentSnip c={c} />
           <Meta c={c} where={where} />
           {c.doneAt && (
             <span className="block text-[11px] text-subtle">
@@ -169,6 +172,7 @@ export function TreeComment({ c, onFocus }: { c: ReviewComment; onFocus?: (key: 
         <span className={`min-w-0 flex-1 truncate ${c.state === "open" ? "text-fg-2" : "text-muted line-through"}`}>
           {c.partName && <span className="font-semibold">{c.partName}: </span>}
           {c.body}
+          {c.snip && " 📷"}
         </span>
       </button>
     </li>
@@ -187,6 +191,10 @@ export function AddCommentDialog({
   target,
   part,
   onClearPart,
+  snip,
+  onSnip,
+  onEditSnip,
+  onRemoveSnip,
 }: {
   open: boolean;
   onClose: () => void;
@@ -194,6 +202,10 @@ export function AddCommentDialog({
   target: CommentTarget;
   part: { key: string; name: string | null; systemId?: string | null } | null;
   onClearPart: () => void;
+  snip: SnipDraft | null; // taken with Snip, uploaded on save
+  onSnip: () => void; // take one (the window steps aside meanwhile)
+  onEditSnip: () => void;
+  onRemoveSnip: () => void;
 }) {
   const [body, setBody] = useState("");
   const { pending, error, run } = useCommentAction();
@@ -203,13 +215,35 @@ export function AddCommentDialog({
   const systemId = !onRobot ? target.systemId : scope === "robot" ? null : (part?.systemId ?? (picked || null));
   const missing = onRobot && scope === "system" && !systemId;
   return (
-    <Dialog open={open} onClose={onClose} title="Add a comment" sheet>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title="Add a comment"
+      sheet
+      actions={
+        <button type="button" className="btn h-9 gap-1.5 px-3 text-sm active:scale-[0.98]" onClick={onSnip} title="Cut a picture out of the 3D view and draw on it">
+          📷 Snip
+        </button>
+      }
+    >
       <form
         className="space-y-3 p-5"
         onSubmit={(e) => {
           e.preventDefault();
           run(
-            () => addReviewComment(robotId, systemId, body, part && { key: part.key, name: part.name }),
+            async () => {
+              let shot = null;
+              if (snip) {
+                const blob = await (await fetch(snip.dataUrl)).blob();
+                const form = new FormData();
+                form.append("file", blob, "snip.jpg");
+                const res = await fetch("/api/review-snips", { method: "POST", body: form });
+                const r = (await res.json().catch(() => ({ error: "The snip didn't upload." }))) as { path?: string; error?: string };
+                if (!r.path) return { error: r.error ?? "The snip didn't upload." };
+                shot = { path: r.path, w: snip.w, h: snip.h, strokes: snip.strokes };
+              }
+              return addReviewComment(robotId, systemId, body, part && { key: part.key, name: part.name }, null, shot);
+            },
             () => {
               setBody("");
               onClose();
@@ -258,6 +292,21 @@ export function AddCommentDialog({
                 </select>
               ))}
             {scope === "robot" && <p className="text-xs text-muted">On the whole robot.</p>}
+          </div>
+        )}
+        {snip && (
+          <div className="flex items-start gap-3">
+            <button type="button" onClick={onEditSnip} className="press w-40 shrink-0 overflow-hidden rounded border border-line hover:border-accent/60 active:scale-[0.98]" title="Draw on it">
+              <SnipPicture src={snip.dataUrl} w={snip.w} h={snip.h} strokes={snip.strokes} />
+            </button>
+            <div className="flex flex-col gap-1 text-xs">
+              <button type="button" onClick={onEditSnip} className="press text-left font-semibold text-accent-hover hover:underline pointer-coarse:min-h-9">
+                Draw on it
+              </button>
+              <button type="button" onClick={onRemoveSnip} className="press text-left text-muted hover:text-rose-500 pointer-coarse:min-h-9">
+                Remove snip
+              </button>
+            </div>
           </div>
         )}
         <textarea autoFocus required value={body} onChange={(e) => setBody(e.target.value)} rows={4} maxLength={2000} className="input min-h-28 w-full" placeholder="What should change?" />
