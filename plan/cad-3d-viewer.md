@@ -30,6 +30,10 @@ commit)" when it ships. Wave 1 sessions can run at the same time because each ow
 (the ownership table in §3); don't edit another session's files. If the code has moved away from
 a brief, the code wins: adjust the brief here and say so in your commit.
 
+When an orchestrator session runs the waves (it starts one worker session per step), only the
+orchestrator edits this table and the briefs: parallel workers all touching this file would
+collide on every rebase. A worker reports its commit and anything the brief got wrong instead.
+
 ---
 
 ## 1. Where we stand
