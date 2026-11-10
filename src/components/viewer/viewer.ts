@@ -6,7 +6,7 @@ import { createCamera } from "./camera";
 import { loadModel, partTools } from "./load";
 import { createMeasureLayer, type MeasureInfo, type MeasureLayer } from "./measureLayer";
 import { createLooks, createPaint, type Paint } from "./paint";
-import { createMarks, createPicking, createSelection, createTopo, type Picking } from "./picking";
+import { createMarks, createPicking, createSelection, createTopo, type MenuTarget, type Picking } from "./picking";
 import { createSection } from "./section";
 import { createStage, stageTools } from "./stage";
 import type { Gone, PartMesh, SceneTools, ViewerModel } from "./types";
@@ -22,6 +22,8 @@ export type ViewerHost = {
   progress: (done: number, total: number) => void;
   ready: (tools: SceneTools) => void; // the model is drawn
   failed: () => void;
+  menu: (m: MenuTarget) => void; // right-click / long press: the context menu
+  isolated: (keys: string[] | null) => void;
 };
 
 export type Viewer = {
@@ -29,6 +31,7 @@ export type Viewer = {
   hide: (hidden: Set<number>) => void; // subsystem groups
   select: (key: string | null) => void;
   show: (gone: Gone[]) => void;
+  hideCopy: (g: Gone) => void;
   tools: SceneTools;
   dispose: () => void;
 };
@@ -44,9 +47,10 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
   let picking: Picking | null = null;
   let measure: MeasureLayer | null = null;
 
-  const visibility = createVisibility(meshes, {
+  const visibility = createVisibility(meshes, stage.root, looks, {
     changed: () => selection.refresh(),
     hidden: (gone) => host.gone(gone),
+    isolated: (keys) => host.isolated(keys),
     hoverOff: () => picking?.setHover(null),
     fit: (box) => camera.fit(box),
   });
@@ -58,12 +62,19 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
     pick: (key) => host.pick(key),
     open: host.open,
     hide: visibility.hideOne,
-    showLast: () => {
-      const last = visibility.gone().at(-1);
-      if (last) visibility.show([last]);
+    hiddenAt: visibility.hiddenAt,
+    anyHidden: () => visibility.gone().length > 0,
+    showHidden: (g) => visibility.show([g]),
+    names: host.names,
+    menu: (at) => {
+      // On a picked part, the menu acts on every picked part (Onshape acts on the selection).
+      const picked = measure?.parts() ?? [];
+      const keys = !at.under?.key ? [] : picked.includes(at.under.key) ? picked : [at.under.key];
+      const copies = at.under ? meshes.reduce((n, { keys: ks }) => n + ks.filter((k) => k === at.under!.key).length, 0) : 0;
+      host.menu({ ...at, keys, copies, hidden: visibility.gone().length, isolated: visibility.isolated() });
     },
   });
-  const marks = createMarks(stage, topo);
+  const marks = createMarks(stage, meshes, topo);
   measure = createMeasureLayer(meshes, topo, marks, {
     names: host.names,
     measured: (m) => host.measured(m),
@@ -93,15 +104,21 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
     .catch(() => !disposed && host.failed());
 
   return {
-    paint: painter.paint,
+    paint: (...a) => {
+      const found = painter.paint(...a);
+      visibility.repaint();
+      return found;
+    },
     hide: visibility.hideGroups,
     select: selection.select,
     show: visibility.show,
+    hideCopy: visibility.hideOne,
     tools,
     dispose: () => {
       disposed = true;
       camera.dispose();
       picking?.dispose();
+      visibility.dispose();
       measure?.dispose();
       geometries.forEach((g) => g.dispose());
       marks.dispose();

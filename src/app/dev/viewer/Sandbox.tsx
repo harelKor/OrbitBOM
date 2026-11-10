@@ -64,6 +64,8 @@ export function Sandbox() {
           onTools={setTools}
           onMeasure={setMeasured}
           onHidden={setHidden}
+          onIsolated={(keys) => setIsolated(!!keys)}
+          menu={(keys) => (keys.length === 1 ? [{ label: "Open part (sandbox: no BOM)", run: () => alert(names.get(keys[0]) ?? keys[0]) }] : [])}
         />
       ) : (
         <div className="absolute inset-0 flex items-center justify-center text-sm text-muted">{failed ? "The sandbox robot couldn't load." : "Loading the sandbox…"}</div>

@@ -2,9 +2,10 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { openPartWindow } from "@/components/bom/PartDetailsHost";
-import type { HiddenParts, MeasureInfo, SceneTools, ViewerModel, ViewerMode } from "@/components/dashboard/ModelCanvas";
+import type { HiddenParts, MeasureInfo, PageMenu, SceneTools, ViewerModel, ViewerMode } from "@/components/dashboard/ModelCanvas";
 import { AddCommentDialog, OpenComment, WaitingComment, type CommentTarget } from "@/components/review/Comments";
 import { SnipEditor, SnipMe, SnipOverlay, type SnipDraft } from "@/components/review/Snip";
 import { ViewerToolbar } from "@/components/review/ViewerToolbar";
@@ -170,6 +171,18 @@ export function ReviewScreen({
   // Every pick on one BOM part: Open part opens its BOM window.
   const onePart = measured.parts.length === 1 ? partByKey.get(measured.parts[0]) : undefined;
   const picked = selected ? { key: selected, name: pickedPart?.name ?? null, systemId: pickedPart?.systemId ?? null } : null;
+  // The 3D view's right-click / long-press menu: Open part, Open system (robot page), Add comment.
+  const router = useRouter();
+  const pageMenu: PageMenu = (keys) => {
+    const one = keys.length === 1 ? partByKey.get(keys[0]) : undefined;
+    const systems = new Set(keys.map((k) => partByKey.get(k)?.systemId ?? null));
+    const system = onRobot && systems.size === 1 ? [...systems][0] : null;
+    return [
+      ...(one ? [{ label: "Open part", run: () => void openPartWindow(one.id) }] : []),
+      ...(system ? [{ label: "Open system", run: () => router.push(`/robots/${robotId}/systems/${system}/cad-review`) }] : []),
+      ...(keys.length === 1 ? [{ label: "Add comment here", run: () => setAdding({ key: keys[0], name: one?.name ?? null, systemId: one?.systemId ?? null }) }] : []),
+    ];
+  };
   const focusName = focus ? (nameByKey.get(focus) ?? comments.find((c) => c.partKey === focus)?.partName ?? "The part") : null;
 
   // Esc closes the panel on a phone, then clears the picked or shown part (not under a window).
@@ -234,6 +247,8 @@ export function ReviewScreen({
             onMeasure={setMeasured}
             onHidden={setHidden}
             hidden={hiddenGroups}
+            menu={pageMenu}
+            onIsolated={setIsolated}
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">

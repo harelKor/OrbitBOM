@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ContextMenu, type PageMenu } from "@/components/viewer/ContextMenu";
 import type { MeasureInfo } from "@/components/viewer/measureLayer";
 import type { Paint } from "@/components/viewer/paint";
+import type { MenuTarget } from "@/components/viewer/picking";
 import type { Gone, HiddenParts, SceneTools, ViewerMode, ViewerModel } from "@/components/viewer/types";
 import { createViewer } from "@/components/viewer/viewer";
 
@@ -12,14 +14,16 @@ export type { ViewerModel, ViewerMode, HiddenParts, SceneTools, MeasureInfo };
 export type { ViewName } from "@/components/viewer/camera";
 export type { Axis, Section } from "@/components/viewer/section";
 export type { MeasureFilter } from "@/components/viewer/picking";
+export type { MenuItem, PageMenu } from "@/components/viewer/ContextMenu";
 
 // The three.js stage: one instanced mesh per part shape, coloured by status (or CAD: Onshape's
 // own appearance, see-through parts included, lit by a studio environment like Onshape's). While
 // locating, the robot turns see-through and the located part is drawn solid in bright green.
 // Like Onshape: right drag rotates, middle drag moves, the wheel zooms (left drag also rotates,
 // for touchpads). With a mouse, the part under it is washed in light blue; Y hides it, Shift+Y
-// brings back the last one hidden (again for the one before), and a compact list on the left
-// shows the hidden parts, a click there brings one back (Harel, 2026-11-07).
+// brings back the hidden part under the mouse (Harel, 2026-11-10), and a compact list on the left
+// shows the hidden parts, a click there brings one back (Harel, 2026-11-07). Right-click (or a
+// long press) opens a menu on the part.
 export function ModelCanvas({
   model,
   colors,
@@ -35,6 +39,8 @@ export function ModelCanvas({
   onTools,
   onMeasure,
   onHidden,
+  menu,
+  onIsolated,
 }: {
   model: ViewerModel;
   colors: Map<string, string>; // part key → status colour
@@ -50,6 +56,8 @@ export function ModelCanvas({
   onTools?: (tools: SceneTools | null) => void; // the review tools, once the model is loaded
   onMeasure?: (m: MeasureInfo) => void;
   onHidden?: (h: HiddenParts | null) => void; // the page shows the hidden parts list itself
+  menu?: PageMenu; // the page's own context menu items for the parts it's on
+  onIsolated?: (keys: string[] | null) => void; // Isolate turned on / changed / ended (any way)
 }) {
   const host = useRef<HTMLDivElement>(null);
   // Recolours the parts and frames the located one; true when it is in the model.
@@ -58,8 +66,15 @@ export function ModelCanvas({
     hide: (hidden: Set<number>) => void;
     select: (key: string | null) => void;
     show: (gone: Gone[]) => void;
+    hideCopy: (g: Gone) => void;
     tools: SceneTools;
   } | null>(null);
+  const [menuAt, setMenuAt] = useState<{ at: MenuTarget; tools: SceneTools; hideCopy: (g: Gone) => void } | null>(null);
+  const closeMenu = useCallback(() => setMenuAt(null), []);
+  const isolatedRef = useRef(onIsolated);
+  useEffect(() => {
+    isolatedRef.current = onIsolated;
+  }, [onIsolated]);
   const toolsRef = useRef(onTools);
   useEffect(() => {
     toolsRef.current = onTools;
@@ -101,6 +116,8 @@ export function ModelCanvas({
         toolsRef.current?.(tools);
       },
       failed: () => setError("The 3D model couldn't load. Try reloading the page."),
+      menu: (at) => setMenuAt({ at, tools: viewer.tools, hideCopy: viewer.hideCopy }),
+      isolated: (keys) => isolatedRef.current?.(keys),
     });
     scene.current = viewer;
     return () => {
@@ -108,6 +125,7 @@ export function ModelCanvas({
       scene.current = null;
       toolsRef.current?.(null);
       setGone([]);
+      setMenuAt(null);
     };
   }, [model]);
 
@@ -150,6 +168,7 @@ export function ModelCanvas({
           Loading the robot… {progress.total ? Math.round((progress.done / progress.total) * 100) : 0}%
         </div>
       )}
+      {menuAt && !progress && <ContextMenu {...menuAt} names={names} page={menu} onClose={closeMenu} />}
       {error && <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">{error}</div>}
       {gone.length > 0 && !onHidden && (
         <div
@@ -179,7 +198,7 @@ export function ModelCanvas({
                 </li>
               ))}
           </ul>
-          <p className="border-t border-line px-2.5 py-1 text-[10px] text-subtle pointer-coarse:hidden">Y hides · Shift+Y brings back</p>
+          <p className="border-t border-line px-2.5 py-1 text-[10px] text-subtle pointer-coarse:hidden">Y hides · Shift+Y brings back the one under the mouse</p>
         </div>
       )}
     </div>
