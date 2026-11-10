@@ -13,11 +13,11 @@ no new cloud resources), heavy work stays in the browser, phones are first-class
 
 | Session | What | Wave | State | Commit / notes |
 |---|---|---|---|---|
-| S0 | Split ModelCanvas + small `/dev/viewer` sandbox | 0 | in progress (2026-11-10) | go given by Harel for waves 0–2 |
-| S1 | Navigation like Onshape | 1 | after S0 | |
-| S2 | Instant loading | 1 | after S0 | |
-| S3 | Context menu, hide / isolate, Shift+Y under the mouse | 1 | after S0 | |
-| S4 | Section v2 | 1 | after S0 | |
+| S0 | Split ModelCanvas + small `/dev/viewer` sandbox | 0 | done (2026-11-10, 636b012) | also `paint.ts`, `types.ts`, `viewer.ts`; proxy lets `/dev/` through outside production |
+| S1 | Navigation like Onshape | 1 | in progress (2026-11-10) | |
+| S2 | Instant loading | 1 | in progress (2026-11-10) | |
+| S3 | Context menu, hide / isolate, Shift+Y under the mouse | 1 | in progress (2026-11-10) | |
+| S4 | Section v2 | 1 | in progress (2026-11-10) | |
 | S6 | Saved views + comment pins (migration) | 2 | after wave 1 | |
 | S7 | Explode and move | 2 | after S3 | |
 | S9 | Display modes and polish | 2 | after S0 | |
@@ -106,6 +106,9 @@ src/components/viewer/section.ts              clipping planes, caps, handle     
 src/components/viewer/measureLayer.ts         measure state → measure.ts, report                  (S3)
 src/components/viewer/motion.ts               explode, move triad, mates                          (S7, S8)
 src/components/viewer/viewState.ts            serialise / restore the whole view                  (S6)
+src/components/viewer/paint.ts                colours, materials, status / CAD / Locate paint     (S9; others import)
+src/components/viewer/viewer.ts               wiring only: creates the modules, joins them        (shared: add your own lines only)
+src/components/viewer/types.ts                shared types (meshes array, context)                (shared: add your own lines only)
 src/components/review/ViewerToolbar.tsx       toolbar UI                                          (S1, S4: different blocks)
 ```
 
