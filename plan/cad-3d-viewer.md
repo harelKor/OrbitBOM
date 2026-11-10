@@ -13,7 +13,7 @@ no new cloud resources), heavy work stays in the browser, phones are first-class
 
 | Session | What | Wave | State | Commit / notes |
 |---|---|---|---|---|
-| S0 | Split ModelCanvas + small `/dev/viewer` sandbox | 0 | next | waiting for Harel's go on waves 0–2 |
+| S0 | Split ModelCanvas + small `/dev/viewer` sandbox | 0 | in progress (2026-11-10) | go given by Harel for waves 0–2 |
 | S1 | Navigation like Onshape | 1 | after S0 | |
 | S2 | Instant loading | 1 | after S0 | |
 | S3 | Context menu, hide / isolate, Shift+Y under the mouse | 1 | after S0 | |
@@ -208,10 +208,10 @@ Owns `section.ts` and the section block of `ViewerToolbar.tsx`.
 - Done: in the sandbox, a plate with holes cut through reads clearly at phone width; the edge
   lines respect every plane (they do today for one).
 
-### S6. Saved views and comment pins (Wave 2, needs migration 0078)
+### S6. Saved views and comment pins (Wave 2, needs migration 0079)
 
 Owns `viewState.ts`, `src/components/review/Comments.tsx`, `src/lib/reviews/comments.ts`, the
-MCP review toolset, schema.
+MCP review toolset (`src/lib/mcp/toolsets/cadReview.ts`), schema.
 
 - A view = camera (position, target, ortho, zoom), hidden keys, isolated keys, section planes,
   colours mode. Kept in the URL hash (`#v=…`, compact base64), so reload keeps it and "Copy view
@@ -266,7 +266,7 @@ known so far, as a starting point for that plan:
    the Hidden list.
 3. Motion along the mates comes later, after its own planning (S8).
 
-Still open: the go for waves 0–2.
+4. Go for waves 0–2 (S0, S1–S4, S6, S7, S9); run by an orchestrator session.
 
 ## 6. Not in this plan
 
