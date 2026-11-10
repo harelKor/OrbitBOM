@@ -209,7 +209,7 @@ export function ReviewScreen({
 
   return (
     <SnipMe.Provider value={me.id}>
-    <div ref={root} className="-m-4 flex h-[calc(100dvh-var(--topbar-h,2.75rem))] md:-m-6">
+    <div ref={root} className="relative -m-4 flex h-[calc(100dvh-var(--topbar-h,2.75rem))] md:-m-6">
       {drawer && <button aria-label="Close versions" onClick={() => setDrawer(false)} className="fixed inset-0 z-30 modal-backdrop lg:hidden" />}
       <aside
         className={`flex min-h-0 flex-col gap-4 overflow-y-auto border-line bg-surface p-4 lg:w-[var(--cad-panel-w,20rem)] lg:shrink-0 lg:border-r max-lg:fixed max-lg:top-[var(--review-top,2.75rem)] max-lg:bottom-0 max-lg:left-0 max-lg:z-40 max-lg:w-[min(22rem,88vw)] max-lg:border-r max-lg:shadow-xl ${drawer ? "max-lg:animate-pop" : "max-lg:hidden"}`}
@@ -268,39 +268,6 @@ export function ReviewScreen({
             <span className="text-subtle">✕</span>
           </button>
         )}
-
-        {/* Top right, under the view cube (7 rem, 6.5 on touch): open comments, and below them
-            those waiting for approval. */}
-        <div className="absolute top-[8rem] right-3 z-10 flex max-h-[calc(100%-12.5rem)] pointer-coarse:top-[7.5rem] pointer-coarse:max-h-[calc(100%-12rem)] w-[min(20rem,calc(100%-1.5rem))] flex-col gap-2 max-sm:w-48">
-          <Popup title="Open comments" count={open.length} shown={openList} onToggle={() => setOpenList(flip(openList))} tone="amber">
-            {open.length ? (
-              onRobot ? (
-                <BySystem comments={open} onIsolate={onIsolate}>
-                  {(c) => <OpenComment key={c.id} c={c} canTick={canTick} canDelete={me.isAdmin || c.authorId === me.id} onFocus={showPart} />}
-                </BySystem>
-              ) : (
-                open.map((c) => <OpenComment key={c.id} c={c} canTick={canTick} canDelete={me.isAdmin || c.authorId === me.id} onFocus={showPart} />)
-              )
-            ) : (
-              <li className="p-2 text-xs text-muted">No open comments.</li>
-            )}
-          </Popup>
-          {canApprove && (
-            <Popup title={me.isMentor ? "Waiting for you" : "Waiting for approval"} count={waiting.length} shown={waitList} onToggle={() => setWaitList(flip(waitList))} tone="sky">
-              {waiting.length ? (
-                onRobot ? (
-                  <BySystem comments={waiting} onIsolate={onIsolate}>
-                    {(c) => <WaitingComment key={c.id} c={c} isMentor canTick={canTick} onFocus={showPart} />}
-                  </BySystem>
-                ) : (
-                  waiting.map((c) => <WaitingComment key={c.id} c={c} isMentor canTick={canTick} onFocus={showPart} />)
-                )
-              ) : (
-                <li className="p-2 text-xs text-muted">Nothing ticked off to approve.</li>
-              )}
-            </Popup>
-          )}
-        </div>
 
         {/* The picked parts, stacked (a pick on another part adds it): Isolate shows only them,
             Hide hides them; Open part when they're all on one part, and on the robot's page Open
@@ -426,6 +393,40 @@ export function ReviewScreen({
           )}
         </ViewerToolbar>
       </section>
+      {/* Open comments, and below them those waiting for approval. Wide screens: a column of
+        its own right of the 3D view, so the view (its Fit, its view cube) isn't under it.
+        Narrower: over the view's right side, under the view cube (7 rem, 6.5 on touch). */}
+      <div className="absolute top-[8rem] right-3 z-10 flex max-h-[calc(100%-12.5rem)] w-[min(20rem,calc(100%-1.5rem))] flex-col gap-2 pointer-coarse:top-[7.5rem] max-sm:w-48 xl:static xl:max-h-none xl:w-72 xl:shrink-0 xl:overflow-y-auto xl:border-l xl:border-line xl:bg-surface xl:p-3">
+        <Popup title="Open comments" count={open.length} shown={openList} onToggle={() => setOpenList(flip(openList))} tone="amber">
+          {open.length ? (
+            onRobot ? (
+              <BySystem comments={open} onIsolate={onIsolate}>
+                {(c) => <OpenComment key={c.id} c={c} canTick={canTick} canDelete={me.isAdmin || c.authorId === me.id} onFocus={showPart} />}
+              </BySystem>
+            ) : (
+              open.map((c) => <OpenComment key={c.id} c={c} canTick={canTick} canDelete={me.isAdmin || c.authorId === me.id} onFocus={showPart} />)
+            )
+          ) : (
+            <li className="p-2 text-xs text-muted">No open comments.</li>
+          )}
+        </Popup>
+        {canApprove && (
+          <Popup title={me.isMentor ? "Waiting for you" : "Waiting for approval"} count={waiting.length} shown={waitList} onToggle={() => setWaitList(flip(waitList))} tone="sky">
+            {waiting.length ? (
+              onRobot ? (
+                <BySystem comments={waiting} onIsolate={onIsolate}>
+                  {(c) => <WaitingComment key={c.id} c={c} isMentor canTick={canTick} onFocus={showPart} />}
+                </BySystem>
+              ) : (
+                waiting.map((c) => <WaitingComment key={c.id} c={c} isMentor canTick={canTick} onFocus={showPart} />)
+              )
+            ) : (
+              <li className="p-2 text-xs text-muted">Nothing ticked off to approve.</li>
+            )}
+          </Popup>
+        )}
+      </div>
+
       {adding !== false && (
         <AddCommentDialog
           // Stays mounted (the text is kept) while the snip is taken and drawn on.
