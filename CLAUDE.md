@@ -112,9 +112,10 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
 - Versions: `src/lib/versions/` (check → draft → commit; `checkSystem` re-checks under a lock).
   A system with `followVersions` is read at its CAD document's newest Onshape version (no
   Manufacture document).
-- CAD (was "CAD Review"): `/robots/<id>/cad-review` (robot on top, a box per system),
-  `/robots/<id>/cad-review/robot` and `/robots/<id>/systems/<id>/cad-review` (both on
-  `src/components/review/ReviewScreen.tsx`; comments with no system are on the whole robot). Comments: `src/lib/reviews/comments.ts` (anyone adds,
+- CAD (was "CAD Review"): `/robots/<id>/cad-review` is the whole robot on
+  `src/components/review/ReviewScreen.tsx` (page wrapper `cad-review/CadReview.tsx`); a system's
+  Isolate scopes it to that system (`?system=<id>`). The old `/cad-review/robot` and
+  `/systems/<id>/cad-review` URLs redirect there. Comments with no system are on the whole robot. Comments: `src/lib/reviews/comments.ts` (anyone adds,
   CAD ticks, `members.isMentor` approves/rejects); version tree `src/lib/reviews/tree.ts` from the
   kept Onshape version list (`src/lib/versions/docVersions.ts`) and the BOM versions. No calls.
 - 3D views (every viewer: CAD pages, BOM pages, part windows, Commit window): `ModelCanvas`

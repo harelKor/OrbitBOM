@@ -39,11 +39,13 @@ export function ReviewScreen({
   canTick,
   canApprove,
   changes,
+  onlySystem = null,
+  onIsolate,
   panel,
 }: {
   robotId: string;
   title: string;
-  back: { href: string; label: string };
+  back?: { label: string; href?: string; onClick?: () => void };
   modelUrl: string;
   builtAt: string | null;
   parts: ReviewPart[];
@@ -53,6 +55,8 @@ export function ReviewScreen({
   canTick: boolean;
   canApprove: boolean;
   changes?: Changes; // a system's: the Changes colours
+  onlySystem?: string | null; // the robot's page with one system isolated: only its parts drawn
+  onIsolate?: (systemId: string) => void; // the robot's page: Isolate on each system's comments
   panel: (onFocus: (key: string) => void, openComments: ReviewComment[]) => React.ReactNode;
 }) {
   const [model, setModel] = useState<ViewerModel | null | undefined>(builtAt ? undefined : null);
@@ -135,7 +139,16 @@ export function ReviewScreen({
     return m;
   }, [parts, changes]);
   const removed = changes?.list.filter((c) => c.change === "removed") ?? [];
-  const mode: ViewerMode = colors === "compare" ? "status" : "cad";
+  const mode: ViewerMode = changes && colors === "compare" ? "status" : "cad";
+  // Isolate on the robot's page (Harel, 2026-11-10): the other systems' groups aren't drawn, and
+  // the view frames what's left.
+  const hiddenGroups = useMemo(() => {
+    if (!model || !onlySystem) return NO_GROUPS;
+    return new Set((model.groups ?? []).flatMap((g, i) => (g.systemIds.includes(onlySystem) ? [] : [i])));
+  }, [model, onlySystem]);
+  useEffect(() => {
+    tools?.view("fit");
+  }, [tools, hiddenGroups]);
 
   const open = comments.filter((c) => c.state === "open").reverse();
   const waiting = comments.filter((c) => c.state === "done");
@@ -188,9 +201,15 @@ export function ReviewScreen({
         className={`flex min-h-0 flex-col gap-4 overflow-y-auto border-line bg-surface p-4 lg:w-[var(--cad-panel-w,20rem)] lg:shrink-0 lg:border-r max-lg:fixed max-lg:top-[var(--review-top,2.75rem)] max-lg:bottom-0 max-lg:left-0 max-lg:z-40 max-lg:w-[min(22rem,88vw)] max-lg:border-r max-lg:shadow-xl ${drawer ? "max-lg:animate-pop" : "max-lg:hidden"}`}
       >
         <div className="max-lg:hidden">
-          <Link href={back.href} className="text-sm text-subtle hover:text-fg">
-            ← {back.label}
-          </Link>
+          {back?.href ? (
+            <Link href={back.href} className="text-sm text-subtle hover:text-fg">
+              ← {back.label}
+            </Link>
+          ) : back ? (
+            <button onClick={back.onClick} className="press text-sm text-subtle hover:text-fg">
+              ← {back.label}
+            </button>
+          ) : null}
           <h1 className="display truncate text-3xl text-accent">{title}</h1>
         </div>
         <button className="btn-primary h-12 w-full justify-center text-base shadow-[0_0_18px_-4px_var(--color-accent)] active:scale-[0.98] max-lg:hidden" onClick={() => setAdding(picked)}>
@@ -214,6 +233,7 @@ export function ReviewScreen({
             onTools={setTools}
             onMeasure={setMeasured}
             onHidden={setHidden}
+            hidden={hiddenGroups}
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">
@@ -225,12 +245,25 @@ export function ReviewScreen({
         <button onClick={() => setDrawer(true)} className="press absolute top-3 left-3 z-10 h-10 rounded-md border border-line bg-surface/95 px-3 text-sm font-semibold text-fg shadow-sm backdrop-blur active:scale-[0.98] lg:hidden">
           ☰ Versions
         </button>
+        {/* Phones: the isolated system under it, a tap goes back to the whole robot. */}
+        {onlySystem && back?.onClick && (
+          <button onClick={back.onClick} className="press absolute top-15 left-3 z-10 flex h-10 max-w-[calc(100%-23rem)] items-center gap-1.5 rounded-md border border-accent/50 bg-surface/95 px-3 text-sm font-semibold text-fg shadow-sm backdrop-blur active:scale-[0.98] lg:hidden max-sm:max-w-[calc(100%-15rem)]" title="Back to the whole robot">
+            <span className="truncate">{title}</span>
+            <span className="text-subtle">✕</span>
+          </button>
+        )}
 
         {/* Top right: open comments, and below them those waiting for approval. */}
         <div className="absolute top-3 right-3 z-10 flex max-h-[calc(100%-5rem)] w-[min(20rem,calc(100%-1.5rem))] flex-col gap-2 max-sm:w-48">
           <Popup title="Open comments" count={open.length} shown={openList} onToggle={() => setOpenList(flip(openList))} tone="amber">
             {open.length ? (
-              open.map((c) => <OpenComment key={c.id} c={c} canTick={canTick} canDelete={me.isAdmin || c.authorId === me.id} onFocus={showPart} where={onRobot} />)
+              onRobot ? (
+                <BySystem comments={open} onIsolate={onIsolate}>
+                  {(c) => <OpenComment key={c.id} c={c} canTick={canTick} canDelete={me.isAdmin || c.authorId === me.id} onFocus={showPart} />}
+                </BySystem>
+              ) : (
+                open.map((c) => <OpenComment key={c.id} c={c} canTick={canTick} canDelete={me.isAdmin || c.authorId === me.id} onFocus={showPart} />)
+              )
             ) : (
               <li className="p-2 text-xs text-muted">No open comments.</li>
             )}
@@ -238,7 +271,13 @@ export function ReviewScreen({
           {canApprove && (
             <Popup title={me.isMentor ? "Waiting for you" : "Waiting for approval"} count={waiting.length} shown={waitList} onToggle={() => setWaitList(flip(waitList))} tone="sky">
               {waiting.length ? (
-                waiting.map((c) => <WaitingComment key={c.id} c={c} isMentor canTick={canTick} onFocus={showPart} where={onRobot} />)
+                onRobot ? (
+                  <BySystem comments={waiting} onIsolate={onIsolate}>
+                    {(c) => <WaitingComment key={c.id} c={c} isMentor canTick={canTick} onFocus={showPart} />}
+                  </BySystem>
+                ) : (
+                  waiting.map((c) => <WaitingComment key={c.id} c={c} isMentor canTick={canTick} onFocus={showPart} />)
+                )
               ) : (
                 <li className="p-2 text-xs text-muted">Nothing ticked off to approve.</li>
               )}
@@ -412,6 +451,47 @@ function Dot({ c, children }: { c: string; children: React.ReactNode }) {
       <span className="h-2 w-2 rounded-full" style={{ background: c }} />
       {children}
     </span>
+  );
+}
+
+const NO_GROUPS = new Set<number>();
+
+// The robot's comments in a section per system, the whole robot's first, like CAD's old board
+// (Harel, 2026-11-10): a tap on a name folds its section, Isolate scopes the page to the system.
+function BySystem({ comments, onIsolate, children }: { comments: ReviewComment[]; onIsolate?: (systemId: string) => void; children: (c: ReviewComment) => React.ReactNode }) {
+  const groups = new Map<string, { id: string | null; name: string; list: ReviewComment[] }>();
+  for (const c of comments) {
+    const k = c.systemId ?? "";
+    const g = groups.get(k) ?? { id: c.systemId, name: c.systemId ? (c.systemName ?? "System") : "Whole robot", list: [] };
+    g.list.push(c);
+    groups.set(k, g);
+  }
+  const list = [...groups.values()].sort((a, b) => (a.id === null ? -1 : b.id === null ? 1 : a.name.localeCompare(b.name)));
+  return list.map((g) => (
+    <SystemSection key={g.id ?? "robot"} name={g.name} count={g.list.length} onIsolate={g.id && onIsolate ? () => onIsolate(g.id!) : undefined}>
+      {g.list.map(children)}
+    </SystemSection>
+  ));
+}
+
+function SystemSection({ name, count, onIsolate, children }: { name: string; count: number; onIsolate?: () => void; children: React.ReactNode }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <li className="mb-1 rounded-md border border-line last:mb-0">
+      <div className={`flex items-center ${open ? "border-b border-line" : ""}`}>
+        <button onClick={() => setOpen(!open)} aria-expanded={open} className="press flex min-w-0 flex-1 items-center gap-2 px-2.5 py-1.5 text-left text-xs font-semibold text-fg hover:bg-raised pointer-coarse:min-h-10">
+          <span className={`text-subtle transition-transform ${open ? "" : "-rotate-90"}`}>▾</span>
+          <span className="min-w-0 flex-1 truncate">{name}</span>
+          <span className="rounded-full bg-raised px-1.5 text-fg-2 tabular-nums">{count}</span>
+        </button>
+        {onIsolate && (
+          <button onClick={onIsolate} className="press px-2.5 py-1.5 text-[11px] font-semibold text-accent-hover hover:underline pointer-coarse:min-h-10" title={`Show only ${name}`}>
+            Isolate
+          </button>
+        )}
+      </div>
+      {open && <ul>{children}</ul>}
+    </li>
   );
 }
 

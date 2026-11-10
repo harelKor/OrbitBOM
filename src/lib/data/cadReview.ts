@@ -164,10 +164,10 @@ export async function waitingOnYou(member: Member, robotId: string | null): Prom
 }
 
 // The robot's CAD page (Harel, 2026-11-09): every comment of the robot, and each linked system's
-// version tree.
+// version tree and what its current version changed (shown when the page isolates the system).
 export type RobotReview = {
   comments: ReviewComment[];
-  systems: { id: string; name: string; tree: TreeNode[] }[];
+  systems: ({ id: string; name: string } & Omit<SystemReview, "comments">)[];
 };
 
 export async function loadRobotReview(robotId: string): Promise<RobotReview> {
@@ -177,5 +177,11 @@ export async function loadRobotReview(robotId: string): Promise<RobotReview> {
   ]);
   const linked = rows.filter((r) => r.url);
   const reviews = await Promise.all(linked.map((r) => loadSystemReview(r.id)));
-  return { comments, systems: linked.map((r, i) => ({ id: r.id, name: r.name, tree: reviews[i]?.tree ?? [] })) };
+  return {
+    comments,
+    systems: linked.map((r, i) => {
+      const s = reviews[i];
+      return { id: r.id, name: r.name, tree: s?.tree ?? [], treeDid: s?.treeDid ?? null, treeReadAt: s?.treeReadAt ?? null, changes: s?.changes ?? [], current: s?.current ?? null };
+    }),
+  };
 }

@@ -1,58 +1,68 @@
 import { notFound } from "next/navigation";
 import { requireMember } from "@/lib/auth";
-import { listComments, reviewCounts } from "@/lib/data/cadReview";
+import { can } from "@/components/shell/mode";
+import { loadRobotReview } from "@/lib/data/cadReview";
+import { listSystemParts, modelPartsOfRobot } from "@/lib/data/parts";
+import { getSystem } from "@/lib/data/robots";
 import { listShellRobots } from "@/lib/data/shell";
+import { getMode } from "@/lib/mode";
 import { robotModelBuiltAt } from "@/lib/model/build";
-import { getMode, hasCapability } from "@/lib/mode";
-import { canTick } from "@/lib/reviews/comments";
+import { canApprove, canTick } from "@/lib/reviews/comments";
 import { isUuid } from "@/lib/uuid";
-import { OpenCommentsColumn, type CommentSection } from "./OpenCommentsColumn";
-import { ReviewBoard } from "./ReviewBoard";
+import { loadDraft } from "@/lib/versions/detect";
+import { loadVersionTags } from "@/lib/versions/tags";
+import { CadReview, type IsolatedExtras } from "./CadReview";
 
-// CAD (plan/design-review.md; Harel, 2026-11-08 and 2026-11-09): the robot (the one picked in the
-// right panel) in a wide 3D box on top, which opens the robot's CAD page, and below it every
-// system: a 3D box on wide screens, its picture on phones. While the robot has open comments they
-// sit in a column on the right, a section per system (the robot's own first). Reads the built 3D
-// model only.
-export default async function CadPage({ params }: { params: Promise<{ robotId: string }> }) {
-  const { robotId } = await params;
+// CAD (Harel, 2026-11-10): the whole robot's review screen is CAD's main page. Its left panel has
+// a section per system with its picture and Isolate, which scopes the page to that system the way
+// its own page did (?system=<id>; the old system pages redirect here). Open comments sit top right,
+// a section per system. Reads the database only; Update system and the tree's Refresh are the only
+// Onshape calls.
+export default async function CadPage({ params, searchParams }: { params: Promise<{ robotId: string }>; searchParams: Promise<{ system?: string | string[] }> }) {
+  const [{ robotId }, sp] = await Promise.all([params, searchParams]);
   if (!isUuid(robotId)) notFound();
+  const systemId = typeof sp.system === "string" && isUuid(sp.system) ? sp.system : null;
   const [member, mode] = await Promise.all([requireMember(), getMode()]);
-  const [robots, counts, builtAt, edit, comments] = await Promise.all([
+  const [robots, review, parts, builtAt, extras] = await Promise.all([
     listShellRobots(),
-    reviewCounts(robotId),
+    loadRobotReview(robotId),
+    modelPartsOfRobot(robotId),
     robotModelBuiltAt(robotId),
-    hasCapability("sync"),
-    listComments({ robotId }),
+    systemId ? isolatedExtras(robotId, systemId) : null,
   ]);
   const robot = robots.find((r) => r.id === robotId);
   if (!robot) notFound();
-  const systems = robot.systems
-    .filter((s) => s.assemblyUrl)
-    .map((s) => ({ id: s.id, name: s.name, thumbUrl: s.thumbUrl, open: counts[s.id]?.open ?? 0, done: counts[s.id]?.done ?? 0 }));
-
-  const open = comments.filter((c) => c.state === "open").reverse();
-  const sections: CommentSection[] = [
-    { id: null, name: "Robot", href: `/robots/${robotId}/cad-review/robot`, comments: open.filter((c) => !c.systemId) },
-    ...robot.systems.map((s) => ({ id: s.id, name: s.name, href: `/robots/${robotId}/systems/${s.id}/cad-review`, comments: open.filter((c) => c.systemId === s.id) })),
-  ].filter((s) => s.comments.length);
-
-  const board = <ReviewBoard robotId={robotId} robotName={robot.name} robotCounts={counts.robot ?? { open: 0, done: 0 }} systems={systems} builtAt={builtAt} edit={edit} />;
+  const thumbs = Object.fromEntries(robot.systems.map((s) => [s.id, s.thumbUrl]));
   return (
-    // The page's full width (no cap): with the side panels closed the robot gets wider and the
-    // systems line up six to a row, with the page's normal margins (Harel, 2026-11-10).
-    // No title: the previews start 25px under the top bar and end 25px above the bottom (the
-    // page's 24px padding and 1px more) (Harel, 2026-11-10).
-    <div className="py-px">
-      <h1 className="sr-only">CAD</h1>
-      {sections.length ? (
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem] xl:grid-cols-[minmax(0,1fr)_22rem]">
-          {board}
-          <OpenCommentsColumn sections={sections} me={{ id: member.id, isAdmin: member.isAdmin }} canTick={canTick(mode, member)} />
-        </div>
-      ) : (
-        board
-      )}
-    </div>
+    <CadReview
+      robotId={robotId}
+      robotName={robot.name}
+      review={review}
+      parts={parts}
+      thumbs={thumbs}
+      builtAt={builtAt}
+      isolatedId={review.systems.some((s) => s.id === systemId) ? systemId : null}
+      extras={extras}
+      me={{ id: member.id, isAdmin: member.isAdmin, isMentor: member.isMentor, onshape: member.onshapeConnected }}
+      canTick={canTick(mode, member)}
+      canApprove={canApprove(mode, member)}
+      canSync={can(mode, "sync")}
+    />
   );
+}
+
+// What only an isolated system's panel shows: Update system's draft, the newest version tag and
+// the parts' pictures for its Commit window.
+async function isolatedExtras(robotId: string, systemId: string): Promise<IsolatedExtras | null> {
+  const [data, draft, tags, parts] = await Promise.all([getSystem(robotId, systemId), loadDraft(systemId), loadVersionTags(systemId), listSystemParts(systemId)]);
+  if (!data) return null;
+  const { system } = data;
+  return {
+    systemId,
+    assemblyUrl: system.assemblyUrl,
+    lastSyncedAt: system.lastSyncedAt,
+    draft,
+    latest: tags.latest && { id: tags.latest.id, label: tags.latest.label },
+    partThumbs: Object.fromEntries(parts.map((p) => [p.id, p.thumbUrl])),
+  };
 }
