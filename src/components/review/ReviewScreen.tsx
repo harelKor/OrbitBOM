@@ -88,8 +88,6 @@ export function ReviewScreen({
   };
   const [hidden, setHidden] = useState<HiddenParts | null>(null);
   // null: as the screen suits (folded on a phone, open on wider screens) until toggled.
-  const [openList, setOpenList] = useState<boolean | null>(null);
-  const [waitList, setWaitList] = useState<boolean | null>(null);
   // Wide screens: the comments column folds sideways to a thin strip (Harel, 2026-11-11).
   const [side, setSide] = useState(true);
   const onRobot = "systems" in target;
@@ -402,18 +400,16 @@ export function ReviewScreen({
         <button
           onClick={() => setSide(true)}
           title="Show comments"
-          className="press hidden w-9 shrink-0 flex-col items-center gap-2 border-l border-line bg-surface py-3 text-xs font-semibold text-fg-2 hover:bg-raised xl:flex"
+          className="press absolute top-[8rem] right-3 z-10 flex w-9 flex-col items-center gap-2 rounded-md border border-line bg-surface/95 py-3 text-xs font-semibold text-fg-2 shadow-md hover:bg-raised pointer-coarse:top-[7.5rem] xl:static xl:shrink-0 xl:rounded-none xl:border-y-0 xl:border-r-0 xl:shadow-none"
         >
           <span aria-hidden>‹</span>
           <span className="rounded-full bg-amber-500/15 px-1.5 text-amber-600 tabular-nums">{open.length}</span>
           <span className="[writing-mode:vertical-rl]">Comments</span>
         </button>
       )}
-      <div className={`absolute top-[8rem] right-3 z-10 flex max-h-[calc(100%-12.5rem)] w-[min(20rem,calc(100%-1.5rem))] flex-col gap-2 pointer-coarse:top-[7.5rem] max-sm:w-48 xl:static xl:max-h-none xl:w-72 xl:shrink-0 xl:overflow-y-auto xl:border-l xl:border-line xl:bg-surface xl:p-3 ${side ? "" : "xl:hidden"}`}>
-        <button onClick={() => setSide(false)} title="Hide comments" className="press hidden self-end rounded px-2 text-sm text-subtle hover:bg-raised hover:text-fg xl:block">
-          ›
-        </button>
-        <Popup title="Open comments" count={open.length} shown={openList} onToggle={() => setOpenList(flip(openList))} tone="amber">
+      <div className={`absolute top-[8rem] right-3 z-10 flex max-h-[calc(100%-12.5rem)] w-[min(20rem,calc(100%-1.5rem))] flex-col gap-2 pointer-coarse:top-[7.5rem] max-sm:w-48 xl:static xl:max-h-none xl:w-72 xl:shrink-0 xl:overflow-y-auto xl:border-l xl:border-line xl:bg-surface xl:p-3 ${side ? "" : "hidden"}`}>
+
+        <Popup title="Open comments" count={open.length} onHide={() => setSide(false)} tone="amber">
           {open.length ? (
             onRobot ? (
               <BySystem comments={open} onIsolate={onIsolate}>
@@ -427,7 +423,7 @@ export function ReviewScreen({
           )}
         </Popup>
         {canApprove && (
-          <Popup title={me.isMentor ? "Waiting for you" : "Waiting for approval"} count={waiting.length} shown={waitList} onToggle={() => setWaitList(flip(waitList))} tone="sky">
+          <Popup title={me.isMentor ? "Waiting for you" : "Waiting for approval"} count={waiting.length} tone="sky">
             {waiting.length ? (
               onRobot ? (
                 <BySystem comments={waiting} onIsolate={onIsolate}>
@@ -529,19 +525,22 @@ function SystemSection({ name, count, onIsolate, children }: { name: string; cou
   );
 }
 
-const phone = () => window.matchMedia("(max-width: 639px)").matches;
-const flip = (shown: boolean | null) => (shown === null ? phone() : !shown);
 
-function Popup({ title, count, shown, onToggle, tone, children }: { title: string; count: number; shown: boolean | null; onToggle: () => void; tone: "amber" | "sky"; children: React.ReactNode }) {
+function Popup({ title, count, onHide, tone, children }: { title: string; count: number; onHide?: () => void; tone: "amber" | "sky"; children: React.ReactNode }) {
   const badge = tone === "amber" ? "bg-amber-500/15 text-amber-600" : "bg-sky-500/15 text-sky-600";
   return (
     <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-line bg-surface/95 shadow-md backdrop-blur">
-      <button onClick={onToggle} className="press flex items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-fg hover:bg-raised pointer-coarse:min-h-11" aria-expanded={shown ?? undefined}>
+      {/* No folding up and down: the column folds sideways from the arrow (Harel, 2026-11-11). */}
+      <div className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-fg pointer-coarse:min-h-11">
         <span className="flex-1 truncate">{title}</span>
         <span className={`rounded-full px-2 py-0.5 text-xs tabular-nums ${badge}`}>{count}</span>
-        <span className={`text-xs text-subtle ${shown === null ? "max-sm:rotate-180" : shown ? "" : "rotate-180"}`}>▴</span>
-      </button>
-      {shown !== false && <ul className={`min-h-0 flex-1 overflow-y-auto border-t border-line p-1 ${shown === null ? "max-sm:hidden" : ""}`}>{children}</ul>}
+        {onHide && (
+          <button onClick={onHide} title="Hide comments" className="press -mr-1 rounded px-1.5 text-subtle hover:bg-raised hover:text-fg pointer-coarse:min-h-9 pointer-coarse:min-w-9">
+            ›
+          </button>
+        )}
+      </div>
+      <ul className="min-h-0 flex-1 overflow-y-auto border-t border-line p-1">{children}</ul>
     </div>
   );
 }
