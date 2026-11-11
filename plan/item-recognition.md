@@ -1,6 +1,8 @@
 # Scan anything: item recognition from the phone camera
 
-Status: plan, waiting for Harel's go (2026-11-11).
+Status (2026-11-11): Phase 0 test page and Phase 1 (Scan on phones) shipped together at Harel's
+ask; the teeth counter runs live in Scan too (Phase 2's first part). Accuracy on real parts not yet
+checked.
 
 The goal: Inventory's **Scan** button stops being barcode-only. Point the phone at a part (a gear,
 a Kraken, a CANcoder, a bearing, a bag of bolts), and when it's done the **Add an item** window

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { readProductLink, saveItem, type ItemInput } from "@/app/(app)/inventory/actions";
 import { useRouter } from "next/navigation";
@@ -16,6 +16,9 @@ import { formatStock, parseStock } from "@/lib/inventory/stock";
 import { useInventoryPopup } from "./InventoryPopup";
 import { ItemForm, categoryLocation, emptyDraft, type Draft } from "./ItemForm";
 import type { Condition, InvCategory, Item, Location } from "./types";
+
+// Opens the add form from outside the box: the phone's Scan fills it with what it recognised.
+export type AddBoxHandle = { start: (over: Partial<Draft>) => void };
 
 type Found = { q: string; groups: ProductGroup[]; elsewhere: { name: string; url: string }[] };
 
@@ -37,6 +40,7 @@ export async function searchStores(q: string, signal: AbortSignal): Promise<Omit
 // A pasted product link is read from the page. The add form opens under the box and stays put for
 // the next item; on phones the results take the whole width and the form is a bottom sheet.
 export function AddBox({
+  ref,
   q,
   setQ,
   items,
@@ -54,6 +58,7 @@ export function AddBox({
   onFocusChange,
   searchFor,
 }: {
+  ref?: React.Ref<AddBoxHandle>;
   q: string;
   setQ: (q: string) => void;
   items: Item[];
@@ -139,6 +144,7 @@ export function AddBox({
     setSaved(null);
     setFocus(false);
   };
+  useImperativeHandle(ref, () => ({ start }));
   const fromOffer = (group: ProductGroup, offer: Offer) => {
     const parsed = parseQuick(offer.title, categories);
     const category = parsed?.categoryId ?? guessCategory(offer.title, categories.map((c) => c.id)) ?? defaultCategory;

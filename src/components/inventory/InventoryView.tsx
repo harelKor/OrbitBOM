@@ -5,6 +5,7 @@ import {
   useEffect,
   useMemo,
   useOptimistic,
+  useRef,
   useState,
   useSyncExternalStore,
   useTransition,
@@ -42,7 +43,7 @@ import {
 import { matchesSearch } from "@/lib/inventory/searchWords";
 import { keepPicks, matchesPicks, specGroups, type SpecGroup, type SpecPicks } from "@/lib/inventory/specFilters";
 import { countPieces, stepStock } from "@/lib/inventory/stock";
-import { AddBox, haloItem } from "./AddBox";
+import { AddBox, haloItem, type AddBoxHandle } from "./AddBox";
 import { ImportDialog } from "./ImportDialog";
 import { RecentActions } from "@/components/actions/RecentActions";
 import type { RecentAction } from "@/lib/data/actions";
@@ -111,6 +112,7 @@ export function InventoryView({
   // Scan is for phones, and shows only while the add box is focused (Harel, 2026-10-29).
   const phone = usePhone();
   const [boxFocus, setBoxFocus] = useState(false);
+  const addBox = useRef<AddBoxHandle>(null);
   const [conditionId, setConditionId] = useState("");
   // A category's spec filter picks (ID 8, Type Flanged...), forgotten on another category.
   const [specPick, setSpecPick] = useState<{ cat: string; picks: SpecPicks } | null>(null);
@@ -609,6 +611,7 @@ export function InventoryView({
       <div className="sticky top-[var(--topbar-h)] z-20 -mx-2 flex flex-wrap gap-2 bg-ink/95 px-2 py-2 backdrop-blur">
         <div className="flex w-full min-w-0 gap-2 sm:contents">
           <AddBox
+            ref={addBox}
             q={q}
             setQ={setQ}
             items={items}
@@ -628,7 +631,7 @@ export function InventoryView({
             onAdding={(item) => addOptimistic({ add: item })}
             onFocusChange={setBoxFocus}
           />
-          <ScanButton onCode={setQ} show={phone && boxFocus} />
+          <ScanButton onCode={setQ} onNew={(over) => addBox.current?.start(over)} items={items} show={phone && boxFocus} />
           {mapButton}
         </div>
         {!boxes && !showBoxes && filters}
