@@ -131,12 +131,6 @@ export function LeftNav({
             counts={robot?.factory.byFactory ?? {}}
             glowOf={(id) => !!robot && arrivals.page(`factory:${robot.id}:${id}`)}
           />
-          <div className="relative flex items-center">
-            <Item href={base && `${base}/review`} icon="review" active={!!base && pathname.startsWith(`${base}/review`)} className="flex-1 pr-14">
-              To Review
-            </Item>
-            {base && robot!.review > 0 && <Count n={robot!.review} className="pointer-events-none absolute right-8 @max-[10rem]:hidden" />}
-          </div>
           <div>
             <div className="relative flex items-center">
               <Item href="/cots" icon="cart" active={pathname === "/cots"} glow={arrivals.page("cots:released") || arrivals.page("cots:order")} className="flex-1 pr-8">
@@ -246,6 +240,13 @@ export function LeftNav({
           <Item href={base && `${base}/assembly`} icon="wrench" active={pathname.endsWith("/assembly")}>
             Assembly
           </Item>
+          {/* Was To Review, near the top (Harel, 2026-11-11). */}
+          <div className="relative flex items-center">
+            <Item href={base && `${base}/review`} icon="review" active={!!base && pathname.startsWith(`${base}/review`)} className="flex-1 pr-14">
+              AI review
+            </Item>
+            {base && robot!.review > 0 && <Count n={robot!.review} className="pointer-events-none absolute right-8 @max-[10rem]:hidden" />}
+          </div>
           <Item href="/ai-logs" icon="spark" active={pathname.startsWith("/ai-logs")}>
             AI logs
           </Item>
