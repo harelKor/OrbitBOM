@@ -77,7 +77,7 @@ export function Assembly({
   const sys = at && book.systems.find((s) => s.id === at.systemId);
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-4 p-3 sm:p-4">
+    <div className="mx-auto w-full max-w-[1600px] space-y-4 p-3 sm:p-4">
       <TopView key={at ? placeKey(at) : "robot"} model={model} book={book} data={data} at={at} onOpen={go} />
       {!at || !sys ? (
         <Overview book={book} robotName={robotName} onOpen={go} canEdit={canEdit} />

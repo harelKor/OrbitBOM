@@ -335,7 +335,7 @@ function Slide({
         <header className={`flex items-center gap-3 border-b px-3 py-2 ${step.critical ? "border-rose-500/40 bg-rose-500/10" : "border-line"}`}>
           <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold tabular-nums ${done ? "bg-emerald-500 text-white" : "bg-raised text-fg"}`}>{n}</span>
           <div className="min-w-0 flex-1">
-            <h2 className="truncate text-base font-semibold">
+            <h2 className="truncate text-lg font-semibold">
               {sub && <Icon name="layers" className="mr-1.5 inline h-4 w-4 align-[-2px] text-fg-2" />}
               {label}
             </h2>
@@ -372,8 +372,11 @@ function Slide({
             </span>
           )}
         </header>
-        <div className="grid md:grid-cols-[3fr_2fr]">
-          <div className="relative aspect-[4/3] bg-surface max-md:border-b md:border-r border-line">
+        {/* The 3D gets most of the width, the text a narrow column beside it (Harel, 2026-11-11).
+            By the slide's own width: next to the branches it is narrow, so the text goes under. */}
+        <div className="@container">
+        <div className="grid @2xl:grid-cols-[minmax(0,1fr)_15rem] @4xl:grid-cols-[minmax(0,1fr)_17rem]">
+          <div className="relative aspect-[16/10] border-line bg-surface max-@2xl:border-b @2xl:border-r">
             {live && shown ? (
               <StepCanvas model={shown} colors={colors} camera={step.camera} names={names} cube={false} />
             ) : (
@@ -389,7 +392,7 @@ function Slide({
             )}
           </div>
           <div className="space-y-3 p-3">
-            {step.body && <p className="text-sm whitespace-pre-wrap text-fg">{step.body}</p>}
+            {step.body && <p className="text-base leading-relaxed whitespace-pre-wrap text-fg">{step.body}</p>}
             {sub && (
               <button className="btn-primary h-10 px-4" onClick={onOpenSub}>
                 Open {book.subName(step.systemId, sub)} →
@@ -398,7 +401,7 @@ function Slide({
             {refs.length > 0 && (
               <div>
                 <p className="label mb-1">Brings in</p>
-                <ul className="space-y-1 text-sm">
+                <ul className="space-y-1 text-[15px]">
                   {refs.map((r) => (
                     <li key={r.step.id}>
                       <a href={`#step-${r.step.id}`} className="press flex items-center gap-2 rounded px-1 py-0.5 hover:bg-raised pointer-coarse:min-h-9">
@@ -415,7 +418,7 @@ function Slide({
             {!sub && ownParts.length > 0 && (
               <div>
                 <p className="label mb-1">Parts in this step</p>
-                <ul className="space-y-1 text-sm">
+                <ul className="space-y-1 text-[15px]">
                   {ownParts.map((p) => (
                     <li key={p.key} className="flex items-center gap-2">
                       <Thumb url={p.thumbUrl} small />
@@ -429,6 +432,7 @@ function Slide({
               </div>
             )}
           </div>
+        </div>
         </div>
       </article>
     </>
