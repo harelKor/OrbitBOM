@@ -2,8 +2,8 @@
 // "Section view" panel (SectionDialog.tsx); while it is open a click on a flat face adds a plane
 // there and a click on a round face a plane through its axis, cutting it lengthwise (Onshape's
 // way), up to 3 planes, each cutting; with no face picked a default plane (Front, Top, Right)
-// cuts. The 3D handle drags the depth, a click on its arrow flips the cut, its arcs tilt the
-// plane, and a number box by it takes the exact value. ✓ closes the panel and keeps the cut (clicks measure
+// cuts. The 3D handle drags the depth, a click on its arrow flips the cut and its arcs tilt the
+// plane; the panel's field takes an exact depth (no number box by the arrows, Harel 2026-11-11). ✓ closes the panel and keeps the cut (clicks measure
 // again); a double-click on a cut face opens it again; Shift+X or "Turn off" ends the section.
 // N turns the view square to the newest cut (or to the picked flat face). Every part is cut.
 //
@@ -99,9 +99,6 @@ export function createSection(stage: Stage, meshes: PartMesh[], topo: Topo, look
     return box;
   };
 
-  const onFrame = () => placeBox();
-  stage.beforeRender.push(onFrame);
-
   // From the model towards the viewer (model frame): the camera's back direction.
   const toViewer = () => {
     root.updateMatrixWorld();
@@ -134,7 +131,6 @@ export function createSection(stage: Stage, meshes: PartMesh[], topo: Topo, look
       renderer.clippingPlanes = [];
       caps.update([], root.matrixWorld);
       handle.set(null);
-      showBox(false);
       render();
       emit();
       return;
@@ -143,9 +139,8 @@ export function createSection(stage: Stage, meshes: PartMesh[], topo: Topo, look
     active = Math.max(0, Math.min(active, state.planes.length - 1));
     renderer.clippingPlanes = state.planes.map((p) => clipPlane(p).applyMatrix4(root.matrixWorld));
     caps.update(state.planes, root.matrixWorld);
-    // The handle and its number box only while the panel is open, like Onshape's.
+    // The handle only while the panel is open, like Onshape's.
     handle.set(state.open ? frameOf(state.planes[active]) : null);
-    showBox(state.open);
     render();
     emit();
   };
@@ -295,68 +290,6 @@ export function createSection(stage: Stage, meshes: PartMesh[], topo: Topo, look
     look(dir.toArray() as [number, number, number]);
   };
 
-  // The number box by the handle: the depth (mm) or the angle of the arc being dragged, typed exactly (Enter or leaving the box sets it).
-  const box = document.createElement("label");
-  box.className = "absolute z-20 hidden items-center gap-1 rounded-md border border-accent/60 bg-surface/95 px-1.5 py-0.5 text-xs text-muted shadow-sm backdrop-blur tabular-nums";
-  const input = document.createElement("input");
-  input.type = "text";
-  input.inputMode = "decimal";
-  input.className = "h-6 w-16 rounded border border-line bg-surface px-1 text-right text-xs text-fg tabular-nums pointer-coarse:h-8";
-  const unit = document.createElement("span");
-  box.append(input, unit);
-  el.appendChild(box);
-  let boxMode: HandlePart = "move";
-  let boxShown = false;
-  const boxValue = () => {
-    const c = state?.planes[active];
-    if (!c) return "";
-    return String(boxMode === "move" ? c.offset : c.tilt[boxMode === "u" ? 0 : 1]);
-  };
-  const fillBox = () => {
-    input.setAttribute("aria-label", boxMode !== "move" ? "Section tilt (degrees)" : "Section depth (mm)");
-    unit.textContent = boxMode !== "move" ? "°" : "mm";
-    if (document.activeElement !== input) input.value = boxValue();
-  };
-  const showBox = (on: boolean) => {
-    boxShown = on;
-    box.classList.toggle("hidden", !on);
-    box.classList.toggle("flex", on);
-    if (on) fillBox();
-  };
-  const placeBox = () => {
-    if (!boxShown) return;
-    const a = handle.anchor();
-    if (!a) return box.classList.add("invisible");
-    box.classList.remove("invisible");
-    const w = box.offsetWidth, h = box.offsetHeight;
-    box.style.left = `${Math.max(4, Math.min(el.clientWidth - w - 4, a[0] + 12))}px`;
-    box.style.top = `${Math.max(4, Math.min(el.clientHeight - h - 4, a[1] - h / 2))}px`;
-  };
-  const typed = () => {
-    const n = Number(input.value.replace(",", "."));
-    const c = state?.planes[active];
-    if (!state || !c || !input.value.trim() || !Number.isFinite(n)) return fillBox();
-    let next: Cut;
-    if (boxMode === "move") next = { ...c, offset: n };
-    else {
-      const tilt: [number, number] = [...c.tilt];
-      tilt[boxMode === "u" ? 0 : 1] = wrapDeg(n);
-      next = { ...c, tilt };
-    }
-    setCuts(state.planes.map((p, k) => (k === active ? next : p)));
-  };
-  input.addEventListener("keydown", (e) => {
-    e.stopPropagation(); // the viewer's keys (Y, N, F…) stay out of the box
-    if (e.key === "Enter") {
-      typed();
-      input.blur();
-    } else if (e.key === "Escape") {
-      input.value = boxValue();
-      input.blur();
-    }
-  });
-  input.addEventListener("blur", typed);
-
   // Dragging the handle: the arrow moves the plane along its normal (mm), an arc tilts it. A click on the arrow without moving flips the cut, like Onshape's.
   let drag: { part: HandlePart; id: number; x: number; y: number; moved: boolean; start: Cut; t0: number; centre: THREE.Vector3; axis: THREE.Vector3; ref: THREE.Vector3; n: THREE.Vector3 } | null = null;
   const onDown = (e: PointerEvent) => {
@@ -373,10 +306,6 @@ export function createSection(stage: Stage, meshes: PartMesh[], topo: Topo, look
     e.stopPropagation();
     e.preventDefault();
     drag = { part, id: e.pointerId, x: e.clientX, y: e.clientY, moved: false, start: structuredClone(c), t0, centre: f.point, axis, ref, n: f.n };
-    if (boxMode !== part) {
-      boxMode = part;
-      fillBox();
-    }
     handle.lit(part);
     render();
   };
@@ -520,10 +449,7 @@ export function createSection(stage: Stage, meshes: PartMesh[], topo: Topo, look
       el.removeEventListener("pointerleave", onLeave);
       window.removeEventListener("pointerdown", onAnyDown, true);
       window.removeEventListener("keydown", onKey);
-      const i = stage.beforeRender.indexOf(onFrame);
-      if (i >= 0) stage.beforeRender.splice(i, 1);
       renderer.clippingPlanes = [];
-      box.remove();
       bothSides.dispose();
       caps.dispose();
       handle.dispose();

@@ -33,8 +33,6 @@ export type Handle = {
   set: (f: Frame | null) => void;
   // The part of the handle under a pointer (client px), within a few px (more for a finger).
   hit: (x: number, y: number, finger: boolean) => HandlePart | null;
-  // Where the arrow's tip is on screen (CSS px from the view's top left), for the number box.
-  anchor: () => [number, number] | null;
   lit: (part: HandlePart | null) => void;
   ray: (x: number, y: number) => THREE.Ray; // the pointer's ray, in the model frame
   dispose: () => void;
@@ -147,14 +145,6 @@ export function createHandle(stage: Stage): Handle {
     }
     return part;
   };
-  const anchor = (): [number, number] | null => {
-    if (!frame) return null;
-    const rect = stage.renderer.domElement.getBoundingClientRect();
-    const s = perPx(frame.point, rect);
-    if (!(s > 0)) return null;
-    const [x, y] = screen(frame.point.clone().addScaledVector(frame.n, (SHAFT + TIP) * s), rect);
-    return [x - rect.left, y - rect.top];
-  };
   const lit = (part: HandlePart | null) => {
     for (const p of ["move", "u", "v"] as HandlePart[]) mats[p].uniforms.color.value.set(p === part ? LIT : COLORS[p]);
   };
@@ -167,7 +157,6 @@ export function createHandle(stage: Stage): Handle {
   return {
     set,
     hit,
-    anchor,
     lit,
     ray,
     dispose: () => {
