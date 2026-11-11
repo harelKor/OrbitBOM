@@ -32,7 +32,7 @@ server (`/api/mcp/<token>`).
   cotsSync.db ×1, updateBom.db "pulls a new system's BOM"): compare against those.
 - Schema: edit `src/db/schema.ts`, `npm run db:generate`, rename the file to a readable name
   (and its `tag` in `drizzle/meta/_journal.json`), add `ALTER TABLE "x" ENABLE ROW LEVEL SECURITY;`
-  for a new table, commit. Next migration: 0081.
+  for a new table, commit. Next migration: 0082.
 - Local site: README "Local development" (local Supabase in Docker, "Dev sign-in" button; Onshape
   and R2 deliberately unset). Never point local dev at production.
 - On Harel's Windows PC, Docker and `gh` aren't on the Bash PATH: run them from PowerShell, or
@@ -118,6 +118,9 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
   `/systems/<id>/cad-review` URLs redirect there. Comments with no system are on the whole robot. Comments: `src/lib/reviews/comments.ts` (anyone adds,
   CAD ticks, `members.isMentor` approves/rejects); version tree `src/lib/reviews/tree.ts` from the
   kept Onshape version list (`src/lib/versions/docVersions.ts`) and the BOM versions. No calls.
+  The whole 3D view as data (camera, hidden / isolated, section, render mode, colours):
+  `src/components/viewer/viewState.ts`, in the URL hash (`#v=`), on each comment with its pin
+  (`pins.ts`, assembly mm), and as Onshape's Named views per robot (`src/lib/reviews/namedViews.ts`).
 - 3D views (every viewer: CAD pages, BOM pages, part windows, Commit window): `ModelCanvas`
   (`src/components/dashboard/ModelCanvas.tsx`), tools in `src/components/review/ViewerToolbar.tsx`,
   picking / measuring maths in `src/lib/model/topology.ts`, `measure.ts`. Being reworked to work

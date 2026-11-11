@@ -46,7 +46,7 @@ const MENU_VIEWS: { v: ViewName; label: string; key?: string }[] = [
 // Edit section view, Turn off section view, the same calls as Shift+X). On phones it's 64 px, no
 // arrows (a swipe turns the view), and the views sit in a grid so the menu fits. The `?` key opens
 // the shortcuts sheet.
-export function ViewCube({ tools }: { tools: SceneTools }) {
+export function ViewCube({ tools, views }: { tools: SceneTools; views?: NamedViews }) {
   const cube = useRef<HTMLDivElement>(null);
   const [hot, setHot] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
@@ -149,7 +149,12 @@ export function ViewCube({ tools }: { tools: SceneTools }) {
           title="View options"
           aria-label="View options"
           aria-expanded={menu}
-          onClick={() => setMenu(!menu)}
+          onClick={() => {
+            // A saved view (S6) may have changed these since the menu was last open.
+            setOrtho(tools.projection() === "ortho");
+            setDisplay(tools.display());
+            setMenu(!menu);
+          }}
         >
           ▾
         </button>
@@ -223,6 +228,7 @@ export function ViewCube({ tools }: { tools: SceneTools }) {
               <span className="w-3" />
               Exploded view
             </button>
+            {views && <NamedViewsBlock views={views} close={() => setMenu(false)} item={item} line={line} />}
             <div className={`${line} pointer-coarse:hidden`} />
             <button className={`${item} pointer-coarse:hidden`} role="menuitem" onClick={run(() => setHelp(true))}>
               <span className="w-3" />
@@ -232,6 +238,100 @@ export function ViewCube({ tools }: { tools: SceneTools }) {
         )}
       </div>
       {help && <Shortcuts onClose={() => setHelp(false)} />}
+    </>
+  );
+}
+
+// Onshape's Named views (S6, plan/cad-3d-viewer.md), on pages that keep them (the CAD pages: per
+// robot in the database, shared by the team): the saved views to pick back, "Save view…" under a
+// name, and "Copy view link" (the URL carries the view). Owned by S6; the rest of the menu is R3's
+// and S9's.
+export type NamedViews = {
+  list: { id: string; name: string; by: string | null; mine: boolean }[];
+  open: (id: string) => void;
+  save: (name: string) => Promise<string | null>; // an error, or null when saved
+  remove: (id: string) => void;
+  copyLink: () => Promise<boolean>;
+};
+
+function NamedViewsBlock({ views, close, item, line }: { views: NamedViews; close: () => void; item: string; line: string }) {
+  const [naming, setNaming] = useState(false);
+  const [name, setName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  return (
+    <>
+      <div className={line} />
+      <p className="px-2 pt-1 pb-0.5 text-[10px] font-semibold tracking-wide text-subtle uppercase">Named views</p>
+      {views.list.map((v) => (
+        <div key={v.id} className="group flex items-center">
+          <button
+            className={`${item} min-w-0 flex-1`}
+            role="menuitem"
+            title={v.by ? `Saved by ${v.by}` : undefined}
+            onClick={() => {
+              close();
+              views.open(v.id);
+            }}
+          >
+            <span className="w-3 shrink-0" />
+            <span className="truncate">{v.name}</span>
+          </button>
+          {v.mine && (
+            <button
+              className="press shrink-0 rounded px-1.5 text-subtle opacity-0 group-hover:opacity-100 hover:text-rose-500 focus:opacity-100 pointer-coarse:min-h-9 pointer-coarse:min-w-9 pointer-coarse:opacity-100"
+              aria-label={`Delete ${v.name}`}
+              title="Delete this view"
+              onClick={() => confirm(`Delete the view "${v.name}"?`) && views.remove(v.id)}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      ))}
+      {naming ? (
+        <form
+          className="flex flex-col gap-1 px-2 py-1"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setBusy(true);
+            const err = await views.save(name);
+            setBusy(false);
+            if (err) return setError(err);
+            setNaming(false);
+            setName("");
+            setError(null);
+          }}
+        >
+          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} maxLength={80} placeholder="View name" className="input h-8 w-full text-xs pointer-coarse:h-9" aria-label="View name" />
+          {error && <span className="text-[11px] text-rose-600">{error}</span>}
+          <div className="flex gap-1">
+            <button className="btn-primary h-7 flex-1 justify-center text-xs active:scale-[0.98] pointer-coarse:h-9" disabled={busy || !name.trim()}>
+              {busy ? "Saving…" : "Save"}
+            </button>
+            <button type="button" className="btn h-7 justify-center px-2 text-xs pointer-coarse:h-9" onClick={() => setNaming(false)}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      ) : (
+        <button className={item} role="menuitem" onClick={() => setNaming(true)}>
+          <span className="w-3" />
+          Save view…
+        </button>
+      )}
+      <button
+        className={item}
+        role="menuitem"
+        onClick={async () => {
+          setCopied(await views.copyLink());
+          setTimeout(() => setCopied(false), 1500);
+        }}
+      >
+        <span className="w-3 text-accent-hover">{copied ? "✓" : ""}</span>
+        {copied ? "Link copied" : "Copy view link"}
+      </button>
     </>
   );
 }

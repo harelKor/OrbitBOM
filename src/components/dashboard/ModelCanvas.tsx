@@ -10,7 +10,7 @@ import type { MenuTarget } from "@/components/viewer/picking";
 import type { SectionView } from "@/components/viewer/section";
 import { SectionDialog } from "@/components/viewer/SectionDialog";
 import type { Gone, HiddenParts, SceneTools, ViewerMode, ViewerModel } from "@/components/viewer/types";
-import { ViewCube } from "@/components/viewer/ViewCube";
+import { ViewCube, type NamedViews } from "@/components/viewer/ViewCube";
 import { createViewer } from "@/components/viewer/viewer";
 
 // The viewer itself lives in src/components/viewer/ (plan/cad-3d-viewer.md §3); this is its React
@@ -20,6 +20,7 @@ export type { ViewName } from "@/components/viewer/camera";
 export type { Axis, Section } from "@/components/viewer/section";
 export type { MeasureFilter } from "@/components/viewer/picking";
 export type { MenuItem, PageMenu } from "@/components/viewer/ContextMenu";
+export type { NamedViews };
 
 // The three.js stage: one instanced mesh per part shape, coloured by status (or CAD: Onshape's
 // own appearance, see-through parts included, lit by a studio environment like Onshape's). While
@@ -48,6 +49,7 @@ export function ModelCanvas({
   onIsolated,
   onHover,
   cube: cubeProp,
+  views,
 }: {
   model: ViewerModel;
   colors: Map<string, string>; // part key → status colour
@@ -69,6 +71,7 @@ export function ModelCanvas({
   // The view cube and its menu (with the section): by default on pages with the tools; part
   // windows and the robot page ask for it (Harel, 2026-11-11). False: small views, the slides.
   cube?: boolean;
+  views?: NamedViews; // Onshape's Named views in the cube's menu (S6: the CAD pages)
 }) {
   const withCube = cubeProp ?? !!onTools;
   const host = useRef<HTMLDivElement>(null);
@@ -206,7 +209,7 @@ export function ModelCanvas({
         </div>
       )}
       {menuAt && !progress && <ContextMenu {...menuAt} names={names} page={menu} onClose={closeMenu} />}
-      {cube && withCube && <ViewCube tools={cube} />}
+      {cube && withCube && <ViewCube tools={cube} views={views} />}
       {cube && withCube && section?.open && (
         // Past the page's own left panels (panelLeft); on narrow screens under the view cube, which
         // it would otherwise cover (R1's report).

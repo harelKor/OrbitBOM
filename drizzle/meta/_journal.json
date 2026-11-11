@@ -568,6 +568,13 @@
       "when": 1794346481923,
       "tag": "0080_assembly_step_refs",
       "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1794397649378,
+      "tag": "0081_named_views_comment_pins",
+      "breakpoints": true
     }
   ]
 }

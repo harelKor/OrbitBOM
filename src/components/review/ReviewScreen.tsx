@@ -5,11 +5,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { openPartWindow } from "@/components/bom/PartDetailsHost";
-import type { HiddenParts, MeasureInfo, PageMenu, SceneTools, ViewerModel, ViewerMode } from "@/components/dashboard/ModelCanvas";
+import { deleteReviewView, saveReviewView } from "@/app/(app)/review-comments-actions";
+import type { HiddenParts, MeasureInfo, NamedViews, PageMenu, SceneTools, ViewerModel, ViewerMode } from "@/components/dashboard/ModelCanvas";
 import { AddCommentDialog, OpenComment, WaitingComment, type CommentTarget } from "@/components/review/Comments";
 import { SnipEditor, SnipMe, SnipOverlay, type SnipDraft } from "@/components/review/Snip";
 import { ViewerToolbar } from "@/components/review/ViewerToolbar";
 import { MeasureBox } from "@/components/viewer/MeasureBox";
+import { applyView, captureView, cleanView, hashWithView, viewFromHash, type ViewState } from "@/components/viewer/viewState";
 import { Segmented } from "@/components/ui/Segmented";
 import type { ReviewComment } from "@/lib/data/cadReview";
 
@@ -87,6 +89,13 @@ export function ReviewScreen({
     setAdding(false);
     setSnipDraft(null);
   };
+  // + Add comment keeps the 3D view as it is when the window opens, and the newest pick's point
+  // as the comment's pin (S6).
+  const [addingAt, setAddingAt] = useState<{ view: ViewState; pin: [number, number, number] | null } | null>(null);
+  const startAdding = (part: { key: string; name: string | null; systemId: string | null } | null) => {
+    setAddingAt(tools ? { view: captureView(tools, changes ? colors : undefined), pin: tools.pickPoint() } : null);
+    setAdding(part);
+  };
   const [hidden, setHidden] = useState<HiddenParts | null>(null);
   // null: as the screen suits (folded on a phone, open on wider screens) until toggled.
   // Wide screens: the comments column folds sideways to a thin strip (Harel, 2026-11-11).
@@ -148,8 +157,114 @@ export function ReviewScreen({
     tools?.view("fit");
   }, [tools, hiddenGroups]);
 
+  // The view in the URL hash (S6): put back on load (after the Fit above), then kept up to date,
+  // so a reload keeps it and the link shares it. Written only once every part is in, so a view
+  // still being put back isn't overwritten half done.
+  const colorsRef = useRef<string | undefined>(undefined);
+  const writeHash = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    colorsRef.current = changes ? colors : undefined;
+    writeHash.current?.();
+  }, [colors, changes, hidden, isolated]);
+  useEffect(() => {
+    if (!tools) return;
+    const v = viewFromHash();
+    if (v) {
+      applyView(tools, v, false);
+      const c = v.colors;
+      if (c === "cad" || c === "compare") void Promise.resolve().then(() => setColors(c));
+    }
+    let live = true;
+    let timer = 0;
+    const write = () => {
+      clearTimeout(timer);
+      timer = window.setTimeout(() => live && history.replaceState(history.state, "", location.pathname + location.search + hashWithView(captureView(tools, colorsRef.current))), 400);
+    };
+    void tools.whenLoaded().then(() => {
+      if (!live) return;
+      writeHash.current = write;
+      write();
+    });
+    const unWatch = tools.watch(() => writeHash.current?.());
+    const unSection = tools.onSection(() => writeHash.current?.());
+    return () => {
+      live = false;
+      clearTimeout(timer);
+      writeHash.current = null;
+      unWatch();
+      unSection();
+    };
+  }, [tools]);
+
+  // Onshape's Named views of this robot, shared by the team (the view cube's menu).
+  const [named, setNamed] = useState<{ id: string; name: string; view: ViewState; by: string | null; byId: string | null }[]>([]);
+  const loadNamed = useCallback(() => {
+    fetch(`/api/robots/${robotId}/views`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d && setNamed(d.views))
+      .catch(() => {});
+  }, [robotId]);
+  useEffect(() => {
+    if (tools) loadNamed();
+  }, [tools, loadNamed]);
+  const goToView = useCallback(
+    (v: ViewState) => {
+      if (!tools) return;
+      const clean = cleanView(v);
+      if (!clean) return;
+      applyView(tools, clean, true);
+      if (changes && (clean.colors === "cad" || clean.colors === "compare")) setColors(clean.colors);
+    },
+    [tools, changes],
+  );
+  const views: NamedViews | undefined = tools
+    ? {
+        list: named.map((v) => ({ id: v.id, name: v.name, by: v.by, mine: me.isAdmin || v.byId === me.id })),
+        open: (id) => {
+          const v = named.find((x) => x.id === id);
+          if (v) goToView(v.view);
+        },
+        save: async (name) => {
+          const r = await saveReviewView(robotId, name, captureView(tools, changes ? colors : undefined));
+          if (r.error) return r.error;
+          loadNamed();
+          return null;
+        },
+        remove: (id) => void deleteReviewView(id).then((r) => (r.error ? alert(r.error) : loadNamed())),
+        copyLink: async () => {
+          const url = location.origin + location.pathname + location.search + hashWithView(captureView(tools, changes ? colors : undefined));
+          history.replaceState(history.state, "", url);
+          return navigator.clipboard.writeText(url).then(
+            () => true,
+            () => false,
+          );
+        },
+      }
+    : undefined;
+
   const open = comments.filter((c) => c.state === "open").reverse();
   const waiting = comments.filter((c) => c.state === "done");
+  // Comment pins (S6): numbered in the order the comments were written; open and waiting ones
+  // drawn in the 3D view. A tap on a pin or a comment turns the view back to the comment's.
+  const pinNo = useMemo(() => new Map(comments.map((c, i) => [c.id, i + 1])), [comments]);
+  const viewComment = useCallback(
+    (c: ReviewComment) => {
+      if (c.view) goToView(c.view);
+      tools?.pinHot(c.pin ? c.id : null);
+    },
+    [goToView, tools],
+  );
+  useEffect(() => {
+    if (!tools) return;
+    const shown = comments.filter((c) => c.pin && c.state !== "approved");
+    tools.pins(
+      shown.map((c) => ({ id: c.id, n: pinNo.get(c.id)!, at: c.pin!, done: c.state === "done" })),
+      (id) => {
+        const c = comments.find((x) => x.id === id);
+        if (c) viewComment(c);
+      },
+    );
+  }, [tools, comments, pinNo, viewComment]);
   const onLocated = useCallback(() => {}, []);
   const showPart = useCallback((key: string) => {
     setSelected(null);
@@ -175,7 +290,7 @@ export function ReviewScreen({
       ...(one?.onshape ? [{ label: "Open in Onshape", run: () => void window.open(one.onshape, "_blank", "noopener") }] : []),
       // The robot's page scoped to that system (?system=), as its Isolate does.
       ...(system ? [{ label: "Open system", run: () => (onIsolate ? onIsolate(system) : router.push(`/robots/${robotId}/cad-review?system=${system}`)) }] : []),
-      ...(keys.length === 1 ? [{ label: "Add comment here", run: () => setAdding({ key: keys[0], name: one?.name ?? null, systemId: one?.systemId ?? null }) }] : []),
+      ...(keys.length === 1 ? [{ label: "Add comment here", run: () => startAdding({ key: keys[0], name: one?.name ?? null, systemId: one?.systemId ?? null }) }] : []),
     ];
   };
   const focusName = focus ? (nameByKey.get(focus) ?? comments.find((c) => c.partKey === focus)?.partName ?? "The part") : null;
@@ -222,7 +337,7 @@ export function ReviewScreen({
           ) : null}
           <h1 className="display truncate text-3xl text-accent">{title}</h1>
         </div>
-        <button className="btn-primary h-12 w-full justify-center text-base shadow-[0_0_18px_-4px_var(--color-accent)] active:scale-[0.98] max-lg:hidden" onClick={() => setAdding(picked)}>
+        <button className="btn-primary h-12 w-full justify-center text-base shadow-[0_0_18px_-4px_var(--color-accent)] active:scale-[0.98] max-lg:hidden" onClick={() => startAdding(picked)}>
           + Add comment
         </button>
         {panel(showPart, open)}
@@ -246,6 +361,7 @@ export function ReviewScreen({
             hidden={hiddenGroups}
             menu={pageMenu}
             onIsolated={setIsolated}
+            views={views}
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">
@@ -287,7 +403,7 @@ export function ReviewScreen({
         {/* Phones: + Add comment at the bottom. */}
         <button
           className="btn-primary absolute bottom-4 left-1/2 z-10 h-12 -translate-x-1/2 px-6 text-base shadow-[0_0_18px_-4px_var(--color-accent)] active:scale-[0.98] lg:hidden"
-          onClick={() => setAdding(picked)}
+          onClick={() => startAdding(picked)}
         >
           + Add comment
         </button>
@@ -345,10 +461,10 @@ export function ReviewScreen({
           {open.length ? (
             onRobot ? (
               <BySystem comments={open} onIsolate={onIsolate}>
-                {(c) => <OpenComment key={c.id} c={c} canTick={canTick} canDelete={me.isAdmin || c.authorId === me.id} onFocus={showPart} />}
+                {(c) => <OpenComment key={c.id} c={c} n={pinNo.get(c.id)} onView={viewComment} canTick={canTick} canDelete={me.isAdmin || c.authorId === me.id} onFocus={showPart} />}
               </BySystem>
             ) : (
-              open.map((c) => <OpenComment key={c.id} c={c} canTick={canTick} canDelete={me.isAdmin || c.authorId === me.id} onFocus={showPart} />)
+              open.map((c) => <OpenComment key={c.id} c={c} n={pinNo.get(c.id)} onView={viewComment} canTick={canTick} canDelete={me.isAdmin || c.authorId === me.id} onFocus={showPart} />)
             )
           ) : (
             <li className="p-2 text-xs text-muted">No open comments.</li>
@@ -359,10 +475,10 @@ export function ReviewScreen({
             {waiting.length ? (
               onRobot ? (
                 <BySystem comments={waiting} onIsolate={onIsolate}>
-                  {(c) => <WaitingComment key={c.id} c={c} isMentor canTick={canTick} onFocus={showPart} />}
+                  {(c) => <WaitingComment key={c.id} c={c} n={pinNo.get(c.id)} onView={viewComment} isMentor canTick={canTick} onFocus={showPart} />}
                 </BySystem>
               ) : (
-                waiting.map((c) => <WaitingComment key={c.id} c={c} isMentor canTick={canTick} onFocus={showPart} />)
+                waiting.map((c) => <WaitingComment key={c.id} c={c} n={pinNo.get(c.id)} onView={viewComment} isMentor canTick={canTick} onFocus={showPart} />)
               )
             ) : (
               <li className="p-2 text-xs text-muted">Nothing ticked off to approve.</li>
@@ -384,6 +500,7 @@ export function ReviewScreen({
           onSnip={() => setSnipStep("drag")}
           onEditSnip={() => setSnipStep("draw")}
           onRemoveSnip={() => setSnipDraft(null)}
+          at={addingAt}
         />
       )}
       {snipStep === "draw" && snipDraft && (

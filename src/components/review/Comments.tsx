@@ -50,7 +50,25 @@ function PartChip({ c, onFocus }: { c: ReviewComment; onFocus?: (key: string) =>
 
 // An open comment: its tick box ticks it off; a mentor's last rejection shows under it.
 // `where`: show its system (or "Robot"), on the robot's page.
-export function OpenComment({ c, canTick, canDelete, onFocus, where }: { c: ReviewComment; canTick: boolean; canDelete: boolean; onFocus?: (key: string) => void; where?: boolean }) {
+// A tap on a comment's text turns the 3D view back to the one it was written in (`onView`, S6),
+// else shows its part. `n`: its pin's number in the 3D view.
+const tapText = (c: ReviewComment, onFocus?: (key: string) => void, onView?: (c: ReviewComment) => void) => () => (c.view && onView ? onView(c) : c.partKey && onFocus?.(c.partKey));
+
+function PinBadge({ n, c, onView }: { n?: number; c: ReviewComment; onView?: (c: ReviewComment) => void }) {
+  if (!n || !c.pin) return null;
+  return (
+    <button
+      onClick={() => onView?.(c)}
+      className={`press mt-0.5 flex h-4.5 min-w-4.5 shrink-0 items-center justify-center rounded-full px-1 text-[10px] font-semibold text-white tabular-nums shadow-sm pointer-coarse:h-6 pointer-coarse:min-w-6 ${c.state === "open" ? "bg-amber-500" : "bg-sky-500"}`}
+      title="Its pin in the 3D view: go to the view it was written in"
+      aria-label={`Comment ${n}: go to its view`}
+    >
+      {n}
+    </button>
+  );
+}
+
+export function OpenComment({ c, n, canTick, canDelete, onFocus, onView, where }: { c: ReviewComment; n?: number; canTick: boolean; canDelete: boolean; onFocus?: (key: string) => void; onView?: (c: ReviewComment) => void; where?: boolean }) {
   const { pending, error, run } = useCommentAction();
   return (
     <li className={`rounded-md p-2 hover:bg-raised/70 ${pending ? "opacity-60" : ""}`}>
@@ -64,8 +82,9 @@ export function OpenComment({ c, canTick, canDelete, onFocus, where }: { c: Revi
           title={canTick ? "Tick off: done" : "The CAD Team ticks comments off"}
           className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-accent)] pointer-coarse:h-5 pointer-coarse:w-5"
         />
+        <PinBadge n={n} c={c} onView={onView} />
         <div className="min-w-0 flex-1 text-sm">
-          <button className="block w-full text-left whitespace-pre-wrap break-words text-fg" onClick={() => c.partKey && onFocus?.(c.partKey)}>
+          <button className="block w-full text-left whitespace-pre-wrap break-words text-fg" onClick={tapText(c, onFocus, onView)}>
             {c.body}
           </button>
           <PartChip c={c} onFocus={onFocus} />
@@ -94,7 +113,7 @@ export function OpenComment({ c, canTick, canDelete, onFocus, where }: { c: Revi
 }
 
 // A ticked-off comment waiting for a mentor: Approve, or Reject with why (it opens again).
-export function WaitingComment({ c, isMentor, canTick, onFocus, where }: { c: ReviewComment; isMentor: boolean; canTick: boolean; onFocus?: (key: string) => void; where?: boolean }) {
+export function WaitingComment({ c, n, isMentor, canTick, onFocus, onView, where }: { c: ReviewComment; n?: number; isMentor: boolean; canTick: boolean; onFocus?: (key: string) => void; onView?: (c: ReviewComment) => void; where?: boolean }) {
   const { pending, error, run } = useCommentAction();
   const [rejecting, setRejecting] = useState(false);
   const [note, setNote] = useState("");
@@ -110,8 +129,9 @@ export function WaitingComment({ c, isMentor, canTick, onFocus, where }: { c: Re
           title={canTick ? "Take the tick back" : "Ticked off"}
           className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-accent)] pointer-coarse:h-5 pointer-coarse:w-5"
         />
+        <PinBadge n={n} c={c} onView={onView} />
         <div className="min-w-0 flex-1 text-sm">
-          <button className="block w-full text-left whitespace-pre-wrap break-words text-muted line-through" onClick={() => c.partKey && onFocus?.(c.partKey)}>
+          <button className="block w-full text-left whitespace-pre-wrap break-words text-muted line-through" onClick={tapText(c, onFocus, onView)}>
             {c.body}
           </button>
           <PartChip c={c} onFocus={onFocus} />
@@ -195,6 +215,7 @@ export function AddCommentDialog({
   onSnip,
   onEditSnip,
   onRemoveSnip,
+  at,
 }: {
   open: boolean;
   onClose: () => void;
@@ -206,6 +227,7 @@ export function AddCommentDialog({
   onSnip: () => void; // take one (the window steps aside meanwhile)
   onEditSnip: () => void;
   onRemoveSnip: () => void;
+  at?: { view: unknown; pin: [number, number, number] | null } | null; // the 3D view when it opened, and the newest pick's point (S6)
 }) {
   const [body, setBody] = useState("");
   const { pending, error, run } = useCommentAction();
@@ -238,7 +260,7 @@ export function AddCommentDialog({
                 if ("error" in up) return up;
                 shot = up.snip;
               }
-              return addReviewComment(robotId, systemId, body, part && { key: part.key, name: part.name }, null, shot);
+              return addReviewComment(robotId, systemId, body, part && { key: part.key, name: part.name }, null, shot, at ?? null);
             },
             () => {
               setBody("");

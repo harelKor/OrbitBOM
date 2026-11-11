@@ -5,7 +5,8 @@ import { effectiveMode } from "@/components/shell/mode";
 import { db, schema } from "@/db";
 import { listComments, loadSystemReview } from "@/lib/data/cadReview";
 import { partKey } from "@/lib/model/assembly";
-import { addComment, canTick, CommentError, tickComments } from "@/lib/reviews/comments";
+import { cleanView } from "@/components/viewer/viewState";
+import { addComment, canTick, cleanPin, CommentError, tickComments } from "@/lib/reviews/comments";
 import { read, uuid, write, ToolError } from "../registry";
 
 const { reviewComments, systems } = schema;
@@ -23,7 +24,7 @@ const asTool = async <T,>(fn: () => Promise<T>) => {
 
 read(
   "list_review_comments",
-  "A system's CAD Review comments (snip: a picture cut from the 3D view with lines drawn on it): state (open; done = ticked off, waiting for a mentor; approved), text, the part it's about, who wrote it and when, a mentor's last rejection note, and the version tree (Onshape versions, newest first, which ones the BOM was updated to, and the comment ids added and ticked off at each).",
+  "A system's CAD Review comments (snip: a picture cut from the 3D view with lines drawn on it): state (open; done = ticked off, waiting for a mentor; approved), text, the part it's about, who wrote it and when, a mentor's last rejection note, its pin (x, y, z in assembly mm: the point in the 3D view it was written about) and view (the 3D view it was written in: camera, hidden / isolated parts, section, render mode), and the version tree (Onshape versions, newest first, which ones the BOM was updated to, and the comment ids added and ticked off at each).",
   z.object({ system_id: uuid, state: z.enum(["open", "done", "approved"]).optional() }),
   async ({ system_id, state }) => {
     const review = await loadSystemReview(system_id);
@@ -31,7 +32,7 @@ read(
     return {
       comments: review.comments
         .filter((c) => !state || c.state === state)
-        .map((c) => ({ id: c.id, state: c.state, text: c.body, part: c.partName, by: c.author, at: c.createdAt, ticked_by: c.doneBy, approved_by: c.approvedBy, rejected: c.rejectNote ? { note: c.rejectNote, by: c.rejectedBy, at: c.rejectedAt } : null, snip: c.snip ? { picture: c.snip.url, lines: c.snip.strokes.length, changed_by: (c.snip.changed ?? []).map((x) => x.name) } : null })),
+        .map((c) => ({ id: c.id, state: c.state, text: c.body, part: c.partName, by: c.author, at: c.createdAt, ticked_by: c.doneBy, approved_by: c.approvedBy, rejected: c.rejectNote ? { note: c.rejectNote, by: c.rejectedBy, at: c.rejectedAt } : null, snip: c.snip ? { picture: c.snip.url, lines: c.snip.strokes.length, changed_by: (c.snip.changed ?? []).map((x) => x.name) } : null, pin: c.pin, view: c.view })),
       versions: review.tree.map((n) => ({ name: n.name, at: n.at, bom: n.bom.map((b) => b.label), bom_current: n.bom.some((b) => b.current), added: n.added, ticked_off: n.done })),
     };
   },
@@ -39,9 +40,9 @@ read(
 
 write(
   "add_review_comment",
-  "Add a CAD Review comment to a system, optionally about one of its parts (part_id from find_parts). Anyone on the team may.",
-  z.object({ system_id: uuid, text: z.string().trim().min(1).max(2000), part_id: uuid.optional() }),
-  async ({ system_id, text, part_id }, { member }) => {
+  "Add a CAD Review comment to a system, optionally about one of its parts (part_id from find_parts), with a pin (x, y, z in assembly mm) and a view (as list_review_comments gives one, e.g. copied from another comment). Anyone on the team may.",
+  z.object({ system_id: uuid, text: z.string().trim().min(1).max(2000), part_id: uuid.optional(), pin: z.tuple([z.number(), z.number(), z.number()]).optional(), view: z.record(z.string(), z.unknown()).optional() }),
+  async ({ system_id, text, part_id, pin, view }, { member }) => {
     const [system] = await db.select({ name: systems.name }).from(systems).where(eq(systems.id, system_id));
     if (!system) throw new ToolError("Unknown system.");
     let part: { key: string; name: string } | null = null;
@@ -51,11 +52,13 @@ write(
       if (!p.sourceDid || !p.sourceEid || !p.onshapePartId) throw new ToolError("That part isn't placed in the 3D model; leave part_id out.");
       part = { key: partKey(p.sourceDid, p.sourceEid, p.onshapePartId), name: p.displayName ?? p.onshapeName ?? "Unnamed part" };
     }
+    if (pin && !cleanPin(pin)) throw new ToolError("pin: three numbers in mm, within 100 m.");
+    if (view && !cleanView(view)) throw new ToolError("view: not a 3D view (use one list_review_comments gave).");
     return {
       count: 1,
       summary: `Commented on ${system.name}`,
-      preview: { system: system.name, part: part?.name ?? null, text },
-      apply: () => asTool(async () => ({ id: (await addComment(member, { systemId: system_id, body: text, partKey: part?.key, partName: part?.name })).id })),
+      preview: { system: system.name, part: part?.name ?? null, text, pin: pin ?? null, view: view ? "saved" : null },
+      apply: () => asTool(async () => ({ id: (await addComment(member, { systemId: system_id, body: text, partKey: part?.key, partName: part?.name, pin, view })).id })),
     };
   },
 );

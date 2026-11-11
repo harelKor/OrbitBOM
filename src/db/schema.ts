@@ -5,6 +5,7 @@ import { sql } from "drizzle-orm";
 import type { Part as DrawingPart } from "../lib/drawing/read";
 import type { PieceRow } from "../lib/inventory/stock";
 import type { Shape } from "../lib/review/shape";
+import type { ViewState } from "../components/viewer/viewState";
 import {
   bigint,
   boolean,
@@ -675,6 +676,10 @@ export const reviewComments = pgTable(
     onshapeVersionName: text("onshape_version_name"),
     state: reviewCommentState("state").notNull().default("open"),
     snip: jsonb("snip").$type<Snip>(),
+    // The 3D view it was written in (viewState.ts: camera, hidden parts, section, colours) and its
+    // pin, the newest pick's point in assembly mm; a tap on the comment turns the view back (S6).
+    view: jsonb("view").$type<ViewState>(),
+    pin: jsonb("pin").$type<[number, number, number]>(),
     createdAt: createdAt(),
     doneAt: timestamp("done_at", { withTimezone: true }),
     doneBy: uuid("done_by").references(() => members.id, { onDelete: "set null" }),
@@ -688,6 +693,23 @@ export const reviewComments = pgTable(
     rejectedBy: uuid("rejected_by").references(() => members.id, { onDelete: "set null" }),
   },
   (t) => [index("review_comments_system_idx").on(t.systemId, t.createdAt), index("review_comments_robot_idx").on(t.robotId, t.createdAt)],
+);
+
+// Onshape's Named views of a robot's 3D view (S6, plan/cad-3d-viewer.md): saved from the view
+// cube's menu, shared by the team, on the robot's and its systems' CAD pages.
+export const namedViews = pgTable(
+  "named_views",
+  {
+    id: id(),
+    robotId: uuid("robot_id")
+      .notNull()
+      .references(() => robots.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    view: jsonb("view").$type<ViewState>().notNull(),
+    createdBy: uuid("created_by").references(() => members.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("named_views_robot_idx").on(t.robotId, t.name)],
 );
 
 // Every time a part was released to fab (Released, Reproduction, Secondary Production) and the

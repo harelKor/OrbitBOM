@@ -8,6 +8,7 @@ import { createMeasureLayer, type MeasureInfo, type MeasureLayer } from "./measu
 import { createLooks, createPaint, type Paint } from "./paint";
 import { createMarks, createPicking, createSelection, createTopo, type MenuTarget, type Picking } from "./picking";
 import { createMotion } from "./motion";
+import { createPins } from "./pins";
 import { createSection } from "./section";
 import { removedBy } from "./sectionMath";
 import { createStage, stageTools } from "./stage";
@@ -112,6 +113,9 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
       if (s) section.tools.section(s);
     },
   });
+  const pins = createPins(stage, meshes, topo, () => measure?.newest() ?? null); // comment pins (S6)
+  let loadedAll: () => void = () => {};
+  const allIn = new Promise<void>((r) => (loadedAll = r));
 
   const tools: SceneTools = {
     ...camera.tools,
@@ -127,6 +131,8 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
     ...partTools(meshes),
     ...stageTools(stage),
     ...motion.tools,
+    ...pins.tools,
+    whenLoaded: () => allIn, // every part file is in (a saved view's hidden parts can be found)
     // Onshape's render modes (S9): paint again, then put Make transparent's parts back.
     display: painter.display,
     setDisplay: (m) => {
@@ -192,6 +198,7 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
     .then((ok) => {
       if (!ok) return;
       loading = false;
+      loadedAll();
       if (!shown) firstDraw();
       else if (!touched && framed && refitNeeded(framed, visibility.shownBox())) camera.fit(visibility.shownBox());
       if (painted?.[2] && !located) host.located?.(false);
@@ -229,6 +236,7 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
       measure?.dispose();
       section.dispose();
       motion.dispose();
+      pins.dispose();
       geometries.forEach((g) => g.dispose());
       marks.dispose();
       topo.dispose();

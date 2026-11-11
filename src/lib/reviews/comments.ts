@@ -3,6 +3,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { can, type Mode } from "@/components/shell/mode";
 import { db, schema } from "@/db";
 import type { Member } from "@/lib/auth";
+import { cleanView, type ViewState } from "@/components/viewer/viewState";
 import { deleteObject } from "@/lib/storage/r2";
 import { cleanStrokes, mergeStrokes } from "./snipStrokes";
 
@@ -30,10 +31,11 @@ export function canApprove(mode: Mode, member: Pick<Member, "isMentor">) {
 
 // A comment on a system, or with `systemId` null on the whole robot (Harel, 2026-11-09).
 // `onshapeVersion`: the Onshape version it was written on, from the Onshape panel. `snip`: a
-// picture cut from the 3D view (already uploaded) with its lines.
+// picture cut from the 3D view (already uploaded) with its lines. `view`: the 3D view it was
+// written in (viewState.ts), `pin`: the newest pick's point there, assembly mm (S6).
 export async function addComment(
   member: Member,
-  input: { robotId?: string; systemId: string | null; body: string; partKey?: string | null; partName?: string | null; onshapeVersion?: { id: string; name: string } | null; snip?: SnipInput | null },
+  input: { robotId?: string; systemId: string | null; body: string; partKey?: string | null; partName?: string | null; onshapeVersion?: { id: string; name: string } | null; snip?: SnipInput | null; view?: unknown; pin?: unknown },
 ) {
   const body = input.body.trim();
   if (!body) throw new CommentError("Write the comment first.");
@@ -67,10 +69,20 @@ export async function addComment(
       onshapeVersionId: input.onshapeVersion?.id ?? null,
       onshapeVersionName: input.onshapeVersion ? input.onshapeVersion.name.slice(0, 200) : null,
       snip,
+      view: input.view ? cleanView(input.view) : null,
+      pin: cleanPin(input.pin),
     })
     .returning();
   return row;
 }
+
+// A pin: three finite numbers, assembly mm, within 100 m of the origin.
+export function cleanPin(x: unknown): [number, number, number] | null {
+  if (!Array.isArray(x) || x.length !== 3 || !x.every((n) => typeof n === "number" && Number.isFinite(n) && Math.abs(n) < 1e5)) return null;
+  return x.map((n) => Math.round(n * 100) / 100) as [number, number, number];
+}
+
+export type { ViewState };
 
 // Lines drawn on a comment's snip: `own` are the saver's lines as they now are; `keep` (its
 // author only) the other members' lines they didn't erase, by position (snipStrokes.ts).

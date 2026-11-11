@@ -1,5 +1,6 @@
 import "server-only";
 import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
+import type { ViewState } from "@/components/viewer/viewState";
 import { db, schema } from "@/db";
 import type { Member } from "@/lib/auth";
 import { parseOnshapeUrl } from "@/lib/onshape/url";
@@ -35,6 +36,8 @@ export type ReviewComment = {
   rejectedAt: string | null;
   rejectedBy: string | null;
   snip: (Snip & { url: string | null }) | null; // the picture's short-lived link
+  view: ViewState | null; // the 3D view it was written in (S6)
+  pin: [number, number, number] | null; // its point there, assembly mm
 };
 
 // A system's comments, or with `robotId` every comment of the robot (its own and its systems').
@@ -74,6 +77,8 @@ export async function listComments(scope: string | { robotId: string }): Promise
     rejectedAt: iso(r.rejectedAt),
     rejectedBy: name(r.rejectedBy),
     snip: r.snip ? { ...r.snip, url: urls.get(r.snip.path) ?? null } : null,
+    view: r.view ?? null,
+    pin: r.pin ?? null,
   }));
 }
 
