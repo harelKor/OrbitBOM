@@ -7,6 +7,7 @@ import { loadModel, partTools, placementsBox, refitNeeded } from "./load";
 import { createMeasureLayer, type MeasureInfo, type MeasureLayer } from "./measureLayer";
 import { createLooks, createPaint, type Paint } from "./paint";
 import { createMarks, createPicking, createSelection, createTopo, type MenuTarget, type Picking } from "./picking";
+import { createMotion } from "./motion";
 import { createSection } from "./section";
 import { removedBy } from "./sectionMath";
 import { createStage, stageTools } from "./stage";
@@ -100,6 +101,17 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
     hoverOff: () => picking?.setHover(null),
   });
   const section = createSection(stage, meshes, topo, (dir) => camera.tools.look(dir));
+  const motion = createMotion(stage, meshes, camera.controls, {
+    place: visibility.place,
+    setPlace: visibility.setPlace,
+    shown: (m, i) => meshes[m].mesh.visible && !visibility.gone().some((g) => g.m === m && g.i === i),
+    moved: () => selection.refresh(),
+    // The section's outlines are worked out from where the parts were: once more where they are.
+    settled: () => {
+      const s = section.tools.sectionNow();
+      if (s) section.tools.section(s);
+    },
+  });
 
   const tools: SceneTools = {
     ...camera.tools,
@@ -114,6 +126,7 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
     ...visibility.tools,
     ...partTools(meshes),
     ...stageTools(stage),
+    ...motion.tools,
     // Onshape's render modes (S9): paint again, then put Make transparent's parts back.
     display: painter.display,
     setDisplay: (m) => {
@@ -215,6 +228,7 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
       visibility.dispose();
       measure?.dispose();
       section.dispose();
+      motion.dispose();
       geometries.forEach((g) => g.dispose());
       marks.dispose();
       topo.dispose();

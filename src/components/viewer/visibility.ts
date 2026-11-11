@@ -42,6 +42,9 @@ export type Visibility = {
   hiddenAt: (ray: THREE.Raycaster) => { g: Gone; at: THREE.Matrix4 } | null;
   isolated: () => { keys: string[]; ghost: boolean } | null;
   repaint: () => void; // the paint just set every mesh's material: put see-through parts back
+  // A copy's place (its kept one while hidden), and moving it there (motion.ts: explode, Move).
+  place: (m: number, i: number, out: THREE.Matrix4) => THREE.Matrix4;
+  setPlace: (m: number, i: number, at: THREE.Matrix4) => void;
   tools: VisibilityTools;
   dispose: () => void;
 };
@@ -272,6 +275,15 @@ export function createVisibility(
     hiddenAt,
     isolated: () => (isolated ? { keys: [...isolated], ghost } : null),
     repaint: applyClear,
+    place: (m, i, out) => {
+      const was = kept.get(`${m}:${i}`);
+      return was ? out.copy(was) : (meshes[m].mesh.getMatrixAt(i, out), out);
+    },
+    setPlace: (m, i, at) => {
+      const was = kept.get(`${m}:${i}`);
+      if (was) was.copy(at);
+      else meshes[m].mesh.setMatrixAt(i, at);
+    },
     tools: { hideKey, hideOthers, showOthers, isolate, showAll, setClear, isClear: (k) => clear.has(k), zoomTo, visibilityState, setVisibilityState },
     // Ghosts share their mesh's matrices: only dropped, never disposed (that would free the
     // shared buffer).

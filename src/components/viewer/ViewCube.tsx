@@ -218,6 +218,11 @@ export function ViewCube({ tools }: { tools: SceneTools }) {
                 Turn off section view <kbd className={hint}>Shift+X</kbd>
               </button>
             )}
+            {/* Onshape's exploded view (S7). */}
+            <button className={item} role="menuitem" onClick={run(() => tools.explodeShow(true))}>
+              <span className="w-3" />
+              Exploded view
+            </button>
             <div className={`${line} pointer-coarse:hidden`} />
             <button className={`${item} pointer-coarse:hidden`} role="menuitem" onClick={run(() => setHelp(true))}>
               <span className="w-3" />

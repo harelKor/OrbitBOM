@@ -101,6 +101,8 @@ export function ContextMenu({
       // these parts; the ghosts are a second step (the view group below).
       { label: "Isolate", run: () => tools.isolate(keys, { ghost: false }) },
       { label: clear ? "Make opaque" : "Make transparent", run: () => tools.setClear(keys, !clear) },
+      // Onshape's Move (triad): the copy under the pointer, or every picked part's shown copies (S7).
+      { label: "Move", run: () => tools.moveParts(copy ?? keys) },
       // View normal to looks straight at the flat face under the pointer (N), like Onshape's menu.
       ...(at.face ? [{ label: "View normal to", run: () => tools.look(sceneDir(at.face!.normal)) }] : []),
       // On a round face: along its axis, as Onshape does.
@@ -130,6 +132,8 @@ export function ContextMenu({
     view.push({ label: "Edit section view", run: () => tools.sectionEdit() }, { label: "Turn off section view", run: () => tools.sectionShow(false) });
   // On a round face: a cylindrical section on its axis and radius, like Onshape's (Harel, 2026-11-11).
   else view.push({ label: "Section view", run: () => (at.face ? tools.sectionFromFace(at.face.point, at.face.normal) : at.round ? tools.sectionFromRound(at.round) : tools.sectionShow(true)) });
+  // Onshape's exploded view, on empty space (S7).
+  if (!keys.length) view.push({ label: "Exploded view", run: () => tools.explodeShow(true) });
   groups.push(view);
 
 

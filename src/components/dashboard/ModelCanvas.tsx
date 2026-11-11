@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ContextMenu, type PageMenu } from "@/components/viewer/ContextMenu";
 import type { MeasureInfo } from "@/components/viewer/measureLayer";
 import type { Paint } from "@/components/viewer/paint";
+import type { MotionView } from "@/components/viewer/motion";
+import { MotionPanel } from "@/components/viewer/MotionPanel";
 import type { MenuTarget } from "@/components/viewer/picking";
 import type { SectionView } from "@/components/viewer/section";
 import { SectionDialog } from "@/components/viewer/SectionDialog";
@@ -121,6 +123,9 @@ export function ModelCanvas({
   // shows here, on every view with the cube, so the cube menu's Section view works everywhere.
   const [section, setSection] = useState<SectionView | null>(null);
   useEffect(() => (cube && withCube ? cube.onSection(setSection) : undefined), [cube, withCube]);
+  // Explode and Move (S7): their panel and the "Moved (not in CAD)" chip.
+  const [motion, setMotion] = useState<MotionView | null>(null);
+  useEffect(() => (cube ? cube.onMotion(setMotion) : undefined), [cube]);
   const hiddenAtLoad = useRef(hidden);
   useEffect(() => {
     hiddenAtLoad.current = hidden;
@@ -157,6 +162,7 @@ export function ModelCanvas({
       setLoaded(false);
       setCube(null);
       setSection(null);
+      setMotion(null);
     };
   }, [model]);
 
@@ -208,6 +214,7 @@ export function ModelCanvas({
           <SectionDialog section={section} tools={cube} />
         </div>
       )}
+      {cube && motion && (motion.panel || motion.moving || motion.moved) && <MotionPanel view={motion} tools={cube} />}
       {error && <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">{error}</div>}
       {gone.length > 0 && !onHidden && (
         <div

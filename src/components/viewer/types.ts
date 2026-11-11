@@ -6,6 +6,7 @@ import type { Appearance } from "@/lib/model/mesh";
 import type { CameraTools } from "./camera";
 import type { PartTools } from "./load";
 import type { MeasureTools } from "./measureLayer";
+import type { MotionTools } from "./motion";
 import type { DisplayTools } from "./paint";
 import type { SectionTools } from "./section";
 import type { StageTools } from "./stage";
@@ -36,4 +37,4 @@ export type HiddenParts = { items: { id: string; name: string }[]; show: (id: st
 
 // CAD Review's viewer tools (plan/design-review.md): standard views, a section plane, measuring
 // between two points on the meshes (≈: the export's chord tolerance), hiding or isolating a part.
-export type SceneTools = CameraTools & SectionTools & MeasureTools & VisibilityTools & PartTools & StageTools & DisplayTools;
+export type SceneTools = CameraTools & SectionTools & MeasureTools & VisibilityTools & PartTools & StageTools & DisplayTools & MotionTools;
