@@ -153,6 +153,9 @@ export function PartModel({
           locateKey={view === "locate" ? modelKey : null}
           onLocated={onLocated}
           onPick={onPick}
+          // The view cube, as on CAD's pages (Harel, 2026-11-11); not on the small preview in the
+          // part details window, which opens big with a click.
+          cube={!onExpand}
           {...(view === "locate" && { selectedKey: selected, names: new Map([...robotParts].map(([k, p]) => [k, p.name])) })}
         />
       )}
@@ -173,7 +176,7 @@ export function PartModel({
         </div>
       )}
       {locateButton && robotId && modelKey && (
-        <button onClick={() => onView(view === "part" ? "locate" : "part")} className="btn absolute top-3 right-3 h-8 gap-1.5 bg-surface/95 text-xs shadow-sm">
+        <button onClick={() => onView(view === "part" ? "locate" : "part")} className="btn absolute top-3 left-3 z-10 h-8 gap-1.5 bg-surface/95 text-xs shadow-sm">
           <Icon name={view === "part" ? "locate" : "cube"} className="h-3.5 w-3.5" />
           {view === "part" ? "Locate in robot" : "Part only"}
         </button>

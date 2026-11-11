@@ -302,6 +302,7 @@ export function RobotViewer({
               onPick={onPick}
               names={nameByKey}
               panelLeft={bar && !systemId && groups.length > 0 ? 244 : undefined}
+              cube // the view cube and its menu, as on CAD's pages (Harel, 2026-11-11)
             />
           ) : (
             <>
@@ -385,7 +386,8 @@ export function RobotViewer({
           {message && (
             <div
               role="status"
-              className={`absolute top-3 right-3 max-w-72 animate-pop rounded-md border bg-surface/95 px-3 py-2 text-xs shadow-sm backdrop-blur ${
+              // Under the view cube when the model shows.
+              className={`absolute ${model ? "top-33" : "top-3"} right-3 max-w-72 animate-pop rounded-md border bg-surface/95 px-3 py-2 text-xs shadow-sm backdrop-blur ${
                 message.error ? "border-rose-400/60 text-rose-500" : "border-line text-fg-2"
               }`}
             >

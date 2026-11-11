@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { cubeMatrix, type CameraTools } from "./camera";
+import { cubeMatrix, type ViewName } from "./camera";
+import type { SectionView } from "./section";
+import type { SceneTools } from "./types";
 
 type V = [number, number, number];
 // The cube's faces in the scene's frame: outward normal, the face's right and up on screen, and
@@ -22,24 +24,43 @@ const dirOf = (f: (typeof FACES)[number], a: number, b: number): V => [0, 1, 2].
 const key = "press flex items-center justify-center rounded text-[10px] font-semibold text-fg-2 hover:bg-raised hover:text-fg active:scale-[0.98]";
 const box = "rounded-md border border-line bg-surface/95 shadow-sm backdrop-blur";
 
+// The cube menu's views, Onshape's order and keys.
+const MENU_VIEWS: { v: ViewName; label: string; key?: string }[] = [
+  { v: "front", label: "Front", key: "Shift+1" },
+  { v: "back", label: "Back", key: "Shift+2" },
+  { v: "left", label: "Left", key: "Shift+3" },
+  { v: "right", label: "Right", key: "Shift+4" },
+  { v: "top", label: "Top", key: "Shift+5" },
+  { v: "bottom", label: "Bottom", key: "Shift+6" },
+  { v: "iso", label: "Isometric", key: "Shift+7" },
+  { v: "dimetric", label: "Dimetric" },
+  { v: "trimetric", label: "Trimetric" },
+];
+
 // Onshape's view cube, top right of the 3D view (S1, plan/cad-3d-viewer.md): it turns with the
-// camera; a click on a face, edge or corner looks from there; the arrows turn the view 90°; its menu
-// switches orthographic / perspective and has Iso, Dimetric and Fit. On phones it's 64 px, no
-// arrows (a swipe turns the view). The `?` key opens the shortcuts sheet.
-export function ViewCube({ tools }: { tools: CameraTools }) {
+// camera; a click on a face, edge or corner looks from there; the arrows turn the view 90°. Its
+// menu is Onshape's camera and render options (Harel, 2026-11-11): the standard views with
+// Dimetric and Trimetric, Zoom to fit, Perspective / Orthographic, and the section (Section view,
+// Edit section view, Turn off section view, the same calls as Shift+X). On phones it's 64 px, no
+// arrows (a swipe turns the view), and the views sit in a grid so the menu fits. The `?` key opens
+// the shortcuts sheet.
+export function ViewCube({ tools }: { tools: SceneTools }) {
   const cube = useRef<HTMLDivElement>(null);
   const [hot, setHot] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
   const [help, setHelp] = useState(false);
   const [ortho, setOrtho] = useState(() => tools.projection() === "ortho");
+  const [section, setSection] = useState<SectionView | null>(null);
 
   useEffect(() => {
     const stop = tools.watch((q) => {
       if (cube.current) cube.current.style.transform = cubeMatrix(q);
     });
+    const unSection = tools.onSection(setSection);
     tools.onShortcuts(() => setHelp((h) => !h));
     return () => {
       stop();
+      unSection();
       tools.onShortcuts(null);
     };
   }, [tools]);
@@ -60,12 +81,18 @@ export function ViewCube({ tools }: { tools: CameraTools }) {
     };
   }, [menu, help]);
 
+  const run = (f: () => void) => () => {
+    setMenu(false);
+    f();
+  };
   const project = (o: boolean) => {
     tools.setProjection(o ? "ortho" : "perspective");
     setOrtho(o);
     setMenu(false);
   };
   const item = "press flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-fg-2 hover:bg-raised hover:text-fg pointer-coarse:min-h-9";
+  const hint = "ml-auto text-[10px] text-subtle pointer-coarse:hidden";
+  const line = "my-1 h-px bg-line";
 
   return (
     <>
@@ -124,45 +151,50 @@ export function ViewCube({ tools }: { tools: CameraTools }) {
           ▾
         </button>
         {menu && (
-          <div className={`absolute top-full right-0 mt-1 w-44 animate-pop p-1 ${box}`} role="menu">
-            <button className={item} role="menuitemradio" aria-checked={ortho} onClick={() => project(true)}>
-              <span className="w-3 text-accent-hover">{ortho ? "✓" : ""}</span>Orthographic
+          <div className={`absolute top-full right-0 mt-1 max-h-[min(36rem,75vh)] w-52 animate-pop overflow-y-auto p-1 ${box}`} role="menu" aria-label="Camera and render options">
+            <div className="grid grid-cols-1 pointer-coarse:grid-cols-3 pointer-coarse:gap-0.5">
+              {MENU_VIEWS.map(({ v, label, key: k }) => (
+                <button key={v} className={`${item} pointer-coarse:justify-center pointer-coarse:px-1`} role="menuitem" onClick={run(() => tools.view(v))}>
+                  <span className="w-3 pointer-coarse:hidden" />
+                  {label}
+                  {k && <kbd className={hint}>{k}</kbd>}
+                </button>
+              ))}
+            </div>
+            <button className={item} role="menuitem" onClick={run(() => tools.view("fit"))}>
+              <span className="w-3" />
+              Zoom to fit <kbd className={hint}>F</kbd>
             </button>
+            <div className={line} />
             <button className={item} role="menuitemradio" aria-checked={!ortho} onClick={() => project(false)}>
               <span className="w-3 text-accent-hover">{ortho ? "" : "✓"}</span>Perspective
             </button>
-            <div className="my-1 h-px bg-line" />
-            {(
-              [
-                ["iso", "Isometric"],
-                ["dimetric", "Dimetric"],
-                ["fit", "Fit"],
-              ] as const
-            ).map(([v, label]) => (
-              <button
-                key={v}
-                className={item}
-                role="menuitem"
-                onClick={() => {
-                  tools.view(v);
-                  setMenu(false);
-                }}
-              >
+            <button className={item} role="menuitemradio" aria-checked={ortho} onClick={() => project(true)}>
+              <span className="w-3 text-accent-hover">{ortho ? "✓" : ""}</span>Orthographic
+            </button>
+            <div className={line} />
+            {!section && (
+              <button className={item} role="menuitem" onClick={run(() => tools.sectionShow(true))}>
                 <span className="w-3" />
-                {label}
+                Section view <kbd className={hint}>Shift+X</kbd>
               </button>
-            ))}
-            <div className="my-1 h-px bg-line pointer-coarse:hidden" />
-            <button
-              className={`${item} pointer-coarse:hidden`}
-              role="menuitem"
-              onClick={() => {
-                setMenu(false);
-                setHelp(true);
-              }}
-            >
+            )}
+            {section && !section.open && (
+              <button className={item} role="menuitem" onClick={run(() => tools.sectionEdit())}>
+                <span className="w-3" />
+                Edit section view
+              </button>
+            )}
+            {section && (
+              <button className={item} role="menuitem" onClick={run(() => tools.sectionShow(false))}>
+                <span className="w-3" />
+                Turn off section view <kbd className={hint}>Shift+X</kbd>
+              </button>
+            )}
+            <div className={`${line} pointer-coarse:hidden`} />
+            <button className={`${item} pointer-coarse:hidden`} role="menuitem" onClick={run(() => setHelp(true))}>
               <span className="w-3" />
-              Keyboard shortcuts <kbd className="ml-auto text-subtle">?</kbd>
+              Keyboard shortcuts <kbd className={hint}>?</kbd>
             </button>
           </div>
         )}
@@ -181,6 +213,8 @@ const SHORTCUTS: [string, string][] = [
   ["← → ↑ ↓", "Turn the view 15° (with Shift: 90°)"],
   ["Y", "Hide the part under the mouse"],
   ["Shift+Y", "Bring a hidden part back"],
+  ["Shift+X", "Section view on / off"],
+  ["N", "View normal to the section, or to a picked flat face"],
   ["Space", "Drop the last pick"],
   ["Esc", "Clear the picks"],
   ["?", "This list"],

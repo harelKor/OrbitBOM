@@ -7,7 +7,7 @@ import type { Stage } from "./stage";
 import type { PartMesh } from "./types";
 
 // "side" is the old name of "right" (kept for callers that still use it).
-export type ViewName = "front" | "back" | "left" | "right" | "top" | "bottom" | "iso" | "dimetric" | "side";
+export type ViewName = "front" | "back" | "left" | "right" | "top" | "bottom" | "iso" | "dimetric" | "trimetric" | "side";
 // Directions from the model to the camera, in the scene's Y-up frame (Onshape's Z is up: the
 // model's front, -Y, is the scene's +Z).
 export const VIEWS: Record<ViewName, [number, number, number]> = {
@@ -19,7 +19,8 @@ export const VIEWS: Record<ViewName, [number, number, number]> = {
   top: [0, 1, 0],
   bottom: [0, -1, 0],
   iso: [1, 1, 1],
-  dimetric: [1, 1, 2],
+  dimetric: [1, 1, 2], // the two side axes foreshortened alike
+  trimetric: [1.5, 1, 2.5], // all three axes foreshortened differently (Onshape's cube menu has both)
 };
 
 export type Projection = "ortho" | "perspective";

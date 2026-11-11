@@ -212,6 +212,9 @@ export function createPicking(
     menu: (at: MenuAt) => void; // right-click without a drag, or a long press
     hovered?: (key: string | null) => void; // the part under the mouse changed (the Assembly page lights its sub-assembly)
     sectionTap?: (e: MouseEvent) => boolean; // a click, taken by the Section view panel while it is open (no pick then)
+    // While a section is on: whether a hit point (world space) is on what the cut keeps. Hits on
+    // the cut-away side are skipped, so hover, picks and measuring reach the surface that shows.
+    kept?: () => ((p: THREE.Vector3) => boolean) | null;
   },
 ): Picking {
   const { el, renderer, root, render } = stage;
@@ -300,7 +303,9 @@ export function createPicking(
   // `all`: every part along the ray (Select other); else the BVH stops at each mesh's nearest hit.
   const hitsAt = (e: { clientX: number; clientY: number }, all = false): Hit[] => {
     aim(e.clientX, e.clientY);
-    ray.firstHitOnly = !all;
+    const kept = on.kept?.() ?? null;
+    // With a section the nearest hit on a mesh may be cut away, so every hit is needed.
+    ray.firstHitOnly = !all && !kept;
     const out: Hit[] = [];
     for (const hit of ray.intersectObjects(
       meshes.filter((m) => m.mesh.visible).map((m) => m.mesh),
@@ -308,6 +313,7 @@ export function createPicking(
     )) {
       const m = meshes.findIndex((x) => x.mesh === hit.object);
       if (m < 0 || hit.instanceId === undefined || out.some((h) => h.m === m && h.i === hit.instanceId)) continue;
+      if (kept && !kept(hit.point)) continue;
       out.push({ m, i: hit.instanceId, tri: hit.faceIndex ?? 0, point: hit.point });
     }
     return out;

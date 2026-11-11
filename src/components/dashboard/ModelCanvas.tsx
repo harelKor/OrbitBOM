@@ -5,6 +5,8 @@ import { ContextMenu, type PageMenu } from "@/components/viewer/ContextMenu";
 import type { MeasureInfo } from "@/components/viewer/measureLayer";
 import type { Paint } from "@/components/viewer/paint";
 import type { MenuTarget } from "@/components/viewer/picking";
+import type { SectionView } from "@/components/viewer/section";
+import { SectionDialog } from "@/components/viewer/SectionDialog";
 import type { Gone, HiddenParts, SceneTools, ViewerMode, ViewerModel } from "@/components/viewer/types";
 import { ViewCube } from "@/components/viewer/ViewCube";
 import { createViewer } from "@/components/viewer/viewer";
@@ -43,7 +45,7 @@ export function ModelCanvas({
   menu,
   onIsolated,
   onHover,
-  cube: withCube = true,
+  cube: cubeProp,
 }: {
   model: ViewerModel;
   colors: Map<string, string>; // part key → status colour
@@ -62,8 +64,11 @@ export function ModelCanvas({
   menu?: PageMenu; // the page's own context menu items for the parts it's on
   onIsolated?: (keys: string[] | null) => void; // Isolate turned on / changed / ended (any way)
   onHover?: (key: string | null) => void; // the part under the mouse (mouse only), or null
-  cube?: boolean; // the view cube, on pages with the tools (false: small views, the Assembly slides)
+  // The view cube and its menu (with the section): by default on pages with the tools; part
+  // windows and the robot page ask for it (Harel, 2026-11-11). False: small views, the slides.
+  cube?: boolean;
 }) {
+  const withCube = cubeProp ?? !!onTools;
   const host = useRef<HTMLDivElement>(null);
   // Recolours the parts and frames the located one; true when it is in the model.
   const scene = useRef<{
@@ -111,7 +116,11 @@ export function ModelCanvas({
     locatedRef.current = onLocated;
   }, [onLocated]);
   const [error, setError] = useState<string | null>(null);
-  const [cube, setCube] = useState<SceneTools | null>(null); // the view cube, on pages with the tools (CAD)
+  const [cube, setCube] = useState<SceneTools | null>(null); // the view cube's tools, once loaded
+  // The section lives in the viewer (its 3D handle, Shift+X and the menus change it); its panel
+  // shows here, on every view with the cube, so the cube menu's Section view works everywhere.
+  const [section, setSection] = useState<SectionView | null>(null);
+  useEffect(() => (cube && withCube ? cube.onSection(setSection) : undefined), [cube, withCube]);
   const hiddenAtLoad = useRef(hidden);
   useEffect(() => {
     hiddenAtLoad.current = hidden;
@@ -129,7 +138,7 @@ export function ModelCanvas({
       progress: (done, total) => setProgress(done < total ? { done, total } : null),
       ready: (tools) => {
         setLoaded(true);
-        if (toolsRef.current) setCube(tools);
+        setCube(tools);
         toolsRef.current?.(tools);
       },
       located: (found) => locatedRef.current(found),
@@ -147,6 +156,7 @@ export function ModelCanvas({
       setMenuAt(null);
       setLoaded(false);
       setCube(null);
+      setSection(null);
     };
   }, [model]);
 
@@ -191,6 +201,13 @@ export function ModelCanvas({
       )}
       {menuAt && !progress && <ContextMenu {...menuAt} names={names} page={menu} onClose={closeMenu} />}
       {cube && withCube && <ViewCube tools={cube} />}
+      {cube && withCube && section?.open && (
+        // Past the page's own left panels (panelLeft); on narrow screens under the view cube, which
+        // it would otherwise cover (R1's report).
+        <div className="pointer-events-none absolute inset-0 z-30 max-sm:top-29 [&>*]:pointer-events-auto" style={panelLeft !== undefined ? { left: panelLeft } : undefined}>
+          <SectionDialog section={section} tools={cube} />
+        </div>
+      )}
       {error && <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">{error}</div>}
       {gone.length > 0 && !onHidden && (
         <div

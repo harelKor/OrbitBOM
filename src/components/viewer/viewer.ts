@@ -1,13 +1,14 @@
 // Puts the viewer's modules together for ModelCanvas. Each module is created with what it needs
 // (the stage, the meshes array that load.ts fills, callbacks) and returns its tools and a dispose;
 // this file only wires them, so a session changing one module rarely needs to touch it.
-import type * as THREE from "three";
+import * as THREE from "three";
 import { createCamera } from "./camera";
 import { loadModel, partTools, placementsBox, refitNeeded } from "./load";
 import { createMeasureLayer, type MeasureInfo, type MeasureLayer } from "./measureLayer";
 import { createLooks, createPaint, type Paint } from "./paint";
 import { createMarks, createPicking, createSelection, createTopo, type MenuTarget, type Picking } from "./picking";
 import { createSection } from "./section";
+import { removedBy } from "./sectionMath";
 import { createStage, stageTools } from "./stage";
 import type { Gone, PartMesh, SceneTools, ViewerModel } from "./types";
 import { createVisibility } from "./visibility";
@@ -72,6 +73,13 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
     names: host.names,
     hovered: (key) => host.hover?.(key),
     sectionTap: (e) => section.tap(e),
+    kept: () => {
+      const cuts = section.tools.sectionNow()?.planes;
+      if (!cuts?.length) return null;
+      const toModel = stage.root.matrixWorld.clone().invert();
+      const q = new THREE.Vector3();
+      return (p) => !cuts.some((c) => removedBy(c, q.copy(p).applyMatrix4(toModel)));
+    },
     menu: (at) => {
       // On a picked part, the menu acts on every picked part (Onshape acts on the selection).
       const picked = measure?.parts() ?? [];

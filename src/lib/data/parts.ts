@@ -9,6 +9,7 @@ import { cotsCategoryOf } from "@/lib/cots";
 import { categoryOf, type InvCategory } from "@/lib/inventory/categories";
 import { partKey } from "@/lib/model/assembly";
 import { thumbKey } from "@/lib/onshape/thumbnails";
+import { onshapeUrl, parseOnshapeUrl, type WVM } from "@/lib/onshape/url";
 import { isOnshapeDrawingKey } from "@/lib/parts/files";
 import { computeStatus } from "@/lib/status";
 import { versionLabel } from "@/lib/versions/label";
@@ -251,14 +252,40 @@ export async function countCotsStatuses(): Promise<Map<string, number>> {
 
 // The robot's BOM parts by their key in its 3D model, for a 3D view that has no cards to read
 // them from (a part window's Locate in robot): a click there names the part and opens it.
-export type ModelPart = { key: string; id: string; systemId: string; name: string };
+// `onshape`: the part's Part Studio in Onshape, a plain link for the 3D menu's "Open in Onshape"
+// (no API call), on the host of its system's assembly.
+export type ModelPart = { key: string; id: string; systemId: string; name: string; onshape?: string };
 export async function modelPartsOfRobot(robotId: string): Promise<ModelPart[]> {
   const rows = await db
-    .select({ id: parts.id, systemId: parts.systemId, did: parts.sourceDid, eid: parts.sourceEid, pid: parts.onshapePartId, displayName: parts.displayName, onshapeName: parts.onshapeName })
+    .select({
+      id: parts.id,
+      systemId: parts.systemId,
+      did: parts.sourceDid,
+      eid: parts.sourceEid,
+      pid: parts.onshapePartId,
+      wvm: parts.sourceWvm,
+      wid: parts.sourceWid,
+      assemblyUrl: systems.assemblyUrl,
+      displayName: parts.displayName,
+      onshapeName: parts.onshapeName,
+    })
     .from(parts)
     .innerJoin(systems, eq(systems.id, parts.systemId))
     .where(eq(systems.robotId, robotId));
-  return rows.flatMap((r) =>
-    r.did && r.eid && r.pid && r.systemId ? [{ key: partKey(r.did, r.eid, r.pid), id: r.id, systemId: r.systemId, name: r.displayName ?? r.onshapeName ?? "Unnamed part" }] : [],
-  );
+  return rows.flatMap((r) => {
+    if (!r.did || !r.eid || !r.pid || !r.systemId) return [];
+    // Onshape's BOM gives "w" / "v" / "m"; the long names are taken too, to be safe.
+    const t = r.wvm?.toLowerCase()[0];
+    const wvm = t === "w" || t === "v" || t === "m" ? (t as WVM) : null;
+    const baseUrl = (r.assemblyUrl && parseOnshapeUrl(r.assemblyUrl)?.baseUrl) || "https://cad.onshape.com";
+    return [
+      {
+        key: partKey(r.did, r.eid, r.pid),
+        id: r.id,
+        systemId: r.systemId,
+        name: r.displayName ?? r.onshapeName ?? "Unnamed part",
+        ...(wvm && r.wid && { onshape: onshapeUrl({ baseUrl, did: r.did, wvm, wvmid: r.wid, eid: r.eid }) }),
+      },
+    ];
+  });
 }

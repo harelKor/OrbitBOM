@@ -29,13 +29,15 @@ export async function partModel(partId: string, member: { id: string; onshapeCon
   const path = part && studioPath(part);
   if (!row || !part || !path) return null;
   const key = partKey(part.sourceDid!, part.sourceEid!, part.onshapePartId!);
-  const model = async (file: string) => ({ studios: [await imageUrl(file)], placements: [{ s: 0, k: key, t: IDENTITY }] });
+  // `keys`: the file's R2 key when it names one revision, so the browser keeps it and the next
+  // opening downloads nothing (src/components/viewer/meshCache.ts); "latest" files can change.
+  const model = async (file: string, kept: boolean) => ({ studios: [await imageUrl(file)], keys: [kept ? file : null], placements: [{ s: 0, k: key, t: IDENTITY }] });
 
   const built = await builtStudioFor(row.robotId, key);
-  if (built) return model(built);
+  if (built) return model(built, true);
 
   const file = partModelFile(part);
-  if (part.thumbnailRev && (await objectExists(file))) return model(file);
+  if (part.thumbnailRev && (await objectExists(file))) return model(file, true);
 
   const ref = row.assemblyUrl ? parseOnshapeUrl(row.assemblyUrl) : null;
   if (!ref) return null;
@@ -46,7 +48,7 @@ export async function partModel(partId: string, member: { id: string; onshapeCon
   );
   if (!meshes.length) throw new OnshapeError("Onshape sent no shape for this part.");
   await putObject(file, gzipSync(encodeMeshes(meshes)), "application/gzip");
-  return model(file);
+  return model(file, !!part.thumbnailRev);
 }
 
 // A part's own mesh file, named by its thumbnail revision (storage clean-up keeps only this one).

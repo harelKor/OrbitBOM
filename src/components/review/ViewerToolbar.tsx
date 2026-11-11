@@ -1,23 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { HiddenParts, SceneTools, ViewName } from "@/components/dashboard/ModelCanvas";
-import type { SectionView } from "@/components/viewer/section";
-import { SectionDialog } from "@/components/viewer/SectionDialog";
+import { useState } from "react";
+import type { HiddenParts, SceneTools } from "@/components/dashboard/ModelCanvas";
 
-// The other views moved to the view cube, top right (S1, plan/cad-3d-viewer.md); Fit stays here,
-// a big target on phones.
-const VIEWS: { v: ViewName | "fit"; label: string }[] = [{ v: "fit", label: "Fit" }];
 const tool = "press inline-flex h-8 items-center justify-center rounded-md px-2 text-xs font-semibold text-fg-2 hover:bg-raised hover:text-fg active:scale-[0.98] pointer-coarse:h-9 pointer-coarse:min-w-9";
 const on = "bg-accent/15 text-accent-hover";
 const box = "rounded-md border border-line bg-surface/95 shadow-sm backdrop-blur";
 
 
-// CAD's tools on the 3D view: standard views and fit, and the section (its panel, SectionDialog, at
-// the top left of the view while it is open). (Picking points, edges
-// and faces to measure is always on: ReviewScreen shows the results.) Wide screens
-// show them at the bottom left; phones fold them into a Tools button on the left, under Versions
-// (Harel, 2026-11-09). Parts hidden with Y or Hide are listed below, folded behind a "Hidden" button.
+// CAD's tools on the 3D view. The views, projection and section are in the view cube's menu, like
+// Onshape (Harel, 2026-11-11); what stays here is the colours toggle, Fit on phones only (a big
+// target there; F and the cube menu on a computer) and the hidden parts. (Picking points, edges and
+// faces to measure is always on: ReviewScreen shows the results.) Wide screens show them at the
+// bottom left; phones fold them into a Tools button on the left, under Versions (Harel,
+// 2026-11-09). Parts hidden with Y or Hide are listed below, folded behind a "Hidden" button.
 export function ViewerToolbar({
   tools,
   children,
@@ -27,33 +23,19 @@ export function ViewerToolbar({
   children?: React.ReactNode; // the colour toggle, above the tools
   hidden?: HiddenParts | null;
 }) {
-  const [section, setSection] = useState<SectionView | null>(null);
   const [open, setOpen] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
-
-  // The section lives in the viewer (its 3D handle, Shift+X and the menus change it too); its
-  // panel shows it and edits it.
-  useEffect(() => tools?.onSection(setSection), [tools]);
-  const toggleSection = () => tools?.sectionShow(!section);
   const folded = open ? "" : "max-lg:hidden";
   return (
-    <>
-    {section?.open && tools && <SectionDialog section={section} tools={tools} />}
     <div className="absolute left-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-col items-start gap-2 max-lg:top-16 max-lg:max-h-[calc(100%-9rem)] max-lg:overflow-y-auto lg:bottom-3" onClick={(e) => e.stopPropagation()}>
       <button className={`${box} ${tool} h-10 px-3 text-sm lg:hidden ${open ? on : ""}`} aria-expanded={open} onClick={() => setOpen(!open)}>
         Tools {open ? "▴" : "▾"}
       </button>
       <div className={`flex flex-col items-start gap-2 ${folded}`}>{children}</div>
       {tools && (
-        <div className={`flex flex-wrap items-center gap-0.5 p-1 ${box} ${folded}`}>
-          {VIEWS.map(({ v, label }) => (
-            <button key={v} className={tool} onClick={() => tools.view(v)}>
-              {label}
-            </button>
-          ))}
-          <span className="mx-0.5 h-5 w-px bg-line" />
-          <button className={`${tool} ${section ? on : ""}`} aria-pressed={!!section} onClick={toggleSection}>
-            Section
+        <div className={`flex items-center p-1 lg:hidden ${box} ${folded}`}>
+          <button className={tool} onClick={() => tools.view("fit")}>
+            Fit
           </button>
         </div>
       )}
@@ -81,6 +63,5 @@ export function ViewerToolbar({
         </div>
       )}
     </div>
-    </>
   );
 }

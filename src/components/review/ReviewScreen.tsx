@@ -14,7 +14,7 @@ import type { ReviewComment } from "@/lib/data/cadReview";
 
 const ModelCanvas = dynamic(() => import("@/components/dashboard/ModelCanvas").then((m) => m.ModelCanvas), { ssr: false });
 
-export type ReviewPart = { id: string; key: string; name: string; systemId: string | null };
+export type ReviewPart = { id: string; key: string; name: string; systemId: string | null; onshape?: string };
 type Colors = "cad" | "compare";
 
 // Compare: what the BOM's current version changed (free: the version's own change list).
@@ -170,6 +170,8 @@ export function ReviewScreen({
     const system = onRobot && systems.size === 1 ? [...systems][0] : null;
     return [
       ...(one ? [{ label: "Open part", run: () => void openPartWindow(one.id) }] : []),
+      // Onshape's own "Open" on an assembly part opens its Part Studio: a plain link, no API call.
+      ...(one?.onshape ? [{ label: "Open in Onshape", run: () => void window.open(one.onshape, "_blank", "noopener") }] : []),
       // The robot's page scoped to that system (?system=), as its Isolate does.
       ...(system ? [{ label: "Open system", run: () => (onIsolate ? onIsolate(system) : router.push(`/robots/${robotId}/cad-review?system=${system}`)) }] : []),
       ...(keys.length === 1 ? [{ label: "Add comment here", run: () => setAdding({ key: keys[0], name: one?.name ?? null, systemId: one?.systemId ?? null }) }] : []),
