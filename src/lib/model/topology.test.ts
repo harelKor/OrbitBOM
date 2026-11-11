@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { measure, placeEdge, placeFace, placePoint } from "./measure";
+import { formatRow, measure, placeEdge, placeFace, placePoint } from "./measure";
 import { topology, type V3 } from "./topology";
 
 // Meshes as Onshape exports them: each face with its own vertices.
@@ -64,9 +64,10 @@ describe("measuring like Onshape", () => {
     const { pos, idx } = cylinder(0.004, 0.02);
     const t = topology(pos, idx);
     const side = t.faces.find((f) => f.kind === "cylinder")!;
-    expect(measure([placeFace(side, pos, idx, I, "Pin")]).rows[0]).toEqual({ label: "Diameter", value: "8.00 mm" });
+    expect(measure([placeFace(side, pos, idx, I, "Pin")]).rows[0]).toMatchObject({ label: "Diameter", value: "8.00 mm" });
+    expect(formatRow(measure([placeFace(side, pos, idx, I, "Pin")]).rows[0], "in")).toBe("0.315 in");
     const ring = t.edges.find((e) => e.kind === "circle")!;
-    expect(measure([placeEdge(ring, I, "Pin")]).rows[0]).toEqual({ label: "Diameter", value: "8.00 mm" });
+    expect(measure([placeEdge(ring, I, "Pin")]).rows[0]).toMatchObject({ label: "Diameter", value: "8.00 mm" });
     expect(measure([placePoint([0.01, 0.02, 0.003], moved(0.1, 0, 0), "Pin")]).rows.map((r) => r.value)).toEqual(["110.00 mm", "20.00 mm", "3.00 mm"]);
     // Two points have one distance: no maximum.
     expect(measure([placePoint([0, 0, 0], I, "A"), placePoint([0.003, 0.004, 0], I, "B")]).rows.map((r) => r.label)).not.toContain("Maximum distance");

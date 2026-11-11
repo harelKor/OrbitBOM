@@ -32,9 +32,19 @@ export function placePoint(p: V3, m: M4, name: string): Picked {
   return { type: "point", p: at(m, p), name };
 }
 
-export type Row = { label: string; value: string };
-const mm = (m: number) => `${(m * 1000).toFixed(2)} mm`;
-const mm2 = (a: number) => `${(a * 1e6).toFixed(2)} mm²`;
+// A row keeps its number (metres, or m² when `dim` is 2) so the page can show it in mm or inches
+// (S9, Onshape's units setting); `value` is the mm text, `approx` the "≈" of a tessellated value.
+export type Row = { label: string; value: string; n?: number; dim?: 1 | 2; approx?: boolean };
+export type Units = "mm" | "in";
+const IN = 0.0254;
+export function formatLength(m: number, units: Units = "mm", dim: 1 | 2 = 1) {
+  if (units === "in") return dim === 2 ? `${(m / (IN * IN)).toFixed(3)} in²` : `${(m / IN).toFixed(3)} in`;
+  return dim === 2 ? `${(m * 1e6).toFixed(2)} mm²` : `${(m * 1000).toFixed(2)} mm`;
+}
+// A row's value in the chosen units (rows without a number, like the angle, as they are).
+export const formatRow = (r: Row, units: Units) => (r.n === undefined ? r.value : `${r.approx ? "≈ " : ""}${formatLength(r.n, units, r.dim)}`);
+const lenRow = (label: string, m: number, approx = false): Row => ({ label, value: `${approx ? "≈ " : ""}${formatLength(m)}`, n: m, dim: 1, approx });
+const areaRow = (label: string, a: number, approx = false): Row => ({ label, value: `${approx ? "≈ " : ""}${formatLength(a, "mm", 2)}`, n: a, dim: 2, approx });
 const deg = (r: number) => `${((r * 180) / Math.PI).toFixed(2)}°`;
 
 // ---------- Closest points ----------
@@ -161,18 +171,18 @@ const centreOf = (x: Picked): { c: V3; axis?: V3 } | null =>
   x.type === "face" && x.face.kind === "cylinder" ? { c: x.face.point!, axis: x.face.axis } : x.type === "edge" && x.edge.kind === "circle" ? { c: x.edge.center!, axis: x.edge.normal } : null;
 
 export function describe(x: Picked): Row[] {
-  if (x.type === "point") return [{ label: "X", value: mm(x.p[0]) }, { label: "Y", value: mm(x.p[1]) }, { label: "Z", value: mm(x.p[2]) }];
+  if (x.type === "point") return [lenRow("X", x.p[0]), lenRow("Y", x.p[1]), lenRow("Z", x.p[2])];
   if (x.type === "edge") {
     const e = x.edge;
     if (e.kind === "circle") {
-      const rows = [{ label: "Diameter", value: mm(e.radius! * 2) }, { label: "Radius", value: mm(e.radius!) }];
-      return e.closed ? rows : [...rows, { label: "Arc length", value: mm(e.length) }];
+      const rows = [lenRow("Diameter", e.radius! * 2), lenRow("Radius", e.radius!)];
+      return e.closed ? rows : [...rows, lenRow("Arc length", e.length)];
     }
-    return [{ label: "Length", value: `${e.kind === "line" ? "" : "≈ "}${mm(e.length)}` }];
+    return [lenRow("Length", e.length, e.kind !== "line")];
   }
   const f = x.face;
-  if (f.kind === "cylinder") return [{ label: "Diameter", value: mm(f.radius! * 2) }, { label: "Radius", value: mm(f.radius!) }, { label: "Area", value: `≈ ${mm2(f.area)}` }];
-  return [{ label: "Area", value: `${f.kind === "plane" ? "" : "≈ "}${mm2(f.area)}` }];
+  if (f.kind === "cylinder") return [lenRow("Diameter", f.radius! * 2), lenRow("Radius", f.radius!), areaRow("Area", f.area, true)];
+  return [areaRow("Area", f.area, f.kind !== "plane")];
 }
 
 export function measure(picks: Picked[]): { rows: Row[]; line: [V3, V3] | null } {
@@ -182,25 +192,25 @@ export function measure(picks: Picked[]): { rows: Row[]; line: [V3, V3] | null }
   const rows: Row[] = [];
   const c = closest(x, y);
   const exact = (x.type === "point" || (x.type === "face" && x.face.kind === "plane")) && (y.type === "point" || (y.type === "face" && y.face.kind === "plane"));
-  rows.push({ label: "Minimum distance", value: `${exact ? "" : "≈ "}${mm(c.d)}` });
-  rows.push({ label: "ΔX", value: mm(Math.abs(c.b[0] - c.a[0])) }, { label: "ΔY", value: mm(Math.abs(c.b[1] - c.a[1])) }, { label: "ΔZ", value: mm(Math.abs(c.b[2] - c.a[2])) });
+  rows.push(lenRow("Minimum distance", c.d, !exact));
+  rows.push(lenRow("ΔX", Math.abs(c.b[0] - c.a[0])), lenRow("ΔY", Math.abs(c.b[1] - c.a[1])), lenRow("ΔZ", Math.abs(c.b[2] - c.a[2])));
   // Maximum distance, where it differs from the minimum (two points have one distance). Exact on
   // corners, flat faces and straight edges; round ones are their tessellation (≈).
   if (x.type !== "point" || y.type !== "point") {
     const f = farthest(x, y);
     const straight = (p: Picked) => p.type === "point" || (p.type === "face" && p.face.kind === "plane") || (p.type === "edge" && p.edge.kind === "line");
-    rows.push({ label: "Maximum distance", value: `${straight(x) && straight(y) && !f.thinned ? "" : "≈ "}${mm(f.d)}` });
+    rows.push(lenRow("Maximum distance", f.d, !(straight(x) && straight(y) && !f.thinned)));
   }
   // Parallel flat faces: the distance between their planes, exactly.
   if (x.type === "face" && y.type === "face" && x.face.kind === "plane" && y.face.kind === "plane" && Math.abs(dot(x.face.normal!, y.face.normal!)) > 0.99999) {
-    rows.splice(1, 0, { label: "Normal distance", value: mm(Math.abs(dot(x.face.normal!, [y.face.point![0] - x.face.point![0], y.face.point![1] - x.face.point![1], y.face.point![2] - x.face.point![2]]))) });
+    rows.splice(1, 0, lenRow("Normal distance", Math.abs(dot(x.face.normal!, [y.face.point![0] - x.face.point![0], y.face.point![1] - x.face.point![1], y.face.point![2] - x.face.point![2]]))));
   }
   // Two holes, shafts or round edges: between their centres (their axes when parallel).
   const cx = centreOf(x), cy = centreOf(y);
   if (cx && cy) {
     let d = dist(cx.c, cy.c);
     if (cx.axis && cy.axis && Math.abs(dot(cx.axis, cy.axis)) > 0.99999 && (x.type === "face" || y.type === "face")) d = len(cross([cy.c[0] - cx.c[0], cy.c[1] - cx.c[1], cy.c[2] - cx.c[2]], cx.axis));
-    rows.splice(1, 0, { label: "Centre distance", value: mm(d) });
+    rows.splice(1, 0, lenRow("Centre distance", d));
   }
   // The angle between their directions (normals, axes, lines).
   const dx = dirOf(x), dy = dirOf(y);

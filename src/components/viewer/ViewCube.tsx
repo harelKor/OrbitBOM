@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { cubeMatrix, type ViewName } from "./camera";
 import type { SectionView } from "./section";
+import { DISPLAY_MODES, type DisplayMode } from "./paint";
+import { UnitsSwitch } from "./units";
 import type { SceneTools } from "./types";
 
 type V = [number, number, number];
@@ -51,6 +53,7 @@ export function ViewCube({ tools }: { tools: SceneTools }) {
   const [help, setHelp] = useState(false);
   const [ortho, setOrtho] = useState(() => tools.projection() === "ortho");
   const [section, setSection] = useState<SectionView | null>(null);
+  const [display, setDisplay] = useState<DisplayMode>(() => tools.display());
 
   useEffect(() => {
     const stop = tools.watch((q) => {
@@ -172,6 +175,30 @@ export function ViewCube({ tools }: { tools: SceneTools }) {
             <button className={item} role="menuitemradio" aria-checked={ortho} onClick={() => project(true)}>
               <span className="w-3 text-accent-hover">{ortho ? "✓" : ""}</span>Orthographic
             </button>
+            {/* Render modes and units (S9): Onshape's names and order. */}
+            <div className={line} />
+            <div className="grid grid-cols-1">
+              {DISPLAY_MODES.map(({ v, label }) => (
+                <button
+                  key={v}
+                  className={item}
+                  role="menuitemradio"
+                  aria-checked={display === v}
+                  onClick={run(() => {
+                    tools.setDisplay(v);
+                    setDisplay(v);
+                  })}
+                >
+                  <span className="w-3 shrink-0 text-accent-hover">{display === v ? "✓" : ""}</span>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 px-2 py-1 text-xs text-fg-2">
+              <span className="w-3" />
+              Units
+              <UnitsSwitch className="ml-auto" />
+            </div>
             <div className={line} />
             {!section && (
               <button className={item} role="menuitem" onClick={run(() => tools.sectionShow(true))}>

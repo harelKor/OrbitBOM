@@ -55,6 +55,9 @@ export type StageTools = {
 export function createStage(el: HTMLElement): Stage {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, stencil: true }); // stencil: section caps (S4)
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  // Onshape's soft background (S9): near white at the top to a light blue-grey at the bottom. Made
+  // from the page's own colours, so the dark mode (and the greyscale slider) keeps a dark one.
+  renderer.domElement.style.background = "linear-gradient(to bottom, color-mix(in srgb, var(--color-surface) 95%, #8796ad), color-mix(in srgb, var(--color-ink) 80%, #8796ad))";
   el.appendChild(renderer.domElement);
   const world = new THREE.Scene();
   // Lit like Onshape: mostly from the viewer (a light riding on the camera, a little above and

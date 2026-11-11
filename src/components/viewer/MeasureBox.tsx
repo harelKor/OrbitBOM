@@ -1,13 +1,17 @@
 "use client";
 
 import { toast } from "@/components/ui/Toaster";
+import { formatRow } from "@/lib/model/measure";
 import type { MeasureInfo } from "./measureLayer";
+import { UnitsSwitch, useUnits } from "./units";
 
 // Onshape's measure box, bottom right of the 3D view (bigger since 2026-11-11, Harel): what's
 // picked, then its size, or between two picks the minimum and maximum distance, ΔX / ΔY / ΔZ and
 // the angle (src/lib/model/measure.ts). Each value has a copy button, like Onshape's. Shared by the
 // CAD page and the /dev/viewer sandbox; `className` places it (above + Add comment on a phone).
+// Lengths in mm or inches (the switch at the top, kept per browser, like Onshape's units; S9).
 export function MeasureBox({ measured, className = "bottom-3" }: { measured: MeasureInfo; className?: string }) {
+  const units = useUnits();
   if (!measured.picks.length) return null;
   // The number as shown, without the "≈" that marks a value read off the tessellation.
   const copy = (label: string, value: string) =>
@@ -17,6 +21,7 @@ export function MeasureBox({ measured, className = "bottom-3" }: { measured: Mea
     );
   return (
     <div className={`absolute right-3 z-20 w-80 max-w-[calc(100%-1.5rem)] animate-pop rounded-md border border-line bg-surface/95 p-3 text-sm shadow-md backdrop-blur ${className}`}>
+      <UnitsSwitch className="float-right -mt-1 -mr-1 ml-2" />
       <ul className="max-h-36 space-y-0.5 overflow-y-auto">
         {measured.picks.map((p, k) => (
           <li key={k} className="flex items-center gap-1.5 text-fg-2">
@@ -27,7 +32,7 @@ export function MeasureBox({ measured, className = "bottom-3" }: { measured: Mea
       </ul>
       <table className="mt-1.5 w-full tabular-nums">
         <tbody>
-          {measured.rows.map((r) => (
+          {measured.rows.map((r) => ({ ...r, value: formatRow(r, units) })).map((r) => (
             <tr key={r.label} className="border-t border-line">
               <td className="py-1.5 pr-2 text-muted">{r.label}</td>
               <td className="py-1.5 text-right text-lg font-bold whitespace-nowrap text-fg">{r.value}</td>

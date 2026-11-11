@@ -3,6 +3,8 @@
 import { useState } from "react";
 import type { SceneTools } from "./types";
 import { isCylinder, type Cut, type DefaultPlane, type SectionView } from "./section";
+import { useUnits } from "./units";
+import type { Units } from "@/lib/model/measure";
 
 const tool = "press inline-flex h-8 items-center justify-center rounded-md px-2 text-xs font-semibold text-fg-2 hover:bg-raised hover:text-fg active:scale-[0.98] pointer-coarse:h-9 pointer-coarse:min-w-9";
 const on = "bg-accent/15 text-accent-hover";
@@ -19,6 +21,7 @@ const DEFAULTS: { v: DefaultPlane; label: string }[] = [
 // section off. The row with the accent bar carries
 // the 3D handle; a touch on a row moves it there. On phones each row also has a slider.
 export function SectionDialog({ section, tools }: { section: SectionView; tools: SceneTools }) {
+  const units = useUnits();
   const picked = section.planes.filter((c) => isCylinder(c) || c.from === "face").length;
   const set = (planes: Cut[]) => tools.section({ planes, open: section.open });
   const edit = (i: number, change: Partial<Cut>) => set(section.planes.map((p, k) => (k === i ? ({ ...p, ...change } as Cut) : p)));
@@ -62,7 +65,7 @@ export function SectionDialog({ section, tools }: { section: SectionView; tools:
           const plane = isCylinder(p) ? null : p;
           const value = cyl ? Math.round((cyl.radius + cyl.offset) * 10) / 10 : p.offset;
           const tilted = !!plane && (plane.tilt[0] !== 0 || plane.tilt[1] !== 0);
-          const name = cyl ? `Cylinder on a ⌀${Math.round(cyl.radius * 20) / 10} mm face` : plane?.from === "face" ? "Plane on a face" : `${(plane?.from[0] ?? "").toUpperCase()}${plane?.from.slice(1)} plane`;
+          const name = cyl ? `Cylinder on a ⌀${shown(cyl.radius * 2, units)} ${units} face` : plane?.from === "face" ? "Plane on a face" : `${(plane?.from[0] ?? "").toUpperCase()}${plane?.from.slice(1)} plane`;
           return (
             <div
               key={i}
@@ -73,7 +76,7 @@ export function SectionDialog({ section, tools }: { section: SectionView; tools:
                 <span className="min-w-0 flex-1 truncate text-fg-2" title={name}>
                   {name}
                 </span>
-                <NumberField value={value} label={cyl ? "Section radius (mm)" : "Section depth (mm)"} prefix={cyl ? "R" : undefined} onChange={(n) => edit(i, { offset: cyl ? Math.max(0.1, n) - cyl.radius : n })} />
+                <NumberField value={value} units={units} label={cyl ? "Section radius" : "Section depth"} prefix={cyl ? "R" : undefined} onChange={(n) => edit(i, { offset: cyl ? Math.max(0.1, n) - cyl.radius : n })} />
                 <button className={`${tool} ${p.flip ? on : ""}`} aria-pressed={p.flip} onClick={() => edit(i, { flip: !p.flip })} title="Keep the other side">
                   Flip
                 </button>
@@ -109,8 +112,13 @@ export function SectionDialog({ section, tools }: { section: SectionView; tools:
   );
 }
 
-// A number in mm, typed: kept as text while typing ("-", "1.") and sent when it reads as a number.
-function NumberField({ value, onChange, label, prefix }: { value: number; onChange: (v: number) => void; label: string; prefix?: string }) {
+// A length in mm shown in the view's units (inches: 3 decimals, like Onshape's), rounded.
+const shown = (mm: number, units: Units) => (units === "in" ? Math.round((mm / 25.4) * 1000) / 1000 : Math.round(mm * 10) / 10);
+
+// A length typed in the view's units, sent in mm: kept as text while typing ("-", "1.") and sent
+// when it reads as a number.
+function NumberField({ value: mm, units, onChange, label, prefix }: { value: number; units: Units; onChange: (mm: number) => void; label: string; prefix?: string }) {
+  const value = units === "in" ? shown(mm, units) : mm;
   const [text, setText] = useState(String(value));
   const [focused, setFocused] = useState(false);
   return (
@@ -128,12 +136,12 @@ function NumberField({ value, onChange, label, prefix }: { value: number; onChan
         onChange={(e) => {
           setText(e.target.value);
           const n = Number(e.target.value.replace(",", "."));
-          if (e.target.value.trim() && Number.isFinite(n)) onChange(n);
+          if (e.target.value.trim() && Number.isFinite(n)) onChange(units === "in" ? n * 25.4 : n);
         }}
-        aria-label={label}
+        aria-label={`${label} (${units})`}
         className="h-8 w-16 rounded border border-line bg-surface px-1.5 text-right text-xs text-fg tabular-nums pointer-coarse:h-9"
       />
-      mm
+      {units}
     </label>
   );
 }

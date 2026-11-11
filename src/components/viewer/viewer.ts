@@ -114,6 +114,13 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
     ...visibility.tools,
     ...partTools(meshes),
     ...stageTools(stage),
+    // Onshape's render modes (S9): paint again, then put Make transparent's parts back.
+    display: painter.display,
+    setDisplay: (m) => {
+      painter.setDisplay(m);
+      visibility.repaint();
+      stage.render();
+    },
   };
 
   // Drawn as the files arrive: the first Fit comes from where the parts sit (a subsystem page
@@ -181,8 +188,13 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
   // Phones draw at a lower pixel ratio while the view moves, sharp again when it stops.
   const sharp = stage.renderer.getPixelRatio();
   if (sharp > 1 && window.matchMedia("(pointer: coarse)").matches) {
-    camera.controls.addEventListener("start", () => stage.renderer.setPixelRatio(1));
+    // …and without the silhouettes (S9), one more draw of every part.
+    camera.controls.addEventListener("start", () => {
+      stage.renderer.setPixelRatio(1);
+      painter.outlines(false);
+    });
     camera.controls.addEventListener("end", () => {
+      painter.outlines(true);
       stage.renderer.setPixelRatio(sharp);
       stage.render();
     });
