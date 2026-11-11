@@ -111,10 +111,6 @@ export function ReviewScreen({
   useEffect(() => {
     tools?.measure("any");
   }, [tools]);
-  const clearPicks = () => {
-    tools?.measure(null);
-    tools?.measure("any");
-  };
 
   useEffect(() => {
     if (!builtAt) return;
@@ -165,11 +161,6 @@ export function ReviewScreen({
     setSelected(key);
   };
   const pickedPart = selected ? partByKey.get(selected) : undefined;
-  // On the robot's page: the one system all picked parts are in (Open system), else none.
-  const pickedSystems = new Set(measured.parts.map((k) => partByKey.get(k)?.systemId ?? null));
-  const oneSystem = onRobot && pickedSystems.size === 1 ? [...pickedSystems][0] : null;
-  // Every pick on one BOM part: Open part opens its BOM window.
-  const onePart = measured.parts.length === 1 ? partByKey.get(measured.parts[0]) : undefined;
   const picked = selected ? { key: selected, name: pickedPart?.name ?? null, systemId: pickedPart?.systemId ?? null } : null;
   // The 3D view's right-click / long-press menu: Open part, Open system (robot page), Add comment.
   const router = useRouter();
@@ -269,53 +260,10 @@ export function ReviewScreen({
           </button>
         )}
 
-        {/* The picked parts, stacked (a pick on another part adds it): Isolate shows only them,
-            Hide hides them; Open part when they're all on one part, and on the robot's page Open
-            system when they're all in one system (Harel, 2026-11-09). The page's + Add comment ties a comment to the
-            newest one. */}
-        {measured.parts.length > 0 && (
-          <div className="absolute z-20 flex w-60 max-w-[calc(100%-1.5rem)] animate-pop flex-col gap-2 rounded-md border border-accent/50 bg-surface/95 p-2.5 text-xs shadow-sm backdrop-blur max-lg:bottom-20 max-lg:left-1/2 max-lg:-translate-x-1/2 lg:top-3 lg:left-3">
-            <ul className="max-h-36 space-y-0.5 overflow-y-auto">
-              {measured.parts.map((k) => (
-                <li key={k} className="truncate font-semibold text-fg">
-                  {nameByKey.get(k) ?? "Placed in CAD, not on the BOM"}
-                </li>
-              ))}
-            </ul>
-            <div className="flex gap-2">
-              <button
-                className="btn h-8 flex-1 justify-center px-2.5 text-xs pointer-coarse:h-9"
-                onClick={() => {
-                  const next = isolated ? null : measured.parts;
-                  tools?.isolate(next);
-                  setIsolated(next);
-                }}
-              >
-                {isolated ? "Show all" : "Isolate"}
-              </button>
-              <button
-                className="btn h-8 flex-1 justify-center px-2.5 text-xs pointer-coarse:h-9"
-                onClick={() => {
-                  for (const k of measured.parts) tools?.hideKey(k);
-                  clearPicks();
-                }}
-              >
-                Hide
-              </button>
-            </div>
-            {onePart && (
-              <button className="btn h-8 justify-center px-2.5 text-xs pointer-coarse:h-9" onClick={() => void openPartWindow(onePart.id)}>
-                Open part
-              </button>
-            )}
-            {oneSystem && (
-              <Link href={`/robots/${robotId}/cad-review?system=${oneSystem}`} className="btn h-8 justify-center px-2.5 text-xs pointer-coarse:h-9">
-                Open system
-              </Link>
-            )}
-          </div>
-        )}
-        {measured.parts.length === 0 && (focusName || isolated) && (
+        {/* No pop-up on a pick: the right-click / long-press menu does Isolate, Hide, Open part and
+            Open system, like Onshape (Harel, 2026-11-11). This chip stays while a part is shown or
+            parts are isolated: the quick way back on a phone. */}
+        {(focusName || isolated) && (
           <div className="absolute z-20 flex animate-pop items-center gap-2 rounded-full border border-emerald-500/50 bg-surface/95 px-3 py-1.5 text-xs shadow-sm backdrop-blur max-lg:bottom-20 max-lg:left-1/2 max-lg:-translate-x-1/2 lg:top-3 lg:left-3">
             <span className="font-semibold whitespace-nowrap text-fg">{focusName ? `Showing ${focusName}` : isolated && isolated.length > 1 ? `${isolated.length} parts isolated` : "Isolated"}</span>
             <button
@@ -339,11 +287,12 @@ export function ReviewScreen({
           + Add comment
         </button>
 
-        {/* What's picked: its size, or between two picks distance and angle (bottom right; on a
-            phone above the part popup and + Add comment). */}
+        {/* What's picked: its size, or between two picks distance and angle (bottom right, like
+            Onshape's measure box, a bit bigger since 2026-11-11 (Harel); on a phone above + Add
+            comment). */}
         {measured.picks.length > 0 && (
-          <div className="absolute right-3 z-20 w-64 max-w-[calc(100%-1.5rem)] animate-pop rounded-md border border-line bg-surface/95 p-2.5 text-xs shadow-md backdrop-blur max-lg:bottom-40 lg:bottom-3">
-            <ul className="max-h-32 space-y-0.5 overflow-y-auto">
+          <div className="absolute right-3 z-20 w-80 max-w-[calc(100%-1.5rem)] animate-pop rounded-md border border-line bg-surface/95 p-3 text-sm shadow-md backdrop-blur max-lg:bottom-20 lg:bottom-3">
+            <ul className="max-h-36 space-y-0.5 overflow-y-auto">
               {measured.picks.map((p, k) => (
                 <li key={k} className="flex items-center gap-1.5 text-fg-2">
                   <span className="h-2 w-2 shrink-0 rounded-full bg-[#ff8a1f]" />
@@ -355,14 +304,14 @@ export function ReviewScreen({
               <tbody>
                 {measured.rows.map((r) => (
                   <tr key={r.label} className="border-t border-line">
-                    <td className="py-1 pr-2 text-muted">{r.label}</td>
-                    <td className="py-1 text-right text-base font-bold text-fg">{r.value}</td>
+                    <td className="py-1.5 pr-2 text-muted">{r.label}</td>
+                    <td className="py-1.5 text-right text-lg font-bold text-fg">{r.value}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            {measured.picks.length === 1 && <p className="mt-1 text-[11px] text-subtle">Pick a second one to measure between them.</p>}
-            {measured.picks.length > 2 && <p className="mt-1 text-[11px] text-subtle">Measures show for one or two picks. Space drops the newest, Esc all.</p>}
+            {measured.picks.length === 1 && <p className="mt-1 text-xs text-subtle">Pick a second one to measure between them.</p>}
+            {measured.picks.length > 2 && <p className="mt-1 text-xs text-subtle">Measures show for one or two picks. Space drops the newest, Esc all.</p>}
           </div>
         )}
 

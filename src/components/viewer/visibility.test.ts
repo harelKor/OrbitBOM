@@ -46,16 +46,16 @@ describe("visibility", () => {
     expect(v.hiddenAt(ray(1))).toBeNull();
   });
 
-  it("isolates with see-through ghosts of the rest, or hides them", () => {
+  it("isolates by hiding the rest, or with see-through ghosts of it", () => {
     const { v, meshes, root, log } = scene();
     v.tools.isolate(["b"]);
     expect(meshes.map((p) => p.mesh.visible)).toEqual([false, true]);
     expect(log.isolated).toEqual(["b"]);
     const ghosts = root.children.find((c) => c.type === "Group")!;
+    expect(ghosts.children).toHaveLength(0);
+    v.tools.isolate(["b"], { ghost: true });
     expect(ghosts.children).toHaveLength(1);
     expect((ghosts.children[0] as THREE.InstancedMesh).instanceMatrix).toBe(meshes[0].mesh.instanceMatrix);
-    v.tools.isolate(["b"], { ghost: false });
-    expect(ghosts.children).toHaveLength(0);
     v.tools.showAll();
     expect(meshes.map((p) => p.mesh.visible)).toEqual([true, true]);
     expect(log.isolated).toBeNull();

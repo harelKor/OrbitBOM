@@ -19,7 +19,7 @@ export type VisibilityState = {
 
 export type VisibilityTools = {
   hideKey: (key: string) => void; // every copy of the part
-  // Show only these parts (all copies); the others stay as see-through ghosts unless `ghost` is false.
+  // Show only these parts (all copies); the others are hidden, or see-through ghosts with `ghost`.
   isolate: (keys: string[] | null, opts?: { ghost?: boolean }) => void;
   showAll: () => void; // every hidden copy back, and Isolate ended
   setClear: (keys: string[], clear: boolean) => void; // Make transparent / Make opaque
@@ -127,7 +127,8 @@ export function createVisibility(
   // look) by a second instanced mesh sharing their matrices, so a copy hidden with Y stays hidden
   // there too. Ghosts are never picked.
   let isolated: Set<string> | null = null;
-  let ghost = true;
+  // No ghosts unless asked for, like Onshape's Isolate (Harel, 2026-11-11).
+  let ghost = false;
   let groupsHidden = new Set<number>();
   const ghosts = new THREE.Group();
   root.add(ghosts);
@@ -153,7 +154,7 @@ export function createVisibility(
   };
   const isolate = (keys: string[] | null, opts?: { ghost?: boolean }) => {
     isolated = keys?.length ? new Set(keys) : null;
-    ghost = opts?.ghost ?? true;
+    ghost = opts?.ghost ?? false;
     applyVisible();
     on.isolated(isolated && [...isolated]);
     on.fit(shownBox());

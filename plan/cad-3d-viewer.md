@@ -19,7 +19,7 @@ no new cloud resources), heavy work stays in the browser, phones are first-class
 | S3 | Context menu, hide / isolate, Shift+Y under the mouse | 1 | done (2026-11-10, 76a3a99, 0b73627, 215e46b, 68e1c17) | Section here, worker topology, nearest-hit raycasts; comments a column beside the 3D view at ≥ 1280 px |
 | S4 | Section v2 | 1 | done (2026-11-10, c4b701c) | Include / Exclude per part shape per subsystem; red interference not yet seen on real data |
 | R1 | Section view like Onshape (panel, face picks, circular sections, red) | parity | in progress (2026-11-11) | its own session |
-| R2 | Menu, isolate without ghosts, no pick pop-up, bigger measure box | parity | in progress (2026-11-11) | the orchestrator session |
+| R2 | Menu, isolate without ghosts, no pick pop-up, bigger measure box | parity | done (2026-11-11) | menu: no Hide others / Zoom to, "Section view" + "View normal to" on flat faces; not checked in a browser (no local node_modules) |
 | R3 | View cube menu = Onshape's camera and render options; toolbar; part windows; gap pass | parity | after R1 and R2 | |
 | S6 | Saved views + comment pins (migration) | 2 | after the parity round | |
 | S7 | Explode and move | 2 | waiting for Harel's OK after wave 1 | |

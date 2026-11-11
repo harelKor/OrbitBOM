@@ -7,6 +7,10 @@ import type { Gone, SceneTools } from "./types";
 
 // A page's own items (Open part, Open system, Add comment here), for the parts the menu is on.
 export type MenuItem = { label: string; run: () => void };
+
+// A direction in Onshape's Z-up model frame, in the scene's Y-up frame (the model is turned -90°
+// about X): what the camera's `look` takes.
+const sceneDir = ([x, y, z]: [number, number, number]): [number, number, number] => [x, z, -y];
 export type PageMenu = (keys: string[]) => MenuItem[];
 
 // The 3D view's right-click / long-press menu, like Onshape's: on the part under the pointer (or
@@ -83,12 +87,18 @@ export function ContextMenu({
     groups.push([
       { label: copy ? "Hide" : `Hide ${keys.length} parts`, run: () => (copy ? hideCopy(copy) : keys.forEach((k) => tools.hideKey(k))) },
       ...(copy && at.copies > 1 ? [{ label: `Hide all ${at.copies} copies`, run: () => tools.hideKey(copy.key) }] : []),
-      { label: "Hide others", run: () => tools.isolate(keys, { ghost: false }) },
-      { label: "Isolate", run: () => tools.isolate(keys) },
+      // Onshape's items, without Hide others and Zoom to (Harel, 2026-11-11). Isolate shows only
+      // these parts; the ghosts are a second step (the view group below).
+      { label: "Isolate", run: () => tools.isolate(keys, { ghost: false }) },
       { label: clear ? "Make opaque" : "Make transparent", run: () => tools.setClear(keys, !clear) },
-      { label: "Zoom to", run: () => tools.zoomTo(keys) },
-      // A plane on the flat face under the pointer, replacing any section there was.
-      ...(at.face ? [{ label: "Section here", run: () => tools.sectionFromFace(at.face!.point, at.face!.normal) }] : []),
+      // Section view opens cut on the flat face under the pointer; View normal to looks straight
+      // at it (N), like Onshape's menu.
+      ...(at.face
+        ? [
+            { label: "Section view", run: () => tools.sectionFromFace(at.face!.point, at.face!.normal) },
+            { label: "View normal to", run: () => tools.look(sceneDir(at.face!.normal)) },
+          ]
+        : []),
     ]);
     const own = page?.(keys) ?? [];
     if (own.length) groups.push(own);
