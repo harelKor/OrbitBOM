@@ -182,12 +182,14 @@ export function ReviewScreen({
 
   // Esc closes the panel on a phone, then clears the picked or shown part (not under a window).
   useEffect(() => {
-    if (!selected && !focus && !drawer && !isolated) return;
+    if (!selected && !focus && !drawer && !isolated && !side) return;
     // Esc: closes the phone's panel; else drops the picks and ends Isolate (shows all) (Harel,
     // 2026-11-09).
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented || document.querySelector("dialog[open]")) return;
       if (drawer) return setDrawer(false);
+      // The first Esc folds the comments column away (Harel, 2026-11-11).
+      if (side) return setSide(false);
       setSelected(null);
       setFocus(null);
       tools?.measure(null);
@@ -199,7 +201,7 @@ export function ReviewScreen({
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [selected, focus, drawer, tools, isolated]);
+  }, [selected, focus, drawer, tools, isolated, side]);
 
   return (
     <SnipMe.Provider value={me.id}>
@@ -336,7 +338,8 @@ export function ReviewScreen({
           <span className="[writing-mode:vertical-rl]">Comments</span>
         </button>
       )}
-      <div className={`absolute top-[8rem] right-3 z-10 flex max-h-[calc(100%-12.5rem)] w-[min(20rem,calc(100%-1.5rem))] flex-col gap-2 pointer-coarse:top-[7.5rem] max-sm:w-48 xl:static xl:max-h-none xl:w-72 xl:shrink-0 xl:overflow-y-auto xl:border-l xl:border-line xl:bg-surface xl:p-3 ${side ? "" : "hidden"}`}>
+      {side && <PanelResizer root={root} side="right" />}
+      <div data-comments className={`absolute top-[8rem] right-3 z-10 flex max-h-[calc(100%-12.5rem)] w-[min(20rem,calc(100%-1.5rem))] flex-col gap-2 pointer-coarse:top-[7.5rem] max-sm:w-48 xl:static xl:max-h-none xl:w-[var(--cad-comments-w,18rem)] xl:shrink-0 xl:overflow-y-auto xl:border-l xl:border-line xl:bg-surface xl:p-3 ${side ? "" : "hidden"}`}>
 
         <Popup title="Open comments" count={open.length} onHide={() => setSide(false)} tone="amber">
           {open.length ? (
@@ -477,10 +480,13 @@ function Popup({ title, count, onHide, tone, children }: { title: string; count:
 // The panel's width on wide screens, dragged from its right edge like the shell's side columns
 // (Harel, 2026-11-09): written straight onto the screen while dragging, kept in this browser.
 // Double-click goes back to the normal width. Narrowest: 100 px (Harel, 2026-11-09).
-const PANEL_KEY = "orbit-cad-panel-w";
-const PANEL_DEFAULT = 320;
-function PanelResizer({ root }: { root: React.RefObject<HTMLDivElement | null> }) {
-  const set = (w: number) => root.current?.style.setProperty("--cad-panel-w", `${w}px`);
+// `side`: "left" the panel (handle on its right edge), "right" the comments column (handle on its
+// left edge, dragging left widens it) (Harel, 2026-11-11).
+function PanelResizer({ root, side = "left" }: { root: React.RefObject<HTMLDivElement | null>; side?: "left" | "right" }) {
+  const PANEL_KEY = side === "left" ? "orbit-cad-panel-w" : "orbit-cad-comments-w";
+  const PANEL_DEFAULT = side === "left" ? 320 : 288;
+  const target = side === "left" ? "aside" : "[data-comments]";
+  const set = (w: number) => root.current?.style.setProperty(side === "left" ? "--cad-panel-w" : "--cad-comments-w", `${w}px`);
   useEffect(() => {
     try {
       const w = Number(localStorage.getItem(PANEL_KEY));
@@ -495,7 +501,7 @@ function PanelResizer({ root }: { root: React.RefObject<HTMLDivElement | null> }
     } catch {}
   };
   const start = (e: React.PointerEvent<HTMLDivElement>) => {
-    const aside = root.current?.querySelector("aside");
+    const aside = root.current?.querySelector<HTMLElement>(target);
     if (!aside || e.button !== 0) return;
     e.preventDefault();
     const handle = e.currentTarget;
@@ -506,7 +512,7 @@ function PanelResizer({ root }: { root: React.RefObject<HTMLDivElement | null> }
     let w = w0;
     let frame = 0;
     const move = (ev: PointerEvent) => {
-      w = Math.round(Math.min(max, Math.max(100, w0 + ev.clientX - x0)));
+      w = Math.round(Math.min(max, Math.max(100, w0 + (side === "left" ? 1 : -1) * (ev.clientX - x0))));
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => set(w));
     };
@@ -524,7 +530,7 @@ function PanelResizer({ root }: { root: React.RefObject<HTMLDivElement | null> }
     document.body.classList.add("select-none", "cursor-col-resize");
   };
   return (
-    <div className="relative z-10 hidden w-0 lg:block">
+    <div className={`relative z-10 hidden w-0 ${side === "left" ? "lg:block" : "xl:block"}`}>
       <div
         role="separator"
         aria-orientation="vertical"
