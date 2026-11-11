@@ -1,6 +1,6 @@
 # CAD 3D views vs Onshape assemblies: comparison and improvement plan
 
-Status: live plan (2026-11-10). Unlike the other files in `plan/`, this one is kept up to date
+Status: waves 0–2 and the Onshape parity round done (2026-11-11); only S8 (mates) is left, after its own plan. Live plan (2026-11-10). Unlike the other files in `plan/`, this one is kept up to date
 while the work runs: each session ticks its row in "Progress" below when it ships. Covers the 3D
 view on the CAD pages
 (`ReviewScreen` → `ModelCanvas` + `ViewerToolbar`); the BOM pages' `RobotViewer`, `PartStage` and
@@ -21,9 +21,9 @@ no new cloud resources), heavy work stays in the browser, phones are first-class
 | R1 | Section view like Onshape (panel, face picks, circular sections, red) | parity | done (2026-11-11, fb16cc8) | checked in /dev/viewer only; tilt arcs, 3-cut limit and real-robot speed unchecked; cylinder side that a cut removes is a guess (Flip swaps) |
 | R2 | Menu, isolate without ghosts, no pick pop-up, bigger measure box | parity | done (2026-11-11, fdb45fa) | menu: no Hide others / Zoom to, "Section view" + "View normal to" on flat faces; not checked in a browser (no local node_modules) |
 | R3 | View cube menu = Onshape's camera and render options; toolbar; part windows; gap pass | parity | done (2026-11-11, 8e1f040, 2dfe17f, 1100f0b, ea26107) | gaps built: Select other (parts), other instances, measure max distance + copy, view normal to round faces; section entries in every right-click; R1 follow-up 9dc26ca: hatched caps with outline, no panel help text. Not tried on real data or a phone |
-| S6 | Saved views + comment pins (migration) | 2 | in progress (2026-11-11) | its own session; migration 0081 |
-| S7 | Explode and move | 2 | in progress (2026-11-11) | its own session |
-| S9 | Display modes and polish | 2 | in progress (2026-11-11) | its own session |
+| S6 | Saved views + comment pins (migration) | 2 | done (2026-11-11, 99cad69) | Named views per robot in the cube menu, view in the URL hash, numbered comment pins that restore the comment's view; migration 0081 |
+| S7 | Explode and move | 2 | done (2026-11-11, c85c69b) | Onshape's exploded view slider and Move triad on picked parts, local only, Reset |
+| S9 | Display modes and polish | 2 | done (2026-11-11, 3548d95) | Onshape's render modes, silhouettes, gradient background, mm / inch |
 | S8 | Motion along the mates | later | needs its own plan first | |
 | ~~S5~~ | ~~Parts list~~ | | dropped (Harel, 2026-11-10) | |
 

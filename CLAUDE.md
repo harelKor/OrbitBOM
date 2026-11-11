@@ -128,12 +128,12 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
 
 ## Work in progress
 
-- **CAD 3D viewer rework** (planned 2026-11-10): `plan/cad-3d-viewer.md` is the live plan and
-  handoff. Its "Progress" table says which session (S0–S9) is next; each session reads its brief
-  there, owns only its files, and updates the table when it ships. Decided by Harel: Shift+Y
-  brings back the hidden part under the mouse, no parts list, motion along the mates waits for
-  its own plan, the `/dev/viewer` sandbox stays small. Don't touch `ModelCanvas` for other work
-  while S0 (the split into `src/components/viewer/`) is in progress.
+- **CAD 3D viewer rework** (2026-11-10/11): done except motion along the mates (S8), which waits
+  for its own plan. `plan/cad-3d-viewer.md` has what shipped (Progress table) and the briefs. The
+  viewer lives in `src/components/viewer/` (one module per area; `SceneTools` is the API). Rule
+  (Harel, 2026-11-11): the 3D view copies Onshape's assembly view unless he decided otherwise
+  (kept: hover blue / picked orange, Shift+Y brings back the hidden part under the mouse, Space
+  drops the newest pick, no parts list, no Hide others / Zoom to). Test 3D changes on `/dev/viewer`.
 - Assembly page (`/robots/<id>/assembly`, plan/assembly-guides.md): sub-assemblies come from the
   part number (`src/lib/assembly/groups.ts`, 1690-26-421-01 → "42"), steps and ticks in
   `src/lib/assembly/steps.ts` (CAD writes with `instruct`, any team member ticks with `work`), page
