@@ -1,102 +1,95 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { SnipOverlay } from "@/components/review/Snip";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
-// Snip from inside Onshape (Harel, 2026-11-10). The panel is a frame of our site, so it can't read
-// Onshape's 3D view; instead the browser shares the screen (the member picks the Onshape tab) and
-// one frame is taken, to cut a rectangle from. Where Onshape's frame doesn't allow screen sharing,
-// a picture pasted with Ctrl+V (Win+Shift+S, or Cmd+Ctrl+Shift+4 on a Mac) works the same way.
+// Snip from inside Onshape (Harel, 2026-11-10). The panel is a frame of our site: it can't read
+// Onshape's 3D view, and Onshape's frame doesn't allow screen sharing (tried: getDisplayMedia is
+// refused). So the member snips with the system's own tool (Win+Shift+S, Cmd+Ctrl+Shift+4 on a
+// Mac) and pastes it here; a picture dragged in or picked as a file works the same. A paste
+// needs no permission from the frame.
 
 export type Shot = { dataUrl: string; w: number; h: number };
 
 const MAX_SIDE = 2000;
 
-// The picture as a JPEG, cut to `rect` (in its own pixels) and at most MAX_SIDE on a side.
-function toJpeg(src: CanvasImageSource, sw: number, sh: number, rect?: { x: number; y: number; w: number; h: number }): Shot {
-  const r = rect ?? { x: 0, y: 0, w: sw, h: sh };
-  const k = Math.min(1, MAX_SIDE / Math.max(r.w, r.h));
-  const out = document.createElement("canvas");
-  out.width = Math.max(1, Math.round(r.w * k));
-  out.height = Math.max(1, Math.round(r.h * k));
-  const g = out.getContext("2d")!;
-  g.fillStyle = "#fff";
-  g.fillRect(0, 0, out.width, out.height);
-  g.drawImage(src, r.x, r.y, r.w, r.h, 0, 0, out.width, out.height);
-  return { dataUrl: out.toDataURL("image/jpeg", 0.88), w: out.width, h: out.height };
-}
-
-// One frame of a shared screen or tab. Throws when the frame isn't allowed to share or the
-// member cancels.
-export async function captureScreen(): Promise<Shot> {
-  const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false, preferCurrentTab: true, selfBrowserSurface: "include" } as DisplayMediaStreamOptions);
-  try {
-    const video = document.createElement("video");
-    video.muted = true;
-    video.srcObject = stream;
-    await video.play();
-    // The first frame can still be black; wait for one more.
-    await new Promise((r) => setTimeout(r, 250));
-    // Full size here; the crop step makes the JPEG.
-    const c = document.createElement("canvas");
-    c.width = video.videoWidth;
-    c.height = video.videoHeight;
-    c.getContext("2d")!.drawImage(video, 0, 0);
-    return { dataUrl: c.toDataURL("image/png"), w: c.width, h: c.height };
-  } finally {
-    stream.getTracks().forEach((t) => t.stop());
-  }
-}
-
-async function loadImage(src: string) {
-  const img = new Image();
-  img.src = src;
-  await img.decode();
-  return img;
-}
-
-// A pasted picture, already cut by the member's own snipping tool.
-export async function pastedShot(file: File): Promise<Shot> {
+async function toShot(file: Blob): Promise<Shot> {
   const url = URL.createObjectURL(file);
   try {
-    const img = await loadImage(url);
-    return toJpeg(img, img.naturalWidth, img.naturalHeight);
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const k = Math.min(1, MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+    const out = document.createElement("canvas");
+    out.width = Math.max(1, Math.round(img.naturalWidth * k));
+    out.height = Math.max(1, Math.round(img.naturalHeight * k));
+    const g = out.getContext("2d")!;
+    g.fillStyle = "#fff";
+    g.fillRect(0, 0, out.width, out.height);
+    g.drawImage(img, 0, 0, out.width, out.height);
+    return { dataUrl: out.toDataURL("image/jpeg", 0.88), w: out.width, h: out.height };
   } finally {
     URL.revokeObjectURL(url);
   }
 }
 
-// Ctrl+V of a picture anywhere on the page.
-export function usePasteShot(onShot: (s: Shot) => void, onError: (msg: string) => void) {
+const noop = () => () => {};
+
+const imageIn = (files: FileList | null | undefined) => [...(files ?? [])].find((f) => f.type.startsWith("image/"));
+
+// The paste box: Ctrl+V anywhere on the page, a picture dropped on it, or one picked with a tap.
+export function SnipPaste({ onShot, onError }: { onShot: (s: Shot) => void; onError: (msg: string) => void }) {
+  const [over, setOver] = useState(false);
+  // The shortcut for the member's system; the server renders the Windows one.
+  const mac = useSyncExternalStore(noop, () => /Mac|iPhone|iPad/.test(navigator.platform), () => false);
+  const input = useRef<HTMLInputElement>(null);
+  const take = (file: Blob | undefined) => {
+    if (file) toShot(file).then(onShot, () => onError("That picture couldn't be read."));
+  };
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
-      const file = [...(e.clipboardData?.files ?? [])].find((f) => f.type.startsWith("image/"));
+      const file = imageIn(e.clipboardData?.files);
       if (!file) return;
       e.preventDefault();
-      pastedShot(file).then(onShot, () => onError("That picture couldn't be read."));
+      toShot(file).then(onShot, () => onError("That picture couldn't be read."));
     };
     document.addEventListener("paste", onPaste);
     return () => document.removeEventListener("paste", onPaste);
   }, [onShot, onError]);
-}
-
-// The shared screen, full panel: drag the rectangle to keep.
-export function CropShot({ shot, onDone, onCancel }: { shot: Shot; onDone: (s: Shot) => void; onCancel: () => void }) {
-  const box = useRef<HTMLDivElement>(null);
+  const key = "rounded border border-line bg-surface px-1.5 py-0.5 font-mono text-[11px] font-semibold text-fg";
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-2">
-      <div ref={box} className="relative w-full" style={{ aspectRatio: `${shot.w} / ${shot.h}`, maxHeight: "100%", maxWidth: `calc((100dvh - 1rem) * ${shot.w / shot.h})` }}>
-        {/* eslint-disable-next-line @next/next/no-img-element -- a local data URL */}
-        <img src={shot.dataUrl} alt="" className="absolute inset-0 h-full w-full select-none" draggable={false} />
-        <SnipOverlay
-          onCancel={onCancel}
-          onSnip={async (r) => {
-            const scale = shot.w / (box.current?.clientWidth || shot.w);
-            const img = await loadImage(shot.dataUrl);
-            onDone(toJpeg(img, shot.w, shot.h, { x: r.x * scale, y: r.y * scale, w: r.w * scale, h: r.h * scale }));
-          }}
-        />
-      </div>
+    <div
+      onDragOver={(e) => {
+        e.preventDefault();
+        setOver(true);
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setOver(false);
+        take(imageIn(e.dataTransfer.files));
+      }}
+      className={`rounded-lg border-2 border-dashed px-3 py-3 text-center transition-colors ${over ? "border-accent bg-accent/10" : "border-line bg-raised/40"}`}
+    >
+      <p className="text-sm font-semibold text-fg">📷 Snip the model</p>
+      <p className="mt-1.5 flex flex-wrap items-center justify-center gap-1 text-xs text-muted">
+        <kbd className={key}>{mac ? "Cmd+Ctrl+Shift+4" : "Win+Shift+S"}</kbd>
+        <span>then</span>
+        <kbd className={key}>{mac ? "Cmd+V" : "Ctrl+V"}</kbd>
+        <span>here</span>
+      </p>
+      <button type="button" onClick={() => input.current?.click()} className="press mt-1 text-[11px] text-subtle hover:text-fg hover:underline pointer-coarse:min-h-9">
+        or pick a picture
+      </button>
+      <input
+        ref={input}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(e) => {
+          take(imageIn(e.target.files));
+          e.target.value = "";
+        }}
+      />
     </div>
   );
 }

@@ -7,7 +7,7 @@ import { OpenComment, TreeComment, WaitingComment } from "@/components/review/Co
 import { SnipEditor, SnipMe, SnipPicture, uploadSnip, type SnipDraft } from "@/components/review/Snip";
 import type { ReviewComment } from "@/lib/data/cadReview";
 import type { PanelPlace, PanelVersion } from "@/lib/reviews/panelVersion";
-import { captureScreen, CropShot, usePasteShot, type Shot } from "./PanelSnip";
+import { SnipPaste, type Shot } from "./PanelSnip";
 
 type Part = { key: string; name: string; systemId: string };
 
@@ -43,27 +43,13 @@ export function PanelComments({
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const version = useVersion(systemId, place);
-  // Snip: a shared screen to cut from, then the drawing window (Harel, 2026-11-10).
-  const [shot, setShot] = useState<Shot | null>(null);
+  // Snip: pasted from the system's snipping tool, then the drawing window (Harel, 2026-11-10).
   const [snip, setSnip] = useState<SnipDraft | null>(null);
   const [drawing, setDrawing] = useState(false);
-  const [snipHint, setSnipHint] = useState(false);
   const took = useCallback((s: Shot) => {
-    setShot(null);
-    setSnipHint(false);
     setSnip({ ...s, strokes: [] });
     setDrawing(true);
   }, []);
-  usePasteShot(took, setError);
-  const snipScreen = async () => {
-    setError(null);
-    try {
-      setShot(await captureScreen());
-    } catch (err) {
-      // Cancelled by the member, or Onshape's frame doesn't allow sharing: paste instead.
-      if ((err as Error)?.name !== "AbortError") setSnipHint(true);
-    }
-  };
 
   const partsHere = parts.filter((p) => p.systemId === systemId);
   const part = partsHere.find((p) => p.key === partKey) ?? null;
@@ -123,14 +109,7 @@ export function PanelComments({
             </div>
           </div>
         ) : (
-          <button type="button" onClick={snipScreen} className="btn h-10 w-full justify-center gap-2 active:scale-[0.98]" title="Share the Onshape tab, cut a rectangle out of it and draw on it">
-            📷 Snip Onshape
-          </button>
-        )}
-        {snipHint && !snip && (
-          <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-xs text-fg-2">
-            Onshape doesn&rsquo;t let the panel share the screen. Snip with <b>Win+Shift+S</b> (Mac: <b>Cmd+Ctrl+Shift+4</b>), then press <b>Ctrl+V</b> (Cmd+V) here.
-          </p>
+          <SnipPaste onShot={took} onError={setError} />
         )}
         {partsHere.length > 0 && (
           <select className="input w-full pointer-coarse:min-h-9" value={partKey} onChange={(e) => setPartKey(e.target.value)} aria-label="The part it's about">
@@ -180,7 +159,6 @@ export function PanelComments({
           </ul>
         </details>
       )}
-      {shot && <CropShot shot={shot} onDone={took} onCancel={() => setShot(null)} />}
       {drawing && snip && (
         <SnipEditor
           title="Snip"
