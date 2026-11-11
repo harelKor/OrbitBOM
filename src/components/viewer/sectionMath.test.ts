@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { alongLine, axisPlane, axisSpan, clipPlane, contour, keptBy, cylinderMeetsBox, defaultPlane, faceCylinder, facePlane, inPlaneAxes, offsetRange, planeAt, rayCylinder, removedBy, ringAngle, splitPlane, tiltedNormal, viewDirection, wrapDeg } from "./sectionMath";
+import { alongLine, axisPlane, clipPlane, contour, roundFacePlane, defaultPlane, facePlane, inPlaneAxes, offsetRange, planeAt, removedBy, ringAngle, tiltedNormal, viewDirection, wrapDeg } from "./sectionMath";
 
 const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 // The model's box in metres: x -1…1, y 0…4, z 2…6.
@@ -122,67 +122,21 @@ describe("default planes", () => {
   });
 });
 
-describe("cylinders", () => {
-  // A 16 mm hole along Z through (0.1, 0.2), clicked at its wall on +X; the face's outward normal
-  // there points into the hole (towards the axis).
-  const hole = faceCylinder([0.1, 0.2, 0], [0, 0, 2], 0.008, [0.108, 0.2, 0.05], [-1, 0, 0]);
-
-  it("sit on the face's axis level with the click, the handle towards it", () => {
-    expect(hole.origin[0]).toBeCloseTo(0.1);
-    expect(hole.origin[2]).toBeCloseTo(0.05);
-    expect(hole.axis).toEqual([0, 0, 1]);
-    expect(hole.ref[0]).toBeCloseTo(1);
-    expect(hole.radius).toBeCloseTo(8);
-  });
-
-  it("cut away a hole's inside and a shaft's outside, Flip the other way", () => {
-    expect(hole.flip).toBe(false);
-    expect(removedBy(hole, v(0.1, 0.2, 1))).toBe(true); // on the axis, any height
-    expect(removedBy(hole, v(0.107, 0.2, 0))).toBe(true);
-    expect(removedBy(hole, v(0.109, 0.2, 0))).toBe(false);
-    expect(removedBy({ ...hole, flip: true }, v(0.109, 0.2, 0))).toBe(true);
-    expect(removedBy({ ...hole, flip: true }, v(0.107, 0.2, 0))).toBe(false);
-    const shaft = faceCylinder([0, 0, 0], [1, 0, 0], 0.004, [0.3, 0, 0.004], [0, 0, 1]);
-    expect(shaft.flip).toBe(true);
-    expect(removedBy(shaft, v(0.5, 0, 0.005))).toBe(true);
-    expect(removedBy(shaft, v(0.5, 0, 0.003))).toBe(false);
-  });
-
-  it("grow by the offset in mm, never below 0.1 mm", () => {
-    expect(removedBy({ ...hole, offset: 2 }, v(0.1095, 0.2, 0))).toBe(true); // 10 mm now
-    expect(removedBy({ ...hole, offset: -50 }, v(0.1002, 0.2, 0))).toBe(false);
-  });
-
-  it("know the stretch of axis a box spans, for the cap tube", () => {
-    const span = axisSpan([0, 0, 0], [0, 0, 1], box);
-    expect(span.centre.z).toBeCloseTo(4);
-    expect(span.length).toBeGreaterThan(4);
-    expect(span.length).toBeLessThan(4.3);
-  });
-
-  it("meet a box only when its surface can reach it", () => {
-    const c = faceCylinder([0, 0, 0], [0, 0, 1], 0.5, [0.5, 0, 0], [1, 0, 0]);
-    expect(cylinderMeetsBox(c, new THREE.Box3(v(0.4, -0.1, 0), v(0.6, 0.1, 1)))).toBe(true);
-    expect(cylinderMeetsBox(c, new THREE.Box3(v(-0.1, -0.1, 0), v(0.1, 0.1, 1)))).toBe(false); // well inside
-    expect(cylinderMeetsBox(c, new THREE.Box3(v(3, 3, 0), v(3.1, 3.1, 1)))).toBe(false); // well outside
-  });
-
-  it("are crossed twice by a ray through them, nearest first", () => {
-    const c = faceCylinder([0, 0, 0], [0, 0, 1], 1, [1, 0, 0], [1, 0, 0]);
-    const t = rayCylinder(v(-5, 0, 3), v(1, 0, 0), c)!;
-    expect(t[0]).toBeCloseTo(4);
-    expect(t[1]).toBeCloseTo(6);
-    expect(rayCylinder(v(-5, 2, 3), v(1, 0, 0), c)).toBeNull();
-    expect(rayCylinder(v(0, 0, 3), v(0, 0, 1), c)).toBeNull(); // along the axis
-  });
-
-  it("split each line of sight into its near and far crossing, square to the view", () => {
-    const s = splitPlane(v(0, 0, 0), v(0, 0, 1), v(3, 0, 2));
-    expect(s.normal.toArray().map((x) => Math.round(x * 1e6) / 1e6)).toEqual([1, 0, 0]);
-    expect(s.distanceToPoint(v(1, 0, 0))).toBeGreaterThan(0); // the near crossing, towards the camera
-    expect(s.distanceToPoint(v(-1, 0, 0))).toBeLessThan(0);
+describe("round faces", () => {
+  it("cut lengthwise through the axis, the cut facing the viewer", () => {
+    // A tube along X through (0, 0.2, 0.1), clicked at x = 0.3, seen from above and in front.
+    const p = roundFacePlane([0, 0.2, 0.1], [2, 0, 0], [0.3, 0.2, 0.11], v(0.5, -1, 1));
+    expect(p.origin[0]).toBeCloseTo(0.3);
+    expect(p.origin[1]).toBeCloseTo(0.2);
+    expect(p.origin[2]).toBeCloseTo(0.1);
+    expect(p.normal[0]).toBeCloseTo(0); // square to the axis
+    expect(p.normal[1]).toBeCloseTo(-Math.SQRT1_2);
+    expect(p.normal[2]).toBeCloseTo(Math.SQRT1_2);
+    expect(removedBy(p, v(0.3, 0.1, 0.2))).toBe(true); // the half towards the viewer goes
+    expect(removedBy(p, v(0.3, 0.3, 0))).toBe(false);
     // Looking straight down the axis: still a plane through it.
-    expect(splitPlane(v(0, 0, 0), v(0, 0, 1), v(0, 0, 5)).distanceToPoint(v(0, 0, 0))).toBeCloseTo(0);
+    const end = roundFacePlane([0, 0, 0], [1, 0, 0], [0, 0, 0], v(1, 0, 0));
+    expect(end.normal[0]).toBeCloseTo(0);
   });
 });
 
@@ -208,16 +162,5 @@ describe("cut outlines", () => {
     contour(P, I, new THREE.Matrix4(), facePlane([0, 0, 0.5], [0, 0, 1]), [facePlane([0.5, 0, 0], [1, 0, 0])], out);
     expect(lengthOf(out)).toBeLessThan(8);
     expect(lengthOf(out)).toBeGreaterThan(4);
-  });
-
-  it("follow a cylinder at its radius", () => {
-    // 1.2 m: past the middle of each side, short of its corners.
-    const c = faceCylinder([0, 0, 0], [0, 0, 1], 1.2, [1.2, 0, 0], [-1, 0, 0]);
-    const out: number[] = [];
-    contour(P, I, new THREE.Matrix4(), c, [], out);
-    expect(lengthOf(out)).toBeGreaterThan(16); // 2 upright lines on each side, plus top and bottom
-    for (let k = 0; k < out.length; k += 3) expect(Math.hypot(out[k], out[k + 1])).toBeCloseTo(1.2, 4);
-    expect(keptBy(c)(v(0, 0, 0))).toBeLessThan(0);
-    expect(keptBy(c)(v(1.3, 0, 0))).toBeGreaterThan(0);
   });
 });

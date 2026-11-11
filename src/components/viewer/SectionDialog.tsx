@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { SceneTools } from "./types";
-import { isCylinder, type Cut, type DefaultPlane, type SectionView } from "./section";
+import { type Cut, type DefaultPlane, type SectionView } from "./section";
 import { useUnits } from "./units";
 import type { Units } from "@/lib/model/measure";
 
@@ -15,14 +15,14 @@ const DEFAULTS: { v: DefaultPlane; label: string }[] = [
 ];
 
 // Onshape's "Section view" panel, at the top left of the 3D view while it is open (Harel,
-// 2026-11-11): the cuts picked on faces (a plane on a flat face, a cylinder on a round one, up to
-// 3), each with its depth (a cylinder's radius), Flip and ✕; with none picked, the default plane.
+// 2026-11-11): the planes picked on faces (on a flat face, or through a round face's axis, up to
+// 3), each with its depth, Flip and ✕; with none picked, the default plane.
 // No help text, like Onshape's (Harel, 2026-11-11). ✓ closes it and keeps the cut; ✕ turns the
 // section off. The row with the accent bar carries
 // the 3D handle; a touch on a row moves it there. On phones each row also has a slider.
 export function SectionDialog({ section, tools }: { section: SectionView; tools: SceneTools }) {
   const units = useUnits();
-  const picked = section.planes.filter((c) => isCylinder(c) || c.from === "face").length;
+  const picked = section.planes.filter((c) => c.from === "face").length;
   const set = (planes: Cut[]) => tools.section({ planes, open: section.open });
   const edit = (i: number, change: Partial<Cut>) => set(section.planes.map((p, k) => (k === i ? ({ ...p, ...change } as Cut) : p)));
   const remove = (i: number) => {
@@ -31,7 +31,7 @@ export function SectionDialog({ section, tools }: { section: SectionView; tools:
     else tools.sectionPlane("front"); // the last face cut gone: back to the default plane
   };
   const first = section.planes[0];
-  const def = !picked && first && !isCylinder(first) ? first.from : null;
+  const def = !picked && first ? first.from : null;
   return (
     <div
       role="dialog"
@@ -61,11 +61,8 @@ export function SectionDialog({ section, tools }: { section: SectionView; tools:
         )}
         {section.planes.map((p, i) => {
           const [lo, hi] = section.ranges[i] ?? [-100, 100];
-          const cyl = isCylinder(p) ? p : null;
-          const plane = isCylinder(p) ? null : p;
-          const value = cyl ? Math.round((cyl.radius + cyl.offset) * 10) / 10 : p.offset;
-          const tilted = !!plane && (plane.tilt[0] !== 0 || plane.tilt[1] !== 0);
-          const name = cyl ? `Cylinder on a ⌀${shown(cyl.radius * 2, units)} ${units} face` : plane?.from === "face" ? "Plane on a face" : `${(plane?.from[0] ?? "").toUpperCase()}${plane?.from.slice(1)} plane`;
+          const tilted = p.tilt[0] !== 0 || p.tilt[1] !== 0;
+          const name = p.from === "face" ? "Plane on a face" : `${p.from[0].toUpperCase()}${p.from.slice(1)} plane`;
           return (
             <div
               key={i}
@@ -76,7 +73,7 @@ export function SectionDialog({ section, tools }: { section: SectionView; tools:
                 <span className="min-w-0 flex-1 truncate text-fg-2" title={name}>
                   {name}
                 </span>
-                <NumberField value={value} units={units} label={cyl ? "Section radius" : "Section depth"} prefix={cyl ? "R" : undefined} onChange={(n) => edit(i, { offset: cyl ? Math.max(0.1, n) - cyl.radius : n })} />
+                <NumberField value={p.offset} units={units} label="Section depth" onChange={(n) => edit(i, { offset: n })} />
                 <button className={`${tool} ${p.flip ? on : ""}`} aria-pressed={p.flip} onClick={() => edit(i, { flip: !p.flip })} title="Keep the other side">
                   Flip
                 </button>
@@ -93,12 +90,12 @@ export function SectionDialog({ section, tools }: { section: SectionView; tools:
                 step={0.5}
                 value={p.offset}
                 onChange={(e) => edit(i, { offset: Number(e.target.value) })}
-                aria-label={cyl ? "Section radius (mm)" : "Section depth (mm)"}
+                aria-label="Section depth (mm)"
                 className="hidden w-full accent-[var(--color-accent)] pointer-coarse:block pointer-coarse:h-8"
               />
               {tilted && (
                 <div className="flex items-center gap-1 text-muted tabular-nums">
-                  Tilted {plane!.tilt[0]}° · {plane!.tilt[1]}°
+                  Tilted {p.tilt[0]}° · {p.tilt[1]}°
                   <button className={`${tool} ml-auto`} onClick={() => edit(i, { tilt: [0, 0] })}>
                     Level
                   </button>
@@ -117,13 +114,12 @@ const shown = (mm: number, units: Units) => (units === "in" ? Math.round((mm / 2
 
 // A length typed in the view's units, sent in mm: kept as text while typing ("-", "1.") and sent
 // when it reads as a number.
-function NumberField({ value: mm, units, onChange, label, prefix }: { value: number; units: Units; onChange: (mm: number) => void; label: string; prefix?: string }) {
+function NumberField({ value: mm, units, onChange, label }: { value: number; units: Units; onChange: (mm: number) => void; label: string }) {
   const value = units === "in" ? shown(mm, units) : mm;
   const [text, setText] = useState(String(value));
   const [focused, setFocused] = useState(false);
   return (
     <label className="flex items-center gap-1 px-1 text-muted tabular-nums">
-      {prefix}
       <input
         type="text"
         inputMode="decimal"

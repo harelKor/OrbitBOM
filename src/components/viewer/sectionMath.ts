@@ -11,7 +11,6 @@ export type DefaultPlane = "front" | "top" | "right";
 // One cutting plane, like Onshape's section plane: a reference (a default plane through the model
 // centre, or a flat face), an offset along its normal, a tilt, and which side is kept.
 export type CutPlane = {
-  kind?: "plane";
   from: Axis | DefaultPlane | "face";
   normal: V3; // the reference's unit normal, before the tilt
   origin: V3; // a point on the reference: the model centre, or a point on the face
@@ -20,20 +19,7 @@ export type CutPlane = {
   flip: boolean; // false: the side the normal points to is cut away (into the part from a face)
 };
 
-// A cylindrical section, from a round face: everything within (or beyond) a radius of the face's
-// axis is cut away, like Onshape's section on a cylindrical face.
-export type CutCylinder = {
-  kind: "cylinder";
-  origin: V3; // on the axis, level with the clicked point
-  axis: V3; // unit
-  ref: V3; // unit, at right angles to the axis, towards the clicked point (where the handle sits)
-  radius: number; // the face's radius, mm
-  offset: number; // mm added to the radius (the handle's arrow)
-  flip: boolean; // false: the inside is cut away; true: the outside
-};
-
-export type Cut = CutPlane | CutCylinder;
-export const isCylinder = (c: Cut): c is CutCylinder => c.kind === "cylinder";
+export type Cut = CutPlane;
 
 // The section: up to 3 cuts (each cuts), and whether the Section view panel is open (then clicks
 // on faces add cuts and the 3D handle shows). Every part is cut: no Include / Exclude
@@ -146,173 +132,61 @@ export const wrapDeg = (a: number) => {
   return w === -180 ? 180 : w;
 };
 
-// The cylinder's radius now, in metres (never below 0.1 mm, so dragging inwards can't turn it
-// inside out).
-export const cylinderRadius = (c: CutCylinder) => Math.max(0.1, c.radius + c.offset) / 1000;
-
-// A cylindrical section on a round face: its axis (a point on it, unit direction), radius (m), a
-// point clicked on the face and the face's outward normal there. The side the outward normal
-// points to is cut away, like a plane on a flat face: a hole's inside, a shaft's outside.
-export function faceCylinder(axisPoint: V3, axis: V3, radius: number, hit: V3, normal: V3): CutCylinder {
-  const d = vec(axis).normalize();
-  const h = vec(hit);
-  const foot = vec(axisPoint).addScaledVector(d, h.clone().sub(vec(axisPoint)).dot(d));
-  const out = h.clone().sub(foot);
-  const ref = out.lengthSq() > 1e-14 ? out.clone().normalize() : inPlaneAxes(d)[0];
-  const convex = vec(normal).dot(out) > 0;
-  return { kind: "cylinder", origin: foot.toArray() as V3, axis: d.toArray() as V3, ref: ref.toArray() as V3, radius: Math.round(radius * 1e6) / 1000, offset: 0, flip: convex };
+// A round face's section, Onshape's way: a flat plane through the face's axis, cutting the part
+// lengthwise down the middle, its normal square to the axis and towards the viewer (`toViewer`,
+// model frame: the camera direction with its part along the axis taken out; any square direction
+// when looking straight down the axis). Its origin is on the axis, level with the clicked point,
+// so the handle sits there (Harel, 2026-11-11).
+export function roundFacePlane(axisPoint: V3, axis: V3, point: V3, toViewer: THREE.Vector3): CutPlane {
+  const a = vec(axis).normalize();
+  const o = vec(axisPoint);
+  const foot = o.clone().addScaledVector(a, vec(point).sub(o).dot(a));
+  const n = toViewer.clone().addScaledVector(a, -toViewer.dot(a));
+  if (n.lengthSq() < 1e-12) n.copy(inPlaneAxes(a)[0]);
+  return facePlane(foot.toArray() as V3, n.normalize().toArray() as V3);
 }
 
-// Whether a cut takes a point (model frame) away. Matches the shaders: a plane keeps the side
-// behind its (tilted) normal unless flipped; a cylinder takes its inside unless flipped.
-export function removedBy(c: Cut, p: THREE.Vector3): boolean {
-  if (!isCylinder(c)) return clipPlane(c).distanceToPoint(p) < 0;
-  const d = p.clone().sub(vec(c.origin));
-  const a = vec(c.axis);
-  const r2 = d.lengthSq() - d.dot(a) ** 2;
-  const r = cylinderRadius(c);
-  return c.flip ? r2 > (r + EPS) ** 2 : r2 < Math.max(0, r - EPS) ** 2;
-}
+// Whether a cut takes a point (model frame) away: the side in front of its (tilted) normal,
+// behind it when flipped.
+export const removedBy = (c: Cut, p: THREE.Vector3) => clipPlane(c).distanceToPoint(p) < 0;
 
-// The part of a cylinder's axis that a box spans: the middle point and the length (m), a little
-// longer than the box so the cap tube covers every corner.
-export function axisSpan(origin: V3, axis: V3, box: THREE.Box3): { centre: THREE.Vector3; length: number } {
-  const o = vec(origin), a = vec(axis).normalize();
-  let lo = Infinity, hi = -Infinity;
-  for (let k = 0; k < 8; k++) {
-    const c = new THREE.Vector3(k & 1 ? box.max.x : box.min.x, k & 2 ? box.max.y : box.min.y, k & 4 ? box.max.z : box.min.z);
-    const t = c.sub(o).dot(a);
-    lo = Math.min(lo, t);
-    hi = Math.max(hi, t);
-  }
-  return { centre: o.addScaledVector(a, (lo + hi) / 2), length: (hi - lo) * 1.05 + 1e-4 };
-}
-
-// Whether a cylinder's surface can meet a box: the radius lies between the box's nearest reach
-// to the axis (a lower bound) and its farthest corner from it.
-export function cylinderMeetsBox(c: CutCylinder, box: THREE.Box3): boolean {
-  if (box.isEmpty()) return false;
-  const o = vec(c.origin), a = vec(c.axis);
-  const r = cylinderRadius(c);
-  const toAxis = (p: THREE.Vector3) => {
-    const d = p.clone().sub(o);
-    return Math.sqrt(Math.max(0, d.lengthSq() - d.dot(a) ** 2));
-  };
-  const centre = box.getCenter(new THREE.Vector3());
-  let far = 0, spread = 0;
-  for (let k = 0; k < 8; k++) {
-    const q = new THREE.Vector3(k & 1 ? box.max.x : box.min.x, k & 2 ? box.max.y : box.min.y, k & 4 ? box.max.z : box.min.z);
-    far = Math.max(far, toAxis(q));
-    const d = q.sub(centre);
-    spread = Math.max(spread, Math.sqrt(Math.max(0, d.lengthSq() - d.dot(a) ** 2)));
-  }
-  return toAxis(centre) - spread <= r && far >= r;
-}
-
-// Where a ray meets a cylinder (both crossings, nearest first, in units of rayDir), or null.
-export function rayCylinder(rayOrigin: THREE.Vector3, rayDir: THREE.Vector3, c: CutCylinder): [number, number] | null {
-  const a = vec(c.axis);
-  const w = rayOrigin.clone().sub(vec(c.origin));
-  const d = rayDir.clone().addScaledVector(a, -rayDir.dot(a));
-  const m = w.clone().addScaledVector(a, -w.dot(a));
-  const A = d.lengthSq();
-  if (A < 1e-12) return null;
-  const B = 2 * d.dot(m);
-  const C = m.lengthSq() - cylinderRadius(c) ** 2;
-  const disc = B * B - 4 * A * C;
-  if (disc < 0) return null;
-  const s = Math.sqrt(disc);
-  return [(-B - s) / (2 * A), (-B + s) / (2 * A)];
-}
-
-// The plane through a cylinder's axis, square to the view, that tells each line of sight's near
-// crossing from its far one (exact for the orthographic camera, close for perspective); its unit
-// normal points towards the camera. The caps use it: a cylinder shows its cut on one half only.
-// `toCamera`: from the axis towards the camera (the view's back direction in ortho), one frame.
-export function splitPlane(origin: THREE.Vector3, axis: THREE.Vector3, toCamera: THREE.Vector3, out = new THREE.Plane()): THREE.Plane {
-  const n = toCamera.clone().addScaledVector(axis, -toCamera.dot(axis));
-  if (n.lengthSq() < 1e-12) n.copy(inPlaneAxes(axis)[0]);
-  return out.setFromNormalAndCoplanarPoint(n.normalize(), origin);
-}
-
-// N, "view normal to": the direction (model frame, target → camera) to look at a cut from. A plane
-// from the side it cuts away, straight at the cut face; a cylinder along its axis.
+// N, "view normal to": the direction (model frame, target → camera) to look at a cut from: from
+// the side it cuts away, straight at the cut face.
 export function viewDirection(c: Cut): THREE.Vector3 {
-  if (isCylinder(c)) return vec(c.axis).normalize();
   const n = tiltedNormal(c);
   return c.flip ? n.negate() : n;
 }
 
-// How far a point (model frame) is on the kept side of a cut, in metres (negative: cut away).
-export function keptBy(c: Cut): (p: THREE.Vector3) => number {
-  if (!isCylinder(c)) {
-    const pl = clipPlane(c);
-    return (p) => pl.distanceToPoint(p);
-  }
-  const o = vec(c.origin), a = vec(c.axis).normalize(), r = cylinderRadius(c);
-  const d = new THREE.Vector3();
-  return (p) => {
-    d.copy(p).sub(o);
-    const off = Math.sqrt(Math.max(0, d.lengthSq() - d.dot(a) ** 2)) - r;
-    return c.flip ? -off : off;
-  };
-}
-
-// Where the segment a→b crosses a cut's surface, as fractions along it (0…1, in order): one for
-// a plane, up to two for a cylinder.
-function crossings(c: Cut, a: THREE.Vector3, b: THREE.Vector3): number[] {
-  if (!isCylinder(c)) {
-    const pl = clipPlane(c);
-    const fa = pl.distanceToPoint(a), fb = pl.distanceToPoint(b);
-    return fa < 0 === fb < 0 ? [] : [fa / (fa - fb)];
-  }
-  const o = vec(c.origin), ax = vec(c.axis).normalize(), r = cylinderRadius(c);
-  const w = a.clone().sub(o), d = b.clone().sub(a);
-  const wp = w.addScaledVector(ax, -w.dot(ax)), dp = d.addScaledVector(ax, -d.dot(ax));
-  const A = dp.lengthSq(), B = 2 * wp.dot(dp), C = wp.lengthSq() - r * r;
-  if (A < 1e-18) return [];
-  const disc = B * B - 4 * A * C;
-  if (disc <= 0) return [];
-  const q = Math.sqrt(disc);
-  return [(-B - q) / (2 * A), (-B + q) / (2 * A)].filter((t) => t > 0 && t < 1);
+// Where the segment a→b crosses a cut, as a fraction along it, or null.
+function crossing(pl: THREE.Plane, a: THREE.Vector3, b: THREE.Vector3): number | null {
+  const fa = pl.distanceToPoint(a), fb = pl.distanceToPoint(b);
+  return fa < 0 === fb < 0 ? null : fa / (fa - fb);
 }
 
 // The outline of a cut face, like Onshape's dark line round each cut: where one part copy's
 // triangles (positions and index in the part's frame, `at` its placement) cross the cut, as line
-// segments (model frame, 6 numbers each) pushed onto `out`. Crossings are found exactly on the
-// triangles' edges and joined straight across each triangle. Pieces another cut takes away are
-// left out; each point sits a hair (5 µm) towards the cut-away side so it draws over the cap.
+// segments (model frame, 6 numbers each) pushed onto `out`. Pieces another cut takes away are
+// left out; each point sits a hair towards the cut-away side so it draws over the cap.
 export function contour(pos: ArrayLike<number>, index: ArrayLike<number>, at: THREE.Matrix4, c: Cut, others: Cut[], out: number[]): void {
-  const f = keptBy(c);
-  const gone = others.map(keptBy);
+  const pl = clipPlane(c);
+  const gone = others.map((o) => clipPlane(o));
+  // A hair (5 µm) towards the cut-away side: against the kept side's normal.
+  const nudge = pl.normal.clone().multiplyScalar(-5e-6);
   const n = pos.length / 3;
   const pts: THREE.Vector3[] = [];
   for (let i = 0; i < n; i++) pts.push(new THREE.Vector3(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]).applyMatrix4(at));
   const mid = new THREE.Vector3();
-  const nudge = (q: THREE.Vector3) => {
-    // Down the slope of `f`, measured over 1 µm.
-    const g = f(q);
-    const grad = new THREE.Vector3(f(mid.copy(q).setX(q.x + 1e-6)) - g, f(mid.copy(q).setY(q.y + 1e-6)) - g, f(mid.copy(q).setZ(q.z + 1e-6)) - g);
-    if (grad.lengthSq() > 0) q.addScaledVector(grad.normalize(), -5e-6);
-    return q;
-  };
   for (let t = 0; t + 2 < index.length; t += 3) {
-    // The crossings in order round the triangle; between pairs the perimeter runs cut away.
     const hit: THREE.Vector3[] = [];
-    let startsGone = false;
-    for (let e = 0; e < 3; e++) {
+    for (let e = 0; e < 3 && hit.length < 2; e++) {
       const a = pts[index[t + e]], b = pts[index[t + ((e + 1) % 3)]];
-      if (e === 0) startsGone = f(a) < 0;
-      for (const s of crossings(c, a, b)) hit.push(a.clone().lerp(b, s));
+      const s = crossing(pl, a, b);
+      if (s !== null) hit.push(a.clone().lerp(b, s));
     }
     if (hit.length < 2) continue;
-    // Starting on the cut-away side, the first crossing leaves it: pair it with the last.
-    const pairs = startsGone ? hit.slice(1, -1).concat([hit[hit.length - 1], hit[0]]) : hit;
-    for (let k = 0; k + 1 < pairs.length; k += 2) {
-      mid.addVectors(pairs[k], pairs[k + 1]).multiplyScalar(0.5);
-      if (gone.some((g) => g(mid) < 0)) continue;
-      const p = nudge(pairs[k].clone()), q = nudge(pairs[k + 1].clone());
-      out.push(p.x, p.y, p.z, q.x, q.y, q.z);
-    }
+    mid.addVectors(hit[0], hit[1]).multiplyScalar(0.5);
+    if (gone.some((g) => g.distanceToPoint(mid) < 0)) continue;
+    const p = hit[0].add(nudge), q = hit[1].add(nudge);
+    out.push(p.x, p.y, p.z, q.x, q.y, q.z);
   }
 }

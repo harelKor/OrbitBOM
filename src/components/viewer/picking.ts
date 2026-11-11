@@ -180,17 +180,16 @@ export function createSelection(stage: Stage, meshes: PartMesh[], looks: Looks):
 
 // Where a context menu opens (client px) and the part copy under it, if any.
 // `face`: the flat face under it (the clicked point and its outward normal, model frame), for
-// `round`: the round face under it (its axis, radius, the clicked point and the outward normal
-// there, model frame), for a cylindrical Section view like Onshape's.
-export type RoundFace = { axisPoint: V3; axis: V3; radius: number; point: V3; normal: V3 };
-// Section here.
+// Section view. `round`: the round face under it (a point on its axis, the axis and the clicked
+// point, model frame), for a Section view through its axis like Onshape's.
+export type RoundFace = { axisPoint: V3; axis: V3; point: V3 };
 export type MenuAt = {
   x: number;
   y: number;
   under: Gone | null;
   face: { point: V3; normal: V3 } | null; // a flat face under the pointer (model frame)
   axis: V3 | null; // a round face's axis, from its end nearer the camera (model frame): View normal to
-  round: RoundFace | null; // the same round face for a cylindrical Section view
+  round: RoundFace | null; // the same round face, for a Section view through its axis
   // Select other, like Onshape's: every part copy along the ray, front first; choosing one picks
   // it (in measuring, its face, edge or corner there), hovering one lights it.
   layers: Gone[];
@@ -451,20 +450,12 @@ export function createPicking(
       }
     }
     let round: RoundFace | null = null;
-    if (h && f?.kind === "cylinder" && f.axis && f.point && f.radius) {
+    if (h && f?.kind === "cylinder" && f.axis && f.point) {
       const at = topo.placeOf(h.m, h.i);
-      // The triangle's outward normal from its winding (tells a hole from a shaft).
-      const g = meshes[h.m].mesh.geometry;
-      const pos = g.getAttribute("position") as THREE.BufferAttribute;
-      const idx = g.index!.array;
-      const [a, b, c] = [0, 1, 2].map((k) => new THREE.Vector3().fromBufferAttribute(pos, idx[h.tri * 3 + k]));
-      const normal = new THREE.Triangle(a, b, c).getNormal(new THREE.Vector3()).applyMatrix3(new THREE.Matrix3().getNormalMatrix(at)).normalize();
       round = {
         axisPoint: new THREE.Vector3(...f.point).applyMatrix4(at).toArray() as V3,
         axis: new THREE.Vector3(...f.axis).transformDirection(at).toArray() as V3,
-        radius: f.radius,
         point: root.worldToLocal(h.point.clone()).toArray() as V3,
-        normal: normal.toArray() as V3,
       };
     }
     const gone = (l: Hit): Gone => ({ m: l.m, i: l.i, key: meshes[l.m].keys[l.i] });

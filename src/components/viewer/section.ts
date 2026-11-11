@@ -1,40 +1,35 @@
 // The section, like Onshape's section view (Harel, 2026-11-11). Shift+X (or the menus) opens the
 // "Section view" panel (SectionDialog.tsx); while it is open a click on a flat face adds a plane
-// there and a click on a round face a cylindrical section on its axis and radius, up to 3 cuts,
-// each cutting; with no face picked a default plane (Front, Top, Right) cuts. The 3D handle drags
-// the depth (a cylinder's radius), a click on its arrow flips the cut, its arcs tilt a plane, and
-// a number box by it takes the exact value. ✓ closes the panel and keeps the cut (clicks measure
+// there and a click on a round face a plane through its axis, cutting it lengthwise (Onshape's
+// way), up to 3 planes, each cutting; with no face picked a default plane (Front, Top, Right)
+// cuts. The 3D handle drags the depth, a click on its arrow flips the cut, its arcs tilt the
+// plane, and a number box by it takes the exact value. ✓ closes the panel and keeps the cut (clicks measure
 // again); a double-click on a cut face opens it again; Shift+X or "Turn off" ends the section.
 // N turns the view square to the newest cut (or to the picked flat face). Every part is cut.
 //
-// Planes clip through three.js's own clipping planes; cylinders through a few lines added to every
-// material under the model (parts, edges, marks) once a cylinder is in use. The cut faces are
-// filled by sectionCaps.ts; the maths is in sectionMath.ts.
+// The planes clip through three.js's own clipping planes; the cut faces are filled by
+// sectionCaps.ts; the maths is in sectionMath.ts.
 import * as THREE from "three";
 import type { V3 } from "@/lib/model/topology";
 import type { Pick, RoundFace, Topo } from "./picking";
-import { cutGlsl, frameCut, packCuts, createCaps } from "./sectionCaps";
+import { createCaps } from "./sectionCaps";
 import { createHandle, type Frame, type HandlePart } from "./sectionHandle";
 import {
   alongLine,
   clipPlane,
-  cylinderRadius,
   defaultPlane,
   facePlane,
-  faceCylinder,
   inPlaneAxes,
-  isCylinder,
   MAX_PLANES,
   offsetRange,
   planeAt,
-  rayCylinder,
   removedBy,
+  roundFacePlane,
   ringAngle,
   viewDirection,
   wrapDeg,
   type Axis,
   type Cut,
-  type CutCylinder,
   type CutPlane,
   type DefaultPlane,
   type Section,
@@ -42,8 +37,8 @@ import {
 import type { Stage } from "./stage";
 import type { PartMesh } from "./types";
 
-export type { Axis, Cut, CutCylinder, CutPlane, DefaultPlane, Section };
-export { isCylinder, MAX_PLANES };
+export type { Axis, Cut, CutPlane, DefaultPlane, Section };
+export { MAX_PLANES };
 
 // What the panel shows: the section, the row the handle is on, each cut's slider ends (mm) and
 // whether the caps have a stencil buffer.
@@ -55,8 +50,8 @@ export type SectionTools = {
   // The menu's "Section view" on a flat face: its point and outward normal in the model frame
   // (Onshape's, metres). Opens the panel cut there, replacing any cuts there were.
   sectionFromFace: (point: V3, normal: V3) => void;
-  // The menu's "Section view" on a round face (picking.ts's RoundFace): opens the panel with a
-  // cylindrical section on its axis and radius, like Onshape's (Harel, 2026-11-11).
+  // The menu's "Section view" on a round face (picking.ts's RoundFace): opens the panel cut by a
+  // plane through its axis, facing the viewer, like Onshape's (Harel, 2026-11-11).
   sectionFromRound: (r: RoundFace) => void;
   // true: open the panel (cutting on the picked flat face, else the Front plane, when nothing is
   // cut yet); false: turn the section off.
@@ -104,61 +99,20 @@ export function createSection(stage: Stage, meshes: PartMesh[], topo: Topo, look
     return box;
   };
 
-  // The cylinders' clip in every material under the model, in view space (each material's
-  // vertex shader already has mvPosition), refreshed every frame from the camera.
-  const cylA = [new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4()];
-  const cylB = [new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4()];
-  const cylN = { value: 0 };
-  const patched = new WeakSet<THREE.Material>();
-  const PROJECT = "#include <project_vertex>";
-  const GL_POS = /gl_Position\s*=\s*projectionMatrix\s*\*\s*mvPosition\s*;/;
-  const patch = (mat: THREE.Material) => {
-    patched.add(mat);
-    if (mat.userData.noSection) return;
-    const before = mat.onBeforeCompile;
-    mat.onBeforeCompile = (shader, r) => {
-      before.call(mat, shader, r);
-      let vs = shader.vertexShader;
-      if (vs.includes(PROJECT)) vs = vs.replace(PROJECT, `${PROJECT}\n  vSecPos = mvPosition.xyz;`);
-      else if (GL_POS.test(vs)) vs = vs.replace(GL_POS, (m) => `${m}\n  vSecPos = mvPosition.xyz;`);
-      else return; // a shader of another shape (wide lines): left uncut
-      shader.uniforms.secVA = { value: cylA };
-      shader.uniforms.secVB = { value: cylB };
-      shader.uniforms.secVN = cylN;
-      shader.vertexShader = vs.replace(/void\s+main\s*\(\s*\)\s*\{/, (m) => `varying vec3 vSecPos;\n${m}`);
-      shader.fragmentShader = shader.fragmentShader.replace(/void\s+main\s*\(\s*\)\s*\{/, (m) => `${cutGlsl("secV")}\nvarying vec3 vSecPos;\n${m}\n  if (secVCut(vSecPos, -1)) discard;`);
-    };
-    const key = mat.customProgramCacheKey.bind(mat);
-    mat.customProgramCacheKey = () => `${key()}|section-cylinder`;
-    mat.needsUpdate = true;
-  };
-  const toView = new THREE.Matrix4();
-  const onFrame = () => {
-    const cyls = state?.planes.filter(isCylinder) ?? [];
-    if (cyls.length) {
-      root.traverse((o) => {
-        const m = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
-        if (!m) return;
-        for (const x of Array.isArray(m) ? m : [m]) if (!patched.has(x)) patch(x);
-      });
-      stage.camera.updateMatrixWorld();
-      root.updateMatrixWorld();
-      toView.copy(stage.camera.matrixWorldInverse).multiply(root.matrixWorld);
-    }
-    cylN.value = packCuts(
-      cyls.map((c) => frameCut(c, toView)),
-      cylA,
-      cylB,
-    );
-    placeBox();
-  };
+  const onFrame = () => placeBox();
   stage.beforeRender.push(onFrame);
+
+  // From the model towards the viewer (model frame): the camera's back direction.
+  const toViewer = () => {
+    root.updateMatrixWorld();
+    return stage.camera.getWorldDirection(new THREE.Vector3()).negate().transformDirection(root.matrixWorld.clone().invert());
+  };
 
   const view = (): SectionView | null =>
     state && {
       ...state,
       active,
-      ranges: state.planes.map((p) => (isCylinder(p) ? [Math.ceil(0.1 - p.radius), Math.max(100, Math.ceil(p.radius * 4))] : offsetRange(p, modelBox()))),
+      ranges: state.planes.map((p) => offsetRange(p, modelBox())),
       caps: caps.stencil ? "stencil" : "flat",
     };
   const emit = () => {
@@ -166,18 +120,12 @@ export function createSection(stage: Stage, meshes: PartMesh[], topo: Topo, look
     listeners.forEach((cb) => cb(v));
   };
 
-  // The handle's frame on a cut (model frame): a plane's point and its turned in-plane axes; a
-  // cylinder's surface point towards the click, the arrow pointing out from the axis.
+  // The handle's frame on a plane (model frame): its point and its turned in-plane axes.
   const frameOf = (c: Cut): Frame => {
-    if (isCylinder(c)) {
-      const u = vec(c.axis).normalize();
-      const n = vec(c.ref).normalize();
-      return { point: vec(c.origin).addScaledVector(n, cylinderRadius(c)), u, v: n.clone().cross(u), n, arcs: false };
-    }
     const { point, normal } = planeAt(c);
     const [u0, v0] = inPlaneAxes(vec(c.normal).normalize());
     const q = new THREE.Quaternion().setFromAxisAngle(v0, (c.tilt[1] * Math.PI) / 180).multiply(new THREE.Quaternion().setFromAxisAngle(u0, (c.tilt[0] * Math.PI) / 180));
-    return { point, n: normal, u: u0.applyQuaternion(q), v: v0.applyQuaternion(q), arcs: true };
+    return { point, n: normal, u: u0.applyQuaternion(q), v: v0.applyQuaternion(q) };
   };
 
   const apply = () => {
@@ -193,7 +141,7 @@ export function createSection(stage: Stage, meshes: PartMesh[], topo: Topo, look
     }
     root.updateMatrixWorld();
     active = Math.max(0, Math.min(active, state.planes.length - 1));
-    renderer.clippingPlanes = state.planes.filter((c): c is CutPlane => !isCylinder(c)).map((p) => clipPlane(p).applyMatrix4(root.matrixWorld));
+    renderer.clippingPlanes = state.planes.map((p) => clipPlane(p).applyMatrix4(root.matrixWorld));
     caps.update(state.planes, root.matrixWorld);
     // The handle and its number box only while the panel is open, like Onshape's.
     handle.set(state.open ? frameOf(state.planes[active]) : null);
@@ -203,21 +151,23 @@ export function createSection(stage: Stage, meshes: PartMesh[], topo: Topo, look
   };
 
   const section = (s: Section | null) => {
-    state = s && { planes: s.planes.slice(0, MAX_PLANES), open: s.open };
+    // A saved view from before 2026-11-11 may hold a cylindrical cut, which is gone: dropped.
+    const planes = s?.planes.filter((p) => (p as { kind?: string }).kind !== "cylinder").slice(0, MAX_PLANES) ?? [];
+    state = s && planes.length ? { planes, open: s.open } : null;
     apply();
   };
   const setCuts = (planes: Cut[], row = active) => {
     active = row;
     section({ planes: planes.length ? planes : [defaultPlane("front", modelBox())], open: state?.open ?? true });
   };
-  const isDefault = (c: Cut) => !isCylinder(c) && c.from !== "face";
+  const isDefault = (c: Cut) => c.from !== "face";
   const sectionFromFace = (point: V3, normal: V3) => {
     active = 0;
     section({ planes: [facePlane(point, normal)], open: true });
   };
   const sectionFromRound = (r: RoundFace) => {
     active = 0;
-    section({ planes: [faceCylinder(r.axisPoint, r.axis, r.radius, r.point, r.normal)], open: true });
+    section({ planes: [roundFacePlane(r.axisPoint, r.axis, r.point, toViewer())], open: true });
   };
   const sectionShow = (open: boolean) => {
     if (!open) return section(null);
@@ -231,16 +181,8 @@ export function createSection(stage: Stage, meshes: PartMesh[], topo: Topo, look
   };
 
   // The same face clicked again takes its cut off, like a second click on a selection in Onshape.
-  const sameCut = (a: Cut, b: Cut) => {
-    if (isCylinder(a) !== isCylinder(b)) return false;
-    if (isCylinder(a) && isCylinder(b)) {
-      const d = vec(b.origin).sub(vec(a.origin));
-      const ax = vec(a.axis);
-      return Math.abs(ax.dot(vec(b.axis))) > 0.9999 && d.lengthSq() - d.dot(ax) ** 2 < 1e-10 && Math.abs(a.radius - b.radius) < 1e-3;
-    }
-    const p = a as CutPlane, q = b as CutPlane;
-    return p.from === "face" && q.from === "face" && vec(p.normal).dot(vec(q.normal)) > 0.9999 && Math.abs(vec(q.origin).sub(vec(p.origin)).dot(vec(p.normal))) < 1e-6;
-  };
+  const sameCut = (p: Cut, q: Cut) =>
+    p.from === "face" && q.from === "face" && vec(p.normal).dot(vec(q.normal)) > 0.9999 && Math.abs(vec(q.origin).sub(vec(p.origin)).dot(vec(p.normal))) < 1e-6;
   const addCut = (c: Cut) => {
     if (!state) return;
     const cuts = state.planes.filter((p) => !isDefault(p));
@@ -291,7 +233,7 @@ export function createSection(stage: Stage, meshes: PartMesh[], topo: Topo, look
   };
 
   // While the panel is open: a flat face adds a plane on it (at the face's middle), a round one a
-  // cylinder on its axis; anything else (or empty space) does nothing, and makes no pick either.
+  // plane through its axis facing the viewer; anything else (or empty space) does nothing, and makes no pick either.
   const tap = (e: MouseEvent) => {
     if (!state?.open) return false;
     const h = castAt(e.clientX, e.clientY).front;
@@ -308,10 +250,10 @@ export function createSection(stage: Stage, meshes: PartMesh[], topo: Topo, look
       mid.divideScalar(f.tris.length * 3).applyMatrix4(h.at);
       const n = vec(f.normal).applyMatrix3(new THREE.Matrix3().getNormalMatrix(h.at)).normalize();
       addCut(facePlane(mid.toArray() as V3, n.toArray() as V3));
-    } else if (f.kind === "cylinder" && f.axis && f.point && f.radius) {
+    } else if (f.kind === "cylinder" && f.axis && f.point) {
       const axis = vec(f.axis).transformDirection(h.at);
       const p = vec(f.point).applyMatrix4(h.at);
-      addCut(faceCylinder(p.toArray() as V3, axis.toArray() as V3, f.radius, h.point.toArray() as V3, h.normal.toArray() as V3));
+      addCut(roundFacePlane(p.toArray() as V3, axis.toArray() as V3, h.point.toArray() as V3, toViewer()));
     }
     return true;
   };
@@ -353,32 +295,26 @@ export function createSection(stage: Stage, meshes: PartMesh[], topo: Topo, look
     look(dir.toArray() as [number, number, number]);
   };
 
-  // The number box by the handle: the depth (mm), a cylinder's radius, or the angle of the arc
-  // being dragged, typed exactly (Enter or leaving the box sets it).
+  // The number box by the handle: the depth (mm) or the angle of the arc being dragged, typed exactly (Enter or leaving the box sets it).
   const box = document.createElement("label");
   box.className = "absolute z-20 hidden items-center gap-1 rounded-md border border-accent/60 bg-surface/95 px-1.5 py-0.5 text-xs text-muted shadow-sm backdrop-blur tabular-nums";
   const input = document.createElement("input");
   input.type = "text";
   input.inputMode = "decimal";
   input.className = "h-6 w-16 rounded border border-line bg-surface px-1 text-right text-xs text-fg tabular-nums pointer-coarse:h-8";
-  const prefix = document.createElement("span");
   const unit = document.createElement("span");
-  box.append(prefix, input, unit);
+  box.append(input, unit);
   el.appendChild(box);
   let boxMode: HandlePart = "move";
   let boxShown = false;
   const boxValue = () => {
     const c = state?.planes[active];
     if (!c) return "";
-    if (boxMode !== "move" && !isCylinder(c)) return String(c.tilt[boxMode === "u" ? 0 : 1]);
-    return String(isCylinder(c) ? round1(c.radius + c.offset) : c.offset);
+    return String(boxMode === "move" ? c.offset : c.tilt[boxMode === "u" ? 0 : 1]);
   };
   const fillBox = () => {
-    const c = state?.planes[active];
-    if (c && isCylinder(c)) boxMode = "move";
-    input.setAttribute("aria-label", boxMode !== "move" ? "Section tilt (degrees)" : c && isCylinder(c) ? "Section radius (mm)" : "Section depth (mm)");
+    input.setAttribute("aria-label", boxMode !== "move" ? "Section tilt (degrees)" : "Section depth (mm)");
     unit.textContent = boxMode !== "move" ? "°" : "mm";
-    prefix.textContent = c && isCylinder(c) ? "R" : "";
     if (document.activeElement !== input) input.value = boxValue();
   };
   const showBox = (on: boolean) => {
@@ -401,8 +337,7 @@ export function createSection(stage: Stage, meshes: PartMesh[], topo: Topo, look
     const c = state?.planes[active];
     if (!state || !c || !input.value.trim() || !Number.isFinite(n)) return fillBox();
     let next: Cut;
-    if (isCylinder(c)) next = { ...c, offset: Math.max(0.1, n) - c.radius };
-    else if (boxMode === "move") next = { ...c, offset: n };
+    if (boxMode === "move") next = { ...c, offset: n };
     else {
       const tilt: [number, number] = [...c.tilt];
       tilt[boxMode === "u" ? 0 : 1] = wrapDeg(n);
@@ -422,8 +357,7 @@ export function createSection(stage: Stage, meshes: PartMesh[], topo: Topo, look
   });
   input.addEventListener("blur", typed);
 
-  // Dragging the handle: the arrow moves the cut along its normal (mm; a cylinder's radius), an
-  // arc tilts a plane. A click on the arrow without moving flips the cut, like Onshape's.
+  // Dragging the handle: the arrow moves the plane along its normal (mm), an arc tilts it. A click on the arrow without moving flips the cut, like Onshape's.
   let drag: { part: HandlePart; id: number; x: number; y: number; moved: boolean; start: Cut; t0: number; centre: THREE.Vector3; axis: THREE.Vector3; ref: THREE.Vector3; n: THREE.Vector3 } | null = null;
   const onDown = (e: PointerEvent) => {
     if (!state?.open || e.button !== 0 || e.target !== canvas) return;
@@ -439,7 +373,7 @@ export function createSection(stage: Stage, meshes: PartMesh[], topo: Topo, look
     e.stopPropagation();
     e.preventDefault();
     drag = { part, id: e.pointerId, x: e.clientX, y: e.clientY, moved: false, start: structuredClone(c), t0, centre: f.point, axis, ref, n: f.n };
-    if (boxMode !== part && !isCylinder(c)) {
+    if (boxMode !== part) {
       boxMode = part;
       fillBox();
     }
@@ -471,8 +405,7 @@ export function createSection(stage: Stage, meshes: PartMesh[], topo: Topo, look
       const t = alongLine(ray.origin, ray.direction, drag.centre, drag.n);
       if (t === null) return;
       p.offset = round1(drag.start.offset + (t - drag.t0) * 1000);
-      if (isCylinder(p)) p.offset = Math.max(round1(0.1 - p.radius), p.offset);
-    } else if (!isCylinder(p) && !isCylinder(drag.start)) {
+    } else {
       const a = ringAngle(ray.origin, ray.direction, drag.centre, drag.axis, drag.ref);
       if (a === null) return;
       const k = drag.part === "u" ? 0 : 1;
@@ -500,15 +433,9 @@ export function createSection(stage: Stage, meshes: PartMesh[], topo: Topo, look
     let best: { k: number; t: number } | null = null;
     for (let k = 0; k < state.planes.length; k++) {
       const c = state.planes[k];
-      let t: number | null = null;
-      if (isCylinder(c)) {
-        const ts = rayCylinder(ray.origin, ray.direction, c);
-        t = ts && (c.flip ? ts[0] : ts[1]);
-      } else {
-        const { point, normal } = planeAt(c);
-        const d = ray.direction.dot(normal);
-        if (Math.abs(d) > 1e-9) t = point.clone().sub(ray.origin).dot(normal) / d;
-      }
+      const { point, normal } = planeAt(c);
+      const d = ray.direction.dot(normal);
+      const t = Math.abs(d) > 1e-9 ? point.clone().sub(ray.origin).dot(normal) / d : null;
       if (t === null || t <= 0 || (front && t > front.t) || (best && t > best.t)) continue;
       const q = ray.at(t, new THREE.Vector3());
       if (state.planes.some((o, j) => j !== k && removedBy(o, q))) continue;

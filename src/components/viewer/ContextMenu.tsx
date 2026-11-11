@@ -130,7 +130,7 @@ export function ContextMenu({
   // opens the panel on the default plane; with a section on, Edit and Turn off instead.
   if (tools.sectionNow())
     view.push({ label: "Edit section view", run: () => tools.sectionEdit() }, { label: "Turn off section view", run: () => tools.sectionShow(false) });
-  // On a round face: a cylindrical section on its axis and radius, like Onshape's (Harel, 2026-11-11).
+  // On a round face: a plane through its axis, cutting it lengthwise, like Onshape's (Harel, 2026-11-11).
   else view.push({ label: "Section view", run: () => (at.face ? tools.sectionFromFace(at.face.point, at.face.normal) : at.round ? tools.sectionFromRound(at.round) : tools.sectionShow(true)) });
   // Onshape's exploded view, on empty space (S7).
   if (!keys.length) view.push({ label: "Exploded view", run: () => tools.explodeShow(true) });

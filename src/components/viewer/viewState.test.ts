@@ -4,7 +4,7 @@ import { cleanView, decodeView, encodeView, hashWithView, viewFromHash, type Vie
 const view: ViewState = {
   pose: { target: [0.123456789, 0, -1], dir: [0.57735, 0.57735, 0.57735], half: 0.8, projection: "perspective" },
   vis: { hidden: [{ key: "a:b:P1", at: [0.001, 0.002, 0.003] }], isolated: ["a:b:P2"], ghost: true, clear: [] },
-  section: { planes: [{ kind: "cylinder", origin: [0, 0, 0], axis: [0, 0, 1], ref: [1, 0, 0], radius: 5, offset: 0, flip: false }], open: false },
+  section: { planes: [{ from: "face", normal: [0, 0, 1], origin: [0, 0, 0], offset: 5, tilt: [10, 0], flip: false }], open: false },
   display: "hiddenVisible",
   colors: "compare",
 };

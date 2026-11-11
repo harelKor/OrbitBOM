@@ -1,14 +1,12 @@
 // The section's 3D handle, like Onshape's manipulator: an arrow along the plane's normal to drag
-// the offset (a click on it flips the cut) and two arcs to tilt it; on a cylinder only the arrow,
-// pointing out from the axis, to drag the radius. Drawn on top of everything at a fixed size on screen
+// the offset (a click on it flips the cut) and two arcs to tilt it. Drawn on top of everything at a fixed size on screen
 // (whatever the zoom, in either camera), never clipped by the section itself.
 import * as THREE from "three";
 import type { Stage } from "./stage";
 
 export type HandlePart = "move" | "u" | "v";
 // The plane's frame in the model: its point and three unit axes (u, v in the plane, n its normal).
-// `arcs`: false on a cylinder (no tilt).
-export type Frame = { point: THREE.Vector3; u: THREE.Vector3; v: THREE.Vector3; n: THREE.Vector3; arcs: boolean };
+export type Frame = { point: THREE.Vector3; u: THREE.Vector3; v: THREE.Vector3; n: THREE.Vector3 };
 
 // Sizes in CSS pixels.
 const SHAFT = 56;
@@ -60,7 +58,6 @@ export function createHandle(stage: Stage): Handle {
       transparent: true,
     });
   }
-  const arcs: THREE.Mesh[] = [];
   const add = (g: THREE.BufferGeometry, part: HandlePart) => {
     geometries.push(g);
     const m = new THREE.Mesh(g, mats[part]);
@@ -71,7 +68,6 @@ export function createHandle(stage: Stage): Handle {
       mats[part].uniforms.px.value = Math.max(1, stage.el.clientHeight);
     };
     group.add(m);
-    if (part !== "move") arcs.push(m);
   };
   // Built along +Y, then turned so the arrow runs along the frame's n (+Z).
   add(new THREE.CylinderGeometry(2, 2, SHAFT, 10).translate(0, SHAFT / 2, 0).rotateX(Math.PI / 2), "move");
@@ -100,7 +96,6 @@ export function createHandle(stage: Stage): Handle {
   const set = (f: Frame | null) => {
     frame = f;
     group.visible = !!f;
-    for (const m of arcs) m.visible = !!f?.arcs;
     if (f) group.matrix.makeBasis(f.u, f.v, f.n).setPosition(f.point);
     group.matrixWorldNeedsUpdate = true;
   };
@@ -137,7 +132,6 @@ export function createHandle(stage: Stage): Handle {
     let part: HandlePart | null = null;
     const dm = Math.min(toSeg(x, y, c, tip), Math.hypot(x - c[0], y - c[1]) - 4);
     if (dm < best) [best, part] = [dm, "move"];
-    if (!frame.arcs) return part;
     for (const [name, a, b] of [
       ["u", frame.v, frame.n],
       ["v", frame.u, frame.n],
