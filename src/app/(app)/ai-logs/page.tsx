@@ -104,7 +104,7 @@ function LogRow({ log }: { log: AiLog }) {
               {itemCount > 1 ? ` on ${itemCount} items` : ""}
             </span>
           )}
-          {log.waiting > 0 && <span className="rounded-full bg-gold/10 px-2 py-0.5 text-[11px] font-semibold text-gold tabular-nums">{log.waiting} in To Review</span>}
+          {log.waiting > 0 && <span className="rounded-full bg-gold/10 px-2 py-0.5 text-[11px] font-semibold text-gold tabular-nums">{log.waiting} in AI review</span>}
           <span className="text-xs text-subtle tabular-nums">
             {log.memberName ? `${log.memberName}, ` : ""}
             {when(log.at)}

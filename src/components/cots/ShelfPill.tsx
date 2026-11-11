@@ -13,7 +13,7 @@ import { formatStock } from "@/lib/inventory/stock";
 import { computeStatus } from "@/lib/status";
 
 const pill = "press inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold";
-const REASONS = { onshape: "the same Onshape part", link: "the same product page", name: "the same name", review: "a link waiting in To Review" } as const;
+const REASONS = { onshape: "the same Onshape part", link: "the same product page", name: "the same name", review: "a link waiting in AI review" } as const;
 
 // A COTS card's link to the team inventory: how much of it the shelf covers and how many to
 // order, or the item it most likely is. Linking it to a new item happens in the part's details window.
@@ -139,7 +139,7 @@ export function LinkTag({ part, save }: { part: CardPart; save: SaveFn }) {
   const s = part.shelfSuggestion;
   if (!work || !s || part.inventoryItemId || gone) return null;
   const ids = part.memberIds ?? [part.id];
-  const why = s.pending ? "Suggested link, waiting in To Review" : `Matched by ${REASONS[s.reason]}`;
+  const why = s.pending ? "Suggested link, waiting in AI review" : `Matched by ${REASONS[s.reason]}`;
   return (
     <span className="flex max-w-full min-w-0 items-center overflow-hidden rounded-full border border-accent/60 bg-surface/90 text-[11px] font-semibold text-accent shadow-sm backdrop-blur-md">
       <button

@@ -317,7 +317,7 @@ export function BomView({
             <button
               className={`${mode === "suggest" ? "btn-primary" : "btn"} inline-flex items-center gap-1.5`}
               onClick={() => setMode((m) => (m === "suggest" ? null : "suggest"))}
-              title="Pick parts, set up or not, and get fresh setup and inventory suggestions for To Review"
+              title="Pick parts, set up or not, and get fresh setup and inventory suggestions for AI review"
             >
               <SuggestIcon className="h-4 w-4 text-amber-500" />
               Suggest

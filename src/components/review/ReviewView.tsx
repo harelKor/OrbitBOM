@@ -409,8 +409,8 @@ function DismissButton({ onClick, disabled }: { onClick: () => void; disabled?: 
       type="button"
       onClick={onClick}
       disabled={disabled}
-      aria-label="Remove from To Review"
-      title="Remove from To Review (keep things as they are now, without approving or rejecting)"
+      aria-label="Remove from AI review"
+      title="Remove from AI review (keep things as they are now, without approving or rejecting)"
       className="press -mr-1 shrink-0 rounded p-1 text-subtle hover:bg-raised hover:text-fg active:scale-[0.98]"
     >
       <Icon name="close" className="h-3.5 w-3.5" />
