@@ -336,10 +336,15 @@ export function createPicking(
       v.set(q[0], q[1], q[2]).applyMatrix4(toScreen).project(stage.camera);
       return [((v.x + 1) / 2) * rect.width, ((1 - v.y) / 2) * rect.height];
     };
+    // With a section on, corners and edge pieces the cut takes away don't snap: they aren't drawn.
+    const kept = on.kept?.() ?? null;
+    const w = new THREE.Vector3();
+    const shows = (q: V3) => !kept || kept(w.set(q[0], q[1], q[2]).applyMatrix4(toScreen));
     if (filter === "any" || filter === "point") {
       let best = finger ? 22 : 10;
       let n = -1;
       t.corners.forEach((q, k) => {
+        if (!shows(q)) return;
         const [sx, sy] = screen(q);
         const d = Math.hypot(sx - x, sy - y);
         if (d < best) [best, n] = [d, k];
@@ -351,8 +356,10 @@ export function createPicking(
       let n = -1;
       t.edges.forEach((ed, k) => {
         const pts = ed.points.map(screen);
+        const seen = kept ? ed.points.map(shows) : null;
         const count = ed.closed ? pts.length : pts.length - 1;
         for (let j = 0; j < count; j++) {
+          if (seen && !seen[j] && !seen[(j + 1) % pts.length]) continue; // the whole piece is cut away
           const [ax, ay] = pts[j];
           const [bx, by] = pts[(j + 1) % pts.length];
           const dx = bx - ax, dy = by - ay;
