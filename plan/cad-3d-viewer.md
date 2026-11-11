@@ -18,7 +18,10 @@ no new cloud resources), heavy work stays in the browser, phones are first-class
 | S2 | Instant loading | 1 | done (2026-11-10, db01e1c) | cache drops old revisions after 2 days unused, anything after 30 days (not "everything unused"); part windows don't use the cache yet |
 | S3 | Context menu, hide / isolate, Shift+Y under the mouse | 1 | done (2026-11-10, 76a3a99, 0b73627, 215e46b, 68e1c17) | Section here, worker topology, nearest-hit raycasts; comments a column beside the 3D view at ≥ 1280 px |
 | S4 | Section v2 | 1 | done (2026-11-10, c4b701c) | Include / Exclude per part shape per subsystem; red interference not yet seen on real data |
-| S6 | Saved views + comment pins (migration) | 2 | waiting for Harel's OK after wave 1 | |
+| R1 | Section view like Onshape (panel, face picks, circular sections, red) | parity | in progress (2026-11-11) | its own session |
+| R2 | Menu, isolate without ghosts, no pick pop-up, bigger measure box | parity | in progress (2026-11-11) | the orchestrator session |
+| R3 | View cube menu = Onshape's camera and render options; toolbar; part windows; gap pass | parity | after R1 and R2 | |
+| S6 | Saved views + comment pins (migration) | 2 | after the parity round | |
 | S7 | Explode and move | 2 | waiting for Harel's OK after wave 1 | |
 | S9 | Display modes and polish | 2 | waiting for Harel's OK after wave 1 | |
 | S8 | Motion along the mates | later | needs its own plan first | |
@@ -213,6 +216,53 @@ Owns `section.ts` and the section block of `ViewerToolbar.tsx`.
 - Section only the picked parts / all but the picked parts (Onshape's Include / Exclude).
 - Done: in the sandbox, a plate with holes cut through reads clearly at phone width; the edge
   lines respect every plane (they do today for one).
+
+### The Onshape parity round (Harel, 2026-11-11)
+
+After Wave 1 Harel asked for the tools, logic, UI and look to copy Onshape's, unless he said
+otherwise before (kept: hover blue / picked orange, Shift+Y brings back the hidden part under the
+mouse, Space drops the newest pick, no parts list). Missing Onshape features are welcome too.
+Usage matters: test what the change touches, not everything.
+
+**R1. Section view like Onshape** (owns `section.ts`, `sectionCaps.ts`, `sectionHandle.ts`,
+`sectionMath.ts`, the section panel, which moves out of `ViewerToolbar.tsx` into
+`src/components/viewer/SectionDialog.tsx`; it may add to `SceneTools` and `picking.ts`'s click
+routing only for "clicks go to the section while the panel is open").
+- Opens with Shift+X, the right-click menu's "Section view" (on a face: cut there), and the view
+  cube menu (R3 wires that to the same `SceneTools` call). A "Section view" panel at the top left
+  of the 3D view. While it is open, a click on a flat face adds a plane on it, a click on a round
+  face adds a **cylindrical section** on its axis and radius; each adds one, up to 3 (Onshape's
+  way), ✕ on a row removes it; clicks don't make measure picks then. With nothing picked: a
+  "Default plane" choice Front / Top / Right (replaces X / Y / Z).
+- ✓ closes the panel and keeps the cut (measuring works again); double-click a cap reopens it;
+  "Turn off section view" (panel, menu, Shift+X) ends it.
+- Remove All / Picked / Others (no Include / Exclude either).
+- Handle as Onshape's: drag the arrow (depth, or radius on a cylinder), click it to flip, arcs to
+  tilt a plane, and a number box in the 3D view by the handle for the exact depth / angle.
+- N: view normal to the newest section (or a picked flat face when not sectioning).
+- Cylinder: clip by distance to the axis in the shaders (parts, edges, caps), keep inside or
+  outside (Flip); caps by the same stencil method with a cylinder surface instead of the quad.
+- Red where two solids overlap on a cut, like Onshape: today only different part shapes are
+  compared (copies of one shape never), and it hasn't been seen working. Check it on overlapping
+  parts in `/dev/viewer` (add two there if needed).
+
+**R2. Menu, isolate, pop-ups** (owns `ContextMenu.tsx`, `visibility.ts`, `ReviewScreen.tsx`).
+- Menu: no Hide others, no Zoom to; "Section here" → "Section view" (calls R1's API); View normal
+  to (N) on a flat face.
+- Isolate shows only the parts, no ghosts; "Show others as ghosts" stays as a second step.
+- No pop-up on a pick (the top-left list with Isolate / Hide / Open part / Open system): the menu
+  does it. The small "Isolated · Show all" chip stays (phones).
+- Measure box bigger (about 20rem, bigger values), bottom right.
+
+**R3. Camera and render options, toolbar, gap pass** (after R1 and R2; owns `ViewCube.tsx`,
+`camera.ts`, `ViewerToolbar.tsx`, `PartStage.tsx`, `RobotViewer.tsx`).
+- The cube's menu = Onshape's camera and render options: standard views, Dimetric, Trimetric,
+  Perspective / Orthographic, Section view / Edit / Turn off; later S9's display modes and S6's
+  named views go here.
+- Toolbar: no Section button; Fit on phones only, with the colours toggle and the Hidden list.
+- Part windows and BOM pages: the cube, and the mesh cache (Wave 1 left them out).
+- A last side-by-side pass against Onshape's assembly view; small missing things it finds get
+  built (for example "Open in Onshape" from the menu: a plain link, no API call).
 
 ### S6. Saved views and comment pins (Wave 2, needs a migration: 0081, the Assembly page took 0079 and 0080)
 
