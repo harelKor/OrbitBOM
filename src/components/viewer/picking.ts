@@ -211,6 +211,7 @@ export function createPicking(
     names: () => Map<string, string> | undefined;
     menu: (at: MenuAt) => void; // right-click without a drag, or a long press
     hovered?: (key: string | null) => void; // the part under the mouse changed (the Assembly page lights its sub-assembly)
+    sectionTap?: (e: MouseEvent) => boolean; // a click, taken by the Section view panel while it is open (no pick then)
   },
 ): Picking {
   const { el, renderer, root, render } = stage;
@@ -498,6 +499,10 @@ export function createPicking(
     if (e.button !== 0) return;
     if (pressed) {
       pressed = false;
+      return;
+    }
+    if (on.sectionTap?.(e)) {
+      lastTap = null;
       return;
     }
     const same = !!lastTap && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) <= CLICK_PX;

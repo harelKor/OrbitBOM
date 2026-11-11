@@ -71,6 +71,7 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
     showHidden: (g) => visibility.show([g]),
     names: host.names,
     hovered: (key) => host.hover?.(key),
+    sectionTap: (e) => section.tap(e),
     menu: (at) => {
       // On a picked part, the menu acts on every picked part (Onshape acts on the selection).
       const picked = measure?.parts() ?? [];
@@ -89,7 +90,7 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
     pick: (key) => host.pick(key),
     hoverOff: () => picking?.setHover(null),
   });
-  const section = createSection(stage, meshes, topo);
+  const section = createSection(stage, meshes, topo, (dir) => camera.tools.look(dir));
 
   const tools: SceneTools = {
     ...camera.tools,

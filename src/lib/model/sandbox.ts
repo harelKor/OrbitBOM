@@ -173,6 +173,11 @@ const SYSTEMS: { id: string; name: string; parts: Placed[] }[] = [
       { part: "PC_BELLY", name: "Bellypan", t: at([0.05, 0.05, -0.003]) },
       ...[0.08, 0.38].flatMap((x) => [0, FRAME].map((y) => ({ part: "PLATE", name: "Frame gusset", t: at([x, y - PLATE.h / 2, TUBE.h]) }))),
       ...[0.12, FRAME - 0.12].flatMap((x) => [0.12, FRAME - 0.12].map((y) => ({ part: "STANDOFF", name: "Battery standoff", t: at([x, y, 0]) }))),
+      // Deliberate clashes, to see the section's red interference (R1, plan/cad-3d-viewer.md): a
+      // third gusset overlapping the first (two copies of one shape) and a standoff straight
+      // through the front rail's walls (two different shapes).
+      { part: "PLATE", name: "Clash gusset", t: at([0.2, -PLATE.h / 2, TUBE.h]) },
+      { part: "STANDOFF", name: "Clash standoff", t: at([0.6, 0, -0.03]) },
     ],
   },
   {
