@@ -101,14 +101,8 @@ export function ContextMenu({
       // these parts; the ghosts are a second step (the view group below).
       { label: "Isolate", run: () => tools.isolate(keys, { ghost: false }) },
       { label: clear ? "Make opaque" : "Make transparent", run: () => tools.setClear(keys, !clear) },
-      // Section view opens cut on the flat face under the pointer; View normal to looks straight
-      // at it (N), like Onshape's menu.
-      ...(at.face
-        ? [
-            { label: "Section view", run: () => tools.sectionFromFace(at.face!.point, at.face!.normal) },
-            { label: "View normal to", run: () => tools.look(sceneDir(at.face!.normal)) },
-          ]
-        : []),
+      // View normal to looks straight at the flat face under the pointer (N), like Onshape's menu.
+      ...(at.face ? [{ label: "View normal to", run: () => tools.look(sceneDir(at.face!.normal)) }] : []),
       // On a round face: along its axis, as Onshape does.
       ...(at.axis ? [{ label: "View normal to", run: () => tools.look(sceneDir(at.axis!)) }] : []),
     ]);
@@ -129,13 +123,14 @@ export function ContextMenu({
   const view: MenuItem[] = [];
   if (at.hidden || isolated) view.push({ label: "Show all", run: () => tools.showAll() });
   if (isolated) view.push({ label: isolated.ghost ? "Hide the ghosts" : "Show others as ghosts", run: () => tools.isolate(isolated.keys, { ghost: !isolated.ghost }) });
-  if (view.length) groups.push(view);
+  // The section, always offered, on a part or on empty space (Harel, 2026-11-11), with the same
+  // calls as the view cube's menu: Section view cuts on the flat face under the pointer, else
+  // opens the panel on the default plane; with a section on, Edit and Turn off instead.
+  if (tools.sectionNow())
+    view.push({ label: "Edit section view", run: () => tools.sectionEdit() }, { label: "Turn off section view", run: () => tools.sectionShow(false) });
+  else view.push({ label: "Section view", run: () => (at.face ? tools.sectionFromFace(at.face.point, at.face.normal) : tools.sectionShow(true)) });
+  groups.push(view);
 
-  // Nothing to offer (empty space, nothing hidden): no menu at all.
-  useEffect(() => {
-    if (!groups.length) onClose();
-  });
-  if (!groups.length) return null;
 
   return (
     <div
