@@ -146,6 +146,10 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
   part number (`src/lib/assembly/groups.ts`, 1690-26-421-01 → "42"), steps and ticks in
   `src/lib/assembly/steps.ts` (CAD writes with `instruct`, any team member ticks with `work`), page
   logic in `src/lib/assembly/view.ts`, UI in `src/components/assembly/`. `/dev/assembly` = sandbox.
+- Scan anything (plan/item-recognition.md): Phase 0 test page `/inventory/scan-test`. Teeth counter
+  on the phone (`src/lib/recognize/teeth.ts`), Gemini free tier on the server (`gemini.ts`,
+  `GEMINI_API_KEY`, no billing account), answer in our words (`answer.ts`), route
+  `/api/inventory/recognize`. Next: Phase 1 replaces the Scan button once the test looks good.
 - Files: `src/lib/storage/r2.ts`; backups and restore: `src/lib/storage/backup.ts`, `restore.ts`.
 - Work the user needn't wait for: `afterResponse` (`src/lib/later.ts`).
 - MCP: `src/lib/mcp/registry.ts` (`read` / `write`, preview → confirm token → apply) and one file
