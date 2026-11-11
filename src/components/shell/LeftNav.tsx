@@ -234,10 +234,10 @@ export function LeftNav({
               </div>
             )}
           </div>
-          <Item href={base && `${base}/cad-review`} icon="cube" active={pathname.includes("/cad-review")}>
+          <Item href={base && `${base}/cad-review`} icon="gears" active={pathname.includes("/cad-review")}>
             CAD
           </Item>
-          <Item href={base && `${base}/assembly`} icon="wrench" active={pathname.endsWith("/assembly")}>
+          <Item href={base && `${base}/assembly`} icon="screw" active={pathname.endsWith("/assembly")}>
             Assembly
           </Item>
           {/* Was To Review, near the top (Harel, 2026-11-11). */}
