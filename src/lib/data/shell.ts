@@ -7,6 +7,7 @@ import { areaQueue, fabStage, machinesOf } from "@/lib/fab";
 import { statusBreakdown } from "@/lib/stats";
 import { listSystemSync, type SystemSync } from "@/lib/versions/sync";
 import { countInventoryReviews } from "@/lib/review/inventory";
+import { cachedQuery } from "./cache";
 
 const { robots, systems, parts, partReviews } = schema;
 
@@ -36,13 +37,14 @@ export type ShellRobot = {
 export async function listShellRobots(): Promise<ShellRobot[]> {
   // One read of the systems for the panel and their sync state (a Drizzle query runs again each
   // time it is awaited, so it is turned into a promise once).
-  const systemsRead = Promise.resolve(db.select().from(systems).orderBy(asc(systems.name)));
+  const systemsRead = cachedQuery(db.select().from(systems).orderBy(asc(systems.name)), ["systems"]);
   const [robotRows, systemRows, statusRows, partThumbs, reviewRows, sync, inventoryReviews] = await Promise.all([
-    db.select().from(robots).orderBy(desc(robots.year), asc(robots.name)),
+    cachedQuery(db.select().from(robots).orderBy(desc(robots.year), asc(robots.name)), ["robots"]),
     systemsRead,
-    db
-      .select({
-        systemId: parts.systemId,
+    cachedQuery(
+      db
+        .select({
+          systemId: parts.systemId,
         classification: parts.classification,
         quantity: parts.quantity,
         designState: parts.designState,
@@ -51,21 +53,29 @@ export async function listShellRobots(): Promise<ShellRobot[]> {
         process2: parts.process2,
         donePreprocess: parts.donePreprocess,
         doneProcess1: parts.doneProcess1,
-        doneProcess2: parts.doneProcess2,
-      })
-      .from(parts)
-      .where(isNull(parts.removedFromCadAt)),
-    db
-      .selectDistinctOn([parts.systemId], { systemId: parts.systemId, id: parts.id, rev: parts.thumbnailRev })
+          doneProcess2: parts.doneProcess2,
+        })
+        .from(parts)
+        .where(isNull(parts.removedFromCadAt)),
+      ["parts"],
+    ),
+    cachedQuery(
+      db
+        .selectDistinctOn([parts.systemId], { systemId: parts.systemId, id: parts.id, rev: parts.thumbnailRev })
       .from(parts)
       .where(and(isNotNull(parts.thumbnailRev), isNull(parts.removedFromCadAt)))
       .orderBy(parts.systemId, desc(parts.quantity), asc(parts.id)),
-    db
-      .select({ systemId: parts.systemId, n: count() })
-      .from(partReviews)
-      .innerJoin(parts, eq(parts.id, partReviews.partId))
-      .where(isNull(parts.removedFromCadAt))
-      .groupBy(parts.systemId),
+      ["parts"],
+    ),
+    cachedQuery(
+      db
+        .select({ systemId: parts.systemId, n: count() })
+        .from(partReviews)
+        .innerJoin(parts, eq(parts.id, partReviews.partId))
+        .where(isNull(parts.removedFromCadAt))
+        .groupBy(parts.systemId),
+      ["parts", "part_reviews"],
+    ),
     systemsRead.then((rows) => listSystemSync(rows)),
     // Inventory changes waiting in To Review count on every active robot (one shared shelf).
     countInventoryReviews(),

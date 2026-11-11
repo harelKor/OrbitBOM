@@ -1161,3 +1161,11 @@ export const assemblyTicks = pgTable("assembly_ticks", {
   memberId: uuid("member_id").references(() => members.id, { onDelete: "set null" }),
   doneAt: timestamp("done_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// One counter per table the server keeps in memory (src/lib/data/cache.ts). Triggers (migration
+// 0083) add one when a transaction that wrote the table commits, so a cached read is reused
+// until its tables change. Keeps Supabase's egress inside the free 5 GB (Harel, 2026-11-11).
+export const dataVersions = pgTable("data_versions", {
+  name: text("name").primaryKey(),
+  version: bigint("version", { mode: "number" }).notNull().default(0),
+});

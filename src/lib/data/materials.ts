@@ -4,6 +4,7 @@ import { db, schema } from "@/db";
 import { CATEGORY_GROUPS } from "@/config/inventory";
 import { categoryOf } from "@/lib/inventory/categories";
 import { formatStock } from "@/lib/inventory/stock";
+import { cached } from "./cache";
 import { listCategories } from "./categories";
 
 const { inventoryItems } = schema;
@@ -17,6 +18,10 @@ export type MaterialGroup = { id: string; label: string; raw: boolean; items: Ma
 type Exec = Pick<typeof db, "select" | "insert">;
 
 export async function listMaterialGroups(exec: Exec = db): Promise<MaterialGroup[]> {
+  return exec === db ? cached("materialGroups", ["inventory_items", "inventory_categories", "base_materials"], () => loadMaterialGroups(db)) : loadMaterialGroups(exec);
+}
+
+async function loadMaterialGroups(exec: Exec): Promise<MaterialGroup[]> {
   const [cats, items] = await Promise.all([
     listCategories(exec),
     exec

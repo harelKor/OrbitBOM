@@ -3,6 +3,7 @@ import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { statusBreakdown, type Breakdown } from "@/lib/stats";
 import { isUuid } from "@/lib/uuid";
+import { cachedQuery } from "./cache";
 
 const { robots, systems, parts } = schema;
 
@@ -23,10 +24,7 @@ const statusColumns = {
 // Live BOM rows only: parts removed from CAD are kept but don't count.
 async function statusRows(systemIds: string[]) {
   if (!systemIds.length) return [];
-  return db
-    .select(statusColumns)
-    .from(parts)
-    .where(and(inArray(parts.systemId, systemIds), isNull(parts.removedFromCadAt)));
+  return cachedQuery(db.select(statusColumns).from(parts).where(and(inArray(parts.systemId, systemIds), isNull(parts.removedFromCadAt))), ["parts"]);
 }
 
 export type RobotSummary = typeof robots.$inferSelect & { breakdown: Breakdown };
@@ -50,11 +48,14 @@ export async function getRobot(robotId: string) {
   const [[robot], robotSystems, rows] = await Promise.all([
     db.select().from(robots).where(eq(robots.id, robotId)).limit(1),
     db.select().from(systems).where(eq(systems.robotId, robotId)).orderBy(asc(systems.name)),
-    db
-      .select(statusColumns)
-      .from(parts)
-      .innerJoin(systems, eq(systems.id, parts.systemId))
-      .where(and(eq(systems.robotId, robotId), isNull(parts.removedFromCadAt))),
+    cachedQuery(
+      db
+        .select(statusColumns)
+        .from(parts)
+        .innerJoin(systems, eq(systems.id, parts.systemId))
+        .where(and(eq(systems.robotId, robotId), isNull(parts.removedFromCadAt))),
+      ["parts", "systems"],
+    ),
   ]);
   if (!robot) return null;
   return {

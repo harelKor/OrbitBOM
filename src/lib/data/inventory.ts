@@ -4,6 +4,7 @@ import { db, schema } from "@/db";
 import { cotsStatusOf } from "@/config/cots";
 import { NOT_LAID_OUT } from "@/config/rawStock";
 import { categoryOf, getCategory, type InvCategory } from "@/lib/inventory/categories";
+import { cachedQuery } from "./cache";
 import { categoryImageUrl, listCategories } from "./categories";
 import type { Shelf, ShelfSuggestion } from "@/components/bom/types";
 import { itemMatcher, suggestItem } from "@/lib/inventory/match";
@@ -33,7 +34,7 @@ type Exec = Pick<typeof db, "select">;
 // Live BOM parts that draw on an inventory item, in active robots only.
 async function usageParts(exec: Exec = db, filter: { robotId?: string; itemIds?: string[] } = {}): Promise<UsagePart[]> {
   if (filter.itemIds && !filter.itemIds.length) return [];
-  const rows = await exec
+  const query = exec
     .select({
       partId: parts.id,
       inventoryItemId: parts.inventoryItemId,
@@ -64,6 +65,8 @@ async function usageParts(exec: Exec = db, filter: { robotId?: string; itemIds?:
       ),
     )
     .orderBy(desc(robots.year), asc(robots.name), asc(systems.name), asc(parts.displayName), asc(parts.id));
+  // A transaction reads its own; everyone else shares the copy kept until these tables change.
+  const rows = exec === db ? await cachedQuery(query, ["parts", "systems", "robots"]) : await query;
   return rows.map((r) => ({
     partId: r.partId,
     inventoryItemId: r.inventoryItemId!,
@@ -96,11 +99,14 @@ export async function usageOf(itemIds: string[], exec: Exec = db) {
 // usage, order and picture, not the whole shop's).
 export async function listInventory({ itemIds }: { itemIds?: string[] } = {}) {
   const [items, groups, conditions, locations, used, categories, orders] = await Promise.all([
-    db
-      .select()
-      .from(inventoryItems)
-      .where(itemIds ? inArray(inventoryItems.id, itemIds) : undefined)
-      .orderBy(asc(inventoryItems.name)),
+    cachedQuery(
+      db
+        .select()
+        .from(inventoryItems)
+        .where(itemIds ? inArray(inventoryItems.id, itemIds) : undefined)
+        .orderBy(asc(inventoryItems.name)),
+      ["inventory_items"],
+    ),
     db.select().from(inventoryGroups).orderBy(asc(inventoryGroups.name)),
     db.select().from(inventoryConditions).orderBy(asc(inventoryConditions.label)),
     db.select().from(inventoryLocations).orderBy(asc(inventoryLocations.name)),
@@ -132,7 +138,7 @@ export async function listInventory({ itemIds }: { itemIds?: string[] } = {}) {
 // Every item as the drawing editor's Fit picker shows it: name, category and picture only.
 export async function listFitTargets() {
   const [items, categories] = await Promise.all([
-    db.select({ id: inventoryItems.id, name: inventoryItems.name, category: inventoryItems.category, imagePath: inventoryItems.imagePath }).from(inventoryItems).orderBy(asc(inventoryItems.name)),
+    cachedQuery(db.select({ id: inventoryItems.id, name: inventoryItems.name, category: inventoryItems.category, imagePath: inventoryItems.imagePath }).from(inventoryItems).orderBy(asc(inventoryItems.name)), ["inventory_items"]),
     listCategories(),
   ]);
   const thumbs = await itemThumbs(items, categories);
@@ -308,10 +314,7 @@ export async function robotInventory(robotId: string): Promise<RobotShelfItem[]>
 
 // Items for the BOM's INVENTORY material group and the "To BOM" target pickers.
 export async function listInventoryNames() {
-  return db
-    .select({ id: inventoryItems.id, name: inventoryItems.name })
-    .from(inventoryItems)
-    .orderBy(asc(inventoryItems.name));
+  return cachedQuery(db.select({ id: inventoryItems.id, name: inventoryItems.name }).from(inventoryItems).orderBy(asc(inventoryItems.name)), ["inventory_items"]);
 }
 
 // What a part card shows about the shelf: its item's stock and how much of the part it covers,
@@ -330,7 +333,7 @@ export async function shelfOfParts(rows: ShelfPart[]) {
   const itemCols = { id: inventoryItems.id, name: inventoryItems.name, onshapeKey: inventoryItems.onshapeKey, aliases: inventoryItems.aliases, cotsLinks: inventoryItems.cotsLinks, inStock: inventoryItems.inStock, category: inventoryItems.category };
   const [{ items, usage, cats }, all, waiting, rejected] = await Promise.all([
     usageOf([...new Set(linked.map((p) => p.inventoryItemId!))]),
-    unlinked.length ? db.select(itemCols).from(inventoryItems) : [],
+    unlinked.length ? cachedQuery(db.select(itemCols).from(inventoryItems), ["inventory_items"]) : [],
     open.length
       ? db
           .select({ partId: partReviews.partId, itemId: sql<string>`${partReviews.pending}->>'inventoryItemId'` })

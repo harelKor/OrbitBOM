@@ -32,7 +32,7 @@ server (`/api/mcp/<token>`).
   cotsSync.db ×1, updateBom.db "pulls a new system's BOM"): compare against those.
 - Schema: edit `src/db/schema.ts`, `npm run db:generate`, rename the file to a readable name
   (and its `tag` in `drizzle/meta/_journal.json`), add `ALTER TABLE "x" ENABLE ROW LEVEL SECURITY;`
-  for a new table, commit. Next migration: 0083.
+  for a new table, commit. Next migration: 0084.
 - Local site: README "Local development" (local Supabase in Docker, "Dev sign-in" button; Onshape
   and R2 deliberately unset). Never point local dev at production.
 - On Harel's Windows PC, Docker and `gh` aren't on the Bash PATH: run them from PowerShell, or
@@ -159,6 +159,11 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
 
 - Browsers run server actions one at a time: slow reads (search, popups) go in GET route handlers.
 - A Drizzle query runs again each time it's awaited: wrap it in `Promise.resolve()` to share it.
+- Supabase egress (5 GB/month free) ran out re-reading small tables on every render (2026-11-11).
+  Whole-table / per-page reads go through `cached` / `cachedQuery` (`src/lib/data/cache.ts`): kept
+  in the server's memory until a watched table's counter in `data_versions` moves (deferred
+  triggers, migration 0083). A new table to watch = its triggers in a migration + `Watched`.
+  Never cache inside a transaction (`exec === db` only) or anything with signed URLs.
 - Supabase's transaction pooler (6543): node-postgres, no prepared statements, don't add pool
   startup options without testing them there.
 - Absolute URLs to our own site (OAuth redirect_uri, redirects built from an origin): use

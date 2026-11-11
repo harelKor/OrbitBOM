@@ -15,6 +15,7 @@ import { computeStatus } from "@/lib/status";
 import { versionLabel } from "@/lib/versions/label";
 import { fabChanged } from "@/lib/versions/release";
 import { imageUrl } from "@/lib/storage/r2";
+import { cachedQuery } from "./cache";
 
 const { parts, partVersions, systems, systemVersions, robots, members, partFiles, merges, mergeMembers, partDrawings, inventoryItems, partReviews } = schema;
 
@@ -55,12 +56,17 @@ export type FabLock = {
 
 async function load(where: ReturnType<typeof and>, { anySystem = false } = {}): Promise<BomPart[]> {
   const base = db.select({ part: parts, systemName: systems.name, lastModifiedByName: members.name, drawingOf: partDrawings.partId, reviewOf: partReviews.partId }).from(parts);
-  const rows = await (anySystem ? base.leftJoin(systems, eq(systems.id, parts.systemId)) : base.innerJoin(systems, eq(systems.id, parts.systemId)))
-    .leftJoin(members, eq(members.id, parts.lastModifiedBy))
-    .leftJoin(partDrawings, eq(partDrawings.partId, parts.id))
-    .leftJoin(partReviews, eq(partReviews.partId, parts.id))
-    .where(where)
-    .orderBy(asc(parts.partNumber), asc(parts.displayName), asc(parts.onshapeName));
+  // Kept in memory until one of these tables changes (cache.ts): a BOM page is opened far more
+  // often than its parts change.
+  const rows = await cachedQuery(
+    (anySystem ? base.leftJoin(systems, eq(systems.id, parts.systemId)) : base.innerJoin(systems, eq(systems.id, parts.systemId)))
+      .leftJoin(members, eq(members.id, parts.lastModifiedBy))
+      .leftJoin(partDrawings, eq(partDrawings.partId, parts.id))
+      .leftJoin(partReviews, eq(partReviews.partId, parts.id))
+      .where(where)
+      .orderBy(asc(parts.partNumber), asc(parts.displayName), asc(parts.onshapeName)),
+    ["parts", "systems", "members", "part_drawings", "part_reviews"],
+  );
   // Files, thumbnail links, groups and the shelf don't depend on each other: one round trip.
   const ids = rows.map((r) => r.part.id);
   const [files, thumbs, lockedThumbs, labels, groups, shelf] = await Promise.all([
