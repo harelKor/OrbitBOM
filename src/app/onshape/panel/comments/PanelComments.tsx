@@ -53,10 +53,8 @@ export function PanelComments({
 
   const partsHere = parts.filter((p) => p.systemId === systemId);
   const part = partsHere.find((p) => p.key === partKey) ?? null;
-  const open = comments.filter((c) => c.state === "open");
-  const waiting = comments.filter((c) => c.state === "done");
-  const approved = comments.filter((c) => c.state === "approved").reverse();
-  const where = !fixedSystem;
+  // A section per system, the whole robot's comments first (Harel, 2026-11-11).
+  const sections = sectionsOf(comments);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -127,37 +125,10 @@ export function PanelComments({
         </button>
       </form>
 
-      <section className="space-y-1">
-        <h2 className="label">Open · {open.length}</h2>
-        {open.length ? (
-          <ul>
-            {open.map((c) => (
-              <OpenComment key={c.id} c={c} canTick={canTick} canDelete={me.isAdmin || c.authorId === me.id} where={where} />
-            ))}
-          </ul>
-        ) : (
-          <p className="text-xs text-muted">No open comments.</p>
-        )}
-      </section>
-      {waiting.length > 0 && (
-        <section className="space-y-1">
-          <h2 className="label">Waiting for a mentor · {waiting.length}</h2>
-          <ul>
-            {waiting.map((c) => (
-              <WaitingComment key={c.id} c={c} isMentor={canApprove} canTick={canTick} where={where} />
-            ))}
-          </ul>
-        </section>
-      )}
-      {approved.length > 0 && (
-        <details>
-          <summary className="label cursor-pointer pointer-coarse:min-h-9">Approved · {approved.length}</summary>
-          <ul className="mt-1">
-            {approved.map((c) => (
-              <TreeComment key={c.id} c={c} />
-            ))}
-          </ul>
-        </details>
+      {sections.length ? (
+        sections.map((s) => <CommentSection key={s.id ?? "robot"} name={s.name} comments={s.comments} me={me} canTick={canTick} canApprove={canApprove} />)
+      ) : (
+        <p className="text-xs text-muted">No comments yet.</p>
       )}
       {drawing && snip && (
         <SnipEditor
@@ -222,5 +193,67 @@ function VersionLine({ state }: { state: VersionState }) {
       )}
       {(state.data?.note || state.error) && <p className="text-amber-600">{state.data?.note ?? state.error}</p>}
     </div>
+  );
+}
+
+type Section = { id: string | null; name: string; comments: ReviewComment[] };
+
+function sectionsOf(comments: ReviewComment[]): Section[] {
+  const by = new Map<string | null, Section>();
+  for (const c of comments) {
+    const s = by.get(c.systemId) ?? { id: c.systemId, name: c.systemId ? (c.systemName ?? "System") : "Whole robot", comments: [] };
+    s.comments.push(c);
+    by.set(c.systemId, s);
+  }
+  return [...by.values()].sort((a, b) => (a.id === null ? -1 : b.id === null ? 1 : a.name.localeCompare(b.name)));
+}
+
+// One system's comments, folded with a tap. Open while it has comments to act on; only approved
+// ones start folded.
+function CommentSection({ name, comments, me, canTick, canApprove }: { name: string; comments: ReviewComment[]; me: { id: string; isAdmin: boolean }; canTick: boolean; canApprove: boolean }) {
+  const open = comments.filter((c) => c.state === "open");
+  const waiting = comments.filter((c) => c.state === "done");
+  const approved = comments.filter((c) => c.state === "approved").reverse();
+  return (
+    <details open={open.length + waiting.length > 0} className="group rounded-lg border border-line bg-surface">
+      <summary className="press flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 pointer-coarse:min-h-11 [&::-webkit-details-marker]:hidden">
+        <span className="text-xs text-subtle transition-transform group-open:rotate-90" aria-hidden>
+          ▶
+        </span>
+        <span className="min-w-0 flex-1 truncate font-semibold text-fg">{name}</span>
+        {open.length > 0 && <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-600 tabular-nums">{open.length} open</span>}
+        {waiting.length > 0 && <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-[11px] font-semibold text-sky-600 tabular-nums">{waiting.length} waiting</span>}
+        {!open.length && !waiting.length && <span className="text-[11px] text-subtle tabular-nums">{approved.length} approved</span>}
+      </summary>
+      <div className="space-y-3 border-t border-line px-2 pt-2 pb-3">
+        {open.length > 0 && (
+          <ul>
+            {open.map((c) => (
+              <OpenComment key={c.id} c={c} canTick={canTick} canDelete={me.isAdmin || c.authorId === me.id} />
+            ))}
+          </ul>
+        )}
+        {waiting.length > 0 && (
+          <div>
+            <h3 className="label px-2">Waiting for a mentor · {waiting.length}</h3>
+            <ul>
+              {waiting.map((c) => (
+                <WaitingComment key={c.id} c={c} isMentor={canApprove} canTick={canTick} />
+              ))}
+            </ul>
+          </div>
+        )}
+        {approved.length > 0 && (
+          <details>
+            <summary className="label cursor-pointer px-2 pointer-coarse:min-h-9">Approved · {approved.length}</summary>
+            <ul className="mt-1">
+              {approved.map((c) => (
+                <TreeComment key={c.id} c={c} />
+              ))}
+            </ul>
+          </details>
+        )}
+      </div>
+    </details>
   );
 }
