@@ -90,6 +90,8 @@ export function ReviewScreen({
   // null: as the screen suits (folded on a phone, open on wider screens) until toggled.
   const [openList, setOpenList] = useState<boolean | null>(null);
   const [waitList, setWaitList] = useState<boolean | null>(null);
+  // Wide screens: the comments column folds sideways to a thin strip (Harel, 2026-11-11).
+  const [side, setSide] = useState(true);
   const onRobot = "systems" in target;
   // The screen fills what's left under the top bar, which is two rows on a phone (taller than
   // --topbar-h): measured, and kept on resize. --review-top places the phone's Versions panel.
@@ -396,7 +398,21 @@ export function ReviewScreen({
       {/* Open comments, and below them those waiting for approval. Wide screens: a column of
         its own right of the 3D view, so the view (its Fit, its view cube) isn't under it.
         Narrower: over the view's right side, under the view cube (7 rem, 6.5 on touch). */}
-      <div className="absolute top-[8rem] right-3 z-10 flex max-h-[calc(100%-12.5rem)] w-[min(20rem,calc(100%-1.5rem))] flex-col gap-2 pointer-coarse:top-[7.5rem] max-sm:w-48 xl:static xl:max-h-none xl:w-72 xl:shrink-0 xl:overflow-y-auto xl:border-l xl:border-line xl:bg-surface xl:p-3">
+      {!side && (
+        <button
+          onClick={() => setSide(true)}
+          title="Show comments"
+          className="press hidden w-9 shrink-0 flex-col items-center gap-2 border-l border-line bg-surface py-3 text-xs font-semibold text-fg-2 hover:bg-raised xl:flex"
+        >
+          <span aria-hidden>‹</span>
+          <span className="rounded-full bg-amber-500/15 px-1.5 text-amber-600 tabular-nums">{open.length}</span>
+          <span className="[writing-mode:vertical-rl]">Comments</span>
+        </button>
+      )}
+      <div className={`absolute top-[8rem] right-3 z-10 flex max-h-[calc(100%-12.5rem)] w-[min(20rem,calc(100%-1.5rem))] flex-col gap-2 pointer-coarse:top-[7.5rem] max-sm:w-48 xl:static xl:max-h-none xl:w-72 xl:shrink-0 xl:overflow-y-auto xl:border-l xl:border-line xl:bg-surface xl:p-3 ${side ? "" : "xl:hidden"}`}>
+        <button onClick={() => setSide(false)} title="Hide comments" className="press hidden self-end rounded px-2 text-sm text-subtle hover:bg-raised hover:text-fg xl:block">
+          ›
+        </button>
         <Popup title="Open comments" count={open.length} shown={openList} onToggle={() => setOpenList(flip(openList))} tone="amber">
           {open.length ? (
             onRobot ? (
