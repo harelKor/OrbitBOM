@@ -68,6 +68,8 @@ describe("measuring like Onshape", () => {
     const ring = t.edges.find((e) => e.kind === "circle")!;
     expect(measure([placeEdge(ring, I, "Pin")]).rows[0]).toEqual({ label: "Diameter", value: "8.00 mm" });
     expect(measure([placePoint([0.01, 0.02, 0.003], moved(0.1, 0, 0), "Pin")]).rows.map((r) => r.value)).toEqual(["110.00 mm", "20.00 mm", "3.00 mm"]);
+    // Two points have one distance: no maximum.
+    expect(measure([placePoint([0, 0, 0], I, "A"), placePoint([0.003, 0.004, 0], I, "B")]).rows.map((r) => r.label)).not.toContain("Maximum distance");
   });
 
   it("two parallel plates: the gap exactly, the angle 0", () => {
@@ -80,6 +82,8 @@ describe("measuring like Onshape", () => {
     expect(row("Normal distance")).toBe("44.00 mm");
     expect(row("Minimum distance")).toBe("44.00 mm");
     expect(row("ΔZ")).toBe("44.00 mm");
+    // Corner to the opposite corner: √(100² + 50² + 44²).
+    expect(row("Maximum distance")).toBe("120.15 mm");
     expect(row("Angle")).toBe("0° (parallel)");
   });
 

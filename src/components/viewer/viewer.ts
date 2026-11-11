@@ -85,7 +85,8 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
       const picked = measure?.parts() ?? [];
       const keys = !at.under?.key ? [] : picked.includes(at.under.key) ? picked : [at.under.key];
       const copies = at.under ? meshes.reduce((n, { keys: ks }) => n + ks.filter((k) => k === at.under!.key).length, 0) : 0;
-      host.menu({ ...at, keys, copies, hidden: visibility.gone().length, isolated: visibility.isolated() });
+      const hiddenCopies = at.under ? visibility.gone().filter((g) => g.key === at.under!.key).length : 0;
+      host.menu({ ...at, keys, copies, hidden: visibility.gone().length, hiddenCopies, isolated: visibility.isolated() });
     },
   });
   const marks = createMarks(stage, meshes, topo);

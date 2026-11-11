@@ -88,6 +88,7 @@ export function createSection(stage: Stage, meshes: PartMesh[], topo: Topo, look
   let state: Section | null = null;
   let active = 0;
   let face: { point: V3; normal: V3 } | null = null;
+  let roundAxis: V3 | null = null; // the newest pick when it is a round face: N looks along it
   const listeners = new Set<(v: SectionView | null) => void>();
 
   // The model's box in its own frame (the meshes sit at identity under root).
@@ -311,6 +312,7 @@ export function createSection(stage: Stage, meshes: PartMesh[], topo: Topo, look
   // The newest pick, when it is a flat face: its plane in the model frame (Shift+X and N use it).
   const picked = (_keys: string[], newest: Pick | null) => {
     face = null;
+    roundAxis = null;
     if (newest?.kind === "face") {
       const f = topo.topoOf(newest.m).faces[newest.n];
       if (f.kind === "plane" && f.normal) {
@@ -325,16 +327,23 @@ export function createSection(stage: Stage, meshes: PartMesh[], topo: Topo, look
         point.divideScalar(f.tris.length * 3).applyMatrix4(at);
         const normal = new THREE.Vector3(...f.normal).applyMatrix3(new THREE.Matrix3().getNormalMatrix(at)).normalize();
         face = { point: point.toArray() as V3, normal: normal.toArray() as V3 };
+      } else if (f.kind === "cylinder" && f.axis) {
+        // A round face: N looks along its axis, like Onshape.
+        const at = topo.placeOf(newest.m, newest.i);
+        roundAxis = new THREE.Vector3(...f.axis).applyMatrix3(new THREE.Matrix3().getNormalMatrix(at)).normalize().toArray() as V3;
       }
     }
   };
 
   const viewNormal = (normal?: V3) => {
     const c = state?.planes[active];
-    const d = normal ? vec(normal) : c ? viewDirection(c) : face ? vec(face.normal) : null;
+    const d = normal ? vec(normal) : c ? viewDirection(c) : face ? vec(face.normal) : roundAxis ? vec(roundAxis) : null;
     if (!d || !d.lengthSq()) return;
     root.updateMatrixWorld();
-    look(d.normalize().transformDirection(root.matrixWorld).toArray() as [number, number, number]);
+    const dir = d.normalize().transformDirection(root.matrixWorld);
+    // An axis has two ends: look from the one nearer the camera, so the view doesn't flip over.
+    if (!normal && !c && !face && dir.dot(stage.camera.getWorldDirection(new THREE.Vector3())) > 0) dir.negate();
+    look(dir.toArray() as [number, number, number]);
   };
 
   // The number box by the handle: the depth (mm), a cylinder's radius, or the angle of the arc

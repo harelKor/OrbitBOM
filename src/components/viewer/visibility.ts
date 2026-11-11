@@ -19,6 +19,9 @@ export type VisibilityState = {
 
 export type VisibilityTools = {
   hideKey: (key: string) => void; // every copy of the part
+  // Onshape's Hide other instances / Show other instances: the part's other copies than this one.
+  hideOthers: (g: Gone) => void;
+  showOthers: (g: Gone) => void;
   // Show only these parts (all copies); the others are hidden, or see-through ghosts with `ghost`.
   isolate: (keys: string[] | null, opts?: { ghost?: boolean }) => void;
   showAll: () => void; // every hidden copy back, and Isolate ended
@@ -104,6 +107,13 @@ export function createVisibility(
     meshes.forEach(({ keys }, m) => keys.forEach((k, i) => k === key && gs.push({ m, i, key })));
     hideMany(gs);
   };
+
+  const hideOthers = (g: Gone) => {
+    const gs: Gone[] = [];
+    meshes.forEach(({ keys }, m) => keys.forEach((k, i) => k === g.key && !(m === g.m && i === g.i) && gs.push({ m, i, key: k })));
+    hideMany(gs);
+  };
+  const showOthers = (g: Gone) => show(goneList.filter((x) => x.key === g.key && !(x.m === g.m && x.i === g.i)));
 
   // Shift+Y: the hidden copies tested at their kept places, one throwaway mesh each, through
   // intersectObject (so a BVH on the geometry speeds it up too).
@@ -262,7 +272,7 @@ export function createVisibility(
     hiddenAt,
     isolated: () => (isolated ? { keys: [...isolated], ghost } : null),
     repaint: applyClear,
-    tools: { hideKey, isolate, showAll, setClear, isClear: (k) => clear.has(k), zoomTo, visibilityState, setVisibilityState },
+    tools: { hideKey, hideOthers, showOthers, isolate, showAll, setClear, isClear: (k) => clear.has(k), zoomTo, visibilityState, setVisibilityState },
     // Ghosts share their mesh's matrices: only dropped, never disposed (that would free the
     // shared buffer).
     dispose: () => {

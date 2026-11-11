@@ -214,7 +214,7 @@ const SHORTCUTS: [string, string][] = [
   ["Y", "Hide the part under the mouse"],
   ["Shift+Y", "Bring a hidden part back"],
   ["Shift+X", "Section view on / off"],
-  ["N", "View normal to the section, or to a picked flat face"],
+  ["N", "View normal to the section, or to a picked face (a round one: along its axis)"],
   ["Space", "Drop the last pick"],
   ["Esc", "Clear the picks"],
   ["?", "This list"],

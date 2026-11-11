@@ -181,10 +181,27 @@ export function createSelection(stage: Stage, meshes: PartMesh[], looks: Looks):
 // Where a context menu opens (client px) and the part copy under it, if any.
 // `face`: the flat face under it (the clicked point and its outward normal, model frame), for
 // Section here.
-export type MenuAt = { x: number; y: number; under: Gone | null; face: { point: V3; normal: V3 } | null };
+export type MenuAt = {
+  x: number;
+  y: number;
+  under: Gone | null;
+  face: { point: V3; normal: V3 } | null; // a flat face under the pointer (model frame)
+  axis: V3 | null; // a round face's axis, from its end nearer the camera (model frame): View normal to
+  // Select other, like Onshape's: every part copy along the ray, front first; choosing one picks
+  // it (in measuring, its face, edge or corner there), hovering one lights it.
+  layers: Gone[];
+  choose: (k: number) => void;
+  light: (k: number | null) => void;
+};
 // What the context menu acts on: the part copy under it and its part, or every picked part when
 // that part is one of them; how many copies the part has, and what's hidden / isolated now.
-export type MenuTarget = MenuAt & { keys: string[]; copies: number; hidden: number; isolated: { keys: string[]; ghost: boolean } | null };
+export type MenuTarget = MenuAt & {
+  keys: string[];
+  copies: number;
+  hidden: number;
+  hiddenCopies: number; // copies of the part under the pointer hidden now (Show other instances)
+  isolated: { keys: string[]; ghost: boolean } | null;
+};
 
 export type Picking = { setHover: (h: { m: number; i: number } | null) => void; dispose: () => void };
 
@@ -323,7 +340,7 @@ export function createPicking(
   // The face, edge or corner under the pointer, by the filter, on the `depth`-th part the ray
   // meets (0: the front one): corners and edges within a few pixels of it on screen (more for a
   // finger).
-  const pickAt = (e: MouseEvent, finger: boolean, filter: MeasureFilter | null, depth = 0): Pick | null => {
+  const pickAt = (e: { clientX: number; clientY: number }, finger: boolean, filter: MeasureFilter | null, depth = 0): Pick | null => {
     const h = hitsAt(e, depth > 0)[depth];
     if (!h || !filter) return null;
     const t = topo.topoOf(h.m);
@@ -409,17 +426,42 @@ export function createPicking(
     if (press) clearTimeout(press.timer);
     press = null;
   };
-  const menuAt = (x: number, y: number) => {
+  const menuAt = (x: number, y: number, finger: boolean) => {
     hideLabel();
-    const h = hitAt({ clientX: x, clientY: y });
+    const pt = { clientX: x, clientY: y };
+    const layers = hitsAt(pt, true);
+    const h = layers[0] ?? null;
     let face: MenuAt["face"] = null;
+    let axis: MenuAt["axis"] = null;
     const f = h && topo.topoOf(h.m).faces[topo.topoOf(h.m).triFace[h.tri]];
-    if (h && f?.kind === "plane" && f.normal) {
-      const at = topo.placeOf(h.m, h.i);
-      const normal = new THREE.Vector3(...f.normal).applyMatrix3(new THREE.Matrix3().getNormalMatrix(at)).normalize();
-      face = { point: root.worldToLocal(h.point.clone()).toArray() as V3, normal: normal.toArray() as V3 };
+    if (h && f) {
+      const turn = new THREE.Matrix3().getNormalMatrix(topo.placeOf(h.m, h.i));
+      if (f.kind === "plane" && f.normal) {
+        const normal = new THREE.Vector3(...f.normal).applyMatrix3(turn).normalize();
+        face = { point: root.worldToLocal(h.point.clone()).toArray() as V3, normal: normal.toArray() as V3 };
+      } else if (f.kind === "cylinder" && f.axis) {
+        const a = new THREE.Vector3(...f.axis).applyMatrix3(turn).normalize();
+        // From the end nearer the camera, so the view doesn't turn over.
+        const back = stage.camera.getWorldDirection(new THREE.Vector3()).negate().transformDirection(root.matrixWorld.clone().invert());
+        axis = (a.dot(back) < 0 ? a.negate() : a).toArray() as V3;
+      }
     }
-    on.menu({ x, y, under: h && { m: h.m, i: h.i, key: meshes[h.m].keys[h.i] }, face });
+    const gone = (l: Hit): Gone => ({ m: l.m, i: l.i, key: meshes[l.m].keys[l.i] });
+    on.menu({
+      x,
+      y,
+      under: h && gone(h),
+      face,
+      axis,
+      layers: layers.map(gone),
+      choose: (k) => {
+        setHover(null);
+        const filter = measure().filter();
+        if (filter) measure().tap(pickAt(pt, finger, filter, k));
+        else on.pick(keyOf(layers[k]));
+      },
+      light: (k) => setHover(k === null ? null : (layers[k] ?? null)),
+    });
   };
 
   // Hover: one ray per frame at most, mouse only, not while dragging.
@@ -476,7 +518,8 @@ export function createPicking(
   };
 
   let down: { x: number; y: number; button: number } | null = null;
-  // Select other: a click again on the same spot (or Alt+click) takes the next part behind.
+  // A click again on the same spot takes the next part behind (measuring). Onshape has no
+  // Alt+click; its Select other is in the right-click menu (MenuAt.layers), and so is ours.
   let lastTap: { x: number; y: number; depth: number; pick: Pick | null } | null = null;
   const onDown = (e: PointerEvent) => {
     hideLabel();
@@ -493,7 +536,7 @@ export function createPicking(
         timer: window.setTimeout(() => {
           press = null;
           pressed = true;
-          menuAt(x, y);
+          menuAt(x, y, true);
         }, LONG_PRESS_MS),
       };
     }
@@ -508,7 +551,7 @@ export function createPicking(
       lastTap = null; // the view moved: the same screen spot shows something else now
       return;
     }
-    if (e.button === 2 && e.pointerType === "mouse") return menuAt(e.clientX, e.clientY);
+    if (e.button === 2 && e.pointerType === "mouse") return menuAt(e.clientX, e.clientY, false);
     if (e.button !== 0) return;
     if (pressed) {
       pressed = false;
@@ -532,18 +575,15 @@ export function createPicking(
         lastTap = pk && { x: e.clientX, y: e.clientY, depth, pick: pk };
         return;
       }
-      const depth = e.altKey ? 1 : 0;
-      const pk = pickAt(e, finger, filter, depth);
+      const pk = pickAt(e, finger, filter, 0);
       measure().tap(pk);
       const now = measure().newest();
-      lastTap = pk && now && samePick(now, pk) ? { x: e.clientX, y: e.clientY, depth, pick: pk } : null;
+      lastTap = pk && now && samePick(now, pk) ? { x: e.clientX, y: e.clientY, depth: 0, pick: pk } : null;
       return;
     }
-    // Plain part picking (no measuring): Alt+click steps back through the parts there.
-    const hits = hitsAt(e, e.altKey);
-    const depth = e.altKey ? (same ? lastTap!.depth + 1 : 1) % Math.max(1, hits.length) : 0;
-    lastTap = { x: e.clientX, y: e.clientY, depth, pick: null };
-    on.pick(keyOf(hits[depth]));
+    // Plain part picking (no measuring): the front part.
+    lastTap = null;
+    on.pick(keyOf(hitAt(e)));
   };
   const onCancel = (e: PointerEvent) => {
     touches.delete(e.pointerId);

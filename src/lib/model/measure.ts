@@ -1,6 +1,6 @@
 // Onshape-style measuring on picked faces, edges and points (Harel, 2026-11-09). One pick shows
 // its own size (area, diameter, length, coordinates); two show the minimum distance between them
-// with its X / Y / Z, the exact distance between parallel faces, the angle, and the distance
+// with its X / Y / Z, the maximum distance, the exact distance between parallel faces, the angle, and the distance
 // between hole centres. Everything is in the assembly's frame (Onshape's, Z up), metres in, mm out.
 import { cross, dist, dot, len, norm, type Edge, type Face, type V3 } from "./topology";
 
@@ -138,6 +138,21 @@ export function closest(x: Picked, y: Picked): { d: number; a: V3; b: V3 } {
   return found;
 }
 
+// The farthest pair, one point on each, like Onshape's maximum distance. Faces and edges are
+// flat triangles and straight pieces, so the farthest pair is always two of their corners: only
+// the corners are compared (thinned on huge faces, which then makes it approximate).
+export function farthest(x: Picked, y: Picked): { d: number; a: V3; b: V3; thinned: boolean } {
+  const A = shapeOf(x).points, B = shapeOf(y).points;
+  const step = Math.max(1, Math.ceil(Math.sqrt((A.length * B.length) / 1.5e6)));
+  const found = { d: -1, a: A[0], b: B[0], thinned: step > 1 };
+  for (let i = 0; i < A.length; i += step)
+    for (let j = 0; j < B.length; j += step) {
+      const d = dist(A[i], B[j]);
+      if (d > found.d) Object.assign(found, { d, a: A[i], b: B[j] });
+    }
+  return found;
+}
+
 // ---------- What a pick says ----------
 
 const dirOf = (x: Picked): V3 | null =>
@@ -169,6 +184,13 @@ export function measure(picks: Picked[]): { rows: Row[]; line: [V3, V3] | null }
   const exact = (x.type === "point" || (x.type === "face" && x.face.kind === "plane")) && (y.type === "point" || (y.type === "face" && y.face.kind === "plane"));
   rows.push({ label: "Minimum distance", value: `${exact ? "" : "≈ "}${mm(c.d)}` });
   rows.push({ label: "ΔX", value: mm(Math.abs(c.b[0] - c.a[0])) }, { label: "ΔY", value: mm(Math.abs(c.b[1] - c.a[1])) }, { label: "ΔZ", value: mm(Math.abs(c.b[2] - c.a[2])) });
+  // Maximum distance, where it differs from the minimum (two points have one distance). Exact on
+  // corners, flat faces and straight edges; round ones are their tessellation (≈).
+  if (x.type !== "point" || y.type !== "point") {
+    const f = farthest(x, y);
+    const straight = (p: Picked) => p.type === "point" || (p.type === "face" && p.face.kind === "plane") || (p.type === "edge" && p.edge.kind === "line");
+    rows.push({ label: "Maximum distance", value: `${straight(x) && straight(y) && !f.thinned ? "" : "≈ "}${mm(f.d)}` });
+  }
   // Parallel flat faces: the distance between their planes, exactly.
   if (x.type === "face" && y.type === "face" && x.face.kind === "plane" && y.face.kind === "plane" && Math.abs(dot(x.face.normal!, y.face.normal!)) > 0.99999) {
     rows.splice(1, 0, { label: "Normal distance", value: mm(Math.abs(dot(x.face.normal!, [y.face.point![0] - x.face.point![0], y.face.point![1] - x.face.point![1], y.face.point![2] - x.face.point![2]]))) });

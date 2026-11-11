@@ -9,6 +9,7 @@ import type { HiddenParts, MeasureInfo, PageMenu, SceneTools, ViewerModel, Viewe
 import { AddCommentDialog, OpenComment, WaitingComment, type CommentTarget } from "@/components/review/Comments";
 import { SnipEditor, SnipMe, SnipOverlay, type SnipDraft } from "@/components/review/Snip";
 import { ViewerToolbar } from "@/components/review/ViewerToolbar";
+import { MeasureBox } from "@/components/viewer/MeasureBox";
 import { Segmented } from "@/components/ui/Segmented";
 import type { ReviewComment } from "@/lib/data/cadReview";
 
@@ -292,30 +293,7 @@ export function ReviewScreen({
         {/* What's picked: its size, or between two picks distance and angle (bottom right, like
             Onshape's measure box, a bit bigger since 2026-11-11 (Harel); on a phone above + Add
             comment). */}
-        {measured.picks.length > 0 && (
-          <div className="absolute right-3 z-20 w-80 max-w-[calc(100%-1.5rem)] animate-pop rounded-md border border-line bg-surface/95 p-3 text-sm shadow-md backdrop-blur max-lg:bottom-20 lg:bottom-3">
-            <ul className="max-h-36 space-y-0.5 overflow-y-auto">
-              {measured.picks.map((p, k) => (
-                <li key={k} className="flex items-center gap-1.5 text-fg-2">
-                  <span className="h-2 w-2 shrink-0 rounded-full bg-[#ff8a1f]" />
-                  <span className="truncate">{p}</span>
-                </li>
-              ))}
-            </ul>
-            <table className="mt-1.5 w-full tabular-nums">
-              <tbody>
-                {measured.rows.map((r) => (
-                  <tr key={r.label} className="border-t border-line">
-                    <td className="py-1.5 pr-2 text-muted">{r.label}</td>
-                    <td className="py-1.5 text-right text-lg font-bold text-fg">{r.value}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {measured.picks.length === 1 && <p className="mt-1 text-xs text-subtle">Pick a second one to measure between them.</p>}
-            {measured.picks.length > 2 && <p className="mt-1 text-xs text-subtle">Measures show for one or two picks. Space drops the newest, Esc all.</p>}
-          </div>
-        )}
+        <MeasureBox measured={measured} className="max-lg:bottom-20 lg:bottom-3" />
 
         <ViewerToolbar tools={tools} hidden={hidden}>
           {changes && (
