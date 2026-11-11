@@ -38,8 +38,11 @@ export function ContextMenu({
   useLayoutEffect(() => {
     const el = box.current;
     if (!el) return;
-    const { width, height } = el.getBoundingClientRect();
-    setPos({ left: Math.max(8, Math.min(at.x, window.innerWidth - width - 8)), top: Math.max(8, Math.min(at.y, window.innerHeight - height - 8)) });
+    // offsetWidth / offsetHeight: the menu's real size; its pop-in animation starts it scaled
+    // down, so a measured box came out short and a menu low on the screen was cut off.
+    const width = el.offsetWidth;
+    const height = el.offsetHeight;
+    setPos({ left: Math.max(8, Math.min(at.x, window.innerWidth - width - 12)), top: Math.max(8, Math.min(at.y, window.innerHeight - height - 12)) });
     el.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
   }, [at]);
 
