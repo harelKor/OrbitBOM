@@ -47,7 +47,8 @@ export function ContextMenu({
     const width = el.offsetWidth;
     const height = el.offsetHeight;
     setPos({ left: Math.max(8, Math.min(at.x, window.innerWidth - width - 12)), top: Math.max(8, Math.min(at.y, window.innerHeight - height - 12)) });
-    el.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
+    // No item is focused on open (that drew the focus outline round the first item, Harel
+    // 2026-11-11); the arrow keys start from the top.
   }, [at]);
 
   useEffect(() => {
@@ -62,7 +63,7 @@ export function ContextMenu({
         e.preventDefault();
         const items = [...(box.current?.querySelectorAll<HTMLButtonElement>("button") ?? [])];
         const i = items.indexOf(document.activeElement as HTMLButtonElement);
-        items[(i + (e.key === "ArrowDown" ? 1 : items.length - 1)) % items.length]?.focus();
+        items[i < 0 ? (e.key === "ArrowDown" ? 0 : items.length - 1) : (i + (e.key === "ArrowDown" ? 1 : items.length - 1)) % items.length]?.focus();
       }
     };
     const close = () => onClose();
