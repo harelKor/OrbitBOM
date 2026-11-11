@@ -340,6 +340,8 @@ export function InventoryView({
   const otherItems = boxes
     ? optimistic.filter((i) => i.category === "other" && inBox(i))
     : [];
+  // Home's folded All items: with a group open, only that group's items (Harel, 2026-11-11).
+  const allItems = boxes ? optimistic.filter(inBox) : [];
 
   // Each group's and category's items (in the view, when one is on) and how many are short.
   const counts = useMemo(() => {
@@ -792,8 +794,8 @@ export function InventoryView({
               </p>
             )}
           </Fold>
-          {items.length > 0 && (
-            <Fold id="all" title={`All items (${items.length})`}>
+          {allItems.length > 0 && (
+            <Fold id="all" title={`All items (${allItems.length})`}>
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 {filters}
                 {condFilter && <SpecFilterBar rows={[]} picks={{}} cond={condFilter} open={filtersOpen} onToggle={toggleFilters} onPick={togglePick} onClear={clearFilters} />}
@@ -807,7 +809,7 @@ export function InventoryView({
                 </div>
               )}
               {grid(
-                optimistic.filter(
+                allItems.filter(
                   (i) =>
                     (!conditionId || i.conditionId === conditionId) &&
                     (!locationId || locationOf(i) === locationId),
