@@ -112,11 +112,11 @@ export function UpdateSystem({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, when opened from the Onshape panel
   }, [params]);
 
-  const commit = (name: string, only?: string, tick?: string[]) =>
+  const commit = (name: string, only?: string, tick?: string[], update3d = false) =>
     startCommit(async () => {
       if (!draft) return;
       setCommitError(null);
-      const r = await commitChanges(systemId, draft.id, new Date(draft.detectedAt).toISOString(), name, only, tick);
+      const r = await commitChanges(systemId, draft.id, new Date(draft.detectedAt).toISOString(), name, only, tick, update3d);
       if (r.error) return setCommitError(r.error);
       const rest = only ? draft.changes.filter((c) => c.key !== only) : [];
       if (!rest.length) {
@@ -124,7 +124,7 @@ export function UpdateSystem({
         setDraft(null);
       } else setDraft({ ...draft, changes: rest });
       setMessage(r.message ?? null);
-      afterPartsUpdate(systemId, router);
+      afterPartsUpdate(systemId, router, { rebuild: r.rebuild });
     });
 
   const waiting = draft?.changes.length ?? 0;
@@ -166,7 +166,7 @@ export function UpdateSystem({
       )}
       {checking && <span className="animate-pulse text-sm text-subtle sm:hidden">Checking Onshape…</span>}
       {message && <span className="text-sm text-emerald-600">{message}</span>}
-      {loading && <span className="animate-pulse text-sm text-subtle">Loading the new thumbnails and 3D model…</span>}
+      {loading && <span className="animate-pulse text-sm text-subtle">Loading the new part data and 3D views…</span>}
       {error && <span className="text-sm text-rose-600">{error}</span>}
       {!message && !error && !draft && lastSyncedAt && (
         <span className="text-xs text-subtle max-sm:hidden">Last committed {lastSyncedAt.toISOString().slice(0, 16).replace("T", " ")} UTC</span>

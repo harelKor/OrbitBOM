@@ -68,14 +68,19 @@ export function CommitWindow({
   canCommit: boolean;
   committing: boolean;
   error: string | null;
-  onCommit: (name: string, only?: string, tick?: string[]) => void;
+  // `update3d`: the 3D views and pictures move to this version too (Harel, 2026-11-11).
+  onCommit: (name: string, only?: string, tick?: string[], update3d?: boolean) => void;
   comments?: CommitComment[];
 }) {
   const [tick, setTick] = useState<Set<string>>(() => new Set());
   const ticked = [...tick].filter((id) => comments.some((c) => c.id === id));
   const side = comments.length > 0;
-  // Starts with the Onshape version's name; another name renames it in Onshape on commit.
-  const [name, setName] = useState(draft.name ?? draft.onshape ?? "");
+  // The site version's name and the Onshape version's description. Onshape names the version
+  // itself: "V<next> BOM release" (lib/versions/onshapeName.ts).
+  const [name, setName] = useState(draft.name ?? "");
+  // Update 3D views too, or only the BOM and its export files, which saves the 3D export's
+  // calls when the Build team only needs the right files (Harel, 2026-11-11).
+  const [update3d, setUpdate3d] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const counts = (["modified", "props", "added", "removed"] as const)
     .map((k) => ({ k, n: draft.changes.filter((c) => kindOf(c) === k).length }))
@@ -100,18 +105,28 @@ export function CommitWindow({
             className="flex flex-wrap items-end gap-2"
             onSubmit={(e) => {
               e.preventDefault();
-              onCommit(name, undefined, ticked);
+              onCommit(name, undefined, ticked, update3d);
             }}
           >
             <label className="min-w-48 flex-1">
-              <span className="label">Version name (the same in Onshape)</span>
+              <span className="label">What changed (optional)</span>
               <input className="input" value={name} maxLength={120} placeholder="e.g. Shorter intake arm" onChange={(e) => setName(e.target.value)} />
-              {draft.onshape && name.trim() && name.trim() !== draft.onshape && (
-                <span className="mt-1 block text-xs text-subtle">
-                  Renames <span className="font-mono tabular-nums">{draft.onshape}</span> in Onshape too.
-                </span>
-              )}
-              {!draft.onshape && name.trim() && <span className="mt-1 block text-xs text-subtle">Saves a version with this name in Onshape too.</span>}
+              <span className="mt-1 block text-xs text-subtle">
+                {draft.onshape ? (
+                  <>
+                    The BOM goes on <span className="font-mono tabular-nums">{draft.onshape}</span>.
+                  </>
+                ) : (
+                  <>Onshape gets a version named “V… BOM release”{name.trim() ? " with this as its description" : ""}.</>
+                )}
+              </span>
+            </label>
+            <label className="flex w-full items-start gap-2 text-sm pointer-coarse:min-h-9">
+              <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0" checked={update3d} onChange={(e) => setUpdate3d(e.target.checked)} />
+              <span>
+                Update the 3D views and pictures too
+                <span className="block text-xs text-subtle">Off: only the BOM and the export files the Build team downloads move. Saves Onshape calls.</span>
+              </span>
             </label>
             <button type="submit" className="btn-primary" disabled={committing}>
               {committing ? "Committing…" : ticked.length ? `Commit · tick off ${ticked.length}` : "Commit changes"}
@@ -133,7 +148,7 @@ export function CommitWindow({
               thumb={c.partId ? (thumbs[c.partId] ?? null) : null}
               open={expanded === c.key}
               onToggle={() => setExpanded(expanded === c.key ? null : c.key)}
-              onCommit={canCommit ? () => onCommit(name, c.key, ticked) : undefined}
+              onCommit={canCommit ? () => onCommit(name, c.key, ticked, update3d) : undefined}
               committing={committing}
             />
           ))}

@@ -2,16 +2,13 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { getMember } from "@/lib/auth";
 import { OnshapeError } from "@/lib/onshape/client";
-import { refreshThumbnails } from "@/lib/onshape/thumbnails";
+import { refreshPartData } from "@/lib/onshape/thumbnails";
 import { isUuid } from "@/lib/uuid";
 
-// Fluid compute lets a Hobby function run up to 300 s; new downloads stop at 240 s.
-export const maxDuration = 300;
-
-// One round of a system's new or changed part thumbnails, after Update BOM. The button calls
-// again while some are left.
+// After parts change from Onshape: each Part Studio's sheet metal and body types for the export
+// files (refreshPartData; a Part Studio read before at the same revision costs nothing). The
+// pictures are drawn in the browser from the 3D model (src/components/viewer/pictures.ts).
 export async function POST(_: Request, { params }: { params: Promise<{ systemId: string }> }) {
-  const started = Date.now();
   const member = await getMember();
   if (!member) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
   const { systemId } = await params;
@@ -20,13 +17,13 @@ export async function POST(_: Request, { params }: { params: Promise<{ systemId:
     return NextResponse.json({ error: "Connect your Onshape account first (Profile → Connect Onshape)." }, { status: 403 });
   }
   try {
-    const summary = await refreshThumbnails(systemId, member.id, started + 240_000);
-    if (summary.fetched) revalidatePath("/robots", "layout");
+    const summary = await refreshPartData(systemId, member.id);
+    if (summary.studios) revalidatePath("/robots", "layout");
     return NextResponse.json(summary);
   } catch (err) {
     if (err instanceof OnshapeError) return NextResponse.json({ error: err.message }, { status: 400 });
-    console.error("Thumbnails failed", err);
+    console.error("Part data failed", err);
     const reason = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: `Thumbnails failed: ${reason.slice(0, 300)}` }, { status: 500 });
+    return NextResponse.json({ error: `Reading the parts from Onshape failed: ${reason.slice(0, 300)}` }, { status: 500 });
   }
 }

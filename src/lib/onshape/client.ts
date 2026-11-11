@@ -212,7 +212,31 @@ export type OnshapeClient = {
   // Binary responses (thumbnails, exports). Takes an API path or an absolute Onshape URL.
   raw(pathOrUrl: string, init?: RequestInit): Promise<Response>;
   calls: number;
+  // The same calls by kind of endpoint ("bom", "massproperties", "tessellatedfaces"…), for the
+  // log line each flow writes (logCalls), so we see where the yearly allowance goes.
+  kinds: Record<string, number>;
 };
+
+// What kind of Onshape endpoint a path is: its last word that isn't an id or a wvm letter.
+export function callKind(path: string, method = "GET"): string {
+  const words = path.replace(/^https:\/\/[^/]+/, "").split("?")[0].split("/").filter((w) => w && !/^[0-9a-f]{24}$/i.test(w) && !/^(api|v\d+|d|w|v|m|e|p|s|partid)$/i.test(w) && !/^\d+x\d+$/.test(w));
+  const kind = words.at(-1) ?? "other";
+  return method === "GET" ? kind : `${kind} ${method}`;
+}
+
+// One line in the server log (journalctl -u orbitparts) per flow: how many calls, by kind.
+export function logCalls(flow: string, ...clients: (OnshapeClient | null | undefined)[]) {
+  const kinds: Record<string, number> = {};
+  let total = 0;
+  for (const c of clients) {
+    if (!c) continue;
+    total += c.calls;
+    for (const [k, n] of Object.entries(c.kinds)) kinds[k] = (kinds[k] ?? 0) + n;
+  }
+  if (!total) return;
+  const list = Object.entries(kinds).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k}=${n}`).join(" ");
+  console.info(`onshape calls flow=${flow} total=${total} ${list}`);
+}
 
 // A client bound to one member and one Onshape host (cad.onshape.com or the Enterprise domain).
 // `background`: work nobody is waiting on (thumbnails after a sync, previews re-made when opened),
@@ -224,6 +248,8 @@ export function onshapeClient(memberId: string, baseUrl: string, { background = 
     if (new URL(url).origin !== new URL(baseUrl).origin) throw new OnshapeError("Unexpected Onshape link.");
     await countCall(memberId, background);
     client.calls++;
+    const kind = callKind(url, init.method ?? "GET");
+    client.kinds[kind] = (client.kinds[kind] ?? 0) + 1;
     const send = async (fresh: boolean) => {
       const headers = {
         Accept: accept,
@@ -262,6 +288,7 @@ export function onshapeClient(memberId: string, baseUrl: string, { background = 
 
   const client: OnshapeClient = {
     calls: 0,
+    kinds: {},
     async json<T>(path: string, init: RequestInit = {}): Promise<T> {
       return (await call(path, init, "application/json")).json() as Promise<T>;
     },

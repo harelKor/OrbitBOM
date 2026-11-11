@@ -1,10 +1,12 @@
 import "server-only";
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
-import { asc, eq, inArray, sql } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { onshapeClient, OnshapeError, type OnshapeClient } from "@/lib/onshape/client";
-import { apiPath, onshapeUrl, parseOnshapeUrl, type OnshapeRef, type WVM } from "@/lib/onshape/url";
+import { logCalls, onshapeClient, OnshapeError, type OnshapeClient } from "@/lib/onshape/client";
+import { partsList } from "@/lib/onshape/partsList";
+import { contextKey, studioRevisions, studioState, type StudioContext } from "@/lib/onshape/studioRevs";
+import { apiPath, onshapeUrl, parseOnshapeUrl, type OnshapeRef } from "@/lib/onshape/url";
 import { imageUrl, objectExists, putObject, StorageNotConfiguredError, storageConfigured } from "@/lib/storage/r2";
 import { flattenAssembly, partKey, type AssemblyDefinition, type StudioRef } from "./assembly";
 import { encodeMeshes, lookOf, meshesFromTessellation, type Appearance, type Mesh, type Tessellation } from "./mesh";
@@ -13,9 +15,11 @@ const { robots, systems, systemVersions, onshapeCache } = schema;
 
 // The robot's 3D model, built from its systems' assemblies in Onshape. One build step runs
 // per request until `deadline` and the browser calls again until it's done:
-//   1. change check: each assembly document's microversion (1 call each; stops if unchanged);
-//   2. the assembly definitions: every part and where it sits (1 call per system), and each
-//      Part Studio's own revision (1 call per document context, kept for versions);
+//   1. change check: each workspace assembly document's microversion (1 call each; stops if
+//      unchanged). A system pinned by Update CAD (a version or microversion) needs none;
+//   2. the assembly definitions of the groups that moved: every part and where it sits (1 call
+//      per system), and each Part Studio's own revision (1 call per document context, kept for
+//      versions and microversions); the other groups keep their plan;
 //   3. one tessellation per Part Studio revision not already in R2 (1 call each). A Part
 //      Studio's file is keyed by its own revision, so an edit or a new version re-exports only
 //      what changed, and review rounds (src/lib/reviews/) share the same files.
@@ -31,11 +35,14 @@ export type ModelPlacement = { s: number; k: string; t: number[]; g?: number }; 
 // A group is one linked assembly: the systems that use it (usually one), for showing and
 // hiding subsystems in the viewer. Models built before groups existed have none.
 export type ModelGroup = { systemIds: string[]; name: string };
-export type Job = { key: string; path: string; configuration?: string; linkDid?: string; done?: boolean };
+// `state`: the Part Studio's revision name (studioRevs.ts), so its parts list is shared with the BOM.
+export type Job = { key: string; path: string; state?: string; configuration?: string; linkDid?: string; done?: boolean };
 export type Built = { rev: string; builtAt: string; studios: string[]; placements: ModelPlacement[]; groups?: ModelGroup[] };
 export type Draft = { rev: string; jobs: Job[]; placements: ModelPlacement[]; groups?: ModelGroup[]; names?: Record<string, string> };
-const PLAN_VERSION = "g1"; // bump when the plan's shape changes, so the next Update replans
-type State = { built?: Built; draft?: Draft };
+const PLAN_VERSION = "g2"; // bump when the plan's shape changes, so the next Update replans
+// One group's plan (a linked assembly), kept so a rebuild reads only the groups that moved.
+type GroupPlan = { rev: string; jobs: Job[]; placements: { j: number; k: string; t: number[] }[]; names: Record<string, string> };
+type State = { built?: Built; draft?: Draft; plans?: Record<string, GroupPlan> };
 
 const cacheKey = (robotId: string) => `robot-model:${robotId}`;
 
@@ -109,26 +116,28 @@ export async function builtStudioFor(robotId: string, key: string): Promise<stri
 }
 
 // A Part Studio's meshes (1 call). Bodies the tessellation sent without a colour take the part's
-// appearance from the Part Studio's parts list (1 more call, only then). That call is best
+// appearance from the Part Studio's parts list, which the BOM's part data reads too and keeps
+// under the Part Studio's revision (partsList.ts): usually no call at all. That read is best
 // effort: if it fails (Onshape's 402 included), those parts are drawn plain.
-// `extra` is the query's tail: "&configuration=...", "&partId=...".
-export async function studioMeshes(client: OnshapeClient, path: string, extra = ""): Promise<Mesh[]> {
+// `extra` is the query's tail: "&configuration=...", "&partId=...". `state`: the Part Studio's
+// revision name (studioRevs.ts), when known.
+export async function studioMeshes(client: OnshapeClient, path: string, extra = "", state: string | null = null): Promise<Mesh[]> {
   const tess = await client.json<Tessellation>(`partstudios/${path}/tessellatedfaces?${TESS_QUERY}${extra}`);
   let meshes = meshesFromTessellation(tess);
   if (meshes.some((m) => !m.appearance)) {
-    const looks = await partAppearances(client, path, extra.replace(/&partId=[^&]*/g, ""));
+    const looks = await partAppearances(client, path, extra.replace(/&partId=[^&]*/g, ""), state);
     if (looks.size) meshes = meshesFromTessellation(tess, looks);
   }
   return meshes;
 }
 
-async function partAppearances(client: OnshapeClient, path: string, extra: string): Promise<Map<string, Appearance>> {
+async function partAppearances(client: OnshapeClient, path: string, extra: string, state: string | null): Promise<Map<string, Appearance>> {
   try {
-    const parts = await client.json<{ partId?: string; appearance?: unknown }[]>(`parts/${path}?withThumbnails=false${extra}`);
+    const parts = await partsList(client, path, state, extra);
     return new Map(
       parts.flatMap((p) => {
         const look = p.partId ? lookOf(p.appearance) : undefined;
-        return look ? [[p.partId!, look] as const] : [];
+        return look ? [[p.partId, look] as const] : [];
       }),
     );
   } catch {
@@ -147,7 +156,7 @@ export type ModelSource = OnshapeRef & { group: ModelGroup };
 // linked systems falls back to its main assembly.
 async function modelSources(robotId: string): Promise<ModelSource[]> {
   const rows = await db
-    .select({ id: systems.id, name: systems.name, url: systems.assemblyUrl, follow: systems.followVersions, seen: systems.followedVersionId, ref: systemVersions.onshapeRef })
+    .select({ id: systems.id, name: systems.name, url: systems.assemblyUrl, follow: systems.followVersions, seen: systems.followedVersionId, pinned: systems.modelRef, ref: systemVersions.onshapeRef })
     .from(systems)
     .leftJoin(systemVersions, eq(systemVersions.id, systems.currentVersionId))
     .where(eq(systems.robotId, robotId))
@@ -156,10 +165,11 @@ async function modelSources(robotId: string): Promise<ModelSource[]> {
   for (const r of rows) {
     const linked = r.url ? parseOnshapeUrl(r.url) : null;
     if (!linked?.eid) continue;
-    // A system that follows Onshape versions is drawn at the version it's on (the one fab makes),
-    // not the students' workspace; before its first commit, at the newest version seen.
+    // Read where the last Update CAD (or Update BOM with its 3D views) left it: a version or a
+    // microversion. Before any, a system that follows Onshape versions is drawn at the version
+    // it's on, not the students' workspace; before its first commit, at the newest version seen.
     const vid = r.follow ? (r.ref?.vid ?? r.seen) : null;
-    const ref = vid ? { ...linked, wvm: "v" as const, wvmid: vid } : linked;
+    const ref = r.pinned ? { ...linked, wvm: r.pinned.wvm, wvmid: r.pinned.wvmid } : vid ? { ...linked, wvm: "v" as const, wvmid: vid } : linked;
     const same = sources.find((o) => onshapeUrl(o) === onshapeUrl(ref));
     if (same) {
       same.group.systemIds.push(r.id);
@@ -172,14 +182,28 @@ async function modelSources(robotId: string): Promise<ModelSource[]> {
   return main?.eid ? [{ ...main, group: { systemIds: [], name: robot.name } }] : [];
 }
 
+// One group's revision: where its assembly is read, and the workspace's microversion. A version
+// or microversion never changes, so a pinned group's plan is read from Onshape once.
+const groupRev = (ref: OnshapeRef, mv: string | undefined) => `${PLAN_VERSION}|${TESS_VERSION}|${ref.wvm}:${ref.wvmid}:${ref.eid}:${mv ?? ""}`;
+const groupKey = (ref: OnshapeRef) => `${ref.did}:${ref.eid}`;
+
 export async function buildRobotModel(robotId: string, memberId: string, deadline: number): Promise<BuildStep> {
   if (!storageConfigured()) throw new StorageNotConfiguredError();
   const sources = await modelSources(robotId);
   if (!sources.length) throw new OnshapeError("Link this robot's systems to their Onshape assemblies first.");
   const client = onshapeClient(memberId, sources[0].baseUrl);
+  try {
+    return await buildStep(robotId, client, sources, deadline);
+  } finally {
+    logCalls("3d-model", client);
+  }
+}
+
+async function buildStep(robotId: string, client: OnshapeClient, sources: ModelSource[], deadline: number): Promise<BuildStep> {
   const state = await loadState(robotId);
 
-  // 1. Change check: one microversion call per workspace document, all at once. Version links never change.
+  // 1. Change check: one microversion call per workspace document, all at once. Versions and
+  // microversions never change.
   const workspaces = new Map(sources.filter((ref) => ref.wvm === "w").map((ref) => [ref.wvmid, ref.did]));
   const mvs = new Map(
     await Promise.all(
@@ -189,23 +213,31 @@ export async function buildRobotModel(robotId: string, memberId: string, deadlin
       }),
     ),
   );
-  const rev = [PLAN_VERSION, TESS_VERSION, ...sources.map((ref) => `${ref.wvm}:${ref.wvmid}:${ref.eid}:${mvs.get(ref.wvmid) ?? ""}:${ref.group.systemIds.join(",")}`)].join("|");
+  const revs = sources.map((ref) => groupRev(ref, mvs.get(ref.wvmid)));
+  const rev = sources.map((ref, g) => `${revs[g]}:${ref.group.systemIds.join(",")}`).join("|");
   if (state.built?.rev === rev) {
     return { state: "done", unchanged: true, parts: state.built.placements.length, calls: client.calls };
   }
 
-  // 2. Where every part sits, and which Part Studio files that needs.
+  // 2. Where every part sits, and which Part Studio files that needs: only the groups whose
+  // assembly moved are read again (1 definition each); the others keep their plan.
   let draft = state.draft?.rev === rev ? state.draft : undefined;
+  const kept = state.plans ?? {};
+  const plans: Record<string, GroupPlan> = {};
+  for (const [g, ref] of sources.entries()) if (kept[groupKey(ref)]?.rev === revs[g]) plans[groupKey(ref)] = kept[groupKey(ref)];
   if (!draft) {
-    draft = await planModel(client, sources, rev);
-    await saveState(robotId, { ...state, draft });
+    const stale = sources.flatMap((ref, g) => (plans[groupKey(ref)] ? [] : [g]));
+    const fresh = await Promise.all(stale.map((g) => planGroup(client, sources[g], revs[g])));
+    stale.forEach((g, i) => (plans[groupKey(sources[g])] = fresh[i]));
+    draft = mergePlans(sources, plans, rev);
+    await saveState(robotId, { ...state, draft, plans });
   }
 
   // 3. Part Studio meshes, eight at a time.
   try {
     await runJobs(client, draft, deadline);
   } finally {
-    await saveState(robotId, { ...state, draft });
+    await saveState(robotId, { ...state, draft, plans });
   }
 
   const done = draft.jobs.filter((j) => j.done).length;
@@ -218,8 +250,18 @@ export async function buildRobotModel(robotId: string, memberId: string, deadlin
     placements: draft.placements,
     groups: draft.groups,
   };
-  await saveState(robotId, { built });
+  await saveState(robotId, { built, plans });
   return { state: "done", unchanged: false, parts: built.placements.length, calls: client.calls };
+}
+
+// The whole model, step after step, on the server (no time limit there since the move off
+// Vercel): for work nobody watches in a browser, like a system linked from the Onshape panel.
+export async function buildRobotModelFully(robotId: string, memberId: string, ms = 10 * 60_000): Promise<BuildStep> {
+  const until = Date.now() + ms;
+  for (;;) {
+    const step = await buildRobotModel(robotId, memberId, Math.min(until, Date.now() + 150_000));
+    if (step.state === "done" || Date.now() > until) return step;
+  }
 }
 
 // Exports the Part Studio files a plan still needs, eight at a time. A job only starts while
@@ -233,7 +275,7 @@ export async function runJobs(client: OnshapeClient, draft: { jobs: Job[] }, dea
       if (!(await objectExists(job.key))) {
         const config = job.configuration ? `&configuration=${encodeURIComponent(job.configuration)}` : "";
         const link = job.linkDid ? `&linkDocumentId=${job.linkDid}` : "";
-        const meshes = await studioMeshes(client, job.path, `${config}${link}`);
+        const meshes = await studioMeshes(client, job.path, `${config}${link}`, job.state ?? null);
         await putObject(job.key, gzipSync(encodeMeshes(meshes)), "application/gzip");
       }
       job.done = true;
@@ -241,10 +283,6 @@ export async function runJobs(client: OnshapeClient, draft: { jobs: Job[] }, dea
   };
   await Promise.all(Array.from({ length: 8 }, worker));
 }
-
-// Where a Part Studio is read from: its document at a workspace, version or microversion.
-export type StudioContext = { did: string; wvm: WVM; wvmid: string };
-const contextKey = (c: StudioContext) => `${c.did}:${c.wvm}:${c.wvmid}`;
 
 // The context a placed Part Studio is read in: a linked document's version or microversion, or
 // the assembly's own document as the assembly is read (its workspace, version or microversion).
@@ -255,110 +293,88 @@ export function studioContext(s: StudioRef, ref: OnshapeRef): StudioContext | nu
   return null;
 }
 
-// Each Part Studio's own revision (its element microversion) in every context, 1 call per
-// context. A file is keyed by it, so a Part Studio that didn't change is exported once and shared
-// by the robot model, every Onshape version it appears in and every review round (a new CAD
-// version used to re-export all of its Part Studios, since they were keyed by the version).
-// Versions and microversions never change, so their lists are kept. Best effort: a failed list
-// falls back to keying by the context.
-export async function studioRevisions(client: OnshapeClient, contexts: StudioContext[]): Promise<Map<string, Map<string, string>>> {
-  const unique = [...new Map(contexts.map((c) => [contextKey(c), c])).values()];
-  const keyOf = (c: StudioContext) => `element-revs:${contextKey(c)}`;
-  const frozen = unique.filter((c) => c.wvm !== "w").map(keyOf);
-  const cached = new Map<string, Record<string, string>>(
-    frozen.length ? (await db.select().from(onshapeCache).where(inArray(onshapeCache.key, frozen))).map((r) => [r.key, r.payload as Record<string, string>]) : [],
+// One group's plan: its assembly's definition (1 call), each Part Studio's revision
+// (studioRevisions: 1 call per workspace context, kept for versions and microversions) and one
+// export job per Part Studio revision. A file is keyed by the Part Studio's own revision, so a
+// Part Studio that didn't change is exported once and shared by every model and Onshape version.
+async function planGroup(client: OnshapeClient, ref: ModelSource, rev: string): Promise<GroupPlan> {
+  const jobs: Job[] = [];
+  const jobIndex = new Map<string, number>();
+  const placements: GroupPlan["placements"] = [];
+  const names: Record<string, string> = {}; // part key → its instance name in Onshape
+  const def = flattenAssembly(
+    await client.json<AssemblyDefinition>(`assemblies/${apiPath(ref)}?includeMateFeatures=false&includeNonSolids=false&includeMateConnectors=false`),
   );
-  const out = new Map<string, Map<string, string>>();
-  await Promise.all(
-    unique.map(async (c) => {
-      let revs = c.wvm !== "w" ? cached.get(keyOf(c)) : undefined;
-      if (!revs) {
-        try {
-          const elements = await client.json<{ id: string; microversionId?: string }[]>(
-            `documents/d/${c.did}/${c.wvm}/${c.wvmid}/elements?elementType=PARTSTUDIO&withThumbnails=false`,
-          );
-          revs = Object.fromEntries(elements.flatMap((e) => (e.microversionId ? [[e.id, e.microversionId]] : [])));
-          if (c.wvm !== "w") await db.insert(onshapeCache).values({ key: keyOf(c), payload: revs }).onConflictDoNothing();
-        } catch (err) {
-          if (!(err instanceof OnshapeError)) throw err;
-          revs = {};
-        }
-      }
-      out.set(contextKey(c), new Map(Object.entries(revs)));
-    }),
-  );
-  return out;
+  const revisions = await studioRevisions(client, def.flatMap((p) => studioContext(p.studio, ref) ?? []));
+
+  const jobFor = (s: StudioRef): number => {
+    const own = s.did === ref.did && !s.version;
+    const path = own
+      ? `d/${s.did}/${ref.wvm}/${ref.wvmid}/e/${s.eid}`
+      : s.version
+        ? `d/${s.did}/v/${s.version}/e/${s.eid}`
+        : s.microversion
+          ? `d/${s.did}/m/${s.microversion}/e/${s.eid}`
+          : apiPath({ ...ref, did: s.did, eid: s.eid });
+    const context = studioContext(s, ref);
+    const element = context ? revisions.get(contextKey(context))?.get(s.eid) : undefined;
+    // Without its element revision, a frozen context still names one state; in a workspace the
+    // group's revision does (re-exported whenever the assembly's document changes).
+    const studioRev = element
+      ? `e${element}`
+      : s.version
+        ? `v${s.version}`
+        : s.microversion
+          ? `m${s.microversion}`
+          : own && ref.wvm !== "w"
+            ? `${ref.wvm}${ref.wvmid}`
+            : rev;
+    const hash = createHash("sha1")
+      .update(`${TESS_VERSION}|${studioRev}|${s.configuration ?? ""}`)
+      .digest("hex")
+      .slice(0, 20);
+    const key = `models/studios/${s.did}/${s.eid}/${hash}.bin.gz`;
+    let index = jobIndex.get(key);
+    if (index === undefined) {
+      index =
+        jobs.push({
+          key,
+          path,
+          ...(element ? { state: studioState(s.did, s.eid, element) } : {}),
+          ...(s.configuration ? { configuration: s.configuration } : {}),
+          ...(s.did !== ref.did ? { linkDid: ref.did } : {}),
+        }) - 1;
+      jobIndex.set(key, index);
+    }
+    return index;
+  };
+
+  for (const p of def) {
+    const k = partKey(p.studio.did, p.studio.eid, p.partId);
+    placements.push({ j: jobFor(p.studio), k, t: p.transform });
+    if (p.name) names[k] = p.name;
+  }
+  return { rev, jobs, placements, names };
 }
 
-// A model's plan: every assembly's definition (1 call each), each Part Studio's revision
-// (studioRevisions) and one export job per Part Studio revision.
-export async function planModel(client: OnshapeClient, sources: ModelSource[], rev: string): Promise<Draft> {
+// The robot's plan from its groups' plans: each Part Studio file once, placements by group.
+export function mergePlans(sources: { did: string; eid?: string; group: ModelGroup }[], plans: Record<string, GroupPlan>, rev: string): Draft {
   const jobs: Job[] = [];
   const jobIndex = new Map<string, number>();
   const placements: ModelPlacement[] = [];
-  const names: Record<string, string> = {}; // part key → its instance name in Onshape
-
-  const defs = await Promise.all(
-    sources.map(async (ref) =>
-      flattenAssembly(
-        await client.json<AssemblyDefinition>(
-          `assemblies/${apiPath(ref)}?includeMateFeatures=false&includeNonSolids=false&includeMateConnectors=false`,
-        ),
-      ),
-    ),
-  );
-  const revisions = await studioRevisions(
-    client,
-    sources.flatMap((ref, g) => defs[g].flatMap((p) => studioContext(p.studio, ref) ?? [])),
-  );
-
-  for (const [g, ref] of sources.entries()) {
-    const jobFor = (s: StudioRef): number => {
-      const own = s.did === ref.did && !s.version;
-      const path = own
-        ? `d/${s.did}/${ref.wvm}/${ref.wvmid}/e/${s.eid}`
-        : s.version
-          ? `d/${s.did}/v/${s.version}/e/${s.eid}`
-          : s.microversion
-            ? `d/${s.did}/m/${s.microversion}/e/${s.eid}`
-            : apiPath({ ...ref, did: s.did, eid: s.eid });
-      const context = studioContext(s, ref);
-      const element = context ? revisions.get(contextKey(context))?.get(s.eid) : undefined;
-      // Without its element revision, a frozen context still names one state; in a workspace the
-      // whole model's revision does (re-exported whenever the assembly's document changes).
-      const studioRev = element
-        ? `e${element}`
-        : s.version
-          ? `v${s.version}`
-          : s.microversion
-            ? `m${s.microversion}`
-            : own && ref.wvm !== "w"
-              ? `${ref.wvm}${ref.wvmid}`
-              : rev;
-      const hash = createHash("sha1")
-        .update(`${TESS_VERSION}|${studioRev}|${s.configuration ?? ""}`)
-        .digest("hex")
-        .slice(0, 20);
-      const key = `models/studios/${s.did}/${s.eid}/${hash}.bin.gz`;
-      let index = jobIndex.get(key);
+  const names: Record<string, string> = {};
+  sources.forEach((ref, g) => {
+    const plan = plans[`${ref.did}:${ref.eid}`];
+    const global = plan.jobs.map((job) => {
+      let index = jobIndex.get(job.key);
       if (index === undefined) {
-        index =
-          jobs.push({
-            key,
-            path,
-            ...(s.configuration ? { configuration: s.configuration } : {}),
-            ...(s.did !== ref.did ? { linkDid: ref.did } : {}),
-          }) - 1;
-        jobIndex.set(key, index);
+        index = jobs.push({ ...job, done: false }) - 1;
+        jobIndex.set(job.key, index);
       }
       return index;
-    };
-
-    for (const p of defs[g]) {
-      const k = partKey(p.studio.did, p.studio.eid, p.partId);
-      placements.push({ s: jobFor(p.studio), k, t: p.transform, g });
-      if (p.name) names[k] = p.name;
-    }
-  }
+    });
+    for (const p of plan.placements) placements.push({ s: global[p.j], k: p.k, t: p.t, g });
+    Object.assign(names, plan.names);
+  });
   return { rev, jobs, placements, groups: sources.map((s) => s.group), names };
 }

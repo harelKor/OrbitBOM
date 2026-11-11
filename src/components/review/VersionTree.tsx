@@ -55,6 +55,7 @@ export function VersionTree({
                 <NodeComments node={top} comments={comments} onFocus={onFocus} />
               </>
             )}
+            <SubVersions node={top} newest />
           </div>
           {rest.length > 0 && (
             <ol className="relative ml-2 border-l-2 border-line">
@@ -70,6 +71,7 @@ export function VersionTree({
                     <NodeMeta node={n} />
                   </button>
                   {!folded.has(n.key) && <NodeComments node={n} comments={comments} onFocus={onFocus} />}
+                  <SubVersions node={n} newest={false} />
                 </li>
               ))}
             </ol>
@@ -77,6 +79,37 @@ export function VersionTree({
         </>
       )}
     </section>
+  );
+}
+
+// Update CAD's sub-versions of a version ("V12 v1", Harel 2026-11-11): a small branch off it.
+// Open on the newest version, where work goes on; once a newer Onshape version exists, the branch
+// folds into its version and opens with a tap.
+function SubVersions({ node, newest }: { node: TreeNode; newest: boolean }) {
+  const [open, setOpen] = useState(newest);
+  if (!node.subs.length) return null;
+  const n = node.subs.length;
+  return (
+    <div className="mt-1.5 ml-1">
+      <button className="press flex items-center gap-1 text-[11px] font-semibold text-violet-600 pointer-coarse:min-h-9" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <span aria-hidden className={`inline-block transition-transform ${open ? "rotate-90" : ""}`}>▸</span>
+        {n} sub-version{n === 1 ? "" : "s"}
+      </button>
+      {open && (
+        <ol className="mt-1 ml-1.5 border-l-2 border-dashed border-violet-500/40">
+          {[...node.subs].reverse().map((s) => (
+            <li key={s.id} className="relative py-0.5 pl-3">
+              <span className="absolute top-2 -left-[5px] h-2 w-2 rounded-full bg-violet-500/70" aria-hidden />
+              <span className="font-mono text-xs font-semibold text-fg tabular-nums">{s.label}</span>
+              <span className="block text-[10px] text-subtle">
+                {s.by ? `${s.by} · ` : ""}
+                <LocalTime at={s.at} />
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
   );
 }
 

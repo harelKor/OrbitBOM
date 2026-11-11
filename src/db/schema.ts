@@ -122,9 +122,35 @@ export const systems = pgTable(
     followVersions: boolean("follow_versions").notNull().default(false),
     // The newest Onshape version the last check saw, so the next one stops after 1 call.
     followedVersionId: text("followed_version_id"),
+    // Where the 3D model reads this system's assembly (Harel, 2026-11-11): the state the last
+    // Update CAD, or Update BOM with "Update 3D views" ticked, was made from: an Onshape version
+    // or a microversion, which never change, so a rebuild reads nothing again for it. Null: the
+    // assembly's own link (its workspace), as before.
+    modelRef: jsonb("model_ref").$type<{ wvm: "v" | "m"; wvmid: string }>(),
     createdAt: createdAt(),
   },
   (t) => [index("systems_robot_idx").on(t.robotId)],
+);
+
+// Update CAD in the Onshape panel (Harel, 2026-11-11): each one is a node of the CAD version
+// tree. With a new Onshape version (`onshapeVersionId`) it is that version; without one it is a
+// sub-version "V12 v1" of `parentVersionId`, pinned to the workspace's microversion.
+export const cadUpdates = pgTable(
+  "cad_updates",
+  {
+    id: id(),
+    systemId: uuid("system_id")
+      .notNull()
+      .references(() => systems.id, { onDelete: "cascade" }),
+    did: text("did").notNull(),
+    microversion: text("microversion").notNull(),
+    onshapeVersionId: text("onshape_version_id"),
+    parentVersionId: text("parent_version_id"),
+    label: text("label").notNull(),
+    memberId: uuid("member_id").references(() => members.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("cad_updates_system_idx").on(t.systemId, t.createdAt)],
 );
 
 // ---------- Parts (one BOM row) ----------

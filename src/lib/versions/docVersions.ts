@@ -35,3 +35,17 @@ export async function keptDocVersions(did: string): Promise<{ versions: OnshapeV
   const [row] = await db.select({ payload: onshapeCache.payload, at: onshapeCache.fetchedAt }).from(onshapeCache).where(eq(onshapeCache.key, docVersionsKey(did)));
   return row ? { versions: (row.payload as { versions: OnshapeVersion[] }).versions, at: row.at } : null;
 }
+
+// A version this app just made in Onshape joins the kept list from Onshape's answer, so the
+// tree shows it without reading the list again.
+export async function addKeptVersion(did: string, v: { id: string; name?: string; createdAt?: string; description?: string; creator?: { name?: string } }) {
+  const kept = (await keptDocVersions(did))?.versions ?? [];
+  const raw = kept.filter((k) => k.id !== v.id).map((k) => ({ id: k.id, name: k.name, createdAt: k.createdAt, description: k.description ?? undefined, creator: k.creator ? { name: k.creator } : undefined }));
+  await keepDocVersions(did, [...raw, { ...v, createdAt: v.createdAt ?? new Date().toISOString() }]);
+}
+
+// The name Onshape gives a document's next version: one more than its highest "V<n>".
+export function nextVersionName(versions: { name?: string | null }[]): string {
+  const top = versions.reduce((n, v) => Math.max(n, Number(/^V(\d+)\b/i.exec(v.name ?? "")?.[1] ?? 0)), 0);
+  return `V${top + 1}`;
+}

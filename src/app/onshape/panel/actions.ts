@@ -9,7 +9,9 @@ import { db, schema } from "@/db";
 import { syncSystem } from "@/app/(app)/parts-actions";
 import { requireCapability } from "@/lib/mode";
 import { saveLayoutsDocument } from "@/lib/fab/layoutsDocument";
-import { refreshThumbnails } from "@/lib/onshape/thumbnails";
+import { buildRobotModelFully } from "@/lib/model/build";
+import { refreshPartData } from "@/lib/onshape/thumbnails";
+import { pinModelToVersion } from "@/lib/versions/cad";
 import { onshapeUrl, parseOnshapeUrl } from "@/lib/onshape/url";
 
 const linkForm = z.object({
@@ -30,13 +32,20 @@ export async function linkAssembly(assemblyUrl: string, _: { error?: string } | 
     .returning({ id: schema.systems.id });
   // A failed first sync still links; the system page shows Update System to retry.
   if (member.onshapeConnected) {
-    const started = Date.now();
     await syncSystem(system.id);
-    // The new system's thumbnails, after the system page is on its way; what's left is
-    // fetched on the next Update System.
+    // A first sync is Update BOM and Update CAD at once: after the system page is on its way, the
+    // parts' sheet metal and body types, and the system's 3D at the state the BOM was read at.
+    // The pictures are drawn from it by the next CAD member's browser that opens a 3D view.
     after(async () => {
-      const t = await refreshThumbnails(system.id, member.id, started + 240_000).catch((err) => console.error("Thumbnails failed", err));
-      if (t?.fetched) revalidatePath("/robots", "layout");
+      try {
+        await refreshPartData(system.id, member.id);
+        const [s] = await db.select({ v: schema.systems.currentVersionId }).from(schema.systems).where(eq(schema.systems.id, system.id));
+        if (s?.v) await pinModelToVersion(system.id, s.v);
+        await buildRobotModelFully(parsed.data.robotId, member.id);
+        revalidatePath("/robots", "layout");
+      } catch (err) {
+        console.error("First sync's 3D failed", err);
+      }
     });
   }
   redirect(`/robots/${parsed.data.robotId}/systems/${system.id}`);

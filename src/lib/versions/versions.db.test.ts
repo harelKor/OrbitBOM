@@ -24,7 +24,7 @@ else
     const { listVersions, revertSystem, updatePartToLatest } = await import("./history");
     const { listSystemSync } = await import("./sync");
     const { fabChanged, relockPart } = await import("./release");
-    const { syncOnshapeVersionName } = await import("./onshapeName");
+    const { releaseBomVersion } = await import("./onshapeName");
     const { listPartVersions } = await import("./history");
     const { applyPartChanges } = await import("@/lib/parts/apply");
 
@@ -39,14 +39,22 @@ else
     let microversion = "mv1";
     const calls: string[] = [];
     vi.stubGlobal("fetch", async (input: string, init?: RequestInit) => {
-      calls.push(`${init?.method ?? "GET"} ${input}`);
+      const method = init?.method ?? "GET";
+      calls.push(`${method} ${input}`);
+      const path = input.split("?")[0];
       let body: unknown;
-      if (input.includes("currentmicroversion")) body = { microversion };
+      if (method === "POST" && /\/documents\/d\/\w+\/versions$/.test(path)) {
+        const sent = JSON.parse(String(init!.body)) as { documentId: string; name: string };
+        body = { id: `rel${sent.documentId.slice(0, 1)}`, name: sent.name, createdAt: new Date().toISOString() };
+      } else if (/\/documents\/d\/\w+\/versions$/.test(path)) body = [{ id: "v5", name: "V5", createdAt: "2026-11-01T00:00:00Z" }];
+      else if (/\/documents\/\w+$/.test(path)) body = { defaultWorkspace: { id: "cadw" } };
+      else if (input.includes("/elements")) body = [{ id: "studio", microversionId: `e${input.match(/\/v\/(v\d)\//)?.[1] ?? "w"}` }];
+      else if (input.includes("currentmicroversion")) body = { microversion };
       else if (input.includes("/massproperties")) {
         const version = input.match(/\/v\/(v\d)\//)![1];
         const wanted = [...input.matchAll(/partId=(\w+)/g)].map((m) => m[1]);
         body = { bodies: Object.fromEntries(wanted.map((id) => [id, { volume: [shapes[version][id]], periphery: [6], principalInertia: [1, 2, 3], hasMass: true }])) };
-      } else if (input.includes("/versions/")) body = { name: input.match(/versions\/(v\d)/)![1].toUpperCase() };
+      } else if (input.includes("/versions/")) body = { name: input.match(/versions\/(v\d)/)![1].toUpperCase(), microversion: "cadmv" };
       else
         body = {
           headers,
@@ -58,6 +66,9 @@ else
       return new Response(JSON.stringify(body), { status: 200 });
     });
 
+    // Answers kept under a Part Studio's revision from an earlier run would skip the calls counted here.
+    const { sql: raw } = await import("drizzle-orm");
+    await db.delete(schema.onshapeCache).where(raw`key like ${`%${DID}%`} or key like ${`%${CAD}%`}`);
     const userId = randomUUID();
     const [member] = await db
       .insert(schema.members)
@@ -255,15 +266,20 @@ else
       [, locked] = await live();
       expect([locked.quantity, locked.releasedSnapshot?.quantity, fabChanged(locked)]).toEqual([9, 7, true]);
 
-      // The edited name renames the Onshape version and becomes its label.
+      // Update BOM's Onshape version: "V6 BOM release" in the Manufacture document at the state the
+      // check read, and in the CAD document at the state it inserts; the site calls it "V6".
       calls.length = 0;
-      const named = await syncOnshapeVersionName(system.id, c.versionId, "Final B", member);
-      expect(named).toEqual({ label: "Final B" });
-      expect(calls.some((x) => x.startsWith("POST") && x.includes(`/documents/d/${CAD}/versions/v5`))).toBe(true);
+      const named = await releaseBomVersion(system.id, c.versionId, "Final B", member);
+      expect(named).toEqual({ label: "V6", note: undefined });
+      const posts = calls.filter((x) => x.startsWith("POST"));
+      expect(posts.map((x) => x.split(" ")[1].replace(/^https:\/\/[^/]+\/api\/v10\//, ""))).toEqual([`documents/d/${DID}/versions`, `documents/d/${CAD}/versions`]);
+      const [row] = await db.select().from(schema.systemVersions).where(eq(schema.systemVersions.id, c.versionId));
+      expect(row.onshapeRef?.vid).toBe("rel3");
+      expect(row.onshapeRef?.sources?.[CAD]).toMatchObject({ versionId: "rel3", name: "V6 BOM release", main: true });
 
       const history = await listPartVersions(b.id);
       expect(history.entries.map((e) => [e.label, e.released, e.current])).toEqual([
-        ["Final B", [], true],
+        ["V6", [], true],
         ["V4", ["Released"], false],
         ["V2", [], false],
         ["V1", [], false],
@@ -271,6 +287,6 @@ else
 
       await relockPart(b.id, member.id);
       [, locked] = await live();
-      expect([locked.releasedSnapshot?.quantity, locked.releasedSnapshot?.versionLabel, fabChanged(locked)]).toEqual([9, "Final B", false]);
+      expect([locked.releasedSnapshot?.quantity, locked.releasedSnapshot?.versionLabel, fabChanged(locked)]).toEqual([9, "V6", false]);
     });
   });

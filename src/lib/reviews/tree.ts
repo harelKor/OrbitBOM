@@ -9,6 +9,10 @@ export type BomVersion = { id: string; label: string; at: string | null; by: str
 // date (Harel, 2026-11-09).
 export type TreeComment = { id: string; createdAt: string; doneAt: string | null; doneVersionId: string | null; state: "open" | "done" | "approved"; onshapeVersionId?: string | null; onshapeVersionName?: string | null };
 
+// An Update CAD without a new Onshape version (Harel, 2026-11-11): a sub-version "V12 v1" of the
+// Onshape version it was made on, drawn as a small branch off it.
+export type CadSub = { id: string; parentVid: string | null; label: string; at: string; by: string | null };
+
 export type TreeNode = {
   key: string;
   name: string;
@@ -20,13 +24,26 @@ export type TreeNode = {
   done: string[];
   // Newer in Onshape than the version the BOM is on: nobody updated the system to it yet.
   ahead: boolean;
+  subs: Omit<CadSub, "parentVid">[]; // oldest first
 };
 
-export function buildTree(onshape: OnshapeVersion[] | null, bom: BomVersion[], comments: TreeComment[]): TreeNode[] {
+// `since`: the system's first sync. The tree starts there (Harel, 2026-11-11): Onshape versions
+// made before it are left out, except the newest of them (the design the first sync found: the
+// tree's root) and any version a BOM version points at.
+export function buildTree(
+  onshape: OnshapeVersion[] | null,
+  bom: BomVersion[],
+  comments: TreeComment[],
+  { since = null, cad = [] }: { since?: string | null; cad?: CadSub[] } = {},
+): TreeNode[] {
   const nodes: TreeNode[] = [];
   const byVid = new Map<string, TreeNode>();
-  for (const v of [...(onshape ?? [])].sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
-    const node: TreeNode = { key: v.id, name: v.name, at: v.createdAt, by: v.creator ?? null, description: v.description || null, bom: [], added: [], done: [], ahead: false };
+  const used = new Set(bom.flatMap((b) => (b.vid ? [b.vid] : [])));
+  const before = since ? (onshape ?? []).filter((v) => v.createdAt < since).sort((a, b) => a.createdAt.localeCompare(b.createdAt)) : [];
+  const root = before.at(-1)?.id ?? null;
+  const shown = (onshape ?? []).filter((v) => !since || v.createdAt >= since || v.id === root || used.has(v.id));
+  for (const v of [...shown].sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
+    const node: TreeNode = { key: v.id, name: v.name, at: v.createdAt, by: v.creator ?? null, description: v.description || null, bom: [], added: [], done: [], ahead: false, subs: [] };
     nodes.push(node);
     byVid.set(v.id, node);
   }
@@ -35,7 +52,7 @@ export function buildTree(onshape: OnshapeVersion[] | null, bom: BomVersion[], c
   for (const b of [...bom].sort((a, b) => (a.at ?? "").localeCompare(b.at ?? ""))) {
     let node = b.vid ? byVid.get(b.vid) : undefined;
     if (!node) {
-      node = { key: `bom:${b.id}`, name: b.label, at: b.at, by: b.by, description: null, bom: [], added: [], done: [], ahead: false };
+      node = { key: `bom:${b.id}`, name: b.label, at: b.at, by: b.by, description: null, bom: [], added: [], done: [], ahead: false, subs: [] };
       nodes.push(node);
     }
     node.bom.push({ id: b.id, label: b.label, current: b.current });
@@ -46,7 +63,7 @@ export function buildTree(onshape: OnshapeVersion[] | null, bom: BomVersion[], c
   const sorted = [...comments].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   for (const c of sorted) {
     if (!c.onshapeVersionId || byVid.has(c.onshapeVersionId)) continue;
-    const node: TreeNode = { key: c.onshapeVersionId, name: c.onshapeVersionName ?? "", at: c.createdAt, by: null, description: null, bom: [], added: [], done: [], ahead: false };
+    const node: TreeNode = { key: c.onshapeVersionId, name: c.onshapeVersionName ?? "", at: c.createdAt, by: null, description: null, bom: [], added: [], done: [], ahead: false, subs: [] };
     nodes.push(node);
     byVid.set(c.onshapeVersionId, node);
   }
@@ -66,6 +83,11 @@ export function buildTree(onshape: OnshapeVersion[] | null, bom: BomVersion[], c
     if (c.state === "open") continue;
     const node = (c.doneVersionId && nodeOfBom.get(c.doneVersionId)) || (c.doneAt ? at(c.doneAt) : null);
     node?.done.push(c.id);
+  }
+  // Sub-versions hang off their Onshape version, or the version current when they were made.
+  for (const s of [...cad].sort((a, b) => a.at.localeCompare(b.at))) {
+    const { parentVid, ...sub } = s;
+    ((parentVid && byVid.get(parentVid)) || at(s.at)).subs.push(sub);
   }
   return nodes.reverse();
 }

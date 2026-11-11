@@ -6,6 +6,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StatusCount } from "@/lib/stats";
 import { Segmented } from "@/components/ui/Segmented";
 import { Icon } from "@/components/ui/Icon";
+import { buildModel } from "@/components/viewer/buildModel";
+import { drawPictures } from "@/components/viewer/pictures";
 import type { ViewerMode, ViewerModel } from "./ModelCanvas";
 import { PickedPart } from "./PickedPart";
 import {
@@ -22,11 +24,6 @@ import {
 } from "./modelEvents";
 
 const ModelCanvas = dynamic(() => import("./ModelCanvas").then((m) => m.ModelCanvas), { ssr: false });
-
-type BuildAnswer =
-  | { state: "done"; unchanged: boolean; parts: number; calls: number }
-  | { state: "working"; done: number; total: number; calls: number }
-  | { error: string };
 
 // A BOM part as the viewer knows it: its key in the model, status colour, and where its card is.
 export type ViewerPart = { key: string; color: string; id: string; systemId: string; name: string; fab: boolean };
@@ -190,32 +187,32 @@ export function RobotViewer({
   async function build() {
     setMessage(null);
     setBuilding("Checking Onshape…");
-    let calls = 0;
     try {
-      for (let round = 0; round < 30; round++) {
-        const res = await fetch(`/api/robots/${robotId}/model`, { method: "POST" });
-        const a = (await res.json().catch(() => ({ error: `The export failed (${res.status}).` }))) as BuildAnswer;
-        if ("error" in a) return setMessage({ text: a.error, error: true });
-        calls += a.calls;
-        if (a.state === "working") {
-          setBuilding(`Exporting part studios ${a.done}/${a.total}…`);
-          continue;
-        }
-        setMessage({
-          text: a.unchanged
-            ? `The 3D model is up to date (${calls} Onshape call${calls === 1 ? "" : "s"}).`
-            : `3D model updated: ${a.parts} parts (${calls} Onshape calls).`,
-        });
-        if (!a.unchanged) setVersion(new Date().toISOString());
-        return;
-      }
-      setMessage({ text: "Onshape is still exporting. Press Update 3D model again to continue.", error: true });
-    } catch {
-      setMessage({ text: "The export stopped. Press Update 3D model again to continue.", error: true });
+      const r = await buildModel(robotId, setBuilding);
+      if (!r.ok) return setMessage({ text: r.error, error: true });
+      const calls = r.calls;
+      setMessage({
+        text: r.unchanged
+          ? `The 3D model is up to date (${calls} Onshape call${calls === 1 ? "" : "s"}).`
+          : `3D model updated: ${r.parts} parts (${calls} Onshape calls).`,
+      });
+      if (!r.unchanged) setVersion(new Date().toISOString());
+      // The pictures the new model changed, drawn from it (no Onshape calls).
+      setBuilding("Drawing the pictures…");
+      if (await drawPictures(robotId, systemId)) router.refresh();
     } finally {
       setBuilding(null);
     }
   }
+
+  // Pictures still missing (a model built on the server, like a first sync from the Onshape
+  // panel), drawn once per page by a CAD member's browser, quietly.
+  const pictured = useRef(false);
+  useEffect(() => {
+    if (!edit || !model || pictured.current) return;
+    pictured.current = true;
+    void drawPictures(robotId, systemId).then((n) => n && router.refresh());
+  }, [edit, model, robotId, systemId, router]);
 
   return (
     <>

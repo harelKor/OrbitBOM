@@ -9,7 +9,7 @@ import { hasSeasonNeed, missing } from "@/lib/inventory/season";
 import { formatStockExact as formatStock } from "@/lib/inventory/stock";
 import { listRobots } from "@/lib/data/robots";
 import { OnshapeError } from "@/lib/onshape/client";
-import { refreshThumbnails } from "@/lib/onshape/thumbnails";
+import { refreshPartData } from "@/lib/onshape/thumbnails";
 import { planPartUpdate } from "@/lib/parts/changes";
 import { applySuggestions } from "@/lib/review/review";
 import { cotsLinkDenied } from "@/lib/parts/cotsLink";
@@ -259,12 +259,12 @@ write(
       preview: { system: system.name, assembly: system.assemblyUrl, note: "Uses a few of your Onshape API calls." },
       apply: async () => {
         try {
-          const started = Date.now();
           const s = await updateBomFromOnshape(system_id, member.id, { force: true });
           if (s.skipped === "review")
             return { ...s, note: `Not committed: Onshape's BOM leaves out ${s.removed.length} parts. A member reviews it in the app (Update System) before it's committed.` };
-          const t = await refreshThumbnails(system_id, member.id, started + 45_000);
-          return { ...s, thumbnails: t.fetched, thumbnail_errors: t.failed ? `${t.failed} failed: ${t.error}` : undefined, calls: s.calls + t.calls };
+          // Sheet metal and body types for the export files; pictures are drawn from the 3D model.
+          const t = await refreshPartData(system_id, member.id);
+          return { ...s, calls: s.calls + t.calls };
         } catch (err) {
           if (err instanceof OnshapeError) throw new ToolError(err.message);
           throw err;

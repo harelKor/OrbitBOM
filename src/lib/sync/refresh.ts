@@ -3,7 +3,7 @@ import { and, asc, eq, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { refreshIntervalMinutes } from "@/config/refresh";
 import { BudgetError, DAILY_CALL_BUDGET, NotConnectedError, OnshapeError, QuotaError, TeamBudgetError } from "@/lib/onshape/client";
-import { missingAssemblyThumbnails, refreshThumbnails } from "@/lib/onshape/thumbnails";
+import { refreshPartData } from "@/lib/onshape/thumbnails";
 import { checkSystem } from "@/lib/versions/detect";
 
 const { members, onshapeTokens, robots, syncJobs, systems } = schema;
@@ -78,8 +78,7 @@ export async function refreshSystem(
     try {
       const c = await checkSystem(systemId, account, { force: false });
       let calls = c.calls;
-      if (c.unchanged) calls += await missingAssemblyThumbnails(systemId, account);
-      else if (!c.draft) calls += (await refreshThumbnails(systemId, account, deadline)).calls;
+      if (!c.unchanged && !c.draft) calls += (await refreshPartData(systemId, account)).calls;
       if (account !== memberId) await db.update(systems).set({ refreshMemberId: account }).where(eq(systems.id, systemId));
       return { systemId, changed: !c.unchanged, calls };
     } catch (err) {

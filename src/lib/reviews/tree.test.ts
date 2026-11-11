@@ -63,4 +63,25 @@ describe("CAD Review version tree", () => {
     expect(tree[0].added).toEqual(["c"]);
     expect(tree[0].bom[0].current).toBe(true);
   });
+
+  it("starts at the first sync and hangs Update CAD's sub-versions off their version", () => {
+    const tree = buildTree(
+      [v("v1", "2026-10-01T00:00:00Z"), v("v2", "2026-10-05T00:00:00Z"), v("v3", "2026-11-03T00:00:00Z"), v("v4", "2026-11-06T00:00:00Z")],
+      [{ id: "b1", label: "#1", at: "2026-11-02T00:00:00Z", by: null, vid: null, current: true }],
+      [],
+      {
+        since: "2026-11-02T00:00:00Z",
+        cad: [
+          { id: "s2", parentVid: "v3", label: "V3 v2", at: "2026-11-05T00:00:00Z", by: "Noa" },
+          { id: "s1", parentVid: "v3", label: "V3 v1", at: "2026-11-04T00:00:00Z", by: null },
+          { id: "s3", parentVid: null, label: "V4 v1", at: "2026-11-07T00:00:00Z", by: null },
+        ],
+      },
+    );
+    // V1 is older than the first sync; V2 stays as the root (the design the first sync found).
+    expect(tree.map((n) => n.key)).toEqual(["v4", "v3", "bom:b1", "v2"]);
+    expect(tree[1].subs.map((s) => s.label)).toEqual(["V3 v1", "V3 v2"]);
+    // A sub-version whose version is unknown goes on the version current when it was made.
+    expect(tree[0].subs.map((s) => s.label)).toEqual(["V4 v1"]);
+  });
 });

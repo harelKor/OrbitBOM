@@ -9,9 +9,9 @@ const DID = "0123456789abcdef01234567";
 const WID = "89abcdef0123456789abcdef";
 const EID = "fedcba9876543210fedcba98";
 
-if (!url) describe.skip("thumbnails and export (database): set TEST_DATABASE_URL", () => {});
+if (!url) describe.skip("part data and export (database): set TEST_DATABASE_URL", () => {});
 else
-  describe("thumbnails and export (database)", async () => {
+  describe("part data and export (database)", async () => {
     process.env.DATABASE_URL = url;
     process.env.ONSHAPE_TOKEN_KEY = randomBytes(32).toString("base64");
     Object.assign(process.env, {
@@ -23,7 +23,7 @@ else
     const { db, schema } = await import("@/db");
     const { eq } = await import("drizzle-orm");
     const { encrypt } = await import("@/lib/crypto");
-    const { refreshThumbnails, thumbKey } = await import("./thumbnails");
+    const { refreshPartData } = await import("./thumbnails");
     const { exportPart } = await import("./export");
     const { onshapeClient } = await import("./client");
 
@@ -42,6 +42,8 @@ else
       }
       onshape.push(`${req.method} ${u.pathname}`);
       const json = (b: unknown) => new Response(JSON.stringify(b));
+      // The Part Studio's own revision moves whenever one of its parts does.
+      if (u.pathname.endsWith("/elements")) return json([{ id: "studio", microversionId: Object.values(microversions).join("+") }]);
       if (u.pathname.startsWith("/api/v10/parts/") && u.searchParams.has("withThumbnails")) {
         const listed = Object.entries(microversions).map(([partId, mv]) => ({
           partId,
@@ -67,6 +69,9 @@ else
       return new Response("not found", { status: 404 });
     });
 
+    // Answers kept under a Part Studio's revision from an earlier run would skip the calls counted here.
+    const { sql: raw } = await import("drizzle-orm");
+    await db.delete(schema.onshapeCache).where(raw`key like ${`%${DID}%`}`);
     const userId = randomUUID();
     const [member] = await db
       .insert(schema.members)
@@ -99,29 +104,29 @@ else
       await db.delete(schema.members).where(eq(schema.members.id, member.id));
     });
 
-    it("fetches thumbnails once, and again only for changed parts", async () => {
-      let s = await refreshThumbnails(system.id, member.id, Date.now() + 30_000);
-      // The parts list, two part images, and the assembly's thumbnail sizes and picture.
-      expect(s).toEqual({ fetched: 2, pending: 0, calls: 5 });
-      expect(bucket.get(thumbKey(plate.id, "mvA1"))).toBe("png:/thumb/A/mvA1");
-      const [sys] = await db.select().from(schema.systems).where(eq(schema.systems.id, system.id));
-      expect(sys.thumbnailPath).toMatch(new RegExp(`^thumbs/systems/${system.id}/`));
-      expect(bucket.get(sys.thumbnailPath!)).toBe("png:/thumb/assembly/1");
-
-      s = await refreshThumbnails(system.id, member.id, Date.now() + 30_000);
-      expect(s).toEqual({ fetched: 0, pending: 0, calls: 3 });
-
-      microversions = { ...microversions, B: "mvB2" };
-      s = await refreshThumbnails(system.id, member.id, Date.now() + 30_000);
-      expect(s.fetched).toBe(1);
-      expect(bucket.has(thumbKey(tube.id, "mvB1"))).toBe(false);
-      expect(bucket.has(thumbKey(tube.id, "mvB2"))).toBe(true);
-      const [row] = await db.select().from(schema.parts).where(eq(schema.parts.id, tube.id));
-      expect(row.thumbnailRev).toBe("mvB2");
-      expect(row.geometry?.bodyType).toBe("solid");
-      expect(row.geometry?.sheetMetal).toBeUndefined();
+    it("reads each Part Studio's parts list once per revision, for sheet metal and body types", async () => {
+      onshape.length = 0;
+      let s = await refreshPartData(system.id, member.id);
+      // The workspace's Part Studio revisions, and the parts list: no thumbnail images any more.
+      expect(s).toEqual({ calls: 2, studios: 1 });
+      expect(onshape.some((c) => c.includes("/thumb"))).toBe(false);
       const [sheet] = await db.select().from(schema.parts).where(eq(schema.parts.id, plate.id));
       expect(sheet.geometry?.sheetMetal).toEqual({ flatPartId: "AF" });
+      const [row] = await db.select().from(schema.parts).where(eq(schema.parts.id, tube.id));
+      expect([row.geometry?.bodyType, row.geometry?.sheetMetal]).toEqual(["solid", undefined]);
+
+      // Nothing edited: the revisions only (1 call), the list is kept.
+      s = await refreshPartData(system.id, member.id);
+      expect(s).toEqual({ calls: 1, studios: 1 });
+
+      // A part changed: its Part Studio's list is read again.
+      microversions = { ...microversions, B: "mvB2" };
+      s = await refreshPartData(system.id, member.id);
+      expect(s).toEqual({ calls: 2, studios: 1 });
+
+      // Only the Part Studios a commit changed.
+      s = await refreshPartData(system.id, member.id, { only: new Set(["d/other/w/x/e/y"]) });
+      expect(s).toEqual({ calls: 0, studios: 0 });
     });
 
     it("exports STL directly and STEP through a translation", async () => {

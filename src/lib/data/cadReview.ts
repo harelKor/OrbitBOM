@@ -6,6 +6,7 @@ import type { Member } from "@/lib/auth";
 import { parseOnshapeUrl } from "@/lib/onshape/url";
 import { buildTree, type TreeNode } from "@/lib/reviews/tree";
 import { imageUrl } from "@/lib/storage/r2";
+import { listCadSubs } from "@/lib/versions/cad";
 import { keptDocVersions } from "@/lib/versions/docVersions";
 import type { Snip } from "@/db/schema";
 import { primaryVersion, versionLabel } from "@/lib/versions/label";
@@ -100,7 +101,7 @@ export async function loadSystemReview(systemId: string): Promise<SystemReview |
     .from(systems)
     .where(eq(systems.id, systemId));
   if (!system) return null;
-  const [versions, comments] = await Promise.all([
+  const [versions, comments, cad] = await Promise.all([
     db
       .select({ v: systemVersions, by: members.name })
       .from(systemVersions)
@@ -108,6 +109,7 @@ export async function loadSystemReview(systemId: string): Promise<SystemReview |
       .where(and(eq(systemVersions.systemId, systemId), eq(systemVersions.state, "committed")))
       .orderBy(desc(systemVersions.seq)),
     listComments(systemId),
+    listCadSubs(systemId),
   ]);
   const currentId = system.currentVersionId ?? versions[0]?.v.id ?? null;
   const current = versions.find((x) => x.v.id === currentId)?.v ?? null;
@@ -126,6 +128,8 @@ export async function loadSystemReview(systemId: string): Promise<SystemReview |
     kept?.versions ?? null,
     versions.map(({ v, by }) => ({ id: v.id, label: versionLabel(v), at: v.committedAt?.toISOString() ?? null, by, vid: vidOf(v.onshapeRef), current: v.id === currentId })),
     comments.map((c) => ({ id: c.id, createdAt: c.createdAt, doneAt: c.doneAt, doneVersionId: c.doneVersionId, state: c.state, onshapeVersionId: c.onshapeVersionId, onshapeVersionName: c.onshapeVersionName })),
+    // The tree starts at the system's first sync (Harel, 2026-11-11): its first BOM version.
+    { since: versions.reduce<string | null>((a, { v }) => (v.committedAt && (!a || v.committedAt.toISOString() < a) ? v.committedAt.toISOString() : a), null), cad },
   );
   return {
     comments,

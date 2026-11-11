@@ -32,7 +32,7 @@ server (`/api/mcp/<token>`).
   cotsSync.db ×1, updateBom.db "pulls a new system's BOM"): compare against those.
 - Schema: edit `src/db/schema.ts`, `npm run db:generate`, rename the file to a readable name
   (and its `tag` in `drizzle/meta/_journal.json`), add `ALTER TABLE "x" ENABLE ROW LEVEL SECURITY;`
-  for a new table, commit. Next migration: 0082.
+  for a new table, commit. Next migration: 0083.
 - Local site: README "Local development" (local Supabase in Docker, "Dev sign-in" button; Onshape
   and R2 deliberately unset). Never point local dev at production.
 - On Harel's Windows PC, Docker and `gh` aren't on the Bash PATH: run them from PowerShell, or
@@ -111,7 +111,15 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
   work (thumbnails, previews) passes `background: true` so it stops first.
 - Versions: `src/lib/versions/` (check → draft → commit; `checkSystem` re-checks under a lock).
   A system with `followVersions` is read at its CAD document's newest Onshape version (no
-  Manufacture document).
+  Manufacture document). The panel's Update system = Update BOM (commit makes Onshape's
+  "V<next> BOM release" version, `onshapeName.ts`; "Update 3D views" checkbox) and Update CAD
+  (`cad.ts`, `cad_updates`: a new version or a sub-version "V12 v1"; pins `systems.model_ref`).
+- Onshape calls (plan/onshape-calls.md): every flow logs `onshape calls flow=… total=… <kind>=n`
+  (`logCalls`). Answers about a Part Studio are kept under its revision (`src/lib/onshape/studioRevs.ts`:
+  shape fingerprints, `partsList.ts`); the 3D model is planned per system and rebuilds only the
+  ones that moved. Part / system / robot pictures are drawn in a CAD member's browser from the
+  3D meshes (`src/components/viewer/pictures.ts`, `/api/robots/<id>/pictures`), never fetched
+  from Onshape; `thumbnailRev` is "g" + a hash of the part's mesh.
 - CAD (was "CAD Review"): `/robots/<id>/cad-review` is the whole robot on
   `src/components/review/ReviewScreen.tsx` (page wrapper `cad-review/CadReview.tsx`); a system's
   Isolate scopes it to that system (`?system=<id>`). The old `/cad-review/robot` and

@@ -1,5 +1,6 @@
 import "server-only";
 import { OnshapeError, type OnshapeClient } from "@/lib/onshape/client";
+import { cachedPayloads, keepPayload, studioStates } from "@/lib/onshape/studioRevs";
 
 // A part's shape fingerprint: its volume, surface area and principal moments of inertia, from
 // Onshape's mass properties. None of these change when a part only moves, is re-generated with
@@ -25,20 +26,37 @@ export const shapeKey = (did: string, eid: string, partId: string) => `${did}|${
 // Fingerprints of the given parts, one mass-properties call per Part Studio, a few at a time.
 // `studios` maps a studio path (d/<did>/<wvm>/<id>/e/<eid>) to its part ids. A Part Studio that
 // fails is left out: its parts count as unchanged in shape.
+// Each Part Studio's answer is kept under its revision (studioRevs.ts): a Part Studio nobody
+// edited since the last check costs no call, so a workspace system's check pays 1 elements call
+// per document plus the Part Studios that really changed.
 export async function shapeFingerprints(client: OnshapeClient, studios: Map<string, string[]>): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
-  const queue = [...studios];
+  if (!studios.size) return out;
+  const states = await studioStates(client, studios.keys());
+  const kept = await cachedPayloads<Record<string, string>>([...states.values()].flatMap((s) => (s ? [sigsKey(s)] : [])));
+  const queue: [string, string[]][] = [];
+  for (const [path, partIds] of studios) {
+    const [, did, , , , eid] = path.split("/");
+    const state = states.get(path);
+    const have = state ? kept.get(sigsKey(state)) : undefined;
+    const missing = [...new Set(partIds)].filter((id) => !have?.[id]);
+    for (const id of partIds) if (have?.[id]) out[shapeKey(did, eid, id)] = have[id];
+    if (missing.length) queue.push([path, missing]);
+  }
   const worker = async () => {
     for (let next = queue.shift(); next; next = queue.shift()) {
       const [path, partIds] = next;
       const [, did, , , , eid] = path.split("/");
-      const query = [...new Set(partIds)].map((id) => `partId=${encodeURIComponent(id)}`).join("&");
+      const query = partIds.map((id) => `partId=${encodeURIComponent(id)}`).join("&");
       try {
         const mp = await client.json<MassProperties>(`partstudios/${path}/massproperties?massAsGroup=false&${query}`);
+        const sigs: Record<string, string> = {};
         for (const [partId, body] of Object.entries(mp.bodies ?? {})) {
           const sig = fingerprint(body);
-          if (sig) out[shapeKey(did, eid, partId)] = sig;
+          if (sig) sigs[partId] = out[shapeKey(did, eid, partId)] = sig;
         }
+        const state = states.get(path);
+        if (state) await keepPayload(sigsKey(state), { ...kept.get(sigsKey(state)), ...sigs });
       } catch (err) {
         if (!(err instanceof OnshapeError)) throw err;
       }
@@ -47,3 +65,5 @@ export async function shapeFingerprints(client: OnshapeClient, studios: Map<stri
   await Promise.all(Array.from({ length: 8 }, worker));
   return out;
 }
+
+const sigsKey = (state: string) => `shape-sigs:${state}`;

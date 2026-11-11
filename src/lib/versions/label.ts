@@ -15,9 +15,10 @@ export function primaryVersion(ref: VersionRef | null | undefined, side: "source
 }
 
 // The Onshape version a site version comes from ("V70"), or null when nothing in it is inserted
-// by version.
+// by version. Update BOM's own versions are "V70 BOM release" in Onshape (onshapeName.ts); on the
+// site they're just "V70", short enough for a tag.
 export function onshapeName(ref: VersionRef | null | undefined, side: "sources" | "from" = "sources"): string | null {
-  return primaryVersion(ref, side)?.[1].name || null;
+  return primaryVersion(ref, side)?.[1].name.replace(/ BOM release$/, "") || null;
 }
 
 // What a version is called on the site: its Onshape version, else its number.
