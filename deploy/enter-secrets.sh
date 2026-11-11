@@ -53,7 +53,8 @@ ask R2_SECRET_ACCESS_KEY   "same new R2 token: Secret Access Key"
 ask ONSHAPE_CLIENT_ID      "dev-portal.onshape.com → OAuth applications → the OrbitParts app"
 ask ONSHAPE_CLIENT_SECRET  "same app; if it can't be shown again, reset/regenerate it there"
 ask SERPER_API_KEY         "serper.dev → Dashboard → API key"
-ask ADMIN_EMAILS           "optional: emails made admin on first sign-in, comma-separated"
+ask GEMINI_API_KEY         "aistudio.google.com → Get API key; a project with NO billing account, so it stays free"
+ask ADMIN_EMAILS          "optional: emails made admin on first sign-in, comma-separated"
 
 ssh -i "$ADMIN_KEY" "ubuntu@$HOST" "sudo systemctl restart orbitparts" || true
 echo
