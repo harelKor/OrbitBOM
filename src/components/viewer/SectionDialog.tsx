@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { SceneTools } from "./types";
-import { isCylinder, MAX_PLANES, type Cut, type DefaultPlane, type SectionView } from "./section";
+import { isCylinder, type Cut, type DefaultPlane, type SectionView } from "./section";
 
 const tool = "press inline-flex h-8 items-center justify-center rounded-md px-2 text-xs font-semibold text-fg-2 hover:bg-raised hover:text-fg active:scale-[0.98] pointer-coarse:h-9 pointer-coarse:min-w-9";
 const on = "bg-accent/15 text-accent-hover";
@@ -15,7 +15,8 @@ const DEFAULTS: { v: DefaultPlane; label: string }[] = [
 // Onshape's "Section view" panel, at the top left of the 3D view while it is open (Harel,
 // 2026-11-11): the cuts picked on faces (a plane on a flat face, a cylinder on a round one, up to
 // 3), each with its depth (a cylinder's radius), Flip and ✕; with none picked, the default plane.
-// ✓ closes it and keeps the cut; Turn off ends the section. The row with the accent bar carries
+// No help text, like Onshape's (Harel, 2026-11-11). ✓ closes it and keeps the cut; ✕ turns the
+// section off. The row with the accent bar carries
 // the 3D handle; a touch on a row moves it there. On phones each row also has a slider.
 export function SectionDialog({ section, tools }: { section: SectionView; tools: SceneTools }) {
   const picked = section.planes.filter((c) => isCylinder(c) || c.from === "face").length;
@@ -39,6 +40,9 @@ export function SectionDialog({ section, tools }: { section: SectionView; tools:
         <h2 className="flex-1 text-sm font-semibold text-fg">Section view</h2>
         <button className={`${tool} text-base text-accent-hover`} onClick={() => tools.sectionClose()} aria-label="Done (keep the section)" title="Done: keep the section">
           ✓
+        </button>
+        <button className={tool} onClick={() => tools.sectionShow(false)} aria-label="Turn off section view" title="Turn off section view">
+          ✕
         </button>
       </div>
       <div className="flex flex-col gap-1 p-1">
@@ -100,14 +104,6 @@ export function SectionDialog({ section, tools }: { section: SectionView; tools:
             </div>
           );
         })}
-        <p className="px-1.5 py-0.5 text-[11px] text-subtle">
-          {picked >= MAX_PLANES ? `Up to ${MAX_PLANES} cuts: remove one to pick another face.` : "Click a flat face for a plane, a round one for a cylinder (up to 3). Drag the arrow, click it to flip."}
-        </p>
-      </div>
-      <div className="border-t border-line p-1">
-        <button className={`${tool} w-full`} onClick={() => tools.sectionShow(false)}>
-          Turn off section view
-        </button>
       </div>
     </div>
   );

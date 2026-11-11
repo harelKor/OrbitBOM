@@ -12,7 +12,7 @@
 // filled by sectionCaps.ts; the maths is in sectionMath.ts.
 import * as THREE from "three";
 import type { V3 } from "@/lib/model/topology";
-import type { Pick, Topo } from "./picking";
+import type { Pick, RoundFace, Topo } from "./picking";
 import { cutGlsl, frameCut, packCuts, createCaps } from "./sectionCaps";
 import { createHandle, type Frame, type HandlePart } from "./sectionHandle";
 import {
@@ -55,6 +55,9 @@ export type SectionTools = {
   // The menu's "Section view" on a flat face: its point and outward normal in the model frame
   // (Onshape's, metres). Opens the panel cut there, replacing any cuts there were.
   sectionFromFace: (point: V3, normal: V3) => void;
+  // The menu's "Section view" on a round face (picking.ts's RoundFace): opens the panel with a
+  // cylindrical section on its axis and radius, like Onshape's (Harel, 2026-11-11).
+  sectionFromRound: (r: RoundFace) => void;
   // true: open the panel (cutting on the picked flat face, else the Front plane, when nothing is
   // cut yet); false: turn the section off.
   sectionShow: (open: boolean) => void;
@@ -211,6 +214,10 @@ export function createSection(stage: Stage, meshes: PartMesh[], topo: Topo, look
   const sectionFromFace = (point: V3, normal: V3) => {
     active = 0;
     section({ planes: [facePlane(point, normal)], open: true });
+  };
+  const sectionFromRound = (r: RoundFace) => {
+    active = 0;
+    section({ planes: [faceCylinder(r.axisPoint, r.axis, r.radius, r.point, r.normal)], open: true });
   };
   const sectionShow = (open: boolean) => {
     if (!open) return section(null);
@@ -556,6 +563,7 @@ export function createSection(stage: Stage, meshes: PartMesh[], topo: Topo, look
       section,
       sectionNow: () => state,
       sectionFromFace,
+      sectionFromRound,
       sectionShow,
       sectionEdit: () => state && section({ ...state, open: true }),
       sectionClose: () => state && section({ ...state, open: false }),

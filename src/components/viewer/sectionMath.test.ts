@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { alongLine, axisPlane, axisSpan, clipPlane, cylinderMeetsBox, defaultPlane, faceCylinder, facePlane, inPlaneAxes, offsetRange, planeAt, rayCylinder, removedBy, ringAngle, splitPlane, tiltedNormal, viewDirection, wrapDeg } from "./sectionMath";
+import { alongLine, axisPlane, axisSpan, clipPlane, contour, keptBy, cylinderMeetsBox, defaultPlane, faceCylinder, facePlane, inPlaneAxes, offsetRange, planeAt, rayCylinder, removedBy, ringAngle, splitPlane, tiltedNormal, viewDirection, wrapDeg } from "./sectionMath";
 
 const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 // The model's box in metres: x -1…1, y 0…4, z 2…6.
@@ -183,5 +183,41 @@ describe("cylinders", () => {
     expect(s.distanceToPoint(v(-1, 0, 0))).toBeLessThan(0);
     // Looking straight down the axis: still a plane through it.
     expect(splitPlane(v(0, 0, 0), v(0, 0, 1), v(0, 0, 5)).distanceToPoint(v(0, 0, 0))).toBeCloseTo(0);
+  });
+});
+
+describe("cut outlines", () => {
+  // A 2 × 2 × 2 m box around the origin, as 12 triangles.
+  const P = [-1, -1, -1, 1, -1, -1, 1, 1, -1, -1, 1, -1, -1, -1, 1, 1, -1, 1, 1, 1, 1, -1, 1, 1];
+  const I = [0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7];
+  const lengthOf = (s: number[]) => {
+    let l = 0;
+    for (let k = 0; k < s.length; k += 6) l += Math.hypot(s[k + 3] - s[k], s[k + 4] - s[k + 1], s[k + 5] - s[k + 2]);
+    return l;
+  };
+
+  it("run round the cut face: a plane through a box gives its square", () => {
+    const out: number[] = [];
+    contour(P, I, new THREE.Matrix4(), facePlane([0, 0, 0.5], [0, 0, 1]), [], out);
+    expect(lengthOf(out)).toBeCloseTo(8, 3); // 4 sides of 2 m
+    for (let k = 2; k < out.length; k += 3) expect(out[k]).toBeGreaterThan(0.5); // a hair into the cut-away side
+  });
+
+  it("leave out what another cut takes away", () => {
+    const out: number[] = [];
+    contour(P, I, new THREE.Matrix4(), facePlane([0, 0, 0.5], [0, 0, 1]), [facePlane([0.5, 0, 0], [1, 0, 0])], out);
+    expect(lengthOf(out)).toBeLessThan(8);
+    expect(lengthOf(out)).toBeGreaterThan(4);
+  });
+
+  it("follow a cylinder at its radius", () => {
+    // 1.2 m: past the middle of each side, short of its corners.
+    const c = faceCylinder([0, 0, 0], [0, 0, 1], 1.2, [1.2, 0, 0], [-1, 0, 0]);
+    const out: number[] = [];
+    contour(P, I, new THREE.Matrix4(), c, [], out);
+    expect(lengthOf(out)).toBeGreaterThan(16); // 2 upright lines on each side, plus top and bottom
+    for (let k = 0; k < out.length; k += 3) expect(Math.hypot(out[k], out[k + 1])).toBeCloseTo(1.2, 4);
+    expect(keptBy(c)(v(0, 0, 0))).toBeLessThan(0);
+    expect(keptBy(c)(v(1.3, 0, 0))).toBeGreaterThan(0);
   });
 });

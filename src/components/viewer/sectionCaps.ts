@@ -16,7 +16,8 @@
 // a plane through the axis, square to the view (sectionMath's splitPlane, set every frame), tells
 // the two apart, and the counting only runs beyond the crossing that shows.
 import * as THREE from "three";
-import { axisSpan, clipPlane, cylinderMeetsBox, cylinderRadius, isCylinder, planeAt, splitPlane, type Cut } from "./sectionMath";
+import { axisSpan, clipPlane, contour, cylinderMeetsBox, cylinderRadius, isCylinder, planeAt, splitPlane, type Cut } from "./sectionMath";
+import { EDGE } from "./paint";
 import type { Stage } from "./stage";
 import type { PartMesh } from "./types";
 
@@ -103,6 +104,8 @@ uniform float capHalf;
 uniform vec4 split;
 uniform vec3 color;
 uniform float shade;
+uniform float hatch;
+uniform float dpr;
 varying vec3 vWorld;
 varying vec3 vColor;
 void main() {
@@ -119,15 +122,25 @@ void main() {
     if (secRemoved(vWorld, own) || near) discard;
   }
   #ifdef USE_INSTANCING_COLOR
-  gl_FragColor = vec4(vColor * shade, 1.0);
+  vec3 base = vColor * shade;
   #else
-  gl_FragColor = vec4(color * shade, 1.0);
+  vec3 base = color * shade;
   #endif
+  // Onshape's hatch: thin 45° lines about 8.5 px apart on screen, dark on a light cap and light
+  // on a dark one, steady at any zoom.
+  if (hatch > 0.5 && mod(gl_FragCoord.x + gl_FragCoord.y, 12.0 * dpr) < 1.4 * dpr) {
+    float l = dot(base, vec3(0.2126, 0.7152, 0.0722));
+    base = l > 0.12 ? base * 0.35 : mix(base, vec3(1.0), 0.5);
+  }
+  gl_FragColor = vec4(base, 1.0);
   #include <colorspace_fragment>
 }`;
 
-// The cap colour: the part's own, darkened.
-const SHADE = 0.55;
+// The cap colour: the part's own, a bit darker, like Onshape's (Harel, 2026-11-11).
+const SHADE = 0.8;
+// The outline round each cut face is worked out on the CPU, a moment after the cut stops moving
+// (dragging the handle redoes the caps on every move).
+const CONTOUR_MS = 120;
 export const INTERFERENCE = "#ff2a2a";
 
 export type Caps = {
@@ -145,6 +158,8 @@ export function createCaps(stage: Stage, meshes: PartMesh[]): Caps {
   // Every cap material reads the same cut arrays.
   const A = vec4s(), B = vec4s();
   const count = { value: 0 };
+  const dpr = { value: renderer.getPixelRatio() };
+  const outlineLook = new THREE.LineBasicMaterial({ color: EDGE });
   const capMaterial = (own: number, mode: number, extra: THREE.ShaderMaterialParameters) => {
     const m = new THREE.ShaderMaterial({
       uniforms: {
@@ -157,6 +172,8 @@ export function createCaps(stage: Stage, meshes: PartMesh[]): Caps {
         split: { value: new THREE.Vector4(0, 0, 0, 1) },
         color: { value: new THREE.Color() },
         shade: { value: 1 },
+        hatch: { value: mode === 0 ? 1 : 0 },
+        dpr,
       },
       vertexShader: VERT,
       fragmentShader: FRAG,
@@ -200,6 +217,7 @@ export function createCaps(stage: Stage, meshes: PartMesh[]): Caps {
   const plane = new THREE.Plane();
   const toCamera = new THREE.Vector3();
   const onFrame = () => {
+    dpr.value = renderer.getPixelRatio(); // phones draw at 1 while the view moves
     if (!splits.length) return;
     const cam = stage.camera;
     cam.updateMatrixWorld();
@@ -212,7 +230,49 @@ export function createCaps(stage: Stage, meshes: PartMesh[]): Caps {
   };
   stage.beforeRender.push(onFrame);
 
+  let outlines: THREE.LineSegments[] = [];
+  let outlineTimer = 0;
+  const clearOutlines = () => {
+    clearTimeout(outlineTimer);
+    for (const o of outlines) {
+      o.removeFromParent();
+      o.geometry.dispose();
+    }
+    outlines = [];
+  };
+  // Each cut part's outline, under its mesh (so it hides with it), from every shown copy.
+  const drawOutlines = (cuts: Cut[]) => {
+    const at = new THREE.Matrix4();
+    const copyBox = new THREE.Box3();
+    meshes.forEach((pm) => {
+      const box = meshBox(pm);
+      const g = pm.mesh.geometry;
+      if (!g.index) return;
+      const pos = g.getAttribute("position").array;
+      const out: number[] = [];
+      cuts.forEach((c, k) => {
+        if (!meets(box, c)) return;
+        for (let i = 0; i < pm.mesh.count; i++) {
+          pm.mesh.getMatrixAt(i, at);
+          if (Math.abs(at.determinant()) < 1e-12) continue; // hidden copy
+          if (!g.boundingBox) g.computeBoundingBox();
+          if (!meets(copyBox.copy(g.boundingBox!).applyMatrix4(at), c)) continue;
+          contour(pos, g.index!.array, at, c, cuts.filter((_, j) => j !== k), out);
+        }
+      });
+      if (!out.length) return;
+      const lines = new THREE.LineSegments(new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(out, 3)), outlineLook);
+      lines.frustumCulled = false;
+      lines.raycast = () => {};
+      lines.renderOrder = 900000; // after the caps
+      pm.mesh.add(lines);
+      outlines.push(lines);
+    });
+    stage.render();
+  };
+
   const clear = () => {
+    clearOutlines();
     for (const o of made) {
       o.removeFromParent();
       (o.userData.dispose as THREE.Material | undefined)?.dispose();
@@ -231,6 +291,7 @@ export function createCaps(stage: Stage, meshes: PartMesh[]): Caps {
       B,
     );
     if (!cuts.length) return;
+    outlineTimer = window.setTimeout(() => drawOutlines(cuts), CONTOUR_MS);
     if (!stencil) {
       // Flat back faces, cut by every cut like the parts.
       const back = capMaterial(-1, 0, { side: THREE.BackSide });
@@ -333,6 +394,7 @@ export function createCaps(stage: Stage, meshes: PartMesh[]): Caps {
       if (i >= 0) stage.beforeRender.splice(i, 1);
       quad.dispose();
       tube.dispose();
+      outlineLook.dispose();
       tiny.dispose();
     },
   };

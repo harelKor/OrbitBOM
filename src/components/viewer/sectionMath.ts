@@ -242,3 +242,77 @@ export function viewDirection(c: Cut): THREE.Vector3 {
   const n = tiltedNormal(c);
   return c.flip ? n.negate() : n;
 }
+
+// How far a point (model frame) is on the kept side of a cut, in metres (negative: cut away).
+export function keptBy(c: Cut): (p: THREE.Vector3) => number {
+  if (!isCylinder(c)) {
+    const pl = clipPlane(c);
+    return (p) => pl.distanceToPoint(p);
+  }
+  const o = vec(c.origin), a = vec(c.axis).normalize(), r = cylinderRadius(c);
+  const d = new THREE.Vector3();
+  return (p) => {
+    d.copy(p).sub(o);
+    const off = Math.sqrt(Math.max(0, d.lengthSq() - d.dot(a) ** 2)) - r;
+    return c.flip ? -off : off;
+  };
+}
+
+// Where the segment a→b crosses a cut's surface, as fractions along it (0…1, in order): one for
+// a plane, up to two for a cylinder.
+function crossings(c: Cut, a: THREE.Vector3, b: THREE.Vector3): number[] {
+  if (!isCylinder(c)) {
+    const pl = clipPlane(c);
+    const fa = pl.distanceToPoint(a), fb = pl.distanceToPoint(b);
+    return fa < 0 === fb < 0 ? [] : [fa / (fa - fb)];
+  }
+  const o = vec(c.origin), ax = vec(c.axis).normalize(), r = cylinderRadius(c);
+  const w = a.clone().sub(o), d = b.clone().sub(a);
+  const wp = w.addScaledVector(ax, -w.dot(ax)), dp = d.addScaledVector(ax, -d.dot(ax));
+  const A = dp.lengthSq(), B = 2 * wp.dot(dp), C = wp.lengthSq() - r * r;
+  if (A < 1e-18) return [];
+  const disc = B * B - 4 * A * C;
+  if (disc <= 0) return [];
+  const q = Math.sqrt(disc);
+  return [(-B - q) / (2 * A), (-B + q) / (2 * A)].filter((t) => t > 0 && t < 1);
+}
+
+// The outline of a cut face, like Onshape's dark line round each cut: where one part copy's
+// triangles (positions and index in the part's frame, `at` its placement) cross the cut, as line
+// segments (model frame, 6 numbers each) pushed onto `out`. Crossings are found exactly on the
+// triangles' edges and joined straight across each triangle. Pieces another cut takes away are
+// left out; each point sits a hair (5 µm) towards the cut-away side so it draws over the cap.
+export function contour(pos: ArrayLike<number>, index: ArrayLike<number>, at: THREE.Matrix4, c: Cut, others: Cut[], out: number[]): void {
+  const f = keptBy(c);
+  const gone = others.map(keptBy);
+  const n = pos.length / 3;
+  const pts: THREE.Vector3[] = [];
+  for (let i = 0; i < n; i++) pts.push(new THREE.Vector3(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]).applyMatrix4(at));
+  const mid = new THREE.Vector3();
+  const nudge = (q: THREE.Vector3) => {
+    // Down the slope of `f`, measured over 1 µm.
+    const g = f(q);
+    const grad = new THREE.Vector3(f(mid.copy(q).setX(q.x + 1e-6)) - g, f(mid.copy(q).setY(q.y + 1e-6)) - g, f(mid.copy(q).setZ(q.z + 1e-6)) - g);
+    if (grad.lengthSq() > 0) q.addScaledVector(grad.normalize(), -5e-6);
+    return q;
+  };
+  for (let t = 0; t + 2 < index.length; t += 3) {
+    // The crossings in order round the triangle; between pairs the perimeter runs cut away.
+    const hit: THREE.Vector3[] = [];
+    let startsGone = false;
+    for (let e = 0; e < 3; e++) {
+      const a = pts[index[t + e]], b = pts[index[t + ((e + 1) % 3)]];
+      if (e === 0) startsGone = f(a) < 0;
+      for (const s of crossings(c, a, b)) hit.push(a.clone().lerp(b, s));
+    }
+    if (hit.length < 2) continue;
+    // Starting on the cut-away side, the first crossing leaves it: pair it with the last.
+    const pairs = startsGone ? hit.slice(1, -1).concat([hit[hit.length - 1], hit[0]]) : hit;
+    for (let k = 0; k + 1 < pairs.length; k += 2) {
+      mid.addVectors(pairs[k], pairs[k + 1]).multiplyScalar(0.5);
+      if (gone.some((g) => g(mid) < 0)) continue;
+      const p = nudge(pairs[k].clone()), q = nudge(pairs[k + 1].clone());
+      out.push(p.x, p.y, p.z, q.x, q.y, q.z);
+    }
+  }
+}
