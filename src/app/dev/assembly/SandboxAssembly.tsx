@@ -66,7 +66,7 @@ export function SandboxAssembly() {
   const [data, setData] = useState<AssemblyData | null>(null);
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/dev/viewer")
+    fetch("/api/dev/assembly")
       .then((r) => r.json())
       .then((d: { model: ViewerModel; names: Record<string, string> }) => !cancelled && setData(fake(d.model, d.names)));
     return () => {
@@ -74,5 +74,5 @@ export function SandboxAssembly() {
     };
   }, []);
   if (!data) return <p className="p-6 text-sm text-muted">Loading the sandbox…</p>;
-  return <Assembly robotId={ROBOT} robotName="Sandbox bot" data={data} builtAt="sandbox" canEdit canTick modelUrl="/api/dev/viewer" />;
+  return <Assembly robotId={ROBOT} robotName="Sandbox bot" data={data} builtAt="sandbox" canEdit canTick modelUrl="/api/dev/assembly" />;
 }

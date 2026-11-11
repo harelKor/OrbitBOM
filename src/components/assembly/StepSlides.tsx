@@ -1,7 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { openPartWindow } from "@/components/bom/PartDetailsHost";
 import { deleteAssemblyStep, nameAssemblySub, reorderAssemblySteps, tickAssemblyStep } from "@/app/(app)/robots/[robotId]/assembly/actions";
 import type { ViewerModel } from "@/components/dashboard/ModelCanvas";
 import { Checkbox } from "@/components/ui/Checkbox";
@@ -9,7 +10,7 @@ import { Icon } from "@/components/ui/Icon";
 import { LocalTime } from "@/components/ui/LocalTime";
 import { toast } from "@/components/ui/Toaster";
 import { subColor, type Place } from "@/lib/assembly/groups";
-import { earlierKeys, stepKeys, stepRefsOf, subModel, type Book } from "@/lib/assembly/view";
+import { earlierKeys, stepKeys, stepRefsOf, subModel, wholeKeys, type Book } from "@/lib/assembly/view";
 import type { AssemblyData, AssemblyStep } from "@/lib/data/assembly";
 import { NEW_PART, OLD_PART } from "./colors";
 import { Thumb } from "./PartSearch";
@@ -30,6 +31,7 @@ export function StepSlides({
   canEdit,
   canTick,
   onOpen,
+  jump,
 }: {
   robotId: string;
   book: Book;
@@ -39,6 +41,7 @@ export function StepSlides({
   canEdit: boolean;
   canTick: boolean;
   onOpen: (p: Place | null, stepId?: string) => void;
+  jump: { key: string; n: number } | null; // a part tapped in the top 3D: go to its next step
 }) {
   const router = useRouter();
   const list = book.steps(place);
@@ -148,6 +151,28 @@ export function StepSlides({
     }, 0);
     return () => clearTimeout(t);
   }, [finished]);
+
+  // The part's next step here: the first not done that has it, else the first that has it. A part
+  // of a sub-assembly no step here uses opens that sub-assembly.
+  const jumped = useRef(jump?.n ?? 0);
+  useEffect(() => {
+    if (!jump || jump.n === jumped.current) return;
+    jumped.current = jump.n;
+    const has = list.filter((s) => wholeKeys(book, s).includes(jump.key));
+    const target = has.find((s) => !isDone(s)) ?? has[0];
+    if (!target) {
+      const sub = book.subOfKey.get(jump.key);
+      if (!place.sub && sub && sub.systemId === place.systemId) return onOpen(sub);
+      const name = data.parts.find((p) => p.key === jump.key)?.name ?? "That part";
+      return toast(`${name} isn't in a step here yet.`);
+    }
+    const t = setTimeout(() => {
+      if (finished.has(target.id)) setShowFinished(true);
+      setActive(target.id);
+      setTimeout(() => slides.current.get(target.id)?.scrollIntoView({ block: "center", behavior: "smooth" }), 50);
+    }, 0);
+    return () => clearTimeout(t);
+  });
 
   const used = useMemo(() => new Set(list.flatMap((s) => stepKeys(book, s))), [list, book]);
   const done = list.filter(isDone).length;
@@ -306,7 +331,7 @@ function Slide({
   const refs = useMemo(() => stepRefsOf(book, list, step), [book, list, step]);
   const refKeys = useMemo(() => refs.flatMap((r) => r.keys), [refs]);
   const before = useMemo(() => earlierKeys(book, list, index).filter((k) => !own.includes(k) && !refKeys.includes(k)), [book, list, index, own, refKeys]);
-  const shown = useMemo(() => (model ? subModel(model, [...before, ...refKeys, ...own]) : null), [model, before, refKeys, own]);
+  const shown = useMemo(() => (model ? subModel(model, [...before, ...refKeys, ...own], step.systemId) : null), [model, before, refKeys, own, step.systemId]);
   const colors = useMemo(() => {
     const m = new Map<string, string>();
     for (const k of before) m.set(k, OLD_PART);
@@ -317,6 +342,14 @@ function Slide({
   const partByKey = useMemo(() => new Map(data.parts.map((p) => [p.key, p])), [data.parts]);
   const names = useMemo(() => new Map(data.parts.map((p) => [p.key, p.name])), [data.parts]);
   const ownParts = own.flatMap((k) => partByKey.get(k) ?? []);
+  // A part tapped in the step's 3D opens its window (Harel, 2026-11-11).
+  const openPart = useCallback(
+    (key: string | null) => {
+      const p = key ? partByKey.get(key) : undefined;
+      if (p) void openPartWindow(p.id);
+    },
+    [partByKey],
+  );
   const missing = step.kind === "step" && step.partKeys.some((k) => !partByKey.has(k));
   const label = sub ? step.title || book.subName(step.systemId, sub) : step.title;
 
@@ -378,7 +411,7 @@ function Slide({
         <div className="grid @2xl:grid-cols-[minmax(0,1fr)_15rem] @4xl:grid-cols-[minmax(0,1fr)_17rem]">
           <div className="relative aspect-[16/10] border-line bg-surface max-@2xl:border-b @2xl:border-r">
             {live && shown ? (
-              <StepCanvas model={shown} colors={colors} camera={step.camera} names={names} cube={false} />
+              <StepCanvas model={shown} colors={colors} camera={step.camera} names={names} cube={false} onPick={openPart} />
             ) : (
               <button onClick={onLive} className="absolute inset-0 flex items-center justify-center" aria-label="Show this step in 3D">
                 {step.imageUrl ? (

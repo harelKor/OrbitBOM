@@ -89,10 +89,13 @@ export function earlierKeys(book: Book, list: AssemblyStep[], index: number): st
 }
 
 // The model with only these parts: the other placements dropped and the Part Studio files nothing
-// uses any more left out, so a sub-assembly or a step loads only its own files.
-export function subModel(model: ViewerModel, keys: Iterable<string>): ViewerModel {
+// uses any more left out, so a sub-assembly or a step loads only its own files. `systemId`: only
+// that system's copies. COTS from a shared document have the same key in every system, so without
+// it a system would draw every system's bolts (Harel, 2026-11-11).
+export function subModel(model: ViewerModel, keys: Iterable<string>, systemId?: string): ViewerModel {
   const want = new Set(keys);
-  const placements = model.placements.filter((p) => want.has(p.k));
+  const groups = systemId && model.groups ? new Set(model.groups.flatMap((g, i) => (g.systemIds.includes(systemId) ? [i] : []))) : null;
+  const placements = model.placements.filter((p) => want.has(p.k) && (!groups || groups.has(p.g ?? 0)));
   const used = new Set(placements.map((p) => p.s));
   return { ...model, studios: model.studios.map((u, s) => (used.has(s) ? u : null)), placements };
 }

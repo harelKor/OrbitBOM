@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { saveAssemblyStep } from "@/app/(app)/robots/[robotId]/assembly/actions";
 import type { SceneTools, ViewerModel } from "@/components/dashboard/ModelCanvas";
 import { Dialog } from "@/components/Dialog";
@@ -63,7 +63,11 @@ export function StepEditor({
   const subKeys = useMemo(() => (isSub && subRef ? book.keys({ systemId: place.systemId, sub: subRef }) : []), [isSub, subRef, book, place.systemId]);
   const own = useMemo(() => (isSub ? subKeys : [...picked]), [isSub, subKeys, picked]);
   const ownSet = useMemo(() => new Set(own), [own]);
-  const rest = useMemo(() => (isSub ? [] : placeKeys.filter((k) => !ownSet.has(k) && !before.includes(k))), [isSub, placeKeys, ownSet, before]);
+  // The view holds the whole system (only its own copies), so picking parts never builds a new
+  // model: that reloaded the 3D on every pick (Harel, 2026-11-11). Parts the step doesn't use are
+  // see-through, and left out of the still.
+  const systemKeys = useMemo(() => book.keys({ systemId: place.systemId, sub: null }), [book, place.systemId]);
+  const rest = useMemo(() => (isSub ? [] : systemKeys.filter((k) => !ownSet.has(k) && !before.includes(k))), [isSub, systemKeys, ownSet, before]);
 
   // Earlier steps brought in whole, each drawn in one colour (Harel, 2026-11-10).
   const [refs, setRefs] = useState<string[]>(step?.stepRefs ?? []);
@@ -71,9 +75,8 @@ export function StepEditor({
   const refInfo = useMemo(() => stepRefsOf(book, list, { ...(step ?? list[0]), id: step?.id ?? "new", stepRefs: refs }), [book, list, step, refs]);
   const toggleRef = (id: string) => setRefs((r) => (r.includes(id) ? r.filter((x) => x !== id) : [...r, id]));
 
-  // Parts found with the search (COTS hardware, a part from another sub-assembly) join the view too.
-  const allKeys = useMemo(() => [...new Set([...before, ...placeKeys, ...subKeys, ...picked])], [before, placeKeys, subKeys, picked]);
-  const shown = useMemo(() => (model ? subModel(model, allKeys) : null), [model, allKeys]);
+  const allKeys = useMemo(() => [...new Set(isSub ? [...before, ...subKeys] : [...before, ...systemKeys])], [isSub, before, subKeys, systemKeys]);
+  const shown = useMemo(() => (model ? subModel(model, allKeys, place.systemId) : null), [model, allKeys, place.systemId]);
   const colors = useMemo(() => {
     const m = new Map<string, string>();
     for (const k of allKeys) m.set(k, REST_PART);
@@ -82,12 +85,21 @@ export function StepEditor({
     for (const k of own) m.set(k, isSub && subRef ? subColor(subRef) : NEW_PART);
     return m;
   }, [allKeys, before, refInfo, own, isSub, subRef]);
-  // Parts the step doesn't use stay see-through, so the new ones are easy to find and tap.
+  // Unused parts of this column stay see-through, so the new ones are easy to find and tap; the
+  // rest of the system is hidden until the search picks one of its parts.
+  const near = useMemo(() => new Set(placeKeys), [placeKeys]);
+  const applyView = useCallback(
+    (t: SceneTools) => {
+      t.showAll();
+      for (const k of rest) if (!near.has(k)) t.hideKey(k);
+      t.setClear(allKeys, false);
+      t.setClear(rest, true);
+    },
+    [rest, near, allKeys],
+  );
   useEffect(() => {
-    if (!tools) return;
-    tools.setClear(allKeys, false);
-    tools.setClear(rest, true);
-  }, [tools, allKeys, rest]);
+    if (tools) applyView(tools);
+  }, [tools, applyView]);
   const names = useMemo(() => new Map(data.parts.map((p) => [p.key, p.name])), [data.parts]);
   const toggle = (key: string) =>
     setPicked((p) => {
@@ -124,8 +136,7 @@ export function StepEditor({
       rest.forEach((k) => tools.hideKey(k));
       const bg = getComputedStyle(area.current).backgroundColor;
       const shot = tools.snapshot({ x: 0, y: 0, w: area.current.clientWidth, h: area.current.clientHeight }, bg);
-      tools.showAll();
-      tools.setClear(rest, true);
+      applyView(tools);
       const uploaded = shot && (await uploadStill(shot.dataUrl));
       if (uploaded) imageKey = uploaded;
     }

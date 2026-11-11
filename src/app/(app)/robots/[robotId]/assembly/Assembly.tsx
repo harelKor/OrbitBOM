@@ -74,11 +74,13 @@ export function Assembly({
   }, [modelUrl, builtAt]);
 
   const [branches, setBranches] = useState(false);
+  // A part tapped in the top 3D of an opened system or sub-assembly: the slides go to its next step.
+  const [jump, setJump] = useState<{ key: string; n: number } | null>(null);
   const sys = at && book.systems.find((s) => s.id === at.systemId);
 
   return (
     <div className="mx-auto w-full max-w-[1600px] space-y-4 p-3 sm:p-4">
-      <TopView key={at ? placeKey(at) : "robot"} model={model} book={book} data={data} at={at} onOpen={go} />
+      <TopView key={at ? placeKey(at) : "robot"} model={model} book={book} data={data} at={at} onOpen={go} onPart={(key) => setJump((j) => ({ key, n: (j?.n ?? 0) + 1 }))} />
       {!at || !sys ? (
         <Overview book={book} robotName={robotName} onOpen={go} canEdit={canEdit} />
       ) : (
@@ -116,7 +118,7 @@ export function Assembly({
             />
           </Dialog>
           <div className="gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_300px]">
-            <StepSlides key={placeKey(at)} robotId={robotId} book={book} data={data} place={at} model={model ?? null} canEdit={canEdit} canTick={canTick} onOpen={go} />
+            <StepSlides key={placeKey(at)} robotId={robotId} book={book} data={data} place={at} model={model ?? null} canEdit={canEdit} canTick={canTick} onOpen={go} jump={jump} />
             <aside className="sticky top-[calc(var(--topbar-h)+1rem)] max-h-[calc(100vh-var(--topbar-h)-2rem)] self-start overflow-y-auto rounded-lg border border-line bg-surface p-3 max-lg:hidden">
               <Branches book={book} robotName={robotName} at={at} onOpen={go} />
             </aside>
@@ -129,11 +131,25 @@ export function Assembly({
 
 // The 3D on top: the robot (or the opened system) coloured by sub-assembly, or the opened
 // sub-assembly in Onshape's colours. Hovering a part lights its whole sub-assembly; a click opens it.
-function TopView({ model, book, data, at, onOpen }: { model: ViewerModel | null | undefined; book: Book; data: AssemblyData; at: Place | null; onOpen: (p: Place) => void }) {
+function TopView({
+  model,
+  book,
+  data,
+  at,
+  onOpen,
+  onPart,
+}: {
+  model: ViewerModel | null | undefined;
+  book: Book;
+  data: AssemblyData;
+  at: Place | null;
+  onOpen: (p: Place) => void;
+  onPart: (key: string) => void; // an opened system or sub-assembly: a part tapped, to find its step
+}) {
   const [look, setLook] = useState<"assembly" | "cad">("assembly");
   const [hover, setHover] = useState<string | null>(null); // the hovered sub-assembly's place key
   const keys = useMemo(() => (at ? book.keys(at) : null), [at, book]);
-  const shown = useMemo(() => (model && keys ? subModel(model, keys) : model), [model, keys]);
+  const shown = useMemo(() => (model && keys ? subModel(model, keys, at?.systemId) : model), [model, keys, at?.systemId]);
   const partByKey = useMemo(() => new Map(data.parts.map((p) => [p.key, p])), [data.parts]);
   const inSub = !!at?.sub;
   const colors = useMemo(() => {
@@ -162,13 +178,15 @@ function TopView({ model, book, data, at, onOpen }: { model: ViewerModel | null 
   );
   const onPick = useCallback(
     (key: string | null) => {
-      if (!key || inSub) return;
+      if (!key) return;
+      // Opened: the part's next step to do (Harel, 2026-11-11).
+      if (at) return onPart(key);
       const place = book.subOfKey.get(key);
       if (place) return onOpen(place);
       const part = partByKey.get(key);
-      if (part && !at) onOpen({ systemId: part.systemId, sub: null });
+      if (part) onOpen({ systemId: part.systemId, sub: null });
     },
-    [book, inSub, partByKey, at, onOpen],
+    [book, partByKey, at, onOpen, onPart],
   );
   const hovered = hover ? book.systems.flatMap((s) => s.subs.map((x) => ({ s, x }))).find(({ s, x }) => `${s.id}:${x.code}` === hover) : null;
   const mode = inSub || look === "cad" ? "cad" : "status";
@@ -199,7 +217,7 @@ function TopView({ model, book, data, at, onOpen }: { model: ViewerModel | null 
         <div className="pointer-events-none absolute bottom-3 left-3 z-10 flex items-center gap-2 rounded-md border border-line bg-surface/95 px-2.5 py-1.5 text-sm shadow-sm backdrop-blur">
           <span className="h-3 w-3 rounded-full" style={{ background: subColor(hovered.x.code) }} />
           <span className="font-semibold">{hovered.x.name}</span>
-          <span className="text-muted">· {hovered.s.name} · click to open</span>
+          <span className="text-muted">· {hovered.s.name} · {at ? "click for its step" : "click to open"}</span>
         </div>
       )}
     </section>

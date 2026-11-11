@@ -100,4 +100,19 @@ describe("subModel", () => {
     expect(m.placements.map((p) => p.k)).toEqual(["c"]);
     expect(m.studios).toEqual([null, "s1", null]);
   });
+  it("keeps only one system's copies of a part shared between systems (COTS)", () => {
+    const model = {
+      studios: ["bolts"],
+      placements: [
+        { s: 0, k: "bolt", t: [], g: 0 },
+        { s: 0, k: "bolt", t: [], g: 1 },
+      ],
+      groups: [
+        { systemIds: ["intake"], name: "Intake" },
+        { systemIds: ["drive"], name: "Drivetrain" },
+      ],
+    };
+    expect(subModel(model, ["bolt"], "drive").placements).toEqual([{ s: 0, k: "bolt", t: [], g: 1 }]);
+    expect(subModel(model, ["bolt"]).placements).toHaveLength(2);
+  });
 });
