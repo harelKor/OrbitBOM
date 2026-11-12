@@ -17,7 +17,7 @@ export function StatusPanel({ percent, done, total, children }: { percent: numbe
 
   if (open)
     return (
-      <section className="@container panel relative p-4 max-md:hidden @3xl/dash:w-[34cqw] @5xl/dash:min-h-0 @5xl/dash:overflow-y-auto @min-[100rem]/dash:w-[27cqw]">
+      <section className="@container panel relative p-4 max-md:hidden @3xl/dash:w-[34cqw] @3xl/dash:shrink-0 @5xl/dash:min-h-0 @5xl/dash:overflow-y-auto @min-[100rem]/dash:w-[27cqw]">
         <button
           type="button"
           onClick={() => setOpen(false)}
@@ -38,7 +38,7 @@ export function StatusPanel({ percent, done, total, children }: { percent: numbe
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="card-interactive group hidden w-20 flex-col items-center justify-between gap-4 px-2 py-5 active:scale-[0.98] @3xl/dash:flex"
+        className="card-interactive group hidden w-20 shrink-0 flex-col items-center justify-between gap-4 px-2 py-5 active:scale-[0.98] @3xl/dash:flex"
         aria-label="Open the status box"
         title="Open the status box"
       >

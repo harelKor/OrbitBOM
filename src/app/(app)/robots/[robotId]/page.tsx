@@ -174,13 +174,14 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
       {/* The status box and the QA column size themselves (by the page's width); the 3D view takes the rest, more when the status box is folded. */}
       {/* Side by side from a narrower page than the launch boxes, so with both side columns open the
           3D view is still the main thing, as with them closed (Harel, 2026-11-12). */}
-      <div className="grid gap-3 @3xl:grid-cols-[auto_auto_minmax(0,1fr)] @5xl:min-h-0 @5xl:flex-1">
+      {/* A row, not grid columns: with the status box left out (both side columns open) the 3D view still takes all the rest (Harel, 2026-11-12). */}
+      <div className="grid gap-3 @3xl:flex @5xl:min-h-0 @5xl:flex-1">
         <StatusPanel percent={breakdown.percent} done={breakdown.done} total={breakdown.total}>{statusBody}</StatusPanel>
-        <div className="grid grid-cols-2 gap-3 @3xl:w-[max(8rem,13.3cqw)] @3xl:grid-cols-1 @3xl:grid-rows-2 @5xl:min-h-0">
+        <div className="grid grid-cols-2 gap-3 @3xl:w-[max(8rem,13.3cqw)] @3xl:shrink-0 @3xl:grid-cols-1 @3xl:grid-rows-2 @5xl:min-h-0">
           <QaBox robotId={robot.id} systems={qaSystems} parts={parts.filter((p) => p.status === "Ready for QA")} inventory={inventoryNames} isAdmin={member.isAdmin} glow={cad && qaTotal > 0} />
           <PostProcessBox robotId={robot.id} parts={postParts} inventory={inventoryNames} isAdmin={member.isAdmin} glow={build && postParts.length > 0} />
         </div>
-        <div className="flex min-w-0 flex-col @5xl:min-h-0">
+        <div className="flex min-w-0 flex-col @3xl:flex-1 @5xl:min-h-0">
           <RobotViewer
             robotId={robot.id}
             statuses={activeStatuses}
