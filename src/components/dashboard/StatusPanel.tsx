@@ -1,29 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { useSidePanels } from "@/components/shell/SidePanels";
 import { Icon } from "@/components/ui/Icon";
 
 // The robot dashboard's status box, folding sideways on a bigger page: folded, it's a narrow
-// button box and the 3D view takes the room. It starts open, and folded while both side columns
-// are open, until the member folds or opens it themselves (Harel, 2026-11-07). On smaller pages
-// it's always open, stacked with the rest. `@…/dash` sizes: the dashboard's width (its
-// `@container/dash`), not this box's own.
+// button box and the 3D view takes the room. It starts folded, side columns open or not, until the
+// member opens it (Harel, 2026-11-12). On smaller pages it's always open, stacked with the rest.
+// `@…/dash` sizes: the dashboard's width (its `@container/dash`), not this box's own.
 export function StatusPanel({ percent, done, total, children }: { percent: number; done: number; total: number; children: React.ReactNode }) {
-  const panels = useSidePanels();
-  const both = panels.left && panels.right;
-  // The member's own choice, for the side columns as they were when they made it.
-  const [chosen, setChosen] = useState<{ open: boolean; both: boolean } | null>(null);
-  const open = chosen && chosen.both === both ? chosen.open : !both;
-  const set = (o: boolean) => setChosen({ open: o, both });
+  const [open, setOpen] = useState(false);
 
   if (open)
     return (
-      <section className="@container panel relative p-4 max-md:hidden @5xl/dash:min-h-0 @5xl/dash:w-[34cqw] @5xl/dash:overflow-y-auto @min-[100rem]/dash:w-[27cqw]">
+      <section className="@container panel relative p-4 max-md:hidden @3xl/dash:w-[34cqw] @5xl/dash:min-h-0 @5xl/dash:overflow-y-auto @min-[100rem]/dash:w-[27cqw]">
         <button
           type="button"
-          onClick={() => set(false)}
-          className="press absolute top-2 right-2 z-[1] hidden h-9 w-9 items-center justify-center rounded-md border border-line bg-raised text-subtle hover:border-accent/50 hover:text-fg active:scale-[0.98] @5xl/dash:flex"
+          onClick={() => setOpen(false)}
+          className="press absolute top-2 right-2 z-[1] hidden h-9 w-9 items-center justify-center rounded-md border border-line bg-raised text-subtle hover:border-accent/50 hover:text-fg active:scale-[0.98] @3xl/dash:flex"
           aria-label="Fold the status box"
           title="Fold: more room for the 3D view"
         >
@@ -36,11 +29,11 @@ export function StatusPanel({ percent, done, total, children }: { percent: numbe
   return (
     <>
       {/* Folded only on a bigger page: below that the box shows as usual. */}
-      <section className="@container panel space-y-5 p-4 max-md:hidden @5xl/dash:hidden">{children}</section>
+      <section className="@container panel space-y-5 p-4 max-md:hidden @3xl/dash:hidden">{children}</section>
       <button
         type="button"
-        onClick={() => set(true)}
-        className="card-interactive group hidden w-20 flex-col items-center justify-between gap-4 px-2 py-5 active:scale-[0.98] @5xl/dash:flex"
+        onClick={() => setOpen(true)}
+        className="card-interactive group hidden w-20 flex-col items-center justify-between gap-4 px-2 py-5 active:scale-[0.98] @3xl/dash:flex"
         aria-label="Open the status box"
         title="Open the status box"
       >
