@@ -13,6 +13,7 @@ import {
 import { TEAMS } from "@/config/teams";
 import { listTeamSystems } from "@/lib/teams";
 import { CopyLink } from "./CopyLink";
+import { MemberSearch } from "./MemberSearch";
 import { MemberTeam } from "./MemberTeam";
 
 export default async function MembersPage() {
@@ -64,11 +65,16 @@ export default async function MembersPage() {
         </section>
       )}
 
-      <section>
-        <h2 className="mb-2 font-medium">Team ({members.length})</h2>
-        <ul className="panel divide-y divide-line">
+      <MemberSearch total={members.length}>
           {members.map((m) => (
-            <li key={m.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+            <li
+              key={m.id}
+              data-search={[m.name, m.email, TEAMS.find((t) => t.id === m.team)?.label, m.systemId && systemName.get(m.systemId), m.isAdmin && "admin", m.isMentor && "mentor"]
+                .filter(Boolean)
+                .join(" ")
+                .toLowerCase()}
+              className="flex flex-wrap items-center gap-3 px-4 py-3"
+            >
               <div className="min-w-0 flex-1">
                 <div className="truncate font-medium">
                   {m.name}
@@ -105,8 +111,7 @@ export default async function MembersPage() {
               )}
             </li>
           ))}
-        </ul>
-      </section>
+      </MemberSearch>
 
       {me.isAdmin && (
         <section>
