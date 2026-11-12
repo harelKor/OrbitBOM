@@ -107,7 +107,7 @@ function Scanner({ canAdd, items, onCode, onNew, onClose }: { canAdd: boolean; i
       const g = o.getContext("2d")!;
       g.clearRect(0, 0, o.width, o.height);
       if (v.paused) return;
-      drawRing(g, ringBox(v.videoWidth, v.videoHeight), o.width / v.videoWidth, combineCounts(frames.current).teeth);
+      drawRing(g, ringBox(v.videoWidth, v.videoHeight), o.width / v.videoWidth, combineCounts(frames.current).teeth, !!frames.current.at(-1)?.clipped);
     };
     const tick = async () => {
       const v = video.current;
@@ -319,14 +319,15 @@ type BarcodeDetectorClass = {
   getSupportedFormats(): Promise<string[]>;
 };
 
-// The aim ring: where to hold the gear. It turns orange with the count once the frames settle.
-function drawRing(g: CanvasRenderingContext2D, box: { sx: number; sy: number; side: number }, k: number, teeth: number | null) {
+// The aim ring: where to hold the gear. It turns orange with the count once the frames settle,
+// and amber while the part crosses its edge (move it in).
+function drawRing(g: CanvasRenderingContext2D, box: { sx: number; sy: number; side: number }, k: number, teeth: number | null, clipped: boolean) {
   const x = (box.sx + box.side / 2) * k;
   const y = (box.sy + box.side / 2) * k;
   const r = (box.side / 2) * k;
   g.lineWidth = 3;
   g.setLineDash(teeth ? [] : [10, 8]);
-  g.strokeStyle = teeth ? "#f97316" : "rgba(255,255,255,0.8)";
+  g.strokeStyle = teeth ? "#f97316" : clipped ? "#facc15" : "rgba(255,255,255,0.8)";
   g.beginPath();
   g.arc(x, y, r, 0, 2 * Math.PI);
   g.stroke();

@@ -21,7 +21,13 @@ export type TeethResult = {
   radius: number; // outer radius, pixels
   candidates: { teeth: number; score: number }[]; // the best few counts, for the scan test page
   scores: number[]; // every count's strength (index = teeth, best = 1), to add frames together
+  parts?: { rings: number | null; outline: number | null }; // each method's own best count (scan test page)
+  clipped?: boolean; // the part crosses the aim ring's edge: move it in
 };
+
+// How much each way of reading the teeth counts in the total.
+const W_RINGS = 1;
+const W_OUTLINE = 1;
 
 const ANGLES = 1024; // a power of two, for the FFT
 // No FRC gear, pulley or sprocket has fewer; a pixel-stepped circle looks like 8 (Harel's video,
@@ -65,25 +71,26 @@ export function countTeethInRing(rgba: ArrayLike<number>, size: number): TeethRe
       const hue = Math.hypot(r - light, g - light, b - light);
       diff[p] = Math.min(255, Math.abs(light) * 0.5 + hue * 3);
     }
-  return countTeeth(diff, size, size);
+  const r = countTeeth(diff, size, size);
+  // A gear crossing the ring's edge has teeth cut off, and the count drifts (29, 28, even 11 on
+  // the video's frames where it did): it isn't counted, and the ring says so.
+  if (r && Math.hypot(r.center.x - c, r.center.y - c) + r.radius * 1.08 > R * 0.94) return { ...r, teeth: null, confidence: 0, clipped: true };
+  return r;
 }
 
-// Several frames together: each frame's strengths added up, so one blurry frame or a ±1 wobble
-// doesn't decide. A count shows once enough frames back it and it clearly beats the rest.
+// Several frames together, by vote: a count shows once enough frames found teeth and most of
+// them agree on it, so one blurry frame or a ±1 wobble doesn't decide.
 export function combineCounts(frames: (TeethResult | null)[], need = 3): { teeth: number | null; confidence: number } {
-  const used = frames.filter((f): f is TeethResult => !!f && f.scores.length > MIN_TEETH);
-  if (used.length < need) return { teeth: null, confidence: 0 };
-  const sum: number[] = [];
-  for (const f of used) f.scores.forEach((v, k) => (sum[k] = (sum[k] ?? 0) + v));
-  let k = MIN_TEETH;
-  for (let i = MIN_TEETH; i < sum.length; i++) if ((sum[i] ?? 0) > (sum[k] ?? 0)) k = i;
-  let second = 0;
-  for (let i = MIN_TEETH; i < sum.length; i++) if (Math.abs(i - k) > 1 && i % k !== 0 && (sum[i] ?? 0) > second) second = sum[i] ?? 0;
-  const ratio = (sum[k] ?? 0) / (second || 1e-9);
-  // Most frames must have found teeth at all, near this count.
-  const agree = used.filter((f) => f.teeth && Math.abs(f.teeth - k) <= 1).length;
-  if (ratio < 1.3 || agree < Math.ceil(used.length / 2)) return { teeth: null, confidence: 0 };
-  return { teeth: k, confidence: clamp01((ratio - 1) / 1.2) };
+  const counts = new Map<number, number>();
+  let found = 0;
+  for (const f of frames)
+    if (f?.teeth) {
+      found++;
+      counts.set(f.teeth, (counts.get(f.teeth) ?? 0) + 1);
+    }
+  const [best] = [...counts].sort((a, b) => b[1] - a[1]);
+  if (!best || best[1] < need || best[1] < found * 0.5) return { teeth: null, confidence: 0 };
+  return { teeth: best[0], confidence: best[1] / found };
 }
 
 // Grey levels (0..255), one per pixel, row by row.
@@ -153,25 +160,47 @@ export function countTeeth(gray: Gray, width: number, height: number): TeethResu
   const maxR = Math.hypot(width, height);
   const outer = new Float64Array(ANGLES);
   const inner = new Float64Array(ANGLES);
-  const holeAtCentre = !inPart(cx, cy);
-  for (let a = 0; a < ANGLES; a++) {
-    const th = (2 * Math.PI * a) / ANGLES;
-    const dx = Math.cos(th) * ex.x + Math.sin(th) * ey.x;
-    const dy = Math.cos(th) * ex.y + Math.sin(th) * ey.y;
-    let far = 0;
-    let first = -1;
-    for (let r = 0; r < maxR; r += 0.5) {
-      const x = cx + dx * r;
-      const y = cy + dy * r;
-      if (x < 0 || y < 0 || x >= width || y >= height) break;
-      if (inPart(x, y)) {
-        far = r;
-        if (first < 0) first = r;
+  const rays = () => {
+    for (let a = 0; a < ANGLES; a++) {
+      const th = (2 * Math.PI * a) / ANGLES;
+      const dx = Math.cos(th) * ex.x + Math.sin(th) * ey.x;
+      const dy = Math.cos(th) * ex.y + Math.sin(th) * ey.y;
+      let far = 0;
+      let first = -1;
+      for (let r = 0; r < maxR; r += 0.5) {
+        const x = cx + dx * r;
+        const y = cy + dy * r;
+        if (x < 0 || y < 0 || x >= width || y >= height) break;
+        if (inPart(x, y)) {
+          far = r;
+          if (first < 0) first = r;
+        }
       }
+      outer[a] = far;
+      inner[a] = first < 0 ? 0 : first;
     }
-    outer[a] = far;
-    inner[a] = first < 0 ? 0 : first;
+  };
+  // The middle of the pixels isn't quite the gear's centre (light, shadow, the bore). Seen from a
+  // centre that is off, the edge looks nearer on one side: that lopsidedness (the outline's
+  // once-around wave) says how far off and which way, so the centre moves there and is measured
+  // again. An off centre smeared a 30T gear into 31 (Harel, 2026-11-12).
+  rays();
+  for (let pass = 0; pass < 4; pass++) {
+    let a1 = 0;
+    let b1 = 0;
+    for (let a = 0; a < ANGLES; a++) {
+      const th = (2 * Math.PI * a) / ANGLES;
+      a1 += outer[a] * Math.cos(th);
+      b1 += outer[a] * Math.sin(th);
+    }
+    a1 = (2 * a1) / ANGLES;
+    b1 = (2 * b1) / ANGLES;
+    if (Math.hypot(a1, b1) < 0.25) break;
+    cx += a1 * ex.x + b1 * ey.x;
+    cy += a1 * ex.y + b1 * ey.y;
+    rays();
   }
+  const holeAtCentre = !inPart(cx, cy);
   const radius = mean(outer);
   if (radius < 12) return null;
   const hi = Math.min(MAX_TEETH, Math.floor(radius * 0.9), ANGLES / 2 - 1);
@@ -207,7 +236,9 @@ export function countTeeth(gray: Gray, width: number, height: number): TeethResu
   const outerSpec = spectrum(outer);
   const outerTop = maxOf(outerSpec, hi);
   const depth = outerTop / radius; // the outline's wave, as a share of the radius
-  for (let k = MIN_TEETH; k <= hi; k++) score[k] = (ringMax ? score[k] / ringMax : 0) + (depth > 0.008 && outerTop ? outerSpec[k] / outerTop : 0);
+  const parts = { rings: ringMax ? argmax(score, hi) : null, outline: outerTop ? argmax(outerSpec, hi) : null };
+  for (let k = MIN_TEETH; k <= hi; k++)
+    score[k] = W_RINGS * (ringMax ? score[k] / ringMax : 0) + W_OUTLINE * (depth > 0.008 && outerTop ? outerSpec[k] / outerTop : 0);
 
   let k = MIN_TEETH;
   for (let i = MIN_TEETH; i <= hi; i++) if (score[i] > score[k]) k = i;
@@ -215,7 +246,8 @@ export function countTeeth(gray: Gray, width: number, height: number): TeethResu
   // as strong is really that.
   for (const d of [2, 3]) if (k % d === 0 && k / d >= MIN_TEETH && score[k / d] > score[k] * 0.6) k = k / d;
   let second = 0;
-  for (let i = MIN_TEETH; i <= hi; i++) if (Math.abs(i - k) > 1 && i % k !== 0 && score[i] > second) second = score[i];
+  // The runner-up away from k: an uneven spacing spreads the teeth over k±1, k±2, which is no rival.
+  for (let i = MIN_TEETH; i <= hi; i++) if (Math.abs(i - k) > 3 && i % k !== 0 && score[i] > second) second = score[i];
   const ratio = score[k] / (second || 1e-9);
   // Real teeth swing the brightness along some ring by a good part of the part-to-background
   // contrast; a plain disc's edge only by its pixel steps (a drawn circle is a bit octagonal).
@@ -225,7 +257,20 @@ export function countTeeth(gray: Gray, width: number, height: number): TeethResu
   else outSum += gray[i];
   const contrast = Math.abs(inSum / part.size - outSum / Math.max(1, n - part.size));
   const swing = Math.max(...rings.map((s) => s[k]));
-  const teeth = ratio > 1.35 && score[k] > 0.5 && (swing > contrast * 0.12 || depth > 0.012) ? k : null;
+  const isGear = ratio > 1.35 && score[k] > 0.5 && (swing > contrast * 0.12 || depth > 0.012);
+  // The exact count: a phone held at a slight angle spaces the teeth wider on the near side, and
+  // that stretch can pull the strongest repeat one off (a 30T gear read 31 on every frame of
+  // Harel's video, 2026-11-12). Following the teeth round the loop one by one (their wave's phase)
+  // counts every tooth however unevenly spaced; the circle just inside the tips counts most.
+  let teeth: number | null = null;
+  if (isGear) {
+    const votes = new Map<number, number>();
+    const vote = (n: number | null, w: number) => n && votes.set(n, (votes.get(n) ?? 0) + w);
+    for (const [f, w] of [[0.94, 1], [0.97, 2], [1, 1]] as const) vote(followTeeth(ring(gray, width, height, axes, radius * f), k), w);
+    if (depth > 0.008) vote(followTeeth(outer, k), 1);
+    const [best] = [...votes].sort((a, b) => b[1] - a[1]);
+    teeth = best && Math.abs(best[0] - k) <= 2 ? best[0] : k;
+  }
   const confidence = teeth ? clamp01((ratio - 1) / 1.2) : 0;
   const candidates = [...score.keys()]
     .filter((i) => i >= MIN_TEETH && score[i] > 0)
@@ -244,8 +289,14 @@ export function countTeeth(gray: Gray, width: number, height: number): TeethResu
     }
   }
   const top = score[k] || 1;
-  return { teeth, confidence, bore, center: { x: axes.cx, y: axes.cy }, radius, candidates, scores: Array.from(score, (v) => v / top) };
+  return { teeth, confidence, bore, center: { x: axes.cx, y: axes.cy }, radius, candidates, scores: Array.from(score, (v) => v / top), parts };
 }
+
+const argmax = (s: ArrayLike<number>, hi: number) => {
+  let k = MIN_TEETH;
+  for (let i = MIN_TEETH; i <= hi; i++) if (s[i] > s[k]) k = i;
+  return k;
+};
 
 const mean = (v: ArrayLike<number>) => {
   let s = 0;
@@ -260,6 +311,44 @@ const maxOf = (s: ArrayLike<number>, hi: number) => {
 };
 
 // How much of the ring's repeat the strongest count holds (for nudging the centre).
+// How many teeth a wave of about k bumps really has: shift it down by k, smooth over one tooth,
+// and count the extra turns its phase makes going once round.
+function followTeeth(sig: ArrayLike<number>, k: number): number | null {
+  const n = sig.length;
+  let m = 0;
+  for (let i = 0; i < n; i++) m += sig[i];
+  m /= n;
+  const re = new Float64Array(n);
+  const im = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const a = (-2 * Math.PI * k * i) / n;
+    re[i] = (sig[i] - m) * Math.cos(a);
+    im[i] = (sig[i] - m) * Math.sin(a);
+  }
+  const w = Math.max(1, Math.round(n / k));
+  let ar = 0;
+  let ai = 0;
+  for (let d = 0; d < w; d++) {
+    ar += re[d];
+    ai += im[d];
+  }
+  let total = 0;
+  let prev = Math.atan2(ai, ar);
+  let weak = 0;
+  for (let i = 1; i <= n; i++) {
+    ar += re[(i - 1 + w) % n] - re[i - 1];
+    ai += im[(i - 1 + w) % n] - im[i - 1];
+    if (Math.hypot(ar, ai) < 1e-9) weak++;
+    const p = Math.atan2(ai, ar);
+    let dp = p - prev;
+    while (dp > Math.PI) dp -= 2 * Math.PI;
+    while (dp < -Math.PI) dp += 2 * Math.PI;
+    total += dp;
+    prev = p;
+  }
+  return weak > n / 10 ? null : k + Math.round(total / (2 * Math.PI));
+}
+
 function peakShare(s: Float64Array, hi: number) {
   let sum = 0;
   for (let k = MIN_TEETH; k <= hi; k++) sum += s[k];

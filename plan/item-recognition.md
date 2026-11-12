@@ -161,3 +161,12 @@ added together before a count shows, the counter in a Web Worker, and the phone'
 reader (BarcodeDetector) instead of zxing where it exists (zxing only every 300 ms). On the
 video's frames: 31 on most frames, 29-30 on some, nothing while the gear leaves the ring; the gear
 looks like 30T, still to be confirmed on the part.
+
+## Round 4 (Harel, 2026-11-12: the gear is 30T, Scan said 31)
+
+A phone at a slight angle spaces the teeth wider on the near side; with 30 teeth that stretch
+pulled the strongest repeat (FFT) to 31 on every frame. Now the FFT only says "a gear, about k
+teeth"; the exact count follows the tooth wave's phase once round (circles just inside the tips,
+plus the outline), which counts every tooth however unevenly spaced. Frames are combined by vote.
+A gear crossing the ring's edge isn't counted (amber ring); the ring is 95% of the frame's width.
+On the video: 30 shown on 43 frames, never a wrong count (was 31 / 8).

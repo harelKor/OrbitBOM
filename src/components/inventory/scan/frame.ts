@@ -26,9 +26,10 @@ export function grayOf(c: HTMLCanvasElement): Uint8Array {
 
 export const jpegOf = (c: HTMLCanvasElement) => c.toDataURL("image/jpeg", 0.8).replace(/^data:image\/jpeg;base64,/, "");
 
-// The aim ring on the camera: a centred circle, 80% of the frame's short side. Only inside it is
+// The aim ring on the camera: a centred circle, 95% of the frame's short side (80% was too tight:
+// on Harel's video the gear crossed it on nearly every frame). Only inside it is
 // counted (teeth.ts countTeethInRing).
-export const RING_SHARE = 0.8;
+export const RING_SHARE = 0.95;
 export function ringBox(w: number, h: number) {
   const side = Math.min(w, h) * RING_SHARE;
   return { sx: (w - side) / 2, sy: (h - side) / 2, side };

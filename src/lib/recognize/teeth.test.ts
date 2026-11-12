@@ -3,7 +3,7 @@ import { combineCounts, countTeeth, countTeethInRing, type TeethResult } from ".
 
 // A drawn part on a plain background: toothed outline (square-ish teeth with sloped sides), a hex
 // or round bore, optional squash (photo not quite from above), light noise.
-function drawPart(o: { teeth: number; size?: number; radius?: number; depth?: number; bore?: "hex" | "round" | null; squash?: number; dark?: boolean; noise?: number; cx?: number; cy?: number; light?: number; clutter?: boolean }) {
+function drawPart(o: { teeth: number; size?: number; radius?: number; depth?: number; bore?: "hex" | "round" | null; squash?: number; dark?: boolean; noise?: number; cx?: number; cy?: number; light?: number; clutter?: boolean; stretch?: number }) {
   const size = o.size ?? 360;
   const R = o.radius ?? size * 0.36;
   const depth = o.depth ?? R * 0.07;
@@ -21,7 +21,8 @@ function drawPart(o: { teeth: number; size?: number; radius?: number; depth?: nu
       const dy = (y - cy) / squash;
       const r = Math.hypot(dx, dy);
       const th = Math.atan2(dy, dx);
-      const phase = (((th / (2 * Math.PI)) * o.teeth) % 1 + 1) % 1;
+      // A phone at an angle: teeth spaced wider on one side than the other.
+      const phase = ((((th + (o.stretch ?? 0) * Math.sin(th)) / (2 * Math.PI)) * o.teeth) % 1 + 1) % 1;
       const tooth = Math.max(0, Math.min(1, (0.5 - Math.abs(phase - 0.5)) * 6 - 0.5)); // trapezoid
       const outer = R - depth + 2 * depth * tooth;
       let inside = r <= outer;
@@ -65,6 +66,13 @@ describe("countTeeth", () => {
     expect(countTeeth(gray, size, size)!.teeth).toBe(40);
     const tilted = drawPart({ teeth: 56, squash: 0.7, bore: "hex" });
     expect(countTeeth(tilted.gray, tilted.size, tilted.size)!.teeth).toBe(56);
+  });
+
+  it("counts every tooth when a phone at an angle spaces them unevenly", () => {
+    for (const teeth of [30, 36, 48]) {
+      const { gray, size } = drawPart({ teeth, bore: "hex", stretch: 0.06 });
+      expect(countTeeth(gray, size, size)?.teeth).toBe(teeth);
+    }
   });
 
   it("copes with a lamp on one side and tools on the bench", () => {
