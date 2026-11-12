@@ -2,7 +2,8 @@
 
 import { useRef, useState, useTransition } from "react";
 import { addCategory, deleteCategory, moveCategory, saveCategory } from "@/app/(app)/inventory/actions";
-import { CATEGORY_GROUPS } from "@/config/inventory";
+import { CATEGORY_GROUPS, DEFAULT_GROUP, groupOf } from "@/config/inventory";
+import { Chevron } from "@/components/ui/Chevron";
 import { DEFAULT_NAME, withBoreList, type CategoryField } from "@/lib/inventory/categories";
 import type { InvCategory, Item, Location } from "./types";
 
@@ -31,6 +32,8 @@ export function CategorySettings({
 }) {
   const [selected, setSelected] = useState<string | null>(categories[0]?.id ?? null);
   const [drafts, setDrafts] = useState<Record<string, InvCategory>>({});
+  // Groups shown open; at first only the picked category's (Harel, 2026-11-12).
+  const [open, setOpen] = useState<Set<string>>(() => new Set(categories[0] ? [groupOf(categories[0].group)] : []));
   const [status, setStatus] = useState<{ error?: string; saving?: boolean; saved?: boolean }>({});
   const [newName, setNewName] = useState("");
   const [, startTransition] = useTransition();
@@ -83,17 +86,42 @@ export function CategorySettings({
         <span className="text-xs text-muted">{status.error ? <span className="text-rose-600">{status.error}</span> : status.saving ? "Saving…" : status.saved ? "Saved" : ""}</span>
       </div>
       <div className="space-y-4">
-          <div className="flex flex-wrap gap-1.5">
-            {categories.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => setSelected(c.id)}
-                className={`press min-h-10 rounded-full border px-3.5 text-sm font-semibold ${c.id === selected ? "border-accent bg-accent text-white" : "border-line-strong bg-surface text-fg-2 hover:border-accent"}`}
-              >
-                {(drafts[c.id] ?? c).label}
-              </button>
-            ))}
+          <div className="space-y-2">
+            {CATEGORY_GROUPS.map((g) => {
+              const inGroup = categories.filter((c) => groupOf((drafts[c.id] ?? c).group) === g.id);
+              const isOpen = open.has(g.id);
+              const picked = inGroup.find((c) => c.id === selected);
+              return (
+                <div key={g.id} className="rounded-xl border border-line bg-surface">
+                  <button
+                    type="button"
+                    aria-expanded={isOpen}
+                    onClick={() => setOpen((o) => (o.has(g.id) ? new Set([...o].filter((x) => x !== g.id)) : new Set([...o, g.id])))}
+                    className="press flex min-h-11 w-full items-center gap-2 px-3 text-left active:scale-[0.98]"
+                  >
+                    <Chevron open={isOpen} small />
+                    <span className="text-sm font-semibold">{g.label}</span>
+                    <span className="text-xs text-subtle tabular-nums">{inGroup.length}</span>
+                    {!isOpen && picked && <span className="ml-auto truncate text-xs font-semibold text-accent">{(drafts[picked.id] ?? picked).label}</span>}
+                  </button>
+                  {isOpen && (
+                    <div className="flex flex-wrap gap-1.5 px-3 pb-3">
+                      {inGroup.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => setSelected(c.id)}
+                          className={`press min-h-10 rounded-full border px-3.5 text-sm font-semibold ${c.id === selected ? "border-accent bg-accent text-white" : "border-line-strong bg-surface text-fg-2 hover:border-accent"}`}
+                        >
+                          {(drafts[c.id] ?? c).label}
+                        </button>
+                      ))}
+                      {!inGroup.length && <span className="text-xs text-muted">No categories in this group.</span>}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -102,6 +130,8 @@ export function CategorySettings({
                   (id) => {
                     setNewName("");
                     if (id) setSelected(id);
+                    // New categories land in Hardware & Assembly until their group is changed.
+                    setOpen((o) => new Set([...o, DEFAULT_GROUP]));
                   },
                 );
               }}
@@ -127,7 +157,11 @@ export function CategorySettings({
                 </label>
                 <label>
                   <span className="label">Group</span>
-                  <select value={cat.group} onChange={(e) => change({ ...cat, group: e.target.value as InvCategory["group"] })} className="input min-h-11">
+                  <select value={cat.group} onChange={(e) => {
+                      const group = e.target.value as InvCategory["group"];
+                      setOpen((o) => new Set([...o, group]));
+                      change({ ...cat, group });
+                    }} className="input min-h-11">
                     {CATEGORY_GROUPS.map((g) => (
                       <option key={g.id} value={g.id}>
                         {g.label}
