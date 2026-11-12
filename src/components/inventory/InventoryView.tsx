@@ -774,7 +774,7 @@ export function InventoryView({
               {grid(otherItems)}
             </Fold>
           )}
-          <Fold id="recent" title="Recent actions" defaultOpen>
+          <Fold id="recent" title="Recent actions" defaultOpen={false}>
             {recent.length ? (
               <RecentActions
                 actions={recent}

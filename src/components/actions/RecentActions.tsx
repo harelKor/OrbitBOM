@@ -356,14 +356,15 @@ function useReverted(id: string) {
   return [value, save] as const;
 }
 
-// Whether Recent actions is unfolded, remembered in this browser for each layout.
+// Whether Recent actions is unfolded, remembered in this browser for each layout. Folded until the
+// member opens it (Harel, 2026-11-12).
 function useShown(variant: string) {
   const key = `orbit-recent-actions-${variant}`;
-  const [shown, set] = useState(true);
+  const [shown, set] = useState(false);
   useEffect(() => {
     try {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- browser-only preference
-      if (localStorage.getItem(key) === "0") set(false);
+      if (localStorage.getItem(key) === "1") set(true);
     } catch {}
   }, [key]);
   const setShown = (v: boolean) => {
