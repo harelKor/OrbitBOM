@@ -1,7 +1,7 @@
 // What the vision model is told about our inventory, and how its answer is turned into our words
 // (plan/item-recognition.md). Plain text work, tested on its own; the call is in gemini.ts.
 
-import { activeFields, fieldChoices, type InvCategory } from "@/lib/inventory/categories";
+import { fieldChoices, type InvCategory } from "@/lib/inventory/categories";
 import { parseQuick } from "@/lib/inventory/quick";
 
 // The model's answer, as the JSON schema in gemini.ts asks for it.
@@ -58,38 +58,44 @@ export type Recognized = {
   textSeen: string;
   confidence: number;
   alternatives: { categoryId: string; product: string }[];
+  toothed: boolean; // a gear, pulley or sprocket
 };
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9#/.]+/g, "");
 
 // The model's answer in our words: only our category ids, only fields the category has, option
-// values in our spelling (or dropped), then what parseQuick reads from the text fills the gaps,
-// then the phone's tooth count wins over anything else.
+// values in our spelling (or dropped), then what parseQuick reads from the text fills the gaps.
+// Gears, pulleys and sprockets (a teeth field) take only what is printed on the part: the model
+// guessed DP, bore and pitch from the look (Harel, 2026-11-12). Their teeth: a printed count
+// ("36T"), else the phone's own count, never the model's guess. Their name builds from the fields.
 export function cleanAnswer(raw: ModelAnswer, cats: InvCategory[], phone: { teeth?: number | null } = {}): Recognized {
   const cat = cats.find((c) => c.id === raw.categoryId) ?? null;
+  const toothed = !!cat?.fields.some((f) => f.id === "teeth");
+  const seen = raw.textSeen ?? "";
+  const printed = (v: string) => !!norm(v) && norm(seen).includes(norm(v));
   const specs: Record<string, string> = {};
   if (cat) {
     for (const { field, value } of raw.specs ?? []) {
       const f = cat.fields.find((x) => x.id === field);
       const v = String(value ?? "").trim();
-      if (!f || !v) continue;
+      if (!f || !v || (toothed && f.id === "teeth")) continue;
+      let out: string | undefined;
       const choices = fieldChoices(f);
-      if (choices.length) {
-        const hit = choices.find((c) => norm(c) === norm(v));
-        if (hit) specs[f.id] = hit;
-      } else if (f.kind === "number") {
-        const n = /-?\d+(\.\d+)?/.exec(v)?.[0];
-        if (n) specs[f.id] = n;
-      } else specs[f.id] = v;
+      if (choices.length) out = choices.find((c) => norm(c) === norm(v));
+      else if (f.kind === "number") out = /-?\d+(\.\d+)?/.exec(v)?.[0];
+      else out = v;
+      if (out && (!toothed || printed(out) || printed(v))) specs[f.id] = out;
     }
-    // What a person would type from the label, read like the add box reads typing.
-    const text = [raw.product, raw.textSeen].filter(Boolean).join(" ");
+    // What a person would type from the label, read like the add box reads typing. For a toothed
+    // part only the text on it, not the model's product name.
+    const text = toothed ? seen : [raw.product, seen].filter(Boolean).join(" ");
     const quick = text ? parseQuick(text, [cat]) : null;
-    if (quick?.categoryId === cat.id) for (const [k, v] of Object.entries(quick.specs)) specs[k] ??= v;
-    const fields = activeFields(cat, specs);
-    if (phone.teeth && fields.some((f) => f.id === "teeth")) specs.teeth = String(phone.teeth);
-    else if (fields.some((f) => f.id === "teeth") && specs.teeth && !/\d+\s*t\b/i.test(raw.textSeen ?? "")) delete specs.teeth; // a guess, not printed
-    // The phone's hex / round bore isn't filled in: without a scale it can't tell 1/2" from 3/8".
+    if (quick?.categoryId === cat.id) for (const [k, v] of Object.entries(quick.specs)) if (k !== "teeth") specs[k] ??= v;
+    if (toothed) {
+      const onPart = /\b(\d{1,3})\s*T\b/i.exec(seen)?.[1];
+      const teeth = onPart ?? (phone.teeth ? String(phone.teeth) : null);
+      if (teeth) specs.teeth = teeth;
+    }
   }
   const clean = (s: string | undefined) => (s ?? "").trim() || null;
   const brand = clean(raw.brand);
@@ -97,10 +103,12 @@ export function cleanAnswer(raw: ModelAnswer, cats: InvCategory[], phone: { teet
   return {
     categoryId: cat?.id ?? null,
     specs,
-    name: product ? (brand && !product.toLowerCase().includes(brand.toLowerCase()) ? `${brand} ${product}` : product) : "",
+    name: product && !toothed ? (brand && !product.toLowerCase().includes(brand.toLowerCase()) ? `${brand} ${product}` : product) : "",
     brand,
     partNumber: clean(raw.partNumber),
-    searchQuery: clean(raw.searchQuery) ?? (product ? [brand, product].filter(Boolean).join(" ") : null),
+    // A gear's search finds any gear: the stores are asked only about a named product.
+    searchQuery: toothed ? null : (clean(raw.searchQuery) ?? (product ? [brand, product].filter(Boolean).join(" ") : null)),
+    toothed,
     textSeen: (raw.textSeen ?? "").trim(),
     confidence: Math.max(0, Math.min(1, Number(raw.confidence) || 0)),
     alternatives: (raw.alternatives ?? []).filter((a) => cats.some((c) => c.id === a.categoryId)).slice(0, 3),

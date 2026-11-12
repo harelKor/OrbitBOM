@@ -20,10 +20,12 @@ import type { Item } from "./types";
 // in and the member only taps Save. The readers load only when the camera opens.
 // With show off only the button hides, so a scan already open stays open.
 
-type Answer = { result: Recognized; offers: { title: string; image: string | null; offers: { vendor: string; url: string; title: string; image: string | null; price: number | null }[] }[] };
+type Answer = { result: Recognized; lens?: boolean; offers: { title: string; image: string | null; offers: { vendor: string; url: string; title: string; image: string | null; price: number | null }[] }[] };
 
-const LIVE_SIZE = 320; // the live teeth counter's frame: small, so phones keep up
-const STILL_SIZE = 480;
+const LIVE_SIZE = 400; // the live teeth counter's frame: small, so phones keep up
+const STILL_SIZE = 960; // the captured frame the counter reads: fine teeth need the pixels
+const VOTES = 6; // live counts kept; one shows once VOTES_NEEDED of them agree
+const VOTES_NEEDED = 3;
 const SEND_SIZE = 768;
 const PHOTO_SIZE = 1200;
 
@@ -75,6 +77,8 @@ function Scanner({ canAdd, items, onCode, onNew, onClose }: { canAdd: boolean; i
   const [error, setError] = useState<string | null>(null);
   const [choices, setChoices] = useState<{ matches: Item[]; draft: Partial<Draft> } | null>(null);
   const photo = useRef<HTMLCanvasElement | null>(null);
+  const upload = useRef<Promise<{ key: string; preview: string } | null> | null>(null);
+  const votes = useRef<(number | null)[]>([]);
   const done = useRef(onCode);
   useEffect(() => {
     done.current = onCode;
@@ -94,11 +98,14 @@ function Scanner({ canAdd, items, onCode, onNew, onClose }: { canAdd: boolean; i
       if (!v.paused && v.videoWidth) {
         const c = shrink(v, LIVE_SIZE, work);
         const r = c ? countTeeth(grayOf(c), c.width, c.height) : null;
+        votes.current = [...votes.current, r?.teeth && r.confidence > 0.3 ? r.teeth : null].slice(-VOTES);
+        const steady = steadyCount(votes.current);
         o.width = v.clientWidth;
         o.height = v.clientHeight;
         const g = o.getContext("2d")!;
         g.clearRect(0, 0, o.width, o.height);
-        if (c && r?.teeth && r.confidence > 0.4) drawTeeth(g, r, o.width / c.width);
+        // Only a count the last few frames agree on shows, so it doesn't flicker.
+        if (c && r && steady) drawTeeth(g, r, steady, o.width / c.width);
       }
       timer = window.setTimeout(tick, 350);
     };
@@ -136,13 +143,23 @@ function Scanner({ canAdd, items, onCode, onNew, onClose }: { canAdd: boolean; i
     overlay.current?.getContext("2d")?.clearRect(0, 0, overlay.current.width, overlay.current.height);
     setStill(send.toDataURL("image/jpeg", 0.8));
     setError(null);
-    const teeth = countTeeth(grayOf(small), small.width, small.height);
+    // The full-size frame's count, else the one the live frames agreed on.
+    const frame = countTeeth(grayOf(small), small.width, small.height);
+    const teeth = frame?.teeth && frame.confidence > 0.4 ? frame.teeth : steadyCount(votes.current);
+    // The photo uploads while the part is recognised; it's used if no store photo turns up.
+    const full = photo.current;
+    upload.current =
+      canAdd && full
+        ? new Promise<Blob | null>((ok) => full.toBlob(ok, "image/jpeg", 0.85))
+            .then((blob) => (blob ? uploadPhoto(new File([blob], "scan.jpg", { type: "image/jpeg" })) : null))
+            .then((up) => (up && !("error" in up) ? up : null))
+        : null;
     setBusy("Reading…");
     try {
       const res = await fetch("/api/inventory/recognize", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ image: jpegOf(send), teeth: teeth?.teeth && teeth.confidence > 0.4 ? teeth.teeth : null }),
+        body: JSON.stringify({ image: jpegOf(send), teeth }),
       });
       const body = (await res.json().catch(() => ({ error: `The server answered ${res.status}.` }))) as Answer & { error?: string };
       if (!res.ok || body.error) throw new Error(body.error ?? `The server answered ${res.status}.`);
@@ -155,9 +172,10 @@ function Scanner({ canAdd, items, onCode, onNew, onClose }: { canAdd: boolean; i
   };
 
   // What it found → the item on the shelf, a choice, or the add form filled in.
-  const finish = async ({ result: r, offers }: Answer) => {
-    // A store's product only counts for a known product (a gear's search finds any gear).
-    const group = r.name ? offers[0] : undefined;
+  const finish = async ({ result: r, offers, lens }: Answer) => {
+    // A store's product only counts for a known product (a gear's search finds any gear), or one
+    // the web search found from the photo itself.
+    const group = r.name || lens ? offers[0] : undefined;
     const best = group?.offers[0];
     const matches = shelfMatches(r, group?.offers.map((o) => o.url) ?? [], items);
     if (matches.length === 1) {
@@ -168,7 +186,7 @@ function Scanner({ canAdd, items, onCode, onNew, onClose }: { canAdd: boolean; i
     const draft: Partial<Draft> = {
       category: r.categoryId,
       specs: r.specs,
-      ...(r.name ? { name: r.name, nameTouched: true } : {}),
+      ...(r.name || best ? { name: r.name || best!.title, nameTouched: true } : {}),
       links: best ? [{ url: best.url, site: best.vendor }] : [],
       price: best?.price ?? null,
       imageUrl: best?.image ?? group?.image ?? null,
@@ -179,11 +197,10 @@ function Scanner({ canAdd, items, onCode, onNew, onClose }: { canAdd: boolean; i
 
   // No store photo: the scan's own photo becomes the item's.
   const addNew = async (draft: Partial<Draft>) => {
-    if (!draft.imageUrl && photo.current) {
+    if (!draft.imageUrl && upload.current) {
       setBusy("Saving the photo…");
-      const blob = await new Promise<Blob | null>((ok) => photo.current!.toBlob(ok, "image/jpeg", 0.85));
-      const up = blob ? await uploadPhoto(new File([blob], "scan.jpg", { type: "image/jpeg" })) : null;
-      if (up && !("error" in up)) draft = { ...draft, photo: up };
+      const up = await upload.current;
+      if (up) draft = { ...draft, photo: up };
     }
     onNew(draft);
   };
@@ -192,6 +209,7 @@ function Scanner({ canAdd, items, onCode, onNew, onClose }: { canAdd: boolean; i
     setStill(null);
     setError(null);
     setChoices(null);
+    votes.current = [];
     void video.current?.play();
   };
 
@@ -255,7 +273,15 @@ function Scanner({ canAdd, items, onCode, onNew, onClose }: { canAdd: boolean; i
   );
 }
 
-function drawTeeth(g: CanvasRenderingContext2D, r: TeethResult, k: number) {
+// The count most of the last live frames agree on, if enough do.
+function steadyCount(votes: (number | null)[]): number | null {
+  const n = new Map<number, number>();
+  for (const v of votes) if (v) n.set(v, (n.get(v) ?? 0) + 1);
+  const [best] = [...n].sort((a, b) => b[1] - a[1]);
+  return best && best[1] >= VOTES_NEEDED ? best[0] : null;
+}
+
+function drawTeeth(g: CanvasRenderingContext2D, r: TeethResult, teeth: number, k: number) {
   g.strokeStyle = "#f97316";
   g.lineWidth = 3;
   g.beginPath();
@@ -264,5 +290,5 @@ function drawTeeth(g: CanvasRenderingContext2D, r: TeethResult, k: number) {
   g.fillStyle = "#f97316";
   g.font = "bold 28px system-ui";
   g.textAlign = "center";
-  g.fillText(`${r.teeth}T`, r.center.x * k, r.center.y * k + 10);
+  g.fillText(`${teeth}T`, r.center.x * k, r.center.y * k + 10);
 }

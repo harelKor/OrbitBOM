@@ -149,9 +149,10 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
 - Scan anything (plan/item-recognition.md): Inventory's Scan on phones (`ScanButton.tsx`) reads
   barcodes as before, and Capture recognises the part: teeth counter on the phone
   (`src/lib/recognize/teeth.ts`), Gemini free tier on the server (`gemini.ts`, `GEMINI_API_KEY`,
-  no billing account), answer in our words (`answer.ts`), shelf match (`shelf.ts`: one match opens
-  that item), else the add form opens filled in. Route `/api/inventory/recognize`; raw answers on
-  `/inventory/scan-test`.
+  no billing account), answer in our words (`answer.ts`; gears take only printed fields), shelf
+  match (`shelf.ts`: one match opens that item), else the add form opens filled in. No product
+  name: Google Lens through Serper (`lens.ts`, 3 credits a search, capped a day). Route
+  `/api/inventory/recognize`; raw answers and what the counter saw on `/inventory/scan-test`.
 - Files: `src/lib/storage/r2.ts`; backups and restore: `src/lib/storage/backup.ts`, `restore.ts`.
 - Work the user needn't wait for: `afterResponse` (`src/lib/later.ts`).
 - MCP: `src/lib/mcp/registry.ts` (`read` / `write`, preview → confirm token → apply) and one file

@@ -3,7 +3,7 @@ import { countTeeth } from "./teeth";
 
 // A drawn part on a plain background: toothed outline (square-ish teeth with sloped sides), a hex
 // or round bore, optional squash (photo not quite from above), light noise.
-function drawPart(o: { teeth: number; size?: number; radius?: number; depth?: number; bore?: "hex" | "round" | null; squash?: number; dark?: boolean; noise?: number; cx?: number; cy?: number }) {
+function drawPart(o: { teeth: number; size?: number; radius?: number; depth?: number; bore?: "hex" | "round" | null; squash?: number; dark?: boolean; noise?: number; cx?: number; cy?: number; light?: number; clutter?: boolean }) {
   const size = o.size ?? 360;
   const R = o.radius ?? size * 0.36;
   const depth = o.depth ?? R * 0.07;
@@ -32,7 +32,11 @@ function drawPart(o: { teeth: number; size?: number; radius?: number; depth?: nu
         const a = (((th % (Math.PI / 3)) + Math.PI / 3) % (Math.PI / 3)) - Math.PI / 6;
         if (r * Math.cos(a) < hole) inside = false;
       }
-      gray[y * size + x] = Math.max(0, Math.min(255, (inside ? fg : bg) + rand()));
+      // A lamp on one side: brightness slides across the picture.
+      const lamp = ((x / size) - 0.5) * (o.light ?? 0);
+      // A busy bench: a few dark tools well away from the part.
+      const tool = o.clutter && ((x < size * 0.12 && y > size * 0.2 && y < size * 0.5) || (y > size * 0.9 && x > size * 0.6));
+      gray[y * size + x] = Math.max(0, Math.min(255, (inside || tool ? fg : bg) + lamp + rand()));
     }
   return { gray, size };
 }
@@ -61,6 +65,16 @@ describe("countTeeth", () => {
     expect(countTeeth(gray, size, size)!.teeth).toBe(40);
     const tilted = drawPart({ teeth: 56, squash: 0.7, bore: "hex" });
     expect(countTeeth(tilted.gray, tilted.size, tilted.size)!.teeth).toBe(56);
+  });
+
+  it("copes with a lamp on one side and tools on the bench", () => {
+    const { gray, size } = drawPart({ teeth: 36, bore: "hex", light: 120, clutter: true, radius: 120, noise: 30 });
+    expect(countTeeth(gray, size, size)!.teeth).toBe(36);
+  });
+
+  it("counts a small gear with many teeth", () => {
+    const { gray, size } = drawPart({ teeth: 64, size: 480, radius: 70, depth: 4 });
+    expect(countTeeth(gray, size, size)!.teeth).toBe(64);
   });
 
   it("finds no teeth on a plain disc", () => {

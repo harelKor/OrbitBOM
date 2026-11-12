@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Recognized } from "./answer";
 import { shelfMatches, type ShelfItem } from "./shelf";
 
-const r = (over: Partial<Recognized>): Recognized => ({ categoryId: null, specs: {}, name: "", brand: null, partNumber: null, searchQuery: null, textSeen: "", confidence: 0.9, alternatives: [], ...over });
+const r = (over: Partial<Recognized>): Recognized => ({ categoryId: null, specs: {}, name: "", brand: null, partNumber: null, searchQuery: null, textSeen: "", confidence: 0.9, alternatives: [], toothed: false, ...over });
 const item = (id: string, name: string, category: string, specs: Record<string, string> = {}, url?: string): ShelfItem => ({ id, name, category, specs, cotsLinks: url ? [{ url }] : [] });
 
 const items = [

@@ -139,3 +139,15 @@ in Supabase. No new paid resource anywhere.
 1. Gemini free tier: yes.
 2. Already on the shelf: open the existing item (to add stock), not a new one.
 3. Scan mat: probably later, but nothing may depend on it. Everything must work without a scale.
+
+## Round 2 (Harel, 2026-11-12: "works, slowly; wrong gear options")
+
+- Stores are asked only about a named product, 5 s at most; the photo uploads while the part is
+  recognised.
+- Gears, pulleys, sprockets: only fields printed on the part; a printed count beats the phone's.
+- Teeth counter v2: brightness read along circles through the teeth (needs only centre and size),
+  centre nudged to the cleanest repeat, light evened out, FFT; the live count shows only when the
+  last frames agree; the captured frame is read at 960 px.
+- Whole-web photo search: Gemini's Google Search is not on the free tier (429, checked); Serper's
+  Lens works (3 credits a search), used only when Gemini names no product or no store has it,
+  for COTS / electrical / tools, at most 30 a day.

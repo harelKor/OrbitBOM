@@ -14,11 +14,12 @@ type Answer = {
   offers: { title: string; image: string | null; offers: { vendor: string; url: string; price: number | null }[] }[];
   raw: unknown;
   model: string;
-  ms: { model: number; total: number };
+  lens?: boolean;
+  ms: { model: number; stores?: number; total: number };
 };
 
 const LIVE_SIZE = 320; // the live teeth counter's frame: small, so phones keep up
-const STILL_SIZE = 480;
+const STILL_SIZE = 960;
 const SEND_SIZE = 768;
 
 export function ScanTest({ configured }: { configured: boolean }) {
@@ -86,7 +87,7 @@ export function ScanTest({ configured }: { configured: boolean }) {
     const big = shrink(source, SEND_SIZE);
     if (!still || !big) return;
     const teeth = countTeeth(grayOf(still), still.width, still.height);
-    setShot({ url: big.toDataURL("image/jpeg", 0.8), teeth });
+    setShot({ url: seen(still, teeth), teeth });
     setAnswer(null);
     setError(null);
     if (!configured) return setError("The server has no GEMINI_API_KEY yet, so only the teeth counter runs.");
@@ -146,6 +147,7 @@ export function ScanTest({ configured }: { configured: boolean }) {
           <p className="text-sm tabular-nums">
             Teeth counter: {shot.teeth?.teeth ? `${shot.teeth.teeth} teeth, ${Math.round(shot.teeth.confidence * 100)}% sure` : "no teeth"}
             {shot.teeth?.bore ? `, ${shot.teeth.bore} bore` : ""}
+            {shot.teeth?.candidates.length ? ` · best counts: ${shot.teeth.candidates.map((c) => `${c.teeth} (${c.score})`).join(", ")}` : ""}
           </p>
           {error && <p className="rounded-md bg-rose-50 p-2 text-sm text-rose-700">{error}</p>}
           {answer && <AnswerView answer={answer} />}
@@ -178,7 +180,8 @@ function AnswerView({ answer }: { answer: Answer }) {
         <dd>{r.searchQuery ?? "—"}</dd>
         <dt className="text-muted">Time</dt>
         <dd className="tabular-nums">
-          {(answer.ms.model / 1000).toFixed(1)} s model, {(answer.ms.total / 1000).toFixed(1)} s total · {answer.model}
+          {(answer.ms.model / 1000).toFixed(1)} s model{answer.ms.stores != null ? `, ${(answer.ms.stores / 1000).toFixed(1)} s stores` : ""}, {(answer.ms.total / 1000).toFixed(1)} s total · {answer.model}
+          {answer.lens ? " · found by photo search (Lens)" : ""}
         </dd>
       </dl>
       {answer.offers.length > 0 && (
@@ -204,4 +207,32 @@ function AnswerView({ answer }: { answer: Answer }) {
       </details>
     </div>
   );
+}
+
+// What the counter saw, drawn on the photo: the part's edge it found (orange), the band of
+// circles it read the teeth along (dashed), and its centre.
+function seen(c: HTMLCanvasElement, r: TeethResult | null) {
+  const out = document.createElement("canvas");
+  out.width = c.width;
+  out.height = c.height;
+  const g = out.getContext("2d")!;
+  g.drawImage(c, 0, 0);
+  if (r) {
+    g.lineWidth = Math.max(2, c.width / 300);
+    g.strokeStyle = "#f97316";
+    g.beginPath();
+    g.arc(r.center.x, r.center.y, r.radius, 0, 2 * Math.PI);
+    g.stroke();
+    g.setLineDash([8, 6]);
+    g.strokeStyle = "#22d3ee";
+    for (const f of [0.84, 1.05]) {
+      g.beginPath();
+      g.arc(r.center.x, r.center.y, r.radius * f, 0, 2 * Math.PI);
+      g.stroke();
+    }
+    g.setLineDash([]);
+    g.fillStyle = "#f97316";
+    g.fillRect(r.center.x - 4, r.center.y - 4, 8, 8);
+  }
+  return out.toDataURL("image/jpeg", 0.85);
 }
