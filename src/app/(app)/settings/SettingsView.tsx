@@ -171,7 +171,7 @@ function BoresSettings({ bores }: { bores: BaseMaterial[] }) {
   return (
     <div className="space-y-4">
       <p className="max-w-3xl text-sm text-muted">
-        Shaft bores, like 1/2&quot; Hex or SplineXS. Every options field set to &quot;Global Bore list&quot; in its category&apos;s settings (gears, sprockets, pulleys…) offers all of these, then its own extra bores. Adding or removing one here changes them all; renaming one renames it on every item that has it.
+        Shaft bores, like 1/2&quot; Hex or SplineXS. Every field of kind &quot;Global Bore list&quot; in its category&apos;s settings (gears, sprockets, pulleys…) offers all of these, then its own extra bores. Adding or removing one here changes them all; renaming one renames it on every item that has it.
       </p>
       {banner}
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">

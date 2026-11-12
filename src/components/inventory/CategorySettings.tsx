@@ -13,6 +13,8 @@ const KINDS: { id: CategoryField["kind"]; label: string }[] = [
   { id: "options", label: "Options" },
   { id: "material", label: "Material" },
 ];
+// Kind "Global Bore list" is an options field on the list (`list: "bores"`), not a kind of its own.
+const BORE_KIND = "bores";
 
 // Category settings (Harel, 2026-10-23), on the Settings page since 2026-10-28. Each change saves
 // by itself a moment later; there is no Save button and nothing jumps. A field that items use can
@@ -216,12 +218,23 @@ export function CategorySettings({
                         ⠿
                       </span>
                       <input value={f.label} onChange={(e) => setField(i, { label: e.target.value })} aria-label="Field name" className="input min-h-10 w-40 flex-1 font-semibold" />
-                      <select value={f.kind} onChange={(e) => setField(i, { kind: e.target.value as CategoryField["kind"] })} aria-label="Kind" className="input min-h-10 w-auto">
+                      <select
+                        value={f.list === "bores" ? BORE_KIND : f.kind}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v === BORE_KIND) setField(i, withBoreList({ ...f, kind: "options", list: "bores", ownOptions: (f.options ?? []).filter((o) => !bores.includes(o)) }, bores));
+                          // Off the list, an options field keeps every bore it offered as its own options.
+                          else setField(i, { kind: v as CategoryField["kind"], list: undefined, ownOptions: undefined, options: v === "options" ? f.options : (f.ownOptions ?? f.options) });
+                        }}
+                        aria-label="Kind"
+                        className="input min-h-10 w-auto"
+                      >
                         {KINDS.map((k) => (
                           <option key={k.id} value={k.id}>
                             {k.label}
                           </option>
                         ))}
+                        <option value={BORE_KIND}>Global Bore list</option>
                       </select>
                       <input
                         value={f.name ?? DEFAULT_NAME}
@@ -244,19 +257,6 @@ export function CategorySettings({
                       </IconButton>
                     </div>
                     {i > 0 && cat.fields[0].kind === "options" && <WhenPicker field={f} types={cat.fields[0].options ?? []} onChange={(when) => setField(i, { when })} />}
-                    {f.kind === "options" && (
-                      <BoreListSwitch
-                        on={f.list === "bores"}
-                        onChange={(on) =>
-                          setField(
-                            i,
-                            on
-                              ? withBoreList({ ...f, list: "bores", ownOptions: (f.options ?? []).filter((o) => !bores.includes(o)) }, bores)
-                              : { list: undefined, ownOptions: undefined, options: f.options ?? [] },
-                          )
-                        }
-                      />
-                    )}
                     {f.kind === "options" && f.list === "bores" && (
                       <div className="flex flex-wrap items-center gap-1.5">
                         {bores.map((b) => (
@@ -342,19 +342,6 @@ function IconButton({ label, title, onClick, disabled, children }: { label: stri
     <button type="button" aria-label={label} title={title ?? label} onClick={onClick} disabled={disabled} className="press min-h-10 min-w-10 rounded-lg border border-line px-2 text-sm text-fg-2 hover:bg-raised disabled:opacity-30">
       {children}
     </button>
-  );
-}
-
-// Whether an options field offers the global Bore list (Settings → Bores) before its own options.
-function BoreListSwitch({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
-  return (
-    <label className="flex items-center gap-2 text-xs text-muted">
-      Choices
-      <select value={on ? "bores" : ""} onChange={(e) => onChange(e.target.value === "bores")} aria-label="Choices" className="input min-h-9 w-auto py-1 text-xs">
-        <option value="">This field&apos;s own list</option>
-        <option value="bores">Global Bore list + extras</option>
-      </select>
-    </label>
   );
 }
 
