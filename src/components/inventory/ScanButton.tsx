@@ -247,12 +247,8 @@ function Scanner({ canAdd, items, onCode, onNew, onClose }: { canAdd: boolean; i
               </div>
             </div>
           )}
-          <p className="text-sm text-muted">
-            {camError ??
-              (canAdd
-                ? "Point at one part and tap Capture; a barcode is read on its own. Gears, pulleys and sprockets: flat, from above, on plain paper. Photos go to Google's Gemini (free tier), which may use them to improve its products."
-                : "Hold the barcode inside the frame.")}
-          </p>
+          {/* No how-to text under Capture (Harel, 2026-11-12); only a camera problem shows. */}
+          {camError && <p className="text-sm text-rose-600">{camError}</p>}
         </>
       )}
     </div>
