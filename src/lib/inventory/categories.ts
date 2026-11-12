@@ -36,6 +36,21 @@ export function fieldChoices(field: CategoryField): string[] {
   return [];
 }
 
+// A field on the global Bore list as pages use it: `options` is every global bore, then the
+// field's own extras (kept in `ownOptions` for the Settings page). Others are left as they are.
+export function withBoreList(field: CategoryField, bores: string[]): CategoryField {
+  if (field.list !== "bores") return field;
+  const own = field.ownOptions ?? field.options ?? [];
+  return { ...field, ownOptions: own, options: [...bores, ...own.filter((o) => !bores.includes(o))] };
+}
+
+// A field on the global Bore list as it's stored: only its own extras, never the list itself.
+export function storedBoreField(field: CategoryField, bores: string[]): CategoryField {
+  const { ownOptions, ...rest } = field;
+  if (field.list !== "bores") return rest;
+  return { ...rest, options: (ownOptions ?? field.options ?? []).filter((o) => !bores.includes(o)) };
+}
+
 // A field with `when` applies only while the category's first field (its sub-type, like Glue or
 // Tape) holds one of those values.
 const whenOf = (f: CategoryField) => (f.when == null ? [] : Array.isArray(f.when) ? f.when : [f.when]);

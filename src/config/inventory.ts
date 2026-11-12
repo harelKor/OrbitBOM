@@ -67,7 +67,8 @@ export type CategorySeed = {
   image?: string; // a picture in public/categories/ (a path starting with "/"), or an R2 key
 };
 
-const BORES = [
+// The common shaft bores. They also seed the global Bore list (the bores table, Settings → Bores).
+export const BORES = [
   '1/2" Hex',
   '3/8" Hex',
   '1/2" ThunderHex',

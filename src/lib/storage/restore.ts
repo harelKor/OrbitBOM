@@ -14,8 +14,8 @@ type Row = Record<string, unknown>;
 export const RESTORE_SCOPES = {
   inventory: {
     label: "Inventory",
-    text: "Items, stock and stock moves, categories with their fields, base materials, groups, locations and conditions.",
-    tables: ["inventoryLocations", "inventoryConditions", "baseMaterials", "inventoryGroups", "inventoryCategories", "inventoryItems", "inventoryMoves"],
+    text: "Items, stock and stock moves, categories with their fields, base materials, the Bore list, groups, locations and conditions.",
+    tables: ["inventoryLocations", "inventoryConditions", "baseMaterials", "bores", "inventoryGroups", "inventoryCategories", "inventoryItems", "inventoryMoves"],
   },
   bom: {
     label: "BOM",
@@ -30,7 +30,7 @@ export type RestoreScope = keyof typeof RESTORE_SCOPES;
 // system or part also removes its history and versions, which no backup holds.
 const REPLACE_WHOLE: BackupTable[] = ["groupMembers", "mergeMembers"];
 // Names that must stay unique while rows swap them.
-const UNIQUE_NAMES: Partial<Record<BackupTable, string>> = { inventoryLocations: "name", inventoryConditions: "label", baseMaterials: "name" };
+const UNIQUE_NAMES: Partial<Record<BackupTable, string>> = { inventoryLocations: "name", inventoryConditions: "label", baseMaterials: "name", bores: "name" };
 
 export type RestoreResult = { safetyCopy: string | null; tables: { table: string; restored: number; removed: number }[] };
 

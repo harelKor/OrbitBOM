@@ -825,6 +825,15 @@ export const baseMaterials = pgTable("base_materials", {
   position: integer("position").notNull().default(0),
 });
 
+// The team's bores (1/2" Hex, SplineXS...), edited on the Settings page. An options field set to
+// the global Bore list offers all of them plus its own extras (Harel, 2026-11-12); seeded from
+// BORES in src/config/inventory.ts.
+export const bores = pgTable("bores", {
+  id: id(),
+  name: text("name").notNull().unique(),
+  position: integer("position").notNull().default(0),
+});
+
 export const inventoryGroups = pgTable("inventory_groups", {
   id: id(),
   name: text("name").notNull(),
@@ -847,6 +856,12 @@ export type CategoryField = {
   materials?: string[];
   // A material field's choices, filled in when categories are read (never stored).
   materialChoices?: string[];
+  // "bores": an options field that offers the global Bore list (Settings → Bores) before its own
+  // `options`, which then hold only its extras (Harel, 2026-11-12).
+  list?: "bores";
+  // Such a field's own extras when categories are read, `options` being the whole merged list
+  // (never stored).
+  ownOptions?: string[];
   name?: string;
   hidden?: boolean;
   // Only for these values of the category's first field (its sub-type); see activeFields.

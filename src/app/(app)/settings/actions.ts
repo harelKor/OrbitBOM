@@ -6,7 +6,7 @@ import { db, schema } from "@/db";
 import { requireCapability } from "@/lib/mode";
 import { isUuid } from "@/lib/uuid";
 
-const { baseMaterials, inventoryCategories, inventoryConditions, inventoryItems, inventoryLocations } = schema;
+const { baseMaterials, bores, inventoryCategories, inventoryConditions, inventoryItems, inventoryLocations } = schema;
 
 export type ActionResult = { error?: string; message?: string };
 
@@ -121,6 +121,65 @@ export async function deleteBaseMaterial(id: string): Promise<ActionResult> {
         .where(eq(inventoryCategories.id, cat.id));
     }
   });
+  refresh();
+  return {};
+}
+
+// ---------- Global Bore list (what options fields set to it offer, before their own extras) ----------
+
+const boreTaken = async (name: string, id?: string) => {
+  const same = sql`lower(${bores.name}) = lower(${name})`;
+  const [clash] = await db
+    .select({ id: bores.id })
+    .from(bores)
+    .where(id ? and(same, sql`${bores.id} <> ${id}`) : same);
+  return !!clash;
+};
+
+export async function addBore(name: string): Promise<ActionResult> {
+  await requireCapability("manage");
+  name = cleanName(name).slice(0, 60);
+  if (!name) return { error: "A bore needs a name." };
+  if (await boreTaken(name)) return { error: `"${name}" is already on the list.` };
+  const [{ last }] = await db.select({ last: max(bores.position) }).from(bores);
+  await db.insert(bores).values({ name, position: (last ?? -1) + 1 });
+  refresh();
+  return {};
+}
+
+// A rename reaches the items holding it in every field on the list.
+export async function renameBore(id: string, name: string): Promise<ActionResult> {
+  await requireCapability("manage");
+  name = cleanName(name).slice(0, 60);
+  if (!isUuid(id)) return { error: "Unknown bore." };
+  if (!name) return { error: "A bore needs a name." };
+  if (await boreTaken(name, id)) return { error: `"${name}" is already on the list.` };
+  const [row] = await db.select().from(bores).where(eq(bores.id, id));
+  if (!row) return { error: "That bore was deleted." };
+  const old = row.name;
+  let items = 0;
+  await db.transaction(async (tx) => {
+    await tx.update(bores).set({ name }).where(eq(bores.id, id));
+    for (const cat of await tx.select().from(inventoryCategories)) {
+      for (const f of cat.fields.filter((f) => f.list === "bores")) {
+        const done = await tx
+          .update(inventoryItems)
+          .set({ specs: sql`jsonb_set(${inventoryItems.specs}, ${`{${f.id}}`}::text[], to_jsonb(${name}::text))` })
+          .where(and(eq(inventoryItems.category, cat.id), sql`${inventoryItems.specs}->>${f.id} = ${old}`))
+          .returning({ id: inventoryItems.id });
+        items += done.length;
+      }
+    }
+  });
+  refresh();
+  return items ? { message: `Renamed to ${name} on ${items} item${items === 1 ? "" : "s"}.` } : {};
+}
+
+// Items that hold a removed bore keep it as their value; the fields stop offering it.
+export async function deleteBore(id: string): Promise<ActionResult> {
+  await requireCapability("manage");
+  if (!isUuid(id)) return { error: "Unknown bore." };
+  await db.delete(bores).where(eq(bores.id, id));
   refresh();
   return {};
 }

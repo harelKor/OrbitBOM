@@ -3,7 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { addCategory, deleteCategory, moveCategory, saveCategory } from "@/app/(app)/inventory/actions";
 import { CATEGORY_GROUPS } from "@/config/inventory";
-import { DEFAULT_NAME, type CategoryField } from "@/lib/inventory/categories";
+import { DEFAULT_NAME, withBoreList, type CategoryField } from "@/lib/inventory/categories";
 import type { InvCategory, Item, Location } from "./types";
 
 const KINDS: { id: CategoryField["kind"]; label: string }[] = [
@@ -19,11 +19,13 @@ const KINDS: { id: CategoryField["kind"]; label: string }[] = [
 export function CategorySettings({
   categories,
   baseMaterials,
+  bores,
   locations,
   items,
 }: {
   categories: InvCategory[];
   baseMaterials: string[];
+  bores: string[];
   locations: Location[];
   items: Pick<Item, "category" | "specs">[];
 }) {
@@ -208,7 +210,37 @@ export function CategorySettings({
                       </IconButton>
                     </div>
                     {i > 0 && cat.fields[0].kind === "options" && <WhenPicker field={f} types={cat.fields[0].options ?? []} onChange={(when) => setField(i, { when })} />}
-                    {f.kind === "options" && <OptionsEditor options={f.options ?? []} onChange={(options) => setField(i, { options })} />}
+                    {f.kind === "options" && (
+                      <BoreListSwitch
+                        on={f.list === "bores"}
+                        onChange={(on) =>
+                          setField(
+                            i,
+                            on
+                              ? withBoreList({ ...f, list: "bores", ownOptions: (f.options ?? []).filter((o) => !bores.includes(o)) }, bores)
+                              : { list: undefined, ownOptions: undefined, options: f.options ?? [] },
+                          )
+                        }
+                      />
+                    )}
+                    {f.kind === "options" && f.list === "bores" && (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {bores.map((b) => (
+                          <span key={b} className="inline-flex min-h-9 items-center rounded-full border border-dashed border-line-strong px-3 text-xs font-semibold text-muted" title="From Settings → Bores">
+                            {b}
+                          </span>
+                        ))}
+                        {!bores.length && <span className="text-xs text-muted">The Bore list is empty (Settings → Bores).</span>}
+                      </div>
+                    )}
+                    {f.kind === "options" && (
+                      <OptionsEditor
+                        options={f.list === "bores" ? (f.ownOptions ?? []) : (f.options ?? [])}
+                        total={f.options?.length ?? 0}
+                        placeholder={f.list === "bores" ? "Add extra bore ⏎" : undefined}
+                        onChange={(options) => setField(i, f.list === "bores" ? withBoreList({ ...f, ownOptions: options.filter((o) => !bores.includes(o)) }, bores) : { options })}
+                      />
+                    )}
                     {f.kind === "material" && (
                       <div>
                         <div className="mb-1 text-xs text-muted">
@@ -279,7 +311,20 @@ function IconButton({ label, title, onClick, disabled, children }: { label: stri
   );
 }
 
-function OptionsEditor({ options, onChange }: { options: string[]; onChange: (o: string[]) => void }) {
+// Whether an options field offers the global Bore list (Settings → Bores) before its own options.
+function BoreListSwitch({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
+  return (
+    <label className="flex items-center gap-2 text-xs text-muted">
+      Choices
+      <select value={on ? "bores" : ""} onChange={(e) => onChange(e.target.value === "bores")} aria-label="Choices" className="input min-h-9 w-auto py-1 text-xs">
+        <option value="">This field&apos;s own list</option>
+        <option value="bores">Global Bore list + extras</option>
+      </select>
+    </label>
+  );
+}
+
+function OptionsEditor({ options, total, placeholder, onChange }: { options: string[]; total: number; placeholder?: string; onChange: (o: string[]) => void }) {
   const [text, setText] = useState("");
   const add = () => {
     const v = text.trim();
@@ -306,10 +351,10 @@ function OptionsEditor({ options, onChange }: { options: string[]; onChange: (o:
           }
         }}
         onBlur={add}
-        placeholder="Add option ⏎"
+        placeholder={placeholder ?? "Add option ⏎"}
         className="input min-h-9 w-32 text-xs"
       />
-      <span className="text-[0.6875rem] text-subtle">{options.length > 6 ? "shown as a dropdown" : "shown as chips"}</span>
+      <span className="text-[0.6875rem] text-subtle">{total > 6 ? "shown as a dropdown" : "shown as chips"}</span>
     </div>
   );
 }

@@ -18,6 +18,7 @@ export type Watched =
   | "inventory_items"
   | "inventory_categories"
   | "base_materials"
+  | "bores"
   | "parts"
   | "systems"
   | "robots"

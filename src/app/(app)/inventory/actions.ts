@@ -12,10 +12,11 @@ import { db, schema } from "@/db";
 import { requireMember } from "@/lib/auth";
 import { requireCapability } from "@/lib/mode";
 import { listBomTargets } from "@/lib/data/robots";
+import { listBores } from "@/lib/data/bores";
 import { listCategories } from "@/lib/data/categories";
 import { inventoryItemWithLists, itemHistory, itemOrderHistory, listFitTargets, listInventory, robotInventory, usageOf } from "@/lib/data/inventory";
 import { autoLink } from "@/lib/inventory/autolink";
-import { categoryOf, getCategory, slugify, type InvCategory } from "@/lib/inventory/categories";
+import { categoryOf, getCategory, slugify, storedBoreField, type InvCategory } from "@/lib/inventory/categories";
 import type { ImportRow } from "@/lib/inventory/import";
 import { pushItemToCards } from "@/lib/inventory/cotsSync";
 import { recordItemChanges } from "@/lib/inventory/history";
@@ -755,6 +756,8 @@ const fieldSchema = z.object({
   label: z.string().trim().min(1, "A field needs a name.").max(60),
   kind: z.enum(["number", "text", "options", "material"]),
   options: z.array(z.string().trim().min(1).max(60)).max(100).optional(),
+  list: z.literal("bores").optional(),
+  ownOptions: z.array(z.string().trim().min(1).max(60)).max(100).optional(),
   materials: z.array(z.string()).max(20).optional(),
   name: z.string().max(40).optional(),
   hidden: z.boolean().optional(),
@@ -778,6 +781,9 @@ export async function saveCategory(cat: InvCategory): Promise<ActionResult> {
   const { id, ...values } = parsed.data;
   const ids = values.fields.map((f) => f.id);
   if (new Set(ids).size !== ids.length) return { error: "Two fields have the same id." };
+  // Fields on the global Bore list keep only their own extras; the list is merged in on read.
+  const bores = values.fields.some((f) => f.list) ? (await listBores()).map((b) => b.name) : [];
+  values.fields = values.fields.map((f) => storedBoreField(f, bores));
   await db.update(inventoryCategories).set(values).where(eq(inventoryCategories.id, id));
   refresh();
   return {};

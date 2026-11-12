@@ -10,11 +10,12 @@ import { LayoutsDocumentSettings, type RobotLayoutsDoc } from "@/components/sett
 import type { Condition, InvCategory, Location } from "@/components/inventory/types";
 import { pushQuery } from "@/components/ui/CategoryBoxes";
 import type { BackupFile } from "@/lib/storage/backup";
-import { addBaseMaterial, deleteBaseMaterial, renameBaseMaterial, renameLocation, updateCondition, type ActionResult } from "./actions";
+import { addBaseMaterial, addBore, deleteBaseMaterial, deleteBore, renameBaseMaterial, renameBore, renameLocation, updateCondition, type ActionResult } from "./actions";
 
 const TABS = [
   { id: "categories", label: "Inventory categories" },
   { id: "materials", label: "Materials" },
+  { id: "bores", label: "Bores" },
   { id: "locations", label: "Locations" },
   { id: "conditions", label: "Conditions" },
   { id: "layouts", label: "Batch layouts" },
@@ -27,6 +28,7 @@ type BaseMaterial = { id: string; name: string };
 export function SettingsView({
   categories,
   materials,
+  bores,
   conditions,
   locations,
   items,
@@ -39,6 +41,7 @@ export function SettingsView({
 }: {
   categories: InvCategory[];
   materials: BaseMaterial[];
+  bores: BaseMaterial[];
   conditions: Condition[];
   locations: Location[];
   items: { category: string; specs: Record<string, string> }[];
@@ -71,8 +74,9 @@ export function SettingsView({
           </button>
         ))}
       </div>
-      {tab === "categories" && <CategorySettings categories={categories} baseMaterials={materials.map((m) => m.name)} locations={locations} items={items} />}
+      {tab === "categories" && <CategorySettings categories={categories} baseMaterials={materials.map((m) => m.name)} bores={bores.map((b) => b.name)} locations={locations} items={items} />}
       {tab === "materials" && <MaterialsSettings materials={materials} />}
+      {tab === "bores" && <BoresSettings bores={bores} />}
       {tab === "locations" && <LocationsSettings locations={locations} />}
       {tab === "conditions" && <ConditionsSettings conditions={conditions} />}
       {tab === "layouts" && <LayoutsDocumentSettings robots={robots} />}
@@ -153,6 +157,50 @@ function MaterialsSettings({ materials }: { materials: BaseMaterial[] }) {
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Material, e.g. Titanium" className="input min-h-11 w-64 max-w-full" />
         <button className="btn min-h-11 active:scale-[0.98]" disabled={pending || !name.trim()}>
           + Add material
+        </button>
+      </form>
+    </div>
+  );
+}
+
+// ---------- Global Bore list ----------
+
+function BoresSettings({ bores }: { bores: BaseMaterial[] }) {
+  const { run, pending, banner } = useRun();
+  const [name, setName] = useState("");
+  return (
+    <div className="space-y-4">
+      <p className="max-w-3xl text-sm text-muted">
+        Shaft bores, like 1/2&quot; Hex or SplineXS. Every options field set to &quot;Global Bore list&quot; in its category&apos;s settings (gears, sprockets, pulleys…) offers all of these, then its own extra bores. Adding or removing one here changes them all; renaming one renames it on every item that has it.
+      </p>
+      {banner}
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {bores.map((b) => (
+          <div key={b.id} className="panel flex items-center gap-2 p-2 transition-colors duration-150 hover:border-sky-400/40">
+            <InlineName value={b.name} label="Bore name" onSave={(v) => run(() => renameBore(b.id, v))} />
+            <SmallButton
+              label={`Remove ${b.name}`}
+              danger
+              onClick={() => {
+                if (confirm(`Remove "${b.name}" from the list? Items that have it keep it.`)) run(() => deleteBore(b.id));
+              }}
+            >
+              ✕
+            </SmallButton>
+          </div>
+        ))}
+        {!bores.length && <p className="text-sm text-muted">No bores yet.</p>}
+      </div>
+      <form
+        className="flex flex-wrap gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          run(() => addBore(name), () => setName(""));
+        }}
+      >
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder='Bore, e.g. 1/4" Hex' className="input min-h-11 w-64 max-w-full" />
+        <button className="btn min-h-11 active:scale-[0.98]" disabled={pending || !name.trim()}>
+          + Add bore
         </button>
       </form>
     </div>
