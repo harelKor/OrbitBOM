@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { countTeeth } from "./teeth";
+import { combineCounts, countTeeth, countTeethInRing, type TeethResult } from "./teeth";
 
 // A drawn part on a plain background: toothed outline (square-ish teeth with sloped sides), a hex
 // or round bore, optional squash (photo not quite from above), light noise.
@@ -86,5 +86,76 @@ describe("countTeeth", () => {
 
   it("gives up on an empty picture", () => {
     expect(countTeeth(new Uint8Array(100 * 100).fill(128), 100, 100)).toBeNull();
+  });
+});
+
+// Harel's video (2026-11-12): a tan gear on a light grey bench, the phone's dark shadow over one
+// corner, the gear a bit off the middle of the aim ring. Brightness alone took the shadow for the
+// part and read "8" on every frame.
+function tanGearOnBench(teeth: number, o: { size?: number; shadow?: boolean; seed?: number } = {}) {
+  const size = o.size ?? 320;
+  const R = size * 0.3;
+  const depth = R * 0.08;
+  const cx = size * 0.53;
+  const cy = size * 0.48;
+  const rgba = new Uint8Array(size * size * 4);
+  let seed = o.seed ?? 3;
+  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647 - 0.5) * 16;
+  for (let y = 0; y < size; y++)
+    for (let x = 0; x < size; x++) {
+      const dx = x - cx;
+      const dy = y - cy;
+      const r = Math.hypot(dx, dy);
+      const th = Math.atan2(dy, dx);
+      const phase = ((((th / (2 * Math.PI)) * teeth) % 1) + 1) % 1;
+      const tooth = Math.max(0, Math.min(1, (0.5 - Math.abs(phase - 0.5)) * 6 - 0.5));
+      const inside = r <= R - depth + 2 * depth * tooth && r > R * 0.2;
+      // A soft dark shadow from the lower left, over bench and gear alike.
+      const shade = o.shadow === false ? 1 : 1 - 0.55 * Math.max(0, Math.min(1, 1.4 - Math.hypot(x / size, 1 - y / size) * 2));
+      const [cr, cg, cb] = inside ? [205, 185, 140] : [178, 178, 182];
+      const i = (y * size + x) * 4;
+      const n = rand();
+      rgba[i] = Math.max(0, Math.min(255, cr * shade + n));
+      rgba[i + 1] = Math.max(0, Math.min(255, cg * shade + n));
+      rgba[i + 2] = Math.max(0, Math.min(255, cb * shade + n));
+      rgba[i + 3] = 255;
+    }
+  return { rgba, size };
+}
+
+describe("countTeethInRing", () => {
+  it("counts a tan gear on a grey bench under the phone's shadow", () => {
+    for (const teeth of [24, 30, 36]) {
+      const { rgba, size } = tanGearOnBench(teeth);
+      expect(countTeethInRing(rgba, size)?.teeth).toBe(teeth);
+    }
+  });
+
+  it("is needed: brightness alone misreads that picture", () => {
+    const { rgba, size } = tanGearOnBench(30);
+    const gray = new Uint8Array(size * size).map((_, p) => (rgba[p * 4] * 77 + rgba[p * 4 + 1] * 150 + rgba[p * 4 + 2] * 29) >> 8);
+    expect(countTeeth(gray, size, size)?.teeth).not.toBe(30);
+  });
+
+  it("finds nothing on an empty bench", () => {
+    const { rgba, size } = tanGearOnBench(30);
+    const bench = Uint8Array.from(rgba, (v, i) => (i % 4 === 3 ? 255 : 178));
+    expect(countTeethInRing(bench, size)?.teeth ?? null).toBeNull();
+  });
+});
+
+describe("combineCounts", () => {
+  const frame = (best: number, also: Record<number, number> = {}): TeethResult => {
+    const scores = Array.from({ length: 120 }, (_, k) => (k === best ? 1 : (also[k] ?? 0.2)));
+    return { teeth: best, confidence: 0.6, bore: null, center: { x: 0, y: 0 }, radius: 50, candidates: [], scores };
+  };
+
+  it("settles a ±1 wobble on the count most frames back", () => {
+    expect(combineCounts([frame(30, { 31: 0.7 }), frame(31, { 30: 0.8 }), frame(30, { 31: 0.6 }), frame(30)]).teeth).toBe(30);
+  });
+
+  it("waits for enough frames, and for them to agree", () => {
+    expect(combineCounts([frame(30), frame(30)]).teeth).toBeNull();
+    expect(combineCounts([frame(30), frame(45), frame(60), frame(80)]).teeth).toBeNull();
   });
 });

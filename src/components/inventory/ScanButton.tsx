@@ -6,11 +6,12 @@ import { useCan } from "@/components/shell/ModeContext";
 import { formatStock } from "@/lib/inventory/stock";
 import type { Recognized } from "@/lib/recognize/answer";
 import { shelfMatches } from "@/lib/recognize/shelf";
-import { countTeeth, type TeethResult } from "@/lib/recognize/teeth";
+import { combineCounts, type TeethResult } from "@/lib/recognize/teeth";
 import { useInventoryPopup } from "./InventoryPopup";
 import type { Draft } from "./ItemForm";
 import { uploadPhoto } from "./photo";
-import { grayOf, jpegOf, shrink } from "./scan/frame";
+import { jpegOf, ringBox, ringCrop, shrink } from "./scan/frame";
+import { startTeethWorker } from "./scan/teethWorker";
 import type { Item } from "./types";
 
 // Scan anything (plan/item-recognition.md, replaced the barcode-only Scan on 2026-11-11): a
@@ -22,10 +23,12 @@ import type { Item } from "./types";
 
 type Answer = { result: Recognized; lens?: boolean; offers: { title: string; image: string | null; offers: { vendor: string; url: string; title: string; image: string | null; price: number | null }[] }[] };
 
-const LIVE_SIZE = 400; // the live teeth counter's frame: small, so phones keep up
-const STILL_SIZE = 960; // the captured frame the counter reads: fine teeth need the pixels
-const VOTES = 6; // live counts kept; one shows once VOTES_NEEDED of them agree
-const VOTES_NEEDED = 3;
+// Gears: the count is read inside the aim ring, off the page's thread, about three times a second,
+// and shows only once the last frames together settle on it (Harel's video, 2026-11-12).
+const LIVE_SIZE = 320; // the ring's square for the live count
+const STILL_SIZE = 720; // the captured ring's square: fine teeth need the pixels
+const FRAMES = 10; // live frames added together
+const LIVE_MS = 300;
 const SEND_SIZE = 768;
 const PHOTO_SIZE = 1200;
 
@@ -78,74 +81,107 @@ function Scanner({ canAdd, items, onCode, onNew, onClose }: { canAdd: boolean; i
   const [choices, setChoices] = useState<{ matches: Item[]; draft: Partial<Draft> } | null>(null);
   const photo = useRef<HTMLCanvasElement | null>(null);
   const upload = useRef<Promise<{ key: string; preview: string } | null> | null>(null);
-  const votes = useRef<(number | null)[]>([]);
+  const frames = useRef<(TeethResult | null)[]>([]);
+  const counter = useRef<ReturnType<typeof startTeethWorker> | null>(null);
   const done = useRef(onCode);
   useEffect(() => {
     done.current = onCode;
   });
 
-  // The camera through the barcode reader, and the teeth counter on a small frame a few times a
-  // second, drawn over the video.
+  // The camera, a barcode reader on it (the phone's own where it has one, else zxing, both a few
+  // times a second instead of every frame), and the teeth counter inside the aim ring.
   useEffect(() => {
-    let stop: (() => void) | null = null;
     let cancelled = false;
+    let stream: MediaStream | null = null;
+    let stopZxing: (() => void) | null = null;
     let timer = 0;
+    let barcodeTimer = 0;
     const work = document.createElement("canvas");
-    const tick = () => {
+    counter.current = startTeethWorker();
+    const draw = () => {
       const v = video.current;
       const o = overlay.current;
-      if (cancelled || !v || !o) return;
+      if (!v || !o || !v.videoWidth) return;
+      o.width = v.clientWidth;
+      o.height = v.clientHeight;
+      const g = o.getContext("2d")!;
+      g.clearRect(0, 0, o.width, o.height);
+      if (v.paused) return;
+      drawRing(g, ringBox(v.videoWidth, v.videoHeight), o.width / v.videoWidth, combineCounts(frames.current).teeth);
+    };
+    const tick = async () => {
+      const v = video.current;
+      if (cancelled || !v) return;
       if (!v.paused && v.videoWidth) {
-        const c = shrink(v, LIVE_SIZE, work);
-        const r = c ? countTeeth(grayOf(c), c.width, c.height) : null;
-        votes.current = [...votes.current, r?.teeth && r.confidence > 0.3 ? r.teeth : null].slice(-VOTES);
-        const steady = steadyCount(votes.current);
-        o.width = v.clientWidth;
-        o.height = v.clientHeight;
-        const g = o.getContext("2d")!;
-        g.clearRect(0, 0, o.width, o.height);
-        // Only a count the last few frames agree on shows, so it doesn't flicker.
-        if (c && r && steady) drawTeeth(g, r, steady, o.width / c.width);
+        const crop = ringCrop(v, LIVE_SIZE, work);
+        const r = crop ? await counter.current!.count(crop.rgba, crop.size) : null;
+        if (cancelled) return;
+        frames.current = [...frames.current, r].slice(-FRAMES);
+        draw();
       }
-      timer = window.setTimeout(tick, 350);
+      timer = window.setTimeout(tick, LIVE_MS);
     };
     (async () => {
       try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 } }, audio: false });
+        const v = video.current;
+        if (cancelled || !v) return stream.getTracks().forEach((t) => t.stop());
+        v.srcObject = stream;
+        await v.play();
+      } catch {
+        setCamError("Couldn't open the camera. Allow camera access for this site, or type the name.");
+        return;
+      }
+      void tick();
+      const Native = (window as unknown as { BarcodeDetector?: BarcodeDetectorClass }).BarcodeDetector;
+      const formats = Native ? await Native.getSupportedFormats().catch(() => []) : [];
+      if (cancelled) return;
+      if (Native && formats.length) {
+        const detector = new Native({ formats });
+        const look = async () => {
+          const v = video.current;
+          if (cancelled || !v) return;
+          if (!v.paused) {
+            const code = (await detector.detect(v).catch(() => []))[0]?.rawValue;
+            if (cancelled) return;
+            if (code) return done.current(code);
+          }
+          barcodeTimer = window.setTimeout(look, 250);
+        };
+        void look();
+      } else {
         const { BrowserMultiFormatReader } = await import("@zxing/browser");
         if (cancelled || !video.current) return;
-        const controls = await new BrowserMultiFormatReader().decodeFromConstraints({ video: { facingMode: "environment", width: { ideal: 1280 } } }, video.current, (result, _err, c) => {
-          if (!result) return;
+        const controls = await new BrowserMultiFormatReader(undefined, { delayBetweenScanAttempts: 300 }).decodeFromVideoElement(video.current, (result, _err, c) => {
+          if (!result || video.current?.paused) return;
           c.stop();
           done.current(result.getText());
         });
         if (cancelled) controls.stop();
-        else stop = () => controls.stop();
-        tick();
-      } catch {
-        setCamError("Couldn't open the camera. Allow camera access for this site, or type the name.");
+        else stopZxing = () => controls.stop();
       }
     })();
     return () => {
       cancelled = true;
       clearTimeout(timer);
-      stop?.();
+      clearTimeout(barcodeTimer);
+      stopZxing?.();
+      stream?.getTracks().forEach((t) => t.stop());
+      counter.current?.stop();
     };
   }, []);
 
   const capture = async () => {
     const v = video.current;
     if (!v?.videoWidth) return;
-    const small = shrink(v, STILL_SIZE);
+    const ring = ringCrop(v, STILL_SIZE);
     const send = shrink(v, SEND_SIZE);
     photo.current = shrink(v, PHOTO_SIZE);
-    if (!small || !send) return;
+    if (!ring || !send) return;
     v.pause();
     overlay.current?.getContext("2d")?.clearRect(0, 0, overlay.current.width, overlay.current.height);
     setStill(send.toDataURL("image/jpeg", 0.8));
     setError(null);
-    // The full-size frame's count, else the one the live frames agreed on.
-    const frame = countTeeth(grayOf(small), small.width, small.height);
-    const teeth = frame?.teeth && frame.confidence > 0.4 ? frame.teeth : steadyCount(votes.current);
     // The photo uploads while the part is recognised; it's used if no store photo turns up.
     const full = photo.current;
     upload.current =
@@ -155,6 +191,10 @@ function Scanner({ canAdd, items, onCode, onNew, onClose }: { canAdd: boolean; i
             .then((up) => (up && !("error" in up) ? up : null))
         : null;
     setBusy("Reading…");
+    // The sharp captured ring counts twice, on top of the live frames.
+    const sharp = await (counter.current?.count(ring.rgba, ring.size) ?? Promise.resolve(null));
+    const settled = combineCounts([...frames.current, sharp, sharp]);
+    const teeth = settled.teeth ?? (sharp?.teeth && sharp.confidence > 0.5 ? sharp.teeth : null);
     try {
       const res = await fetch("/api/inventory/recognize", {
         method: "POST",
@@ -209,7 +249,7 @@ function Scanner({ canAdd, items, onCode, onNew, onClose }: { canAdd: boolean; i
     setStill(null);
     setError(null);
     setChoices(null);
-    votes.current = [];
+    frames.current = [];
     void video.current?.play();
   };
 
@@ -273,22 +313,31 @@ function Scanner({ canAdd, items, onCode, onNew, onClose }: { canAdd: boolean; i
   );
 }
 
-// The count most of the last live frames agree on, if enough do.
-function steadyCount(votes: (number | null)[]): number | null {
-  const n = new Map<number, number>();
-  for (const v of votes) if (v) n.set(v, (n.get(v) ?? 0) + 1);
-  const [best] = [...n].sort((a, b) => b[1] - a[1]);
-  return best && best[1] >= VOTES_NEEDED ? best[0] : null;
-}
+// The phone's own barcode reader (Android Chrome); only what Scan uses of it.
+type BarcodeDetectorClass = {
+  new (o: { formats: string[] }): { detect(source: CanvasImageSource): Promise<{ rawValue: string }[]> };
+  getSupportedFormats(): Promise<string[]>;
+};
 
-function drawTeeth(g: CanvasRenderingContext2D, r: TeethResult, teeth: number, k: number) {
-  g.strokeStyle = "#f97316";
+// The aim ring: where to hold the gear. It turns orange with the count once the frames settle.
+function drawRing(g: CanvasRenderingContext2D, box: { sx: number; sy: number; side: number }, k: number, teeth: number | null) {
+  const x = (box.sx + box.side / 2) * k;
+  const y = (box.sy + box.side / 2) * k;
+  const r = (box.side / 2) * k;
   g.lineWidth = 3;
+  g.setLineDash(teeth ? [] : [10, 8]);
+  g.strokeStyle = teeth ? "#f97316" : "rgba(255,255,255,0.8)";
   g.beginPath();
-  g.arc(r.center.x * k, r.center.y * k, r.radius * k, 0, 2 * Math.PI);
+  g.arc(x, y, r, 0, 2 * Math.PI);
   g.stroke();
-  g.fillStyle = "#f97316";
-  g.font = "bold 28px system-ui";
-  g.textAlign = "center";
-  g.fillText(`${teeth}T`, r.center.x * k, r.center.y * k + 10);
+  g.setLineDash([]);
+  if (teeth) {
+    g.font = "bold 32px system-ui";
+    g.textAlign = "center";
+    g.lineWidth = 5;
+    g.strokeStyle = "rgba(0,0,0,0.6)";
+    g.strokeText(`${teeth}T`, x, y + r - 18);
+    g.fillStyle = "#f97316";
+    g.fillText(`${teeth}T`, x, y + r - 18);
+  }
 }

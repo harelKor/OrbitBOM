@@ -151,3 +151,13 @@ in Supabase. No new paid resource anywhere.
 - Whole-web photo search: Gemini's Google Search is not on the free tier (429, checked); Serper's
   Lens works (3 credits a search), used only when Gemini names no product or no store has it,
   for COTS / electrical / tools, at most 30 a day.
+
+## Round 3 (Harel's video, 2026-11-12: "very slow, very inaccurate")
+
+A tan gear on a light grey bench with the phone's shadow: brightness took the shadow for the part
+and read "8" on all 65 frames. Now: an aim ring on the camera (only inside it counts), part vs
+bench by colour (bench colour taken at the ring's edge), counts under 10 dropped, ~10 live frames
+added together before a count shows, the counter in a Web Worker, and the phone's own barcode
+reader (BarcodeDetector) instead of zxing where it exists (zxing only every 300 ms). On the
+video's frames: 31 on most frames, 29-30 on some, nothing while the gear leaves the ring; the gear
+looks like 30T, still to be confirmed on the part.

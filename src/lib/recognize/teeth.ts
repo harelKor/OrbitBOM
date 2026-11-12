@@ -20,14 +20,71 @@ export type TeethResult = {
   center: { x: number; y: number };
   radius: number; // outer radius, pixels
   candidates: { teeth: number; score: number }[]; // the best few counts, for the scan test page
+  scores: number[]; // every count's strength (index = teeth, best = 1), to add frames together
 };
 
 const ANGLES = 1024; // a power of two, for the FFT
-const MIN_TEETH = 8;
+// No FRC gear, pulley or sprocket has fewer; a pixel-stepped circle looks like 8 (Harel's video,
+// 2026-11-12, read "8" off a shadow on every frame).
+const MIN_TEETH = 10;
 const MAX_TEETH = 200;
 
 type Gray = ArrayLike<number>;
 type Axes = { cx: number; cy: number; ex: { x: number; y: number }; ey: { x: number; y: number } };
+
+// The scan's own entry: a square crop (RGBA, row by row) whose inscribed circle is the aim ring
+// on the camera. Only inside the ring counts, so shadows, hands and tools at the edges don't.
+// Part and bench are told apart by colour, not brightness: a tan gear on a light grey bench in a
+// phone's shadow was read as the shadow (Harel's video, 2026-11-12). The bench's colour is taken
+// at the ring's edge; each pixel's difference from it (hue counts most, light a little) is what
+// countTeeth reads.
+export function countTeethInRing(rgba: ArrayLike<number>, size: number): TeethResult | null {
+  if (rgba.length < size * size * 4 || size < 32) return null;
+  const c = (size - 1) / 2;
+  const R = size / 2;
+  const edge: number[][] = [[], [], []];
+  for (let y = 0; y < size; y++)
+    for (let x = 0; x < size; x++) {
+      const d = Math.hypot(x - c, y - c) / R;
+      if (d < 0.88 || d > 1) continue;
+      const i = (y * size + x) * 4;
+      edge[0].push(rgba[i]);
+      edge[1].push(rgba[i + 1]);
+      edge[2].push(rgba[i + 2]);
+    }
+  const [br, bg, bb] = edge.map((v) => v.sort((a, b) => a - b)[v.length >> 1] ?? 0);
+  const diff = new Uint8Array(size * size);
+  for (let y = 0; y < size; y++)
+    for (let x = 0; x < size; x++) {
+      const p = y * size + x;
+      if (Math.hypot(x - c, y - c) > R * 0.97) continue; // outside the ring: bench
+      const r = rgba[p * 4] - br;
+      const g = rgba[p * 4 + 1] - bg;
+      const b = rgba[p * 4 + 2] - bb;
+      const light = (r * 77 + g * 150 + b * 29) / 256;
+      const hue = Math.hypot(r - light, g - light, b - light);
+      diff[p] = Math.min(255, Math.abs(light) * 0.5 + hue * 3);
+    }
+  return countTeeth(diff, size, size);
+}
+
+// Several frames together: each frame's strengths added up, so one blurry frame or a ±1 wobble
+// doesn't decide. A count shows once enough frames back it and it clearly beats the rest.
+export function combineCounts(frames: (TeethResult | null)[], need = 3): { teeth: number | null; confidence: number } {
+  const used = frames.filter((f): f is TeethResult => !!f && f.scores.length > MIN_TEETH);
+  if (used.length < need) return { teeth: null, confidence: 0 };
+  const sum: number[] = [];
+  for (const f of used) f.scores.forEach((v, k) => (sum[k] = (sum[k] ?? 0) + v));
+  let k = MIN_TEETH;
+  for (let i = MIN_TEETH; i < sum.length; i++) if ((sum[i] ?? 0) > (sum[k] ?? 0)) k = i;
+  let second = 0;
+  for (let i = MIN_TEETH; i < sum.length; i++) if (Math.abs(i - k) > 1 && i % k !== 0 && (sum[i] ?? 0) > second) second = sum[i] ?? 0;
+  const ratio = (sum[k] ?? 0) / (second || 1e-9);
+  // Most frames must have found teeth at all, near this count.
+  const agree = used.filter((f) => f.teeth && Math.abs(f.teeth - k) <= 1).length;
+  if (ratio < 1.3 || agree < Math.ceil(used.length / 2)) return { teeth: null, confidence: 0 };
+  return { teeth: k, confidence: clamp01((ratio - 1) / 1.2) };
+}
 
 // Grey levels (0..255), one per pixel, row by row.
 export function countTeeth(gray: Gray, width: number, height: number): TeethResult | null {
@@ -186,7 +243,8 @@ export function countTeeth(gray: Gray, width: number, height: number): TeethResu
       bore = six > 0.02 && six > rest * 2 ? "hex" : "round";
     }
   }
-  return { teeth, confidence, bore, center: { x: axes.cx, y: axes.cy }, radius, candidates };
+  const top = score[k] || 1;
+  return { teeth, confidence, bore, center: { x: axes.cx, y: axes.cy }, radius, candidates, scores: Array.from(score, (v) => v / top) };
 }
 
 const mean = (v: ArrayLike<number>) => {

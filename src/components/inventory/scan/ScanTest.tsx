@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Recognized } from "@/lib/recognize/answer";
-import { countTeeth, type TeethResult } from "@/lib/recognize/teeth";
-import { grayOf, jpegOf, shrink, type Source } from "./frame";
+import { countTeethInRing, type TeethResult } from "@/lib/recognize/teeth";
+import { jpegOf, ringBox, ringCrop, shrink, type Source } from "./frame";
 
 // The scan test page (plan/item-recognition.md, Phase 0): the live camera with the teeth counter
 // drawn over it, Capture sends the photo to Gemini, and everything it answered shows below, with
@@ -19,7 +19,7 @@ type Answer = {
 };
 
 const LIVE_SIZE = 320; // the live teeth counter's frame: small, so phones keep up
-const STILL_SIZE = 960;
+const STILL_SIZE = 720;
 const SEND_SIZE = 768;
 
 export function ScanTest({ configured }: { configured: boolean }) {
@@ -52,24 +52,35 @@ export function ScanTest({ configured }: { configured: boolean }) {
         const v = video.current;
         const o = overlay.current;
         if (stopped || !v || !o) return;
-        const c = shrink(v, LIVE_SIZE, work);
-        const r = c ? countTeeth(grayOf(c), c.width, c.height) : null;
+        const crop = ringCrop(v, LIVE_SIZE, work);
+        const r = crop ? countTeethInRing(crop.rgba, crop.size) : null;
         setLive(r);
         o.width = v.clientWidth;
         o.height = v.clientHeight;
         const g = o.getContext("2d")!;
         g.clearRect(0, 0, o.width, o.height);
-        if (c && r?.teeth) {
-          const k = o.width / c.width;
-          g.strokeStyle = "#f97316";
+        if (v.videoWidth) {
+          // The aim ring, and the part's edge the counter found inside it.
+          const box = ringBox(v.videoWidth, v.videoHeight);
+          const k = o.width / v.videoWidth;
           g.lineWidth = 3;
+          g.strokeStyle = "rgba(255,255,255,0.8)";
+          g.setLineDash([10, 8]);
           g.beginPath();
-          g.arc(r.center.x * k, r.center.y * k, r.radius * k, 0, 2 * Math.PI);
+          g.arc((box.sx + box.side / 2) * k, (box.sy + box.side / 2) * k, (box.side / 2) * k, 0, 2 * Math.PI);
           g.stroke();
-          g.fillStyle = "#f97316";
-          g.font = "bold 28px system-ui";
-          g.textAlign = "center";
-          g.fillText(`${r.teeth}T`, r.center.x * k, r.center.y * k + 10);
+          g.setLineDash([]);
+          if (r?.teeth) {
+            const m = (box.side / LIVE_SIZE) * k;
+            g.strokeStyle = "#f97316";
+            g.beginPath();
+            g.arc(box.sx * k + r.center.x * m, box.sy * k + r.center.y * m, r.radius * m, 0, 2 * Math.PI);
+            g.stroke();
+            g.fillStyle = "#f97316";
+            g.font = "bold 28px system-ui";
+            g.textAlign = "center";
+            g.fillText(`${r.teeth}T`, box.sx * k + r.center.x * m, box.sy * k + r.center.y * m + 10);
+          }
         }
         timer = window.setTimeout(tick, 350);
       };
@@ -83,10 +94,11 @@ export function ScanTest({ configured }: { configured: boolean }) {
   }, []);
 
   const send = async (source: Source) => {
-    const still = shrink(source, STILL_SIZE);
+    const still = document.createElement("canvas");
+    const ring = ringCrop(source, STILL_SIZE, still);
     const big = shrink(source, SEND_SIZE);
-    if (!still || !big) return;
-    const teeth = countTeeth(grayOf(still), still.width, still.height);
+    if (!ring || !big) return;
+    const teeth = countTeethInRing(ring.rgba, ring.size);
     setShot({ url: seen(still, teeth), teeth });
     setAnswer(null);
     setError(null);
