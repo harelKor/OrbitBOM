@@ -1,14 +1,19 @@
 "use client";
 
 import { useState } from "react";
+import { useSidePanels } from "@/components/shell/SidePanels";
 import { Icon } from "@/components/ui/Icon";
 
 // The robot dashboard's status box, folding sideways on a bigger page: folded, it's a narrow
 // button box and the 3D view takes the room. It starts folded, side columns open or not, until the
 // member opens it (Harel, 2026-11-12). On smaller pages it's always open, stacked with the rest.
-// `@…/dash` sizes: the dashboard's width (its `@container/dash`), not this box's own.
+// `@…/dash` sizes: the dashboard's width (its `@container/dash`), not this box's own. With both
+// side columns open there's no room for it, so it's left out (phones keep their own Status
+// section under Inventory) (Harel, 2026-11-12).
 export function StatusPanel({ percent, done, total, children }: { percent: number; done: number; total: number; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
+  const panels = useSidePanels();
+  if (panels.left && panels.right) return null;
 
   if (open)
     return (
