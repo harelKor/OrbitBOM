@@ -21,13 +21,20 @@ export type ViewerModel = {
   keys?: (string | null)[];
   placements: { s: number; k: string; t: number[]; g?: number }[];
   groups?: { systemIds: string[]; name: string }[]; // subsystems, by placement g
+  // A Basepart's Geometry sketch files (src/lib/model/sketch.ts), where they sit (row-major, like
+  // placements), their subsystem group (none: the robot's own) and whose they are (Harel,
+  // 2026-11-12). `sketchesHidden`: drawn only after Shift+H (the Final model).
+  sketches?: { url: string | null; key: string; t: number[]; g?: number; owner: string }[];
+  sketchesHidden?: boolean;
 };
 
 export type ViewerMode = "status" | "cad";
 
 // One instanced mesh per (subsystem, Part Studio, part): `keys[i]` is the BOM key of copy i, `g`
 // its subsystem group, `look` Onshape's appearance from the file.
-export type PartMesh = { mesh: THREE.InstancedMesh; keys: string[]; g: number; look?: Appearance };
+// A Geometry sketch is one too (sketches.ts): one copy, no faces, its lines and points as
+// children, `sketch` its name; its points are already where it sits, so its copy is at identity.
+export type PartMesh = { mesh: THREE.InstancedMesh; keys: string[]; g: number; look?: Appearance; sketch?: { name: string } };
 
 // A part instance hidden with Y: its mesh, its index there, and its BOM key.
 export type Gone = { m: number; i: number; key: string };

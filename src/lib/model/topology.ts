@@ -142,7 +142,7 @@ function classifyFace(face: Face, pos: ArrayLike<number>, idx: ArrayLike<number>
   face.point = add(add(mul(u, fit.cx), mul(w, fit.cy)), mul(axis, along));
 }
 
-function classifyEdge(e: Edge) {
+export function classifyEdge(e: Edge) {
   const p = e.points;
   let length = 0;
   for (let i = 1; i < p.length; i++) length += dist(p[i - 1], p[i]);

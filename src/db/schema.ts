@@ -73,6 +73,22 @@ export const joinRequests = pgTable("join_requests", {
 
 // ---------- Robots and systems ----------
 
+// A Basepart's chosen sketches, the robot's or system's "Geometry" (Harel, 2026-11-12): Onshape's
+// sketch feature id and its name then.
+export type GeometrySketch = { id: string; name: string };
+export type BasepartKind = "partstudio" | "assembly";
+// The two 3D models of a robot (Harel, 2026-11-12): its Basepart and its Final.
+export type ModelKind = "basepart" | "final";
+// The Basepart link a robot and a system both have: the Part Studio or assembly it is now, and the
+// Part Studio its Geometry sketches come from (kept when the Part Studio is replaced by the
+// assembly, so the sketches stay).
+const basepartColumns = () => ({
+  basepartUrl: text("basepart_url"),
+  basepartKind: text("basepart_kind").$type<BasepartKind>(),
+  basepartStudioUrl: text("basepart_studio_url"),
+  basepartSketches: jsonb("basepart_sketches").$type<GeometrySketch[]>().notNull().default([]),
+});
+
 export const robots = pgTable("robots", {
   id: id(),
   name: text("name").notNull(),
@@ -91,6 +107,9 @@ export const robots = pgTable("robots", {
   // The Raw stock planner's chosen piece size per stock group (Harel, 2026-11-07): group key (an
   // inventory item id or "auto:…") → a piece size key ("p500x900", "m1000").
   rawStockSizes: jsonb("raw_stock_sizes").$type<Record<string, string>>().notNull().default({}),
+  // The robot's Basepart (Harel, 2026-11-12): its main Part Studio, later replaced by the robot
+  // Basepart assembly in the same document. 3D only; `main_assembly_url` is the robot's Final.
+  ...basepartColumns(),
   createdAt: createdAt(),
 });
 
@@ -127,6 +146,10 @@ export const systems = pgTable(
     // or a microversion, which never change, so a rebuild reads nothing again for it. Null: the
     // assembly's own link (its workspace), as before.
     modelRef: jsonb("model_ref").$type<{ wvm: "v" | "m"; wvmid: string }>(),
+    // The system's Basepart (Harel, 2026-11-12): designed first in a Part Studio, then replaced by
+    // the Basepart assembly in the same document. 3D views and comments only: the BOM is read
+    // from `assembly_url`, the system's Final assembly.
+    ...basepartColumns(),
     createdAt: createdAt(),
   },
   (t) => [index("systems_robot_idx").on(t.robotId)],
@@ -706,6 +729,9 @@ export const reviewComments = pgTable(
     // pin, the newest pick's point in assembly mm; a tap on the comment turns the view back (S6).
     view: jsonb("view").$type<ViewState>(),
     pin: jsonb("pin").$type<[number, number, number]>(),
+    // Which 3D model it was written on: the Basepart or the Final (Harel, 2026-11-12). Both show
+    // in the system's comments; a tap opens the one it was written on.
+    model: text("model").$type<ModelKind>().notNull().default("final"),
     createdAt: createdAt(),
     doneAt: timestamp("done_at", { withTimezone: true }),
     doneBy: uuid("done_by").references(() => members.id, { onDelete: "set null" }),

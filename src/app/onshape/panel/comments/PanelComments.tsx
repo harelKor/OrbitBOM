@@ -6,6 +6,7 @@ import { addReviewComment } from "@/app/(app)/review-comments-actions";
 import { OpenComment, TreeComment, WaitingComment } from "@/components/review/Comments";
 import { SnipEditor, SnipMe, SnipPicture, uploadSnip, type SnipDraft } from "@/components/review/Snip";
 import type { ReviewComment } from "@/lib/data/cadReview";
+import type { ModelKind } from "@/db/schema";
 import type { PanelPlace, PanelVersion } from "@/lib/reviews/panelVersion";
 import { SnipPaste, type Shot } from "./PanelSnip";
 
@@ -24,6 +25,7 @@ export function PanelComments({
   me,
   canTick,
   canApprove,
+  model = "final",
 }: {
   robotId: string;
   systemId: string | null; // null: the robot's main assembly, where a system can be picked
@@ -34,6 +36,9 @@ export function PanelComments({
   me: { id: string; isAdmin: boolean };
   canTick: boolean;
   canApprove: boolean;
+  // A Basepart's comments go on the Basepart model, and on no Onshape version: versions belong
+  // to the Final design (Harel, 2026-11-12).
+  model?: ModelKind;
 }) {
   const router = useRouter();
   const [picked, setPicked] = useState(""); // "" = the whole robot
@@ -42,7 +47,8 @@ export function PanelComments({
   const [body, setBody] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const version = useVersion(systemId, place);
+  const final = model === "final";
+  const version = useVersion(final ? systemId : null, place);
   // Snip: pasted from the system's snipping tool, then the drawing window (Harel, 2026-11-10).
   const [snip, setSnip] = useState<SnipDraft | null>(null);
   const [drawing, setDrawing] = useState(false);
@@ -60,14 +66,14 @@ export function PanelComments({
     e.preventDefault();
     start(async () => {
       setError(null);
-      const v = systemId && version.data?.version ? version.data.version : null;
+      const v = final && systemId && version.data?.version ? version.data.version : null;
       let shotUp = null;
       if (snip) {
         const up = await uploadSnip(snip);
         if ("error" in up) return setError(up.error);
         shotUp = up.snip;
       }
-      const r = await addReviewComment(robotId, systemId, body, part && { key: part.key, name: part.name }, v, shotUp);
+      const r = await addReviewComment(robotId, systemId, body, part && { key: part.key, name: part.name }, v, shotUp, null, model);
       if (r.error) return setError(r.error);
       setBody("");
       setPartKey("");
@@ -90,7 +96,7 @@ export function PanelComments({
             ))}
           </select>
         )}
-        {systemId && <VersionLine state={version} />}
+        {final && systemId && <VersionLine state={version} />}
         <textarea required value={body} onChange={(e) => setBody(e.target.value)} rows={4} maxLength={2000} className="input min-h-24 w-full" placeholder="What should change?" />
         {snip ? (
           <div className="flex items-start gap-3">

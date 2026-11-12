@@ -9,6 +9,7 @@ import { Icon } from "@/components/ui/Icon";
 import { buildModel } from "@/components/viewer/buildModel";
 import { drawPictures } from "@/components/viewer/pictures";
 import type { ViewerMode, ViewerModel } from "./ModelCanvas";
+import { ModelToggle, rememberModel, startModel, type ModelKind } from "./ModelToggle";
 import { PickedPart } from "./PickedPart";
 import {
   BULK_ASK_EVENT,
@@ -46,6 +47,8 @@ export function RobotViewer({
   builtAt,
   hasAssembly,
   edit,
+  basepart = null,
+  initialModel,
 }: {
   robotId: string;
   systemId?: string;
@@ -54,21 +57,41 @@ export function RobotViewer({
   builtAt: string | null;
   hasAssembly: boolean;
   edit: boolean;
+  // The Basepart model (Harel, 2026-11-12): when it was built, and whether a Basepart is linked.
+  // With both, a Basepart | Final toggle; with only a Basepart, that.
+  basepart?: { builtAt: string | null; linked: boolean } | null;
+  initialModel?: ModelKind;
 }) {
-  // Status colours parts by their BOM status; CAD shows them as Onshape draws the assembly.
-  const [colors, setColors] = useState<ViewerMode>("status");
+  const hasFinal = hasAssembly || !!builtAt;
+  const hasBasepart = !!basepart && (basepart.linked || !!basepart.builtAt);
+  const [kind, setKind] = useState<ModelKind>(() => startModel(initialModel, hasFinal, hasBasepart));
+  const isBasepart = kind === "basepart";
+  // Status colours parts by their BOM status; CAD shows them as Onshape draws the assembly. The
+  // Basepart isn't on the BOM: always its CAD colours.
+  const [colorChoice, setColors] = useState<ViewerMode>("status");
+  const colors: ViewerMode = isBasepart ? "cad" : colorChoice;
   const router = useRouter();
   const [large, setLarge] = useState(false);
   const [bar, setBar] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [hiddenGroups, setHiddenGroups] = useState<Set<number>>(() => new Set());
-  const [version, setVersion] = useState(builtAt);
+  const [versions, setVersions] = useState<Record<ModelKind, string | null>>({ final: builtAt, basepart: basepart?.builtAt ?? null });
+  const version = versions[kind];
   // undefined while loading, null when there is no model to show.
-  const [model, setModel] = useState<ViewerModel | null | undefined>(builtAt ? undefined : null);
+  const [model, setModel] = useState<ViewerModel | null | undefined>(version ? undefined : null);
+  const pickKind = (k: ModelKind) => {
+    if (k === kind) return;
+    setKind(k);
+    setSelected(null);
+    setHiddenGroups(new Set());
+    setMessage(null);
+    setModel(versions[k] ? undefined : null);
+    rememberModel(k);
+  };
   const [building, setBuilding] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
   const colorMap = useMemo(() => new Map(parts.map((p) => [p.key, p.color])), [parts]);
-  const legend = colors === "status" ? statuses.filter((s) => s.count > 0) : [];
+  const legend = colors === "status" && !isBasepart ? statuses.filter((s) => s.count > 0) : [];
   const onLocated = useCallback(() => {}, []);
   const partByKey = useMemo(() => new Map(parts.map((p) => [p.key, p])), [parts]);
   const nameByKey = useMemo(() => new Map(parts.map((p) => [p.key, p.name])), [parts]);
@@ -157,7 +180,8 @@ export function RobotViewer({
   useEffect(() => {
     if (!version) return;
     let cancelled = false;
-    fetch(`/api/robots/${robotId}/model${systemId ? `?system=${systemId}` : ""}`)
+    const q = new URLSearchParams({ ...(systemId ? { system: systemId } : {}), ...(isBasepart ? { model: "basepart" } : {}) }).toString();
+    fetch(`/api/robots/${robotId}/model${q ? `?${q}` : ""}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d: { model: ViewerModel | null } | null) => !cancelled && setModel(d?.model ?? null))
       .catch(() => {
@@ -168,7 +192,7 @@ export function RobotViewer({
     return () => {
       cancelled = true;
     };
-  }, [robotId, systemId, version]);
+  }, [robotId, systemId, version, isBasepart]);
 
   const buildRef = useRef(build);
   useEffect(() => {
@@ -188,15 +212,19 @@ export function RobotViewer({
     setMessage(null);
     setBuilding("Checking Onshape…");
     try {
-      const r = await buildModel(robotId, setBuilding);
+      const built = kind;
+      const r = await buildModel(robotId, setBuilding, built);
       if (!r.ok) return setMessage({ text: r.error, error: true });
       const calls = r.calls;
+      const what = built === "basepart" ? "Basepart 3D model" : "3D model";
       setMessage({
         text: r.unchanged
-          ? `The 3D model is up to date (${calls} Onshape call${calls === 1 ? "" : "s"}).`
-          : `3D model updated: ${r.parts} parts (${calls} Onshape calls).`,
+          ? `The ${what} is up to date (${calls} Onshape call${calls === 1 ? "" : "s"}).`
+          : `${what} updated: ${r.parts} parts (${calls} Onshape calls).`,
       });
-      if (!r.unchanged) setVersion(new Date().toISOString());
+      if (!r.unchanged) setVersions((v) => ({ ...v, [built]: new Date().toISOString() }));
+      // Pictures come from the Final model only.
+      if (built === "basepart") return;
       // The pictures the new model changed, drawn from it (no Onshape calls).
       setBuilding("Drawing the pictures…");
       if (await drawPictures(robotId, systemId)) router.refresh();
@@ -209,10 +237,10 @@ export function RobotViewer({
   // panel), drawn once per page by a CAD member's browser, quietly.
   const pictured = useRef(false);
   useEffect(() => {
-    if (!edit || !model || pictured.current) return;
+    if (!edit || !model || isBasepart || pictured.current) return;
     pictured.current = true;
     void drawPictures(robotId, systemId).then((n) => n && router.refresh());
-  }, [edit, model, robotId, systemId, router]);
+  }, [edit, model, isBasepart, robotId, systemId, router]);
 
   return (
     <>
@@ -252,20 +280,23 @@ export function RobotViewer({
           <Icon name="cube" className="h-4 w-4 text-accent-hover" />
           <h2 className="text-sm font-semibold">{systemId ? "3D View" : "3D Assembly Status View"}</h2>
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-            {edit && hasAssembly && (
+            {hasFinal && hasBasepart && <ModelToggle value={kind} onChange={pickKind} />}
+            {edit && (isBasepart ? hasBasepart : hasAssembly) && (
               <button className="btn h-8 text-xs" onClick={build} disabled={!!building}>
                 {building ?? "Update 3D model"}
               </button>
             )}
-            <Segmented
-              label="Part colours"
-              value={colors}
-              onChange={setColors}
-              options={[
-                { value: "status", label: "Status" },
-                { value: "cad", label: "CAD" },
-              ]}
-            />
+            {!isBasepart && (
+              <Segmented
+                label="Part colours"
+                value={colors}
+                onChange={setColors}
+                options={[
+                  { value: "status", label: "Status" },
+                  { value: "cad", label: "CAD" },
+                ]}
+              />
+            )}
             {!systemId && groups.length > 1 && (
               <button className="btn h-8 text-xs" aria-pressed={bar} onClick={() => setBar(!bar)}>
                 Subsystems{hiddenGroups.size ? ` ${groups.length - hiddenGroups.size}/${groups.length}` : ""}
@@ -318,7 +349,11 @@ export function RobotViewer({
                 <p className="max-w-72 text-sm text-muted">
                   {model === undefined
                     ? "Loading the robot…"
-                    : !hasAssembly
+                    : isBasepart
+                      ? edit
+                        ? "Press Update 3D model to export the Basepart from Onshape."
+                        : "The Basepart shows here once it's exported from Onshape by the CAD Team."
+                      : !hasAssembly
                       ? edit
                         ? "Link this robot's systems to their Onshape assemblies (from the Onshape panel or a system's gear), then press Update 3D model."
                         : "The robot model shows here once its systems are linked to Onshape."

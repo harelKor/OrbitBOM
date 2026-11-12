@@ -11,5 +11,8 @@ export function GET(request: Request) {
   if (process.env.NODE_ENV === "production") return new NextResponse(null, { status: 404 });
   const big = new URL(request.url).searchParams.get("big") === "1";
   const key = `dev/sandbox/${createHash("sha1").update(encodeMeshes(sandboxStudio())).digest("hex").slice(0, 16)}.bin.gz`;
-  return NextResponse.json(sandboxRobot("/api/dev/viewer/studio", { key, big }));
+  const robot = sandboxRobot("/api/dev/viewer/studio", { key, big });
+  // ?sketches=1: the sandbox's Geometry sketches too (sketch/route.ts), on the robot (no group).
+  const sketches = new URL(request.url).searchParams.get("sketches") === "1" ? [{ url: "/api/dev/viewer/sketch", key: "dev/sandbox/sketch.json.gz", t: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], owner: "sandbox" }] : [];
+  return NextResponse.json({ ...robot, model: { ...robot.model, sketches } });
 }

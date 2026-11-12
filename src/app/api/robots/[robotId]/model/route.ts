@@ -6,14 +6,18 @@ import { buildRobotModel, robotModel } from "@/lib/model/build";
 import { OnshapeError } from "@/lib/onshape/client";
 import { StorageNotConfiguredError } from "@/lib/storage/r2";
 import { isUuid } from "@/lib/uuid";
+import type { ModelKind } from "@/db/schema";
+
+// ?model=basepart: the robot's Basepart model (Harel, 2026-11-12); else its Final, as before.
+const kindOf = (url: URL): ModelKind => (url.searchParams.get("model") === "basepart" ? "basepart" : "final");
 
 // Fluid compute lets a Hobby function run up to 300 s; new Part Studio exports stop starting
 // after 150 s so the slowest one still finishes inside the limit.
 export const maxDuration = 300;
 
 // The robot's 3D model for the dashboard viewer: placements plus short-lived mesh links.
-// ?system= (a system page) sends only that subsystem's part. Reads the database only; Onshape
-// is called by POST.
+// ?system= (a system page) sends only that subsystem's part; ?model=basepart the Basepart model.
+// Reads the database only; Onshape is called by POST.
 export async function GET(request: Request, { params }: { params: Promise<{ robotId: string }> }) {
   if (!(await getMember())) return new NextResponse("Sign in first.", { status: 401 });
   const { robotId } = await params;
@@ -22,7 +26,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ robo
   const system = url.searchParams.get("system");
   // ?parts=1: also the BOM parts by model key, for a view with no cards on its page.
   const [model, parts] = await Promise.all([
-    robotModel(robotId, system && isUuid(system) ? system : undefined),
+    robotModel(robotId, system && isUuid(system) ? system : undefined, kindOf(url)),
     url.searchParams.get("parts") ? modelPartsOfRobot(robotId) : undefined,
   ]);
   return NextResponse.json({ model, parts });
@@ -30,7 +34,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ robo
 
 // One build step of the model on the member's Onshape account; the viewer calls again while
 // the answer says "working".
-export async function POST(_: Request, { params }: { params: Promise<{ robotId: string }> }) {
+export async function POST(request: Request, { params }: { params: Promise<{ robotId: string }> }) {
   const started = Date.now();
   const member = await getMember();
   if (!member) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
@@ -41,7 +45,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ robotId: 
     return NextResponse.json({ error: "Connect your Onshape account first (Profile → Connect Onshape)." }, { status: 403 });
   }
   try {
-    return NextResponse.json(await buildRobotModel(robotId, member.id, started + 150_000));
+    return NextResponse.json(await buildRobotModel(robotId, member.id, started + 150_000, kindOf(new URL(request.url))));
   } catch (err) {
     if (err instanceof OnshapeError || err instanceof StorageNotConfiguredError) {
       return NextResponse.json({ error: err.message }, { status: 400 });

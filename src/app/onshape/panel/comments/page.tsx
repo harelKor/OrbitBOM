@@ -73,6 +73,7 @@ export default async function PanelCommentsPage({ searchParams }: { searchParams
         me={{ id: member.id, isAdmin: member.isAdmin }}
         canTick={canTick(mode, member)}
         canApprove={canApprove(mode, member)}
+        model={params.model === "basepart" ? "basepart" : "final"}
       />
     </div>
   );

@@ -87,6 +87,14 @@ property IDs it prints for Material, Pre Process, Process 1 and Process 2 into
      the older `workspaceId={$workspaceId}` URL still works, its comments go on the newest version)
    - Students then subscribe to the app (or it is granted to the Enterprise) and open the OrbitBOM
      icon on an assembly's right side. They sign in once in a popup; the sign-in lasts 60 days.
+5. **Panel in Part Studios** (Basepart sync, 2026-11-12): add a second extension to the same OAuth
+   application, the same way.
+   - Name: OrbitBOM. Location: **Element right panel**. Context: **Selected Part Studio**.
+   - Action URL: the one above with `&kind=partstudio` at the end:
+     `https://orbitparts.duckdns.org/onshape/panel?server={$server}&documentId={$documentId}&workspaceOrVersion={$workspaceOrVersion}&workspaceOrVersionId={$workspaceOrVersionId}&elementId={$elementId}&kind=partstudio`
+   - In a Part Studio the panel offers Sync as system Basepart (admins: also Sync as robot
+     Basepart) and the choice of Geometry sketches; in an assembly in the same document, Replace as
+     system Basepart.
 
 ## 6. Cloudflare R2 (part files, thumbnails, CAD exports)
 

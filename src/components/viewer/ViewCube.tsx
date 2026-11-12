@@ -345,6 +345,7 @@ const SHORTCUTS: [string, string][] = [
   ["← → ↑ ↓", "Turn the view 15° (with Shift: 90°)"],
   ["Y", "Hide the part under the mouse"],
   ["Shift+Y", "Bring a hidden part back"],
+  ["Shift+H", "Show or hide the Geometry sketches"],
   ["Shift+X", "Section view on / off"],
   ["N", "View normal to the section, or to a picked face (a round one: along its axis)"],
   ["Space", "Drop the last pick"],

@@ -247,7 +247,8 @@ export function createPaint(stage: Stage, meshes: PartMesh[], looks: Looks, fit:
     const white = new THREE.Color(LINE_FACE);
     const box = new THREE.Box3();
     const piece = new THREE.Box3();
-    for (const { mesh, keys, look } of meshes) {
+    for (const { mesh, keys, look, sketch } of meshes) {
+      if (sketch) continue; // Geometry sketches keep their own lines (sketches.ts)
       extras(mesh);
       const own = mode === "cad" && look;
       const base = locateKey ? ghost : own && look.opacity < 1 ? seeThrough(look.opacity) : mode === "cad" ? cad : material;

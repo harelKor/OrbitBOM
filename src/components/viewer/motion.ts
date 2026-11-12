@@ -129,7 +129,8 @@ export function createMotion(
   const explode = (to: number, settled = false) => {
     t = Math.min(1, Math.max(0, to));
     const all: ReturnType<typeof entry>[] = [];
-    meshes.forEach(({ mesh }, m) => {
+    meshes.forEach(({ mesh, sketch }, m) => {
+      if (sketch) return; // Geometry sketches stay where the design is (their lines aren't instanced)
       for (let i = 0; i < mesh.count; i++) all.push(entry(m, i));
     });
     const offs = explodeOffsets(
@@ -207,7 +208,7 @@ export function createMotion(
     moving = [];
     if (Array.isArray(target)) {
       const want = new Set(target);
-      meshes.forEach(({ keys }, m) => keys.forEach((k, i) => want.has(k) && on.shown(m, i) && moving.push({ m, i })));
+      meshes.forEach(({ keys, sketch }, m) => !sketch && keys.forEach((k, i) => want.has(k) && on.shown(m, i) && moving.push({ m, i })));
     } else moving = [target];
     if (!moving.length) return;
     placePivot();

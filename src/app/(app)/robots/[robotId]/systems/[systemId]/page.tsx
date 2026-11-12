@@ -20,7 +20,7 @@ import { listInventoryNames } from "@/lib/data/inventory";
 import { listSystemMerges, listSystemParts } from "@/lib/data/parts";
 import { getSystem } from "@/lib/data/robots";
 import { fabStage } from "@/lib/fab";
-import { robotModelBuiltAt } from "@/lib/model/build";
+import { robotModelsBuiltAt } from "@/lib/model/build";
 import { hasCapability } from "@/lib/mode";
 import { isUuid } from "@/lib/uuid";
 import { loadDraft } from "@/lib/versions/detect";
@@ -32,10 +32,12 @@ export const maxDuration = 60;
 
 export default async function SystemPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ robotId: string; systemId: string }>;
+  searchParams: Promise<{ model?: string | string[] }>;
 }) {
-  const { robotId, systemId } = await params;
+  const [{ robotId, systemId }, sp] = await Promise.all([params, searchParams]);
   if (!isUuid(robotId) || !isUuid(systemId)) notFound();
   // Everything in one parallel round: the page waits for the slowest query, not their sum.
   const member = await requireMember();
@@ -45,7 +47,7 @@ export default async function SystemPage({
     listSystemMerges(systemId),
     listInventoryNames(),
     hasCapability("sync"),
-    robotModelBuiltAt(robotId),
+    robotModelsBuiltAt(robotId),
     listRecentActions({ robotId, memberId: member.id, systemId, fabOnly: true }, 30),
     listRecentActions({ robotId, memberId: member.id, systemId }, 30),
     loadDraft(systemId),
@@ -55,6 +57,8 @@ export default async function SystemPage({
   ]);
   if (!data) notFound();
   const { system, robot, breakdown } = data;
+  // A 3D view for a system with its Final, its Basepart (Harel, 2026-11-12), or both.
+  const has3d = !!(system.assemblyUrl || system.basepartUrl);
   // Open CAD Review comments: ticked off in the Commit window, counted on the chip.
   const openComments = comments.filter((c) => c.state === "open");
   const waiting = comments.filter((c) => c.state === "done").length;
@@ -109,22 +113,24 @@ export default async function SystemPage({
 
       {/* With a 3D view: on a big screen Recent actions is a column on its right that folds sideways,
           and the 3D view takes the rest (Harel, 2026-11-08). */}
-      <div className={`grid gap-3 ${system.assemblyUrl ? "lg:h-[26rem] lg:grid-cols-[minmax(0,1fr)_auto]" : ""}`}>
-        {(system.assemblyUrl || systemActions.length > 0) && (
+      <div className={`grid gap-3 ${has3d ? "lg:h-[26rem] lg:grid-cols-[minmax(0,1fr)_auto]" : ""}`}>
+        {(has3d || systemActions.length > 0) && (
           <div className="flex max-h-80 min-h-0 flex-col lg:order-last lg:max-h-none">
-            <RecentActions actions={fabActions} systemActions={systemActions} max={30} variant="list" side={!!system.assemblyUrl} />
+            <RecentActions actions={fabActions} systemActions={systemActions} max={30} variant="list" side={has3d} />
           </div>
         )}
-        {system.assemblyUrl && (
+        {has3d && (
           <div className="flex h-[26rem] min-w-0 flex-col">
             <RobotViewer
               robotId={robot.id}
               systemId={system.id}
               statuses={breakdown.statuses.filter((s) => s.count > 0)}
               parts={viewerParts}
-              builtAt={modelBuiltAt}
-              hasAssembly
+              builtAt={modelBuiltAt.final}
+              hasAssembly={!!system.assemblyUrl}
               edit={edit}
+              basepart={{ builtAt: modelBuiltAt.basepart, linked: !!system.basepartUrl }}
+              initialModel={sp.model === "basepart" ? "basepart" : undefined}
             />
           </div>
         )}

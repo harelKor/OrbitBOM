@@ -28,6 +28,7 @@ function Meta({ c, where }: { c: ReviewComment; where?: boolean }) {
   return (
     <span className="mt-0.5 block text-[11px] text-subtle">
       {where && <span className="font-semibold text-fg-2">{c.systemName ?? "Robot"} · </span>}
+      {c.model === "basepart" && <span className="mr-1 rounded bg-violet-500/15 px-1 py-px font-semibold text-violet-600 dark:text-violet-300" title="Written on the Basepart 3D model">Basepart</span>}
       {c.author ?? "Someone"} · <LocalTime at={c.createdAt} />
       {c.onshapeVersionId && <span title="Written in the Onshape panel on this Onshape version"> · on {c.onshapeVersionName || "an Onshape version"}</span>}
     </span>
@@ -216,6 +217,7 @@ export function AddCommentDialog({
   onEditSnip,
   onRemoveSnip,
   at,
+  model = "final",
 }: {
   open: boolean;
   onClose: () => void;
@@ -228,6 +230,7 @@ export function AddCommentDialog({
   onEditSnip: () => void;
   onRemoveSnip: () => void;
   at?: { view: unknown; pin: [number, number, number] | null } | null; // the 3D view when it opened, and the newest pick's point (S6)
+  model?: "basepart" | "final"; // the 3D model it's written on (Harel, 2026-11-12)
 }) {
   const [body, setBody] = useState("");
   const { pending, error, run } = useCommentAction();
@@ -260,7 +263,7 @@ export function AddCommentDialog({
                 if ("error" in up) return up;
                 shot = up.snip;
               }
-              return addReviewComment(robotId, systemId, body, part && { key: part.key, name: part.name }, null, shot, at ?? null);
+              return addReviewComment(robotId, systemId, body, part && { key: part.key, name: part.name }, null, shot, at ?? null, model);
             },
             () => {
               setBody("");

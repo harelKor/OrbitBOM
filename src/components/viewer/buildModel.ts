@@ -11,11 +11,12 @@ export type BuildAnswer =
 
 export type BuildOutcome = { ok: true; unchanged: boolean; parts: number; calls: number } | { ok: false; error: string; calls: number };
 
-export async function buildModel(robotId: string, onProgress?: (text: string) => void): Promise<BuildOutcome> {
+// `kind`: the robot's Final model (as before) or its Basepart model (Harel, 2026-11-12).
+export async function buildModel(robotId: string, onProgress?: (text: string) => void, kind: "final" | "basepart" = "final"): Promise<BuildOutcome> {
   let calls = 0;
   try {
     for (let round = 0; round < 30; round++) {
-      const res = await fetch(`/api/robots/${robotId}/model`, { method: "POST" });
+      const res = await fetch(`/api/robots/${robotId}/model${kind === "basepart" ? "?model=basepart" : ""}`, { method: "POST" });
       const a = (await res.json().catch(() => ({ error: `The export failed (${res.status}).` }))) as BuildAnswer;
       if ("error" in a) return { ok: false, error: a.error, calls };
       calls += a.calls;

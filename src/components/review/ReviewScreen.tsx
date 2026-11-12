@@ -13,6 +13,7 @@ import { ViewerToolbar } from "@/components/review/ViewerToolbar";
 import { MeasureBox } from "@/components/viewer/MeasureBox";
 import { applyView, captureView, cleanView, hashWithView, viewFromHash, type ViewState } from "@/components/viewer/viewState";
 import { Segmented } from "@/components/ui/Segmented";
+import { ModelToggle, type ModelKind } from "@/components/dashboard/ModelToggle";
 import type { ReviewComment } from "@/lib/data/cadReview";
 
 const ModelCanvas = dynamic(() => import("@/components/dashboard/ModelCanvas").then((m) => m.ModelCanvas), { ssr: false });
@@ -46,6 +47,7 @@ export function ReviewScreen({
   onlySystem = null,
   onIsolate,
   panel,
+  models,
 }: {
   robotId: string;
   title: string;
@@ -62,7 +64,12 @@ export function ReviewScreen({
   onlySystem?: string | null; // the robot's page with one system isolated: only its parts drawn
   onIsolate?: (systemId: string) => void; // the robot's page: Isolate on each system's comments
   panel: (onFocus: (key: string) => void, openComments: ReviewComment[]) => React.ReactNode;
+  // The Basepart and Final 3D models (Harel, 2026-11-12): which one shows, whether both exist (the
+  // toggle), and switching. Comments of both are listed; a tap on one written on the other model
+  // switches to it, at its view.
+  models?: { kind: ModelKind; both: boolean; onKind: (k: ModelKind) => void };
 }) {
+  const kind: ModelKind = models?.kind ?? "final";
   const [model, setModel] = useState<ViewerModel | null | undefined>(builtAt ? undefined : null);
   const [colors, setColors] = useState<Colors>("cad");
   const [selected, setSelected] = useState<string | null>(null);
@@ -249,14 +256,21 @@ export function ReviewScreen({
   const pinNo = useMemo(() => new Map(comments.map((c, i) => [c.id, i + 1])), [comments]);
   const viewComment = useCallback(
     (c: ReviewComment) => {
+      if (models && c.model !== models.kind) {
+        // The other model: its view goes in the address for the new 3D view to put back.
+        if (c.view) history.replaceState(history.state, "", location.pathname + location.search + hashWithView(c.view));
+        models.onKind(c.model);
+        return;
+      }
       if (c.view) goToView(c.view);
       tools?.pinHot(c.pin ? c.id : null);
     },
-    [goToView, tools],
+    [goToView, tools, models],
   );
   useEffect(() => {
     if (!tools) return;
-    const shown = comments.filter((c) => c.pin && c.state !== "approved");
+    // Pins of the comments written on the model shown (they sit in its coordinates).
+    const shown = comments.filter((c) => c.pin && c.state !== "approved" && c.model === kind);
     tools.pins(
       shown.map((c) => ({ id: c.id, n: pinNo.get(c.id)!, at: c.pin!, done: c.state === "done" })),
       (id) => {
@@ -264,7 +278,7 @@ export function ReviewScreen({
         if (c) viewComment(c);
       },
     );
-  }, [tools, comments, pinNo, viewComment]);
+  }, [tools, comments, pinNo, viewComment, kind]);
   const onLocated = useCallback(() => {}, []);
   const showPart = useCallback((key: string) => {
     setSelected(null);
@@ -346,6 +360,11 @@ export function ReviewScreen({
 
       <section ref={section} className="relative min-w-0 flex-1 overflow-hidden bg-surface">
         {snipStep === "drag" && <SnipOverlay onSnip={takeSnip} onCancel={() => setSnipStep(null)} />}
+        {models?.both && (
+          <div className="absolute top-3 left-1/2 z-10 -translate-x-1/2 max-lg:top-16">
+            <ModelToggle value={models.kind} onChange={models.onKind} />
+          </div>
+        )}
         {model ? (
           <ModelCanvas
             model={model}
@@ -365,7 +384,11 @@ export function ReviewScreen({
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">
-            {model === undefined ? "Loading the 3D view…" : "The 3D view shows here once the robot's 3D model is exported (Update 3D model on the robot page)."}
+            {model === undefined
+              ? "Loading the 3D view…"
+              : kind === "basepart"
+                ? "The Basepart shows here once it's exported (Update 3D view in the Onshape panel, or Update 3D model on the robot page)."
+                : "The 3D view shows here once the robot's 3D model is exported (Update 3D model on the robot page)."}
           </div>
         )}
 
@@ -501,6 +524,7 @@ export function ReviewScreen({
           onEditSnip={() => setSnipStep("draw")}
           onRemoveSnip={() => setSnipDraft(null)}
           at={addingAt}
+          model={kind}
         />
       )}
       {snipStep === "draw" && snipDraft && (

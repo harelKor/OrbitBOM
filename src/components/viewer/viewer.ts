@@ -10,6 +10,7 @@ import { createMarks, createPicking, createSelection, createTopo, type MenuTarge
 import { createMotion } from "./motion";
 import { createPins } from "./pins";
 import { createSection } from "./section";
+import { loadSketches, sketchKeys } from "./sketches";
 import { removedBy } from "./sectionMath";
 import { createStage, stageTools } from "./stage";
 import type { Gone, PartMesh, SceneTools, ViewerModel } from "./types";
@@ -29,6 +30,7 @@ export type ViewerHost = {
   menu: (m: MenuTarget) => void; // right-click / long press: the context menu
   isolated: (keys: string[] | null) => void;
   hover?: (key: string | null) => void; // the part under the mouse (mouse only)
+  sketches?: (shown: boolean) => void; // Geometry sketches turned on or off (Shift+H)
 };
 
 export type Viewer = {
@@ -56,6 +58,7 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
     changed: () => selection.refresh(),
     hidden: (gone) => host.gone(gone),
     isolated: (keys) => host.isolated(keys),
+    sketches: (shown) => host.sketches?.(shown),
     hoverOff: () => picking?.setHover(null),
     fit: (box) => camera.fit(box),
   });
@@ -194,8 +197,29 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
     },
     () => disposed,
   );
-  loader.done
-    .then((ok) => {
+  // Geometry sketches (sketches.ts): small files, drawn when they arrive; off at first on the
+  // Final model, where Shift+H shows them (Harel, 2026-11-12).
+  if (model.sketchesHidden) visibility.tools.showSketches(false);
+  const sketchLoad = loadSketches(
+    stage,
+    model,
+    { meshes, geometries },
+    {
+      added: () => {
+        visibility.hideGroups(groupsHidden);
+        if (!shown) firstDraw();
+        stage.render();
+      },
+    },
+    () => disposed,
+  );
+  const offSketchKeys = sketchKeys(el, () => {
+    if (!visibility.tools.hasSketches()) return false;
+    visibility.tools.showSketches(!visibility.tools.sketchesShown());
+    return true;
+  });
+  Promise.all([loader.done, sketchLoad.done])
+    .then(([ok]) => {
       if (!ok) return;
       loading = false;
       loadedAll();
@@ -230,6 +254,8 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
     dispose: () => {
       disposed = true;
       loader.dispose();
+      sketchLoad.dispose();
+      offSketchKeys();
       camera.dispose();
       picking?.dispose();
       visibility.dispose();

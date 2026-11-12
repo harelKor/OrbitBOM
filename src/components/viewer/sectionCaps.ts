@@ -162,6 +162,7 @@ export function createCaps(stage: Stage, meshes: PartMesh[]): Caps {
     const at = new THREE.Matrix4();
     const copyBox = new THREE.Box3();
     meshes.forEach((pm) => {
+      if (pm.sketch) return; // a sketch has no faces to cut
       const box = meshBox(pm);
       const g = pm.mesh.geometry;
       if (!g.index) return;
@@ -213,7 +214,7 @@ export function createCaps(stage: Stage, meshes: PartMesh[]): Caps {
       const back = capMaterial(-1, false, { side: THREE.BackSide });
       back.uniforms.shade.value = SHADE;
       meshes.forEach((pm) => {
-        if (cuts.some((c) => meets(meshBox(pm), c))) twin(pm, back, 0);
+        if (!pm.sketch && cuts.some((c) => meets(meshBox(pm), c))) twin(pm, back, 0);
       });
       return;
     }
@@ -248,6 +249,7 @@ export function createCaps(stage: Stage, meshes: PartMesh[]): Caps {
       }
       const at = planeAt(c);
       meshes.forEach((pm, m) => {
+        if (pm.sketch) return; // no cap for a sketch
         const box = meshBox(pm);
         if (!meets(box, c)) return;
         const order = base + m * 5;

@@ -1,10 +1,12 @@
 import "server-only";
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
-import { asc, eq, sql } from "drizzle-orm";
+import { asc, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
+import type { GeometrySketch, ModelKind } from "@/db/schema";
 import { logCalls, onshapeClient, OnshapeError, type OnshapeClient } from "@/lib/onshape/client";
 import { partsList } from "@/lib/onshape/partsList";
+import { fetchSketches } from "@/lib/onshape/sketches";
 import { contextKey, studioRevisions, studioState, type StudioContext } from "@/lib/onshape/studioRevs";
 import { apiPath, onshapeUrl, parseOnshapeUrl, type OnshapeRef } from "@/lib/onshape/url";
 import { imageUrl, objectExists, putObject, StorageNotConfiguredError, storageConfigured } from "@/lib/storage/r2";
@@ -36,40 +38,58 @@ export type ModelPlacement = { s: number; k: string; t: number[]; g?: number }; 
 // hiding subsystems in the viewer. Models built before groups existed have none.
 export type ModelGroup = { systemIds: string[]; name: string };
 // `state`: the Part Studio's revision name (studioRevs.ts), so its parts list is shared with the BOM.
-export type Job = { key: string; path: string; state?: string; configuration?: string; linkDid?: string; done?: boolean };
-export type Built = { rev: string; builtAt: string; studios: string[]; placements: ModelPlacement[]; groups?: ModelGroup[] };
-export type Draft = { rev: string; jobs: Job[]; placements: ModelPlacement[]; groups?: ModelGroup[]; names?: Record<string, string> };
+// `sketches`: a Geometry sketches job instead (sketch.ts): those sketches of the Part Studio at
+// `path`, kept in R2 as JSON under `key`.
+export type Job = { key: string; path: string; state?: string; configuration?: string; linkDid?: string; sketches?: GeometrySketch[]; done?: boolean };
+// A Geometry sketches file placed in the model: its job / studio index, its transform, group, and
+// the robot or system it belongs to (its sketches' keys, sketch.ts).
+export type SketchPlacement = { s: number; t: number[]; g?: number; owner: string };
+export type Built = { rev: string; builtAt: string; studios: string[]; placements: ModelPlacement[]; groups?: ModelGroup[]; sketches?: SketchPlacement[] };
+export type Draft = { rev: string; jobs: Job[]; placements: ModelPlacement[]; groups?: ModelGroup[]; names?: Record<string, string>; sketches?: SketchPlacement[] };
+const SKETCH_VERSION = "1"; // bump to fetch every sketch file again after changing its format
 const PLAN_VERSION = "g2"; // bump when the plan's shape changes, so the next Update replans
-// One group's plan (a linked assembly), kept so a rebuild reads only the groups that moved.
-type GroupPlan = { rev: string; jobs: Job[]; placements: { j: number; k: string; t: number[] }[]; names: Record<string, string> };
+// One group's plan (a linked assembly or Part Studio), kept so a rebuild reads only the groups
+// that moved. `sketch`: its Geometry sketches' file (job j) and where they sit.
+type GroupPlan = { rev: string; jobs: Job[]; placements: { j: number; k: string; t: number[] }[]; names: Record<string, string>; sketch?: { j: number; t: number[]; owner: string } };
 type State = { built?: Built; draft?: Draft; plans?: Record<string, GroupPlan> };
 
-const cacheKey = (robotId: string) => `robot-model:${robotId}`;
+// The Final model keeps the key it always had; the Basepart model is new (Harel, 2026-11-12).
+const cacheKey = (robotId: string, kind: ModelKind = "final") => (kind === "final" ? `robot-model:${robotId}` : `robot-model:${robotId}:${kind}`);
 
-async function loadState(robotId: string): Promise<State> {
-  const [row] = await db.select({ payload: onshapeCache.payload }).from(onshapeCache).where(eq(onshapeCache.key, cacheKey(robotId)));
+async function loadState(robotId: string, kind: ModelKind = "final"): Promise<State> {
+  const [row] = await db.select({ payload: onshapeCache.payload }).from(onshapeCache).where(eq(onshapeCache.key, cacheKey(robotId, kind)));
   return (row?.payload as State) ?? {};
 }
 
-async function saveState(robotId: string, state: State) {
+async function saveState(robotId: string, state: State, kind: ModelKind = "final") {
   const values = { payload: state, microversion: state.built?.rev ?? null, fetchedAt: new Date() };
   await db
     .insert(onshapeCache)
-    .values({ key: cacheKey(robotId), ...values })
+    .values({ key: cacheKey(robotId, kind), ...values })
     .onConflictDoUpdate({ target: onshapeCache.key, set: values });
 }
 
 export async function deleteRobotModel(robotId: string) {
-  await db.delete(onshapeCache).where(eq(onshapeCache.key, cacheKey(robotId)));
+  await db.delete(onshapeCache).where(inArray(onshapeCache.key, [cacheKey(robotId, "final"), cacheKey(robotId, "basepart")]));
 }
 
 // When the robot's model was last built, for the dashboard. A database read only.
-export async function robotModelBuiltAt(robotId: string): Promise<string | null> {
+export async function robotModelBuiltAt(robotId: string, kind: ModelKind = "final"): Promise<string | null> {
   const [row] = await db
     .select({ builtAt: sql<string | null>`${onshapeCache.payload} -> 'built' ->> 'builtAt'` })
     .from(onshapeCache)
-    .where(eq(onshapeCache.key, cacheKey(robotId)));
+    .where(eq(onshapeCache.key, cacheKey(robotId, kind)));
   return row?.builtAt ?? null;
+}
+
+// Both models' build times, for pages with the Basepart | Final toggle (one read).
+export async function robotModelsBuiltAt(robotId: string): Promise<Record<ModelKind, string | null>> {
+  const rows = await db
+    .select({ key: onshapeCache.key, builtAt: sql<string | null>`${onshapeCache.payload} -> 'built' ->> 'builtAt'` })
+    .from(onshapeCache)
+    .where(inArray(onshapeCache.key, [cacheKey(robotId, "final"), cacheKey(robotId, "basepart")]));
+  const at = (kind: ModelKind) => rows.find((r) => r.key === cacheKey(robotId, kind))?.builtAt ?? null;
+  return { final: at("final"), basepart: at("basepart") };
 }
 
 // The built model with short-lived links to its mesh files, for the viewer. With `systemId` (a
@@ -79,27 +99,52 @@ export async function robotModelBuiltAt(robotId: string): Promise<string | null>
 // `keys` are the files' R2 keys, next to their links: a key names one Part Studio revision, so
 // the browser keeps each file under it and downloads only the ones it hasn't seen
 // (src/components/viewer/meshCache.ts).
-export type RobotModel = { builtAt: string; studios: (string | null)[]; keys: string[]; placements: ModelPlacement[]; groups: ModelGroup[] };
-export async function robotModel(robotId: string, systemId?: string): Promise<RobotModel | null> {
-  const { built } = await loadState(robotId);
+// `sketches`: the Geometry sketch files (sketch.ts) and where they sit. The Final model shows the
+// Basepart's sketches too, hidden until Shift+H (`sketchesHidden`; Harel, 2026-11-12).
+export type ModelSketches = { url: string | null; key: string; t: number[]; g?: number; owner: string };
+export type RobotModel = { builtAt: string; studios: (string | null)[]; keys: string[]; placements: ModelPlacement[]; groups: ModelGroup[]; sketches: ModelSketches[]; sketchesHidden?: boolean };
+export async function robotModel(robotId: string, systemId?: string, kind: ModelKind = "final"): Promise<RobotModel | null> {
+  const { built } = await loadState(robotId, kind);
   if (!built || !storageConfigured()) return null;
   const groups = built.groups ?? [];
-  let { studios, placements } = built;
+  const own = (g: number | undefined) => !systemId || !groups.length || (g !== undefined && !!groups[g]?.systemIds.includes(systemId));
+  const sketchKeys = new Set((built.sketches ?? []).map((s) => built.studios[s.s]));
+  // Sketch files aren't meshes: the viewer gets them apart, and no studio link for them.
+  let studios = built.studios.map((k) => (sketchKeys.has(k) ? null : k));
+  let { placements } = built;
   if (systemId && groups.length) {
-    const own = new Set(groups.flatMap((g, i) => (g.systemIds.includes(systemId) ? [i] : [])));
-    const kept = placements.filter((p) => p.g !== undefined && own.has(p.g));
+    const kept = placements.filter((p) => own(p.g));
     const used = [...new Set(kept.map((p) => p.s))];
     const index = new Map(used.map((s, i) => [s, i]));
     studios = used.map((s) => built.studios[s]);
     placements = kept.map((p) => ({ ...p, s: index.get(p.s)! }));
   }
+  let sketches: Omit<ModelSketches, "url">[] = (built.sketches ?? []).filter((s) => own(s.g)).map((s) => ({ key: built.studios[s.s], t: s.t, g: s.g, owner: s.owner }));
+  if (kind === "final") sketches = await basepartSketchesFor(robotId, groups, systemId);
   return {
     builtAt: built.builtAt,
-    studios: await Promise.all(studios.map((key) => imageUrl(key))),
-    keys: studios,
+    studios: await Promise.all(studios.map((key) => (key ? imageUrl(key) : null))),
+    keys: studios.map((k) => k ?? ""),
     placements,
     groups,
+    sketches: await Promise.all(sketches.map(async (s) => ({ ...s, url: await imageUrl(s.key) }))),
+    ...(kind === "final" ? { sketchesHidden: true } : {}),
   };
+}
+
+// The Basepart model's sketches, moved onto the Final model's groups: a system's sketches go with
+// the Final group that system is in (a system without a Final has nowhere to show them); the
+// robot's own stay ungrouped.
+async function basepartSketchesFor(robotId: string, groups: ModelGroup[], systemId?: string): Promise<Omit<ModelSketches, "url">[]> {
+  const { built } = await loadState(robotId, "basepart");
+  if (!built?.sketches?.length) return [];
+  return built.sketches.flatMap((s) => {
+    const key = built.studios[s.s];
+    if (s.owner === robotId) return systemId ? [] : [{ key, t: s.t, owner: s.owner }];
+    if (systemId && s.owner !== systemId) return [];
+    const g = groups.findIndex((gr) => gr.systemIds.includes(s.owner));
+    return g >= 0 ? [{ key, t: s.t, g, owner: s.owner }] : [];
+  });
 }
 
 // Every part key in the built model with the R2 file of the Part Studio that holds it.
@@ -149,12 +194,31 @@ export type BuildStep =
   | { state: "done"; unchanged: boolean; parts: number; calls: number }
   | { state: "working"; done: number; total: number; calls: number };
 
-export type ModelSource = OnshapeRef & { group: ModelGroup };
+// What a group is read from: an assembly (its definition), a Part Studio (its parts, where they
+// were drawn: a Basepart before its assembly exists), or only Geometry sketches (the robot's own,
+// when its Basepart isn't one of the model's sources). `sketch`: the Part Studio its chosen
+// sketches come from, and whose they are (a system's id, or the robot's).
+export type ModelSource = OnshapeRef & {
+  group: ModelGroup;
+  kind: "assembly" | "partstudio" | "sketches";
+  sketch?: { studio: OnshapeRef; chosen: GeometrySketch[]; owner: string };
+};
 
-// The assemblies the model is built from: every system's assembly, as FRCBOM's Onshape panel
-// links them (subsystems are drawn where their own assembly puts them). A robot without
-// linked systems falls back to its main assembly.
-async function modelSources(robotId: string): Promise<ModelSource[]> {
+const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+
+// The sketches part of a source, when some were chosen.
+function sketchOf(studioUrl: string | null, chosen: GeometrySketch[], owner: string): ModelSource["sketch"] {
+  const studio = studioUrl ? parseOnshapeUrl(studioUrl) : null;
+  return studio?.eid && chosen.length ? { studio, chosen, owner } : undefined;
+}
+
+// The model's sources. Final: every system's (Final) assembly, as FRCBOM's Onshape panel links
+// them (subsystems are drawn where their own assembly puts them); a robot without linked systems
+// falls back to its main (Final) assembly. Basepart (Harel, 2026-11-12): every system's Basepart,
+// Part Studio or assembly, read on its workspace; the robot's own Basepart when no system has one,
+// else just its Geometry sketches.
+async function modelSources(robotId: string, kind: ModelKind = "final"): Promise<ModelSource[]> {
+  if (kind === "basepart") return basepartSources(robotId);
   const rows = await db
     .select({ id: systems.id, name: systems.name, url: systems.assemblyUrl, follow: systems.followVersions, seen: systems.followedVersionId, pinned: systems.modelRef, ref: systemVersions.onshapeRef })
     .from(systems)
@@ -174,33 +238,63 @@ async function modelSources(robotId: string): Promise<ModelSource[]> {
     if (same) {
       same.group.systemIds.push(r.id);
       same.group.name += `, ${r.name}`;
-    } else sources.push({ ...ref, group: { systemIds: [r.id], name: r.name } });
+    } else sources.push({ ...ref, kind: "assembly", group: { systemIds: [r.id], name: r.name } });
   }
   if (sources.length) return sources;
   const [robot] = await db.select({ name: robots.name, url: robots.mainAssemblyUrl }).from(robots).where(eq(robots.id, robotId));
   const main = robot?.url ? parseOnshapeUrl(robot.url) : null;
-  return main?.eid ? [{ ...main, group: { systemIds: [], name: robot.name } }] : [];
+  return main?.eid ? [{ ...main, kind: "assembly", group: { systemIds: [], name: robot.name } }] : [];
+}
+
+async function basepartSources(robotId: string): Promise<ModelSource[]> {
+  const [rows, [robot]] = await Promise.all([
+    db
+      .select({ id: systems.id, name: systems.name, url: systems.basepartUrl, kind: systems.basepartKind, studio: systems.basepartStudioUrl, sketches: systems.basepartSketches })
+      .from(systems)
+      .where(eq(systems.robotId, robotId))
+      .orderBy(asc(systems.createdAt)),
+    db.select({ name: robots.name, url: robots.basepartUrl, kind: robots.basepartKind, studio: robots.basepartStudioUrl, sketches: robots.basepartSketches }).from(robots).where(eq(robots.id, robotId)),
+  ]);
+  const sources: ModelSource[] = [];
+  for (const r of rows) {
+    const ref = r.url ? parseOnshapeUrl(r.url) : null;
+    if (!ref?.eid) continue;
+    const same = sources.find((o) => onshapeUrl(o) === onshapeUrl(ref));
+    if (same) {
+      same.group.systemIds.push(r.id);
+      same.group.name += `, ${r.name}`;
+    } else sources.push({ ...ref, kind: r.kind === "partstudio" ? "partstudio" : "assembly", group: { systemIds: [r.id], name: r.name }, sketch: sketchOf(r.studio, r.sketches, r.id) });
+  }
+  if (!robot) return sources;
+  const own = robot.url ? parseOnshapeUrl(robot.url) : null;
+  const sketch = sketchOf(robot.studio, robot.sketches, robotId);
+  if (!sources.length && own?.eid) return [{ ...own, kind: robot.kind === "partstudio" ? "partstudio" : "assembly", group: { systemIds: [], name: robot.name }, sketch }];
+  if (sketch) sources.push({ ...sketch.studio, kind: "sketches", group: { systemIds: [], name: `${robot.name} geometry` }, sketch });
+  return sources;
 }
 
 // One group's revision: where its assembly is read, and the workspace's microversion. A version
-// or microversion never changes, so a pinned group's plan is read from Onshape once.
-const groupRev = (ref: OnshapeRef, mv: string | undefined) => `${PLAN_VERSION}|${TESS_VERSION}|${ref.wvm}:${ref.wvmid}:${ref.eid}:${mv ?? ""}`;
-const groupKey = (ref: OnshapeRef) => `${ref.did}:${ref.eid}`;
+// or microversion never changes, so a pinned group's plan is read from Onshape once. The chosen
+// sketches are part of it, so choosing others plans again.
+const groupRev = (ref: ModelSource, mv: string | undefined) =>
+  `${PLAN_VERSION}|${TESS_VERSION}|${ref.kind}|${ref.wvm}:${ref.wvmid}:${ref.eid}:${mv ?? ""}${ref.sketch ? `|${SKETCH_VERSION}:${ref.sketch.studio.eid}:${ref.sketch.chosen.map((s) => s.id).join(",")}` : ""}`;
+const groupKey = (ref: { did: string; eid?: string; kind?: ModelSource["kind"] }) => `${ref.kind === "sketches" ? "sketches:" : ""}${ref.did}:${ref.eid}`;
 
-export async function buildRobotModel(robotId: string, memberId: string, deadline: number): Promise<BuildStep> {
+export async function buildRobotModel(robotId: string, memberId: string, deadline: number, kind: ModelKind = "final"): Promise<BuildStep> {
   if (!storageConfigured()) throw new StorageNotConfiguredError();
-  const sources = await modelSources(robotId);
-  if (!sources.length) throw new OnshapeError("Link this robot's systems to their Onshape assemblies first.");
+  const sources = await modelSources(robotId, kind);
+  if (!sources.length) throw new OnshapeError(kind === "basepart" ? "Sync a Basepart Part Studio or assembly from the Onshape panel first." : "Link this robot's systems to their Onshape assemblies first.");
   const client = onshapeClient(memberId, sources[0].baseUrl);
   try {
-    return await buildStep(robotId, client, sources, deadline);
+    return await buildStep(robotId, client, sources, deadline, kind);
   } finally {
-    logCalls("3d-model", client);
+    logCalls(kind === "basepart" ? "3d-model-basepart" : "3d-model", client);
   }
 }
 
-async function buildStep(robotId: string, client: OnshapeClient, sources: ModelSource[], deadline: number): Promise<BuildStep> {
-  const state = await loadState(robotId);
+async function buildStep(robotId: string, client: OnshapeClient, sources: ModelSource[], deadline: number, kind: ModelKind): Promise<BuildStep> {
+  const state = await loadState(robotId, kind);
+  const save = (s: State) => saveState(robotId, s, kind);
 
   // 1. Change check: one microversion call per workspace document, all at once. Versions and
   // microversions never change.
@@ -230,14 +324,14 @@ async function buildStep(robotId: string, client: OnshapeClient, sources: ModelS
     const fresh = await Promise.all(stale.map((g) => planGroup(client, sources[g], revs[g])));
     stale.forEach((g, i) => (plans[groupKey(sources[g])] = fresh[i]));
     draft = mergePlans(sources, plans, rev);
-    await saveState(robotId, { ...state, draft, plans });
+    await save({ ...state, draft, plans });
   }
 
-  // 3. Part Studio meshes, eight at a time.
+  // 3. Part Studio meshes and sketch files, eight at a time.
   try {
     await runJobs(client, draft, deadline);
   } finally {
-    await saveState(robotId, { ...state, draft, plans });
+    await save({ ...state, draft, plans });
   }
 
   const done = draft.jobs.filter((j) => j.done).length;
@@ -249,17 +343,18 @@ async function buildStep(robotId: string, client: OnshapeClient, sources: ModelS
     studios: draft.jobs.map((j) => j.key),
     placements: draft.placements,
     groups: draft.groups,
+    ...(draft.sketches?.length ? { sketches: draft.sketches } : {}),
   };
-  await saveState(robotId, { built, plans });
+  await save({ built, plans });
   return { state: "done", unchanged: false, parts: built.placements.length, calls: client.calls };
 }
 
 // The whole model, step after step, on the server (no time limit there since the move off
 // Vercel): for work nobody watches in a browser, like a system linked from the Onshape panel.
-export async function buildRobotModelFully(robotId: string, memberId: string, ms = 10 * 60_000): Promise<BuildStep> {
+export async function buildRobotModelFully(robotId: string, memberId: string, ms = 10 * 60_000, kind: ModelKind = "final"): Promise<BuildStep> {
   const until = Date.now() + ms;
   for (;;) {
-    const step = await buildRobotModel(robotId, memberId, Math.min(until, Date.now() + 150_000));
+    const step = await buildRobotModel(robotId, memberId, Math.min(until, Date.now() + 150_000), kind);
     if (step.state === "done" || Date.now() > until) return step;
   }
 }
@@ -273,10 +368,15 @@ export async function runJobs(client: OnshapeClient, draft: { jobs: Job[] }, dea
     for (let job = queue.shift(); job; job = queue.shift()) {
       if (Date.now() > deadline) return;
       if (!(await objectExists(job.key))) {
-        const config = job.configuration ? `&configuration=${encodeURIComponent(job.configuration)}` : "";
-        const link = job.linkDid ? `&linkDocumentId=${job.linkDid}` : "";
-        const meshes = await studioMeshes(client, job.path, `${config}${link}`, job.state ?? null);
-        await putObject(job.key, gzipSync(encodeMeshes(meshes)), "application/gzip");
+        if (job.sketches) {
+          const file = await fetchSketches(client, job.path, job.sketches);
+          await putObject(job.key, gzipSync(Buffer.from(JSON.stringify(file))), "application/gzip");
+        } else {
+          const config = job.configuration ? `&configuration=${encodeURIComponent(job.configuration)}` : "";
+          const link = job.linkDid ? `&linkDocumentId=${job.linkDid}` : "";
+          const meshes = await studioMeshes(client, job.path, `${config}${link}`, job.state ?? null);
+          await putObject(job.key, gzipSync(encodeMeshes(meshes)), "application/gzip");
+        }
       }
       job.done = true;
     }
@@ -297,56 +397,76 @@ export function studioContext(s: StudioRef, ref: OnshapeRef): StudioContext | nu
 // (studioRevisions: 1 call per workspace context, kept for versions and microversions) and one
 // export job per Part Studio revision. A file is keyed by the Part Studio's own revision, so a
 // Part Studio that didn't change is exported once and shared by every model and Onshape version.
+// A Part Studio source is its own parts where they were drawn (its parts list: 1 call, shared
+// with the BOM's part data); a sketches-only source has no parts. Chosen Geometry sketches add one
+// sketch file job, placed where the assembly puts that Part Studio (where it was drawn, when the
+// assembly doesn't place any of its parts).
 async function planGroup(client: OnshapeClient, ref: ModelSource, rev: string): Promise<GroupPlan> {
   const jobs: Job[] = [];
   const jobIndex = new Map<string, number>();
   const placements: GroupPlan["placements"] = [];
   const names: Record<string, string> = {}; // part key → its instance name in Onshape
-  const def = flattenAssembly(
-    await client.json<AssemblyDefinition>(`assemblies/${apiPath(ref)}?includeMateFeatures=false&includeNonSolids=false&includeMateConnectors=false`),
-  );
-  const revisions = await studioRevisions(client, def.flatMap((p) => studioContext(p.studio, ref) ?? []));
+  const own: StudioRef = { did: ref.did, eid: ref.eid! };
+  const sketchStudio: StudioRef | null = ref.sketch ? { did: ref.sketch.studio.did, eid: ref.sketch.studio.eid! } : null;
+  const def =
+    ref.kind === "assembly"
+      ? flattenAssembly(await client.json<AssemblyDefinition>(`assemblies/${apiPath(ref)}?includeMateFeatures=false&includeNonSolids=false&includeMateConnectors=false`))
+      : [];
+  const contexts = [...def.map((p) => p.studio), ...(ref.kind === "partstudio" ? [own] : []), ...(sketchStudio ? [sketchStudio] : [])];
+  const revisions = await studioRevisions(client, contexts.flatMap((s) => studioContext(s, ref) ?? []));
 
-  const jobFor = (s: StudioRef): number => {
-    const own = s.did === ref.did && !s.version;
-    const path = own
+  const pathOf = (s: StudioRef) => {
+    const same = s.did === ref.did && !s.version;
+    return same
       ? `d/${s.did}/${ref.wvm}/${ref.wvmid}/e/${s.eid}`
       : s.version
         ? `d/${s.did}/v/${s.version}/e/${s.eid}`
         : s.microversion
           ? `d/${s.did}/m/${s.microversion}/e/${s.eid}`
           : apiPath({ ...ref, did: s.did, eid: s.eid });
+  };
+  const elementOf = (s: StudioRef) => {
     const context = studioContext(s, ref);
-    const element = context ? revisions.get(contextKey(context))?.get(s.eid) : undefined;
+    return context ? revisions.get(contextKey(context))?.get(s.eid) : undefined;
+  };
+  // The Part Studio's own state: its element revision, else what the read context names.
+  const studioRevOf = (s: StudioRef) => {
+    const element = elementOf(s);
+    const same = s.did === ref.did && !s.version;
     // Without its element revision, a frozen context still names one state; in a workspace the
     // group's revision does (re-exported whenever the assembly's document changes).
-    const studioRev = element
+    return element
       ? `e${element}`
       : s.version
         ? `v${s.version}`
         : s.microversion
           ? `m${s.microversion}`
-          : own && ref.wvm !== "w"
+          : same && ref.wvm !== "w"
             ? `${ref.wvm}${ref.wvmid}`
             : rev;
-    const hash = createHash("sha1")
-      .update(`${TESS_VERSION}|${studioRev}|${s.configuration ?? ""}`)
-      .digest("hex")
-      .slice(0, 20);
-    const key = `models/studios/${s.did}/${s.eid}/${hash}.bin.gz`;
-    let index = jobIndex.get(key);
+  };
+  const add = (job: Job) => {
+    let index = jobIndex.get(job.key);
     if (index === undefined) {
-      index =
-        jobs.push({
-          key,
-          path,
-          ...(element ? { state: studioState(s.did, s.eid, element) } : {}),
-          ...(s.configuration ? { configuration: s.configuration } : {}),
-          ...(s.did !== ref.did ? { linkDid: ref.did } : {}),
-        }) - 1;
-      jobIndex.set(key, index);
+      index = jobs.push(job) - 1;
+      jobIndex.set(job.key, index);
     }
     return index;
+  };
+
+  const jobFor = (s: StudioRef): number => {
+    const element = elementOf(s);
+    const hash = createHash("sha1")
+      .update(`${TESS_VERSION}|${studioRevOf(s)}|${s.configuration ?? ""}`)
+      .digest("hex")
+      .slice(0, 20);
+    return add({
+      key: `models/studios/${s.did}/${s.eid}/${hash}.bin.gz`,
+      path: pathOf(s),
+      ...(element ? { state: studioState(s.did, s.eid, element) } : {}),
+      ...(s.configuration ? { configuration: s.configuration } : {}),
+      ...(s.did !== ref.did ? { linkDid: ref.did } : {}),
+    });
   };
 
   for (const p of def) {
@@ -354,17 +474,41 @@ async function planGroup(client: OnshapeClient, ref: ModelSource, rev: string): 
     placements.push({ j: jobFor(p.studio), k, t: p.transform });
     if (p.name) names[k] = p.name;
   }
-  return { rev, jobs, placements, names };
+  if (ref.kind === "partstudio") {
+    // Every solid part where the Part Studio drew it (flat patterns are drawn by the sheet metal
+    // part they come from).
+    const j = jobFor(own);
+    const element = elementOf(own);
+    const parts = await partsList(client, pathOf(own), element ? studioState(own.did, own.eid, element) : null);
+    for (const p of parts) {
+      if (!p.partId || p.isFlattenedBody || (p.bodyType && p.bodyType !== "solid")) continue;
+      const k = partKey(own.did, own.eid, p.partId);
+      placements.push({ j, k, t: IDENTITY });
+      if (p.name) names[k] = p.name;
+    }
+  }
+  let sketch: GroupPlan["sketch"];
+  if (ref.sketch && sketchStudio) {
+    const hash = createHash("sha1")
+      .update(`${SKETCH_VERSION}|${studioRevOf(sketchStudio)}|${ref.sketch.chosen.map((s) => s.id).join(",")}`)
+      .digest("hex")
+      .slice(0, 20);
+    const j = add({ key: `models/sketches/${sketchStudio.did}/${sketchStudio.eid}/${hash}.json.gz`, path: pathOf(sketchStudio), sketches: ref.sketch.chosen });
+    const placed = def.find((p) => p.studio.did === sketchStudio.did && p.studio.eid === sketchStudio.eid);
+    sketch = { j, t: placed?.transform ?? IDENTITY, owner: ref.sketch.owner };
+  }
+  return { rev, jobs, placements, names, ...(sketch ? { sketch } : {}) };
 }
 
 // The robot's plan from its groups' plans: each Part Studio file once, placements by group.
-export function mergePlans(sources: { did: string; eid?: string; group: ModelGroup }[], plans: Record<string, GroupPlan>, rev: string): Draft {
+export function mergePlans(sources: { did: string; eid?: string; kind?: ModelSource["kind"]; group: ModelGroup }[], plans: Record<string, GroupPlan>, rev: string): Draft {
   const jobs: Job[] = [];
   const jobIndex = new Map<string, number>();
   const placements: ModelPlacement[] = [];
+  const sketches: SketchPlacement[] = [];
   const names: Record<string, string> = {};
   sources.forEach((ref, g) => {
-    const plan = plans[`${ref.did}:${ref.eid}`];
+    const plan = plans[groupKey(ref)];
     const global = plan.jobs.map((job) => {
       let index = jobIndex.get(job.key);
       if (index === undefined) {
@@ -374,7 +518,8 @@ export function mergePlans(sources: { did: string; eid?: string; group: ModelGro
       return index;
     });
     for (const p of plan.placements) placements.push({ s: global[p.j], k: p.k, t: p.t, g });
+    if (plan.sketch) sketches.push({ s: global[plan.sketch.j], t: plan.sketch.t, g, owner: plan.sketch.owner });
     Object.assign(names, plan.names);
   });
-  return { rev, jobs, placements, groups: sources.map((s) => s.group), names };
+  return { rev, jobs, placements, groups: sources.map((s) => s.group), names, ...(sketches.length ? { sketches } : {}) };
 }

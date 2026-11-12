@@ -32,7 +32,7 @@ server (`/api/mcp/<token>`).
   cotsSync.db ×1, updateBom.db "pulls a new system's BOM"): compare against those.
 - Schema: edit `src/db/schema.ts`, `npm run db:generate`, rename the file to a readable name
   (and its `tag` in `drizzle/meta/_journal.json`), add `ALTER TABLE "x" ENABLE ROW LEVEL SECURITY;`
-  for a new table, commit. Next migration: 0084.
+  for a new table, commit. Next migration: 0085.
 - Local site: README "Local development" (local Supabase in Docker, "Dev sign-in" button; Onshape
   and R2 deliberately unset). Never point local dev at production.
 - On Harel's Windows PC, Docker and `gh` aren't on the Bash PATH: run them from PowerShell, or
@@ -114,6 +114,17 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
   Manufacture document). The panel's Update system = Update BOM (commit makes Onshape's
   "V<next> BOM release" version, `onshapeName.ts`; "Update 3D views" checkbox) and Update CAD
   (`cad.ts`, `cad_updates`: a new version or a sub-version "V12 v1"; pins `systems.model_ref`).
+- Basepart and Final (2026-11-12): `systems.assembly_url` / `robots.main_assembly_url` are the
+  **Final** (the only BOM source). The **Basepart** (`basepart_url`, `basepart_kind` partstudio |
+  assembly, `basepart_studio_url`, `basepart_sketches`) is 3D and comments only: synced from the
+  Onshape panel in a Part Studio (`&kind=partstudio` extension, `src/app/onshape/panel/`), then
+  replaced by the assembly in the same document. Two models per robot: `buildRobotModel(…, kind)`
+  (`robot-model:<id>` and `robot-model:<id>:basepart`), `?model=basepart` on `/api/robots/<id>/model`
+  and on pages (Basepart | Final toggle, `ModelToggle.tsx`). Comments carry `model`.
+- Geometry sketches: chosen in the panel (`GET /api/onshape/sketches`), fetched per Part Studio
+  revision into R2 (`src/lib/onshape/sketches.ts`, format `src/lib/model/sketch.ts`), drawn by
+  `src/components/viewer/sketches.ts` as face-less PartMeshes (Shift+H, isolate, measure; picked by
+  screen distance in `picking.ts`). Hidden at first on the Final model.
 - Onshape calls (plan/onshape-calls.md): every flow logs `onshape calls flow=… total=… <kind>=n`
   (`logCalls`). Answers about a Part Studio are kept under its revision (`src/lib/onshape/studioRevs.ts`:
   shape fingerprints, `partsList.ts`); the 3D model is planned per system and rebuilds only the

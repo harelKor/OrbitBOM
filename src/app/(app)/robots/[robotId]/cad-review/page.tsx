@@ -3,10 +3,10 @@ import { requireMember } from "@/lib/auth";
 import { can } from "@/components/shell/mode";
 import { loadRobotReview } from "@/lib/data/cadReview";
 import { listSystemParts, modelPartsOfRobot } from "@/lib/data/parts";
-import { getSystem } from "@/lib/data/robots";
+import { basepartLinked, getSystem } from "@/lib/data/robots";
 import { listShellRobots } from "@/lib/data/shell";
 import { getMode } from "@/lib/mode";
-import { robotModelBuiltAt } from "@/lib/model/build";
+import { robotModelsBuiltAt } from "@/lib/model/build";
 import { canApprove, canTick } from "@/lib/reviews/comments";
 import { isUuid } from "@/lib/uuid";
 import { loadDraft } from "@/lib/versions/detect";
@@ -18,17 +18,18 @@ import { CadReview, type IsolatedExtras } from "./CadReview";
 // its own page did (?system=<id>; the old system pages redirect here). Open comments sit top right,
 // a section per system. Reads the database only; Update system and the tree's Refresh are the only
 // Onshape calls.
-export default async function CadPage({ params, searchParams }: { params: Promise<{ robotId: string }>; searchParams: Promise<{ system?: string | string[] }> }) {
+export default async function CadPage({ params, searchParams }: { params: Promise<{ robotId: string }>; searchParams: Promise<{ system?: string | string[]; model?: string | string[] }> }) {
   const [{ robotId }, sp] = await Promise.all([params, searchParams]);
   if (!isUuid(robotId)) notFound();
   const systemId = typeof sp.system === "string" && isUuid(sp.system) ? sp.system : null;
   const [member, mode] = await Promise.all([requireMember(), getMode()]);
-  const [robots, review, parts, builtAt, extras] = await Promise.all([
+  const [robots, review, parts, builtAt, extras, hasBasepart] = await Promise.all([
     listShellRobots(),
     loadRobotReview(robotId),
     modelPartsOfRobot(robotId),
-    robotModelBuiltAt(robotId),
+    robotModelsBuiltAt(robotId),
     systemId ? isolatedExtras(robotId, systemId) : null,
+    basepartLinked(robotId),
   ]);
   const robot = robots.find((r) => r.id === robotId);
   if (!robot) notFound();
@@ -41,6 +42,8 @@ export default async function CadPage({ params, searchParams }: { params: Promis
       parts={parts}
       thumbs={thumbs}
       builtAt={builtAt}
+      hasBasepart={hasBasepart}
+      initialModel={sp.model === "basepart" ? "basepart" : undefined}
       isolatedId={review.systems.some((s) => s.id === systemId) ? systemId : null}
       extras={extras}
       me={{ id: member.id, isAdmin: member.isAdmin, isMentor: member.isMentor, onshape: member.onshapeConnected }}

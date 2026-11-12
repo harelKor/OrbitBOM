@@ -2,6 +2,7 @@ import "server-only";
 import { and, eq, inArray } from "drizzle-orm";
 import { can, type Mode } from "@/components/shell/mode";
 import { db, schema } from "@/db";
+import type { ModelKind } from "@/db/schema";
 import type { Member } from "@/lib/auth";
 import { cleanView, type ViewState } from "@/components/viewer/viewState";
 import { deleteObject } from "@/lib/storage/r2";
@@ -35,7 +36,7 @@ export function canApprove(mode: Mode, member: Pick<Member, "isMentor">) {
 // written in (viewState.ts), `pin`: the newest pick's point there, assembly mm (S6).
 export async function addComment(
   member: Member,
-  input: { robotId?: string; systemId: string | null; body: string; partKey?: string | null; partName?: string | null; onshapeVersion?: { id: string; name: string } | null; snip?: SnipInput | null; view?: unknown; pin?: unknown },
+  input: { robotId?: string; systemId: string | null; body: string; partKey?: string | null; partName?: string | null; onshapeVersion?: { id: string; name: string } | null; snip?: SnipInput | null; view?: unknown; pin?: unknown; model?: ModelKind },
 ) {
   const body = input.body.trim();
   if (!body) throw new CommentError("Write the comment first.");
@@ -71,6 +72,7 @@ export async function addComment(
       snip,
       view: input.view ? cleanView(input.view) : null,
       pin: cleanPin(input.pin),
+      model: input.model === "basepart" ? "basepart" : "final",
     })
     .returning();
   return row;

@@ -39,6 +39,8 @@ export function createMeasureLayer(
   let lastLine: [V3, V3] | null = null;
   const kindName = (pk: Pick) => {
     const t = topo.topoOf(pk.m);
+    // A Geometry sketch's, named as Onshape names them.
+    if (meshes[pk.m].sketch) return pk.kind === "point" ? "Sketch point" : t.edges[pk.n]?.kind === "line" ? "Sketch line" : t.edges[pk.n]?.kind === "circle" ? (t.edges[pk.n].closed ? "Sketch circle" : "Sketch arc") : "Sketch curve";
     if (pk.kind === "point") return "Point";
     if (pk.kind === "edge") return { line: "Straight edge", circle: "Round edge", other: "Edge" }[t.edges[pk.n].kind];
     return { plane: "Flat face", cylinder: "Round face", other: "Face" }[t.faces[pk.n].kind];
@@ -47,7 +49,7 @@ export function createMeasureLayer(
     const placed: Picked[] = chosen.map((pk) => {
       const at = topo.placeOf(pk.m, pk.i).elements;
       const t = topo.topoOf(pk.m);
-      const name = on.names()?.get(meshes[pk.m].keys[pk.i]) ?? "Part";
+      const name = meshes[pk.m].sketch?.name ?? on.names()?.get(meshes[pk.m].keys[pk.i]) ?? "Part";
       if (pk.kind === "face") {
         const g = meshes[pk.m].mesh.geometry;
         return placeFace(t.faces[pk.n], g.getAttribute("position").array, g.index!.array, at, name);

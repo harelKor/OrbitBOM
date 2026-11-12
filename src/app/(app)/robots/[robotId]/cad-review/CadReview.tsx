@@ -8,6 +8,7 @@ import { VersionTree } from "@/components/review/VersionTree";
 import { UpdateSystem } from "@/components/versions/UpdateSystem";
 import type { RobotReview } from "@/lib/data/cadReview";
 import type { Draft } from "@/lib/versions/detect";
+import { rememberModel, startModel, type ModelKind } from "@/components/dashboard/ModelToggle";
 
 export type IsolatedExtras = {
   systemId: string;
@@ -36,22 +37,38 @@ export function CadReview({
   canTick,
   canApprove,
   canSync,
+  hasBasepart,
+  initialModel,
 }: {
   robotId: string;
   robotName: string;
   review: RobotReview;
   parts: ReviewPart[];
   thumbs: Record<string, string | null>;
-  builtAt: string | null;
+  builtAt: Record<ModelKind, string | null>; // each 3D model's build time
   isolatedId: string | null;
   extras: IsolatedExtras | null;
   me: { id: string; isAdmin: boolean; isMentor: boolean; onshape: boolean };
   canTick: boolean;
   canApprove: boolean;
   canSync: boolean;
+  hasBasepart: boolean; // a Basepart is linked (Harel, 2026-11-12)
+  initialModel?: ModelKind;
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  // Basepart | Final (Harel, 2026-11-12): the toggle once both exist; the address keeps the choice.
+  const hasFinal = !!builtAt.final || !hasBasepart;
+  const [kind, setKind] = useState<ModelKind>(() => startModel(initialModel, hasFinal, hasBasepart || !!builtAt.basepart));
+  const models = {
+    kind,
+    both: hasFinal && (hasBasepart || !!builtAt.basepart),
+    onKind: (k: ModelKind) => {
+      setKind(k);
+      rememberModel(k);
+    },
+  };
+  const modelUrl = `/api/robots/${robotId}/model${kind === "basepart" ? "?model=basepart" : ""}`;
   // The isolated system: set at once on a tap, then kept in step with the address (Back, links).
   const [iso, setIso] = useState(isolatedId);
   const [seen, setSeen] = useState(isolatedId);
@@ -61,7 +78,8 @@ export function CadReview({
   }
   const isolate = (id: string | null) => {
     setIso(id);
-    router.push(id ? `${pathname}?system=${id}` : pathname, { scroll: false });
+    const q = new URLSearchParams({ ...(id ? { system: id } : {}), ...(kind === "basepart" ? { model: "basepart" } : {}) }).toString();
+    router.push(q ? `${pathname}?${q}` : pathname, { scroll: false });
   };
 
   const byId = useMemo(() => new Map(review.comments.map((c) => [c.id, c])), [review.comments]);
@@ -75,11 +93,13 @@ export function CadReview({
     const comments = review.comments.filter((c) => c.systemId === sys.id);
     return (
       <ReviewScreen
+        key={kind}
+        models={models}
         robotId={robotId}
         title={sys.name}
         back={{ label: `${robotName} · whole robot`, onClick: () => isolate(null) }}
-        modelUrl={`/api/robots/${robotId}/model`}
-        builtAt={builtAt}
+        modelUrl={modelUrl}
+        builtAt={builtAt[kind]}
         parts={sysParts}
         comments={comments}
         target={{ systemId: sys.id }}
@@ -87,7 +107,7 @@ export function CadReview({
         me={me}
         canTick={canTick}
         canApprove={canApprove}
-        changes={{ label: sys.current?.label ?? null, list: sys.changes }}
+        changes={kind === "final" ? { label: sys.current?.label ?? null, list: sys.changes } : undefined}
         panel={(onFocus, open) => (
           <>
             {extra?.assemblyUrl && (canSync || extra.draft) && (
@@ -112,10 +132,12 @@ export function CadReview({
 
   return (
     <ReviewScreen
+      key={kind}
+      models={models}
       robotId={robotId}
       title={robotName}
-      modelUrl={`/api/robots/${robotId}/model`}
-      builtAt={builtAt}
+      modelUrl={modelUrl}
+      builtAt={builtAt[kind]}
       parts={parts}
       comments={review.comments}
       target={{ systems }}

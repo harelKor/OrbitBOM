@@ -6,6 +6,7 @@ import { getMode } from "@/lib/mode";
 import { addComment, approveComment, CommentError, deleteComment, rejectComment, saveSnipLines, tickComments, untickComment, type SnipInput } from "@/lib/reviews/comments";
 import { deleteNamedView, saveNamedView } from "@/lib/reviews/namedViews";
 import { isUuid } from "@/lib/uuid";
+import type { ModelKind } from "@/db/schema";
 
 // CAD Review comments (src/lib/reviews/comments.ts checks who may do what).
 export type CommentResult = { error?: string; id?: string };
@@ -23,7 +24,8 @@ async function run(fn: () => Promise<{ id?: string } | unknown>): Promise<Commen
 
 // `systemId` null: a comment on the whole robot. `onshapeVersion`: from the Onshape panel, the
 // version it was written on. `snip`: a picture cut from the 3D view, already uploaded. `at`: the
-// 3D view it was written in and its pin (S6; checked in comments.ts).
+// 3D view it was written in and its pin (S6; checked in comments.ts). `model`: the Basepart or
+// Final 3D model it was written on (Harel, 2026-11-12).
 export async function addReviewComment(
   robotId: string,
   systemId: string | null,
@@ -32,12 +34,13 @@ export async function addReviewComment(
   onshapeVersion: { id: string; name: string } | null = null,
   snip: SnipInput | null = null,
   at: { view: unknown; pin: unknown } | null = null,
+  model: ModelKind = "final",
 ): Promise<CommentResult> {
   const member = await requireMember();
   if (!isUuid(robotId) || (systemId !== null && !isUuid(systemId))) return { error: "Unknown system." };
   if (onshapeVersion && (!systemId || !/^[0-9a-f]{24}$/i.test(onshapeVersion.id) || typeof onshapeVersion.name !== "string")) return { error: "Unknown Onshape version." };
   return run(() =>
-    addComment(member, { robotId, systemId, body, partKey: part?.key ?? null, partName: part?.name ?? null, onshapeVersion: onshapeVersion && { id: onshapeVersion.id.toLowerCase(), name: onshapeVersion.name }, snip, view: at?.view, pin: at?.pin }),
+    addComment(member, { robotId, systemId, body, partKey: part?.key ?? null, partName: part?.name ?? null, onshapeVersion: onshapeVersion && { id: onshapeVersion.id.toLowerCase(), name: onshapeVersion.name }, snip, view: at?.view, pin: at?.pin, model }),
   );
 }
 

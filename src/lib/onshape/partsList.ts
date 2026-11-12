@@ -7,7 +7,7 @@ import { cachedPayloads, keepPayload } from "./studioRevs";
 // by the 3D model (colours the tessellation left out), and kept under the Part Studio's revision
 // (studioRevs.ts), so the two never ask Onshape for the same list (plan/onshape-calls.md).
 
-export type ListedPart = { partId: string; bodyType?: string; isFlattenedBody?: boolean; unflattenedPartId?: string; appearance?: unknown };
+export type ListedPart = { partId: string; name?: string; bodyType?: string; isFlattenedBody?: boolean; unflattenedPartId?: string; appearance?: unknown };
 
 // `state`: the Part Studio's revision name, null when unknown (then nothing is kept).
 // `extra`: the query's tail ("&configuration=…&linkDocumentId=…").
@@ -19,7 +19,7 @@ export async function partsList(client: OnshapeClient, path: string, state: stri
     if (kept) return kept;
   }
   const raw = await client.json<ListedPart[]>(`parts/${path}?withThumbnails=false&includeFlatParts=true${extra}`);
-  const list = raw.map(({ partId, bodyType, isFlattenedBody, unflattenedPartId, appearance }) => ({ partId, bodyType, isFlattenedBody, unflattenedPartId, appearance }));
+  const list = raw.map(({ partId, name, bodyType, isFlattenedBody, unflattenedPartId, appearance }) => ({ partId, name, bodyType, isFlattenedBody, unflattenedPartId, appearance }));
   if (key) await keepPayload(key, list);
   return list;
 }

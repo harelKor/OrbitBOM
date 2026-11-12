@@ -250,6 +250,8 @@ export function createPicking(
   });
   const hoverLayer = new THREE.Group();
   root.add(hoverLayer);
+  // A Geometry sketch under the mouse: its lines and points in the hover blue (it has no faces).
+  const hoverSketch = { line: new THREE.LineBasicMaterial({ color: HOVER, depthTest: false, transparent: true }), dot: new THREE.PointsMaterial({ color: HOVER, size: 7, sizeAttenuation: false, depthTest: false, transparent: true }) };
   let hovered: { m: number; i: number } | null = null;
   const setHover = (h: { m: number; i: number } | null) => {
     if (h?.m === hovered?.m && h?.i === hovered?.i) return;
@@ -258,7 +260,14 @@ export function createPicking(
     hoverLayer.clear();
     // A part hidden while measuring: its blue face / edge mark goes with it.
     if (!h) measure()?.hover(null);
-    if (h) {
+    if (h && meshes[h.m].sketch) {
+      for (const c of meshes[h.m].mesh.children) {
+        const lit = (c as THREE.Points).isPoints ? new THREE.Points((c as THREE.Points).geometry, hoverSketch.dot) : new THREE.LineSegments((c as THREE.LineSegments).geometry, hoverSketch.line);
+        lit.renderOrder = 12;
+        lit.raycast = () => {};
+        hoverLayer.add(lit);
+      }
+    } else if (h) {
       const { mesh } = meshes[h.m];
       const lit = new THREE.Mesh(mesh.geometry, hoverLook);
       mesh.getMatrixAt(h.i, lit.matrix);
@@ -319,11 +328,63 @@ export function createPicking(
     ray.firstHitOnly = false;
     return ray;
   };
+  // `tri` -1: a Geometry sketch, which has no faces.
   type Hit = { m: number; i: number; tri: number; point: THREE.Vector3 };
+  // Geometry sketches (sketches.ts) have nothing for a ray to hit: one is under the pointer when
+  // one of its lines or points is within a few pixels of it on screen, nearest first. They come
+  // before the parts, like Onshape picks a sketch line over the face behind it.
+  const SKETCH_REACH = 12;
+  const sketchHits = (e: { clientX: number; clientY: number }, kept: ((p: THREE.Vector3) => boolean) | null): Hit[] => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const v = new THREE.Vector3();
+    const found: (Hit & { d: number })[] = [];
+    meshes.forEach((pm, m) => {
+      if (!pm.sketch || !pm.mesh.visible) return;
+      const toWorld = topo.placeOf(m, 0);
+      if (Math.abs(toWorld.determinant()) < 1e-12) return; // hidden with Y
+      toWorld.premultiply(root.matrixWorld);
+      const t = topo.topoOf(m);
+      const screen = (q: V3): [number, number] | null => {
+        v.set(q[0], q[1], q[2]).applyMatrix4(toWorld);
+        if (kept && !kept(v)) return null;
+        v.project(stage.camera);
+        return v.z > 1 ? null : [((v.x + 1) / 2) * rect.width, ((1 - v.y) / 2) * rect.height];
+      };
+      let best = SKETCH_REACH;
+      let at: V3 | null = null;
+      for (const q of t.corners) {
+        const s = screen(q);
+        const d = s ? Math.hypot(s[0] - x, s[1] - y) : Infinity;
+        if (d < best) [best, at] = [d, q];
+      }
+      for (const ed of t.edges) {
+        const pts = ed.points.map(screen);
+        const count = ed.closed ? pts.length : pts.length - 1;
+        for (let j = 0; j < count; j++) {
+          const a = pts[j];
+          const b = pts[(j + 1) % pts.length];
+          if (!a || !b) continue;
+          const dx = b[0] - a[0], dy = b[1] - a[1];
+          const l2 = dx * dx + dy * dy;
+          const u = l2 ? Math.min(1, Math.max(0, ((x - a[0]) * dx + (y - a[1]) * dy) / l2)) : 0;
+          const d = Math.hypot(a[0] + u * dx - x, a[1] + u * dy - y);
+          if (d < best) {
+            const p = ed.points[j], q = ed.points[(j + 1) % ed.points.length];
+            [best, at] = [d, [p[0] + (q[0] - p[0]) * u, p[1] + (q[1] - p[1]) * u, p[2] + (q[2] - p[2]) * u]];
+          }
+        }
+      }
+      if (at) found.push({ m, i: 0, tri: -1, point: new THREE.Vector3(...at).applyMatrix4(toWorld), d: best });
+    });
+    return found.sort((a, b) => a.d - b.d).map(({ m, i, tri, point }) => ({ m, i, tri, point }));
+  };
   // `all`: every part along the ray (Select other); else the BVH stops at each mesh's nearest hit.
   const hitsAt = (e: { clientX: number; clientY: number }, all = false): Hit[] => {
     aim(e.clientX, e.clientY);
     const kept = on.kept?.() ?? null;
+    const sketches = sketchHits(e, kept);
     // With a section the nearest hit on a mesh may be cut away, so every hit is needed.
     ray.firstHitOnly = !all && !kept;
     const out: Hit[] = [];
@@ -336,7 +397,7 @@ export function createPicking(
       if (kept && !kept(hit.point)) continue;
       out.push({ m, i: hit.instanceId, tri: hit.faceIndex ?? 0, point: hit.point });
     }
-    return out;
+    return [...sketches, ...out];
   };
   const hitAt = (e: { clientX: number; clientY: number }) => hitsAt(e)[0] ?? null;
   const keyOf = (h: { m: number; i: number } | null | undefined) => (h ? (meshes[h.m].keys[h.i] ?? null) : null);
@@ -391,6 +452,7 @@ export function createPicking(
       });
       if (n >= 0) return { m: h.m, i: h.i, kind: "edge", n };
     }
+    if (h.tri < 0) return null; // a sketch: lines and points only
     if (filter === "any" || filter === "face") return { m: h.m, i: h.i, kind: "face", n: t.triFace[h.tri] };
     return null;
   };
@@ -409,8 +471,9 @@ export function createPicking(
     labelTimer = window.setTimeout(() => {
       const names = on.names();
       const key = keyOf(hovered);
-      if (!names || !key) return;
-      label.textContent = names.get(key) ?? "Placed in CAD, not on the BOM";
+      const sketch = hovered ? meshes[hovered.m]?.sketch : undefined;
+      if (!key || (!names && !sketch)) return;
+      label.textContent = sketch ? `Sketch · ${sketch.name}` : (names!.get(key) ?? "Placed in CAD, not on the BOM");
       label.classList.remove("hidden");
       const r = el.getBoundingClientRect();
       const left = Math.min(x - r.left + 14, r.width - label.offsetWidth - 4);
@@ -707,6 +770,8 @@ export function createPicking(
       label.remove();
       box?.div.remove();
       hoverLook.dispose();
+      hoverSketch.line.dispose();
+      hoverSketch.dot.dispose();
       outlineFill.dispose();
       outlineLine.dispose();
     },

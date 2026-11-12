@@ -8,7 +8,7 @@ import { buildTree, type TreeNode } from "@/lib/reviews/tree";
 import { imageUrl } from "@/lib/storage/r2";
 import { listCadSubs } from "@/lib/versions/cad";
 import { keptDocVersions } from "@/lib/versions/docVersions";
-import type { Snip } from "@/db/schema";
+import type { ModelKind, Snip } from "@/db/schema";
 import { primaryVersion, versionLabel } from "@/lib/versions/label";
 
 const { members, reviewComments, systems, systemVersions } = schema;
@@ -39,6 +39,7 @@ export type ReviewComment = {
   snip: (Snip & { url: string | null }) | null; // the picture's short-lived link
   view: ViewState | null; // the 3D view it was written in (S6)
   pin: [number, number, number] | null; // its point there, assembly mm
+  model: ModelKind; // written on the Basepart or the Final 3D model (Harel, 2026-11-12)
 };
 
 // A system's comments, or with `robotId` every comment of the robot (its own and its systems').
@@ -80,6 +81,7 @@ export async function listComments(scope: string | { robotId: string }): Promise
     snip: r.snip ? { ...r.snip, url: urls.get(r.snip.path) ?? null } : null,
     view: r.view ?? null,
     pin: r.pin ?? null,
+    model: r.model,
   }));
 }
 

@@ -15,6 +15,7 @@ export type VisibilityState = {
   isolated: string[] | null;
   ghost: boolean; // isolate shows the others as see-through ghosts (else hides them)
   clear: string[]; // parts made see-through
+  sketches?: boolean; // Geometry sketches shown (Shift+H); left out when the model has none
 };
 
 export type VisibilityTools = {
@@ -28,6 +29,10 @@ export type VisibilityTools = {
   setClear: (keys: string[], clear: boolean) => void; // Make transparent / Make opaque
   isClear: (key: string) => boolean;
   zoomTo: (keys: string[]) => void; // frame these parts' shown copies
+  // Geometry sketches (sketches.ts) on or off, like Onshape's Shift+H (Harel, 2026-11-12).
+  showSketches: (on: boolean) => void;
+  sketchesShown: () => boolean;
+  hasSketches: () => boolean;
   visibilityState: () => VisibilityState;
   setVisibilityState: (s: VisibilityState) => void;
 };
@@ -57,6 +62,7 @@ export function createVisibility(
     changed: () => void; // anything shown or hidden: redraw what depends on it (the selection)
     hidden: (gone: Gone[]) => void; // the list of hidden copies changed
     isolated: (keys: string[] | null) => void; // Isolate turned on, changed or ended
+    sketches?: (shown: boolean) => void; // Geometry sketches turned on or off
     hoverOff: () => void; // a copy was hidden: drop the hover wash
     fit: (box: THREE.Box3) => void;
   },
@@ -143,14 +149,17 @@ export function createVisibility(
   // No ghosts unless asked for, like Onshape's Isolate (Harel, 2026-11-11).
   let ghost = false;
   let groupsHidden = new Set<number>();
+  let sketchesOn = true;
   const ghosts = new THREE.Group();
   root.add(ghosts);
   const applyVisible = () => {
     ghosts.clear();
-    for (const { mesh, g, keys } of meshes) {
+    for (const { mesh, g, keys, sketch } of meshes) {
       const inGroup = !groupsHidden.has(g);
-      mesh.visible = inGroup && (!isolated || keys.some((k) => isolated!.has(k)));
-      if (inGroup && !mesh.visible && ghost) {
+      const picked = !!isolated && keys.some((k) => isolated!.has(k));
+      // A sketch isolated by name shows even with the sketches off.
+      mesh.visible = inGroup && (sketch ? picked || (sketchesOn && !isolated) : !isolated || picked);
+      if (inGroup && !mesh.visible && ghost && !sketch) {
         const shade = new THREE.InstancedMesh(mesh.geometry, looks.ghost, mesh.count);
         shade.instanceMatrix = mesh.instanceMatrix;
         shade.frustumCulled = false;
@@ -195,7 +204,8 @@ export function createVisibility(
     return c;
   };
   const applyClear = () => {
-    for (const { mesh, keys } of meshes) {
+    for (const { mesh, keys, sketch } of meshes) {
+      if (sketch) continue;
       const cur = mesh.material as THREE.Material;
       const base = origin.get(cur) ?? cur;
       mesh.material = base !== looks.ghost && keys.some((k) => clear.has(k)) ? seeThrough(base) : base;
@@ -236,6 +246,7 @@ export function createVisibility(
     isolated: isolated && [...isolated],
     ghost,
     clear: [...clear],
+    ...(hasSketches() ? { sketches: sketchesOn } : {}),
   });
   // Each saved hidden copy: the copy of that part nearest to where it was (within 1 mm).
   const setVisibilityState = (s: VisibilityState) => {
@@ -262,8 +273,20 @@ export function createVisibility(
     applyClear();
     isolated = s.isolated?.length ? new Set(s.isolated) : null;
     ghost = s.ghost;
+    if (s.sketches !== undefined && sketchesOn !== s.sketches) {
+      sketchesOn = s.sketches;
+      on.sketches?.(sketchesOn);
+    }
     applyVisible();
     on.isolated(isolated && [...isolated]);
+  };
+
+  const hasSketches = () => meshes.some((pm) => !!pm.sketch);
+  const showSketches = (shown: boolean) => {
+    if (sketchesOn === shown) return;
+    sketchesOn = shown;
+    applyVisible();
+    on.sketches?.(shown);
   };
 
   return {
@@ -284,7 +307,7 @@ export function createVisibility(
       if (was) was.copy(at);
       else meshes[m].mesh.setMatrixAt(i, at);
     },
-    tools: { hideKey, hideOthers, showOthers, isolate, showAll, setClear, isClear: (k) => clear.has(k), zoomTo, visibilityState, setVisibilityState },
+    tools: { hideKey, hideOthers, showOthers, isolate, showAll, setClear, isClear: (k) => clear.has(k), zoomTo, visibilityState, setVisibilityState, showSketches, sketchesShown: () => sketchesOn, hasSketches },
     // Ghosts share their mesh's matrices: only dropped, never disposed (that would free the
     // shared buffer).
     dispose: () => {

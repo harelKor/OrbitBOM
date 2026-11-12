@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { statusBreakdown, type Breakdown } from "@/lib/stats";
 import { isUuid } from "@/lib/uuid";
@@ -98,4 +98,15 @@ export async function listBomTargets() {
     robot.systems.push({ id: r.systemId, name: r.systemName });
   }
   return out;
+}
+
+// Whether the robot or one of its systems has a Basepart linked (Harel, 2026-11-12): the CAD page's
+// Basepart | Final toggle.
+export async function basepartLinked(robotId: string): Promise<boolean> {
+  if (!isUuid(robotId)) return false;
+  const [[robot], [system]] = await Promise.all([
+    db.select({ url: robots.basepartUrl }).from(robots).where(eq(robots.id, robotId)),
+    db.select({ id: systems.id }).from(systems).where(and(eq(systems.robotId, robotId), isNotNull(systems.basepartUrl))).limit(1),
+  ]);
+  return !!robot?.url || !!system;
 }

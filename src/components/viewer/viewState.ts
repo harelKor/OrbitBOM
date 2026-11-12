@@ -65,6 +65,7 @@ export function cleanView(x: unknown): ViewState | null {
       isolated: keys(vis.isolated) ? (vis.isolated as string[]) : null,
       ghost: vis.ghost === true,
       clear: keys(vis.clear) ? (vis.clear as string[]) : [],
+      ...(typeof vis.sketches === "boolean" ? { sketches: vis.sketches } : {}),
     };
   }
   const sec = o.section as Record<string, unknown> | null | undefined;
@@ -83,7 +84,7 @@ export function cleanView(x: unknown): ViewState | null {
 export function captureView(tools: SceneTools, colors?: string): ViewState {
   const vis = tools.visibilityState();
   const section = tools.sectionNow();
-  const busy = vis.hidden.length || vis.isolated || vis.clear.length;
+  const busy = vis.hidden.length || vis.isolated || vis.clear.length || vis.sketches !== undefined;
   return {
     pose: tools.pose(),
     vis: busy ? vis : undefined,
