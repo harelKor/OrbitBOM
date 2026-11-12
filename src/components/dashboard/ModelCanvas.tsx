@@ -247,7 +247,7 @@ export function ModelCanvas({
                 </li>
               ))}
           </ul>
-          <p className="border-t border-line px-2.5 py-1 text-[10px] text-subtle pointer-coarse:hidden">Y hides · Shift+Y brings back the one under the mouse</p>
+          <p className="border-t border-line px-2.5 py-1 text-[0.625rem] text-subtle pointer-coarse:hidden">Y hides · Shift+Y brings back the one under the mouse</p>
         </div>
       )}
     </div>

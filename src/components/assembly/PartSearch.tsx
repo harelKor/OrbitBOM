@@ -109,8 +109,8 @@ export function PartSearch({ parts, picked, usedIn, onToggle }: { parts: Assembl
                     {[p.number, `×${p.qty}`, step ? `in step ${step}` : null].filter(Boolean).join(" · ")}
                   </span>
                 </span>
-                {p.cots && <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-600">COTS</span>}
-                {!p.key.startsWith("id:") ? null : <span className="shrink-0 text-[10px] text-subtle" title="Not placed in the 3D model: listed with the step, not drawn">no 3D</span>}
+                {p.cots && <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[0.625rem] font-bold text-amber-600">COTS</span>}
+                {!p.key.startsWith("id:") ? null : <span className="shrink-0 text-[0.625rem] text-subtle" title="Not placed in the 3D model: listed with the step, not drawn">no 3D</span>}
                 <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border text-xs font-bold ${on ? "border-accent bg-accent text-white" : "border-line-strong text-muted"}`}>{on ? "✓" : "+"}</span>
               </button>
             );

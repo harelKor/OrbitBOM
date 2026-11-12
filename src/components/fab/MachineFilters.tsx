@@ -46,7 +46,7 @@ export function MobileMachines({ total, machines, active, activeId, href }: {
       >
         <Chevron open={open} small className="hover:bg-transparent" />
         Machines
-        {active && <span className="ml-0.5 rounded-full bg-accent px-1.5 font-mono text-[10px] text-white tabular-nums">1</span>}
+        {active && <span className="ml-0.5 rounded-full bg-accent px-1.5 font-mono text-[0.625rem] text-white tabular-nums">1</span>}
       </button>
       {!open && active && (
         <ShallowLink
@@ -88,7 +88,7 @@ export function MaterialFilters({ counts, active }: { counts: Map<string, number
         <Chevron open={open} small className="hover:bg-transparent" />
         <span className="sm:hidden">Materials</span>
         <span className="hidden sm:inline">Filters</span>
-        {active && <span className="ml-0.5 rounded-full bg-accent px-1.5 font-mono text-[10px] text-white tabular-nums">1</span>}
+        {active && <span className="ml-0.5 rounded-full bg-accent px-1.5 font-mono text-[0.625rem] text-white tabular-nums">1</span>}
       </button>
       {!open && active && (
         <button
@@ -139,7 +139,7 @@ export function MaterialBoxes({ counts, active }: { counts: Map<string, number>;
         </span>
         <span className="min-w-0">
           <span className="block text-xs leading-tight font-bold whitespace-nowrap text-fg">{materialLabel(m)}</span>
-          <span className="block font-mono text-[11px] text-subtle tabular-nums">{counts.get(m)}</span>
+          <span className="block font-mono text-[0.6875rem] text-subtle tabular-nums">{counts.get(m)}</span>
         </span>
       </button>
     );

@@ -23,7 +23,7 @@ const FACES: { label: string; n: V; r: V; u: V; place: string }[] = [
 const CELLS = [1, 0, -1].flatMap((b) => [-1, 0, 1].map((a) => [a, b] as const));
 const dirOf = (f: (typeof FACES)[number], a: number, b: number): V => [0, 1, 2].map((k) => f.n[k] + a * f.r[k] + b * f.u[k]) as V;
 
-const key = "press flex items-center justify-center rounded text-[10px] font-semibold text-fg-2 hover:bg-raised hover:text-fg active:scale-[0.98]";
+const key = "press flex items-center justify-center rounded text-[0.625rem] font-semibold text-fg-2 hover:bg-raised hover:text-fg active:scale-[0.98]";
 const box = "rounded-md border border-line bg-surface/95 shadow-sm backdrop-blur";
 
 // The cube menu's views, Onshape's order and keys.
@@ -94,7 +94,7 @@ export function ViewCube({ tools, views }: { tools: SceneTools; views?: NamedVie
     setMenu(false);
   };
   const item = "press flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-fg-2 hover:bg-raised hover:text-fg pointer-coarse:min-h-9";
-  const hint = "ml-auto text-[10px] text-subtle pointer-coarse:hidden";
+  const hint = "ml-auto text-[0.625rem] text-subtle pointer-coarse:hidden";
   const line = "my-1 h-px bg-line";
 
   return (
@@ -126,7 +126,7 @@ export function ViewCube({ tools, views }: { tools: SceneTools; views?: NamedVie
                       key={`${a},${b}`}
                       aria-label={a || b ? undefined : `${f.label} view`}
                       tabIndex={a || b ? -1 : 0}
-                      className={`flex items-center justify-center overflow-visible text-[10px] font-semibold tracking-wide text-fg uppercase ${hot === id ? "bg-accent/25 text-accent-hover" : ""}`}
+                      className={`flex items-center justify-center overflow-visible text-[0.625rem] font-semibold tracking-wide text-fg uppercase ${hot === id ? "bg-accent/25 text-accent-hover" : ""}`}
                       onPointerEnter={(e) => e.pointerType === "mouse" && setHot(id)}
                       onClick={() => tools.look(dir)}
                     >
@@ -263,7 +263,7 @@ function NamedViewsBlock({ views, close, item, line }: { views: NamedViews; clos
   return (
     <>
       <div className={line} />
-      <p className="px-2 pt-1 pb-0.5 text-[10px] font-semibold tracking-wide text-subtle uppercase">Named views</p>
+      <p className="px-2 pt-1 pb-0.5 text-[0.625rem] font-semibold tracking-wide text-subtle uppercase">Named views</p>
       {views.list.map((v) => (
         <div key={v.id} className="group flex items-center">
           <button
@@ -305,7 +305,7 @@ function NamedViewsBlock({ views, close, item, line }: { views: NamedViews; clos
           }}
         >
           <input autoFocus value={name} onChange={(e) => setName(e.target.value)} maxLength={80} placeholder="View name" className="input h-8 w-full text-xs pointer-coarse:h-9" aria-label="View name" />
-          {error && <span className="text-[11px] text-rose-600">{error}</span>}
+          {error && <span className="text-[0.6875rem] text-rose-600">{error}</span>}
           <div className="flex gap-1">
             <button className="btn-primary h-7 flex-1 justify-center text-xs active:scale-[0.98] pointer-coarse:h-9" disabled={busy || !name.trim()}>
               {busy ? "Saving…" : "Save"}
@@ -367,7 +367,7 @@ function Shortcuts({ onClose }: { onClose: () => void }) {
           {SHORTCUTS.map(([k, what]) => (
             <div key={k} className="contents">
               <dt>
-                <kbd className="rounded border border-line bg-raised px-1.5 py-0.5 font-mono text-[11px] whitespace-nowrap text-fg">{k}</kbd>
+                <kbd className="rounded border border-line bg-raised px-1.5 py-0.5 font-mono text-[0.6875rem] whitespace-nowrap text-fg">{k}</kbd>
               </dt>
               <dd className="self-center text-fg-2">{what}</dd>
             </div>

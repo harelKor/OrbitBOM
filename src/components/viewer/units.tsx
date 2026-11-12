@@ -44,7 +44,7 @@ export function UnitsSwitch({ className = "" }: { className?: string }) {
       role="radio"
       aria-checked={units === u}
       onClick={() => setUnits(u)}
-      className={`press rounded px-1.5 py-0.5 text-[11px] font-semibold active:scale-[0.98] pointer-coarse:min-h-9 pointer-coarse:px-2.5 ${units === u ? "bg-accent/15 text-accent-hover" : "text-subtle hover:bg-raised hover:text-fg"}`}
+      className={`press rounded px-1.5 py-0.5 text-[0.6875rem] font-semibold active:scale-[0.98] pointer-coarse:min-h-9 pointer-coarse:px-2.5 ${units === u ? "bg-accent/15 text-accent-hover" : "text-subtle hover:bg-raised hover:text-fg"}`}
     >
       {label}
     </button>

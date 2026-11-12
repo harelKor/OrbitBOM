@@ -86,7 +86,7 @@ const TAG_BADGE: Record<PartTag, string> = {
 export function TypeBadge({ part }: { part: CardPart }) {
   const tag = partTag(part);
   return (
-    <span className={`rounded-full px-2.5 py-1 text-[11px] leading-none font-bold tracking-wide shadow-sm ${TAG_BADGE[tag]}`}>
+    <span className={`rounded-full px-2.5 py-1 text-[0.6875rem] leading-none font-bold tracking-wide shadow-sm ${TAG_BADGE[tag]}`}>
       {PART_TAG_LABELS[tag]}
     </span>
   );
@@ -103,7 +103,7 @@ export function TypeField({ part, save, badge = false }: Props & { badge?: boole
           <TypeBadge part={part} />
         ) : (
           <span
-            className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${
+            className={`rounded border px-1.5 py-0.5 text-[0.625rem] font-semibold ${
               part.classification === "cots" ? "border-amber-300 text-amber-700" : "border-emerald-300 text-emerald-700"
             }`}
           >

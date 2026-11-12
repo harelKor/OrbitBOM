@@ -159,7 +159,7 @@ export function FitPicker({ parts, value, onPick }: { parts: FitPart[]; value: F
           </button>
         ))}
         {!rows.length && <p className="px-2 py-2 text-xs text-white/50">{items ? "Nothing matches." : "Loading…"}</p>}
-        {!q && items && <p className="px-2 py-1.5 text-[11px] text-white/40">Type to search the whole inventory.</p>}
+        {!q && items && <p className="px-2 py-1.5 text-[0.6875rem] text-white/40">Type to search the whole inventory.</p>}
       </div>
       )}
     </div>
@@ -170,7 +170,7 @@ function Thumb({ url }: { url: string | null }) {
   return (
     <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-gradient-to-b from-white to-slate-100">
       {/* eslint-disable-next-line @next/next/no-img-element -- signed R2 thumbnails */}
-      {url ? <img src={url} alt="" loading="lazy" className="h-full w-full object-contain" /> : <span className="text-[10px] text-slate-400">—</span>}
+      {url ? <img src={url} alt="" loading="lazy" className="h-full w-full object-contain" /> : <span className="text-[0.625rem] text-slate-400">—</span>}
     </span>
   );
 }
@@ -178,5 +178,5 @@ function Thumb({ url }: { url: string | null }) {
 function Badge({ t }: { t: FitTarget }) {
   const [label, cls] =
     t.kind === "part" ? ["Part", "bg-sky-500/15 text-sky-300"] : t.category === "bearings" ? ["Bearing", "bg-amber-500/15 text-amber-300"] : ["Inventory", "bg-white/10 text-white/60"];
-  return <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${cls}`}>{label}</span>;
+  return <span className={`shrink-0 rounded px-1.5 py-0.5 text-[0.625rem] font-medium ${cls}`}>{label}</span>;
 }

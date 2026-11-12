@@ -90,7 +90,7 @@ export function ListRow({
 // A small pill inside a list row.
 export function ListPill({ children, color, title }: { children: React.ReactNode; color?: string; title?: string }) {
   return (
-    <span title={title} className="inline-flex max-w-full items-center gap-1.5 truncate rounded-full border border-line-strong bg-ink/60 px-2.5 py-0.5 text-[11px] font-medium text-fg-2">
+    <span title={title} className="inline-flex max-w-full items-center gap-1.5 truncate rounded-full border border-line-strong bg-ink/60 px-2.5 py-0.5 text-[0.6875rem] font-medium text-fg-2">
       {color && <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: color }} />}
       {children}
     </span>

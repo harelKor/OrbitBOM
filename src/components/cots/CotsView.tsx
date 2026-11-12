@@ -592,7 +592,7 @@ export function CotsView({
                 </span>
                 <span className="min-w-0">
                   <span className="block text-xs leading-tight font-bold whitespace-nowrap text-fg">{v}</span>
-                  <span className="font-mono text-[11px] text-subtle tabular-nums">{rowsOf(main.filter((p) => vendorOf(p) === v)).length}</span>
+                  <span className="font-mono text-[0.6875rem] text-subtle tabular-nums">{rowsOf(main.filter((p) => vendorOf(p) === v)).length}</span>
                 </span>
               </button>
             );
@@ -855,7 +855,7 @@ function GroupBox({ row, onClose, children, ...drag }: { row: Row; onClose: () =
             ×{p.quantity} in {new Set(row.members.map((m) => m.systemId)).size} systems
           </span>
         </span>
-        <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[11px] font-bold text-amber-950">Close ⧉</span>
+        <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[0.6875rem] font-bold text-amber-950">Close ⧉</span>
       </button>
       <div className="card-grid cursor-default border-t border-line p-3" style={{ "--card-min": "240px" } as React.CSSProperties}>
         {children}

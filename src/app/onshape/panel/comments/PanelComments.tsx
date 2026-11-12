@@ -189,7 +189,7 @@ function VersionLine({ state }: { state: VersionState }) {
         <p className="flex flex-wrap items-center gap-1.5 text-fg-2">
           On Onshape version <span className="font-mono font-semibold text-fg">{v.name || "(unnamed)"}</span>
           {state.data?.ahead && (
-            <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-600" title="Update system hasn't brought this version into the BOM yet">
+            <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[0.6875rem] font-semibold text-amber-600" title="Update system hasn't brought this version into the BOM yet">
               Newer than the BOM{state.data.bom ? ` (${state.data.bom})` : ""}
             </span>
           )}
@@ -227,9 +227,9 @@ function CommentSection({ name, comments, me, canTick, canApprove }: { name: str
           ▶
         </span>
         <span className="min-w-0 flex-1 truncate font-semibold text-fg">{name}</span>
-        {open.length > 0 && <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-600 tabular-nums">{open.length} open</span>}
-        {waiting.length > 0 && <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-[11px] font-semibold text-sky-600 tabular-nums">{waiting.length} waiting</span>}
-        {!open.length && !waiting.length && <span className="text-[11px] text-subtle tabular-nums">{approved.length} approved</span>}
+        {open.length > 0 && <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[0.6875rem] font-semibold text-amber-600 tabular-nums">{open.length} open</span>}
+        {waiting.length > 0 && <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-[0.6875rem] font-semibold text-sky-600 tabular-nums">{waiting.length} waiting</span>}
+        {!open.length && !waiting.length && <span className="text-[0.6875rem] text-subtle tabular-nums">{approved.length} approved</span>}
       </summary>
       <div className="space-y-3 border-t border-line px-2 pt-2 pb-3">
         {open.length > 0 && (

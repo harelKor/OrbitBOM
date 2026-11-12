@@ -8,6 +8,7 @@ import { PartDetailsProvider } from "@/components/bom/PartDetailsHost";
 import { Toaster } from "@/components/ui/Toaster";
 import { useEscape } from "@/components/ui/useEscape";
 import { ArrivalsProvider } from "./Arrivals";
+import { uiScale } from "./boot-scripts";
 import { FilterProvider } from "./FilterContext";
 import { LeftNav } from "./LeftNav";
 import { MaterialColorsProvider } from "./MaterialColors";
@@ -39,6 +40,9 @@ const ROBOTS_KEY = "orbit-robots-width";
 const ROBOTS_DEFAULT = 288;
 const ROBOTS_SMALLEST = 200;
 const WIDE = { left: "(min-width: 64rem)", right: "(min-width: 80rem)" } as const;
+// A column's width as CSS: kept in px as on a full-size screen, shrunk with the app on a small PC
+// screen (--ui, boot-scripts.ts).
+const colWidth = (w: number) => `calc(${w}px * var(--ui, 1))`;
 // Side swipes on phones: how far a swipe must travel sideways (px).
 const SWIPE = 50;
 
@@ -265,7 +269,7 @@ export function Shell({
             <PartDetailsProvider>
               <div
                 ref={root}
-                style={{ "--nav-w": `${nav.w}px`, "--nav-zoom": nav.z, "--robots-w": `${robotsCol.w}px`, "--robots-zoom": robotsCol.z } as React.CSSProperties}
+                style={{ "--nav-w": colWidth(nav.w), "--nav-zoom": nav.z, "--robots-w": colWidth(robotsCol.w), "--robots-zoom": robotsCol.z } as React.CSSProperties}
                 className={`flex min-h-dvh max-w-full overflow-x-clip [--shell-left:0px] [--shell-right:0px] ${collapsed.left ? "" : "lg:[--shell-left:var(--nav-w)]"} ${collapsed.right ? "" : "xl:[--shell-right:var(--robots-w)]"}`}
               >
                 <aside
@@ -361,22 +365,24 @@ function NavResizer({
     body.style.zoom = "1";
     body.style.width = "max-content";
     aside.style.width = "100vw";
-    const fit = Math.max(NAV_DEFAULT, Math.ceil(body.getBoundingClientRect().width) + 2);
+    // Widths are kept as on a full-size screen: what's measured on a shrunk one is ÷ ui.
+    const ui = uiScale();
+    const fit = Math.max(NAV_DEFAULT, Math.ceil(body.getBoundingClientRect().width / ui) + 2);
     body.style.zoom = zoom;
     body.style.width = "";
     aside.style.width = "";
     // Half the screen as a column; as a drawer, the aside's own cap (3rem of page left showing).
-    const room = window.matchMedia(WIDE.left).matches ? window.innerWidth / 2 : window.innerWidth - 48;
+    const room = (window.matchMedia(WIDE.left).matches ? window.innerWidth / 2 : window.innerWidth - 48) / ui;
     const max = Math.max(NAV_DEFAULT, Math.min(room, fit * 1.8));
     const x0 = e.clientX;
     let next = nav;
     let frame = 0;
     const move = (ev: PointerEvent) => {
-      const w = Math.round(Math.min(max, Math.max(NAV_SMALLEST, nav.w + ev.clientX - x0)));
+      const w = Math.round(Math.min(max, Math.max(NAV_SMALLEST, nav.w + (ev.clientX - x0) / ui)));
       next = { w, z: w > fit ? w / fit : 1 };
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
-        shell.style.setProperty("--nav-w", `${next.w}px`);
+        shell.style.setProperty("--nav-w", colWidth(next.w));
         shell.style.setProperty("--nav-zoom", String(next.z));
       });
     };
@@ -427,18 +433,19 @@ function RobotsResizer({
     const handle = e.currentTarget;
     handle.setPointerCapture(e.pointerId);
     // Half the screen as a column; as a drawer, the aside's own cap (3rem of page left showing).
-    const room = window.matchMedia(WIDE.right).matches ? window.innerWidth / 2 : window.innerWidth - 48;
+    const ui = uiScale();
+    const room = (window.matchMedia(WIDE.right).matches ? window.innerWidth / 2 : window.innerWidth - 48) / ui;
     const max = Math.max(ROBOTS_DEFAULT, Math.min(room, ROBOTS_DEFAULT * 1.8));
     const x0 = e.clientX;
     let next = side;
     let frame = 0;
     const move = (ev: PointerEvent) => {
       // The column grows leftwards: dragging left widens it.
-      const w = Math.round(Math.min(max, Math.max(ROBOTS_SMALLEST, side.w + x0 - ev.clientX)));
+      const w = Math.round(Math.min(max, Math.max(ROBOTS_SMALLEST, side.w + (x0 - ev.clientX) / ui)));
       next = { w, z: w > ROBOTS_DEFAULT ? w / ROBOTS_DEFAULT : 1 };
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
-        shell.style.setProperty("--robots-w", `${next.w}px`);
+        shell.style.setProperty("--robots-w", colWidth(next.w));
         shell.style.setProperty("--robots-zoom", String(next.z));
       });
     };

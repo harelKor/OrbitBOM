@@ -219,7 +219,7 @@ export function LeftNav({
                               key={c.id}
                               href={`/inventory/c/${c.id}`}
                               aria-current={shownCategory?.id === c.id ? "page" : undefined}
-                              className={`press block truncate rounded-md px-2 py-0.5 text-[11px] ${
+                              className={`press block truncate rounded-md px-2 py-0.5 text-[0.6875rem] ${
                                 shownCategory?.id === c.id ? "bg-accent/15 text-white" : "text-muted hover:bg-raised hover:text-fg"
                               }`}
                             >
@@ -266,7 +266,7 @@ export function LeftNav({
           )}
           <div className="px-3 pt-2 @max-[10rem]:hidden">
             <div className="truncate text-xs font-medium text-fg-2">{member.name}</div>
-            <div className="truncate text-[11px] text-subtle">
+            <div className="truncate text-[0.6875rem] text-subtle">
               {member.email}
               {member.isAdmin && ", admin"}
             </div>
@@ -280,7 +280,7 @@ export function LeftNav({
 
 function Count({ n, className = "" }: { n: number; className?: string }) {
   return (
-    <span className={`rounded-full bg-raised px-1.5 text-[10px] leading-4 font-semibold text-fg-2 tabular-nums ${className}`}>{n}</span>
+    <span className={`rounded-full bg-raised px-1.5 text-[0.625rem] leading-4 font-semibold text-fg-2 tabular-nums ${className}`}>{n}</span>
   );
 }
 

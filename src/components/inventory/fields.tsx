@@ -170,7 +170,7 @@ function TapCombo({ options, value, onPick, recentKey, placeholder, ariaLabel }:
               <li key={o} role="option" aria-selected={o === value}>
                 <button type="button" onClick={() => pick(o)} className={`${row} ${o === value ? "bg-accent/10 font-semibold text-accent" : "text-fg-2"}`}>
                   {o}
-                  {recent.includes(o) && <span className="ml-auto text-[10px] text-subtle">recent</span>}
+                  {recent.includes(o) && <span className="ml-auto text-[0.625rem] text-subtle">recent</span>}
                 </button>
               </li>
             ))}
@@ -273,7 +273,7 @@ function TypeCombo({
                 className={`flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm ${i === active ? "bg-accent/10 text-accent" : "text-fg-2"} ${o === value ? "font-semibold" : ""}`}
               >
                 {o}
-                {recent.includes(o) && <span className="ml-auto text-[10px] text-subtle">recent</span>}
+                {recent.includes(o) && <span className="ml-auto text-[0.625rem] text-subtle">recent</span>}
               </button>
             </li>
           ))}

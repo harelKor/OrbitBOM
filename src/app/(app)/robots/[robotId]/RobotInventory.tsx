@@ -104,14 +104,14 @@ export function RobotInventory({ robotId, items }: { robotId: string; items: Rob
                   >
                     {item.name}
                   </button>
-                  {item.group && <div className="truncate text-[11px] text-muted">{item.group}</div>}
+                  {item.group && <div className="truncate text-[0.6875rem] text-muted">{item.group}</div>}
                 </div>
                 <div className={`shrink-0 text-right ${tone}`}>
                   <div className="font-mono text-2xl leading-none font-semibold tabular-nums">
                     {item.sheet ? formatStock(item.inStock, true) : item.covered}
                     {!item.sheet && <span className="text-sm">/{item.needed}</span>}
                   </div>
-                  <div className="text-[10px] font-semibold tracking-wide uppercase">{item.sheet ? "sheets" : "covered"}</div>
+                  <div className="text-[0.625rem] font-semibold tracking-wide uppercase">{item.sheet ? "sheets" : "covered"}</div>
                 </div>
               </div>
               {!item.sheet && (

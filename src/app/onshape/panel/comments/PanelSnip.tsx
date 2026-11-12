@@ -55,7 +55,7 @@ export function SnipPaste({ onShot, onError }: { onShot: (s: Shot) => void; onEr
     document.addEventListener("paste", onPaste);
     return () => document.removeEventListener("paste", onPaste);
   }, [onShot, onError]);
-  const key = "rounded border border-line bg-surface px-1.5 py-0.5 font-mono text-[11px] font-semibold text-fg";
+  const key = "rounded border border-line bg-surface px-1.5 py-0.5 font-mono text-[0.6875rem] font-semibold text-fg";
   return (
     <div
       onDragOver={(e) => {
@@ -77,7 +77,7 @@ export function SnipPaste({ onShot, onError }: { onShot: (s: Shot) => void; onEr
         <kbd className={key}>{mac ? "Cmd+V" : "Ctrl+V"}</kbd>
         <span>here</span>
       </p>
-      <button type="button" onClick={() => input.current?.click()} className="press mt-1 text-[11px] text-subtle hover:text-fg hover:underline pointer-coarse:min-h-9">
+      <button type="button" onClick={() => input.current?.click()} className="press mt-1 text-[0.6875rem] text-subtle hover:text-fg hover:underline pointer-coarse:min-h-9">
         or pick a picture
       </button>
       <input

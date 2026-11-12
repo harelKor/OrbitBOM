@@ -165,14 +165,14 @@ export function ItemCard({
         ) : (
           <span className="flex flex-col items-center gap-1 text-subtle">
             <Icon name="box" className="h-10 w-10" />
-            <span className="text-[11px]">{category?.label}</span>
+            <span className="text-[0.6875rem]">{category?.label}</span>
           </span>
         )}
         {item.note && <NoteCloud note={item.note} raised />}
       </div>
       <div className="card-overlay absolute top-2 left-2 flex max-w-[60%] flex-wrap gap-1">
         {category && !hideCategory && (
-          <Link href={`/inventory/c/${category.id}`} onClick={stop} className="truncate rounded-full bg-[#111318]/85 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-accent">
+          <Link href={`/inventory/c/${category.id}`} onClick={stop} className="truncate rounded-full bg-[#111318]/85 px-2 py-0.5 text-[0.6875rem] font-semibold text-white hover:bg-accent">
             {category.label}
           </Link>
         )}
@@ -180,7 +180,7 @@ export function ItemCard({
           <Link
             href={`/inventory/condition/${condition.id}`}
             onClick={stop}
-            className="rounded-full px-2 py-0.5 text-[11px] font-semibold hover:brightness-110"
+            className="rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold hover:brightness-110"
             style={{ background: color, color: textOn(color!) }}
           >
             {condition.label}
@@ -205,7 +205,7 @@ export function ItemCard({
               }
               disabled={movingLocation}
               ariaLabel={`Location: ${location.name}`}
-              className="block max-w-full truncate rounded-full border border-line bg-surface/90 px-2 py-0.5 text-[11px] font-semibold text-fg-2 backdrop-blur-md hover:border-accent hover:text-accent active:scale-[0.98] disabled:opacity-60"
+              className="block max-w-full truncate rounded-full border border-line bg-surface/90 px-2 py-0.5 text-[0.6875rem] font-semibold text-fg-2 backdrop-blur-md hover:border-accent hover:text-accent active:scale-[0.98] disabled:opacity-60"
               footer={(close) => (
                 <button
                   type="button"
@@ -231,7 +231,7 @@ export function ItemCard({
                 stop(e);
                 pushQuery({ loc: location.id });
               }}
-              className="max-w-full truncate rounded-full border border-line bg-surface/90 px-2 py-0.5 text-[11px] font-semibold text-fg-2 backdrop-blur-md hover:border-accent hover:text-accent active:scale-[0.98]"
+              className="max-w-full truncate rounded-full border border-line bg-surface/90 px-2 py-0.5 text-[0.6875rem] font-semibold text-fg-2 backdrop-blur-md hover:border-accent hover:text-accent active:scale-[0.98]"
             >
               📍 {location.name}
             </button>
@@ -268,8 +268,8 @@ export function ItemCard({
       </div>
 
       <div className="flex min-w-0 flex-col gap-1.5 p-3 pt-2">
-        <ProductName item={item} wrap className="text-[17px] leading-snug font-semibold" />
-        <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-[11px]">
+        <ProductName item={item} wrap className="text-[1.0625rem] leading-snug font-semibold" />
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-[0.6875rem]">
           {item.cotsLinks[0] && <span className="truncate rounded-full bg-raised px-2 py-0.5 text-fg-2">{item.cotsLinks[0].site || hostOf(item.cotsLinks[0].url)}</span>}
           {item.price != null && <ItemPrice price={item.price} />}
         </div>
@@ -294,7 +294,7 @@ export function ItemPrice({ price, suffix = "" }: { price: number; suffix?: stri
           e.stopPropagation();
           setCurrency(currency === "usd" ? "ils" : "usd");
         }}
-        className="press rounded-full border border-line-strong px-1.5 text-[11px] font-semibold text-muted hover:border-emerald-500/60 hover:text-emerald-500 active:scale-[0.98]"
+        className="press rounded-full border border-line-strong px-1.5 text-[0.6875rem] font-semibold text-muted hover:border-emerald-500/60 hover:text-emerald-500 active:scale-[0.98]"
         aria-label={currency === "usd" ? "Show in shekels" : "Show in dollars"}
         title={currency === "usd" ? "Show in shekels" : "Show in dollars"}
       >
@@ -401,7 +401,7 @@ export function PieceStepper({ item, onStep }: { item: Pick<Item, "inStock" | "p
       hideCaret
       align="right"
       // Bigger on phones so it opens on the first tap in the shop (Harel, 2026-11-05).
-      triggerClassName="ml-1 rounded-full bg-white/20 px-1.5 text-[10px] hover:bg-white/30 pointer-coarse:min-h-8 pointer-coarse:px-3 pointer-coarse:text-xs pointer-coarse:font-semibold"
+      triggerClassName="ml-1 rounded-full bg-white/20 px-1.5 text-[0.625rem] hover:bg-white/30 pointer-coarse:min-h-8 pointer-coarse:px-3 pointer-coarse:text-xs pointer-coarse:font-semibold"
       panelClassName="ring-1 ring-white/15 shadow-lg"
       trigger={<span>pieces ▾</span>}
     >

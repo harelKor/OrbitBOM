@@ -79,7 +79,7 @@ export function Assembly({
   const sys = at && book.systems.find((s) => s.id === at.systemId);
 
   return (
-    <div className="mx-auto w-full max-w-[1600px] space-y-4 p-3 sm:p-4">
+    <div className="mx-auto w-full max-w-[100rem] space-y-4 p-3 sm:p-4">
       <TopView key={at ? placeKey(at) : "robot"} model={model} book={book} data={data} at={at} onOpen={go} onPart={(key) => setJump((j) => ({ key, n: (j?.n ?? 0) + 1 }))} />
       {!at || !sys ? (
         <Overview book={book} robotName={robotName} onOpen={go} canEdit={canEdit} />
@@ -117,7 +117,7 @@ export function Assembly({
               }}
             />
           </Dialog>
-          <div className="gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_300px]">
+          <div className="gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_18.75rem]">
             <StepSlides key={placeKey(at)} robotId={robotId} book={book} data={data} place={at} model={model ?? null} canEdit={canEdit} canTick={canTick} onOpen={go} jump={jump} />
             <aside className="sticky top-[calc(var(--topbar-h)+1rem)] max-h-[calc(100vh-var(--topbar-h)-2rem)] self-start overflow-y-auto rounded-lg border border-line bg-surface p-3 max-lg:hidden">
               <Branches book={book} robotName={robotName} at={at} onOpen={go} />
@@ -285,7 +285,7 @@ function StepCard({ book, step, n, onClick }: { book: Book; step: AssemblyStep; 
       className={`press flex w-full items-center gap-2 rounded-md border px-2.5 py-2 text-left text-sm hover:bg-raised pointer-coarse:min-h-11 ${done ? "border-line text-muted" : "border-line text-fg"} ${step.critical ? "border-l-4 border-l-rose-500" : ""}`}
       style={sub ? { borderLeft: `4px solid ${subColor(sub)}` } : undefined}
     >
-      <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold tabular-nums ${done ? "bg-emerald-500 text-white" : "bg-raised text-fg-2"}`}>{done ? "✓" : n}</span>
+      <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[0.6875rem] font-bold tabular-nums ${done ? "bg-emerald-500 text-white" : "bg-raised text-fg-2"}`}>{done ? "✓" : n}</span>
       {sub && <Icon name="layers" className="h-4 w-4 shrink-0 text-fg-2" />}
       <span className="min-w-0 flex-1 truncate">{sub ? step.title || book.subName(step.systemId, sub) : step.title}</span>
       {sub && <Progress {...book.progress({ systemId: step.systemId, sub })} />}

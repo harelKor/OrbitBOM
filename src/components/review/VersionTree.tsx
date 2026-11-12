@@ -91,7 +91,7 @@ function SubVersions({ node, newest }: { node: TreeNode; newest: boolean }) {
   const n = node.subs.length;
   return (
     <div className="mt-1.5 ml-1">
-      <button className="press flex items-center gap-1 text-[11px] font-semibold text-violet-600 pointer-coarse:min-h-9" onClick={() => setOpen(!open)} aria-expanded={open}>
+      <button className="press flex items-center gap-1 text-[0.6875rem] font-semibold text-violet-600 pointer-coarse:min-h-9" onClick={() => setOpen(!open)} aria-expanded={open}>
         <span aria-hidden className={`inline-block transition-transform ${open ? "rotate-90" : ""}`}>▸</span>
         {n} sub-version{n === 1 ? "" : "s"}
       </button>
@@ -101,7 +101,7 @@ function SubVersions({ node, newest }: { node: TreeNode; newest: boolean }) {
             <li key={s.id} className="relative py-0.5 pl-3">
               <span className="absolute top-2 -left-[5px] h-2 w-2 rounded-full bg-violet-500/70" aria-hidden />
               <span className="font-mono text-xs font-semibold text-fg tabular-nums">{s.label}</span>
-              <span className="block text-[10px] text-subtle">
+              <span className="block text-[0.625rem] text-subtle">
                 {s.by ? `${s.by} · ` : ""}
                 <LocalTime at={s.at} />
               </span>
@@ -117,20 +117,20 @@ function SubVersions({ node, newest }: { node: TreeNode; newest: boolean }) {
 function Count({ node, folded }: { node: TreeNode; folded: boolean }) {
   const n = node.added.length + node.done.length;
   if (!folded || !n) return null;
-  return <span className="rounded-full bg-raised px-1.5 text-[11px] text-fg-2 tabular-nums">{n} comments</span>;
+  return <span className="rounded-full bg-raised px-1.5 text-[0.6875rem] text-fg-2 tabular-nums">{n} comments</span>;
 }
 
 function BomMarks({ node }: { node: TreeNode }) {
   if (node.ahead)
     return (
-      <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-600" title="A newer Onshape version than the one the BOM is on: Update system hasn't brought it in yet">
+      <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[0.6875rem] font-semibold text-amber-600" title="A newer Onshape version than the one the BOM is on: Update system hasn't brought it in yet">
         Newer in Onshape · BOM not updated
       </span>
     );
   if (!node.bom.length) return null;
   const current = node.bom.some((b) => b.current);
   return (
-    <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${current ? "bg-emerald-500/15 text-emerald-600" : "bg-raised text-fg-2"}`} title={`BOM updated: ${node.bom.map((b) => b.label).join(", ")}`}>
+    <span className={`rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold ${current ? "bg-emerald-500/15 text-emerald-600" : "bg-raised text-fg-2"}`} title={`BOM updated: ${node.bom.map((b) => b.label).join(", ")}`}>
       {current ? "BOM is on this" : "BOM updated"}
     </span>
   );
@@ -139,7 +139,7 @@ function BomMarks({ node }: { node: TreeNode }) {
 function NodeMeta({ node }: { node: TreeNode }) {
   if (!node.at && !node.by) return null;
   return (
-    <span className="block text-[11px] text-subtle">
+    <span className="block text-[0.6875rem] text-subtle">
       {node.by ? `${node.by} · ` : ""}
       {node.at && <LocalTime at={node.at} />}
     </span>
@@ -154,7 +154,7 @@ function NodeComments({ node, comments, onFocus }: { node: TreeNode; comments: M
     <div className="mt-1.5 space-y-1.5">
       {added.length > 0 && (
         <div>
-          <p className="text-[10px] font-semibold tracking-wide text-subtle uppercase">Comments added · {added.length}</p>
+          <p className="text-[0.625rem] font-semibold tracking-wide text-subtle uppercase">Comments added · {added.length}</p>
           <ul>
             {added.map((c) => (
               <TreeComment key={c.id} c={c} onFocus={onFocus} />
@@ -164,7 +164,7 @@ function NodeComments({ node, comments, onFocus }: { node: TreeNode; comments: M
       )}
       {done.length > 0 && (
         <div>
-          <p className="text-[10px] font-semibold tracking-wide text-subtle uppercase">Ticked off · {done.length}</p>
+          <p className="text-[0.625rem] font-semibold tracking-wide text-subtle uppercase">Ticked off · {done.length}</p>
           <ul>
             {done.map((c) => (
               <TreeComment key={c.id} c={c} onFocus={onFocus} />
@@ -197,10 +197,10 @@ function RefreshVersions({ systemId, readAt }: { systemId: string; readAt: strin
         {state.busy ? "Reading Onshape…" : "Refresh from Onshape"}
       </button>
       {state.error ? (
-        <span className="text-[11px] text-rose-600">{state.error}</span>
+        <span className="text-[0.6875rem] text-rose-600">{state.error}</span>
       ) : (
         readAt && (
-          <span className="text-[10px] text-subtle">
+          <span className="text-[0.625rem] text-subtle">
             read <LocalTime at={readAt} />
           </span>
         )

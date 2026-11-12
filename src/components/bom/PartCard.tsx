@@ -31,7 +31,7 @@ const EXPORTABLE = ["STEP", "STL", "PARASOLID", "DXF"] as const; // DXF: a plate
 const FLAT = ["DXF_FLAT", "STEP_FLAT"] as const; // only for Onshape sheet metal parts
 type ExportFormat = (typeof EXPORTABLE)[number] | (typeof FLAT)[number];
 
-const pill = "rounded-full border border-line-strong bg-raised px-2 py-0.5 text-[11px] font-medium text-fg-2 max-w-full truncate";
+const pill = "rounded-full border border-line-strong bg-raised px-2 py-0.5 text-[0.6875rem] font-medium text-fg-2 max-w-full truncate";
 
 // A click on a card's body opens the part's details, unless it lands on one of its controls.
 // A control or a window inside the card (or portalled from it) takes its own clicks; a window the
@@ -158,7 +158,7 @@ function MadePartCard({
             </button>
           )}
           {!fabCounter && !post && (
-            <span className="rounded-full bg-[#111318]/85 px-2 py-0.5 text-[11px] font-bold text-white tabular-nums">
+            <span className="rounded-full bg-[#111318]/85 px-2 py-0.5 text-[0.6875rem] font-bold text-white tabular-nums">
               {work ? <QuantityField part={part} save={save} /> : `×${part.quantity}`}
             </span>
           )}
@@ -220,7 +220,7 @@ function MadePartCard({
           // Processing's done count, which sits in the same bottom middle.
           <div className={`pointer-events-none absolute inset-x-0 z-10 flex justify-center ${post && work ? "bottom-12" : "bottom-2"}`}>
             <span
-              className="rounded-full bg-red-600 px-2.5 py-0.5 text-[11px] font-bold tracking-wide text-white uppercase shadow-[0_0_10px_2px_rgba(220,38,38,0.45)]"
+              className="rounded-full bg-red-600 px-2.5 py-0.5 text-[0.6875rem] font-bold tracking-wide text-white uppercase shadow-[0_0_10px_2px_rgba(220,38,38,0.45)]"
               title={`Changed in the BOM since it was released${part.fabLock?.label ? ` at ${part.fabLock.label}` : ""}. Shop Fab still shows the released version.`}
             >
               Changed
@@ -265,10 +265,10 @@ function MadePartCard({
       ) : (
         <div className="flex min-w-0 flex-col gap-1.5 px-2.5 py-2">
           <div className="flex min-w-0 items-center gap-1">
-            <div className={`min-w-0 flex-1 truncate text-[13px] font-semibold text-fg ${checked ? "line-through" : ""}`} title={part.displayName ?? part.onshapeName ?? undefined}>
+            <div className={`min-w-0 flex-1 truncate text-[0.8125rem] font-semibold text-fg ${checked ? "line-through" : ""}`} title={part.displayName ?? part.onshapeName ?? undefined}>
               {edit ? <NameField part={part} save={save} bare /> : (part.displayName ?? part.onshapeName ?? "Unnamed part")}
-              {showSystem && <span className="ml-1.5 text-[11px] font-normal text-subtle">{part.systemName}</span>}
-              {nameNote && <span className="ml-1.5 text-[11px] font-normal text-muted">{nameNote}</span>}
+              {showSystem && <span className="ml-1.5 text-[0.6875rem] font-normal text-subtle">{part.systemName}</span>}
+              {nameNote && <span className="ml-1.5 text-[0.6875rem] font-normal text-muted">{nameNote}</span>}
             </div>
             {showCounter && <DoneCounter part={part} save={save} slot={current!} />}
             {edit && <EditMenu part={part} />}
@@ -279,7 +279,7 @@ function MadePartCard({
             {!post && !qa && (part.material || part.inventoryItemId || work) && <MaterialField part={part} save={save} className={pill} noOpen />}
             {!post && machines.map((slot, i) => (
               <span key={slot.key} className="contents">
-                {(!qa || i > 0) && <span className="text-[10px] text-faint">→</span>}
+                {(!qa || i > 0) && <span className="text-[0.625rem] text-faint">→</span>}
                 <MachineField part={part} save={save} slot={slot} className={`${pill} ${slot === current ? "border-accent/60 text-accent" : ""}`} />
               </span>
             ))}
@@ -365,7 +365,7 @@ export function DownloadMenu({ part, format }: { part: CardPart; format: ExportF
     <Popover align="right" hideCaret triggerClassName="overlay-btn" trigger={<><Icon name="download" /><span className="sr-only">Download</span></>}>
       {(close) => (
         <div className="space-y-0.5 text-sm">
-          {exports.length > 0 && <div className="px-2 pb-1 text-[11px] font-semibold text-subtle">CAD from Onshape</div>}
+          {exports.length > 0 && <div className="px-2 pb-1 text-[0.6875rem] font-semibold text-subtle">CAD from Onshape</div>}
           {exports.map((f, i) => (
             <a
               key={f}
@@ -378,10 +378,10 @@ export function DownloadMenu({ part, format }: { part: CardPart; format: ExportF
               className={item}
             >
               <span className="font-medium text-fg">{label(f)}</span>
-              {i === 0 && <span className="text-[11px] text-subtle">for its machine</span>}
+              {i === 0 && <span className="text-[0.6875rem] text-subtle">for its machine</span>}
             </a>
           ))}
-          {part.hasDrawing && <div className="px-2 pt-2 pb-1 text-[11px] font-semibold text-subtle">Drawing</div>}
+          {part.hasDrawing && <div className="px-2 pt-2 pb-1 text-[0.6875rem] font-semibold text-subtle">Drawing</div>}
           {part.hasDrawing &&
             (["pdf", "png"] as const).map((f) => (
               <button
@@ -396,13 +396,13 @@ export function DownloadMenu({ part, format }: { part: CardPart; format: ExportF
                 <span className="font-medium text-fg">{f.toUpperCase()}</span>
               </button>
             ))}
-          {part.files.length > 0 && <div className="px-2 pt-2 pb-1 text-[11px] font-semibold text-subtle">Attached files</div>}
+          {part.files.length > 0 && <div className="px-2 pt-2 pb-1 text-[0.6875rem] font-semibold text-subtle">Attached files</div>}
           {part.files.map((file) => (
             <a key={file.id} href={`/api/files/${file.id}?download=1`} onClick={close} className={item}>
               <span className="min-w-0 truncate text-fg" title={file.filename}>
                 {file.filename}
               </span>
-              <span className="shrink-0 text-[11px] text-subtle">{PART_FILE_TYPES.find((t) => t.id === file.type)?.label ?? file.type}</span>
+              <span className="shrink-0 text-[0.6875rem] text-subtle">{PART_FILE_TYPES.find((t) => t.id === file.type)?.label ?? file.type}</span>
             </a>
           ))}
         </div>
@@ -418,7 +418,7 @@ export function DoneCounter({ part, save, slot }: { part: CardPart; save: SaveFn
   // One more (or one less) from the saved count, so two phones counting the same part both count.
   const step = (d: number) => save({ add: { [slot.done]: d } });
   return (
-    <span className="ml-auto inline-flex shrink-0 items-center rounded-full border border-line-strong bg-ink text-[11px] tabular-nums">
+    <span className="ml-auto inline-flex shrink-0 items-center rounded-full border border-line-strong bg-ink text-[0.6875rem] tabular-nums">
       {work && <button onClick={() => step(-1)} disabled={done === 0} className="press px-1.5 text-muted hover:text-fg disabled:opacity-30" aria-label="One less done">
         −
       </button>}
@@ -440,7 +440,7 @@ export function MergedBadge({ part }: { part: CardPart }) {
   return (
     <Popover
       hideCaret
-      triggerClassName="rounded-full border border-accent/40 bg-surface/95 px-2 py-0.5 text-[11px] leading-none font-bold text-accent shadow-sm hover:border-accent"
+      triggerClassName="rounded-full border border-accent/40 bg-surface/95 px-2 py-0.5 text-[0.6875rem] leading-none font-bold text-accent shadow-sm hover:border-accent"
       trigger={
         <span className="py-0.5 tabular-nums" title={`${n} parts merged into one row`}>
           ⧉ Merged · {n}

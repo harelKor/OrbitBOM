@@ -54,13 +54,13 @@ export function RawStockPlanner({ robotId, groups, canEdit }: { robotId: string;
                   <div className="truncate font-semibold" title={g.title}>
                     {g.title}
                   </div>
-                  <div className="truncate text-[11px] text-muted">
+                  <div className="truncate text-[0.6875rem] text-muted">
                     {g.subtitle} · {sizeLabel(size)}
                   </div>
                 </div>
                 <div className="shrink-0 text-right text-accent">
                   <div className="font-mono text-2xl leading-none font-semibold tabular-nums">{plan.pieces.length}</div>
-                  <div className="text-[10px] font-semibold tracking-wide uppercase">{plan.pieces.length === 1 ? "piece" : "pieces"}</div>
+                  <div className="text-[0.625rem] font-semibold tracking-wide uppercase">{plan.pieces.length === 1 ? "piece" : "pieces"}</div>
                 </div>
               </div>
               <Bars plan={plan} />
@@ -91,7 +91,7 @@ const pct = (n: number) => `${Math.round(n * 100)}%`;
 // window (Harel, 2026-11-07).
 function Bars({ plan }: { plan: RawPlan }) {
   return (
-    <div className="text-[11px] text-muted">
+    <div className="text-[0.6875rem] text-muted">
       <div className="flex justify-between">
         <span>Material used</span>
         <span className="font-mono text-fg tabular-nums">{pct(plan.usage)}</span>
@@ -106,7 +106,7 @@ function Bars({ plan }: { plan: RawPlan }) {
 function Warnings({ group, plan }: { group: RawGroup; plan: RawPlan }) {
   if (!plan.tooBig.length && !group.missing.length) return null;
   return (
-    <div className="space-y-0.5 text-[11px] text-amber-600">
+    <div className="space-y-0.5 text-[0.6875rem] text-amber-600">
       {plan.tooBig.length > 0 && <div>{plan.tooBig.length === 1 ? "1 part is" : `${plan.tooBig.length} parts are`} bigger than the piece</div>}
       {group.missing.length > 0 && <div>{group.missing.length === 1 ? "1 part has" : `${group.missing.length} parts have`} no size</div>}
     </div>
@@ -125,7 +125,7 @@ function Thumbnail({ group, plan, flats }: { group: RawGroup; plan: RawPlan; fla
         {shown.map((piece, i) => (
           <LengthBar key={i} plan={plan} piece={piece} byId={byId} thin />
         ))}
-        {plan.pieces.length > shown.length && <div className="text-right text-[10px] text-subtle">+{plan.pieces.length - shown.length} more</div>}
+        {plan.pieces.length > shown.length && <div className="text-right text-[0.625rem] text-subtle">+{plan.pieces.length - shown.length} more</div>}
       </div>
     );
   }
@@ -135,7 +135,7 @@ function Thumbnail({ group, plan, flats }: { group: RawGroup; plan: RawPlan; fla
       {shown.map((piece, i) => (
         <PlateSheet key={i} plan={plan} piece={piece} byId={byId} flats={flats} crop className="h-full min-w-0 flex-1" />
       ))}
-      {plan.pieces.length > shown.length && <span className="shrink-0 text-[10px] text-subtle">+{plan.pieces.length - shown.length}</span>}
+      {plan.pieces.length > shown.length && <span className="shrink-0 text-[0.625rem] text-subtle">+{plan.pieces.length - shown.length}</span>}
     </div>
   );
 }
@@ -220,7 +220,7 @@ function LengthBar({ plan, piece, byId, thin = false, onPart }: { plan: RawPlan;
         const part = byId.get(it.partId);
         const style = { left: `${(it.x / L) * 100}%`, width: `${(it.w / L) * 100}%`, background: part?.color ?? "#94a3b8" };
         const title = `${part?.name ?? ""} · ${part?.status ?? ""} · ${Math.round(it.w)} mm`;
-        const cls = "absolute inset-y-0 flex items-center justify-center overflow-hidden border-r border-black/40 text-[10px] whitespace-nowrap text-[#0b0f17]";
+        const cls = "absolute inset-y-0 flex items-center justify-center overflow-hidden border-r border-black/40 text-[0.625rem] whitespace-nowrap text-[#0b0f17]";
         const label = !thin && it.w / L > 0.12 && <span className="truncate px-1">{part?.name}</span>;
         return onPart ? (
           <button key={`${it.partId}-${it.copy}`} type="button" title={title} onClick={() => onPart(it.partId)} className={`${cls} cursor-pointer hover:opacity-75`} style={style}>
@@ -294,7 +294,7 @@ function PlannerWindow({ group, plan, size, extra, flats, onSize, onClose }: { g
         {last && plan.pieces.length > 1 && <p className="text-xs text-muted">The last piece is {pct(last.used)} used.</p>}
 
         {statuses.length > 0 && (
-          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted">
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[0.6875rem] text-muted">
             {statuses.map(([s, color]) => (
               <span key={s} className="flex items-center gap-1">
                 <span className="h-2.5 w-2.5 rounded-sm" style={{ background: color }} />
@@ -307,7 +307,7 @@ function PlannerWindow({ group, plan, size, extra, flats, onSize, onClose }: { g
         <div className={group.kind === "plate" ? "grid gap-3 sm:grid-cols-2" : "space-y-2"}>
           {plan.pieces.map((piece, i) => (
             <div key={i} className="space-y-1">
-              <div className="flex justify-between text-[11px] text-subtle">
+              <div className="flex justify-between text-[0.6875rem] text-subtle">
                 <span>Piece {i + 1}</span>
                 <span className="tabular-nums">{pct(piece.used)} used</span>
               </div>
@@ -373,9 +373,9 @@ function PlannerWindow({ group, plan, size, extra, flats, onSize, onClose }: { g
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div className="panel p-3 max-sm:p-2">
-      <div className="truncate text-[11px] font-semibold text-muted">{label}</div>
+      <div className="truncate text-[0.6875rem] font-semibold text-muted">{label}</div>
       <div className="display font-mono text-3xl text-accent tabular-nums max-sm:text-2xl">{value}</div>
-      {sub && <div className="text-[10px] text-subtle tabular-nums">{sub}</div>}
+      {sub && <div className="text-[0.625rem] text-subtle tabular-nums">{sub}</div>}
     </div>
   );
 }

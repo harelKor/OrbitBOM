@@ -312,7 +312,7 @@ function NotesBox({ part, save }: { part: CardPart; save: SaveFn }) {
   }
   return (
     <label className="block rounded-xl border-2 border-amber-400/70 bg-amber-50 px-2.5 py-1.5 shadow-[3px_4px_0_0_rgba(245,158,11,0.25)] focus-within:border-amber-500 dark:bg-amber-400/10">
-      <span className="flex items-center gap-1.5 text-[11px] font-bold tracking-wide text-amber-700 uppercase sm:text-xs dark:text-amber-300">
+      <span className="flex items-center gap-1.5 text-[0.6875rem] font-bold tracking-wide text-amber-700 uppercase sm:text-xs dark:text-amber-300">
         <Icon name="note" className="h-3.5 w-3.5" />
         Notes
       </span>

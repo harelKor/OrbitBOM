@@ -449,7 +449,7 @@ export function ReviewScreen({
                 ]}
               />
               {colors === "compare" && (
-                <div className="rounded-md border border-line bg-surface/95 px-2.5 py-1.5 text-[11px] text-fg-2 shadow-sm backdrop-blur">
+                <div className="rounded-md border border-line bg-surface/95 px-2.5 py-1.5 text-[0.6875rem] text-fg-2 shadow-sm backdrop-blur">
                   <div className="flex flex-wrap gap-x-3 gap-y-1">
                     <Dot c={COMPARE.shape}>Shape</Dot>
                     <Dot c={COMPARE.props}>Properties</Dot>
@@ -588,7 +588,7 @@ function SystemSection({ name, count, onIsolate, children }: { name: string; cou
           <span className="rounded-full bg-raised px-1.5 text-fg-2 tabular-nums">{count}</span>
         </button>
         {onIsolate && (
-          <button onClick={onIsolate} className="press px-2.5 py-1.5 text-[11px] font-semibold text-accent-hover hover:underline pointer-coarse:min-h-10" title={`Show only ${name}`}>
+          <button onClick={onIsolate} className="press px-2.5 py-1.5 text-[0.6875rem] font-semibold text-accent-hover hover:underline pointer-coarse:min-h-10" title={`Show only ${name}`}>
             Isolate
           </button>
         )}

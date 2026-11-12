@@ -31,7 +31,7 @@ const STATUSES = [COTS_RELEASED, ...ORDER_STATUSES];
 export const showsOrder = (status: string) => STATUSES.includes(status as (typeof STATUSES)[number]);
 
 const HALO = "rounded-xl border border-amber-400/55 bg-raised ring-1 ring-amber-400/35 shadow-[0_0_18px_-4px_rgba(251,191,36,0.3)]";
-const LABEL = "text-[10px] leading-none font-semibold tracking-wide text-subtle uppercase";
+const LABEL = "text-[0.625rem] leading-none font-semibold tracking-wide text-subtle uppercase";
 
 export function CotsOrderBox({ info, onSave, editable, onLeave }: { info: CotsOrderInfo; onSave: (changes: PartChanges) => void; editable: boolean; onLeave?: () => void }) {
   const work = useCan("work");
@@ -107,7 +107,7 @@ export function CotsOrderBox({ info, onSave, editable, onLeave }: { info: CotsOr
       </div>
       {/* One line: the label on the left, the amount big on the right. */}
       <label className={`${HALO} flex min-w-0 items-center justify-between gap-2 px-3 py-1.5`}>
-        <span className="shrink-0 text-[10px] leading-none font-semibold tracking-wide text-subtle uppercase sm:text-xs">Ordering</span>
+        <span className="shrink-0 text-[0.625rem] leading-none font-semibold tracking-wide text-subtle uppercase sm:text-xs">Ordering</span>
         {canCount ? (
           <input
             value={typed ?? String(qty)}

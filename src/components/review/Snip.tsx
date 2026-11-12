@@ -290,7 +290,7 @@ export function CommentSnip({ c, small = false }: { c: ReviewComment; small?: bo
       <button onClick={() => setOpen(true)} className={`press mt-1 block overflow-hidden rounded border border-line hover:border-accent/60 active:scale-[0.98] ${small ? "w-20" : "w-36"}`} title="Open the snip">
         <SnipPicture src={snip.url} w={snip.w} h={snip.h} strokes={snip.strokes} />
       </button>
-      {snip.changed && snip.changed.length > 0 && <span className="block text-[11px] text-subtle">{snip.changed.map((x) => `${x.name} changed`).join(" · ")}</span>}
+      {snip.changed && snip.changed.length > 0 && <span className="block text-[0.6875rem] text-subtle">{snip.changed.map((x) => `${x.name} changed`).join(" · ")}</span>}
       {open && me && (
         <SnipEditor
           title="Snip"

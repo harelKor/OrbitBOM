@@ -26,7 +26,7 @@ export function FabVersionBadge({ lock }: { lock: FabLock }) {
   const label = lock.label ?? "locked";
   return (
     <span
-      className={`ml-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 align-middle text-[11px] font-semibold ${lock.changed ? "bg-red-600/15 text-red-500" : "bg-amber-500/15 text-amber-500"}`}
+      className={`ml-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 align-middle text-[0.6875rem] font-semibold ${lock.changed ? "bg-red-600/15 text-red-500" : "bg-amber-500/15 text-amber-500"}`}
       title={`Shop Fab shows the part as it was released${lock.label ? ` at ${lock.label}` : ""}, ${new Date(lock.at).toLocaleDateString()}.`}
     >
       <Icon name="lock" className="h-3 w-3" />
@@ -104,11 +104,11 @@ export function PartVersionsButton({ partId, lock, released }: { partId: string;
                       <span className="max-w-[10rem] truncate rounded-md bg-accent/10 px-2 py-0.5 font-mono text-sm font-bold text-accent tabular-nums">{v.label}</span>
                       <span className="min-w-0 truncate text-sm font-semibold">{v.name && v.name !== v.label ? v.name : ""}</span>
                       {v.released.map((s) => (
-                        <span key={s} className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${RELEASE_TAG[s] ?? RELEASE_TAG.Released}`}>
+                        <span key={s} className={`rounded-full px-2 py-0.5 text-[0.6875rem] font-bold ${RELEASE_TAG[s] ?? RELEASE_TAG.Released}`}>
                           {s}
                         </span>
                       ))}
-                      {v.current && <span className="rounded-full bg-accent px-2 py-0.5 text-[11px] font-semibold text-white">BOM</span>}
+                      {v.current && <span className="rounded-full bg-accent px-2 py-0.5 text-[0.6875rem] font-semibold text-white">BOM</span>}
                       <span className="ml-auto shrink-0 text-xs text-subtle tabular-nums">
                         {when(v.at)}
                         {v.by && ` · ${v.by}`}

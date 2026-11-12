@@ -115,7 +115,7 @@ export function SearchDropdown({ q, open, onClose, input }: { q: string; open: b
     </span>
   );
   const heading = (icon: "cube" | "box", text: React.ReactNode, more: number) => (
-    <div className="flex items-center gap-1.5 px-2 pt-2 pb-1 text-[11px] font-semibold tracking-wide text-subtle uppercase">
+    <div className="flex items-center gap-1.5 px-2 pt-2 pb-1 text-[0.6875rem] font-semibold tracking-wide text-subtle uppercase">
       <Icon name={icon} className="h-3.5 w-3.5" />
       <span className="min-w-0 truncate">{text}</span>
       {more > 0 && <span className="ml-auto shrink-0 font-normal normal-case tabular-nums">+{more} more</span>}

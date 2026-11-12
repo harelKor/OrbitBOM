@@ -145,7 +145,7 @@ export function CotsCard({
       <div className="thumb-well thumb-cots relative flex aspect-[4/3] items-center justify-center">
         <div className="flex h-full w-full items-center justify-center">{thumb}</div>
         <div className="absolute top-2 left-2 flex items-center gap-1">
-          <span className={`rounded-full bg-[#111318]/85 font-bold text-white tabular-nums ${order ? "px-3 py-1 text-base" : "px-2 py-0.5 text-[11px]"}`}>
+          <span className={`rounded-full bg-[#111318]/85 font-bold text-white tabular-nums ${order ? "px-3 py-1 text-base" : "px-2 py-0.5 text-[0.6875rem]"}`}>
             {work && !order ? <QuantityField part={part} save={save} /> : `×${part.quantity}`}
           </span>
           {/* Every card on the COTS pages is COTS: the tag only shows on a BOM page. */}
@@ -155,21 +155,21 @@ export function CotsCard({
         <div className="absolute top-2 right-2 flex max-w-[55%] flex-col items-end gap-1">
           {origin && (
             <span
-              className={`rounded-full px-2 py-0.5 text-[11px] font-bold shadow-sm ${origin === "General" ? "bg-[#0D111A]/85 text-amber-300" : "bg-sky-500 text-white"}`}
+              className={`rounded-full px-2 py-0.5 text-[0.6875rem] font-bold shadow-sm ${origin === "General" ? "bg-[#0D111A]/85 text-amber-300" : "bg-sky-500 text-white"}`}
               title={origin === "General" ? "Sent from the inventory, or added for no robot" : "From a robot's BOM"}
             >
               {origin}
             </span>
           )}
           {group && (
-            <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[11px] font-bold text-amber-950 shadow-sm" title="Click to see each system's part">
+            <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[0.6875rem] font-bold text-amber-950 shadow-sm" title="Click to see each system's part">
               ⧉ {group.systems} systems
             </span>
           )}
           {!struck && <ShelfCoversPrompt part={part} shelf={shelf} save={save} overlay />}
           {!order && <LinkTag part={part} save={save} />}
           {sentBack && (
-            <span className="max-w-full truncate rounded-md bg-rose-600 px-2 py-0.5 text-[11px] font-bold text-white shadow-md" title={`Sent back: ${part.cotsSentBack}`}>
+            <span className="max-w-full truncate rounded-md bg-rose-600 px-2 py-0.5 text-[0.6875rem] font-bold text-white shadow-md" title={`Sent back: ${part.cotsSentBack}`}>
               ↩ {part.cotsSentBack}
             </span>
           )}
@@ -197,7 +197,7 @@ export function CotsCard({
               −
             </button>}
             <span
-              className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-[#111318]/80 px-2 py-0.5 font-mono text-[11px] font-semibold whitespace-nowrap text-white tabular-nums"
+              className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-[#111318]/80 px-2 py-0.5 font-mono text-[0.6875rem] font-semibold whitespace-nowrap text-white tabular-nums"
               title={onShelf ? (wholeShelf ? `${shelf.itemName} on the shelf / everything needed` : `Covered by ${shelf.itemName} on the shelf`) : "In stock"}
             >
               {wholeShelf
@@ -259,11 +259,11 @@ function LinksMenu({ links }: { links: CardPart["cotsLinks"] }) {
     <Popover align="right" hideCaret triggerClassName="rounded p-0.5 text-subtle hover:text-accent" trigger={<Icon name="chevron" className="h-3.5 w-3.5 rotate-90" />}>
       {(close) => (
         <div className="space-y-0.5 text-sm">
-          <div className="px-2 pb-1 text-[11px] font-semibold text-subtle">Where to buy</div>
+          <div className="px-2 pb-1 text-[0.6875rem] font-semibold text-subtle">Where to buy</div>
           {links.map((l) => (
             <a key={l.url} href={l.url} target="_blank" rel="noreferrer" onClick={close} className="flex items-center justify-between gap-3 rounded px-2 py-1.5 hover:bg-raised">
               <span className="min-w-0 truncate font-medium text-fg">{siteOf(l)}</span>
-              {l.priceUsd != null && <span className="shrink-0 font-mono text-[11px] text-emerald-500 tabular-nums">${l.priceUsd.toFixed(2)}</span>}
+              {l.priceUsd != null && <span className="shrink-0 font-mono text-[0.6875rem] text-emerald-500 tabular-nums">${l.priceUsd.toFixed(2)}</span>}
             </a>
           ))}
         </div>
@@ -292,7 +292,7 @@ function Price({ part, big }: { part: CardPart; big: boolean }) {
         <button
           type="button"
           onClick={() => setCurrency(currency === "usd" ? "ils" : "usd")}
-          className="press rounded-full border border-line-strong px-1.5 text-[11px] font-semibold text-muted hover:border-emerald-500/60 hover:text-emerald-500"
+          className="press rounded-full border border-line-strong px-1.5 text-[0.6875rem] font-semibold text-muted hover:border-emerald-500/60 hover:text-emerald-500"
           aria-label={currency === "usd" ? "Show in shekels" : "Show in dollars"}
           title={currency === "usd" ? "Show in shekels" : "Show in dollars"}
         >

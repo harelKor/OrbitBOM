@@ -12,7 +12,7 @@ import { Icon } from "@/components/ui/Icon";
 import { formatStock } from "@/lib/inventory/stock";
 import { computeStatus } from "@/lib/status";
 
-const pill = "press inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold";
+const pill = "press inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[0.6875rem] font-semibold";
 const REASONS = { onshape: "the same Onshape part", link: "the same product page", name: "the same name", review: "a link waiting in AI review" } as const;
 
 // A COTS card's link to the team inventory: how much of it the shelf covers and how many to
@@ -38,7 +38,7 @@ export function ShelfPill({ part, shelf, save }: { part: CardPart; shelf: Shelf 
       >
         {(close) => (
           <div className="w-64 space-y-2 p-1 text-sm">
-            <div className="text-[11px] font-semibold text-subtle">Inventory item</div>
+            <div className="text-[0.6875rem] font-semibold text-subtle">Inventory item</div>
             <div className="font-semibold break-words text-fg">{shelf.itemName}</div>
             <dl className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs">
               <dt className="text-muted">On the shelf</dt>
@@ -141,7 +141,7 @@ export function LinkTag({ part, save }: { part: CardPart; save: SaveFn }) {
   const ids = part.memberIds ?? [part.id];
   const why = s.pending ? "Suggested link, waiting in AI review" : `Matched by ${REASONS[s.reason]}`;
   return (
-    <span className="flex max-w-full min-w-0 items-center overflow-hidden rounded-full border border-accent/60 bg-surface/90 text-[11px] font-semibold text-accent shadow-sm backdrop-blur-md">
+    <span className="flex max-w-full min-w-0 items-center overflow-hidden rounded-full border border-accent/60 bg-surface/90 text-[0.6875rem] font-semibold text-accent shadow-sm backdrop-blur-md">
       <button
         type="button"
         onClick={() => {
@@ -221,7 +221,7 @@ export function ShelfCoversPrompt({ part, shelf, save, overlay = false }: { part
   const why = shelf.restock ? `The shelf has ${count}, all that's needed. Mark In Stock` : `The shelf has ${part.quantity} for this. Mark In Stock`;
   return (
     <span
-      className={`inline-flex max-w-full min-w-0 shrink-0 items-center overflow-hidden rounded-full border border-emerald-500/60 text-[11px] ${
+      className={`inline-flex max-w-full min-w-0 shrink-0 items-center overflow-hidden rounded-full border border-emerald-500/60 text-[0.6875rem] ${
         overlay ? "bg-surface/90 shadow-sm backdrop-blur-md" : "bg-emerald-500/10"
       } font-semibold text-emerald-600 dark:text-emerald-400`}
     >

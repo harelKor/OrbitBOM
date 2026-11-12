@@ -5,13 +5,13 @@ import Image from "next/image";
 export function Brand({ compact = false }: { compact?: boolean }) {
   return (
     <Link href="/" className="press flex shrink-0 items-center gap-2.5 text-white" aria-label="OrbitParts home">
-      <Image src="/orbit-logo.png" alt="" width={34} height={34} className="h-[34px] w-[34px] shrink-0 object-contain" priority />
+      <Image src="/orbit-logo.png" alt="" width={34} height={34} className="h-[2.125rem] w-[2.125rem] shrink-0 object-contain" priority />
       <span className={`items-center gap-2.5 ${compact ? "hidden sm:flex" : "flex"}`}>
         {/* The team's 1690 lettering (white with a soft shadow). */}
-        <Image src="/logo-1690.png" alt="1690" width={85} height={26} className="h-[26px] w-auto shrink-0" priority />
+        <Image src="/logo-1690.png" alt="1690" width={85} height={26} className="h-[1.625rem] w-auto shrink-0" priority />
         <span className="leading-tight">
-          <span className="block text-[13px] font-semibold tracking-[0.12em]">ORBIT</span>
-          <span className="block text-[11px] tracking-[0.12em] text-white/75">PARTS</span>
+          <span className="block text-[0.8125rem] font-semibold tracking-[0.12em]">ORBIT</span>
+          <span className="block text-[0.6875rem] tracking-[0.12em] text-white/75">PARTS</span>
         </span>
       </span>
     </Link>

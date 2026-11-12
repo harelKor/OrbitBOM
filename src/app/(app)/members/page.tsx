@@ -73,11 +73,11 @@ export default async function MembersPage() {
                 <div className="truncate font-medium">
                   {m.name}
                   {m.isAdmin && (
-                    <span className="ml-2 rounded bg-accent px-1.5 py-0.5 text-[11px] text-white">
+                    <span className="ml-2 rounded bg-accent px-1.5 py-0.5 text-[0.6875rem] text-white">
                       Admin
                     </span>
                   )}
-                  {m.isMentor && <span className="ml-2 rounded bg-sky-600 px-1.5 py-0.5 text-[11px] text-white">Mentor</span>}
+                  {m.isMentor && <span className="ml-2 rounded bg-sky-600 px-1.5 py-0.5 text-[0.6875rem] text-white">Mentor</span>}
                 </div>
                 <div className="truncate text-sm text-muted">
                   {m.email}

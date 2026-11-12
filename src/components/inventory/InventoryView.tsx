@@ -1079,7 +1079,7 @@ function SpecFilterBar({
       >
         <Chevron open={open} small className="hover:bg-transparent" />
         Filters
-        {total > 0 && <span className="ml-0.5 rounded-full bg-accent px-1.5 font-mono text-[10px] text-white tabular-nums">{total}</span>}
+        {total > 0 && <span className="ml-0.5 rounded-full bg-accent px-1.5 font-mono text-[0.625rem] text-white tabular-nums">{total}</span>}
       </button>
       {!open &&
         active.map(({ g, v }) => (
@@ -1090,7 +1090,7 @@ function SpecFilterBar({
             title={`Remove ${g.label}: ${v.label}`}
             className="press inline-flex min-h-9 items-center gap-1.5 rounded-full border border-accent bg-accent px-3 text-xs font-semibold text-white"
           >
-            <span className="text-[10px] tracking-wider uppercase opacity-75">{g.label}</span>
+            <span className="text-[0.625rem] tracking-wider uppercase opacity-75">{g.label}</span>
             {v.label}
             <Icon name="close" className="h-3 w-3" />
           </button>
@@ -1102,7 +1102,7 @@ function SpecFilterBar({
           title={`Remove Condition: ${activeCond.label}`}
           className="press inline-flex min-h-9 items-center gap-1.5 rounded-full border border-accent bg-accent px-3 text-xs font-semibold text-white"
         >
-          <span className="text-[10px] tracking-wider uppercase opacity-75">Condition</span>
+          <span className="text-[0.625rem] tracking-wider uppercase opacity-75">Condition</span>
           {activeCond.label}
           <Icon name="close" className="h-3 w-3" />
         </button>
@@ -1132,11 +1132,11 @@ function SpecFilterRows({ rows, picks, cond, onPick }: { rows: SpecGroup[]; pick
     <div className="space-y-1.5">
       {cond && (
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="w-full shrink-0 text-[10px] font-semibold tracking-wider text-subtle uppercase sm:w-20">Condition</span>
+          <span className="w-full shrink-0 text-[0.625rem] font-semibold tracking-wider text-subtle uppercase sm:w-20">Condition</span>
           {cond.conditions.map((c) => (
             <SubPill key={c.id} on={cond.value === c.id} onClick={() => cond.onChange(cond.value === c.id ? "" : c.id)}>
               {c.label}
-              <span className="ml-1.5 font-mono text-[10px] tabular-nums opacity-60">{cond.counts[c.id] ?? 0}</span>
+              <span className="ml-1.5 font-mono text-[0.625rem] tabular-nums opacity-60">{cond.counts[c.id] ?? 0}</span>
             </SubPill>
           ))}
         </div>
@@ -1152,18 +1152,18 @@ function SpecFilterRows({ rows, picks, cond, onPick }: { rows: SpecGroup[]; pick
                 type="button"
                 onClick={() => flip(g.field.id)}
                 aria-expanded={all}
-                className="press flex w-full shrink-0 items-center gap-0.5 text-left text-[10px] font-semibold tracking-wider text-subtle uppercase hover:text-fg sm:w-20"
+                className="press flex w-full shrink-0 items-center gap-0.5 text-left text-[0.625rem] font-semibold tracking-wider text-subtle uppercase hover:text-fg sm:w-20"
               >
                 {g.label}
                 <Icon name="chevron" className={`h-3 w-3 transition-transform duration-150 ${all ? "rotate-90" : ""}`} />
               </button>
             ) : (
-              <span className="w-full shrink-0 text-[10px] font-semibold tracking-wider text-subtle uppercase sm:w-20">{g.label}</span>
+              <span className="w-full shrink-0 text-[0.625rem] font-semibold tracking-wider text-subtle uppercase sm:w-20">{g.label}</span>
             )}
             {shown.map((v) => (
               <SubPill key={v.key} on={picks[g.field.id] === v.key} onClick={() => onPick(g.field.id, v.key)}>
                 {v.label}
-                <span className="ml-1.5 font-mono text-[10px] tabular-nums opacity-60">{v.count}</span>
+                <span className="ml-1.5 font-mono text-[0.625rem] tabular-nums opacity-60">{v.count}</span>
               </SubPill>
             ))}
             {long && (

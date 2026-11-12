@@ -132,7 +132,7 @@ export function Popover({
         className={`press inline-flex items-center gap-1 rounded text-left hover:text-accent ${triggerClassName}`}
       >
         {trigger}
-        {!hideCaret && <span className="text-[10px] opacity-60">▾</span>}
+        {!hideCaret && <span className="text-[0.625rem] opacity-60">▾</span>}
       </button>
       {open &&
         host &&
@@ -205,7 +205,7 @@ export function OptionList({
                 {o.color && <span className="h-3 w-3 shrink-0 rounded-full ring-1 ring-black/10" style={{ background: o.color }} />}
                 <span className="min-w-0 flex-1">{o.label}</span>
                 {o.hint !== undefined && (
-                  <span className="shrink-0 rounded-full bg-raised px-1.5 font-mono text-[11px] leading-5 text-subtle tabular-nums" title="In stock">
+                  <span className="shrink-0 rounded-full bg-raised px-1.5 font-mono text-[0.6875rem] leading-5 text-subtle tabular-nums" title="In stock">
                     {o.hint}
                   </span>
                 )}

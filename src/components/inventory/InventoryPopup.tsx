@@ -379,7 +379,7 @@ function SpreadPanel({ item, onOp }: { item: Item; onOp: (op: PieceOp) => void }
               ) : (
                 <span className={`min-w-0 flex-1 truncate text-sm ${row.count > 0 ? "text-fg" : "text-subtle"}`}>
                   <span className="font-mono font-semibold tabular-nums">{label.primary}</span>
-                  {label.sub && <span className="ml-1.5 rounded-full bg-surface px-1.5 py-0.5 font-mono text-[11px] text-muted tabular-nums">{label.sub}</span>}
+                  {label.sub && <span className="ml-1.5 rounded-full bg-surface px-1.5 py-0.5 font-mono text-[0.6875rem] text-muted tabular-nums">{label.sub}</span>}
                 </span>
               )}
               {work && editing !== row.size && (

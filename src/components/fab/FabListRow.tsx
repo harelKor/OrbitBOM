@@ -23,7 +23,7 @@ const stopAll = {
   onKeyDown: (e: React.SyntheticEvent) => e.stopPropagation(),
 };
 
-const pill = "inline-flex max-w-full min-w-0 items-center truncate rounded-full border border-line-strong bg-ink/60 px-2.5 py-0.5 text-[11px] font-medium text-fg-2";
+const pill = "inline-flex max-w-full min-w-0 items-center truncate rounded-full border border-line-strong bg-ink/60 px-2.5 py-0.5 text-[0.6875rem] font-medium text-fg-2";
 const stepBtn = "press flex h-8 w-8 items-center justify-center rounded-full border border-line-strong bg-surface text-lg leading-none font-bold text-fg-2 hover:border-sky-400/40 hover:text-accent active:scale-[0.98] disabled:opacity-30";
 
 // A To Fab part in the List view: the card's controls in one row. The picture (with the red
@@ -80,7 +80,7 @@ export function FabPartListRow({
         data-part={partIds(part)}
         style={style}
         picture={part.thumbUrl ?? null}
-        placeholder={<span className="px-1 text-center text-[10px] leading-tight text-slate-500">{part.isManual ? "Manual" : "No picture"}</span>}
+        placeholder={<span className="px-1 text-center text-[0.625rem] leading-tight text-slate-500">{part.isManual ? "Manual" : "No picture"}</span>}
         title={<span className={checked ? "line-through" : undefined}>{title}</span>}
         pills={
           <span className="contents" {...stopAll}>
@@ -89,7 +89,7 @@ export function FabPartListRow({
             {!post && machine && <span className={`${pill} border-accent/60 text-accent`} title="Machine">{machine}</span>}
             {part.fabView?.changed && (
               <span
-                className="rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold tracking-wide text-white uppercase shadow-[0_0_8px_1px_rgba(220,38,38,0.45)]"
+                className="rounded-full bg-red-600 px-2 py-0.5 text-[0.625rem] font-bold tracking-wide text-white uppercase shadow-[0_0_8px_1px_rgba(220,38,38,0.45)]"
                 title={`Changed in the BOM since it was released${part.fabLock?.label ? ` at ${part.fabLock.label}` : ""}. Shop Fab still shows the released version.`}
               >
                 Changed

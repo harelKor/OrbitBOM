@@ -100,7 +100,7 @@ export function ProductPicker({
 
   return (
     <div className="space-y-2 text-sm">
-      {title && <div className="px-1 text-[11px] font-semibold text-subtle">{title}</div>}
+      {title && <div className="px-1 text-[0.6875rem] font-semibold text-subtle">{title}</div>}
       <div className="flex gap-1.5">
         <label className="flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-lg border border-line-strong bg-raised px-3 focus-within:border-sky-400">
           <Icon name="search" className="h-4 w-4 shrink-0 text-subtle" />

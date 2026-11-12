@@ -399,7 +399,7 @@ function BatchSection({
   );
 }
 
-const pill = "max-w-full truncate rounded-full border px-2 py-0.5 text-[11px] font-medium";
+const pill = "max-w-full truncate rounded-full border px-2 py-0.5 text-[0.6875rem] font-medium";
 
 // The card's X: takes the request off To Review, neither approving nor rejecting it.
 function DismissButton({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
@@ -448,13 +448,13 @@ function ReviewCard({ item, disabled, onDecide }: { item: ReviewItem; disabled: 
           <span className="text-xs text-muted">No thumbnail yet</span>
         )}
         <div className="absolute top-2 left-2 flex items-center gap-1">
-          <span className="rounded-full bg-[#111318]/85 px-2 py-0.5 font-mono text-[11px] font-bold text-white tabular-nums">×{part.quantity}</span>
-          <span className="rounded-full bg-surface/90 px-1.5 py-0.5 text-[10px] font-semibold text-fg-2 shadow-sm">
+          <span className="rounded-full bg-[#111318]/85 px-2 py-0.5 font-mono text-[0.6875rem] font-bold text-white tabular-nums">×{part.quantity}</span>
+          <span className="rounded-full bg-surface/90 px-1.5 py-0.5 text-[0.625rem] font-semibold text-fg-2 shadow-sm">
             {part.classification === "cots" ? "COTS" : "IN-HOUSE"}
           </span>
         </div>
         <span
-          className={`absolute top-2 right-2 max-w-[60%] truncate rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide ${item.source === "ai" ? "bg-accent text-white" : "bg-surface/90 text-fg-2 shadow-sm"}`}
+          className={`absolute top-2 right-2 max-w-[60%] truncate rounded-full px-2 py-0.5 text-[0.625rem] font-bold tracking-wide ${item.source === "ai" ? "bg-accent text-white" : "bg-surface/90 text-fg-2 shadow-sm"}`}
           title={item.source === "ai" ? `Set by ${item.aiName ?? "a member's Claude"}` : autoLinked(item) ? "Inventory link suggested by the site; Approve links it" : "Set by Suggest setup"}
         >
           {item.source === "ai" ? (item.aiName ?? "AI") : autoLinked(item) ? "AUTO-LINK" : "RULE"}
@@ -475,11 +475,11 @@ function ReviewCard({ item, disabled, onDecide }: { item: ReviewItem; disabled: 
             const to = shown(f, item.changes[f].to);
             return (
               <li key={f} className="flex min-w-0 items-center gap-1">
-                {LABELS[f] && <span className="shrink-0 text-[10px] font-semibold text-subtle uppercase">{LABELS[f]}</span>}
+                {LABELS[f] && <span className="shrink-0 text-[0.625rem] font-semibold text-subtle uppercase">{LABELS[f]}</span>}
                 {from && <span className={`${pill} border-line text-faint line-through`}>{from}</span>}
-                {from && <span className="text-[10px] text-faint">→</span>}
+                {from && <span className="text-[0.625rem] text-faint">→</span>}
                 <span className={`${pill} ${to ? "border-accent/60 bg-accent/5 text-accent" : "border-dashed border-line-strong text-subtle"}`}>{to ?? "none"}</span>
-                {item.pending?.includes(f) && <span className="shrink-0 text-[10px] text-subtle">· on Approve</span>}
+                {item.pending?.includes(f) && <span className="shrink-0 text-[0.625rem] text-subtle">· on Approve</span>}
               </li>
             );
           })}
@@ -592,8 +592,8 @@ function InventoryCard({ review, onDecide }: { review: InventoryReview; onDecide
         <div className="min-w-0 flex-1 truncate font-semibold text-fg" title={review.name}>
           {review.name}
         </div>
-        {review.kind === "category" && <span className="shrink-0 rounded-full bg-gold/10 px-2 py-0.5 text-[10px] font-bold tracking-wide text-gold">NEW CATEGORY</span>}
-        <span className="max-w-[45%] shrink-0 truncate rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold tracking-wide text-white" title={`By ${review.aiName ?? "a member's Claude"}`}>
+        {review.kind === "category" && <span className="shrink-0 rounded-full bg-gold/10 px-2 py-0.5 text-[0.625rem] font-bold tracking-wide text-gold">NEW CATEGORY</span>}
+        <span className="max-w-[45%] shrink-0 truncate rounded-full bg-accent px-2 py-0.5 text-[0.625rem] font-bold tracking-wide text-white" title={`By ${review.aiName ?? "a member's Claude"}`}>
           {review.aiName ?? "AI"}
         </span>
         <DismissButton onClick={() => onDecide("dismiss")} />
@@ -601,9 +601,9 @@ function InventoryCard({ review, onDecide }: { review: InventoryReview; onDecide
       <ul className="space-y-1">
         {review.changes.map((c) => (
           <li key={c.field} className="flex min-w-0 items-center gap-1">
-            <span className="shrink-0 text-[10px] font-semibold text-subtle uppercase">{c.label}</span>
+            <span className="shrink-0 text-[0.625rem] font-semibold text-subtle uppercase">{c.label}</span>
             {c.from && <span className={`${pill} border-line text-faint line-through`}>{c.from}</span>}
-            {c.from && <span className="text-[10px] text-faint">→</span>}
+            {c.from && <span className="text-[0.625rem] text-faint">→</span>}
             <span className={`${pill} ${c.to ? "border-accent/60 bg-accent/5 text-accent" : "border-dashed border-line-strong text-subtle"}`}>{c.to ?? "none"}</span>
           </li>
         ))}
@@ -613,7 +613,7 @@ function InventoryCard({ review, onDecide }: { review: InventoryReview; onDecide
           {review.reason}
         </p>
       )}
-      <div className="text-[11px] text-subtle tabular-nums">
+      <div className="text-[0.6875rem] text-subtle tabular-nums">
         {when(review.at)}
         {review.memberName ? `, ${review.memberName}` : ""}
       </div>

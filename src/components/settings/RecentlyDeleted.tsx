@@ -42,7 +42,7 @@ export function RecentlyDeleted({ entries, isAdmin, keepDays }: { entries: Delet
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-semibold">
                 {e.label}
-                <span className="ml-2 rounded-full bg-raised px-2 py-0.5 text-[11px] font-semibold text-muted">{KIND[e.kind]}</span>
+                <span className="ml-2 rounded-full bg-raised px-2 py-0.5 text-[0.6875rem] font-semibold text-muted">{KIND[e.kind]}</span>
               </span>
               <span className="block truncate text-xs text-subtle">
                 <LocalTime at={e.deletedAt} />

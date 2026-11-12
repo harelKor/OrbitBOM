@@ -8,7 +8,7 @@ export function StatusPill({ status, label, size = "sm" }: { status: string; lab
   const color = getStatus(status)?.color ?? getCotsStatus(status)?.color ?? "#cbd5e1";
   return (
     <span
-      className={`inline-flex items-center rounded-full font-semibold whitespace-nowrap ${size === "md" ? "px-3 py-1 text-xs" : "px-2 py-0.5 text-[11px]"}`}
+      className={`inline-flex items-center rounded-full font-semibold whitespace-nowrap ${size === "md" ? "px-3 py-1 text-xs" : "px-2 py-0.5 text-[0.6875rem]"}`}
       style={{ background: color, color: textOn(color) }}
     >
       {size === "md" && <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-current opacity-70" />}

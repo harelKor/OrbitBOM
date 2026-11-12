@@ -106,7 +106,7 @@ export function CategoryBoxes({
             </span>
           );
           const shortPill = !!n.short && (
-            <span className="rounded-full bg-rose-500 px-1.5 py-0.5 font-mono text-[10px] font-bold whitespace-nowrap text-white tabular-nums">{n.short} short</span>
+            <span className="rounded-full bg-rose-500 px-1.5 py-0.5 font-mono text-[0.625rem] font-bold whitespace-nowrap text-white tabular-nums">{n.short} short</span>
           );
           const body = compact ? (
             <>
@@ -122,7 +122,7 @@ export function CategoryBoxes({
               </span>
               <span className="min-w-0">
                 <span className="block text-xs leading-tight font-bold whitespace-nowrap text-fg">{b.label}</span>
-                <span className="flex items-center gap-1 text-[11px]">
+                <span className="flex items-center gap-1 text-[0.6875rem]">
                   {number}
                   {shortPill}
                 </span>
@@ -144,7 +144,7 @@ export function CategoryBoxes({
               </Frost>
               {shortPill && <span className="absolute top-2 right-2.5">{shortPill}</span>}
               <span className="relative z-10 mt-auto flex min-h-9 w-full min-w-0 items-center bg-[#111318]/78 px-2 py-1.5 backdrop-blur-md sm:px-3">
-                <span className={`min-w-0 truncate leading-tight font-semibold text-white group-hover:text-sky-300 ${b.label.length > 16 ? "text-[11px] sm:text-xs" : "text-xs sm:text-sm"}`}>
+                <span className={`min-w-0 truncate leading-tight font-semibold text-white group-hover:text-sky-300 ${b.label.length > 16 ? "text-[0.6875rem] sm:text-xs" : "text-xs sm:text-sm"}`}>
                   {b.label}
                 </span>
               </span>

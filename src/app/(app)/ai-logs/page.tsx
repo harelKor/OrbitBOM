@@ -91,7 +91,7 @@ function LogRow({ log }: { log: AiLog }) {
     <li className="panel">
       <details className="group">
         <summary className="press flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1 p-3">
-          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide ${log.source === "ai" ? "bg-accent text-white" : "border border-line-strong bg-raised text-fg-2"}`}>
+          <span className={`rounded-full px-2 py-0.5 text-[0.625rem] font-bold tracking-wide ${log.source === "ai" ? "bg-accent text-white" : "border border-line-strong bg-raised text-fg-2"}`}>
             {log.source === "ai" ? (log.aiName ?? "AI") : "RULE"}
           </span>
           <span className="font-semibold text-fg">{tool(log.tool)}</span>
@@ -99,18 +99,18 @@ function LogRow({ log }: { log: AiLog }) {
             {log.summary}
           </span>
           {log.itemChangeCount > 0 && (
-            <span className="rounded-full bg-raised px-2 py-0.5 text-[11px] font-semibold text-fg-2 tabular-nums">
+            <span className="rounded-full bg-raised px-2 py-0.5 text-[0.6875rem] font-semibold text-fg-2 tabular-nums">
               <span className="font-mono">{log.itemChangeCount}</span> inventory {log.itemChangeCount === 1 ? "change" : "changes"}
               {itemCount > 1 ? ` on ${itemCount} items` : ""}
             </span>
           )}
-          {log.waiting > 0 && <span className="rounded-full bg-gold/10 px-2 py-0.5 text-[11px] font-semibold text-gold tabular-nums">{log.waiting} in AI review</span>}
+          {log.waiting > 0 && <span className="rounded-full bg-gold/10 px-2 py-0.5 text-[0.6875rem] font-semibold text-gold tabular-nums">{log.waiting} in AI review</span>}
           <span className="text-xs text-subtle tabular-nums">
             {log.memberName ? `${log.memberName}, ` : ""}
             {when(log.at)}
           </span>
           {log.revertedAt ? (
-            <span className="rounded-full border border-line-strong px-2 py-0.5 text-[11px] font-semibold text-subtle">Reverted</span>
+            <span className="rounded-full border border-line-strong px-2 py-0.5 text-[0.6875rem] font-semibold text-subtle">Reverted</span>
           ) : (
             log.batchId && <RevertLogButton batchId={log.batchId} what={`${tool(log.tool)} (${log.summary})`} />
           )}

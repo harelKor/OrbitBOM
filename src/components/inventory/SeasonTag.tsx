@@ -11,7 +11,7 @@ const TONE: Record<Tag, string> = { "2026": "bg-rose-600 hover:bg-rose-500", "20
 // The item's season tag: red 2026 (still from last season's list) or green 2027 (checked for this
 // season). A tap flips it at once and saves in the background; a failed save flips it back.
 // Without "work" it's a plain label. className sets the pill's size, to match the tags beside it.
-export function SeasonTag({ itemId, tag, className = "rounded-full px-2 py-0.5 text-[11px]" }: { itemId: string; tag: Tag; className?: string }) {
+export function SeasonTag({ itemId, tag, className = "rounded-full px-2 py-0.5 text-[0.6875rem]" }: { itemId: string; tag: Tag; className?: string }) {
   const work = useCan("work");
   const [shown, setShown] = useState(tag);
   const [seen, setSeen] = useState(tag);

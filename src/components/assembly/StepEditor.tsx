@@ -162,7 +162,7 @@ export function StepEditor({
   };
 
   return (
-    <Dialog open onClose={onClose} title={step ? "Edit step" : isSub ? "New sub-assembly step" : "New step"} width="w-[min(1200px,96vw)]">
+    <Dialog open onClose={onClose} title={step ? "Edit step" : isSub ? "New sub-assembly step" : "New step"} width="w-[min(75rem,96vw)]">
       <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div>
           <div ref={area} className="relative aspect-[4/3] overflow-hidden rounded-md border border-line bg-surface">
@@ -213,7 +213,7 @@ export function StepEditor({
                     <li key={p.key} className="flex max-w-full items-center gap-1.5 rounded-md border border-line bg-raised py-0.5 pr-1 pl-0.5 text-sm">
                       <Thumb url={p.thumbUrl} small />
                       <span className="min-w-0 truncate">{p.name}</span>
-                      {p.cots && <span className="shrink-0 rounded bg-amber-500/15 px-1 text-[10px] font-bold text-amber-600">COTS</span>}
+                      {p.cots && <span className="shrink-0 rounded bg-amber-500/15 px-1 text-[0.625rem] font-bold text-amber-600">COTS</span>}
                       <button onClick={() => toggle(p.key)} className="press flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted hover:bg-surface hover:text-fg" aria-label={`Remove ${p.name}`}>
                         ✕
                       </button>

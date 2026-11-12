@@ -24,6 +24,7 @@ import { statusTint, tint } from "@/components/ui/statusTint";
 import { downloadExport, prepareExport } from "@/components/bom/downloadExport";
 import { BatchLayoutDialog } from "./BatchLayoutDialog";
 import { OnshapeLayoutButton } from "./OnshapeLayoutButton";
+import { uiScale } from "@/components/shell/boot-scripts";
 import { FactoryStatusButton } from "@/components/factory/FactoryStatusButton";
 import { type FabLayout, BATCH_PRIORITIES, priorityColor, rank, DRAG_TYPE, batchStage, FINISHED_COLOR, type Batch, type DragLoad } from "./fabModel";
 
@@ -59,9 +60,11 @@ function placeOf(el: HTMLElement | null, parts: number): Place | null {
   // computed tracks: an open strip's own column adds a track there.
   const style = getComputedStyle(grid);
   const gap = parseFloat(style.columnGap) || 0;
+  // × uiScale(): the grids' px sizes shrink on a small PC screen (globals.css).
+  const ui = uiScale();
   const min = grid.classList.contains("list-stack")
-    ? 360
-    : Math.max((parseFloat(style.getPropertyValue("--card-min")) || 220) * (parseFloat(style.getPropertyValue("--card-scale")) || 1), 110);
+    ? 360 * ui
+    : Math.max((parseFloat(style.getPropertyValue("--card-min")) || 220) * (parseFloat(style.getPropertyValue("--card-scale")) || 1), 110) * ui;
   const total = parseFloat(style.width) || grid.clientWidth;
   // A list's rows stretch to fill; cards are exactly `min` wide, or the full width when not even two fit.
   const list = grid.classList.contains("list-stack");
@@ -257,7 +260,7 @@ export function BatchCard({
       }}
       aria-label={`Who makes ${what}`}
       title={mine ? "You make this batch" : undefined}
-      className={`press max-w-full min-w-0 cursor-pointer truncate rounded-full border bg-surface/90 px-2 py-0.5 text-[11px] font-bold shadow-sm backdrop-blur-md transition-shadow hover:border-accent focus:outline-none ${
+      className={`press max-w-full min-w-0 cursor-pointer truncate rounded-full border bg-surface/90 px-2 py-0.5 text-[0.6875rem] font-bold shadow-sm backdrop-blur-md transition-shadow hover:border-accent focus:outline-none ${
         mine ? "border-sky-400 text-sky-600 shadow-[0_0_10px_2px_rgba(56,189,248,0.55)] dark:text-sky-300" : "border-line-strong text-fg"
       }`}
     >
@@ -683,7 +686,7 @@ export function BatchCard({
                   // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links
                   <img src={p.thumbUrl} alt="" loading="lazy" className={`h-full w-full object-contain ${thumbs.length === 1 ? "p-3" : "p-1.5"}`} />
                 ) : (
-                  <span className="px-1 text-center text-[10px] text-subtle">{partTitle(p)}</span>
+                  <span className="px-1 text-center text-[0.625rem] text-subtle">{partTitle(p)}</span>
                 )}
               </span>
             ))}
@@ -793,7 +796,7 @@ export function BatchDate({ at, overlay = false }: { at: string; overlay?: boole
   return (
     <span
       title="Made on"
-      className={`shrink-0 text-[11px] font-semibold whitespace-nowrap text-muted tabular-nums ${overlay ? "ml-auto rounded-full border border-line-strong bg-surface/90 px-2 py-0.5 shadow-sm backdrop-blur-md" : ""}`}
+      className={`shrink-0 text-[0.6875rem] font-semibold whitespace-nowrap text-muted tabular-nums ${overlay ? "ml-auto rounded-full border border-line-strong bg-surface/90 px-2 py-0.5 shadow-sm backdrop-blur-md" : ""}`}
     >
       <LocalTime at={at} style="day" />
     </span>

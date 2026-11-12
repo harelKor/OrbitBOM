@@ -57,7 +57,7 @@ export function VersionsWindow({ systemId, list, thumbs }: { systemId: string; l
       <button type="button" className="btn" onClick={() => setOpen(true)} disabled={!list.versions.length && !edit} title="Every time this system was updated from Onshape">
         <Icon name="box" className="h-4 w-4" />
         Versions
-        {reverted && <span className="rounded-full bg-rose-500 px-1.5 text-[10px] font-bold text-white">Outdated</span>}
+        {reverted && <span className="rounded-full bg-rose-500 px-1.5 text-[0.625rem] font-bold text-white">Outdated</span>}
       </button>
       <Dialog
         open={open}
@@ -145,8 +145,8 @@ function VersionBox({
             {v.by && ` · ${v.by}`}
           </span>
         </button>
-        {current && <span className="rounded-full bg-accent px-2 py-0.5 text-[11px] font-semibold text-white">Current</span>}
-        {latestAhead && <span className="rounded-full bg-emerald-500 px-2 py-0.5 text-[11px] font-semibold text-white">Latest</span>}
+        {current && <span className="rounded-full bg-accent px-2 py-0.5 text-[0.6875rem] font-semibold text-white">Current</span>}
+        {latestAhead && <span className="rounded-full bg-emerald-500 px-2 py-0.5 text-[0.6875rem] font-semibold text-white">Latest</span>}
         {onRevert && (
           <button type="button" className="btn h-7 px-2 text-xs" disabled={pending} onClick={onRevert}>
             {latestAhead ? "Back to latest" : "Revert"}
@@ -156,7 +156,7 @@ function VersionBox({
       {counts.length > 0 && (
         <div className="flex gap-1.5 px-3 pb-2 pl-9">
           {counts.map((c) => (
-            <span key={c.label} className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${c.className}`}>
+            <span key={c.label} className={`rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold ${c.className}`}>
               <span className="font-mono tabular-nums">{c.n}</span> {c.label}
             </span>
           ))}

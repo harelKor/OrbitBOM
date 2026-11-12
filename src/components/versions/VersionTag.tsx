@@ -30,7 +30,7 @@ export function VersionTag({ partId, tags, manual = false }: { partId: string; t
     <span onClick={(e) => e.stopPropagation()} className="contents">
       <Popover
         hideCaret
-        triggerClassName="inline-flex h-6 max-w-full min-w-0 items-center gap-1 rounded-full border border-sky-400/50 bg-white/90 px-2 text-[11px] font-semibold text-sky-600 shadow-sm backdrop-blur-md hover:border-sky-400"
+        triggerClassName="inline-flex h-6 max-w-full min-w-0 items-center gap-1 rounded-full border border-sky-400/50 bg-white/90 px-2 text-[0.6875rem] font-semibold text-sky-600 shadow-sm backdrop-blur-md hover:border-sky-400"
         trigger={
           <>
             <CheckIcon className="h-3 w-3 shrink-0" />
@@ -89,7 +89,7 @@ function OutdatedTag({ partId, tag, tags, outdated }: { partId: string; tag: Par
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="press inline-flex h-6 items-center gap-1 rounded-full border border-rose-400 bg-rose-500/90 px-2 text-[11px] font-semibold text-white shadow-sm backdrop-blur-md hover:bg-rose-500"
+        className="press inline-flex h-6 items-center gap-1 rounded-full border border-rose-400 bg-rose-500/90 px-2 text-[0.6875rem] font-semibold text-white shadow-sm backdrop-blur-md hover:bg-rose-500"
       >
         <span className="h-1.5 w-1.5 rounded-full bg-white" />
         Outdated

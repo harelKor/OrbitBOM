@@ -458,7 +458,7 @@ export function WorkshopMap({
           </button>
         </div>
         {editable && !compact && (
-          <p className="pointer-events-none absolute bottom-2 right-2 rounded-md bg-[#0D111A]/80 px-2 py-1 text-[11px] text-slate-300 backdrop-blur-md">
+          <p className="pointer-events-none absolute bottom-2 right-2 rounded-md bg-[#0D111A]/80 px-2 py-1 text-[0.6875rem] text-slate-300 backdrop-blur-md">
             Drag a pin to move it
           </p>
         )}

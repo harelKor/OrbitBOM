@@ -197,7 +197,7 @@ export function ItemTable({
                     {Object.entries(item.specs).map(([k, v]) => (
                       <span
                         key={k}
-                        className="rounded-full bg-raised px-2 py-0.5 font-mono text-[11px] whitespace-nowrap text-fg-2 tabular-nums"
+                        className="rounded-full bg-raised px-2 py-0.5 font-mono text-[0.6875rem] whitespace-nowrap text-fg-2 tabular-nums"
                       >
                         {v}
                       </span>

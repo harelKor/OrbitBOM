@@ -136,7 +136,7 @@ export function ItemListRow({
                 }
                 disabled={saving}
                 ariaLabel={location ? `Location: ${location.name}` : "Add location"}
-                className={`press max-w-full truncate rounded-full border px-2.5 py-0.5 text-[11px] font-medium hover:border-sky-400/40 hover:text-accent active:scale-[0.98] disabled:opacity-60 ${
+                className={`press max-w-full truncate rounded-full border px-2.5 py-0.5 text-[0.6875rem] font-medium hover:border-sky-400/40 hover:text-accent active:scale-[0.98] disabled:opacity-60 ${
                   location ? "border-line-strong bg-ink/60 text-fg-2" : "border-dashed border-line-strong text-muted"
                 }`}
               >
@@ -154,20 +154,20 @@ export function ItemListRow({
                   })
                 }
                 emptyLabel="+ Condition"
-                className={`press cursor-pointer appearance-none rounded-full border px-2.5 py-0.5 text-[11px] font-semibold active:scale-[0.98] disabled:opacity-60 ${
+                className={`press cursor-pointer appearance-none rounded-full border px-2.5 py-0.5 text-[0.6875rem] font-semibold active:scale-[0.98] disabled:opacity-60 ${
                   condition ? "border-transparent hover:brightness-110" : "border-dashed border-line-strong bg-transparent text-muted hover:border-sky-400/40"
                 }`}
                 style={condition ? { backgroundColor: color, color: textOn(color!) } : undefined}
               />
             )}
-            <SeasonTag itemId={item.id} tag={item.seasonTag} className="rounded-full border border-transparent px-2.5 py-0.5 text-[11px]" />
+            <SeasonTag itemId={item.id} tag={item.seasonTag} className="rounded-full border border-transparent px-2.5 py-0.5 text-[0.6875rem]" />
             {showStanding && state !== "ok" && <ListPill color={STANDING[state].color}>{STANDING[state].label(formatStock(gap, item.sheet))}</ListPill>}
           </span>
         ) : (
           <>
             {location && !rawStock && <ListPill>📍 {location.name}</ListPill>}
             {condition && <ListPill color={conditionColor(condition.color)}>{condition.label}</ListPill>}
-            <SeasonTag itemId={item.id} tag={item.seasonTag} className="rounded-full border border-transparent px-2.5 py-0.5 text-[11px]" />
+            <SeasonTag itemId={item.id} tag={item.seasonTag} className="rounded-full border border-transparent px-2.5 py-0.5 text-[0.6875rem]" />
             {showStanding && state !== "ok" && <ListPill color={STANDING[state].color}>{STANDING[state].label(formatStock(gap, item.sheet))}</ListPill>}
           </>
         )

@@ -240,7 +240,7 @@ export function StepSlides({
           <button className="press flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold pointer-coarse:min-h-11" onClick={() => setShowFinished((v) => !v)} aria-expanded={showFinished}>
             <span className="text-fg-2">{showFinished ? "▾" : "▸"}</span>
             Finished
-            <span className="rounded-full bg-emerald-500/15 px-1.5 text-[11px] text-emerald-600 tabular-nums">{early.length}</span>
+            <span className="rounded-full bg-emerald-500/15 px-1.5 text-[0.6875rem] text-emerald-600 tabular-nums">{early.length}</span>
           </button>
           {showFinished && <div className="space-y-4 border-t border-line p-3">{early.map(slide)}</div>}
         </section>
@@ -398,7 +398,7 @@ function Slide({
                 <span className="font-semibold">Done</span>
               </Checkbox>
               {done && step.tick && (
-                <span className="text-[11px] text-subtle">
+                <span className="text-[0.6875rem] text-subtle">
                   {step.tick.by ?? "Someone"} · <LocalTime at={step.tick.at} />
                 </span>
               )}
@@ -420,7 +420,7 @@ function Slide({
                 ) : (
                   <span className="text-sm text-muted">{model ? "Tap to show in 3D" : model === null ? "No 3D model yet" : "Loading the 3D view…"}</span>
                 )}
-                {step.imageUrl && model && <span className="absolute right-2 bottom-2 rounded bg-surface/90 px-2 py-0.5 text-[11px] font-semibold text-fg-2 shadow-sm">Tap for 3D</span>}
+                {step.imageUrl && model && <span className="absolute right-2 bottom-2 rounded bg-surface/90 px-2 py-0.5 text-[0.6875rem] font-semibold text-fg-2 shadow-sm">Tap for 3D</span>}
               </button>
             )}
           </div>
@@ -434,7 +434,7 @@ function Slide({
             {refs.length > 0 && (
               <div>
                 <p className="label mb-1">Brings in</p>
-                <ul className="space-y-1 text-[15px]">
+                <ul className="space-y-1 text-[0.9375rem]">
                   {refs.map((r) => (
                     <li key={r.step.id}>
                       <a href={`#step-${r.step.id}`} className="press flex items-center gap-2 rounded px-1 py-0.5 hover:bg-raised pointer-coarse:min-h-9">
@@ -451,13 +451,13 @@ function Slide({
             {!sub && ownParts.length > 0 && (
               <div>
                 <p className="label mb-1">Parts in this step</p>
-                <ul className="space-y-1 text-[15px]">
+                <ul className="space-y-1 text-[0.9375rem]">
                   {ownParts.map((p) => (
                     <li key={p.key} className="flex items-center gap-2">
                       <Thumb url={p.thumbUrl} small />
                       <span className="min-w-0 flex-1 truncate">{p.name}</span>
-                      {p.cots && <span className="shrink-0 rounded bg-amber-500/15 px-1 text-[10px] font-bold text-amber-600">COTS</span>}
-                      {p.number && <span className="shrink-0 font-mono text-[11px] text-subtle">{p.number}</span>}
+                      {p.cots && <span className="shrink-0 rounded bg-amber-500/15 px-1 text-[0.625rem] font-bold text-amber-600">COTS</span>}
+                      {p.number && <span className="shrink-0 font-mono text-[0.6875rem] text-subtle">{p.number}</span>}
                       <span className="shrink-0 text-xs text-fg-2 tabular-nums">×{p.qty}</span>
                     </li>
                   ))}

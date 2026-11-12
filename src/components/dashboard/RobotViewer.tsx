@@ -428,7 +428,7 @@ export function RobotViewer({
           )}
           {legend.length > 0 && (
             <div
-              className={`pointer-events-none absolute right-3 bottom-3 ${bar && !systemId && groups.length > 0 ? "left-62" : "left-3"} flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-fg-2`}
+              className={`pointer-events-none absolute right-3 bottom-3 ${bar && !systemId && groups.length > 0 ? "left-62" : "left-3"} flex flex-wrap gap-x-3 gap-y-1 text-[0.6875rem] text-fg-2`}
             >
               {legend.map((s) => (
                 <span key={s.name} className="inline-flex items-center gap-1.5">

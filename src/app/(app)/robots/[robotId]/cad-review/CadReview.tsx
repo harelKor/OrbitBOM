@@ -186,7 +186,7 @@ function Fold({ title, count, thumb, onIsolate, initial = false, children }: { t
                 // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
                 <img src={thumb} alt="" loading="lazy" className="h-full w-full object-contain p-0.5" />
               ) : (
-                <span className="text-[10px] text-subtle">No picture</span>
+                <span className="text-[0.625rem] text-subtle">No picture</span>
               )}
             </span>
           )}

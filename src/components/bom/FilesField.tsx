@@ -40,7 +40,7 @@ export function FilesField({ part }: { part: CardPart }) {
         PART_FILE_TYPES.some((t) => has(t.id)) ? (
           <span className="flex gap-1">
             {PART_FILE_TYPES.filter((t) => has(t.id)).map((t) => (
-              <span key={t.id} title={t.label} className={`rounded border px-1 text-[10px] ${COLORS[t.id]}`}>
+              <span key={t.id} title={t.label} className={`rounded border px-1 text-[0.625rem] ${COLORS[t.id]}`}>
                 {t.label[0]}
               </span>
             ))}

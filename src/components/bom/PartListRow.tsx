@@ -50,7 +50,7 @@ export function PartListRow({
       data-part={partIds(part)}
       style={statusTint(status)}
       picture={part.thumbUrl ?? (cots ? (part.shelf?.thumbUrl ?? null) : null)}
-      placeholder={<span className="px-1 text-center text-[10px] leading-tight text-slate-500">{part.isManual ? "Manual" : "No picture"}</span>}
+      placeholder={<span className="px-1 text-center text-[0.625rem] leading-tight text-slate-500">{part.isManual ? "Manual" : "No picture"}</span>}
       title={partTitle(part)}
       href={part.cotsLinks?.[0]?.url}
       detail={
@@ -81,13 +81,13 @@ export function PartListRow({
                 )}
                 {!slots.length && work && (
                   <span className="contents">
-                    <span className="text-[10px] text-faint">→</span>
+                    <span className="text-[0.625rem] text-faint">→</span>
                     <MachineField part={part} save={save} slot={SLOTS[1]} placeholder="+ Process" className={addPill} />
                   </span>
                 )}
                 {slots.map((slot) => (
                   <span key={slot.key} className="contents">
-                    <span className="text-[10px] text-faint">→</span>
+                    <span className="text-[0.625rem] text-faint">→</span>
                     <MachineField part={part} save={save} slot={slot} className={`${pill} ${slot === current ? "border-accent/60 text-accent" : ""}`} />
                   </span>
                 ))}
@@ -113,8 +113,8 @@ export function PartListRow({
 }
 
 // A field with nothing in it yet, waiting to be picked.
-const addPill = "max-w-full truncate rounded-full border border-dashed border-line-strong px-2.5 py-0.5 text-[11px] font-medium text-muted hover:border-sky-400/40 hover:text-accent";
-const pill = "max-w-full truncate rounded-full border border-line-strong bg-ink/60 px-2.5 py-0.5 text-[11px] font-medium text-fg-2";
+const addPill = "max-w-full truncate rounded-full border border-dashed border-line-strong px-2.5 py-0.5 text-[0.6875rem] font-medium text-muted hover:border-sky-400/40 hover:text-accent";
+const pill = "max-w-full truncate rounded-full border border-line-strong bg-ink/60 px-2.5 py-0.5 text-[0.6875rem] font-medium text-fg-2";
 
 // The List view: rows stacked one under another (two side by side on wide screens).
 export function PartList({ children }: { children: React.ReactNode }) {

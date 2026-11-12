@@ -56,7 +56,7 @@ export function BackupsSettings({ backups, scopes, isAdmin }: { backups: BackupF
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-semibold">
                 <LocalTime at={b.at} style="full" />
-                {isSafetyCopy(b) && <span className="ml-2 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-600 dark:text-amber-300">Before a restore</span>}
+                {isSafetyCopy(b) && <span className="ml-2 rounded-full bg-amber-500/15 px-2 py-0.5 text-[0.6875rem] font-semibold text-amber-600 dark:text-amber-300">Before a restore</span>}
               </span>
               <span className="block truncate font-mono text-xs text-subtle tabular-nums">
                 {b.name} · {size(b.bytes)}

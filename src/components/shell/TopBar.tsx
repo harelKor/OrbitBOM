@@ -70,7 +70,7 @@ export function TopBar({ onMenu, onRobots, navHidden, robotsHidden }: { onMenu: 
             />
             {/* Right edge of the box: the shortcut hint, then the clear button in the far corner. */}
             <div className="absolute inset-y-0 right-1.5 flex items-center gap-1.5">
-              <kbd className="pointer-events-none rounded max-sm:hidden border border-line-strong px-1.5 text-[11px] text-subtle">Ctrl K</kbd>
+              <kbd className="pointer-events-none rounded max-sm:hidden border border-line-strong px-1.5 text-[0.6875rem] text-subtle">Ctrl K</kbd>
               {filters.q && (
                 <button
                   type="button"

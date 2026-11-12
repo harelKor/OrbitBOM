@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ShadeSlider } from "./ShadeSlider";
-import { APPEARANCE_KEY as KEY, DEFAULT_HUE } from "./boot-scripts";
+import { APPEARANCE_KEY as KEY, DEFAULT_HUE, uiScale } from "./boot-scripts";
 
 // Card size and site colour, set from the right panel and kept in this browser, so every page
 // opens the way the member left it. Both live on <html>: --card-scale sizes the part card
@@ -37,8 +37,10 @@ function fillScales(target: EventTarget | null): number[] {
   if (!(grid instanceof HTMLElement)) return [];
   const category = grid.classList.contains("category-grid");
   const style = getComputedStyle(grid);
-  const base = category ? 210 : parseFloat(style.getPropertyValue("--card-min")) || 220;
-  const smallest = category ? 135 : 110; // the grids' own floors (globals.css)
+  // × uiScale(): the grids' px sizes shrink on a small PC screen (globals.css).
+  const ui = uiScale();
+  const base = (category ? 210 : parseFloat(style.getPropertyValue("--card-min")) || 220) * ui;
+  const smallest = (category ? 135 : 110) * ui; // the grids' own floors (globals.css)
   const gap = parseFloat(style.columnGap) || 0;
   const total = grid.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0);
   const out: number[] = [];
@@ -224,7 +226,7 @@ export function AppearanceControls() {
           <span title="Shift + wheel over cards">Card text</span>
           <span className="flex items-center gap-2">
             {prefs.text !== 1 && (
-              <button type="button" onClick={() => update({ text: 1 })} className="press text-[11px] font-medium text-subtle hover:text-fg">
+              <button type="button" onClick={() => update({ text: 1 })} className="press text-[0.6875rem] font-medium text-subtle hover:text-fg">
                 Reset
               </button>
             )}
@@ -246,7 +248,7 @@ export function AppearanceControls() {
         <span className="mb-1 flex items-center justify-between text-xs font-semibold text-muted">
           Colour
           {prefs.hue !== DEFAULT_HUE && (
-            <button type="button" onClick={() => update({ hue: DEFAULT_HUE })} className="press text-[11px] font-medium text-subtle hover:text-fg">
+            <button type="button" onClick={() => update({ hue: DEFAULT_HUE })} className="press text-[0.6875rem] font-medium text-subtle hover:text-fg">
               Reset
             </button>
           )}

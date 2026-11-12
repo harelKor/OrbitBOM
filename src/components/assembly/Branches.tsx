@@ -44,7 +44,7 @@ export function Branches({ book, robotName, at, onOpen }: { book: Book; robotNam
               {listed.length > 0 && (
                 <>
                   {!inside && (
-                    <button onClick={() => toggle(s.id)} className="press ml-1.5 text-[11px] text-subtle hover:text-fg pointer-coarse:min-h-8" aria-expanded={unfolded}>
+                    <button onClick={() => toggle(s.id)} className="press ml-1.5 text-[0.6875rem] text-subtle hover:text-fg pointer-coarse:min-h-8" aria-expanded={unfolded}>
                       {unfolded ? "▾" : "▸"} {listed.length} sub-assembl{listed.length === 1 ? "y" : "ies"}
                     </button>
                   )}
@@ -97,7 +97,7 @@ function Row({ here, trail = false, dot, onClick, children }: { here: boolean; t
         style={dot && !here ? { background: dot, borderColor: dot } : undefined}
       />
       {children}
-      {here && <span className="shrink-0 text-[11px] font-bold text-accent">you</span>}
+      {here && <span className="shrink-0 text-[0.6875rem] font-bold text-accent">you</span>}
     </button>
   );
 }

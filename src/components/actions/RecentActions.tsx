@@ -242,13 +242,13 @@ export function RecentActions({
                           // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
                           <img src={t.url} alt={t.name} loading="lazy" className="max-h-full max-w-full object-contain p-1" />
                         ) : (
-                          <span className="truncate px-1 text-[10px] text-subtle">{t.name}</span>
+                          <span className="truncate px-1 text-[0.625rem] text-subtle">{t.name}</span>
                         )}
                       </span>
                     ))}
                     <TimePill at={a.at} now={now} className="absolute top-2 left-2" />
                     {extra > 0 && (
-                      <span className="absolute right-2 bottom-2 rounded-full bg-surface/90 px-1.5 py-0.5 font-mono text-[11px] text-fg-2 tabular-nums shadow-sm">
+                      <span className="absolute right-2 bottom-2 rounded-full bg-surface/90 px-1.5 py-0.5 font-mono text-[0.6875rem] text-fg-2 tabular-nums shadow-sm">
                         +{extra}
                       </span>
                     )}

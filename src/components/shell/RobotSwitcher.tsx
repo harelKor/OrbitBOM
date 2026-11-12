@@ -194,7 +194,7 @@ function SystemTile({ robotId, system, active, isAdmin, pathname }: { robotId: s
         <span className="relative block">
           <Picture url={system.thumbUrl} className="aspect-square w-full rounded-none" />
           <span
-            className={`absolute right-1.5 bottom-1.5 rounded-full px-1.5 py-px text-[10px] font-bold tabular-nums ${
+            className={`absolute right-1.5 bottom-1.5 rounded-full px-1.5 py-px text-[0.625rem] font-bold tabular-nums ${
               system.percent === 100 ? "bg-accent text-white" : "bg-[#111318]/85 text-white"
             }`}
           >
@@ -206,7 +206,7 @@ function SystemTile({ robotId, system, active, isAdmin, pathname }: { robotId: s
       {system.sync.outdated && (
         <FastLink
           href={`/robots/${robotId}/systems/${system.id}?versions=1`}
-          className="press absolute top-1.5 left-1.5 rounded-full bg-rose-500 px-1.5 py-px text-[10px] font-bold text-white shadow-sm hover:bg-rose-600"
+          className="press absolute top-1.5 left-1.5 rounded-full bg-rose-500 px-1.5 py-px text-[0.625rem] font-bold text-white shadow-sm hover:bg-rose-600"
           title={
             system.sync.outdated === "reverted"
               ? "Reverted to an older version: some parts are behind the latest one. Open Versions."
@@ -232,7 +232,7 @@ function Picture({ url, className }: { url: string | null; className: string }) 
         // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
         <img src={url} alt="" loading="lazy" className="h-full w-full object-contain p-1" />
       ) : (
-        <span className="text-[10px] text-muted">No image</span>
+        <span className="text-[0.625rem] text-muted">No image</span>
       )}
     </span>
   );

@@ -562,7 +562,7 @@ export const bestOffer = (g: ProductGroup) => g.offers.filter((o) => o.price != 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="px-2 pb-1 text-[11px] font-semibold tracking-wide text-subtle uppercase">{title}</div>
+      <div className="px-2 pb-1 text-[0.6875rem] font-semibold tracking-wide text-subtle uppercase">{title}</div>
       <div className="space-y-0.5">{children}</div>
     </div>
   );

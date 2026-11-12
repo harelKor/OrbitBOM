@@ -26,7 +26,7 @@ function useCommentAction() {
 
 function Meta({ c, where }: { c: ReviewComment; where?: boolean }) {
   return (
-    <span className="mt-0.5 block text-[11px] text-subtle">
+    <span className="mt-0.5 block text-[0.6875rem] text-subtle">
       {where && <span className="font-semibold text-fg-2">{c.systemName ?? "Robot"} · </span>}
       {c.model === "basepart" && <span className="mr-1 rounded bg-violet-500/15 px-1 py-px font-semibold text-violet-600 dark:text-violet-300" title="Written on the Basepart 3D model">Basepart</span>}
       {c.author ?? "Someone"} · <LocalTime at={c.createdAt} />
@@ -40,7 +40,7 @@ function PartChip({ c, onFocus }: { c: ReviewComment; onFocus?: (key: string) =>
   return (
     <button
       onClick={() => onFocus?.(c.partKey!)}
-      className="press mt-1 inline-flex max-w-full items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-[11px] font-semibold text-accent-hover hover:bg-accent/20 pointer-coarse:min-h-8"
+      className="press mt-1 inline-flex max-w-full items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-[0.6875rem] font-semibold text-accent-hover hover:bg-accent/20 pointer-coarse:min-h-8"
       title="Show the part"
     >
       <span className="h-1.5 w-1.5 rounded-full bg-accent" />
@@ -60,7 +60,7 @@ function PinBadge({ n, c, onView }: { n?: number; c: ReviewComment; onView?: (c:
   return (
     <button
       onClick={() => onView?.(c)}
-      className={`press mt-0.5 flex h-4.5 min-w-4.5 shrink-0 items-center justify-center rounded-full px-1 text-[10px] font-semibold text-white tabular-nums shadow-sm pointer-coarse:h-6 pointer-coarse:min-w-6 ${c.state === "open" ? "bg-amber-500" : "bg-sky-500"}`}
+      className={`press mt-0.5 flex h-4.5 min-w-4.5 shrink-0 items-center justify-center rounded-full px-1 text-[0.625rem] font-semibold text-white tabular-nums shadow-sm pointer-coarse:h-6 pointer-coarse:min-w-6 ${c.state === "open" ? "bg-amber-500" : "bg-sky-500"}`}
       title="Its pin in the 3D view: go to the view it was written in"
       aria-label={`Comment ${n}: go to its view`}
     >
@@ -139,7 +139,7 @@ export function WaitingComment({ c, n, isMentor, canTick, onFocus, onView, where
           <CommentSnip c={c} />
           <Meta c={c} where={where} />
           {c.doneAt && (
-            <span className="block text-[11px] text-subtle">
+            <span className="block text-[0.6875rem] text-subtle">
               Ticked off{c.doneBy ? ` by ${c.doneBy}` : ""} · <LocalTime at={c.doneAt} />
             </span>
           )}

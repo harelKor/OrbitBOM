@@ -115,7 +115,7 @@ function DeliveryPill({ value, mixed, editable, onChange }: { value: string | nu
   return (
     <span
       title={value ? "Delivery date" : "Set the delivery date"}
-      className={`relative flex items-center gap-1 rounded-full border bg-surface/90 px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap tabular-nums shadow-sm backdrop-blur-md ${
+      className={`relative flex items-center gap-1 rounded-full border bg-surface/90 px-2 py-0.5 text-[0.6875rem] font-semibold whitespace-nowrap tabular-nums shadow-sm backdrop-blur-md ${
         value ? "border-emerald-400/60 text-emerald-600 dark:text-emerald-300" : "border-dashed border-line-strong text-muted"
       } ${editable ? "press cursor-pointer hover:border-accent" : ""}`}
     >

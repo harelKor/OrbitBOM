@@ -151,7 +151,7 @@ export function CategorySettings({
               </div>
 
               <div className="space-y-2">
-                <div className="text-[11px] font-semibold tracking-wide text-subtle uppercase">Fields</div>
+                <div className="text-[0.6875rem] font-semibold tracking-wide text-subtle uppercase">Fields</div>
                 {cat.fields.map((f, i) => (
                   <div
                     key={f.id}
@@ -309,7 +309,7 @@ function OptionsEditor({ options, onChange }: { options: string[]; onChange: (o:
         placeholder="Add option ⏎"
         className="input min-h-9 w-32 text-xs"
       />
-      <span className="text-[11px] text-subtle">{options.length > 6 ? "shown as a dropdown" : "shown as chips"}</span>
+      <span className="text-[0.6875rem] text-subtle">{options.length > 6 ? "shown as a dropdown" : "shown as chips"}</span>
     </div>
   );
 }

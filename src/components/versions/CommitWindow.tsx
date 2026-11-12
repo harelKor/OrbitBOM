@@ -180,7 +180,7 @@ export function CommitWindow({
                   />
                   <span className="min-w-0 flex-1 text-sm">
                     <span className={`block whitespace-pre-wrap break-words ${tick.has(c.id) ? "text-muted line-through" : "text-fg"}`}>{c.body}</span>
-                    <span className="mt-0.5 block text-[11px] text-subtle">
+                    <span className="mt-0.5 block text-[0.6875rem] text-subtle">
                       {c.partName && <span className="font-semibold text-fg-2">{c.partName} · </span>}
                       {c.author ?? "Someone"} · <LocalTime at={c.createdAt} />
                     </span>
@@ -310,7 +310,7 @@ function Preview({ systemId, req, label }: { systemId: string; req: PreviewReq; 
   }, [systemId, body]);
   return (
     <div className="relative h-44 overflow-hidden stage-frame">
-      <span className="absolute top-2 left-2 z-10 rounded-full bg-surface/90 px-2 py-0.5 text-[11px] font-semibold text-muted">{label}</span>
+      <span className="absolute top-2 left-2 z-10 rounded-full bg-surface/90 px-2 py-0.5 text-[0.6875rem] font-semibold text-muted">{label}</span>
       {model && <ModelCanvas model={model} colors={NO_COLORS} mode="cad" locateKey={null} onLocated={noop} />}
       {!model && <div className="absolute inset-0 flex items-center justify-center p-3 text-center text-xs text-muted">{error ?? "Loading…"}</div>}
     </div>
