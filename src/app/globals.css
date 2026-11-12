@@ -192,6 +192,20 @@ body {
   }
 }
 
+/* Long press areas (src/components/ui/longPress.tsx): on phones a held finger selects or peeks,
+   so it must not select text or open the browser's link / image menu. */
+@media (pointer: coarse) {
+  .hold-area {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .hold-area :is(input, textarea) {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+}
+
 /* Interaction rules: everything clickable answers hover in 150ms and presses down on click. */
 @utility press {
   transition-property: color, background-color, border-color, box-shadow, transform, opacity;

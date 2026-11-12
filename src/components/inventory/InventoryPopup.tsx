@@ -57,11 +57,11 @@ type MaterialData = Awaited<ReturnType<typeof materialPopup>>;
 // order status, and saves through the card (so the COTS page updates with it).
 export type CotsOrderContext = { info: CotsOrderInfo; save: (changes: PartChanges) => void };
 type State =
-  | { kind: "item"; id: string; preview: Item | null; data: ItemData | null; order: CotsOrderContext | null; missing?: boolean }
+  | { kind: "item"; id: string; preview: Item | null; data: ItemData | null; order: CotsOrderContext | null; missing?: boolean; edit?: boolean }
   | { kind: "material"; name: string; data: MaterialData | null }
   | null;
 
-const Ctx = createContext<{ openItem: (id: string, preview?: Item, opts?: { cotsOrder?: CotsOrderContext }) => void; openMaterial: (name: string) => void }>({
+const Ctx = createContext<{ openItem: (id: string, preview?: Item, opts?: { cotsOrder?: CotsOrderContext; edit?: boolean }) => void; openMaterial: (name: string) => void }>({
   openItem: () => {},
   openMaterial: () => {},
 });
@@ -113,13 +113,14 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
       const data = await materialPopup(name);
       setState((s) => (s?.kind === "material" && s.name === name ? { ...s, data } : s));
     });
-  const showItem = (id: string, preview: Item | null, order: CotsOrderContext | null = null) => {
+  const showItem = (id: string, preview: Item | null, order: CotsOrderContext | null = null, edit = false) => {
     setError(null);
-    setState({ kind: "item", id, preview, data: null, order });
+    setState({ kind: "item", id, preview, data: null, order, edit });
     loadItem(id);
   };
-  const openItem = (id: string, preview?: Item, opts?: { cotsOrder?: CotsOrderContext }) => {
-    showItem(id, preview ?? null, opts?.cotsOrder ?? null);
+  // `edit` opens straight on the item's form (Inventory's long-press Edit).
+  const openItem = (id: string, preview?: Item, opts?: { cotsOrder?: CotsOrderContext; edit?: boolean }) => {
+    showItem(id, preview ?? null, opts?.cotsOrder ?? null, opts?.edit);
     if (urlItem() !== id) setUrlItem(id, true);
   };
   const openMaterial = (name: string) => {
@@ -220,6 +221,7 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
               (state.data?.order ? { info: { ...state.data.order, href: item.openOrder ? orderHref(item.openOrder) : undefined }, save: () => {} } : null)
             }
             orderEditable={!!state.order}
+            startEdit={state.edit}
           />
         )}
         {state?.kind === "material" && !state.data && <p className="py-8 text-center text-sm text-muted">Loading…</p>}
@@ -467,6 +469,7 @@ function ItemBody({
   onClose,
   order,
   orderEditable,
+  startEdit = false,
 }: {
   item: Item;
   data: ItemData | null;
@@ -477,14 +480,15 @@ function ItemBody({
   onClose: () => void;
   order: CotsOrderContext | null;
   orderEditable: boolean;
+  startEdit?: boolean;
 }) {
-  const [mode, setMode] = useState<"view" | "edit">("view");
+  const work = useCan("work");
+  const [mode, setMode] = useState<"view" | "edit">(startEdit && work ? "edit" : "view");
   const [spreadOpen, setSpreadOpen] = useState(false);
   const [draft, setDraft] = useState(() => draftOf(item));
   const [message, setMessage] = useState<string | null>(null);
   const [photo, setPhoto] = useState<string | null>(null);
   const [, startPhoto] = useTransition();
-  const work = useCan("work");
   const [, startMove] = useTransition();
   // A link's Unlink saves, then the window reloads.
   const save = (run: () => Promise<{ error?: string }>) =>

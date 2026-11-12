@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { Dialog } from "@/components/Dialog";
 import { useCan } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
+import { peekProps, usePeek } from "@/components/ui/longPress";
 import { usePhone } from "@/components/ui/usePhone";
 import { guessCategory } from "@/config/inventory";
 import { buildName, getCategory } from "@/lib/inventory/categories";
@@ -312,6 +313,7 @@ export function AddBox({
               tabIndex={0}
               onClick={() => fromOffer(g, bestOffer(g))}
               onKeyDown={(e) => e.key === "Enter" && fromOffer(g, bestOffer(g))}
+              {...peekProps(g.title, g.image, g.offers.map((o) => o.vendor).join(" · "))}
               className="press flex cursor-pointer gap-3 rounded-xl p-2 hover:bg-raised"
             >
               <div className="thumb-well flex h-14 w-14 shrink-0 items-center justify-center rounded-lg">
@@ -455,7 +457,9 @@ export function AddBox({
       onSaved={() => setDraft(null)}
     />
   );
-  const panel = "space-y-3 overflow-y-auto rounded-2xl border border-line-strong bg-surface p-3 shadow-[0_16px_40px_-12px_rgba(17,19,24,0.35)]";
+  // Holding a result shows its whole name and picture until the finger lifts (Harel, 2026-11-12).
+  const peek = usePeek();
+  const panel = "hold-area space-y-3 overflow-y-auto rounded-2xl border border-line-strong bg-surface p-3 shadow-[0_16px_40px_-12px_rgba(17,19,24,0.35)]";
   return (
     <div className="relative min-w-0 flex-1 sm:max-w-2xl">
       <label ref={label} className="relative block">
@@ -521,15 +525,17 @@ export function AddBox({
                   // Tapping the dimmed page blurs the box, which closes the results.
                   <div aria-hidden style={{ top: float.style.top }} className="modal-backdrop fixed inset-x-0 bottom-0 z-[59]" />
                 )}
-                <div style={float.style} className={`fixed z-[60] ${panel}`} onMouseDown={(e) => e.preventDefault()}>
+                <div style={float.style} className={`fixed z-[60] ${panel}`} onMouseDown={(e) => e.preventDefault()} {...peek.hold}>
                   {results}
+                  {peek.card}
                 </div>
               </>,
               float.host,
             )
           : (
-            <div className={`absolute top-full right-0 left-0 z-40 mt-1.5 max-h-[min(70dvh,32rem)] ${panel}`} onMouseDown={(e) => e.preventDefault()}>
+            <div className={`absolute top-full right-0 left-0 z-40 mt-1.5 max-h-[min(70dvh,32rem)] ${panel}`} onMouseDown={(e) => e.preventDefault()} {...peek.hold}>
               {results}
+              {peek.card}
             </div>
           ))}
 
@@ -570,7 +576,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function Row({ onClick, icon, img, title, detail }: { onClick: () => void; icon: "box" | "download" | "spark"; img?: string | null; title: string; detail: string }) {
   return (
-    <button type="button" onClick={onClick} className="press flex min-h-12 w-full items-center gap-3 rounded-xl px-2 py-1.5 text-left hover:bg-raised">
+    <button type="button" onClick={onClick} {...peekProps(title, img, detail)} className="press flex min-h-12 w-full items-center gap-3 rounded-xl px-2 py-1.5 text-left hover:bg-raised">
       <span className="thumb-well flex h-10 w-10 shrink-0 items-center justify-center rounded-lg">
         {img ? (
           // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable

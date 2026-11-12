@@ -19,6 +19,7 @@ import {
 import { Dialog } from "@/components/Dialog";
 import { EditOnly, useManage, usePermissions } from "@/components/shell/ModeContext";
 import { useEscape } from "@/components/ui/useEscape";
+import { holdTarget, useLongPress } from "@/components/ui/longPress";
 import {
   CategoryBoxes,
   pushQuery,
@@ -149,11 +150,12 @@ export function InventoryView({
   }, [addedParam, goto]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  // Move / Delete: taps select cards, the bar at the bottom acts on them.
+  // Move / Delete: taps select cards, the bar at the bottom acts on them. On a phone a long press
+  // on an item selects it and opens the same bar with Edit, Move and Delete (Harel, 2026-11-12).
   const edit = useManage();
   // The Build Team has no Export spreadsheet button (Harel, 2026-11-02).
   const hideExport = usePermissions().mode === "build";
-  const [picking, setPicking] = useState<"move" | "delete" | null>(null);
+  const [picking, setPicking] = useState<"select" | "move" | "delete" | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [moveCat, setMoveCat] = useState("");
   const [moveLoc, setMoveLoc] = useState(""); // "" keep, "none" clear, else a location id
@@ -412,7 +414,7 @@ export function InventoryView({
       </select>
     </div>
   );
-  const pick = (m: "move" | "delete") => {
+  const pick = (m: "select" | "move" | "delete") => {
     setPicking((cur) => (cur === m ? null : m));
     setSelected(new Set());
     setMoveCat("");
@@ -435,6 +437,25 @@ export function InventoryView({
     setNotice(r.message ?? null);
     setPicking(null);
     setSelected(new Set());
+  };
+  // Long press: that item selected, the bar offering Edit / Move / Delete; taps add more.
+  const hold = useLongPress<string>({
+    enabled: edit && picking === null,
+    find: (t, area) => holdTarget(t, area, "[data-item]")?.dataset.item ?? null,
+    onHold: (id) => {
+      if (saving(id)) return;
+      setPicking("select");
+      setSelected(new Set([id]));
+      setMoveCat("");
+      setMoveLoc("");
+      setNotice(null);
+    },
+  });
+  const editSelected = () => {
+    const id = [...selected][0];
+    setPicking(null);
+    setSelected(new Set());
+    openItem(id, optimistic.find((i) => i.id === id), { edit: true });
   };
   const confirmMove = () => {
     const ids = [...selected];
@@ -505,6 +526,7 @@ export function InventoryView({
 
   const grid = (list: Item[], cardView: NeedView = need) =>
     layout === "table" ? (
+      <div className="hold-area">
       <ItemTable
         items={list}
         categories={categories}
@@ -519,8 +541,9 @@ export function InventoryView({
         onToggleSelect={selecting ? toggleSelected : undefined}
         glowOf={glowOf}
       />
+      </div>
     ) : layout === "list" ? (
-      <div className="list-stack">
+      <div className="list-stack hold-area">
         {list.map((item) => (
           <ItemListRow
             key={item.id}
@@ -542,7 +565,7 @@ export function InventoryView({
       </div>
     ) : (
       <div
-        className="card-grid"
+        className="card-grid hold-area"
         style={{ "--card-min": "220px" } as React.CSSProperties}
       >
         {list.map((item) => (
@@ -583,7 +606,7 @@ export function InventoryView({
   const selectable = boxes ? optimistic : shownMain;
 
   return (
-    <div className={`space-y-4 ${selecting ? "pb-20" : ""}`}>
+    <div className={`space-y-4 ${selecting ? "pb-20" : ""}`} {...hold}>
       <EditOnly>
         <div className="panel flex flex-wrap items-center gap-2 p-3">
           <button
@@ -887,7 +910,33 @@ export function InventoryView({
             <span className="font-mono font-semibold tabular-nums">
               {selected.size} selected
             </span>
-            {selecting === "move" ? (
+            {selecting === "select" ? (
+              <>
+                <span className="ml-auto" />
+                <button
+                  className="btn min-h-11 active:scale-[0.98]"
+                  disabled={selected.size !== 1}
+                  title={selected.size === 1 ? undefined : "Edit works on one item at a time"}
+                  onClick={editSelected}
+                >
+                  <Icon name="pencil" className="h-4 w-4" /> Edit
+                </button>
+                <button
+                  className="btn min-h-11 active:scale-[0.98]"
+                  disabled={selected.size === 0}
+                  onClick={() => setPicking("move")}
+                >
+                  Move
+                </button>
+                <button
+                  className="btn min-h-11 text-rose-600 active:scale-[0.98]"
+                  disabled={busy || selected.size === 0}
+                  onClick={confirmDelete}
+                >
+                  Delete
+                </button>
+              </>
+            ) : selecting === "move" ? (
               <>
                 <select
                   value={moveCat}

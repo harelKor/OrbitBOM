@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { openPartWindow } from "@/components/bom/PartDetailsHost";
 import { useInventoryPopup } from "@/components/inventory/InventoryPopup";
 import { Icon } from "@/components/ui/Icon";
+import { peekProps, usePeek } from "@/components/ui/longPress";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { formatStock } from "@/lib/inventory/stock";
 import type { SearchResults } from "@/lib/data/search";
@@ -13,7 +14,8 @@ type Hit = { kind: "part" | "item"; id: string };
 // The top bar search's results (Harel, 2026-11-04): BOM parts by system, then inventory items by
 // category, from every active robot and the whole shelf. Picking one opens its window over the
 // page you're on. ↑ ↓ move, Enter opens, Escape closes. On a phone it's a short box, the full width
-// under the search, holding every result: a finger scrolls it without moving the page.
+// under the search, holding every result: a finger scrolls it without moving the page, and holding
+// a result shows its whole name and picture until the finger lifts (Harel, 2026-11-12).
 export function SearchDropdown({ q, open, onClose, input }: { q: string; open: boolean; onClose: () => void; input: React.RefObject<HTMLInputElement | null> }) {
   const { openItem } = useInventoryPopup();
   const [results, setResults] = useState<SearchResults | null>(null);
@@ -21,6 +23,7 @@ export function SearchDropdown({ q, open, onClose, input }: { q: string; open: b
   const [active, setActive] = useState(0);
   const panel = useRef<HTMLDivElement>(null);
   const query = q.trim();
+  const peek = usePeek();
 
   // A short pause after typing, and the last search dropped once the text changes.
   useEffect(() => {
@@ -88,7 +91,7 @@ export function SearchDropdown({ q, open, onClose, input }: { q: string; open: b
   if (!open || query.length < 2) return null;
   const empty = results && !results.bom.length && !results.inventory.length;
   let n = -1;
-  const row = (h: Hit, content: React.ReactNode) => {
+  const row = (h: Hit, peekOf: ReturnType<typeof peekProps>, content: React.ReactNode) => {
     n += 1;
     const i = n;
     return (
@@ -98,6 +101,7 @@ export function SearchDropdown({ q, open, onClose, input }: { q: string; open: b
         data-active={i === active}
         onMouseEnter={() => setActive(i)}
         onClick={() => pick(h)}
+        {...peekOf}
         className="flex w-full min-w-0 items-center gap-2.5 rounded-lg px-2 py-1.5 text-left data-[active=true]:bg-accent/15"
       >
         {content}
@@ -126,7 +130,8 @@ export function SearchDropdown({ q, open, onClose, input }: { q: string; open: b
     <div
       ref={panel}
       role="listbox"
-      className="absolute top-full left-0 z-50 mt-1.5 max-h-[min(70vh,40rem)] w-[min(40rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-xl border border-line-strong bg-surface p-1.5 text-fg shadow-2xl [-webkit-overflow-scrolling:touch] max-md:right-0 max-md:max-h-[min(45vh,20rem)] max-md:w-auto"
+      {...peek.hold}
+      className="hold-area absolute top-full left-0 z-50 mt-1.5 max-h-[min(70vh,40rem)] w-[min(40rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-xl border border-line-strong bg-surface p-1.5 text-fg shadow-2xl [-webkit-overflow-scrolling:touch] max-md:right-0 max-md:max-h-[min(45vh,20rem)] max-md:w-auto"
     >
       {!results && loading && <p className="px-2 py-3 text-sm text-subtle">Searching…</p>}
       {empty && <p className="px-2 py-3 text-sm text-subtle">Nothing on the BOM or the shelf matches “{query}”.</p>}
@@ -139,6 +144,7 @@ export function SearchDropdown({ q, open, onClose, input }: { q: string; open: b
           {s.parts.map((p) =>
             row(
               { kind: "part", id: p.id },
+              peekProps(p.name, p.thumbUrl, [p.partNumber, s.systemName].filter(Boolean).join(" · ")),
               <>
                 {thumb(p.thumbUrl)}
                 <span className="min-w-0 flex-1">
@@ -160,6 +166,7 @@ export function SearchDropdown({ q, open, onClose, input }: { q: string; open: b
           {s.items.map((it) =>
             row(
               { kind: "item", id: it.id },
+              peekProps(it.name, it.thumbUrl, `${s.label} · ${formatStock(it.inStock)} on the shelf`),
               <>
                 {thumb(it.thumbUrl)}
                 <span className="min-w-0 flex-1 truncate text-sm font-semibold">{it.name}</span>
@@ -169,6 +176,7 @@ export function SearchDropdown({ q, open, onClose, input }: { q: string; open: b
           )}
         </section>
       ))}
+      {peek.card}
     </div>
   );
 }

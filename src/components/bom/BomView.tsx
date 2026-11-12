@@ -11,6 +11,7 @@ import { useFilters } from "@/components/shell/FilterContext";
 import { usePermissions } from "@/components/shell/ModeContext";
 import { BUILD_STATUSES } from "@/components/shell/mode";
 import { useEscape } from "@/components/ui/useEscape";
+import { holdTarget, useLongPress } from "@/components/ui/longPress";
 import { BULK_ASK_EVENT, BULK_SELECTION_EVENT, BULK_TOGGLE_EVENT, type BulkSelectionDetail, type BulkToggleDetail } from "@/components/dashboard/modelEvents";
 import { DrawingsBar } from "./DrawingsBar";
 import { MergeBar, type MergeInfo } from "./MergeBar";
@@ -178,6 +179,17 @@ export function BomView({
       return next;
     });
 
+  // On a phone a long press on a part starts Bulk edit with that part picked (Harel, 2026-11-12);
+  // taps then add more, as with the Bulk edit button.
+  const hold = useLongPress<string>({
+    enabled: edit && allowBulkEdit && view !== "kanban" && !selecting,
+    find: (t, area) => holdTarget(t, area, '[id^="part-"]')?.id.slice("part-".length) ?? null,
+    onHold: (id) => {
+      setMode("bulk");
+      setSelected(new Set([id]));
+    },
+  });
+
   // Bulk edit picks parts in the page's 3D view too (Harel, 2026-11-10): the viewer is told which
   // parts are selected (a merged row as its members), and a click there toggles the part's row.
   const rowOf = useMemo(() => {
@@ -219,13 +231,15 @@ export function BomView({
 
   const cards = (list: CardPart[], withSystem: boolean) =>
     view === "list" ? (
+      <div className="hold-area">
       <PartList>
         {list.map((p) => (
           <PartListRow key={p.id} part={p} save={saveFor(p.id)} selected={selected.has(p.id)} onToggleSelect={selecting ? () => toggle(p.id) : undefined} />
         ))}
       </PartList>
+      </div>
     ) : (
-    <div className="card-grid">
+    <div className="card-grid hold-area">
       {list.map((p) => (
         <PartCard
           key={p.id}
@@ -252,7 +266,7 @@ export function BomView({
   return (
     <BomProvider value={{ inventory, isAdmin, robotId, versions }}>
     {/* With the sticky toolbar, a card jumped to (#part-…) lands below both bars. */}
-    <div className={`space-y-4 ${selecting ? "pb-20" : ""} ${stickyToolbar ? "[&_[id^=part-]]:scroll-mt-[calc(var(--topbar-h)+5rem)]" : ""}`}>
+    <div className={`space-y-4 ${selecting ? "pb-20" : ""} ${stickyToolbar ? "[&_[id^=part-]]:scroll-mt-[calc(var(--topbar-h)+5rem)]" : ""}`} {...hold}>
       <div
         className={`flex flex-wrap items-center gap-3 ${
           // Sticks right under the top bar (whatever its height); the strip bleeds into main's padding so cards scroll
