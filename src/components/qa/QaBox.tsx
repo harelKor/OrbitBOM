@@ -15,7 +15,8 @@ export type QaSystem = { id: string; name: string; count: number };
 // The robot dashboard's Ready for QA box. A click opens the systems that have parts to QA; a
 // system opens a second window over it with that system's parts, each with the big check that
 // moves it to In Stock, and a button to the system's page (Harel, 2026-11-07). `glow`: CAD Team,
-// while parts wait.
+// while parts wait. On a PC its text sizes to the box (container units), so a short box
+// (a small or zoomed screen) never cuts the number off.
 export function QaBox({
   robotId,
   systems,
@@ -73,17 +74,17 @@ export function QaBox({
         type="button"
         onClick={() => setOpen(true)}
         data-arrival={glow ? "" : undefined}
-        className="card-interactive group flex min-h-32 flex-col justify-between gap-2 overflow-hidden p-4 text-left active:scale-[0.98] sm:p-5"
+        className="card-interactive group flex min-h-32 flex-col justify-between gap-2 overflow-hidden p-4 text-left active:scale-[0.98] sm:p-5 @5xl/dash:[container-type:size]"
       >
         <span className="min-w-0">
-          <span className="block text-xl leading-tight font-bold text-fg sm:text-2xl">Ready for QA</span>
+          <span className="block text-xl leading-tight font-bold text-fg sm:text-2xl @5xl/dash:text-[min(1.5rem,11.5cqw,11cqh)]">Ready for QA</span>
           {total > 0 && (
-            <span className="mt-1 block truncate text-base text-subtle tabular-nums">
+            <span className="mt-1 block truncate text-base text-subtle tabular-nums @5xl/dash:text-[min(1rem,8cqh)]">
               in {systems.length} {systems.length === 1 ? "system" : "systems"}
             </span>
           )}
         </span>
-        <span className="display font-mono text-7xl leading-none text-accent tabular-nums sm:text-8xl">{total}</span>
+        <span className="display font-mono text-7xl leading-none text-accent tabular-nums sm:text-8xl @5xl/dash:text-[min(6rem,36cqh,40cqw)]">{total}</span>
       </button>
       <Dialog open={open} onClose={() => setOpen(false)} title="Ready for QA" wide>
         {systems.length === 0 ? (

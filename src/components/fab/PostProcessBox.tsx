@@ -14,7 +14,7 @@ import { POST_PROCESSING, fabState } from "./fabModel";
 
 // The robot dashboard's Post Process box. A click opens every part in Post Processing in a window,
 // with To Fab's − / + and check, and a To Fab button (Harel, 2026-11-07). `glow`: Build Team,
-// while parts wait.
+// while parts wait. On a PC its text sizes to the box, like Ready for QA's.
 export function PostProcessBox({ robotId, parts, inventory, isAdmin, glow = false }: { robotId: string; parts: CardPart[]; inventory: InventoryName[]; isAdmin: boolean; glow?: boolean }) {
   const [open, setOpen] = useState(false);
   // Parts checked off while the window is open stay in it, struck through, after the page's data
@@ -77,10 +77,10 @@ export function PostProcessBox({ robotId, parts, inventory, isAdmin, glow = fals
         type="button"
         onClick={() => setOpen(true)}
         data-arrival={glow ? "" : undefined}
-        className="card-interactive group flex min-h-32 flex-col justify-between gap-2 overflow-hidden p-4 text-left active:scale-[0.98] sm:p-5"
+        className="card-interactive group flex min-h-32 flex-col justify-between gap-2 overflow-hidden p-4 text-left active:scale-[0.98] sm:p-5 @5xl/dash:[container-type:size]"
       >
-        <span className="block text-xl leading-tight font-bold text-fg sm:text-2xl">Post Process</span>
-        <span className="display font-mono text-7xl leading-none text-accent tabular-nums sm:text-8xl">{parts.length}</span>
+        <span className="block text-xl leading-tight font-bold text-fg sm:text-2xl @5xl/dash:text-[min(1.5rem,11.5cqw,11cqh)]">Post Process</span>
+        <span className="display font-mono text-7xl leading-none text-accent tabular-nums sm:text-8xl @5xl/dash:text-[min(6rem,36cqh,40cqw)]">{parts.length}</span>
       </button>
       <Dialog
         open={open}
