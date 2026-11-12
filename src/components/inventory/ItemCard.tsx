@@ -239,7 +239,8 @@ export function ItemCard({
         )}
       </div>
 
-      <div className="card-overlay -mt-12 flex items-center justify-between gap-2 px-2 pb-2" onClick={stop}>
+      {/* As tall as the − / + buttons even without them (no team), or the name slides up under the picture. */}
+      <div className="card-overlay -mt-12 flex min-h-13 items-center justify-between gap-2 px-2 pb-2" onClick={stop}>
         {work && (<button
           type="button"
           onClick={() => onStep(-1)}
