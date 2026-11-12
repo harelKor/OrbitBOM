@@ -43,3 +43,6 @@ next-env.d.ts
 
 # Onshape test output
 /scripts/out
+
+# built by `npm run worker` before every build and dev start
+/public/teeth-worker.js
