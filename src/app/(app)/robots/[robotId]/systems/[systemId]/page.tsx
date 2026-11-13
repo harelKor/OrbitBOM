@@ -21,7 +21,7 @@ import { listInventoryNames } from "@/lib/data/inventory";
 import { listSystemMerges, listSystemParts } from "@/lib/data/parts";
 import { getSystem } from "@/lib/data/robots";
 import { fabStage } from "@/lib/fab";
-import { robotModelsBuiltAt } from "@/lib/model/build";
+import { robotModelBuiltAt } from "@/lib/model/build";
 import { hasCapability } from "@/lib/mode";
 import { isUuid } from "@/lib/uuid";
 import { loadDraft } from "@/lib/versions/detect";
@@ -33,12 +33,10 @@ export const maxDuration = 60;
 
 export default async function SystemPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ robotId: string; systemId: string }>;
-  searchParams: Promise<{ model?: string | string[] }>;
 }) {
-  const [{ robotId, systemId }, sp] = await Promise.all([params, searchParams]);
+  const { robotId, systemId } = await params;
   if (!isUuid(robotId) || !isUuid(systemId)) notFound();
   // Everything in one parallel round: the page waits for the slowest query, not their sum.
   const member = await requireMember();
@@ -48,7 +46,7 @@ export default async function SystemPage({
     listSystemMerges(systemId),
     listInventoryNames(),
     hasCapability("sync"),
-    robotModelsBuiltAt(robotId),
+    robotModelBuiltAt(robotId),
     listRecentActions({ robotId, memberId: member.id, systemId, fabOnly: true }, 30),
     listRecentActions({ robotId, memberId: member.id, systemId }, 30),
     loadDraft(systemId),
@@ -58,8 +56,8 @@ export default async function SystemPage({
   ]);
   if (!data) notFound();
   const { system, robot, breakdown } = data;
-  // A 3D view for a system with its Final, its Basepart (Harel, 2026-11-12), or both.
-  const has3d = !!(system.assemblyUrl || system.basepartUrl);
+  // A 3D view for a system with its Final; the Basepart is on the CAD page only (Harel, 2026-11-13).
+  const has3d = !!system.assemblyUrl;
   // Open CAD Review comments: ticked off in the Commit window, counted on the chip.
   const openComments = comments.filter((c) => isActive(c.state));
   const waiting = comments.filter((c) => c.state === "to_check").length;
@@ -127,11 +125,9 @@ export default async function SystemPage({
               systemId={system.id}
               statuses={breakdown.statuses.filter((s) => s.count > 0)}
               parts={viewerParts}
-              builtAt={modelBuiltAt.final}
+              builtAt={modelBuiltAt}
               hasAssembly={!!system.assemblyUrl}
               edit={edit}
-              basepart={{ builtAt: modelBuiltAt.basepart, linked: !!system.basepartUrl }}
-              initialModel={sp.model === "basepart" ? "basepart" : undefined}
             />
           </div>
         )}

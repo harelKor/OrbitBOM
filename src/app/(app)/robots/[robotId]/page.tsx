@@ -19,7 +19,7 @@ import { listRobotGroups } from "@/lib/data/groups";
 import { listInventoryNames, robotInventory } from "@/lib/data/inventory";
 import { listRobotParts } from "@/lib/data/parts";
 import { DONE_STATUSES, STATUSES } from "@/config/statuses";
-import { robotModelsBuiltAt } from "@/lib/model/build";
+import { robotModelBuiltAt } from "@/lib/model/build";
 import { getRobot } from "@/lib/data/robots";
 import { AREA_READY, areaQueue, fabStage } from "@/lib/fab";
 import { can } from "@/components/shell/mode";
@@ -32,8 +32,8 @@ import { storageTotal } from "@/lib/storage/usage";
 // completion, Ready for QA and Post Process, the 3D stage, a compact Inventory box above Recent
 // actions, and every part of the robot (searched and filtered from the top bar). One layout for
 // every team; a box glows when it holds work for the member's team (Harel, 2026-11-07).
-export default async function RobotPage({ params, searchParams }: { params: Promise<{ robotId: string }>; searchParams: Promise<{ model?: string | string[] }> }) {
-  const [{ robotId }, sp] = await Promise.all([params, searchParams]);
+export default async function RobotPage({ params }: { params: Promise<{ robotId: string }> }) {
+  const { robotId } = await params;
   if (!isUuid(robotId)) notFound();
   // Everything in one parallel round: the page waits for the slowest query, not their sum.
   // The effective mode, so an admin previewing Build or CAD sees that team's glows.
@@ -47,7 +47,7 @@ export default async function RobotPage({ params, searchParams }: { params: Prom
     listRobotParts(robotId),
     listInventoryNames(),
     robotInventory(robotId),
-    robotModelsBuiltAt(robotId),
+    robotModelBuiltAt(robotId),
     listRecentActions({ robotId, memberId: member.id }),
     storageTotal(),
     listRobotGroups(robotId),
@@ -186,11 +186,9 @@ export default async function RobotPage({ params, searchParams }: { params: Prom
             robotId={robot.id}
             statuses={activeStatuses}
             parts={viewerParts}
-            builtAt={modelBuiltAt.final}
+            builtAt={modelBuiltAt}
             hasAssembly={!!robot.mainAssemblyUrl || data.systems.some((s) => s.assemblyUrl)}
             edit={edit}
-            basepart={{ builtAt: modelBuiltAt.basepart, linked: !!robot.basepartUrl || data.systems.some((s) => s.basepartUrl) }}
-            initialModel={sp.model === "basepart" ? "basepart" : undefined}
           />
         </div>
       </div>
