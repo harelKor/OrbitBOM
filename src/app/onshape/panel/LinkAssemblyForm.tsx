@@ -8,6 +8,7 @@ import { SystemChoice, type ChoiceSystem } from "./SystemChoice";
 // assembly the BOM is read from (Harel, 2026-11-12), or the robot's Batch Layouts document.
 export function LinkAssemblyForm({
   assemblyUrl,
+  query,
   documentUrl,
   robots,
   systems,
@@ -17,6 +18,7 @@ export function LinkAssemblyForm({
   divided = false,
 }: {
   assemblyUrl: string;
+  query: string; // the panel's place, to come back to its home after linking
   documentUrl: string;
   robots: { id: string; name: string }[];
   systems: ChoiceSystem[]; // systems with no Final yet (started from their Basepart)
@@ -25,8 +27,8 @@ export function LinkAssemblyForm({
   isAdmin: boolean; // only admins can set the robot's Final
   divided?: boolean; // below another form (Replace as robot Basepart)
 }) {
-  const [state, action, pending] = useActionState(linkAssembly.bind(null, assemblyUrl), undefined);
-  const [mainState, mainAction, mainPending] = useActionState(linkMainAssembly.bind(null, assemblyUrl), undefined);
+  const [state, action, pending] = useActionState(linkAssembly.bind(null, assemblyUrl, query), undefined);
+  const [mainState, mainAction, mainPending] = useActionState(linkMainAssembly.bind(null, assemblyUrl, query), undefined);
   const [layoutsState, layoutsAction, layoutsPending] = useActionState(setBatchLayoutsDocument.bind(null, documentUrl), undefined);
 
   if (!robots.length) return <p className="text-muted">Create a robot in OrbitParts first, then reopen this panel.</p>;

@@ -30,8 +30,10 @@ function parseSystem(formData: FormData): { error: string } | { robotId: string;
 }
 
 // Creates a system for the assembly the panel is open on, or links it to a system that so far
-// has only its Basepart, as the system's Final (Harel, 2026-11-12); pulls its BOM, and shows it.
-export async function linkAssembly(assemblyUrl: string, _: { error?: string } | undefined, formData: FormData) {
+// has only its Basepart, as the system's Final (Harel, 2026-11-12); pulls its BOM, and goes back to
+// the panel's own home (Update system, Comment…), not the whole site (Harel, 2026-11-13).
+// `query`: the panel's place (place.ts).
+export async function linkAssembly(assemblyUrl: string, query: string, _: { error?: string } | undefined, formData: FormData) {
   const member = await requireCapability("sync");
   const ref = parseOnshapeUrl(assemblyUrl);
   const parsed = parseSystem(formData);
@@ -70,7 +72,7 @@ export async function linkAssembly(assemblyUrl: string, _: { error?: string } | 
       }
     });
   }
-  redirect(`/robots/${parsed.robotId}/systems/${systemId}`);
+  redirect(`/onshape/panel?${query}`);
 }
 
 // ---------- Basepart (Harel, 2026-11-12) ----------
@@ -185,8 +187,9 @@ export async function saveGeometry(target: "system" | "robot", id: string, query
 }
 
 // Makes the assembly the panel is open on the robot's main assembly: the 3D view's source.
-// Admins only: other members can link subsystem assemblies, not the whole robot.
-export async function linkMainAssembly(assemblyUrl: string, _: { error?: string } | undefined, formData: FormData) {
+// Admins only: other members can link subsystem assemblies, not the whole robot. Back to the
+// panel's home afterwards, like a system's link.
+export async function linkMainAssembly(assemblyUrl: string, query: string, _: { error?: string } | undefined, formData: FormData) {
   const member = await requireCapability("sync");
   if (!member.isAdmin) return { error: "Only an admin can set the robot's main assembly." };
   const ref = parseOnshapeUrl(assemblyUrl);
@@ -195,7 +198,7 @@ export async function linkMainAssembly(assemblyUrl: string, _: { error?: string 
   if (!robotId.success) return { error: "Pick a robot." };
   await db.update(schema.robots).set({ mainAssemblyUrl: onshapeUrl(ref) }).where(eq(schema.robots.id, robotId.data));
   revalidatePath("/", "layout");
-  redirect(`/robots/${robotId.data}#viewer`);
+  redirect(`/onshape/panel?${query}`);
 }
 
 // Makes the document the panel is open in a robot's Batch Layouts document: Onshape Layout makes

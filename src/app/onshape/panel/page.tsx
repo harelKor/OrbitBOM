@@ -111,6 +111,7 @@ async function panelBody(ref: ReturnType<typeof parseOnshapeUrl>, query: string,
   const linkForm = (divided: boolean) => (
     <LinkAssemblyForm
       assemblyUrl={url}
+      query={query}
       documentUrl={onshapeUrl({ baseUrl: ref.baseUrl, did: ref.did, wvm: ref.wvm, wvmid: ref.wvmid })}
       robots={robotChoices}
       systems={systemRows.filter((s) => activeIds.has(s.robotId) && !s.assemblyUrl).map(({ id, name, robotId }) => ({ id, name, robotId }))}
