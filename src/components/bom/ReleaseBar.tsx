@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { Dialog } from "@/components/Dialog";
 import { Checkbox } from "@/components/ui/Checkbox";
+import { Icon } from "@/components/ui/Icon";
+import { Thumb } from "./Thumb";
 import { COTS_LINK_REQUIRED } from "@/lib/parts/cotsLink";
 import type { CardPart } from "./types";
 
@@ -48,7 +50,7 @@ function UnlinkedWarning({ count }: { count: number }) {
 // Release on a system page: select parts, then Release opens the checklist and Confirm Release
 // marks them Released. Releasing parts To Fab can't place still works, with a warning; COTS parts
 // with no inventory item are left out (onRelease gets the ids that may be released).
-export function ReleaseBar({ count, selected, total, onRelease, onSelectAll, onDone }: { count: number; selected: CardPart[]; total: number; onRelease: (ids: string[]) => void; onSelectAll: () => void; onDone: () => void }) {
+export function ReleaseBar({ count, selected, total, onRelease, onRemove, onSelectAll, onDone }: { count: number; selected: CardPart[]; total: number; onRelease: (ids: string[]) => void; onRemove: (id: string) => void; onSelectAll: () => void; onDone: () => void }) {
   const unplaced = selected.filter(missingFabSetup).length;
   const unlinked = selected.filter(unlinkedCots).length;
   const releasable = selected.filter((p) => !unlinkedCots(p));
@@ -77,6 +79,11 @@ export function ReleaseBar({ count, selected, total, onRelease, onSelectAll, onD
       {confirming && (
         <ReleaseChecklist
           count={releaseCount}
+          parts={releasable}
+          onRemove={(id) => {
+            if (releaseCount === 1) setConfirming(false);
+            onRemove(id);
+          }}
           onClose={() => setConfirming(false)}
           onConfirm={() => {
             setConfirming(false);
@@ -93,7 +100,9 @@ export function ReleaseBar({ count, selected, total, onRelease, onSelectAll, onD
 
 // The Release checklist: every box ticked before Confirm Release. Used by the Release bar and by a
 // card's status menu when the CAD Team picks Released (Harel, 2026-11-04). `children`: warnings.
-export function ReleaseChecklist({ count, onClose, onConfirm, children }: { count: number; onClose: () => void; onConfirm: () => void; children?: React.ReactNode }) {
+// `parts`: the parts being released, each a thumbnail and name with an X that takes it out of the
+// release (Harel, 2026-11-13); the X shows only with `onRemove`.
+export function ReleaseChecklist({ count, parts, onRemove, onClose, onConfirm, children }: { count: number; parts?: CardPart[]; onRemove?: (id: string) => void; onClose: () => void; onConfirm: () => void; children?: React.ReactNode }) {
   const [ticked, setTicked] = useState<boolean[]>(() => CHECKS.map(() => false));
   return (
     <Dialog
@@ -107,6 +116,30 @@ export function ReleaseChecklist({ count, onClose, onConfirm, children }: { coun
     >
       <div className="space-y-3">
         {children}
+        {!!parts?.length && (
+          <ul className="grid max-h-64 grid-cols-[repeat(auto-fill,minmax(7.5rem,1fr))] gap-2 overflow-y-auto">
+            {parts.map((p) => {
+              const name = p.displayName ?? p.onshapeName ?? "Unnamed part";
+              return (
+                <li key={p.id} className="relative flex flex-col items-center gap-1 rounded-lg border border-line bg-raised/40 p-2" title={name}>
+                  <Thumb part={p} size={72} />
+                  <span className="w-full truncate text-center text-xs font-medium">{name}</span>
+                  {onRemove && (
+                    <button
+                      type="button"
+                      onClick={() => onRemove(p.id)}
+                      aria-label={`Don't release ${name}`}
+                      title="Don't release this part"
+                      className="press absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-surface/90 text-subtle hover:bg-rose-500 hover:text-white active:scale-[0.98] pointer-coarse:h-9 pointer-coarse:w-9"
+                    >
+                      <Icon name="close" className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
         <p className="text-sm text-muted">Tick every box before releasing.</p>
         <div className="flex flex-col gap-1">
           {CHECKS.map((text, i) => (

@@ -391,6 +391,7 @@ export function BomView({
             setMode(null);
             setSelected(new Set());
           }}
+          onRemove={(id) => setSelected((s) => new Set([...s].filter((x) => x !== id)))}
           onSelectAll={() => setSelected(new Set(shown.map((p) => p.id)))}
           onDone={() => {
             setMode(null);
