@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/CategoryBoxes";
 import { Chevron } from "@/components/ui/Chevron";
 import { Icon } from "@/components/ui/Icon";
-import { Segmented } from "@/components/ui/Segmented";
+import { ViewPicker } from "@/components/ui/ViewPicker";
 import {
   groupOf,
   isCategoryGroup,
@@ -517,14 +517,8 @@ export function InventoryView({
       <Icon name="download" className="h-4 w-4" /> Export spreadsheet
     </button>
   );
-  const layoutSwitch = (
-    <Segmented
-      label="Show items as"
-      options={LAYOUTS}
-      value={layout}
-      onChange={setLayout}
-    />
-  );
+  // At the search row's right end, the page's top right (Harel, 2026-11-13).
+  const layoutSwitch = <ViewPicker label="Show items as" options={LAYOUTS} value={layout} onChange={setLayout} />;
 
   const grid = (list: Item[], cardView: NeedView = need, hideSeason = false) =>
     layout === "table" ? (
@@ -665,6 +659,7 @@ export function InventoryView({
           {mapButton}
         </div>
         {!boxes && !showBoxes && filters}
+        <div className="ml-auto self-center">{layoutSwitch}</div>
       </div>
 
       {/* The workshop map opens as a window over the page; a pin picked there stays as the
@@ -839,7 +834,6 @@ export function InventoryView({
                 {condFilter && <SpecFilterBar rows={[]} picks={{}} cond={condFilter} open={filtersOpen} onToggle={toggleFilters} onPick={togglePick} onClear={clearFilters} />}
                 <span className="ml-auto" />
                 {!edit && !hideExport && exportButton}
-                {layoutSwitch}
               </div>
               {filtersOpen && condFilter && (
                 <div className="mb-3">
@@ -869,7 +863,6 @@ export function InventoryView({
             {showBoxes && filters}
             <span className="ml-auto" />
             {!edit && !hideExport && exportButton}
-            {layoutSwitch}
           </div>
           {filtersOpen && (specRows.length > 0 || condFilter) && <SpecFilterRows rows={specRows} picks={picks} cond={condFilter} onPick={togglePick} />}
           {shownMain.length === 0 ? (

@@ -20,7 +20,7 @@ import { ownerPartId, partTitle, type CardPart } from "@/components/bom/types";
 import { CategoryBoxes, pushQuery } from "@/components/ui/CategoryBoxes";
 import { Chevron } from "@/components/ui/Chevron";
 import { Icon } from "@/components/ui/Icon";
-import { Segmented } from "@/components/ui/Segmented";
+import { ViewPicker } from "@/components/ui/ViewPicker";
 import { cotsTotal, groupSameCots, siteOf, spreadCotsChanges } from "@/lib/cots";
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { computeStatus } from "@/lib/status";
@@ -440,6 +440,18 @@ export function CotsView({
 
   return (
     <div className={`space-y-5 ${ordering ? "pb-20" : ""}`}>
+      {/* Cards / List / Table at the top right (Harel, 2026-11-13). */}
+      <div className="-mb-3 flex justify-end">
+        <ViewPicker
+          value={view}
+          onChange={setView}
+          options={[
+            { value: "cards", label: "Cards" },
+            { value: "list", label: "List" },
+            { value: "table", label: "Table" },
+          ]}
+        />
+      </div>
       <CategoryBoxes
         compact
         categories={categories}
@@ -451,16 +463,6 @@ export function CotsView({
       />
 
       <div className="flex flex-wrap items-center gap-1.5 sm:gap-2.5">
-        <Segmented
-          label="View"
-          value={view}
-          onChange={setView}
-          options={[
-            { value: "cards", label: "Cards" },
-            { value: "list", label: "List" },
-            { value: "table", label: "Table" },
-          ]}
-        />
         <button
           type="button"
           onClick={() => {
