@@ -687,6 +687,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     id: "sensors",
     group: "electrical",
     label: "Sensors & vision",
+    image: "/categories/sensors.png",
     noun: "",
     match:
       /sensor|encoder|limelight|camera|pigeon|navx|gyro|cancoder|beam\s*break|limit\s*switch|hall\s*effect/i,

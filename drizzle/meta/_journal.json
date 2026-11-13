@@ -603,6 +603,13 @@
       "when": 1794504676371,
       "tag": "0085_bores",
       "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1794569752621,
+      "tag": "0086_chain_sensors_pictures",
+      "breakpoints": true
     }
   ]
 }
