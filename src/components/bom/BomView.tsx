@@ -2,6 +2,7 @@
 
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
+import { useProgressive } from "@/components/ui/useProgressive";
 import { STATUSES } from "@/config/statuses";
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { computeStatus } from "@/lib/status";
@@ -173,6 +174,8 @@ export function BomView({
       }),
     [optimistic, filters, chip, status],
   );
+  // Cards and rows drawn so far: the first ones with the page, the rest right after (useProgressive).
+  const drawn = useProgressive(shown.length);
 
   const toggle = (id: string) =>
     setSelected((s) => {
@@ -232,8 +235,9 @@ export function BomView({
   // Leaving the page while selecting: the viewer goes back to its own picks.
   useEffect(() => () => void window.dispatchEvent(new CustomEvent<BulkSelectionDetail>(BULK_SELECTION_EVENT, { detail: { ids: null } })), []);
 
-  const cards = (list: CardPart[], withSystem: boolean) =>
-    view === "list" ? (
+  const cards = (all: CardPart[], withSystem: boolean, budget = drawn) => {
+    const list = budget < all.length ? all.slice(0, Math.max(0, budget)) : all;
+    return view === "list" ? (
       <div className="hold-area">
       <PartList>
         {list.map((p) => (
@@ -255,6 +259,7 @@ export function BomView({
       ))}
     </div>
     );
+  };
 
   // A system page's To review chip: the parts whose suggestion waits for approval, each with its
   // ✓ / ✕ (CardSuggest), for whoever can review (Harel, 2026-11-07).
@@ -352,7 +357,7 @@ export function BomView({
         <KanbanView parts={shown} saveFor={saveFor} showSystem={showSystem} />
       ) : groupBySystem ? (
         <div className="space-y-3">
-          {bySystem(shown).map(([name, group]) => (
+          {bySystem(shown).map(([name, group], i, groups) => (
             <details key={name} open className="group/sys">
               <summary className="press flex cursor-pointer list-none items-center gap-2 py-1 text-sm font-semibold text-fg-2 hover:text-fg">
                 <span className="-m-1 inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-raised">
@@ -361,7 +366,7 @@ export function BomView({
                 {name}
                 <span className="text-xs font-normal text-subtle tabular-nums">{group.length}</span>
               </summary>
-              <div className="mt-2">{cards(group, false)}</div>
+              <div className="mt-2">{cards(group, false, drawn - groups.slice(0, i).reduce((n, [, g]) => n + g.length, 0))}</div>
             </details>
           ))}
         </div>

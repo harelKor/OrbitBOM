@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { createContext, useContext, useState, useTransition } from "react";
 import { addReviewComment, deleteReviewComment, deleteReviewReply, editReviewComment, editReviewReply, replyToReviewComment, setReviewCommentStatus, type CommentResult } from "@/app/(app)/review-comments-actions";
 import { Popover } from "@/components/bom/Popover";
@@ -21,9 +20,9 @@ export type CommentCtx = {
 };
 export const CommentContext = createContext<CommentCtx | null>(null);
 
-// One action at a time, the page refreshed after it, its error shown under the comment.
+// One action at a time, its error shown under the comment. The action's reply already carries the
+// page drawn again (it revalidates), so no second refresh here.
 function useCommentAction() {
-  const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const run = (fn: () => Promise<CommentResult>, after?: () => void) =>
@@ -32,7 +31,6 @@ function useCommentAction() {
       const r = await fn();
       if (r.error) return setError(r.error);
       after?.();
-      router.refresh();
     });
   return { pending, error, run };
 }

@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { partVersionHistory, updateFabVersion } from "@/app/(app)/versions-actions";
 import { Dialog } from "@/components/Dialog";
@@ -47,7 +46,6 @@ export function PartVersionsButton({ partId, lock, released }: { partId: string;
   const [expanded, setExpanded] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const canSync = useCan("sync");
-  const router = useRouter();
 
   useEffect(() => {
     if (!open) return;
@@ -68,7 +66,6 @@ export function PartVersionsButton({ partId, lock, released }: { partId: string;
     start(async () => {
       const r = await updateFabVersion(partId);
       toast(r.error ?? r.message ?? "Updated.", !!r.error);
-      if (!r.error) router.refresh();
     });
 
   return (

@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { suggestParts } from "@/app/(app)/parts-actions";
 import { SuggestIcon } from "@/components/ui/SuggestIcon";
@@ -23,7 +22,6 @@ export function SuggestBar({
   onClear: () => void;
   onDone: () => void;
 }) {
-  const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +38,6 @@ export function SuggestBar({
       else {
         setResult(r.message ?? null);
         onClear();
-        router.refresh();
       }
     } catch (err) {
       setError((err as Error).message);

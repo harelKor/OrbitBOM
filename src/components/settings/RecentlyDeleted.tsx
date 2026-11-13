@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { restoreDeleted } from "@/app/(app)/storage-actions";
 import { LocalTime } from "@/components/ui/LocalTime";
@@ -12,7 +11,6 @@ const KIND = { robot: "Robot", system: "System", part: "Part", item: "Inventory 
 // last 30 days, each with what went with it (parts, history, versions, stock moves). An admin's
 // Bring back puts it all back as it was.
 export function RecentlyDeleted({ entries, isAdmin, keepDays }: { entries: DeletedEntry[]; isAdmin: boolean; keepDays: number }) {
-  const router = useRouter();
   const [pending, start] = useTransition();
   const [busy, setBusy] = useState<string | null>(null);
   const [result, setResult] = useState<{ message?: string; error?: string }>({});
@@ -22,7 +20,6 @@ export function RecentlyDeleted({ entries, isAdmin, keepDays }: { entries: Delet
       const r = await restoreDeleted(id);
       setResult(r);
       setBusy(null);
-      if (!r.error) router.refresh();
     });
   };
 

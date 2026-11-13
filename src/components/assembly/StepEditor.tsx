@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { saveAssemblyStep } from "@/app/(app)/robots/[robotId]/assembly/actions";
 import type { SceneTools, ViewerModel } from "@/components/dashboard/ModelCanvas";
@@ -38,7 +37,6 @@ export function StepEditor({
   target: EditorTarget;
   onClose: () => void;
 }) {
-  const router = useRouter();
   const step = target.step;
   const isSub = target.kind === "sub";
   const sys = book.systems.find((s) => s.id === place.systemId)!;
@@ -157,7 +155,7 @@ export function StepEditor({
     });
     setBusy(false);
     if (r.error) return toast(r.error, true);
-    router.refresh();
+    // The action's reply already carries the page drawn again (it revalidates).
     onClose();
   };
 

@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { openPartWindow } from "@/components/bom/PartDetailsHost";
 import { deleteAssemblyStep, nameAssemblySub, reorderAssemblySteps, tickAssemblyStep } from "@/app/(app)/robots/[robotId]/assembly/actions";
@@ -43,7 +42,6 @@ export function StepSlides({
   onOpen: (p: Place | null, stepId?: string) => void;
   jump: { key: string; n: number } | null; // a part tapped in the top 3D: go to its next step
 }) {
-  const router = useRouter();
   const list = book.steps(place);
   const sys = book.systems.find((s) => s.id === place.systemId)!;
   const title = place.sub ? book.subName(place.systemId, place.sub) : sys.name;
@@ -63,7 +61,7 @@ export function StepSlides({
     if (r.error) {
       setTicks((t) => ({ ...t, [s.id]: !done }));
       toast(r.error, true);
-    } else router.refresh();
+    }
   };
 
   const [editing, setEditing] = useState(false);
@@ -74,22 +72,22 @@ export function StepSlides({
     if (j < 0 || j >= ids.length) return;
     [ids[i], ids[j]] = [ids[j], ids[i]];
     const r = await reorderAssemblySteps(robotId, place.systemId, place.sub, ids);
+    // The action's reply already carries the page drawn again (it revalidates).
     if (r.error) toast(r.error, true);
-    else router.refresh();
   };
   const remove = async (s: AssemblyStep) => {
     if (!confirm(`Delete step "${s.title || "Sub-assembly"}"? This can't be undone.`)) return;
     const r = await deleteAssemblyStep(robotId, s.id);
+    // The action's reply already carries the page drawn again (it revalidates).
     if (r.error) toast(r.error, true);
-    else router.refresh();
   };
   const rename = async () => {
     if (!place.sub) return;
     const name = prompt("Sub-assembly name (blank for the default):", title);
     if (name === null) return;
     const r = await nameAssemblySub(robotId, place.systemId, place.sub, name);
+    // The action's reply already carries the page drawn again (it revalidates).
     if (r.error) toast(r.error, true);
-    else router.refresh();
   };
 
   // The slide nearest the middle of the screen gets the live 3D.

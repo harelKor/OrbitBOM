@@ -24,7 +24,17 @@ export type PartFileRef = { id: string; type: string; filename: string; onshape?
 
 // Loaded through the part's system, so systemId is always set; only a COTS card added on the COTS
 // page has none (systemId "" there).
-export type BomPart = Omit<typeof parts.$inferSelect, "systemId"> & {
+// Columns only the server uses (sync, versions, history read them from the database): left out of
+// every BOM page, which sends each part to the browser; a robot's page holds hundreds.
+const SERVER_ONLY = ["boxQty", "classGuess", "dxfFace", "shapeSig", "sourceWid", "sourceWvm", "releasedRowId", "releasedVersionId", "versionName", "versionRowId", "extraProcesses", "thumbHash", "updatedBy"] as const;
+type ServerOnly = (typeof SERVER_ONLY)[number];
+function forBom(p: typeof parts.$inferSelect): Omit<typeof parts.$inferSelect, ServerOnly> {
+  const out: Record<string, unknown> = { ...p };
+  for (const k of SERVER_ONLY) delete out[k];
+  return out as Omit<typeof parts.$inferSelect, ServerOnly>;
+}
+
+export type BomPart = Omit<typeof parts.$inferSelect, "systemId" | ServerOnly> & {
   systemId: string;
   status: string;
   systemName: string;
@@ -96,7 +106,7 @@ async function load(where: ReturnType<typeof and>, { anySystem = false } = {}): 
     filesOf.set(partId, [...(filesOf.get(partId) ?? []), isOnshapeDrawingKey(r2Key) ? { ...f, onshape: true } : f]);
   }
   return rows.map((r) => ({
-    ...r.part,
+    ...forBom(r.part),
     systemId: r.part.systemId ?? "",
     groups: groups.get(r.part.id) ?? [],
     thumbUrl: thumbs.get(r.part.id) ?? null,
