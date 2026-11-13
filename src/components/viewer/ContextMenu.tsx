@@ -98,8 +98,8 @@ export function ContextMenu({
       ...(copy && shownOthers > 0 ? [{ label: "Hide other instances", run: () => tools.hideOthers(copy) }] : []),
       ...(copy && at.hiddenCopies > 0 ? [{ label: "Show other instances", run: () => tools.showOthers(copy) }] : []),
       // Onshape's items, without Hide others and Zoom to (Harel, 2026-11-11). Isolate shows only
-      // these parts; the ghosts are a second step (the view group below).
-      { label: "Isolate", run: () => tools.isolate(keys, { ghost: false }) },
+      // these parts; the ghosts come from the slider shown while isolated (GhostSlider).
+      { label: "Isolate", run: () => tools.isolate(keys) },
       { label: clear ? "Make opaque" : "Make transparent", run: () => tools.setClear(keys, !clear) },
       // Onshape's Move (triad): the copy under the pointer, or every picked part's shown copies (S7).
       { label: "Move", run: () => tools.moveParts(copy ?? keys) },
@@ -124,7 +124,6 @@ export function ContextMenu({
   }
   const view: MenuItem[] = [];
   if (at.hidden || isolated) view.push({ label: "Show all", run: () => tools.showAll() });
-  if (isolated) view.push({ label: isolated.ghost ? "Hide the ghosts" : "Show others as ghosts", run: () => tools.isolate(isolated.keys, { ghost: !isolated.ghost }) });
   // The section, always offered, on a part or on empty space (Harel, 2026-11-11), with the same
   // calls as the view cube's menu: Section view cuts on the flat face under the pointer, else
   // opens the panel on the default plane; with a section on, Edit and Turn off instead.

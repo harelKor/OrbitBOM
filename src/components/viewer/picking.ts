@@ -204,7 +204,7 @@ export type MenuTarget = MenuAt & {
   copies: number;
   hidden: number;
   hiddenCopies: number; // copies of the part under the pointer hidden now (Show other instances)
-  isolated: { keys: string[]; ghost: boolean } | null;
+  isolated: { keys: string[]; ghost: number } | null;
 };
 
 export type Picking = { setHover: (h: { m: number; i: number } | null) => void; dispose: () => void };

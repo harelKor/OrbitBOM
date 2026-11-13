@@ -63,7 +63,8 @@ export function cleanView(x: unknown): ViewState | null {
     view.vis = {
       hidden: hidden.map(({ key, at }) => ({ key, at })),
       isolated: keys(vis.isolated) ? (vis.isolated as string[]) : null,
-      ghost: vis.ghost === true,
+      // The ghost slider (0–1); an older view saved ghosts on or off.
+      ghost: vis.ghost === true ? 0.5 : num(vis.ghost) ? Math.min(1, Math.max(0, vis.ghost as number)) : 0,
       clear: keys(vis.clear) ? (vis.clear as string[]) : [],
       ...(typeof vis.sketches === "boolean" ? { sketches: vis.sketches } : {}),
     };
@@ -100,7 +101,7 @@ export function applyView(tools: SceneTools, v: ViewState, animate: boolean) {
   tools.setPose(v.pose, animate);
   if (v.display) tools.setDisplay(v.display);
   void tools.whenLoaded().then(() => {
-    tools.setVisibilityState(v.vis ?? { hidden: [], isolated: null, ghost: false, clear: [] });
+    tools.setVisibilityState(v.vis ?? { hidden: [], isolated: null, ghost: 0, clear: [] });
     tools.section(v.section?.planes.length ? { planes: v.section.planes, open: false } : null);
   });
 }

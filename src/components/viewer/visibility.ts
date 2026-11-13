@@ -1,6 +1,7 @@
 // What's drawn: parts hidden with Y or Hide (each copy on its own), Isolate (only some parts, the
 // others as see-through ghosts or hidden), parts made see-through, and subsystems hidden by the page.
 import * as THREE from "three";
+import { createGhostLook } from "./ghosts";
 import type { Looks } from "./paint";
 import type { Gone, PartMesh } from "./types";
 
@@ -13,7 +14,7 @@ const CLEAR_OPACITY = 0.3; // "Make transparent"
 export type VisibilityState = {
   hidden: { key: string; at: [number, number, number] }[];
   isolated: string[] | null;
-  ghost: boolean; // isolate shows the others as see-through ghosts (else hides them)
+  ghost: number; // isolate's ghost slider, 0 (none) to 1: how far round the isolated parts the others show see-through
   clear: string[]; // parts made see-through
   sketches?: boolean; // Geometry sketches shown (Shift+H); left out when the model has none
 };
@@ -23,8 +24,11 @@ export type VisibilityTools = {
   // Onshape's Hide other instances / Show other instances: the part's other copies than this one.
   hideOthers: (g: Gone) => void;
   showOthers: (g: Gone) => void;
-  // Show only these parts (all copies); the others are hidden, or see-through ghosts with `ghost`.
-  isolate: (keys: string[] | null, opts?: { ghost?: boolean }) => void;
+  // Show only these parts (all copies); the others are hidden, or see-through ghosts near them with
+  // `ghost` above 0 (the slider, ghosts.ts).
+  isolate: (keys: string[] | null, opts?: { ghost?: number }) => void;
+  ghosts: () => number;
+  setGhosts: (s: number) => void; // the slider moved: no rebuild unless ghosts start or stop
   showAll: () => void; // every hidden copy back, and Isolate ended
   setClear: (keys: string[], clear: boolean) => void; // Make transparent / Make opaque
   isClear: (key: string) => boolean;
@@ -45,7 +49,7 @@ export type Visibility = {
   shownBox: () => THREE.Box3; // what's drawn now, for Fit and the views
   // The hidden copy nearest along the ray (even behind a shown part), and its kept placement.
   hiddenAt: (ray: THREE.Raycaster) => { g: Gone; at: THREE.Matrix4 } | null;
-  isolated: () => { keys: string[]; ghost: boolean } | null;
+  isolated: () => { keys: string[]; ghost: number } | null;
   repaint: () => void; // the paint just set every mesh's material: put see-through parts back
   // A copy's place (its kept one while hidden), and moving it there (motion.ts: explode, Move).
   place: (m: number, i: number, out: THREE.Matrix4) => THREE.Matrix4;
@@ -142,12 +146,13 @@ export function createVisibility(
     return best && { g: best.g, at: best.at };
   };
 
-  // Isolate: the parts left out are hidden, and drawn again as ghosts (the Locate see-through
-  // look) by a second instanced mesh sharing their matrices, so a copy hidden with Y stays hidden
-  // there too. Ghosts are never picked.
+  // Isolate: the parts left out are hidden, and drawn again as ghosts (ghosts.ts: see-through,
+  // fading out with the distance from the isolated parts) by a second instanced mesh sharing their
+  // matrices, so a copy hidden with Y stays hidden there too. Ghosts are never picked.
   let isolated: Set<string> | null = null;
-  // No ghosts unless asked for, like Onshape's Isolate (Harel, 2026-11-11).
-  let ghost = false;
+  // The ghost slider: 0 = no ghosts, where Isolate starts, like Onshape's (Harel, 2026-11-11/13).
+  let ghost = 0;
+  const ghostLook = createGhostLook();
   let groupsHidden = new Set<number>();
   let sketchesOn = true;
   const ghosts = new THREE.Group();
@@ -159,24 +164,57 @@ export function createVisibility(
       const picked = !!isolated && keys.some((k) => isolated!.has(k));
       // A sketch isolated by name shows even with the sketches off.
       mesh.visible = inGroup && (sketch ? picked || (sketchesOn && !isolated) : !isolated || picked);
-      if (inGroup && !mesh.visible && ghost && !sketch) {
-        const shade = new THREE.InstancedMesh(mesh.geometry, looks.ghost, mesh.count);
+      if (inGroup && !mesh.visible && ghost > 0 && !sketch) {
+        const shade = new THREE.InstancedMesh(mesh.geometry, ghostLook.material, mesh.count);
         shade.instanceMatrix = mesh.instanceMatrix;
         shade.frustumCulled = false;
         shade.raycast = () => {};
         ghosts.add(shade);
       }
     }
+    if (isolated && ghost > 0) ghostLook.around(isolatedBoxes(), modelSize(), ghost);
     on.changed();
+  };
+  // Each shown copy of an isolated part, as a box in world space: where the ghosts fade from.
+  const isolatedBoxes = () => {
+    const boxes: THREE.Box3[] = [];
+    const at = new THREE.Matrix4();
+    meshes.forEach(({ mesh, keys: ks, sketch }, m) => {
+      if (!mesh.visible || sketch) return;
+      if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+      ks.forEach((k, i) => {
+        if (!isolated?.has(k) || kept.has(`${m}:${i}`)) return;
+        mesh.getMatrixAt(i, at);
+        boxes.push(mesh.geometry.boundingBox!.clone().applyMatrix4(at.premultiply(mesh.matrixWorld)));
+      });
+    });
+    return boxes;
+  };
+  // The whole model's size (every mesh, isolated or not): the slider's full reach is a share of it.
+  const modelSize = () => {
+    const box = new THREE.Box3();
+    for (const { mesh, sketch } of meshes) if (!sketch) box.expandByObject(mesh);
+    return box.isEmpty() ? 1 : box.getSize(new THREE.Vector3()).length();
+  };
+  const setGhosts = (s: number) => {
+    const next = Math.min(1, Math.max(0, s));
+    const rebuild = next > 0 !== ghost > 0;
+    ghost = next;
+    if (!isolated) return;
+    if (rebuild) applyVisible();
+    else if (ghost > 0) {
+      ghostLook.around(isolatedBoxes(), modelSize(), ghost);
+      on.changed();
+    }
   };
   // Hiding a subsystem hides its meshes; the framing stays where it is.
   const hideGroups = (hidden: Set<number>) => {
     groupsHidden = hidden;
     applyVisible();
   };
-  const isolate = (keys: string[] | null, opts?: { ghost?: boolean }) => {
+  const isolate = (keys: string[] | null, opts?: { ghost?: number }) => {
     isolated = keys?.length ? new Set(keys) : null;
-    ghost = opts?.ghost ?? false;
+    ghost = Math.min(1, Math.max(0, opts?.ghost ?? 0));
     applyVisible();
     on.isolated(isolated && [...isolated]);
     on.fit(shownBox());
@@ -272,7 +310,7 @@ export function createVisibility(
     s.clear.forEach((k) => clear.add(k));
     applyClear();
     isolated = s.isolated?.length ? new Set(s.isolated) : null;
-    ghost = s.ghost;
+    ghost = Math.min(1, Math.max(0, s.ghost));
     if (s.sketches !== undefined && sketchesOn !== s.sketches) {
       sketchesOn = s.sketches;
       on.sketches?.(sketchesOn);
@@ -307,11 +345,12 @@ export function createVisibility(
       if (was) was.copy(at);
       else meshes[m].mesh.setMatrixAt(i, at);
     },
-    tools: { hideKey, hideOthers, showOthers, isolate, showAll, setClear, isClear: (k) => clear.has(k), zoomTo, visibilityState, setVisibilityState, showSketches, sketchesShown: () => sketchesOn, hasSketches },
+    tools: { hideKey, hideOthers, showOthers, isolate, ghosts: () => ghost, setGhosts, showAll, setClear, isClear: (k) => clear.has(k), zoomTo, visibilityState, setVisibilityState, showSketches, sketchesShown: () => sketchesOn, hasSketches },
     // Ghosts share their mesh's matrices: only dropped, never disposed (that would free the
     // shared buffer).
     dispose: () => {
       ghosts.clear();
+      ghostLook.dispose();
       clones.forEach((c) => c.dispose());
     },
   };

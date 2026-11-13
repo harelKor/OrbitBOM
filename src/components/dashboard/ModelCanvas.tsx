@@ -11,6 +11,7 @@ import type { SectionView } from "@/components/viewer/section";
 import { SectionDialog } from "@/components/viewer/SectionDialog";
 import type { Gone, HiddenParts, SceneTools, ViewerMode, ViewerModel } from "@/components/viewer/types";
 import { ViewCube, type NamedViews } from "@/components/viewer/ViewCube";
+import { GhostSlider } from "@/components/viewer/GhostSlider";
 import { createViewer } from "@/components/viewer/viewer";
 
 // The viewer itself lives in src/components/viewer/ (plan/cad-3d-viewer.md §3); this is its React
@@ -122,6 +123,7 @@ export function ModelCanvas({
   }, [onLocated]);
   const [error, setError] = useState<string | null>(null);
   const [cube, setCube] = useState<SceneTools | null>(null); // the view cube's tools, once loaded
+  const [isolatedKeys, setIsolatedKeys] = useState<string[] | null>(null); // for the ghost slider
   // The section lives in the viewer (its 3D handle, Shift+X and the menus change it); its panel
   // shows here, on every view with the cube, so the cube menu's Section view works everywhere.
   const [section, setSection] = useState<SectionView | null>(null);
@@ -152,7 +154,10 @@ export function ModelCanvas({
       located: (found) => locatedRef.current(found),
       failed: () => setError("The 3D model couldn't load. Try reloading the page."),
       menu: (at) => setMenuAt({ at, tools: viewer.tools, hideCopy: viewer.hideCopy }),
-      isolated: (keys) => isolatedRef.current?.(keys),
+      isolated: (keys) => {
+        setIsolatedKeys(keys);
+        isolatedRef.current?.(keys);
+      },
       hover: (key) => hoverRef.current?.(key),
     });
     scene.current = viewer;
@@ -210,6 +215,7 @@ export function ModelCanvas({
       )}
       {menuAt && !progress && <ContextMenu {...menuAt} names={names} page={menu} onClose={closeMenu} />}
       {cube && withCube && <ViewCube tools={cube} views={views} />}
+      {cube && isolatedKeys && <GhostSlider key={isolatedKeys.join()} tools={cube} />}
       {cube && withCube && section?.open && (
         // Past the page's own left panels (panelLeft); on narrow screens under the view cube, which
         // it would otherwise cover (R1's report).

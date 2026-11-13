@@ -53,7 +53,7 @@ describe("visibility", () => {
     expect(log.isolated).toEqual(["b"]);
     const ghosts = root.children.find((c) => c.type === "Group")!;
     expect(ghosts.children).toHaveLength(0);
-    v.tools.isolate(["b"], { ghost: true });
+    v.tools.isolate(["b"], { ghost: 0.5 });
     expect(ghosts.children).toHaveLength(1);
     expect((ghosts.children[0] as THREE.InstancedMesh).instanceMatrix).toBe(meshes[0].mesh.instanceMatrix);
     v.tools.showAll();
@@ -77,7 +77,7 @@ describe("visibility", () => {
     const { v, log } = scene();
     v.hideOne({ m: 0, i: 1, key: "a" });
     v.tools.setClear(["b"], true);
-    v.tools.isolate(["a", "b"], { ghost: false });
+    v.tools.isolate(["a", "b"]);
     const saved = JSON.parse(JSON.stringify(v.tools.visibilityState()));
     expect(saved.hidden).toEqual([{ key: "a", at: [1, 0, 0] }]);
     v.tools.showAll();
@@ -86,6 +86,6 @@ describe("visibility", () => {
     v.tools.setVisibilityState(saved);
     expect(log.hidden).toEqual([{ m: 0, i: 1, key: "a" }]);
     expect(v.tools.isClear("b")).toBe(true);
-    expect(v.isolated()).toEqual({ keys: ["a", "b"], ghost: false });
+    expect(v.isolated()).toEqual({ keys: ["a", "b"], ghost: 0 });
   });
 });
