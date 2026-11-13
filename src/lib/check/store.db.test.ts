@@ -35,8 +35,8 @@ else
     it("knows each part's material, whether it's printed, and weights set by hand", async () => {
       await setPartWeight(`${did}:e:PLATE`, 812.5, m.id);
       const data = (await loadCheckData(robot.id, "final"))!;
-      expect(data.facts[`${did}:e:PLATE`]).toEqual({ material: "6061 Aluminum 1/4\"", onshapeMaterial: null, printed: false, setG: 812.5 });
-      expect(data.facts[`${did}:e:BRACKET`]).toMatchObject({ onshapeMaterial: "PLA", printed: true, setG: null });
+      expect(data.facts[`${did}:e:PLATE`]).toEqual({ material: "6061 Aluminum 1/4\"", onshapeMaterial: null, printed: false, setG: 812.5, machines: [] });
+      expect(data.facts[`${did}:e:BRACKET`]).toMatchObject({ onshapeMaterial: "PLA", printed: true, setG: null, machines: ["3d-bambu"] });
       await setPartWeight(`${did}:e:PLATE`, null, m.id);
       expect((await loadCheckData(robot.id, "final"))!.facts[`${did}:e:PLATE`].setG).toBeNull();
       expect(await loadCheckData(randomUUID(), "final")).toBeNull();

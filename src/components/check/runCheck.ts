@@ -6,6 +6,8 @@ import type { CheckPart } from "@/components/viewer/checkScene";
 import type { ViewerModel } from "@/components/viewer/types";
 import { accessChecks } from "@/lib/check/access";
 import { findClashes } from "@/lib/check/clash";
+import { plateChecks } from "@/lib/check/plates";
+import { printedChecks } from "@/lib/check/printed";
 import { contacts, floating, holeOffsets, merge, screwChecks, worldBoxes } from "@/lib/check/connections";
 import { buildEnvelope, hull, type PlanPart } from "@/lib/check/envelope";
 import type { CheckLimits, CheckResults } from "@/lib/check/types";
@@ -144,7 +146,12 @@ export async function runCheck(parts: CheckPart[], ctx: RunContext, progress: Pr
   progress("Checking screws can be reached", 0, 1);
   await pause();
   const access = accessChecks(list, boxes, screws.screws);
-  const findings = merge([...floating(list, boxes, touching), ...holeOffsets(list, touching), ...screws.findings, ...access]);
+  progress("Looking at plates and printed parts", 0, 1);
+  await pause();
+  const plates = plateChecks(list, ctx.facts);
+  await pause();
+  const printed = printedChecks(list, ctx.facts);
+  const findings = merge([...floating(list, boxes, touching), ...holeOffsets(list, touching), ...screws.findings, ...access, ...plates, ...printed]);
 
   return { v: 1, weight, envelope, clashes, findings, ms: Math.round(performance.now() - started) };
 }

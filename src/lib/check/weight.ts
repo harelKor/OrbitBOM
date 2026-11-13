@@ -19,7 +19,8 @@ export function meshVolume(positions: ArrayLike<number>, index: ArrayLike<number
 
 // What the database knows about a part (by its BOM key): its materials, whether a printer makes
 // it, and a weight set by hand (grams, one copy).
-export type PartFacts = { material: string | null; onshapeMaterial: string | null; printed: boolean; setG: number | null };
+// `machines`: its pre-process and process machine ids (src/config/machines.ts).
+export type PartFacts = { material: string | null; onshapeMaterial: string | null; printed: boolean; setG: number | null; machines?: string[] };
 
 // The model's parts as placed: one row per (part, system) with how many copies and one copy's volume.
 export type WeighInput = { key: string; name: string; systemId: string | null; count: number; volumeCm3: number };

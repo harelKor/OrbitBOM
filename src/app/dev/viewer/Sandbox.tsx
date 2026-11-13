@@ -49,10 +49,12 @@ export function Sandbox() {
     return { of, list: groups.map((g) => ({ id: g.systemIds[0], name: g.name })) };
   }, [data]);
   const checkData = useMemo(() => {
-    const facts: Record<string, { material: string | null; onshapeMaterial: string | null; printed: boolean; setG: number | null }> = {};
+    const facts: Record<string, { material: string | null; onshapeMaterial: string | null; printed: boolean; setG: number | null; machines?: string[] }> = {};
     for (const k of names.keys()) {
       if (/TUBE|PLATE/.test(k)) facts[k] = { material: "6061 Aluminum", onshapeMaterial: null, printed: false, setG: null };
       if (/PC_/.test(k)) facts[k] = { material: "Polycarbonate", onshapeMaterial: null, printed: false, setG: null };
+      if (/roller-standoff/.test(k)) facts[k] = { material: "PLA", onshapeMaterial: null, printed: true, setG: null, machines: ["3d-bambu"] };
+      if (/carriage-plate/.test(k)) facts[k] = { material: "6061 Aluminum", onshapeMaterial: null, printed: false, setG: null, machines: ["cnc"] };
     }
     return { limits: { weightKg: 50, perimeterMm: 2800, heightMm: 1000, frameZoneMm: 60 }, facts, ignored: [], latest: null };
   }, [names]);

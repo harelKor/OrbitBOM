@@ -35,7 +35,8 @@ export async function loadCheckData(robotId: string, model: "final" | "basepart"
   for (const r of rows) {
     if (!r.did || !r.eid || !r.pid) continue;
     const printed = [r.preProcess, r.process1, r.process2].some((m) => !!m && getMachine(m)?.kind === "print");
-    facts[partKey(r.did, r.eid, r.pid)] = { material: r.material, onshapeMaterial: r.geometry?.onshapeMaterial ?? null, printed, setG: null };
+    const machines = [r.preProcess, r.process1, r.process2].filter((m): m is string => !!m);
+    facts[partKey(r.did, r.eid, r.pid)] = { material: r.material, onshapeMaterial: r.geometry?.onshapeMaterial ?? null, printed, setG: null, machines };
   }
   const keys = Object.keys(facts);
   const weights = keys.length ? await db.select({ key: partWeights.key, grams: partWeights.grams }).from(partWeights).where(inArray(partWeights.key, keys)) : [];
