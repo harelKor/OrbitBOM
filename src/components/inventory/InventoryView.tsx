@@ -661,7 +661,7 @@ export function InventoryView({
             onAdding={(item) => addOptimistic({ add: item })}
             onFocusChange={setBoxFocus}
           />
-          <ScanButton onCode={setQ} onNew={(over) => addBox.current?.start(over)} items={items} show={phone && boxFocus} />
+          <ScanButton onCode={setQ} onNew={(over) => addBox.current?.start(over)} items={items} categories={categories} show={phone && boxFocus} />
           {mapButton}
         </div>
         {!boxes && !showBoxes && filters}

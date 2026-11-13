@@ -170,3 +170,12 @@ teeth"; the exact count follows the tooth wave's phase once round (circles just 
 plus the outline), which counts every tooth however unevenly spaced. Frames are combined by vote.
 A gear crossing the ring's edge isn't counted (amber ring); the ring is 95% of the frame's width.
 On the video: 30 shown on 43 frames, never a wrong count (was 31 / 8).
+
+## Round 5 (Harel, 2026-11-13: slow, inaccurate; search the whole web, show results)
+
+Capture no longer opens anything by itself. Results fill in as they arrive: a "What it is" card
+with the AI's specs and an "Open with these specs" button, "On the shelf" items, and "Search
+results" (the stores by the AI's product name, then Google Lens on the photo, run on every Capture
+beside the AI, 60 a day). Each search result opens the add window with that product. The live
+counter runs back to back in the worker and draws a green dotted lock that closes in on the gear
+and snaps tight once 3 frames agree, with "30T · hex bore  Use →" riding above it.

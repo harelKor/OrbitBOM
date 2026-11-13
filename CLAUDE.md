@@ -158,12 +158,13 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
   `src/lib/assembly/steps.ts` (CAD writes with `instruct`, any team member ticks with `work`), page
   logic in `src/lib/assembly/view.ts`, UI in `src/components/assembly/`. `/dev/assembly` = sandbox.
 - Scan anything (plan/item-recognition.md): Inventory's Scan on phones (`ScanButton.tsx`) reads
-  barcodes as before, and Capture recognises the part: teeth counter on the phone
-  (`src/lib/recognize/teeth.ts`), Gemini free tier on the server (`gemini.ts`, `GEMINI_API_KEY`,
-  no billing account), answer in our words (`answer.ts`; gears take only printed fields), shelf
-  match (`shelf.ts`: one match opens that item), else the add form opens filled in. No product
-  name: Google Lens through Serper (`lens.ts`, 3 credits a search, capped a day). Route
-  `/api/inventory/recognize`; raw answers and what the counter saw on `/inventory/scan-test`.
+  barcodes as before; a gear in the aim ring gets a live green lock (`scan/lock.ts`) with its count
+  and a Use button (teeth counter `src/lib/recognize/teeth.ts` in a worker, `public/teeth-worker.js`
+  built by `npm run worker`). Capture shows `scan/ScanResults.tsx` as answers arrive: the AI's
+  specs card (`/api/inventory/recognize`, Gemini free tier, `answer.ts`), shelf matches
+  (`shelf.ts`), search results (stores by name + Google Lens through Serper, `/api/inventory/lens`,
+  `lens.ts`, 3 credits a search, 60 a day). Nothing opens by itself; each result opens the add
+  window. Raw answers and what the counter saw on `/inventory/scan-test`.
 - Files: `src/lib/storage/r2.ts`; backups and restore: `src/lib/storage/backup.ts`, `restore.ts`.
 - Work the user needn't wait for: `afterResponse` (`src/lib/later.ts`).
 - MCP: `src/lib/mcp/registry.ts` (`read` / `write`, preview → confirm token → apply) and one file

@@ -11,11 +11,11 @@ import { jpegOf, ringBox, ringCrop, shrink, type Source } from "./frame";
 
 type Answer = {
   result: Recognized;
-  offers: { title: string; image: string | null; offers: { vendor: string; url: string; price: number | null }[] }[];
+  offers?: { title: string; image: string | null; offers: { vendor: string; url: string; price: number | null }[] }[]; // older answers
   raw: unknown;
   model: string;
   lens?: boolean;
-  ms: { model: number; stores?: number; total: number };
+  ms: { model: number; stores?: number; total?: number };
 };
 
 const LIVE_SIZE = 320; // the live teeth counter's frame: small, so phones keep up
@@ -192,13 +192,13 @@ function AnswerView({ answer }: { answer: Answer }) {
         <dd>{r.searchQuery ?? "—"}</dd>
         <dt className="text-muted">Time</dt>
         <dd className="tabular-nums">
-          {(answer.ms.model / 1000).toFixed(1)} s model{answer.ms.stores != null ? `, ${(answer.ms.stores / 1000).toFixed(1)} s stores` : ""}, {(answer.ms.total / 1000).toFixed(1)} s total · {answer.model}
+          {(answer.ms.model / 1000).toFixed(1)} s model · {answer.model}
           {answer.lens ? " · found by photo search (Lens)" : ""}
         </dd>
       </dl>
-      {answer.offers.length > 0 && (
+      {(answer.offers ?? []).length > 0 && (
         <ul className="space-y-1">
-          {answer.offers.map((g) => (
+          {(answer.offers ?? []).map((g) => (
             <li key={g.title} className="flex items-center gap-2">
               {/* eslint-disable-next-line @next/next/no-img-element -- store photos from other sites */}
               {g.image && <img src={g.image} alt="" className="h-10 w-10 rounded object-cover" />}
