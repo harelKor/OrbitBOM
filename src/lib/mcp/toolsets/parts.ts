@@ -13,6 +13,7 @@ import { refreshPartData } from "@/lib/onshape/thumbnails";
 import { planPartUpdate } from "@/lib/parts/changes";
 import { applySuggestions } from "@/lib/review/review";
 import { cotsLinkDenied } from "@/lib/parts/cotsLink";
+import { fabSetupDenied } from "@/lib/parts/fabSetup";
 import { computeStatus } from "@/lib/status";
 import { statusBreakdown } from "@/lib/stats";
 import { updateBomFromOnshape } from "@/lib/sync/updateBom";
@@ -223,7 +224,7 @@ write(
     const rows = await db.select().from(parts).where(inArray(parts.id, part_ids));
     if (rows.length !== new Set(part_ids).size) throw new ToolError("Some part ids don't exist.");
     for (const p of rows) {
-      const denied = cotsLinkDenied(p, normal);
+      const denied = cotsLinkDenied(p, normal) ?? fabSetupDenied(p, normal);
       if (denied) throw new ToolError(`${nameOf(p)}: ${denied}`);
     }
     const diffs = rows

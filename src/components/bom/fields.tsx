@@ -29,6 +29,7 @@ import { useInventoryPopup } from "@/components/inventory/InventoryPopup";
 import { useCan, useManage, useMode } from "@/components/shell/ModeContext";
 import { NOTE_STATUSES, RELEASE_STATUS, pickableStatuses } from "@/components/shell/mode";
 import { ReleaseChecklist } from "./ReleaseBar";
+import { FAB_SETUP_REQUIRED, missingFabSetup } from "@/lib/parts/fabSetup";
 import { Icon } from "@/components/ui/Icon";
 import { StatusPill } from "@/components/ui/StatusPill";
 export { StatusPill };
@@ -277,6 +278,7 @@ export function StatusField({ part, save, size = "md" }: Props & { size?: "sm" |
               // A COTS part goes to Released or the Order List only once it is linked to its inventory item.
               if (v && cots && !part.inventoryItemId && statusNeedsItem(mode === "cad" && NOTE_STATUSES.includes(v) ? COTS_ORDERED : v)) toast(COTS_LINK_REQUIRED, true);
               else if (v && NOTE_STATUSES.includes(v) && mode === "cad") setAsking(v);
+              else if (v === RELEASE_STATUS && missingFabSetup(part)) toast(FAB_SETUP_REQUIRED, true);
               else if (v === RELEASE_STATUS && mode === "cad") setChecking(true);
               // Edit mode releasing one made part outside the Release bar: confirm first, it locks the version for To Fab.
               else if (v === "Released" && mode === "edit" && !cots && status !== "Released") setReleasing(true);
@@ -289,6 +291,7 @@ export function StatusField({ part, save, size = "md" }: Props & { size?: "sm" |
       {checking && (
         <ReleaseChecklist
           count={1}
+          parts={[part]}
           onClose={() => setChecking(false)}
           onConfirm={() => {
             save({ status: RELEASE_STATUS });

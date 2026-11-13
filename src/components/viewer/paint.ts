@@ -33,13 +33,18 @@ const TRANSLUCENT = 0.3;
 
 // Onshape's colours are sRGB; three.js works in linear light, so they're converted on the way
 // in (read as linear, every colour came out pale: aluminium white, greens pastel).
-// A part's Onshape colour with a light wash of its status colour; untouched when it has no status
+// A part's Onshape colour with a light wash of its status colour; no wash when it has no status
 // yet (Not Started, or not on the BOM).
+// Parts with a status are also a little brighter and Not Started ones a little dimmer, so the
+// work under way stands out (Harel, 2026-11-13).
 function tinted(onshape: THREE.Color, status: string | undefined): THREE.Color {
-  if (!status) return onshape;
-  const c = new THREE.Color(status);
-  return c.equals(NOT_STARTED) ? onshape : onshape.clone().lerp(c, TINT);
+  const c = status ? new THREE.Color(status) : null;
+  if (!c || c.equals(NOT_STARTED)) return onshape.clone().multiplyScalar(DIM);
+  return onshape.clone().lerp(c, TINT).lerp(WHITE, BRIGHTEN);
 }
+const DIM = 0.75;
+const BRIGHTEN = 0.12;
+const WHITE = new THREE.Color(1, 1, 1);
 export const srgb = ([r, g, b]: [number, number, number]) => new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
 
 // The face borders of every copy of a part, drawn in one call: the lines read the part's own

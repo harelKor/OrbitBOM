@@ -9,6 +9,7 @@ import { planPartUpdate } from "@/lib/parts/changes";
 import { planUndo } from "@/lib/parts/undo";
 import { applySuggestions, partsToSetUp, revertAiBatch } from "@/lib/review/review";
 import { cotsLinkDenied } from "@/lib/parts/cotsLink";
+import { fabSetupDenied } from "@/lib/parts/fabSetup";
 import { computeStatus } from "@/lib/status";
 import { uuid, read, write, ToolError, nameOf, machineId, normaliseChanges, summarise, readable } from "../registry";
 
@@ -265,7 +266,7 @@ write(
       .innerJoin(parts, eq(parts.id, groupMembers.partId))
       .where(and(eq(groupMembers.groupId, group_id), isNull(parts.removedFromCadAt)));
     for (const r of rows) {
-      const denied = cotsLinkDenied(r.part, normal);
+      const denied = cotsLinkDenied(r.part, normal) ?? fabSetupDenied(r.part, normal);
       if (denied) throw new ToolError(`${nameOf(r.part)}: ${denied}`);
     }
     const changing = rows.filter((r) => planPartUpdate(r.part, normal, "mcp").history.length);

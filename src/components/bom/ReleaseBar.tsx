@@ -6,17 +6,23 @@ import { Checkbox } from "@/components/ui/Checkbox";
 import { Icon } from "@/components/ui/Icon";
 import { Thumb } from "./Thumb";
 import { COTS_LINK_REQUIRED } from "@/lib/parts/cotsLink";
+import { FAB_SETUP_REQUIRED, missingFabSetup } from "@/lib/parts/fabSetup";
+import { openPartWindow } from "./PartDetailsHost";
 import type { CardPart } from "./types";
+
+export { missingFabSetup };
 
 // The status Release gives the selected parts.
 export const RELEASED_STATUS = "Released";
 
-// An in-house part To Fab can't place: no machine (it has no machine tab) or no material.
-export const missingFabSetup = (p: CardPart) =>
-  p.classification !== "cots" && (!p.material || (!p.preProcess && !p.process1 && !p.process2));
-
 // A COTS part Release can't send to the COTS page: it has no inventory item yet.
 export const unlinkedCots = (p: CardPart) => p.classification === "cots" && !p.inventoryItemId;
+
+// A made part with no fabrication drawing yet (made on the system page's Drawings, or uploaded).
+export const missingDrawing = (p: CardPart) => p.classification !== "cots" && !p.hasDrawing && !p.files.some((f) => f.type === "drawing");
+
+// Why a selected part is left out of the release, or null.
+const heldBack = (p: CardPart) => (unlinkedCots(p) ? "Not linked" : missingFabSetup(p) ? "No machine or material" : null);
 
 // What the releasing member confirms first, every box ticked (Harel, 2026-10-30).
 const CHECKS = [
@@ -27,10 +33,21 @@ const CHECKS = [
 
 function UnplacedWarning({ count }: { count: number }) {
   return (
+    <p role="alert" className="flex items-center gap-2 rounded-md border border-rose-500/50 bg-rose-500/10 px-3 py-2 text-sm font-medium text-rose-500">
+      <span aria-hidden className="font-bold">✕</span>
+      <span>
+        {FAB_SETUP_REQUIRED} <span className="font-mono tabular-nums">{count}</span> selected {count === 1 ? "part has" : "parts have"} none and won&apos;t be released.
+      </span>
+    </p>
+  );
+}
+
+function NoDrawingWarning({ count }: { count: number }) {
+  return (
     <p role="alert" className="flex items-center gap-2 rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm font-medium text-amber-500">
       <span aria-hidden className="font-bold">!</span>
       <span>
-        <span className="font-mono tabular-nums">{count}</span> selected in-house {count === 1 ? "part has" : "parts have"} no machine or material set — they won&apos;t appear under a machine tab in Shop Fab.
+        <span className="font-mono tabular-nums">{count}</span> {count === 1 ? "part has" : "parts have"} no drawing.
       </span>
     </p>
   );
@@ -48,12 +65,13 @@ function UnlinkedWarning({ count }: { count: number }) {
 }
 
 // Release on a system page: select parts, then Release opens the checklist and Confirm Release
-// marks them Released. Releasing parts To Fab can't place still works, with a warning; COTS parts
-// with no inventory item are left out (onRelease gets the ids that may be released).
+// marks them Released. Parts To Fab can't place (no machine or material) and COTS parts with no
+// inventory item are left out (onRelease gets the ids that may be released); the server refuses
+// them too (statusChangeDenied, Harel 2026-11-13).
 export function ReleaseBar({ count, selected, total, onRelease, onRemove, onSelectAll, onDone }: { count: number; selected: CardPart[]; total: number; onRelease: (ids: string[]) => void; onRemove: (id: string) => void; onSelectAll: () => void; onDone: () => void }) {
   const unplaced = selected.filter(missingFabSetup).length;
   const unlinked = selected.filter(unlinkedCots).length;
-  const releasable = selected.filter((p) => !unlinkedCots(p));
+  const releasable = selected.filter((p) => !heldBack(p));
   const releaseCount = releasable.length;
   const [confirming, setConfirming] = useState(false);
   return (
@@ -79,9 +97,9 @@ export function ReleaseBar({ count, selected, total, onRelease, onRemove, onSele
       {confirming && (
         <ReleaseChecklist
           count={releaseCount}
-          parts={releasable}
+          parts={selected}
           onRemove={(id) => {
-            if (releaseCount === 1) setConfirming(false);
+            if (selected.length === 1) setConfirming(false);
             onRemove(id);
           }}
           onClose={() => setConfirming(false)}
@@ -100,10 +118,12 @@ export function ReleaseBar({ count, selected, total, onRelease, onRemove, onSele
 
 // The Release checklist: every box ticked before Confirm Release. Used by the Release bar and by a
 // card's status menu when the CAD Team picks Released (Harel, 2026-11-04). `children`: warnings.
-// `parts`: the parts being released, each a thumbnail and name with an X that takes it out of the
-// release (Harel, 2026-11-13); the X shows only with `onRemove`.
+// `parts`: the selected parts, each a thumbnail and name that opens the part's window, with an X
+// that takes it out of the release (only with `onRemove`), tagged when it has no drawing or is held
+// back (Harel, 2026-11-13).
 export function ReleaseChecklist({ count, parts, onRemove, onClose, onConfirm, children }: { count: number; parts?: CardPart[]; onRemove?: (id: string) => void; onClose: () => void; onConfirm: () => void; children?: React.ReactNode }) {
   const [ticked, setTicked] = useState<boolean[]>(() => CHECKS.map(() => false));
+  const noDrawing = parts?.filter((p) => !heldBack(p) && missingDrawing(p)).length ?? 0;
   return (
     <Dialog
       open
@@ -116,14 +136,26 @@ export function ReleaseChecklist({ count, parts, onRemove, onClose, onConfirm, c
     >
       <div className="space-y-3">
         {children}
+        {!!noDrawing && <NoDrawingWarning count={noDrawing} />}
         {!!parts?.length && (
           <ul className="grid max-h-64 grid-cols-[repeat(auto-fill,minmax(7.5rem,1fr))] gap-2 overflow-y-auto">
             {parts.map((p) => {
               const name = p.displayName ?? p.onshapeName ?? "Unnamed part";
+              const held = heldBack(p);
+              const tag = held ?? (missingDrawing(p) ? "No drawing" : null);
               return (
-                <li key={p.id} className="relative flex flex-col items-center gap-1 rounded-lg border border-line bg-raised/40 p-2" title={name}>
-                  <Thumb part={p} size={72} />
-                  <span className="w-full truncate text-center text-xs font-medium">{name}</span>
+                <li key={p.id} className={`relative rounded-lg border bg-raised/40 ${held ? "border-rose-500/50 opacity-60" : "border-line"}`}>
+                  {/* Opens the part's window on top; this one stays open under it. */}
+                  <button
+                    type="button"
+                    onClick={() => void openPartWindow(p.id)}
+                    title={`Open ${name}`}
+                    className="press flex w-full flex-col items-center gap-1 rounded-lg p-2 hover:bg-raised active:scale-[0.98]"
+                  >
+                    <Thumb part={p} size={72} />
+                    <span className="w-full truncate text-center text-xs font-medium">{name}</span>
+                    {tag && <span className={`text-[0.6875rem] font-semibold ${held ? "text-rose-500" : "text-amber-500"}`}>{tag}</span>}
+                  </button>
                   {onRemove && (
                     <button
                       type="button"

@@ -6,6 +6,7 @@ import { areaOf } from "@/config/machines";
 import { db, schema } from "@/db";
 import { getMember, requireMember, type Member } from "@/lib/auth";
 import { cotsLinkDenied } from "@/lib/parts/cotsLink";
+import { fabSetupDenied } from "@/lib/parts/fabSetup";
 import { isUuid } from "@/lib/uuid";
 
 // The signed-in member's effective mode: an admin's Edit | CAD | Build pick (Edit without one),
@@ -44,10 +45,11 @@ export const DENIED: Record<Capability, string> = {
 
 // For server actions that set a status: why the member's mode can't give these parts `status`
 // (statusDenied in mode.ts), or null when it can. COTS parts follow their own rule, and in every
-// mode a COTS part needs its inventory item for Released and the Order List (cotsLinkDenied).
+// mode a COTS part needs its inventory item for Released and the Order List (cotsLinkDenied), and a
+// made part its machine and material for Released (fabSetupDenied).
 export async function statusChangeDenied(
   partIds: string[],
-  changes: { status?: string; note?: string | null; inventoryItemId?: string | null; classification?: string },
+  changes: { status?: string; note?: string | null; inventoryItemId?: string | null; classification?: string; material?: string | null; preProcess?: string | null; process1?: string | null; process2?: string | null },
 ): Promise<string | null> {
   if (changes.status === undefined && changes.inventoryItemId !== null) return null;
   const ids = partIds.filter(isUuid);
@@ -57,6 +59,7 @@ export async function statusChangeDenied(
           classification: schema.parts.classification,
           inventoryItemId: schema.parts.inventoryItemId,
           designState: schema.parts.designState,
+          material: schema.parts.material,
           preProcess: schema.parts.preProcess,
           process1: schema.parts.process1,
           process2: schema.parts.process2,
@@ -65,7 +68,7 @@ export async function statusChangeDenied(
         .where(inArray(schema.parts.id, ids))
     : [];
   for (const r of rows) {
-    const denied = cotsLinkDenied(r, changes);
+    const denied = cotsLinkDenied(r, changes) ?? fabSetupDenied(r, changes);
     if (denied) return denied;
   }
   if (!changes.status) return null;
