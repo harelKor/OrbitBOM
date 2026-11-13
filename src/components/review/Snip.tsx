@@ -124,7 +124,7 @@ export function SnipEditor({
   onConfirm,
   onClose,
 }: {
-  title: string;
+  title: React.ReactNode;
   src: string | null;
   w: number;
   h: number;
@@ -293,7 +293,7 @@ export function CommentSnip({ c, small = false }: { c: ReviewComment; small?: bo
       {snip.changed && snip.changed.length > 0 && <span className="block text-[0.6875rem] text-subtle">{snip.changed.map((x) => `${x.name} changed`).join(" · ")}</span>}
       {open && me && (
         <SnipEditor
-          title="Snip"
+          title={<span className="block truncate" title={c.body}>{c.body || "Snip"}</span>}
           src={snip.url}
           w={snip.w}
           h={snip.h}

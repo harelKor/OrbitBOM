@@ -188,7 +188,7 @@ export function CommentRow({ c, n, gone = false, onFocus, onView, where }: { c: 
   const { pending, error, run } = useCommentAction();
   const canDelete = !!ctx && (ctx.me.isAdmin || (c.authorId === ctx.me.id && c.state === "open"));
   return (
-    <li className={`rounded-md p-2 hover:bg-raised/70 ${pending ? "opacity-60" : ""}`}>
+    <li className={`mb-1.5 rounded-md border border-line/70 bg-surface p-2 last:mb-0 hover:bg-raised/70 ${pending ? "opacity-60" : ""}`}>
       <div className="flex gap-2.5">
         <PinBadge n={n} c={c} onView={onView} />
         <div className="min-w-0 flex-1 text-sm">
@@ -204,8 +204,18 @@ export function CommentRow({ c, n, gone = false, onFocus, onView, where }: { c: 
                 ✓ Done
               </button>
             )}
+            {canDelete && (
+              <button
+                onClick={() => confirm("Delete this comment?") && run(() => deleteReviewComment(c.id))}
+                className="press -my-1 ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded text-xs text-subtle hover:bg-raised hover:text-rose-500 pointer-coarse:h-8 pointer-coarse:w-8"
+                aria-label="Delete comment"
+                title="Delete"
+              >
+                ✕
+              </button>
+            )}
           </div>
-          <button className={`block w-full text-left whitespace-pre-wrap break-words ${gone ? "text-muted line-through" : "text-fg"}`} onClick={tapText(c, onFocus, onView)}>
+          <button className={`block w-full text-left whitespace-pre-wrap break-words ${gone ? "text-muted line-through" : "text-fg"}`} onClick={ctx?.open ? () => ctx.open!(c) : tapText(c, onFocus, onView)} title="Open the comment">
             {c.body}
           </button>
           <PartChip c={c} onFocus={onFocus} />
@@ -219,16 +229,6 @@ export function CommentRow({ c, n, gone = false, onFocus, onView, where }: { c: 
           <Rejected c={c} />
           {error && <p className="mt-1 text-xs text-rose-600">{error}</p>}
         </div>
-        {canDelete && (
-          <button
-            onClick={() => confirm("Delete this comment?") && run(() => deleteReviewComment(c.id))}
-            className="press self-start text-subtle hover:text-rose-500 pointer-coarse:min-h-9 pointer-coarse:min-w-9"
-            aria-label="Delete comment"
-            title="Delete"
-          >
-            ✕
-          </button>
-        )}
       </div>
     </li>
   );
