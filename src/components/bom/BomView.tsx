@@ -26,6 +26,9 @@ import { KanbanView } from "./KanbanView";
 import { PartCard } from "./PartCard";
 import { PartList, PartListRow } from "./PartListRow";
 import { useStoredChoice } from "@/components/ui/useStoredChoice";
+import { ViewPicker } from "@/components/ui/ViewPicker";
+
+const VIEW_LABELS = { card: "Cards", list: "List", table: "Table", kanban: "Kanban" } as const;
 import { TableView } from "./TableView";
 import { type CardPart } from "./types";
 import { Icon } from "@/components/ui/Icon";
@@ -290,17 +293,6 @@ export function BomView({
           ))}
         </div>
           <FilterPills parts={optimisticParts} />
-          <div className="flex overflow-hidden rounded-md border border-line-strong" role="group" aria-label="View">
-            {(edit ? (["card", "list", "table", "kanban"] as const) : LOOKS).map((v) => (
-              <button
-                key={v}
-                onClick={() => setView(v)}
-                className={`press px-3 py-1 text-xs font-medium capitalize ${view === v ? "bg-accent text-white" : "bg-raised text-fg-2 hover:bg-line"}`}
-              >
-                {v === "card" ? "Cards" : v}
-              </button>
-            ))}
-          </div>
           <select value={status} onChange={(e) => setStatus(e.target.value)} className="input w-auto rounded-full py-1 text-xs" aria-label="Status">
             <option value="">All statuses</option>
             {STATUSES.filter((s) => role !== "build" || BUILD_STATUSES.includes(s.name)).map((s) => (
@@ -338,6 +330,14 @@ export function BomView({
             </button>
           )}
           {edit && toolbar}
+          {/* Cards / List / Table / Kanban as a dropdown at the toolbar's right end (Harel, 2026-11-13). */}
+          <div className="ml-auto">
+            <ViewPicker
+              value={view}
+              onChange={setView}
+              options={(edit ? (["card", "list", "table", "kanban"] as const) : LOOKS).map((v) => ({ value: v, label: VIEW_LABELS[v] }))}
+            />
+          </div>
       </div>
 
       {error && <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">Couldn&apos;t save: {error}</p>}

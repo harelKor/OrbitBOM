@@ -440,18 +440,6 @@ export function CotsView({
 
   return (
     <div className={`space-y-5 ${ordering ? "pb-20" : ""}`}>
-      {/* Cards / List / Table at the top right (Harel, 2026-11-13). */}
-      <div className="-mb-3 flex justify-end">
-        <ViewPicker
-          value={view}
-          onChange={setView}
-          options={[
-            { value: "cards", label: "Cards" },
-            { value: "list", label: "List" },
-            { value: "table", label: "Table" },
-          ]}
-        />
-      </div>
       <CategoryBoxes
         compact
         categories={categories}
@@ -512,6 +500,16 @@ export function CotsView({
               </button>
             );
           })}
+        {/* Cards / List / Table, on the status filters' line (Harel, 2026-11-13). */}
+        <ViewPicker
+          value={view}
+          onChange={setView}
+          options={[
+            { value: "cards", label: "Cards" },
+            { value: "list", label: "List" },
+            { value: "table", label: "Table" },
+          ]}
+        />
         {group && (
           <button type="button" onClick={() => pushQuery({ group: null, cat: null })} className="press rounded-full border border-line-strong px-3 py-1 text-xs font-medium text-fg-2 hover:text-fg">
             {categories.find((c) => c.id === category)?.label ?? groupLabel(group)} ✕
