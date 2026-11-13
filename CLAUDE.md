@@ -175,6 +175,12 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
   window. Raw answers and what the counter saw on `/inventory/scan-test`.
 - Files: `src/lib/storage/r2.ts`; backups and restore: `src/lib/storage/backup.ts`, `restore.ts`.
 - Work the user needn't wait for: `afterResponse` (`src/lib/later.ts`).
+- Installed app / offline (2026-11-13): `public/sw.js` (plain JS, production only, registered by
+  `src/components/shell/OfflineSupport.tsx`, which also shows the offline bar). `/_next/static`
+  from the device; pages network-first with a saved copy offline or after 8 s; `/api`, saves,
+  sign-in and the panel never cached; any `/login` visit deletes saved pages. Bump its `VERSION`
+  to drop its caches. Service workers don't run in the desktop app's browser pane: test with
+  real Chrome.
 - MCP: `src/lib/mcp/registry.ts` (`read` / `write`, preview → confirm token → apply) and one file
   per area in `src/lib/mcp/toolsets/`; `src/lib/mcp/tools.test.ts` counts the tools.
 - To Fab: `src/components/fab/` (`fabModel.ts` rules, `BatchCard`, `MachineFilters`, Auto Layout in

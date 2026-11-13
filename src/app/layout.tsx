@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Jost } from "next/font/google";
+import { OfflineSupport } from "@/components/shell/OfflineSupport";
 import { APPEARANCE_SCRIPT, SHADE_SCRIPT, UI_SCALE_SCRIPT } from "@/components/shell/boot-scripts";
 import "./globals.css";
 
@@ -43,7 +44,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <head>
         <script dangerouslySetInnerHTML={{ __html: SHADE_SCRIPT + APPEARANCE_SCRIPT + UI_SCALE_SCRIPT }} />
       </head>
-      <body className="flex min-h-dvh flex-col">{children}</body>
+      <body className="flex min-h-dvh flex-col">
+        {children}
+        <OfflineSupport />
+      </body>
     </html>
   );
 }
