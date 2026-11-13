@@ -100,6 +100,6 @@ export async function suggestPart(partId: string): Promise<ActionResult> {
   const r = await suggestOnePart(partId, member.id);
   if (!r) return { error: "Unknown part." };
   refresh();
-  if (!r.setUp && !r.linked) return { message: "Nothing to suggest: the part already has its material and processes, and no inventory item clearly matches it." };
+  if (!r.setUp && !r.linked) return { message: "Nothing to change: the part's material and processes are already what Suggest would pick, and no inventory item clearly matches it." };
   return {};
 }

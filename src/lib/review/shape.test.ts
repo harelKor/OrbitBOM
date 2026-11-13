@@ -72,6 +72,13 @@ const rect = (w: number, h: number, x = 0, y = 0): P[] => [
   [x, y + h],
 ];
 const circle = (d: number, n = 72): P[] => Array.from({ length: n }, (_, k) => [(d / 2) * Math.cos((2 * Math.PI * k) / n), (d / 2) * Math.sin((2 * Math.PI * k) / n)]);
+// A spur gear's outline: square teeth between the tip and root circles.
+const gear = (teeth: number, od: number, root: number): P[] =>
+  Array.from({ length: teeth * 4 }, (_, k) => {
+    const a = (2 * Math.PI * k) / (teeth * 4);
+    const r = k % 4 < 2 ? od / 2 : root / 2;
+    return [r * Math.cos(a), r * Math.sin(a)];
+  });
 const hexagon = (flats: number): P[] => Array.from({ length: 6 }, (_, k) => [(flats / Math.sqrt(3)) * Math.cos((Math.PI * k) / 3), (flats / Math.sqrt(3)) * Math.sin((Math.PI * k) / 3)]);
 
 const read = (s: Solid, deg = 37) => {
@@ -174,6 +181,28 @@ describe("analyzeShape", () => {
     expect(read(c, 17)).toMatchObject({ kind: "plate", pocketed: true });
   });
 
+  it("reads plates with big pockets as plates, not box tubes (Harel, 2026-11-13)", () => {
+    // Pocketed 6.7 and 4 mm plates, and a narrow frame whose long walls outweigh its faces, all
+    // read as box tubes before.
+    for (const [plate, t] of [
+      [prism(rect(140, 280), 6.7, rect(120, 260, 10, 10)), 6.7],
+      [prism(rect(130, 230), 4, rect(110, 210, 10, 10)), 4],
+      [prism(rect(40, 280), 6.7, rect(30, 270, 5, 5)), 6.7],
+    ] as const) {
+      const s = read(plate);
+      expect(s.kind).toBe("plate");
+      expect(s.t).toBeCloseTo(t, 1);
+    }
+  });
+
+  it("reads a gear as a plate, not a turned spacer (Harel, 2026-11-13)", () => {
+    // 42T 20DP gear, 3/8" thick, with and without a bore: CNC from plate, not the lathe.
+    expect(read(prism(gear(42, 55.8, 51), 9.53))).toMatchObject({ kind: "plate", t: 9.53 });
+    expect(read(prism(gear(42, 55.8, 51), 9.53, circle(12.7, 168)))).toMatchObject({ kind: "plate" });
+    // A round part of the same size is still turned.
+    expect(read(prism(circle(40, 168), 17.7, circle(13, 168))).kind).toBe("spacer");
+  });
+
   it("leaves a solid block a block", () => {
     expect(read(prism(rect(30, 40), 50)).kind).toBe("block");
   });
@@ -224,6 +253,36 @@ describe("suggestSetup with shapes", () => {
     expect(setup({ onshapeMaterial: "Aluminum - 7075", shape: { kind: "plate", t: 3 } })?.changes.material).toBe("Aluminum plate 7075 3mm");
     expect(setup({ onshapeMaterial: "Aluminum - 6061", shape: { kind: "plate", t: 6.6 } })?.changes.material).toBe("Aluminum plate 6061 6.7mm");
     expect(setup({ onshapeMaterial: "Aluminum - 6061", shape: { kind: "plate", t: 6.4 } })?.changes.material).toBe("Aluminum plate 6061 6.35mm");
+  });
+
+  it("faces aluminium down from the next plate up, but cuts poly as it comes (Harel, 2026-11-13)", () => {
+    // 3/8" parts from the 10 mm plate, a 11 mm gear hub from the 12.7 mm plate (whose thickness
+    // spec says 12), 7.7 mm poly from the 8 mm sheet.
+    const stock = [
+      ...STOCK,
+      item("10mm Aluminum plate", "aluminum-plates", { thickness: "10" }),
+      item("12.7mm Aluminum plate", "aluminum-plates", { thickness: "12" }),
+      item("Polycarbonate 8mm", "polycarbonate", { thickness: "8" }),
+    ];
+    const pick = (onshapeMaterial: string, t: number) => suggestSetup({ classification: "undefined", material: null, preProcess: null, process1: null, process2: null, geometry: { onshapeMaterial, shape: { kind: "plate", t } } }, stock)?.changes.material;
+    expect(pick("Aluminum - 6061", 9.53)).toBe("10mm Aluminum plate");
+    expect(pick("Aluminum - 6061", 11.09)).toBe("12.7mm Aluminum plate");
+    expect(pick("Aluminum - 6061", 12.7)).toBe("12.7mm Aluminum plate");
+    expect(pick("Polycarbonate", 7.7)).toBe("Polycarbonate 8mm");
+    expect(pick("Polycarbonate", 6.5)).toBeUndefined();
+  });
+
+  it("sends the pocketed plate an old Suggest called a box tube to the CNC, not the laser", () => {
+    // 1691-26-212-01A as it was measured: "box tube 6.7×136.8 mm, 2.8 mm wall", Laser.
+    const s = setup({ onshapeMaterial: "Aluminum - 6061", bbox: [6.7, 168.35, 281.65], shape: { kind: "box-tube", d1: 6.73, d2: 136.77, wall: 2.75, length: 320.37 } });
+    expect(s?.changes).toMatchObject({ material: "Aluminum plate 6061 6.7mm", process1: "cnc" });
+  });
+
+  it("finds box tubes whose size spec is one number, and takes Carbon Steel for steel", () => {
+    const stock = [...STOCK, item("Box tube 50×50×2mm", "square-tubes", { size: "50", wall: "2", material: "Aluminum" }), item("Steel block", "cylinders-blocks", { shape: "Block", material: "Steel" })];
+    const run = (geometry: SetupInput["geometry"]) => suggestSetup({ classification: "undefined", material: null, preProcess: null, process1: null, process2: null, geometry }, stock)?.changes;
+    expect(run({ onshapeMaterial: "Aluminum - 6061", shape: { kind: "box-tube", d1: 50, d2: 50, wall: 2, length: 700 } })?.material).toBe("Box tube 50×50×2mm");
+    expect(run({ onshapeMaterial: "Carbon Steel", shape: { kind: "block", size: [11.1, 12.7, 13.6] } })).toMatchObject({ material: "Steel block", process1: "cnc" });
   });
 
   it("sends pocketed plates to the CNC, also polycarbonate", () => {

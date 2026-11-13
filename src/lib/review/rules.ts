@@ -62,7 +62,8 @@ const ALLOY = /\b(6061|7075|5052|6082)\b/;
 
 // A material's family, for matching a part's Onshape material to an item's.
 function family(text: string): string | undefined {
-  if (/carbon(?!ate)/i.test(text)) return "carbon";
+  // "Carbon Steel" is steel, not carbon fibre.
+  if (/carbon(?!ate|\s*steel)/i.test(text)) return "carbon";
   if (/polycarb|lexan|\bpc\b/i.test(text)) return "poly";
   if (/wood|birch|plywood|\bmdf\b|srpp|sandwich/i.test(text)) return "wood";
   if (/delrin|acetal|\bpom\b/i.test(text)) return "delrin";
@@ -97,38 +98,51 @@ export const isBent = (g: PartGeometry | null | undefined) => {
   return !isFlat(g.bbox) && g.wallMm !== undefined && g.wallMm <= MAX_SHEET_MM && !!g.bbox && g.bbox[0] >= 3 * g.wallMm;
 };
 
-// An item's plate thickness in mm: its thickness spec, else its material spec ("3mm 6061-T6"),
-// else a "3mm" in its name.
-function itemThickness(i: StockItem): number | undefined {
-  const spec = num(i.specs.thickness);
-  if (spec !== undefined) return spec;
-  const fromMaterial = i.specs.material ? plateThicknessMm(i.specs.material) : undefined;
-  if (fromMaterial !== undefined) return fromMaterial;
+// An item's plate thicknesses in mm: its thickness spec, its material spec ("3mm 6061-T6") and a
+// "3mm" in its name. All of them count: the "12.7mm Aluminum plate" item says 12 in its spec.
+function itemThicknesses(i: StockItem): number[] {
   const m = /(\d+(?:\.\d+)?)\s*mm\b/i.exec(i.name);
-  return m ? Number(m[1]) : undefined;
+  const all = [num(i.specs.thickness), i.specs.material ? plateThicknessMm(i.specs.material) : undefined, m ? Number(m[1]) : undefined];
+  return [...new Set(all.filter((t): t is number => t !== undefined))];
 }
 
-// The plate in inventory category `category` closest to thickness `t`. An alloy the part names
-// (7075) wins; otherwise 6061 first for aluminium.
+// How much thicker than the part a plate may be. Aluminium is faced down on the CNC: 3/8" (9.53)
+// parts come from the 10 mm plate and 11 mm gear hubs from the 12.7 mm one. Polycarbonate and
+// wood are cut as they come, so only a sheet's usual undersize (7.7 mm "8 mm" poly).
+const THICKER_MM: Record<string, number> = { "aluminum-plates": 2 };
+const THICKER_SHEET_MM = 0.5;
+
+// The plate in inventory category `category` for a part `t` thick: the closest within tolerance,
+// else the thinnest a little thicker. An alloy the part names (7075) wins; otherwise 6061 first
+// for aluminium.
 export function plateFor(category: string, t: number | undefined, stock: StockItem[], alloy?: string) {
   if (t === undefined) return undefined;
-  const fits = stock
-    .filter((i) => i.category === category)
-    .map((i) => ({ i, d: Math.abs((itemThickness(i) ?? Infinity) - t) }))
-    .filter((f) => f.d <= PLATE_TOLERANCE_MM);
+  const plates = stock.filter((i) => i.category === category).map((i) => ({ i, ts: itemThicknesses(i) }));
   const rank = (i: StockItem) => (alloy ? (itemText(i).includes(alloy) ? 0 : 1) : /6061/.test(itemText(i)) ? 0 : 1);
-  return fits.sort((a, b) => (alloy ? rank(a.i) - rank(b.i) || a.d - b.d : a.d - b.d || rank(a.i) - rank(b.i)))[0]?.i;
+  const close = plates
+    .map((p) => ({ i: p.i, d: Math.min(...p.ts.map((x) => Math.abs(x - t))) }))
+    .filter((f) => f.d <= PLATE_TOLERANCE_MM)
+    .sort((a, b) => (alloy ? rank(a.i) - rank(b.i) || a.d - b.d : a.d - b.d || rank(a.i) - rank(b.i)))[0]?.i;
+  if (close) return close;
+  const extra = THICKER_MM[category] ?? THICKER_SHEET_MM;
+  return plates
+    .map((p) => ({ i: p.i, d: Math.min(...p.ts.map((x) => (x > t ? x - t : Infinity))) }))
+    .filter((f) => f.d <= extra)
+    .sort((a, b) => a.d - b.d || rank(a.i) - rank(b.i))[0]?.i;
 }
 
 // "25×50×1.5mm", "50x25mm 1.5mm wall", "Aluminum 25x1.5 tube": the numbers in a size.
 const dims = (s: string) => [...s.matchAll(/(\d+(?:\.\d+)?)\s*(?=[x×]|mm|$|\s)/gi)].map((m) => Number(m[1]));
 
 function boxDims(i: StockItem): { a: number; b: number; wall?: number } | undefined {
-  const size = /(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)(?:\s*[x×]\s*(\d+(?:\.\d+)?))?/.exec(i.specs.size ?? i.name);
-  if (!size) return undefined;
-  const [a, b] = [Number(size[1]), Number(size[2])].sort((x, y) => x - y);
+  const pair = /(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)(?:\s*[x×]\s*(\d+(?:\.\d+)?))?/;
+  // A size spec of one number ("50") is a square tube; the name usually has the full size.
+  const size = pair.exec(i.specs.size ?? "") ?? pair.exec(i.name);
   const fromName = /[x×]\s*\d+(?:\.\d+)?\s*[x×]\s*(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*mm\s*wall/i.exec(i.name);
-  const wall = num(i.specs.wall) ?? (size[3] ? Number(size[3]) : fromName ? Number(fromName[1] ?? fromName[2]) : undefined);
+  const wall = num(i.specs.wall) ?? (size?.[3] ? Number(size[3]) : fromName ? Number(fromName[1] ?? fromName[2]) : undefined);
+  const square = num(i.specs.size);
+  if (!size) return square !== undefined ? { a: square, b: square, wall } : undefined;
+  const [a, b] = [Number(size[1]), Number(size[2])].sort((x, y) => x - y);
   return { a, b, wall };
 }
 

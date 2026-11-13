@@ -171,8 +171,9 @@ function median(xs: { x: number; w: number }[]) {
   return s.find((a) => (acc += a.w) >= total / 2)!.x;
 }
 
-// The largest set of triangles sharing one normal direction (either sense): a plate's faces.
-function mainPlaneNormal(tris: Tri[]): V | undefined {
+// Sets of triangles sharing one normal direction (either sense), largest first: a plate's faces
+// are one of the first few (the long walls of a narrow pocketed frame can outweigh its faces).
+function planeNormals(tris: Tri[]): V[] {
   const bins = new Map<string, { n: V; area: number }>();
   for (const t of tris) {
     let n = t.n;
@@ -183,9 +184,7 @@ function mainPlaneNormal(tris: Tri[]): V | undefined {
     if (b) b.area += t.area;
     else bins.set(key, { n, area: t.area });
   }
-  let best: { n: V; area: number } | undefined;
-  for (const b of bins.values()) if (!best || b.area > best.area) best = b;
-  return best?.n;
+  return [...bins.values()].sort((a, b) => b.area - a.area).map((b) => b.n);
 }
 
 // Wall of a box tube: for each outer side, the nearest inner face parallel to it.
@@ -220,6 +219,27 @@ function boxWall(tris: Tri[], dirs: V[], total: number): number | undefined {
 // How much of a plate face's area its floors (pockets, counterbores, steps) must cover.
 const POCKET_SHARE = 0.005;
 
+// How much of the side area (faces along `axis`) faces straight out from the axis or in to it, as
+// on a part turned on a lathe. A gear or sprocket has a round outline too, but its tooth flanks
+// face sideways, so it isn't turned (Harel, 2026-11-13: 42T and 28T gears were going to the LATHE).
+function radialShare(tris: Tri[], axis: V, sec: { u: V; v: V; centre2: number[] }) {
+  let side = 0;
+  let radial = 0;
+  for (const t of tris) {
+    if (Math.abs(dot(t.n, axis)) > 0.3) continue;
+    const x = dot(t.c, sec.u) - sec.centre2[0];
+    const y = dot(t.c, sec.v) - sec.centre2[1];
+    const r = Math.hypot(x, y);
+    side += t.area;
+    if (r < 1e-6) continue;
+    const along = (dot(t.n, sec.u) * x + dot(t.n, sec.v) * y) / r;
+    if (Math.abs(along) > 0.95) radial += t.area;
+  }
+  return side ? radial / side : 0;
+}
+// Turned parts measure 1.0 (cross holes bring it down a little); gears and pulleys 0.35–0.65.
+const TURNED_SHARE = 0.8;
+
 // Reads a part's stock shape from its mesh (positions in metres, as in the .obm file).
 export function analyzeShape(positions: ArrayLike<number>, indices: ArrayLike<number>): Shape | undefined {
   const tris = triangles(positions, indices);
@@ -239,9 +259,40 @@ export function analyzeShape(positions: ArrayLike<number>, indices: ArrayLike<nu
   const sec = section(points, L);
   const sideArea = tris.reduce((s, t) => s + (Math.abs(dot(t.n, L)) < 0.15 ? t.area : 0), 0);
   const prism = sideArea / total > 0.55 && len > sec.d2 * 1.2;
-  const round = sec.d2 / sec.d1 < 1.08 && sec.widest / sec.d1 < 1.05;
+  const round = sec.d2 / sec.d1 < 1.08 && sec.widest / sec.d1 < 1.05 && radialShare(tris, L, sec) >= TURNED_SHARE;
   const radius = (p: V) => Math.hypot(dot(p, sec.u) - sec.centre2[0], dot(p, sec.v) - sec.centre2[1]);
   const base = { d1: r2(sec.d1), d2: r2(sec.d2), length: r2(len) };
+
+  // Plates first: thin across their biggest flat faces and wide. A plate's two faces are parallel
+  // to any line in its plane, so the prism test below took plates for box tubes or blocks (Harel,
+  // 2026-11-13: pocketed 6.7 mm plates read as "box tube 6.7×136.8" and went to the laser). Pocket
+  // and hole walls can outweigh the faces on a heavily pocketed plate, so the faces need only a
+  // fifth of the area.
+  const reading = (N: V) => {
+    const ex = extent(points, N);
+    const t = ex.len;
+    const across = section(points, N);
+    const parallel = tris.filter((tr) => Math.abs(dot(tr.n, N)) > 0.995);
+    const planar = parallel.reduce((s, tr) => s + tr.area, 0);
+    const discRound = across.d2 / across.d1 < 1.05 && across.widest / across.d1 < 1.05;
+    // A round part thick for its size (spacer, bushing, pulley) is turned; a thin disc is a plate.
+    const spacer = discRound && t >= across.d1 / 6 && radialShare(tris, N, across) >= TURNED_SHARE;
+    const plate = t >= 0.5 && t <= 13 && across.d1 > 2.2 * t && planar / total > 0.2;
+    const floors = parallel.reduce((s, tr) => {
+      const z = dot(tr.c, N) - ex.lo;
+      return s + (z > 0.2 && z < t - 0.2 ? tr.area : 0);
+    }, 0);
+    return { t, across, spacer, plate, floors, planar };
+  };
+  const readings = planeNormals(tris).slice(0, 3).map(reading);
+  const flat = readings.find((r) => r.plate);
+  const spacer = readings.find((r) => r.spacer);
+  if (flat && !spacer) {
+    // Any floor counts: a counterbore or a step along an edge is cut on the CNC like a pocket
+    // (Harel, 2026-11-06: stepped 3 mm plates read as plain).
+    const { t, across } = flat;
+    return { kind: "plate", t: r2(t), d1: r2(across.d1), d2: r2(across.d2), pocketed: flat.floors > (flat.planar / 2) * POCKET_SHARE };
+  }
 
   if (prism) {
     // Hex: 1/2" (12.7 mm flats) or 3/8" (9.525 mm), corner-to-corner 1.155x flats (ThunderHex's
@@ -283,26 +334,11 @@ export function analyzeShape(positions: ArrayLike<number>, indices: ArrayLike<nu
     }
   }
 
-  // Plates and turned spacers: measured across their biggest flat faces.
-  const N = mainPlaneNormal(tris);
-  if (N) {
-    const ex = extent(points, N);
-    const t = ex.len;
-    const across = section(points, N);
-    const parallel = tris.filter((tr) => Math.abs(dot(tr.n, N)) > 0.995);
-    const planar = parallel.reduce((s, tr) => s + tr.area, 0);
-    const discRound = across.d2 / across.d1 < 1.05 && across.widest / across.d1 < 1.05;
-    // A round part thick for its size (spacer, bushing, pulley) is turned; a thin disc is a plate.
-    if (discRound && t >= across.d1 / 6) return { kind: "spacer", d1: r2(t), d2: r2(across.d1), length: r2(t), axisymmetric: true };
-    if (t >= 0.5 && t <= 13 && across.d1 > 2.2 * t && planar / total > 0.45) {
-      const floors = parallel.reduce((s, tr) => {
-        const z = dot(tr.c, N) - ex.lo;
-        return s + (z > 0.2 && z < t - 0.2 ? tr.area : 0);
-      }, 0);
-      // Any floor counts: a counterbore or a step along an edge is cut on the CNC like a pocket
-      // (Harel, 2026-11-06: stepped 3 mm plates read as plain).
-      return { kind: "plate", t: r2(t), d1: r2(across.d1), d2: r2(across.d2), pocketed: floors > (planar / 2) * POCKET_SHARE };
-    }
+  // Turned spacers: measured across their biggest flat faces.
+  if (spacer) return { kind: "spacer", d1: r2(spacer.t), d2: r2(spacer.across.d1), length: r2(spacer.t), axisymmetric: true };
+  if (flat) {
+    const { t, across } = flat;
+    return { kind: "plate", t: r2(t), d1: r2(across.d1), d2: r2(across.d2), pocketed: flat.floors > (flat.planar / 2) * POCKET_SHARE };
   }
 
   const size = [sec.d1, sec.d2, len].map(r2).sort((a, b) => a - b) as [number, number, number];

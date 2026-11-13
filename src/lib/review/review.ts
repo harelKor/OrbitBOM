@@ -36,8 +36,9 @@ const MAX_WALL_TRIANGLES = 20_000;
 // ...and the shape reading (hex, tube, plate, ...), which is quicker.
 const MAX_SHAPE_TRIANGLES = 400_000;
 // Bumped when measuring learns something new, so parts measured before are measured again.
-// 3: the stock shape (shape.ts). 4: counterbores and steps make a plate pocketed.
-const SIZED_VERSION = 4;
+// 3: the stock shape (shape.ts). 4: counterbores and steps make a plate pocketed. 5: plates are
+// read before tubes, gears aren't turned spacers.
+const SIZED_VERSION = 5;
 
 // Measures parts from the robot's built 3D model (R2 files only, no Onshape calls) and stores
 // the size in parts.geometry. A part is measured again only when its Part Studio file changed.
@@ -253,9 +254,11 @@ export async function suggestRobotSetups(robotId: string, memberId: string, syst
   return { checked: todo.length, suggested: changed, linked };
 }
 
-// The part window's Suggest: the rules' setup and auto-link's inventory item for one part, even
-// one that already has some of it (the rules only fill what's missing). Both wait in To Review,
-// where the window's Approve and Reject settle them.
+// The part window's Suggest: a fresh setup for that one part, as the system page's Suggest mode
+// works it out (a process set before, by hand or by an older Suggest, is suggested again from the
+// shape: Harel, 2026-11-13, a pocketed plate kept the Laser an old Suggest gave it), and
+// auto-link's inventory item. Both wait in To Review, where the window's Approve and Reject
+// settle them.
 export async function suggestOnePart(partId: string, memberId: string) {
   const [row] = await db
     .select({ part: parts, robotId: systems.robotId, systemName: systems.name })
@@ -265,22 +268,20 @@ export async function suggestOnePart(partId: string, memberId: string) {
   if (!row) return null;
   const [measured] = row.part.isManual ? [row.part] : await measureParts(row.robotId, [{ ...row.part, systemName: row.systemName }]);
   const [stock, byName] = await Promise.all([listRawStock(), nameMatcher()]);
-  const guess = guessSetup(measured, stock, byName(measured.inventoryItemId ? [] : [measured]));
+  const edit = row.part.classification === "external" ? null : freshEdit(measured, stock, byName([measured]), new Set(stock.map((i) => i.name)));
   let setUp = 0;
-  if (guess) {
-    const { changed, batchId } = await applySuggestions([{ id: partId, ...guess }], { memberId, source: "rule", via: "ui" });
+  if (edit) {
+    const { changed, batchId } = await applySuggestions([edit], { memberId, source: "rule", via: "ui" });
     setUp = changed;
     if (changed) await logAiAction({ source: "rule", tool: "Suggest setup", memberId, batchId, parts: 1, summary: `Set up "${row.part.displayName ?? row.part.onshapeName ?? "a part"}" from the part window` });
   }
   const linked = await linkParts([partId], memberId);
-  return { setUp, linked, reason: guess?.reason ?? null };
+  return { setUp, linked, reason: edit?.reason ?? null };
 }
 
-// The system page's Suggest mode: fresh setups for the picked parts, set up or not. Each part's
-// material and item are worked out as if it had none (classification stays, so a COTS part only
-// turns in-house for plates and prints; a part named like a product stays COTS); when the rules
-// find no Raw Stock item, its own material still picks the processes. Only fields that change are written, and every one waits in To Review with its "from →
-// to", like Suggest setup. Then auto-link for the ones without an item. `blind`: parts with nothing
+// The system page's Suggest mode: fresh setups for the picked parts, set up or not (freshEdit).
+// Only fields that change are written, and every one waits in To Review with its "from → to",
+// like Suggest setup. Then auto-link for the ones without an item. `blind`: parts with nothing
 // to read (no Onshape material, no 3D measurement, a numbered name).
 export async function suggestPickedParts(partIds: string[], memberId: string) {
   if (!partIds.length) return { checked: 0, suggested: 0, linked: 0, blind: 0 };
@@ -298,28 +299,9 @@ export async function suggestPickedParts(partIds: string[], memberId: string) {
   const [stock, byName] = await Promise.all([listRawStock(), nameMatcher()]);
   const named = byName(measured);
   const stockNames = new Set(stock.map((i) => i.name));
-  const blankProcesses = { preProcess: null, process1: null, process2: null };
   const edits = measured.flatMap((p) => {
-    const hit = named.get(p.id);
-    const byItem = hit && nameMatchSetup(p, hit);
-    if (byItem) return [{ id: p.id, ...byItem }];
-    if (!isPrinted(p) && (looksLikeProduct(p.displayName ?? p.onshapeName) || looksBought(p))) {
-      const product = productSetup(p);
-      return product ? [{ id: p.id, ...product }] : [];
-    }
-    // Worked out as if the part had no item: an old free-text material ("6.7mm 6061-T6") stays as
-    // a hint, an item's name doesn't.
-    const material = p.material && !stockNames.has(p.material) ? p.material : null;
-    const fresh = suggestSetup({ ...p, ...blankProcesses, material, inventoryItemId: null }, stock);
-    const guess = fresh?.changes.material ? fresh : suggestSetup({ ...p, ...blankProcesses }, stock);
-    if (!guess) return [];
-    const changes = { ...guess.changes };
-    // A print gets the plain material and no filament item (Harel, 2026-11-01).
-    if (p.inventoryItemId && changes.material && !("inventoryItemId" in changes) && PRINT_MATERIALS.some((m) => m.material === changes.material)) changes.inventoryItemId = null;
-    // Processes are worked out fresh too: the setups on the robots so far are tests, not the
-    // team's choices (Harel, 2026-11-06).
-    for (const f of Object.keys(changes) as (keyof typeof changes)[]) if (same(changes[f], p[f as keyof Part])) delete changes[f];
-    return Object.keys(changes).length ? [{ id: p.id, changes, reason: guess.reason }] : [];
+    const edit = freshEdit(p, stock, named, stockNames);
+    return edit ? [edit] : [];
   });
   const { changed, batchId } = await applySuggestions(edits, { memberId, source: "rule", via: "ui" });
   if (changed) {
@@ -327,6 +309,39 @@ export async function suggestPickedParts(partIds: string[], memberId: string) {
   }
   const linked = await linkParts(measured.map((p) => p.id), memberId);
   return { checked: measured.length, suggested: changed, linked, blind: measured.filter((p) => blind(p) && !edits.some((e) => e.id === p.id)).length };
+}
+
+// A fresh setup for one part, set up or not, with only the fields that change. Its material and
+// item are worked out as if it had none (classification stays, so a COTS part only turns in-house
+// for plates and prints; a part named like a product stays COTS); when the rules find no Raw Stock
+// item, its own material still picks the processes.
+function freshEdit(
+  p: Part,
+  stock: Awaited<ReturnType<typeof listRawStock>>,
+  named: ReturnType<Awaited<ReturnType<typeof nameMatcher>>>,
+  stockNames: Set<string>,
+): { id: string; changes: PartChanges; reason: string } | null {
+  const hit = named.get(p.id);
+  const byItem = hit && nameMatchSetup(p, hit);
+  if (byItem) return { id: p.id, ...byItem };
+  if (!isPrinted(p) && (looksLikeProduct(p.displayName ?? p.onshapeName) || looksBought(p))) {
+    const product = productSetup(p);
+    return product ? { id: p.id, ...product } : null;
+  }
+  // Worked out as if the part had no item: an old free-text material ("6.7mm 6061-T6") stays as
+  // a hint, an item's name doesn't.
+  const blankProcesses = { preProcess: null, process1: null, process2: null };
+  const material = p.material && !stockNames.has(p.material) ? p.material : null;
+  const fresh = suggestSetup({ ...p, ...blankProcesses, material, inventoryItemId: null }, stock);
+  const guess = fresh?.changes.material ? fresh : suggestSetup({ ...p, ...blankProcesses }, stock);
+  if (!guess) return null;
+  const changes = { ...guess.changes };
+  // A print gets the plain material and no filament item (Harel, 2026-11-01).
+  if (p.inventoryItemId && changes.material && !("inventoryItemId" in changes) && PRINT_MATERIALS.some((m) => m.material === changes.material)) changes.inventoryItemId = null;
+  // Processes are worked out fresh too: the setups on the robots so far are tests, not the
+  // team's choices (Harel, 2026-11-06).
+  for (const f of Object.keys(changes) as (keyof typeof changes)[]) if (same(changes[f], p[f as keyof Part])) delete changes[f];
+  return Object.keys(changes).length ? { id: p.id, changes, reason: guess.reason } : null;
 }
 
 // A COTS part already linked to its item: the shape rules don't turn it in-house.
