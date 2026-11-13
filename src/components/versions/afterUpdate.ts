@@ -1,5 +1,4 @@
 import { MODEL_STALE_EVENT, type ModelStaleDetail } from "@/components/dashboard/modelEvents";
-import { buildModelAndPictures } from "@/components/viewer/buildModel";
 
 type Router = { refresh: () => void };
 
@@ -22,7 +21,12 @@ export function afterPartsUpdate(systemId: string, router: Router, { rebuild }: 
       : new Promise<void>((resolve) => {
           const detail: ModelStaleDetail = { resolve, taken: false };
           window.dispatchEvent(new CustomEvent(MODEL_STALE_EVENT, { detail }));
-          if (!detail.taken) void buildModelAndPictures(rebuild, systemId).finally(resolve);
+          // Loaded only here: the 3D builder pulls in three.js, which pages without a viewer would
+          // otherwise download with the top bar's search (Harel, 2026-11-13: speed).
+          if (!detail.taken)
+            void import("@/components/viewer/buildModel")
+              .then(({ buildModelAndPictures }) => buildModelAndPictures(rebuild, systemId))
+              .finally(resolve);
         });
     await Promise.all([partData, model]);
     router.refresh();

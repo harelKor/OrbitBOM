@@ -2,7 +2,8 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { OPEN_PART_EVENT, OPEN_PART_PENDING, type OpenPartDetail } from "@/components/dashboard/modelEvents";
-import { loadPartWindow, updatePart } from "@/app/(app)/parts-actions";
+import { updatePart, type loadPartWindow } from "@/app/(app)/parts-actions";
+import { read } from "@/lib/reads";
 import { BomProvider, useBom } from "./BomContext";
 import type { SaveFn } from "./fields";
 import { PartDetails } from "./PartDetails";
@@ -66,7 +67,7 @@ export function PartDetailsProvider({ children }: { children: React.ReactNode })
       const { partId, done } = (e as CustomEvent<OpenPartLoadDetail>).detail;
       let first: Awaited<ReturnType<typeof loadPartWindow>>;
       try {
-        first = await loadPartWindow(partId);
+        first = await read("loadPartWindow", partId);
       } catch {
         // A page loaded before the last deploy calls this read by a name the new build doesn't
         // have ("Failed to find Server Action"), and the window never opened (Harel, 2026-11-07).
@@ -86,7 +87,7 @@ export function PartDetailsProvider({ children }: { children: React.ReactNode })
       const save: SaveFn = async (changes) => {
         const r = await updatePart(partId, changes).catch(() => ({ error: "Couldn't save. Try again." }));
         if (r.error) alert(r.error);
-        const next = await loadPartWindow(partId).catch(() => null);
+        const next = await read("loadPartWindow", partId).catch(() => null);
         if (next) sync({ part: next.part, save, bom });
       };
       open({ part: first.part, save, bom });

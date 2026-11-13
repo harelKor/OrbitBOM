@@ -6,9 +6,18 @@ import { recordDeleted, recordStored } from "./ledger";
 // presigned URLs, so files never pass through our small app server (on Vercel there was also a
 // 4.5 MB body limit) and the keys stay on the server. R2_ENDPOINT overrides the endpoint for local S3 emulators.
 
+// One client per set of settings: aws4fetch keeps the derived signing key inside the client, so
+// reusing it saves redoing the whole key chain for every link (a page signs hundreds of them).
+let made: { id: string; value: { client: AwsClient; base: string } } | null = null;
 function config() {
   const { R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_ENDPOINT } = process.env;
   if (!R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET || !(R2_ENDPOINT || R2_ACCOUNT_ID)) return null;
+  const id = [R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_ENDPOINT].join("|");
+  if (made?.id !== id) made = { id, value: newConfig(R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_ENDPOINT) };
+  return made.value;
+}
+
+function newConfig(R2_ACCOUNT_ID: string | undefined, R2_ACCESS_KEY_ID: string, R2_SECRET_ACCESS_KEY: string, R2_BUCKET: string, R2_ENDPOINT: string | undefined) {
   const endpoint = R2_ENDPOINT || `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
   return {
     client: new AwsClient({
@@ -52,10 +61,25 @@ export const presignUpload = (key: string) => presign("PUT", key, 600);
 // Image links that stay the same for six hours, so the browser can cache thumbnails between
 // page loads. Signing is local (no network), so a page of 200 cards costs nothing.
 const WINDOW_MS = 6 * 3600 * 1000;
+// The link for a key is the same for the whole window, so each one is signed once per window
+// instead of on every page render.
+const signedImages = new Map<string, { slot: number; client: AwsClient; url: string }>();
+const MAX_SIGNED = 5000;
 export async function imageUrl(key: string) {
   const c = config();
   if (!c) return null;
-  const start = new Date(Math.floor(Date.now() / WINDOW_MS) * WINDOW_MS);
+  const slot = Math.floor(Date.now() / WINDOW_MS);
+  const hit = signedImages.get(key);
+  if (hit && hit.slot === slot && hit.client === c.client) return hit.url;
+  const url = await signImage(c, key, slot);
+  signedImages.delete(key);
+  signedImages.set(key, { slot, client: c.client, url });
+  if (signedImages.size > MAX_SIGNED) signedImages.delete(signedImages.keys().next().value!);
+  return url;
+}
+
+async function signImage(c: { client: AwsClient; base: string }, key: string, slot: number) {
+  const start = new Date(slot * WINDOW_MS);
   const url = objectUrl(c.base, key);
   url.searchParams.set("X-Amz-Expires", String((2 * WINDOW_MS) / 1000));
   const signed = await c.client.sign(new Request(url), {

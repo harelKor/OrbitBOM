@@ -12,16 +12,19 @@ import { getMode } from "@/lib/mode";
 const renderStamp = () => Date.now();
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const member = await requireMember();
-  const [robots, mode, jar, materialColors, categories, newest, seen] = await Promise.all([
+  // Everything starts together: only the arrivals wait for the member row, the rest is read while
+  // the sign-in is checked (a signed-out visitor is still sent away before anything renders).
+  const signedIn = requireMember();
+  const [member, robots, mode, jar, materialColors, categories, newest, seen] = await Promise.all([
+    signedIn,
     listShellRobots(),
     getMode(),
     cookies(),
     listMaterialColors(),
     listCategories(),
     // The new parts glow: the newest arrival per page and when this member last opened each.
-    listNewest(member.id),
-    listSeen(member.id),
+    signedIn.then((m) => listNewest(m.id)),
+    signedIn.then((m) => listSeen(m.id)),
   ]);
 
   return (

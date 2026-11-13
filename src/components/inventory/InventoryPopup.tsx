@@ -8,8 +8,8 @@ import {
   countStock,
   deleteItem,
   itemPopup,
-  loadItemHistory,
-  materialPopup,
+  type loadItemHistory,
+  type materialPopup,
   removeItemPhoto,
   setItemCondition,
   setItemLocation,
@@ -18,6 +18,7 @@ import {
   setSeasonNeed,
   unlinkItemProduct,
 } from "@/app/(app)/inventory/actions";
+import { read } from "@/lib/reads";
 import { textOn } from "@/components/bom/options";
 import { Dialog } from "@/components/Dialog";
 import { Popover } from "@/components/bom/Popover";
@@ -110,7 +111,7 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
   };
   const loadMaterial = (name: string) =>
     startTransition(async () => {
-      const data = await materialPopup(name);
+      const data = await read("materialPopup", name);
       setState((s) => (s?.kind === "material" && s.name === name ? { ...s, data } : s));
     });
   const showItem = (id: string, preview: Item | null, order: CotsOrderContext | null = null, edit = false) => {
@@ -870,7 +871,7 @@ function HistorySection({ item, categories, locations, conditions }: { item: Ite
       className="group"
       onToggle={(e) => {
         if (!e.currentTarget.open || history || loading) return;
-        startLoad(async () => setHistory(await loadItemHistory(item.id)));
+        startLoad(async () => setHistory(await read("loadItemHistory", item.id)));
       }}
     >
       <summary className="label flex min-h-10 cursor-pointer list-none items-center gap-1.5 select-none hover:text-accent [&::-webkit-details-marker]:hidden">

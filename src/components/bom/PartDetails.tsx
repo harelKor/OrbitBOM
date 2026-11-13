@@ -5,8 +5,9 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { Dialog } from "@/components/Dialog";
 import { deleteManualPart } from "@/app/(app)/parts-actions";
-import { inventoryPicker } from "@/app/(app)/inventory/actions";
-import { approveParts, partReviewState, rejectParts, suggestPart, type PartReviewState } from "@/app/(app)/robots/[robotId]/review/actions";
+import type { inventoryPicker } from "@/app/(app)/inventory/actions";
+import { approveParts, rejectParts, suggestPart, type PartReviewState } from "@/app/(app)/robots/[robotId]/review/actions";
+import { read } from "@/lib/reads";
 import { PartModel, PartStage, type StageView } from "@/components/dashboard/PartStage";
 import { DrawingEditor } from "@/components/drawing/DrawingEditor";
 import { DrawingPreview } from "@/components/drawing/DrawingPreview";
@@ -515,7 +516,8 @@ function InventoryLink({ part, save, diff }: { part: CardPart; save: SaveFn; dif
   const [data, setData] = useState<Awaited<ReturnType<typeof inventoryPicker>> | null>(null);
   useEffect(() => {
     let cancelled = false;
-    inventoryPicker().then((d) => !cancelled && setData(d));
+    // A GET read, not an action: a save clicked while the window opens doesn't wait for it.
+    read("inventoryPicker").then((d) => !cancelled && setData(d));
     return () => {
       cancelled = true;
     };
@@ -631,7 +633,7 @@ function useSuggest(part: CardPart, enabled: boolean): {
   useEffect(() => {
     if (!review) return;
     let cancelled = false;
-    partReviewState(part.id).then((s) => !cancelled && setState(s));
+    read("partReviewState", part.id).then((s) => !cancelled && setState(s));
     return () => {
       cancelled = true;
     };
