@@ -117,3 +117,23 @@ export async function setIgnoredId(robotId: string, pair: string, ignored: boole
   if (!ignored) return db.delete(designCheckIgnores).where(and(eq(designCheckIgnores.robotId, robotId), eq(designCheckIgnores.pair, pair)));
   return db.insert(designCheckIgnores).values({ robotId, pair, createdBy: memberId }).onConflictDoNothing();
 }
+
+// The newest run with what the AI write-up needs (robot name, system names), and saving the
+// write-up into it, so the team sees it with the run.
+export async function latestRun(robotId: string, model: "final" | "basepart") {
+  const [robot] = await db.select({ name: robots.name, limits: robots.checkLimits }).from(robots).where(eq(robots.id, robotId));
+  if (!robot) return null;
+  const [run] = await db
+    .select({ id: designChecks.id, results: designChecks.results })
+    .from(designChecks)
+    .where(and(eq(designChecks.robotId, robotId), eq(designChecks.model, model)))
+    .orderBy(desc(designChecks.createdAt))
+    .limit(1);
+  if (!run) return null;
+  const sys = await db.select({ id: systems.id, name: systems.name }).from(systems).where(eq(systems.robotId, robotId));
+  return { robot: robot.name, limits: robot.limits ?? {}, run, systems: Object.fromEntries(sys.map((s) => [s.id, s.name])) };
+}
+
+export async function saveReview(checkId: string, results: CheckResults) {
+  await db.update(designChecks).set({ results }).where(eq(designChecks.id, checkId));
+}

@@ -46,16 +46,45 @@ let lastGood: string | null = null;
 const failedAt = new Map<string, number>();
 
 export async function askGemini(jpegBase64: string, cats: InvCategory[]): Promise<{ answer: ModelAnswer; model: string }> {
+  const parts = [{ inline_data: { mime_type: "image/jpeg", data: jpegBase64 } }, { text: prompt(cats) }];
+  try {
+    const { value, model } = await geminiJson<ModelAnswer>(parts, SCHEMA, "low");
+    return { answer: value, model };
+  } catch (err) {
+    if (!(err instanceof GeminiError)) throw err;
+    if (err.code === "unset") throw new RecognizeError("Recognition isn't set up: the server has no GEMINI_API_KEY.");
+    if (err.code === "unreadable") throw new RecognizeError("Gemini's answer wasn't readable. Try another photo.");
+    if (err.code === "quota") throw new RecognizeError("The free recognition quota is used up for now. Try again later, or type it.");
+    if (err.code === "busy") throw new RecognizeError("Google's free AI is too busy right now. Try again in a minute, or add it by hand.");
+    throw new RecognizeError(err.message);
+  }
+}
+
+// Why a Gemini call failed: no key, a refused key or request (the message says), the free quota
+// used up, every model busy, or an answer that wasn't the JSON asked for.
+export class GeminiError extends Error {
+  constructor(
+    readonly code: "unset" | "refused" | "quota" | "busy" | "unreadable",
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+// One JSON answer from Gemini's free models (`parts`: the prompt's text and pictures, `schema`
+// its answer's shape), trying the models in turn as described above. Used by Scan and by the
+// Design check's AI (src/lib/check/ai.ts).
+export async function geminiJson<T>(parts: unknown[], schema: object, thinking: "low" | "high" = "low"): Promise<{ value: T; model: string }> {
   const key = process.env.GEMINI_API_KEY;
-  if (!key) throw new RecognizeError("Recognition isn't set up: the server has no GEMINI_API_KEY.");
+  if (!key) throw new GeminiError("unset", "The server has no GEMINI_API_KEY.");
   const list = process.env.GEMINI_MODEL ? process.env.GEMINI_MODEL.split(",").map((m) => m.trim()).filter(Boolean) : MODELS;
   const now = Date.now();
   const resting = (m: string) => now - (failedAt.get(m) ?? 0) < SIT_OUT_MS;
   const ordered = lastGood && list.includes(lastGood) ? [lastGood, ...list.filter((m) => m !== lastGood)] : list;
   const models = [...ordered.filter((m) => !resting(m)), ...ordered.filter(resting)];
   const body = JSON.stringify({
-    contents: [{ role: "user", parts: [{ inline_data: { mime_type: "image/jpeg", data: jpegBase64 } }, { text: prompt(cats) }] }],
-    generationConfig: { responseMimeType: "application/json", responseSchema: SCHEMA, temperature: 0.1, thinkingConfig: { thinkingLevel: "low" } },
+    contents: [{ role: "user", parts }],
+    generationConfig: { responseMimeType: "application/json", responseSchema: schema, temperature: 0.1, thinkingConfig: { thinkingLevel: thinking } },
   });
   const started = Date.now();
   const failures: number[] = [];
@@ -74,12 +103,12 @@ export async function askGemini(jpegBase64: string, cats: InvCategory[]): Promis
       const out = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[]; modelVersion?: string };
       const text = out.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
       try {
-        const answer = JSON.parse(text) as ModelAnswer;
+        const value = JSON.parse(text) as T;
         lastGood = model;
         failedAt.delete(model);
-        return { answer, model: out.modelVersion ?? model };
+        return { value, model: out.modelVersion ?? model };
       } catch {
-        throw new RecognizeError("Gemini's answer wasn't readable. Try another photo.");
+        throw new GeminiError("unreadable", "Gemini's answer wasn't readable.");
       }
     }
     const status = res?.status ?? 504; // no answer in time
@@ -87,9 +116,9 @@ export async function askGemini(jpegBase64: string, cats: InvCategory[]): Promis
     failedAt.set(model, Date.now());
     if (res && status !== 503 && status !== 500) detail = ((await res.json().catch(() => null)) as { error?: { message?: string } } | null)?.error?.message ?? "";
     // A wrong or unpaid key won't get better on another model.
-    if (status === 401 || status === 402 || status === 403) throw new RecognizeError(`Gemini answered ${status}${detail ? `: ${detail}` : ""}`);
+    if (status === 401 || status === 402 || status === 403) throw new GeminiError("refused", `Gemini answered ${status}${detail ? `: ${detail}` : ""}`);
   }
-  if (failures.length && failures.every((s) => s === 400)) throw new RecognizeError(`Gemini answered 400${detail ? `: ${detail}` : ""}`);
-  if (failures.length && failures.every((s) => s === 429)) throw new RecognizeError("The free recognition quota is used up for now. Try again later, or type it.");
-  throw new RecognizeError("Google's free AI is too busy right now. Try again in a minute, or add it by hand.");
+  if (failures.length && failures.every((s) => s === 400)) throw new GeminiError("refused", `Gemini answered 400${detail ? `: ${detail}` : ""}`);
+  if (failures.length && failures.every((s) => s === 429)) throw new GeminiError("quota", "The free AI quota is used up for now.");
+  throw new GeminiError("busy", "Google's free AI is too busy right now.");
 }

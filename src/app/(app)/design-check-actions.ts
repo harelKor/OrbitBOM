@@ -1,8 +1,9 @@
 "use server";
 
 import { requireCapability } from "@/lib/mode";
-import { saveCheck, setIgnored, setIgnoredId, setLimits, setPartWeight } from "@/lib/check/store";
-import type { CheckLimits, CheckResults } from "@/lib/check/types";
+import { AiError, reviewRun, suggestLoads, type LoadGuess, type LoadInput } from "@/lib/check/ai";
+import { latestRun, saveCheck, saveReview, setIgnored, setIgnoredId, setLimits, setPartWeight } from "@/lib/check/store";
+import type { AiReview, CheckLimits, CheckResults } from "@/lib/check/types";
 import { isUuid } from "@/lib/uuid";
 
 // Design check (plan/design-check.md): the run happens in the CAD member's browser; these save
@@ -53,4 +54,33 @@ export async function setFindingIgnored(robotId: string, id: string, ignored: bo
   if (!isUuid(robotId) || typeof id !== "string" || !id || id.length > 1000) return { error: "Not a finding." };
   await setIgnoredId(robotId, id, ignored, member.id);
   return {};
+}
+
+// Phase 7: the AI's guess of a plate's loads for the stress test (Gemini's free tier).
+export async function aiSuggestLoads(input: LoadInput): Promise<CheckActionResult & { guess?: LoadGuess }> {
+  await requireCapability("check");
+  const ok = input && typeof input.name === "string" && Array.isArray(input.holes) && input.holes.length > 1 && input.holes.length <= 200 && Number.isFinite(input.t);
+  if (!ok) return { error: "Pick a plate with at least two round holes." };
+  try {
+    return { guess: await suggestLoads({ ...input, name: input.name.slice(0, 200), system: input.system?.slice(0, 200) ?? null, material: String(input.material).slice(0, 100) }) };
+  } catch (err) {
+    if (err instanceof AiError) return { error: err.message };
+    throw err;
+  }
+}
+
+// Phase 7: the newest run written up by the AI, saved with it.
+export async function aiReviewCheck(robotId: string, model: "final" | "basepart"): Promise<CheckActionResult & { ai?: AiReview }> {
+  await requireCapability("check");
+  if (!isUuid(robotId) || (model !== "final" && model !== "basepart")) return { error: "Not a robot." };
+  const last = await latestRun(robotId, model);
+  if (!last) return { error: "Run the check first." };
+  try {
+    const ai = await reviewRun(last.robot, last.limits, last.run.results, last.systems);
+    await saveReview(last.run.id, { ...last.run.results, ai });
+    return { ai };
+  } catch (err) {
+    if (err instanceof AiError) return { error: err.message };
+    throw err;
+  }
 }

@@ -1,7 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { saveCheckLimits, saveDesignCheck, savePartWeight, setFindingIgnored, setOverlapIgnored } from "@/app/(app)/design-check-actions";
+import { aiReviewCheck, aiSuggestLoads, saveCheckLimits, saveDesignCheck, savePartWeight, setFindingIgnored, setOverlapIgnored } from "@/app/(app)/design-check-actions";
+import { plateOf, type Plate } from "@/lib/check/plates";
+import { DEFAULT_MATERIAL, materialOf } from "@/lib/check/stress";
+import { StressDialog } from "./StressDialog";
 import { Dialog } from "@/components/Dialog";
 import type { SceneTools, ViewerModel } from "@/components/dashboard/ModelCanvas";
 import { LocalTime } from "@/components/ui/LocalTime";
@@ -37,6 +40,7 @@ export function DesignCheck({
   onOverlap,
   onMark,
   onComment,
+  picked,
   sandbox,
 }: {
   robotId: string;
@@ -53,6 +57,7 @@ export function DesignCheck({
   onOverlap: (c: Clash) => void; // Show: the overlap in red, the rest dimmed
   onMark: (f: DesignFinding) => void; // Show on any other finding: its parts, a red dot where
   onComment: (f: Finding) => void;
+  picked: string | null; // the part picked in the 3D view (the stress test's plate)
   sandbox?: CheckData; // /dev/viewer: this data, and nothing saved
 }) {
   const [open, setOpen] = useState(false);
@@ -142,7 +147,30 @@ export function DesignCheck({
   const env = results?.envelope;
   const issues = real.length + findings.filter((f) => f.level === "warn").length + (limitKg && totalG / 1000 > limitKg ? 1 : 0) + (!onlySystem && env && limits.perimeterMm && env.perimeterMm > limits.perimeterMm ? 1 : 0) + (!onlySystem && env && limits.heightMm && env.heightMm > limits.heightMm ? 1 : 0);
 
-  const showClash = (c: Clash) => ({ keys: [c.a, c.b], body: clashText(c), key: c.a, name: c.aName, systemId: pickSystem(systemsOf, c.a, onlySystem), pin: c.at });
+  const ai = results?.ai;
+  const withFix = (text: string, id: string) => (ai?.fixes[id] ? `${text}
+Likely fix: ${ai.fixes[id]}` : text);
+  const showClash = (c: Clash) => ({ keys: [c.a, c.b], body: withFix(clashText(c), `clash:${c.a}|${c.b}`), key: c.a, name: c.aName, systemId: pickSystem(systemsOf, c.a, onlySystem), pin: c.at });
+
+  // The stress test (phase 6) on the plate picked in the 3D view.
+  const [stress, setStress] = useState<{ plate: Plate; key: string; name: string } | null>(null);
+  const openStress = () => {
+    if (!tools) return;
+    if (!picked) return toast("Tap a plate in the 3D view first, then Stress test.", true);
+    const part = tools.checkParts().find((p) => p.key === picked);
+    const plate = part && plateOf(part.geometry);
+    if (!plate) return toast("The picked part isn't a flat plate (or its 3D model is still loading).", true);
+    setStress({ plate, key: picked, name: names.get(picked) ?? "Plate" });
+  };
+  const [writing, setWriting] = useState(false);
+  const writeUp = async () => {
+    if (!results || !data) return;
+    setWriting(true);
+    const r = await aiReviewCheck(robotId, kind);
+    setWriting(false);
+    if (r.error || !r.ai) return toast(r.error ?? "The AI didn't answer. Try again.", true);
+    setResults({ ...results, ai: r.ai });
+  };
 
   return (
     <section className="rounded-lg border border-line">
@@ -196,6 +224,20 @@ export function DesignCheck({
 
               {results && (
                 <>
+                  {ai && (
+                    <div className="rounded-md border border-violet-500/40 bg-violet-500/5 p-2.5 text-xs text-fg">
+                      <p className="mb-1 font-semibold text-violet-600 dark:text-violet-300">AI write-up</p>
+                      <p className="whitespace-pre-line">{ai.summary}</p>
+                    </div>
+                  )}
+                  {canCheck && !sandbox && (
+                    <div>
+                      <button className="btn h-8 px-3 text-xs active:scale-[0.98]" disabled={writing || stale} onClick={writeUp}>
+                        {writing ? "Writing…" : ai ? "Write it up again with AI" : "Write it up with AI"}
+                      </button>
+                      <p className="mt-1 text-[0.6875rem] text-muted">Sends the findings&apos; names and numbers (no pictures) to Google&apos;s free Gemini, which may use them to improve its products.</p>
+                    </div>
+                  )}
                   <Weight totalG={totalG} limitKg={limitKg} parts={weightParts} bySystem={onlySystem ? [] : results.weight.bySystem} budgets={limits.budgets ?? {}} sysName={sysName} excluded={(limits.exclude ?? []).map((id) => sysName.get(id) ?? "System")} canSet={canCheck} onSet={setWeight} onShow={(p) => onShow({ keys: [p.key], body: "", key: p.key, name: p.name, systemId: p.systemId, pin: null })} />
                   {!onlySystem && env && (
                     <Block title="Size">
@@ -221,13 +263,13 @@ export function DesignCheck({
                     {real.length === 0 && <p className="text-xs text-muted">None found{usual.length ? " besides the usual kinds below" : ""}. Overlaps under half a millimetre between round faces aren&apos;t counted: the 3D export is only that accurate.</p>}
                     <ul className="space-y-1">
                       {real.map((c) => (
-                        <ClashRow key={pairKey(c.a, c.b)} c={c} canCheck={canCheck} onShow={() => onShow(showClash(c))} onOverlap={() => onOverlap(c)} onComment={() => onComment(showClash(c))} onFine={() => setFine(c, true)} />
+                        <ClashRow key={pairKey(c.a, c.b)} c={c} canCheck={canCheck} onShow={() => onShow(showClash(c))} onOverlap={() => onOverlap(c)} onComment={() => onComment(showClash(c))} onFine={() => setFine(c, true)} fix={ai?.fixes[`clash:${c.a}|${c.b}`]} />
                       ))}
                     </ul>
                     {usual.length > 0 && (
                       <List title={`Usually fine: screws, inserts, gears, belts (${usual.length})`}>
                         {usual.map((c) => (
-                          <ClashRow key={pairKey(c.a, c.b)} c={c} canCheck={canCheck} onShow={() => onShow(showClash(c))} onOverlap={() => onOverlap(c)} onComment={() => onComment(showClash(c))} onFine={() => setFine(c, true)} />
+                          <ClashRow key={pairKey(c.a, c.b)} c={c} canCheck={canCheck} onShow={() => onShow(showClash(c))} onOverlap={() => onOverlap(c)} onComment={() => onComment(showClash(c))} onFine={() => setFine(c, true)} fix={ai?.fixes[`clash:${c.a}|${c.b}`]} />
                         ))}
                       </List>
                     )}
@@ -264,7 +306,8 @@ export function DesignCheck({
                                 f={f}
                                 canCheck={canCheck}
                                 onShow={() => onMark(f)}
-                                onComment={() => onComment({ keys: f.keys, body: f.text, key: f.keys[0] ?? null, name: f.names[0] ?? null, systemId: f.keys[0] ? pickSystem(systemsOf, f.keys[0], onlySystem) : null, pin: f.at })}
+                                fix={ai?.fixes[f.id]}
+                                onComment={() => onComment({ keys: f.keys, body: withFix(f.text, f.id), key: f.keys[0] ?? null, name: f.names[0] ?? null, systemId: f.keys[0] ? pickSystem(systemsOf, f.keys[0], onlySystem) : null, pin: f.at })}
                                 onFine={() => setFindingFine(f.id, true)}
                               />
                             ))}
@@ -290,11 +333,44 @@ export function DesignCheck({
                     </List>
                   )}
                   {results.findings && !findings.length && <p className="text-xs text-muted">Connections, screws and holes: nothing to look at.</p>}
+                  <Block title="Plate stress">
+                    <p className="text-xs text-muted">Tap a plate in the 3D view, then pick which holes bolt it down and where the load goes in.</p>
+                    <button className="btn h-8 px-3 text-xs active:scale-[0.98]" disabled={!tools} onClick={openStress}>
+                      Stress test{picked && names.get(picked) ? ` ${names.get(picked)}` : " the picked plate"}
+                    </button>
+                  </Block>
                 </>
               )}
             </>
           )}
         </div>
+      )}
+      {stress && (
+        <StressDialog
+          plate={stress.plate}
+          name={stress.name}
+          material={materialOf(data?.facts[stress.key]?.onshapeMaterial, data?.facts[stress.key]?.material) ?? DEFAULT_MATERIAL}
+          onClose={() => setStress(null)}
+          suggest={
+            canCheck && !sandbox
+              ? async () => {
+                  const xs = stress.plate.outer.pts.map((q) => q[0]);
+                  const ys = stress.plate.outer.pts.map((q) => q[1]);
+                  const x0 = Math.min(...xs);
+                  const y0 = Math.min(...ys);
+                  const holes = stress.plate.inner.flatMap((l, i) => (l.circle ? [{ i, x: l.circle.cx - x0, y: l.circle.cy - y0, d: l.circle.r * 2 }] : []));
+                  const sys = pickSystem(systemsOf, stress.key, onlySystem);
+                  const mat = materialOf(data?.facts[stress.key]?.onshapeMaterial, data?.facts[stress.key]?.material) ?? DEFAULT_MATERIAL;
+                  const r = await aiSuggestLoads({ name: stress.name, system: sys ? (sysName.get(sys) ?? null) : null, material: mat.name, t: stress.plate.t, size: [Math.max(...xs) - x0, Math.max(...ys) - y0], holes });
+                  if (r.error || !r.guess) {
+                    toast(r.error ?? "The AI didn't answer.", true);
+                    return null;
+                  }
+                  return r.guess;
+                }
+              : undefined
+          }
+        />
       )}
       {limitsOpen && data && (
         <LimitsDialog
@@ -336,12 +412,13 @@ const KINDS: { kind: FindingKind; title: string }[] = [
   { kind: "printed", title: "3D-printed parts" },
 ];
 
-function FindingRow({ f, canCheck, onShow, onComment, onFine }: { f: DesignFinding; canCheck: boolean; onShow: () => void; onComment: () => void; onFine: () => void }) {
+function FindingRow({ f, fix, canCheck, onShow, onComment, onFine }: { f: DesignFinding; fix?: string; canCheck: boolean; onShow: () => void; onComment: () => void; onFine: () => void }) {
   return (
     <li className={`rounded-md border ${f.level === "warn" ? "border-red-500/40" : "border-line"}`}>
       <button onClick={onShow} className="press w-full px-2.5 py-1.5 text-left text-xs text-fg hover:bg-raised pointer-coarse:min-h-10" title="Show these parts">
         {f.text}
         {f.copies > 1 && <span className="text-muted tabular-nums"> · {f.copies} places</span>}
+        {fix && <span className="mt-1 block text-violet-600 dark:text-violet-300">Likely fix: {fix}</span>}
       </button>
       <div className="flex gap-3 border-t border-line px-2.5 py-1 text-[0.6875rem] font-semibold">
         <button className="press text-red-600 hover:underline pointer-coarse:min-h-9 dark:text-red-400" onClick={onShow} title="Dim everything else and mark the spot in red">
@@ -360,7 +437,7 @@ function FindingRow({ f, canCheck, onShow, onComment, onFine }: { f: DesignFindi
   );
 }
 
-function ClashRow({ c, canCheck, onShow, onOverlap, onComment, onFine }: { c: Clash; canCheck: boolean; onShow: () => void; onOverlap: () => void; onComment: () => void; onFine: () => void }) {
+function ClashRow({ c, fix, canCheck, onShow, onOverlap, onComment, onFine }: { c: Clash; fix?: string; canCheck: boolean; onShow: () => void; onOverlap: () => void; onComment: () => void; onFine: () => void }) {
   return (
     <li className="rounded-md border border-line">
       <button onClick={onShow} className="press w-full px-2.5 py-1.5 text-left hover:bg-raised pointer-coarse:min-h-10" title="Show these parts">
@@ -371,6 +448,7 @@ function ClashRow({ c, canCheck, onShow, onOverlap, onComment, onFine }: { c: Cl
           {c.copies > 1 ? ` · ${c.copies} places` : ""}
           {c.expected ? ` · ${c.expected}` : ""}
         </span>
+        {fix && <span className="mt-1 block text-xs text-violet-600 dark:text-violet-300">Likely fix: {fix}</span>}
       </button>
       <div className="flex gap-3 border-t border-line px-2.5 py-1 text-[0.6875rem] font-semibold">
         <button className="press text-red-600 hover:underline pointer-coarse:min-h-9 dark:text-red-400" onClick={onOverlap} title="Dim everything else and show where they overlap in red">

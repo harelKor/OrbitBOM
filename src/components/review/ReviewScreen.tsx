@@ -440,6 +440,7 @@ export function ReviewScreen({
             onShow={showFinding}
             onOverlap={showClashOverlap}
             onMark={markCheckFinding}
+            picked={selected}
             onComment={commentFinding}
           />
         )}

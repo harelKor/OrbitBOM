@@ -1,6 +1,6 @@
 # Design check (CAD page)
 
-Status: phase 1 built (2026-11-13): weight, frame perimeter and height, interference.
+Status: all seven phases built (2026-11-13). Show on an overlap draws it red like Onshape.
 
 ## Goal
 
@@ -45,14 +45,33 @@ left-out systems, per-system budgets.
 Try it on `/dev/viewer` (the panel runs on the sandbox robot with sample data, nothing saved;
 `window.designCheck()` in the console). The big sandbox (`?big=1`, 5,460 parts) takes ~15 s.
 
-## Next phases (Harel's list, 2026-11-13)
+## Phases 2-7 (Harel's list, 2026-11-13; built the same day)
 
-2. Connections: unattached parts, misaligned holes, bolt vs hole size, bolt length, shaft vs bore,
-   one-bolt joints. Mates from the assembly read Update 3D model already makes
-   (`includeMateFeatures=true`, same call).
-3. Assembly access: rays along each bolt axis for a key or driver, room for a wrench.
-4. Plates: lightening (material removed, thinnest web, meat round holes, router corner radius) and
-   simple strength rules.
-5. 3D-printed parts: thin walls, print direction vs loaded holes and tabs, overhangs, material.
-6. Plate stress: 2D in-plane stress in the browser, loads suggested by AI.
-7. AI write-up of findings into draft comments; MCP tools so members' Claude can run a review.
+Every check below gives `DesignFinding`s (`types.ts`: kind, parts, plain text, level warn/info, a
+point in model mm, places); the panel lists them by kind with Show (parts isolated, the rest
+ghosted, a red dot), Comment and It's fine (saved by finding id in `design_check_ignores`).
+Round features come from each mesh's topology (`features.ts`: cylinders merged across Onshape's
+half faces; hole vs shaft by facet normal); the run waits for topology after the meshes load.
+
+2. Connections (`connections.ts`): touching pairs within 1 mm (`closestPointToGeometry`); groups
+   not touching the biggest group are "not attached"; holes in touching parts parallel and 0.15 mm
+   to 0.8 r apart; screws by name (shaft = longest outer cylinder, head = a wider coaxial one):
+   holes on their axis classed by diameter ratio (< 0.72 too small, 0.72-0.97 tapped, > 1.2 loose
+   unless the head fits in it), thread engagement under 0.8 d, too short for a nut, sticking out
+   over max(15 mm, 3 d); parts that only one screw (or rivet) joins, round parts excepted.
+3. Access (`access.ts`): five rays from each head out along the axis (< 12 mm no room, < 40 mm
+   L-key only); six sideways rays round each nut for a wrench.
+4. Plates (`plates.ts`): a plate is its biggest flat face plus the parallel ones within 13 mm,
+   outline at least 5× the thickness; its loops in 2D mm. Solid metal plates over 150 cm² (< 8%
+   removed), webs under max(1.5 t, 2.5 mm), material beside holes (bolt holes: their radius, at
+   least 2 mm; bores over Ø12: 3 mm), sharp inside corners on parts made on the `cnc` router.
+5. Printed parts (`printed.ts`): printed flat on the biggest flat face; walls under 1.2 mm from
+   400 inward rays, over 8% overhang area, holes lying sideways, PLA with a bore of Ø16 or more.
+6. Plate stress (`stress.ts`, `StressDialog.tsx`): the picked plate on a grid of up to 4,000
+   squares (Q4 plane stress, Jacobi CG); tapped holes are bolted (edge fixed) or loaded (a pin's
+   bearing load); von Mises map and safety factor against yield. Checked against a cantilever.
+7. AI (`ai.ts`, Gemini free tier through `geminiJson` in src/lib/recognize/gemini.ts): "Suggest
+   with AI" in the stress window guesses bolted holes and the load from the plate's name and
+   holes; "Write it up with AI" turns a run into a summary for mentors and a likely fix per finding,
+   saved with the run (`results.ai`), added to comments made from it. Names and numbers only, no
+   pictures. MCP: `get_design_check` gives members' Claude the newest run.

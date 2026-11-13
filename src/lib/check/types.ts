@@ -61,12 +61,17 @@ export type DesignFinding = {
 };
 export const findingId = (code: string, keys: string[], extra = "") => [code, ...[...keys].sort(), extra].join("|");
 
+// The AI's write-up of a run (src/lib/check/ai.ts): a summary, and a likely fix per finding id
+// (an overlap's is "clash:<a>|<b>").
+export type AiReview = { summary: string; fixes: Record<string, string>; model: string; at: string };
+
 export type CheckResults = {
   v: 1;
   weight: WeightResult;
   envelope: EnvelopeResult | null;
   clashes: Clash[];
   findings?: DesignFinding[]; // runs before phase 2 have none
+  ai?: AiReview; // "Write it up with AI" (phase 7), kept with the run
   ms: number; // how long it took in the browser
 };
 

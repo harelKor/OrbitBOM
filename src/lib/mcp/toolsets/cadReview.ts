@@ -106,3 +106,34 @@ write(
     };
   },
 );
+
+read(
+  "get_design_check",
+  "A robot's newest Design check (plan/design-check.md: run by the CAD Team on the CAD page, from the 3D model): when and by whom, the limits set, weight (total, by system, the heaviest parts, ones whose weight is a guess), frame perimeter / size / height and parts past the frame perimeter, overlapping parts (depth in mm, the usual kinds such as screws in tapped holes marked), and every other finding (not attached, holes that don't line up, hole sizes, screw length and thread, hard to reach, held by one screw, plates, printed parts) with its parts, plain-words text, level (warn / info), a point in assembly mm, and the AI write-up if one was made. Findings and overlaps marked fine are left out. robot_id from list_robots.",
+  z.object({ robot_id: uuid, model: z.enum(["final", "basepart"]).optional() }),
+  async ({ robot_id, model }) => {
+    const { loadCheckData } = await import("@/lib/check/store");
+    const { pairKey } = await import("@/lib/check/types");
+    const data = await loadCheckData(robot_id, model ?? "final");
+    if (!data) throw new ToolError("Unknown robot.");
+    if (!data.latest) return { ran: false, note: "Nobody has run the design check on this robot's model yet (CAD page → Design check → Run the check)." };
+    const r = data.latest.results;
+    const fine = new Set(data.ignored);
+    const names = new Map((await db.select({ id: systems.id, name: systems.name }).from(systems).where(eq(systems.robotId, robot_id))).map((s) => [s.id, s.name]));
+    return {
+      ran_at: data.latest.ranAt,
+      ran_by: data.latest.ranBy,
+      limits: data.limits,
+      weight: {
+        total_kg: r.weight.totalG / 1000,
+        by_system: r.weight.bySystem.map((s) => ({ system: s.systemId ? (names.get(s.systemId) ?? s.systemId) : null, kg: s.g / 1000, budget_kg: s.systemId ? (data.limits.budgets?.[s.systemId] ?? null) : null })),
+        heaviest: r.weight.parts.slice(0, 15).map((p) => ({ part: p.name, each_g: p.eachG, count: p.count, source: p.source })),
+        guessed: r.weight.parts.filter((p) => p.source === "guess").map((p) => p.name),
+      },
+      size: r.envelope && { perimeter_mm: r.envelope.perimeterMm, length_mm: r.envelope.lengthMm, width_mm: r.envelope.widthMm, height_mm: r.envelope.heightMm, past_frame: r.envelope.out },
+      overlaps: r.clashes.filter((c) => !fine.has(pairKey(c.a, c.b))).map((c) => ({ a: c.aName, b: c.bName, depth_mm: c.depthMm, places: c.copies, usual_kind: c.expected, side_by_side: !!c.flush, placed_twice: !!c.same, at_mm: c.at })),
+      findings: (r.findings ?? []).filter((f) => !fine.has(f.id)).map((f) => ({ kind: f.kind, level: f.level, text: f.text, parts: f.names, places: f.copies, at_mm: f.at, likely_fix: r.ai?.fixes[f.id] ?? null })),
+      ai_summary: r.ai?.summary ?? null,
+    };
+  },
+);

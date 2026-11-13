@@ -29,6 +29,7 @@ export function Sandbox() {
   const [groupsOff, setGroupsOff] = useState<Set<number>>(() => new Set());
   const [locate, setLocate] = useState<string | null>(null);
   const [located, setLocated] = useState<boolean | null>(null);
+  const [picked, setPicked] = useState<string | null>(null); // for the Design check's stress test
 
   useEffect(() => {
     // ?big=1: the big robot for the loading check (plan/cad-3d-viewer.md S2).
@@ -120,6 +121,7 @@ export function Sandbox() {
           hidden={groupsOff}
           names={names}
           onTools={setTools}
+          onPick={setPicked}
           onMeasure={setMeasured}
           onHidden={setHidden}
           views={views}
@@ -150,6 +152,7 @@ export function Sandbox() {
             }}
             onOverlap={(c) => tools && showOverlap(tools, c)}
             onMark={(f) => tools && markFinding(tools, f)}
+            picked={picked}
             onComment={(f) => alert(`Comment (sandbox): ${f.body}`)}
             sandbox={checkData}
           />
