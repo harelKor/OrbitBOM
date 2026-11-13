@@ -56,16 +56,29 @@ const e1 = new THREE.Vector3();
 const e2 = new THREE.Vector3();
 const m1 = new THREE.Vector3();
 export function sharedFaceArea(t1: THREE.Triangle, t2: THREE.Triangle, tol: number): number {
+  const poly = sharedFlat(t1, t2, tol);
+  return poly ? Math.abs(area(poly)) : 0;
+}
+
+// The same overlap as points in 3D (t1's frame), for drawing it (overlap.ts); empty when none.
+export function sharedFacePolygon(t1: THREE.Triangle, t2: THREE.Triangle, tol: number): THREE.Vector3[] {
+  const poly = sharedFlat(t1, t2, tol);
+  if (!poly || poly.length < 3) return [];
+  const c = p1.constant;
+  return poly.map(([x, y]) => new THREE.Vector3().addScaledVector(e1, x).addScaledVector(e2, y).addScaledVector(m1, -c));
+}
+
+function sharedFlat(t1: THREE.Triangle, t2: THREE.Triangle, tol: number): P2[] | null {
   t1.getNormal(m1);
   t2.getNormal(n);
-  if (m1.dot(n) < 0.9999) return 0;
+  if (m1.dot(n) < 0.9999) return null;
   t1.getPlane(p1);
-  if (Math.abs(p1.distanceToPoint(t2.a)) > tol || Math.abs(p1.distanceToPoint(t2.b)) > tol || Math.abs(p1.distanceToPoint(t2.c)) > tol) return 0;
+  if (Math.abs(p1.distanceToPoint(t2.a)) > tol || Math.abs(p1.distanceToPoint(t2.b)) > tol || Math.abs(p1.distanceToPoint(t2.c)) > tol) return null;
   // Into the plane's 2D frame, then clip one triangle by the other.
   e1.subVectors(t1.b, t1.a).normalize();
   e2.crossVectors(m1, e1);
   const flat = (t: THREE.Triangle) => [t.a, t.b, t.c].map((v) => [e1.dot(v), e2.dot(v)] as [number, number]);
-  return Math.abs(area(clip(ccw(flat(t2)), ccw(flat(t1)))));
+  return clip(ccw(flat(t2)), ccw(flat(t1)));
 }
 
 type P2 = [number, number];

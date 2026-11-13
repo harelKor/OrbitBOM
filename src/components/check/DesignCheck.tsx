@@ -34,6 +34,7 @@ export function DesignCheck({
   canCheck,
   canManage,
   onShow,
+  onOverlap,
   onComment,
   sandbox,
 }: {
@@ -48,6 +49,7 @@ export function DesignCheck({
   canCheck: boolean;
   canManage: boolean;
   onShow: (f: Finding) => void;
+  onOverlap: (c: Clash) => void; // Show: the overlap in red, the rest dimmed
   onComment: (f: Finding) => void;
   sandbox?: CheckData; // /dev/viewer: this data, and nothing saved
 }) {
@@ -207,13 +209,13 @@ export function DesignCheck({
                     {real.length === 0 && <p className="text-xs text-muted">None found{usual.length ? " besides the usual kinds below" : ""}. Overlaps under half a millimetre between round faces aren&apos;t counted: the 3D export is only that accurate.</p>}
                     <ul className="space-y-1">
                       {real.map((c) => (
-                        <ClashRow key={pairKey(c.a, c.b)} c={c} canCheck={canCheck} onShow={() => onShow(showClash(c))} onComment={() => onComment(showClash(c))} onFine={() => setFine(c, true)} />
+                        <ClashRow key={pairKey(c.a, c.b)} c={c} canCheck={canCheck} onShow={() => onShow(showClash(c))} onOverlap={() => onOverlap(c)} onComment={() => onComment(showClash(c))} onFine={() => setFine(c, true)} />
                       ))}
                     </ul>
                     {usual.length > 0 && (
                       <List title={`Usually fine: screws, inserts, gears, belts (${usual.length})`}>
                         {usual.map((c) => (
-                          <ClashRow key={pairKey(c.a, c.b)} c={c} canCheck={canCheck} onShow={() => onShow(showClash(c))} onComment={() => onComment(showClash(c))} onFine={() => setFine(c, true)} />
+                          <ClashRow key={pairKey(c.a, c.b)} c={c} canCheck={canCheck} onShow={() => onShow(showClash(c))} onOverlap={() => onOverlap(c)} onComment={() => onComment(showClash(c))} onFine={() => setFine(c, true)} />
                         ))}
                       </List>
                     )}
@@ -271,7 +273,7 @@ function clashText(c: Clash) {
   return `${c.aName} and ${c.bName} overlap${how}.`;
 }
 
-function ClashRow({ c, canCheck, onShow, onComment, onFine }: { c: Clash; canCheck: boolean; onShow: () => void; onComment: () => void; onFine: () => void }) {
+function ClashRow({ c, canCheck, onShow, onOverlap, onComment, onFine }: { c: Clash; canCheck: boolean; onShow: () => void; onOverlap: () => void; onComment: () => void; onFine: () => void }) {
   return (
     <li className="rounded-md border border-line">
       <button onClick={onShow} className="press w-full px-2.5 py-1.5 text-left hover:bg-raised pointer-coarse:min-h-10" title="Show these parts">
@@ -284,6 +286,9 @@ function ClashRow({ c, canCheck, onShow, onComment, onFine }: { c: Clash; canChe
         </span>
       </button>
       <div className="flex gap-3 border-t border-line px-2.5 py-1 text-[0.6875rem] font-semibold">
+        <button className="press text-red-600 hover:underline pointer-coarse:min-h-9 dark:text-red-400" onClick={onOverlap} title="Dim everything else and show where they overlap in red">
+          Show
+        </button>
         <button className="press text-accent-hover hover:underline pointer-coarse:min-h-9" onClick={onComment}>
           Comment
         </button>

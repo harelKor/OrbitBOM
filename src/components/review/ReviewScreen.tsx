@@ -12,6 +12,8 @@ import { isActive, statusOf } from "@/lib/reviews/status";
 import { SnipEditor, SnipMe, SnipOverlay, type SnipDraft } from "@/components/review/Snip";
 import { ViewerToolbar } from "@/components/review/ViewerToolbar";
 import { DesignCheck, type Finding } from "@/components/check/DesignCheck";
+import { hideOverlap, showOverlap } from "@/components/check/showOverlap";
+import type { Clash } from "@/lib/check/types";
 import { MeasureBox } from "@/components/viewer/MeasureBox";
 import { applyView, captureView, cleanView, hashWithView, viewFromHash, type ViewState } from "@/components/viewer/viewState";
 import { Segmented } from "@/components/ui/Segmented";
@@ -158,8 +160,31 @@ export function ReviewScreen({
   }, [checkParts]);
   const checkNames = useMemo(() => new Map(checkParts.map((p) => [p.key, p.name])), [checkParts]);
   // A Design check finding: its parts alone in the view (the rest see-through round them), framed.
+  // Show on an overlap: the red stays until Isolate ends or changes (Show all, Esc, another Show).
+  const overlapKeys = useRef<string[] | null>(null);
+  const [overlapOn, setOverlapOn] = useState(false);
+  const endOverlap = () => {
+    if (tools && overlapKeys.current) hideOverlap(tools, overlapKeys.current);
+    overlapKeys.current = null;
+    setOverlapOn(false);
+  };
+  const onIsolatedChange = (keys: string[] | null) => {
+    setIsolated(keys);
+    const was = overlapKeys.current;
+    if (was && (!keys || [...keys].sort().join() !== [...was].sort().join())) endOverlap();
+  };
+  const showClashOverlap = (c: Clash) => {
+    if (!tools) return;
+    endOverlap();
+    setDrawer(false);
+    setFocus(null);
+    overlapKeys.current = [...new Set([c.a, c.b])];
+    showOverlap(tools, c);
+    setOverlapOn(true);
+  };
   const showFinding = (f: Finding) => {
     if (!tools) return;
+    endOverlap();
     setDrawer(false);
     setFocus(null);
     tools.isolate(f.keys, { ghost: 0.35 });
@@ -404,6 +429,7 @@ export function ReviewScreen({
             canCheck={check.canCheck}
             canManage={check.canManage}
             onShow={showFinding}
+            onOverlap={showClashOverlap}
             onComment={commentFinding}
           />
         )}
@@ -432,7 +458,7 @@ export function ReviewScreen({
             onHidden={setHidden}
             hidden={hiddenGroups}
             menu={pageMenu}
-            onIsolated={setIsolated}
+            onIsolated={onIsolatedChange}
             views={views}
           />
         ) : (
@@ -462,7 +488,7 @@ export function ReviewScreen({
             parts are isolated: the quick way back on a phone. */}
         {(focusName || isolated) && (
           <div className="absolute z-20 flex animate-pop items-center gap-2 rounded-full border border-emerald-500/50 bg-surface/95 px-3 py-1.5 text-xs shadow-sm backdrop-blur max-lg:bottom-20 max-lg:left-1/2 max-lg:-translate-x-1/2 lg:top-3 lg:left-3">
-            <span className="font-semibold whitespace-nowrap text-fg">{focusName ? `Showing ${focusName}` : isolated && isolated.length > 1 ? `${isolated.length} parts isolated` : "Isolated"}</span>
+            <span className="font-semibold whitespace-nowrap text-fg">{focusName ? `Showing ${focusName}` : overlapOn ? "Overlap in red" : isolated && isolated.length > 1 ? `${isolated.length} parts isolated` : "Isolated"}</span>
             <button
               onClick={() => {
                 setFocus(null);

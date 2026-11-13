@@ -140,3 +140,25 @@ describe("reweigh", () => {
     expect(reweigh(set, "m", null, facts).totalG).toBe(540);
   });
 });
+
+describe("overlap shape (the red in Show)", () => {
+  it("draws the overlap's surface and crossing lines where the parts overlap, nothing for touching ones", async () => {
+    const { overlapShape } = await import("./overlap");
+    const plate = box("plate", 0.2, 0.006, 0.1, 0);
+    const pin = box("pin", 0.01, 0.05, 0.01, 0.02, 0.02); // 2 mm into the plate's top
+    const s = overlapShape(plate, pin)!;
+    expect(s.tris.length).toBeGreaterThan(0);
+    expect(s.lines.length).toBeGreaterThan(0);
+    // The red stays in the overlap: x 15–25 mm, y -5 to 3 mm, z -5 to 5 mm.
+    expect(s.box.min.x).toBeGreaterThan(0.0149);
+    expect(s.box.max.x).toBeLessThan(0.0251);
+    expect(s.box.min.y).toBeGreaterThan(-0.0051);
+    expect(s.box.max.y).toBeLessThan(0.0031);
+    expect(overlapShape(box("a", 0.1, 0.1, 0.1, 0), box("b", 0.1, 0.1, 0.1, 0.2))).toBeNull();
+    // Side by side, same thickness: the shared faces are red.
+    const flush = overlapShape(box("a", 0.1, 0.01, 0.1, 0), box("b", 0.1, 0.01, 0.1, 0.09))!;
+    expect(flush.tris.length).toBeGreaterThan(0);
+    expect(flush.box.min.x).toBeGreaterThan(0.0399);
+    expect(flush.box.max.x).toBeLessThan(0.0501);
+  });
+});
