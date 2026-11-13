@@ -134,8 +134,11 @@ export function ContextMenu({
   else view.push({ label: "Section view", run: () => (at.face ? tools.sectionFromFace(at.face.point, at.face.normal) : at.round ? tools.sectionFromRound(at.round) : tools.sectionShow(true)) });
   // Onshape's exploded view, on empty space (S7).
   if (!keys.length) view.push({ label: "Exploded view", run: () => tools.explodeShow(true) });
+  // Show and Hide sketches on empty space, both listed as Onshape lists them (Harel, 2026-11-13),
+  // when the model has Geometry sketches; the same as Shift+H.
+  if (!keys.length && tools.hasSketches())
+    view.push({ label: "Show sketches", run: () => tools.showSketches(true) }, { label: "Hide sketches", run: () => tools.showSketches(false) });
   groups.push(view);
-
 
   return (
     <div
