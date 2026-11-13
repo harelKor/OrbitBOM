@@ -289,7 +289,7 @@ export function BomView({
             </button>
           ))}
         </div>
-          <FilterPills />
+          <FilterPills parts={optimisticParts} />
           <div className="flex overflow-hidden rounded-md border border-line-strong" role="group" aria-label="View">
             {(edit ? (["card", "list", "table", "kanban"] as const) : LOOKS).map((v) => (
               <button
