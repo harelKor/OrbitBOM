@@ -101,12 +101,14 @@ export function ItemCard({
   onStep,
   onCount,
   hideCategory = false,
+  hideSeason = false,
   selected,
   onToggleSelect,
   glow,
 }: {
   item: Item;
   hideCategory?: boolean;
+  hideSeason?: boolean; // All items filtered to one season: its tag would say the same on every card
   glow?: "lit" | "fade"; // just added: a warm light until the next click, then it fades
   selected?: boolean;
   onToggleSelect?: () => void;
@@ -186,7 +188,7 @@ export function ItemCard({
             {condition.label}
           </Link>
         )}
-        <SeasonTag itemId={item.id} tag={item.seasonTag} />
+        {!hideSeason && <SeasonTag itemId={item.id} tag={item.seasonTag} />}
       </div>
       <div className="card-overlay absolute top-2 right-2 flex max-w-[38%] flex-col items-end gap-1">
         {(gap > 0 || item.openOrder) && <CartButton item={item} gap={gap} />}

@@ -42,6 +42,7 @@ export function ItemTable({
   locations,
   view,
   hideCategory,
+  hideSeason = false,
   onStep,
   onCount,
   selected,
@@ -55,6 +56,7 @@ export function ItemTable({
   locationOf: (i: Item) => string | null;
   view: NeedView;
   hideCategory: boolean;
+  hideSeason?: boolean; // filtered to one season: the tag would be the same on every row
   onStep: (id: string, delta: number, size?: string) => void;
   onCount: (id: string, amount: number) => void;
   selected: Set<string>;
@@ -134,9 +136,11 @@ export function ItemTable({
                         />
                       )}
                       <ProductName item={item} className="font-semibold" />
-                      <span onClick={stop} className="shrink-0">
-                        <SeasonTag itemId={item.id} tag={item.seasonTag} />
-                      </span>
+                      {!hideSeason && (
+                        <span onClick={stop} className="shrink-0">
+                          <SeasonTag itemId={item.id} tag={item.seasonTag} />
+                        </span>
+                      )}
                       {item.note && <NoteButton note={item.note} />}
                       {(gap > 0 || item.openOrder) && (
                         <span onClick={stop} className="shrink-0">

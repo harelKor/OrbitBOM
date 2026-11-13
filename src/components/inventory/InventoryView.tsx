@@ -115,6 +115,8 @@ export function InventoryView({
   const [boxFocus, setBoxFocus] = useState(false);
   const addBox = useRef<AddBoxHandle>(null);
   const [conditionId, setConditionId] = useState("");
+  // All items' season filter (Harel, 2026-11-13): one season's items, without their now-identical tag.
+  const [season, setSeason] = useState<"" | Item["seasonTag"]>("");
   // A category's spec filter picks (ID 8, Type Flanged...), forgotten on another category.
   const [specPick, setSpecPick] = useState<{ cat: string; picks: SpecPicks } | null>(null);
   // The location filter lives in the URL (?loc=), so the workshop map and the card tags share
@@ -524,7 +526,7 @@ export function InventoryView({
     />
   );
 
-  const grid = (list: Item[], cardView: NeedView = need) =>
+  const grid = (list: Item[], cardView: NeedView = need, hideSeason = false) =>
     layout === "table" ? (
       <div className="hold-area">
       <ItemTable
@@ -535,6 +537,7 @@ export function InventoryView({
         locationOf={locationOf}
         view={cardView}
         hideCategory={scope.kind === "category" || !!cat}
+        hideSeason={hideSeason}
         onStep={step}
         onCount={count}
         selected={selected}
@@ -557,6 +560,7 @@ export function InventoryView({
             onCount={(n) => count(item.id, n)}
             view={cardView}
             hideCategory={scope.kind === "category" || !!cat}
+            hideSeason={hideSeason}
             selected={selected.has(item.id)}
             onToggleSelect={selecting ? () => toggleSelected(item.id) : undefined}
             glow={glowOf(item.id)}
@@ -580,6 +584,7 @@ export function InventoryView({
             onStep={(d, b) => step(item.id, d, b)}
             onCount={(n) => count(item.id, n)}
             hideCategory={scope.kind === "category" || !!cat}
+            hideSeason={hideSeason}
             selected={selected.has(item.id)}
             onToggleSelect={
               selecting ? () => toggleSelected(item.id) : undefined
@@ -821,6 +826,16 @@ export function InventoryView({
             <Fold id="all" title={`All items (${allItems.length})`}>
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 {filters}
+                <select
+                  value={season}
+                  onChange={(e) => setSeason(e.target.value as typeof season)}
+                  aria-label="Season"
+                  className="input min-h-12 w-auto min-w-0 self-start"
+                >
+                  <option value="">Any season</option>
+                  <option value="2026">2026</option>
+                  <option value="2027">2027</option>
+                </select>
                 {condFilter && <SpecFilterBar rows={[]} picks={{}} cond={condFilter} open={filtersOpen} onToggle={toggleFilters} onPick={togglePick} onClear={clearFilters} />}
                 <span className="ml-auto" />
                 {!edit && !hideExport && exportButton}
@@ -835,8 +850,11 @@ export function InventoryView({
                 allItems.filter(
                   (i) =>
                     (!conditionId || i.conditionId === conditionId) &&
+                    (!season || i.seasonTag === season) &&
                     (!locationId || locationOf(i) === locationId),
                 ),
+                need,
+                !!season,
               )}
             </Fold>
           )}

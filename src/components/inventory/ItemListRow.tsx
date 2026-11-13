@@ -33,6 +33,7 @@ export function ItemListRow({
   location,
   view = "any",
   hideCategory = false,
+  hideSeason = false,
   selected,
   onToggleSelect,
   glow,
@@ -51,6 +52,7 @@ export function ItemListRow({
   location?: { id: string; name: string };
   view?: NeedView;
   hideCategory?: boolean;
+  hideSeason?: boolean; // filtered to one season: the tag would be the same on every row
   selected?: boolean;
   onToggleSelect?: () => void;
   glow?: "lit" | "fade";
@@ -160,14 +162,14 @@ export function ItemListRow({
                 style={condition ? { backgroundColor: color, color: textOn(color!) } : undefined}
               />
             )}
-            <SeasonTag itemId={item.id} tag={item.seasonTag} className="rounded-full border border-transparent px-2.5 py-0.5 text-[0.6875rem]" />
+            {!hideSeason && <SeasonTag itemId={item.id} tag={item.seasonTag} className="rounded-full border border-transparent px-2.5 py-0.5 text-[0.6875rem]" />}
             {showStanding && state !== "ok" && <ListPill color={STANDING[state].color}>{STANDING[state].label(formatStock(gap, item.sheet))}</ListPill>}
           </span>
         ) : (
           <>
             {location && !rawStock && <ListPill>📍 {location.name}</ListPill>}
             {condition && <ListPill color={conditionColor(condition.color)}>{condition.label}</ListPill>}
-            <SeasonTag itemId={item.id} tag={item.seasonTag} className="rounded-full border border-transparent px-2.5 py-0.5 text-[0.6875rem]" />
+            {!hideSeason && <SeasonTag itemId={item.id} tag={item.seasonTag} className="rounded-full border border-transparent px-2.5 py-0.5 text-[0.6875rem]" />}
             {showStanding && state !== "ok" && <ListPill color={STANDING[state].color}>{STANDING[state].label(formatStock(gap, item.sheet))}</ListPill>}
           </>
         )
