@@ -97,11 +97,21 @@ export function cubeMatrix(q: THREE.Quaternion): string {
 }
 
 // Onshape's view keys, by key position (e.code) so a Hebrew layout works too.
-export type KeyCommand = { kind: "fit" } | { kind: "view"; name: ViewName } | { kind: "orbit"; right: number; up: number } | { kind: "help" } | null;
+// Arrows turn 15°, 90° with Shift, 5° with Ctrl; Ctrl+Shift+arrows move the view; Z zooms out and
+// Shift+Z in, at the centre (Onshape's shortcut list, read 2026-11-13).
+export type KeyCommand = { kind: "fit" } | { kind: "view"; name: ViewName } | { kind: "orbit"; right: number; up: number } | { kind: "pan"; right: number; up: number } | { kind: "zoom"; by: number } | { kind: "help" } | null;
 const SHIFT_VIEWS: ViewName[] = ["front", "back", "left", "right", "top", "bottom", "iso"];
 export function keyCommand(e: { code: string; key?: string; shiftKey: boolean; ctrlKey: boolean; metaKey: boolean; altKey: boolean }): KeyCommand {
-  if (e.ctrlKey || e.metaKey || e.altKey) return null;
+  if (e.altKey) return null;
+  const ctrl = e.ctrlKey || e.metaKey;
+  const arrow = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] }[e.code];
+  if (ctrl) {
+    if (!arrow) return null;
+    if (e.shiftKey) return { kind: "pan", right: arrow[0], up: arrow[1] };
+    return { kind: "orbit", right: arrow[0] * 5, up: arrow[1] * 5 };
+  }
   if (e.code === "KeyF" && !e.shiftKey) return { kind: "fit" };
+  if (e.code === "KeyZ") return { kind: "zoom", by: e.shiftKey ? 1 / 1.25 : 1.25 };
   const digit = /^Digit([1-7])$/.exec(e.code);
   if (digit && e.shiftKey) return { kind: "view", name: SHIFT_VIEWS[Number(digit[1]) - 1] };
   const step = e.shiftKey ? 90 : 15;
@@ -124,9 +134,11 @@ export function clipPlanes(d: number, r: number, toTarget: number, ortho: boolea
 
 type Pose = { target: THREE.Vector3; quat: THREE.Quaternion; half: number };
 
-// Onshape-like: right drag rotates (left drag too, for touchpads), about the point under the
-// pointer when the drag starts on the model; middle drag moves; the wheel zooms at the pointer.
-// One finger rotates, two pinch (at their centre) and move. `shown` is the box of what's drawn now,
+// Onshape's default mouse: right drag rotates, about the point under the pointer when the drag
+// starts on the model; middle drag and Ctrl+right drag move; the wheel zooms at the pointer. Left
+// drag doesn't rotate (Onshape's is box select, picking.ts; Harel, 2026-11-13: "exactly like
+// Onshape"); a touchpad rotates with its right button held, as in Onshape. One finger (or a pen)
+// rotates, two pinch (at their centre) and move. `shown` is the box of what's drawn now,
 // for Fit and the views.
 export function createCamera(stage: Stage, shown: () => THREE.Box3, meshes: PartMesh[]): Camera {
   const { camera, renderer, render, el } = stage;
@@ -135,7 +147,10 @@ export function createCamera(stage: Stage, shown: () => THREE.Box3, meshes: Part
   controls.enableDamping = false;
   controls.zoomToCursor = true;
   // Rotating is done here (below), about the point under the pointer; OrbitControls pans and zooms.
-  controls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.PAN, RIGHT: null };
+  // RIGHT as ROTATE with rotating off: OrbitControls then only acts on Ctrl (or Cmd) + right
+  // drag, which it turns into a move.
+  controls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.ROTATE };
+  controls.enableRotate = false;
   controls.touches = { ONE: null, TWO: THREE.TOUCH.DOLLY_PAN };
   // A middle click on a link-free canvas still starts the browser's auto-scroll; stop it.
   const noAutoScroll = (e: MouseEvent) => e.button === 1 && e.preventDefault();
@@ -259,6 +274,17 @@ export function createCamera(stage: Stage, shown: () => THREE.Box3, meshes: Part
     animateTo({ ...from, quat: lookFrom(orbitDir(BACK.clone().applyQuaternion(from.quat), right, up)) });
   };
   const frameBox = (b: THREE.Box3) => frameTo(b, direction());
+  // Keys: move the view a tenth of its height; zoom about the centre.
+  const panBy = (right: number, up: number) => {
+    const from = goal ?? current();
+    const step = from.half * 0.2;
+    const shift = new THREE.Vector3(-right * step, -up * step, 0).applyQuaternion(from.quat);
+    animateTo({ ...from, target: from.target.clone().add(shift) });
+  };
+  const zoomBy = (by: number) => {
+    const from = goal ?? current();
+    animateTo({ ...from, half: from.half * by });
+  };
 
   // Orthographic (Onshape's default) or perspective, remembered on this device.
   const setProjection = (p: Projection, remember = true) => {
@@ -342,7 +368,7 @@ export function createCamera(stage: Stage, shown: () => THREE.Box3, meshes: Part
       touches.add(e.pointerId);
       // A second finger: OrbitControls pinches and moves.
       if (touches.size > 1) return void (drag = null);
-    } else if (e.button !== 0 && e.button !== 2) return;
+    } else if (e.pointerType === "mouse" ? e.button !== 2 || e.ctrlKey || e.metaKey : e.button !== 0) return;
     drag = { id: e.pointerId, x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, pivot: null };
   };
   const onMove = (e: PointerEvent) => {
@@ -401,6 +427,8 @@ export function createCamera(stage: Stage, shown: () => THREE.Box3, meshes: Part
       shortcuts();
     } else if (cmd.kind === "fit") view("fit");
     else if (cmd.kind === "view") view(cmd.name);
+    else if (cmd.kind === "pan") panBy(cmd.right, cmd.up);
+    else if (cmd.kind === "zoom") zoomBy(cmd.by);
     else orbit(cmd.right, cmd.up);
     e.preventDefault();
   };

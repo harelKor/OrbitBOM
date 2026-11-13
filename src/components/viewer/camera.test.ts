@@ -16,6 +16,14 @@ describe("keyCommand", () => {
     expect(key("Slash", { shiftKey: true, key: "." })).toEqual({ kind: "help" });
   });
 
+  it("turns 5° with Ctrl, moves with Ctrl+Shift and zooms with Z like Onshape", () => {
+    expect(key("ArrowRight", { ctrlKey: true })).toEqual({ kind: "orbit", right: 5, up: 0 });
+    expect(key("ArrowDown", { ctrlKey: true, shiftKey: true })).toEqual({ kind: "pan", right: 0, up: -1 });
+    expect(key("KeyZ")).toEqual({ kind: "zoom", by: 1.25 });
+    expect(key("KeyZ", { shiftKey: true })).toEqual({ kind: "zoom", by: 0.8 });
+    expect(key("KeyZ", { ctrlKey: true })).toBeNull(); // undo
+  });
+
   it("leaves other keys and browser shortcuts alone", () => {
     expect(key("Digit1")).toBeNull();
     expect(key("Digit8", { shiftKey: true })).toBeNull();

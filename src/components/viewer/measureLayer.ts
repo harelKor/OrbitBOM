@@ -15,7 +15,7 @@ export type MeasureLayer = {
   tap: (pk: Pick | null) => void; // a click on a pick (or on empty space)
   cycle: (pk: Pick | null) => void; // Select other: the newest pick swapped for this one (null drops it)
   newest: () => Pick | null;
-  box: (parts: { m: number; i: number }[]) => void; // box select: these part copies added
+  box: (parts: { m: number; i: number }[], drop?: boolean) => void; // box select: these part copies added (Ctrl: taken off)
   parts: () => string[]; // the picked parts' keys, each once, in pick order
   tools: MeasureTools;
   dispose: () => void;
@@ -92,8 +92,12 @@ export function createMeasureLayer(
     if (pk && !chosen.some((q) => samePick(q, pk))) chosen.push(pk);
     report();
   };
-  const box = (more: { m: number; i: number }[]) => {
-    boxed = [...boxed, ...more.filter((p) => !boxed.some((q) => q.m === p.m && q.i === p.i))];
+  const box = (more: { m: number; i: number }[], drop = false) => {
+    const has = (list: { m: number; i: number }[], p: { m: number; i: number }) => list.some((q) => q.m === p.m && q.i === p.i);
+    if (drop) {
+      boxed = boxed.filter((p) => !has(more, p));
+      chosen = chosen.filter((p) => !has(more, p));
+    } else boxed = [...boxed, ...more.filter((p) => !has(boxed, p))];
     report();
   };
   // Space drops the newest pick, one by one back to the first (Esc, on the page, drops them

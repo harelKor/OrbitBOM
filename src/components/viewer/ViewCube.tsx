@@ -40,12 +40,15 @@ const MENU_VIEWS: { v: ViewName; label: string; key?: string }[] = [
 ];
 
 // Onshape's view cube, top right of the 3D view (S1, plan/cad-3d-viewer.md): it turns with the
-// camera; a click on a face, edge or corner looks from there; the arrows turn the view 90°. Its
+// camera; a click on a face, edge or corner looks from there; the arrows turn the view 15°, 90° with
+// Shift, 5° with Ctrl, like Onshape's. Its
 // menu is Onshape's camera and render options (Harel, 2026-11-11): the standard views with
 // Dimetric and Trimetric, Zoom to fit, Perspective / Orthographic, and the section (Section view,
 // Edit section view, Turn off section view, the same calls as Shift+X). On phones it's 64 px, no
 // arrows (a swipe turns the view), and the views sit in a grid so the menu fits. The `?` key opens
 // the shortcuts sheet.
+const arrowStep = (e: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean }) => (e.shiftKey ? 90 : e.ctrlKey || e.metaKey ? 5 : 15);
+
 export function ViewCube({ tools, views }: { tools: SceneTools; views?: NamedViews }) {
   const cube = useRef<HTMLDivElement>(null);
   const [hot, setHot] = useState<string | null>(null);
@@ -104,10 +107,10 @@ export function ViewCube({ tools, views }: { tools: SceneTools; views?: NamedVie
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        <button className={`${key} col-start-2 row-start-1 h-5 w-8 pointer-coarse:hidden`} title="Turn the view up 90°" aria-label="Turn the view up" onClick={() => tools.orbit(0, 90)}>
+        <button className={`${key} col-start-2 row-start-1 h-5 w-8 pointer-coarse:hidden`} title="Turn the view up 15° (Shift: 90°, Ctrl: 5°)" aria-label="Turn the view up" onClick={(e) => tools.orbit(0, arrowStep(e))}>
           ▲
         </button>
-        <button className={`${key} col-start-1 row-start-2 h-8 w-5 pointer-coarse:hidden`} title="Turn the view left 90°" aria-label="Turn the view left" onClick={() => tools.orbit(-90, 0)}>
+        <button className={`${key} col-start-1 row-start-2 h-8 w-5 pointer-coarse:hidden`} title="Turn the view left 15° (Shift: 90°, Ctrl: 5°)" aria-label="Turn the view left" onClick={(e) => tools.orbit(-arrowStep(e), 0)}>
           ◀
         </button>
         <div className="col-start-2 row-start-2 size-(--cube)" onPointerLeave={() => setHot(null)}>
@@ -138,10 +141,10 @@ export function ViewCube({ tools, views }: { tools: SceneTools; views?: NamedVie
             ))}
           </div>
         </div>
-        <button className={`${key} col-start-3 row-start-2 h-8 w-5 pointer-coarse:hidden`} title="Turn the view right 90°" aria-label="Turn the view right" onClick={() => tools.orbit(90, 0)}>
+        <button className={`${key} col-start-3 row-start-2 h-8 w-5 pointer-coarse:hidden`} title="Turn the view right 15° (Shift: 90°, Ctrl: 5°)" aria-label="Turn the view right" onClick={(e) => tools.orbit(arrowStep(e), 0)}>
           ▶
         </button>
-        <button className={`${key} col-start-2 row-start-3 h-5 w-8 pointer-coarse:hidden`} title="Turn the view down 90°" aria-label="Turn the view down" onClick={() => tools.orbit(0, -90)}>
+        <button className={`${key} col-start-2 row-start-3 h-5 w-8 pointer-coarse:hidden`} title="Turn the view down 15° (Shift: 90°, Ctrl: 5°)" aria-label="Turn the view down" onClick={(e) => tools.orbit(0, -arrowStep(e))}>
           ▼
         </button>
         <button
@@ -337,12 +340,16 @@ function NamedViewsBlock({ views, close, item, line }: { views: NamedViews; clos
 }
 
 const SHORTCUTS: [string, string][] = [
-  ["Right or left drag", "Rotate, about the point you start on"],
-  ["Middle drag", "Move"],
+  ["Right drag", "Rotate, about the point you start on"],
+  ["Middle drag, Ctrl+right drag", "Move"],
   ["Wheel", "Zoom at the pointer"],
+  ["Left drag on empty space", "Box select: → whole parts inside, ← parts it touches (Ctrl: unselect)"],
+  ["Click", "Pick (again: unpick); empty space clears"],
   ["F", "Fit"],
+  ["Z / Shift+Z", "Zoom out / in"],
   ["Shift+1 … 7", "Front, back, left, right, top, bottom, isometric"],
-  ["← → ↑ ↓", "Turn the view 15° (with Shift: 90°)"],
+  ["← → ↑ ↓", "Turn the view 15° (Shift: 90°, Ctrl: 5°)"],
+  ["Ctrl+Shift+← → ↑ ↓", "Move the view"],
   ["Y", "Hide the part under the mouse"],
   ["Shift+Y", "Bring a hidden part back"],
   ["Shift+H", "Show or hide the Geometry sketches"],

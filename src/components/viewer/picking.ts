@@ -8,6 +8,7 @@ import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 import { topology, type Topology, type V3 } from "@/lib/model/topology";
 import type { MeasureLayer } from "./measureLayer";
 import { HOVER, type Looks } from "./paint";
+import { nearestCorner, nearestOnLine, seen, seenTolerance, type ScreenPoint } from "./pickSeen";
 import type { Stage } from "./stage";
 import type { Gone, PartMesh } from "./types";
 
@@ -400,6 +401,14 @@ export function createPicking(
     return [...sketches, ...out];
   };
   const hitAt = (e: { clientX: number; clientY: number }) => hitsAt(e)[0] ?? null;
+  // The size of one screen pixel in world units at a depth (orthographic: the same everywhere).
+  const pixelWorld = (depth: number, height: number) => {
+    const cam = stage.camera;
+    const h = Math.max(1, height);
+    if (cam.ortho) return (2 * cam.orthoHalf) / cam.zoom / h;
+    if (!Number.isFinite(depth)) return 0;
+    return (2 * depth * Math.tan((cam.fov * Math.PI) / 360)) / cam.zoom / h;
+  };
   const keyOf = (h: { m: number; i: number } | null | undefined) => (h ? (meshes[h.m].keys[h.i] ?? null) : null);
   // The face, edge or corner under the pointer, by the filter, on the `depth`-th part the ray
   // meets (0: the front one): corners and edges within a few pixels of it on screen (more for a
@@ -413,42 +422,39 @@ export function createPicking(
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     const v = new THREE.Vector3();
-    const screen = (q: V3): [number, number] => {
-      v.set(q[0], q[1], q[2]).applyMatrix4(toScreen).project(stage.camera);
-      return [((v.x + 1) / 2) * rect.width, ((1 - v.y) / 2) * rect.height];
+    const view = stage.camera.matrixWorldInverse;
+    // On screen (px) and the depth from the camera along the view (world units).
+    const screen = (q: V3): ScreenPoint => {
+      v.set(q[0], q[1], q[2]).applyMatrix4(toScreen);
+      const d = -v.clone().applyMatrix4(view).z;
+      v.project(stage.camera);
+      return { x: ((v.x + 1) / 2) * rect.width, y: ((1 - v.y) / 2) * rect.height, d };
     };
     // With a section on, corners and edge pieces the cut takes away don't snap: they aren't drawn.
     const kept = on.kept?.() ?? null;
     const w = new THREE.Vector3();
     const shows = (q: V3) => !kept || kept(w.set(q[0], q[1], q[2]).applyMatrix4(toScreen));
+    // Only what can be seen pre-selects, like Onshape: no further than the hit surface (plus a
+    // little), or on the hit face's border. Sketches have no faces to hide behind.
+    const face = h.tri >= 0 ? t.triFace[h.tri] : -1;
+    const hitDepth = h.tri >= 0 ? -h.point.clone().applyMatrix4(view).z : Infinity;
+    const tol = seenTolerance(pixelWorld(hitDepth, rect.height));
+    const visible = (p: ScreenPoint) => seen(p.d, hitDepth, tol);
     if (filter === "any" || filter === "point") {
-      let best = finger ? 22 : 10;
-      let n = -1;
-      t.corners.forEach((q, k) => {
-        if (!shows(q)) return;
-        const [sx, sy] = screen(q);
-        const d = Math.hypot(sx - x, sy - y);
-        if (d < best) [best, n] = [d, k];
-      });
+      // A corner on the hit face's border: an end of one of its border edges.
+      const rim = new Set<string>();
+      if (face >= 0) for (const ed of t.edges) if (ed.faces[0] === face || ed.faces[1] === face) for (const q of [ed.points[0], ed.points[ed.points.length - 1]]) rim.add(q.map((c) => Math.round(c * 1e6)).join());
+      const { n } = nearestCorner(t.corners.map(screen), x, y, finger ? 22 : 10, (k, p) => shows(t.corners[k]) && (visible(p) || rim.has(t.corners[k].map((c) => Math.round(c * 1e6)).join())));
       if (n >= 0) return { m: h.m, i: h.i, kind: "point", n };
     }
     if (filter === "any" || filter === "edge") {
       let best = finger ? 22 : 11;
       let n = -1;
       t.edges.forEach((ed, k) => {
-        const pts = ed.points.map(screen);
-        const seen = kept ? ed.points.map(shows) : null;
-        const count = ed.closed ? pts.length : pts.length - 1;
-        for (let j = 0; j < count; j++) {
-          if (seen && !seen[j] && !seen[(j + 1) % pts.length]) continue; // the whole piece is cut away
-          const [ax, ay] = pts[j];
-          const [bx, by] = pts[(j + 1) % pts.length];
-          const dx = bx - ax, dy = by - ay;
-          const l2 = dx * dx + dy * dy;
-          const u = l2 ? Math.min(1, Math.max(0, ((x - ax) * dx + (y - ay) * dy) / l2)) : 0;
-          const d = Math.hypot(ax + u * dx - x, ay + u * dy - y);
-          if (d < best) [best, n] = [d, k];
-        }
+        const border = face >= 0 && (ed.faces[0] === face || ed.faces[1] === face);
+        const cut = kept ? ed.points.map(shows) : null;
+        const d = nearestOnLine(ed.points.map(screen), ed.closed, x, y, (p) => border || visible(p), (j) => !cut || cut[j] || cut[(j + 1) % cut.length]);
+        if (d < best) [best, n] = [d, k];
       });
       if (n >= 0) return { m: h.m, i: h.i, kind: "edge", n };
     }
@@ -594,16 +600,24 @@ export function createPicking(
   };
 
   let down: { x: number; y: number; button: number } | null = null;
-  // A click again on the same spot takes the next part behind (measuring). Onshape has no
-  // Alt+click; its Select other is in the right-click menu (MenuAt.layers), and so is ours.
-  let lastTap: { x: number; y: number; depth: number; pick: Pick | null } | null = null;
+  // Touch, like Onshape's app: a two-finger tap opens the menu (between the fingers), a double tap
+  // anywhere clears every pick. `pair`: two fingers down together; `starts`: where each began.
+  const starts = new Map<number, { x: number; y: number }>();
+  let pair: { t: number; x: number; y: number; moved: boolean } | null = null;
+  let lastTouchTap = { t: 0, x: 0, y: 0 };
   const onDown = (e: PointerEvent) => {
     hideLabel();
     down = { x: e.clientX, y: e.clientY, button: e.button };
     if (e.pointerType === "mouse") return;
     touches.add(e.pointerId);
+    starts.set(e.pointerId, { x: e.clientX, y: e.clientY });
     cancelPress();
     pressed = false;
+    if (touches.size === 2) {
+      const [p, q] = [...starts.values()];
+      pair = { t: performance.now(), x: (p.x + q.x) / 2, y: (p.y + q.y) / 2, moved: false };
+      down = null; // not a one-finger tap any more
+    } else if (touches.size > 2) pair = null;
     if (touches.size === 1) {
       const { clientX: x, clientY: y } = e;
       press = {
@@ -617,54 +631,51 @@ export function createPicking(
       };
     }
   };
+  const onTouchMove = (e: PointerEvent) => {
+    const s0 = starts.get(e.pointerId);
+    if (pair && s0 && Math.hypot(e.clientX - s0.x, e.clientY - s0.y) > 8) pair.moved = true;
+  };
   const onUp = (e: PointerEvent) => {
     touches.delete(e.pointerId);
+    starts.delete(e.pointerId);
     cancelPress();
+    if (pair) {
+      if (touches.size) return;
+      const p = pair;
+      pair = null;
+      if (!p.moved && performance.now() - p.t < 400) menuAt(p.x, p.y, true);
+      return;
+    }
     const d = down;
     down = null;
     if (!d || d.button !== e.button) return;
-    if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > CLICK_PX) {
-      lastTap = null; // the view moved: the same screen spot shows something else now
-      return;
-    }
+    if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > CLICK_PX) return;
     if (e.button === 2 && e.pointerType === "mouse") return menuAt(e.clientX, e.clientY, false);
     if (e.button !== 0) return;
     if (pressed) {
       pressed = false;
       return;
     }
-    if (on.sectionTap?.(e)) {
-      lastTap = null;
-      return;
-    }
-    const same = !!lastTap && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) <= CLICK_PX;
+    if (on.sectionTap?.(e)) return;
     const finger = e.pointerType !== "mouse";
     const filter = measure().filter();
-    if (filter) {
-      const newest = measure().newest();
-      // Again on the same spot while its pick is still the newest: one part further back; past
-      // the last one the pick is dropped (so with one part there it toggles off, as before).
-      if (same && lastTap!.pick && newest && samePick(newest, lastTap!.pick)) {
-        const depth = lastTap!.depth + 1;
-        const pk = pickAt(e, finger, filter, depth);
-        measure().cycle(pk);
-        lastTap = pk && { x: e.clientX, y: e.clientY, depth, pick: pk };
-        return;
-      }
-      const pk = pickAt(e, finger, filter, 0);
-      measure().tap(pk);
-      const now = measure().newest();
-      lastTap = pk && now && samePick(now, pk) ? { x: e.clientX, y: e.clientY, depth: 0, pick: pk } : null;
-      return;
+    if (finger) {
+      const now = performance.now();
+      const again = now - lastTouchTap.t < 350 && Math.hypot(e.clientX - lastTouchTap.x, e.clientY - lastTouchTap.y) < 30;
+      lastTouchTap = again ? { t: 0, x: 0, y: 0 } : { t: now, x: e.clientX, y: e.clientY };
+      if (again) return filter ? measure().tap(null) : on.pick(null);
     }
-    // Plain part picking (no measuring): the front part.
-    lastTap = null;
+    // A click picks what's under the pointer and a click on a pick drops it, like Onshape (the
+    // parts behind: Select other in the menu); a click on empty space clears.
+    if (filter) return measure().tap(pickAt(e, finger, filter, 0));
     on.pick(keyOf(hitAt(e)));
   };
   const onCancel = (e: PointerEvent) => {
     touches.delete(e.pointerId);
+    starts.delete(e.pointerId);
     cancelPress();
     down = null;
+    pair = null;
   };
   const onDouble = (e: MouseEvent) => {
     const open = on.open();
@@ -673,66 +684,95 @@ export function createPicking(
     if (key) open(key);
   };
   const onMenu = (e: MouseEvent) => e.preventDefault(); // ours opens on pointerup (or a long press)
-  const onWheel = () => {
-    hideLabel();
-    lastTap = null;
-  };
+  const onWheel = () => hideLabel();
 
-  // Box select: Shift+left-drag from empty space picks every part copy wholly inside the box
-  // (while picking faces, as on the CAD page). Caught before the camera controls, which would pan.
-  let box: { x: number; y: number; div: HTMLDivElement } | null = null;
+  // Box select, Onshape's: a left drag from empty space (no key needed). Dragged left to right it
+  // takes the part copies wholly inside the box (blue), right to left every one it touches
+  // (orange); with Ctrl (Cmd) it takes them off instead (while picking faces, as on the CAD page).
+  // Caught before the camera controls.
+  let box: { x: number; y: number; div: HTMLDivElement; drop: boolean } | null = null;
   const boxRect = (e: PointerEvent) => {
     const r = el.getBoundingClientRect();
     const x0 = Math.min(box!.x, e.clientX) - r.left;
     const y0 = Math.min(box!.y, e.clientY) - r.top;
     return { x0, y0, x1: x0 + Math.abs(e.clientX - box!.x), y1: y0 + Math.abs(e.clientY - box!.y) };
   };
+  const boxLook = (crossing: boolean) =>
+    `pointer-events-none absolute z-20 border ${crossing ? "border-dashed border-orange-500 bg-orange-500/10" : "border-solid border-accent bg-accent/10"}`;
   const onBoxMove = (e: PointerEvent) => {
     if (!box) return;
     const { x0, y0, x1, y1 } = boxRect(e);
+    box.div.className = boxLook(e.clientX < box.x);
     Object.assign(box.div.style, { left: `${x0}px`, top: `${y0}px`, width: `${x1 - x0}px`, height: `${y1 - y0}px` });
   };
   const onBoxUp = (e: PointerEvent) => {
     if (!box) return;
     const { x0, y0, x1, y1 } = boxRect(e);
+    const crossing = e.clientX < box.x;
+    const drop = box.drop;
     box.div.remove();
     box = null;
     window.removeEventListener("pointermove", onBoxMove);
     window.removeEventListener("pointerup", onBoxUp);
-    if (x1 - x0 < CLICK_PX && y1 - y0 < CLICK_PX) return;
+    if (x1 - x0 < CLICK_PX && y1 - y0 < CLICK_PX) {
+      // No drag: a click on empty space, which clears (the canvas never saw the press).
+      if (!drop && !on.sectionTap?.(e)) measure().tap(null);
+      return;
+    }
     const r = canvas.getBoundingClientRect();
-    const inside: { m: number; i: number }[] = [];
+    const toScreen = (q: THREE.Vector3): [number, number] | null => {
+      q.project(stage.camera);
+      return q.z > 1 ? null : [((q.x + 1) / 2) * r.width, ((1 - q.y) / 2) * r.height];
+    };
+    const inBox = (p: [number, number] | null) => !!p && p[0] >= x0 && p[0] <= x1 && p[1] >= y0 && p[1] <= y1;
+    // Crossing: a copy under the box's middle counts too (a box drawn inside one big face).
+    const middle = crossing ? hitsAt({ clientX: r.left + (x0 + x1) / 2, clientY: r.top + (y0 + y1) / 2 }, true) : [];
+    const found: { m: number; i: number }[] = [];
     const at = new THREE.Matrix4();
-    const corner = new THREE.Vector3();
-    meshes.forEach(({ mesh }, m) => {
-      if (!mesh.visible) return;
-      if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
-      const { min, max } = mesh.geometry.boundingBox!;
+    const q = new THREE.Vector3();
+    meshes.forEach(({ mesh, sketch }, m) => {
+      if (!mesh.visible || sketch) return;
+      const g = mesh.geometry;
+      if (!g.boundingBox) g.computeBoundingBox();
+      const { min, max } = g.boundingBox!;
+      const pos = g.getAttribute("position");
       for (let i = 0; i < mesh.count; i++) {
         mesh.getMatrixAt(i, at);
         if (Math.abs(at.determinant()) < 1e-12) continue; // hidden (drawn at no size)
         at.premultiply(mesh.matrixWorld);
-        let all = true;
-        for (let c = 0; c < 8 && all; c++) {
-          corner.set(c & 1 ? max.x : min.x, c & 2 ? max.y : min.y, c & 4 ? max.z : min.z).applyMatrix4(at).project(stage.camera);
-          const sx = ((corner.x + 1) / 2) * r.width;
-          const sy = ((1 - corner.y) / 2) * r.height;
-          all = corner.z < 1 && sx >= x0 && sx <= x1 && sy >= y0 && sy <= y1;
+        const corners = Array.from({ length: 8 }, (_, c) => toScreen(q.set(c & 1 ? max.x : min.x, c & 2 ? max.y : min.y, c & 4 ? max.z : min.z).applyMatrix4(at)));
+        if (corners.every(inBox)) {
+          found.push({ m, i });
+          continue;
         }
-        if (all) inside.push({ m, i });
+        if (!crossing) continue;
+        if (middle.some((h) => h.m === m && h.i === i)) {
+          found.push({ m, i });
+          continue;
+        }
+        // The copy's screen box must meet the box before its points are worth a look.
+        const xs = corners.filter((p) => p).map((p) => p![0]);
+        const ys = corners.filter((p) => p).map((p) => p![1]);
+        if (!xs.length || Math.max(...xs) < x0 || Math.min(...xs) > x1 || Math.max(...ys) < y0 || Math.min(...ys) > y1) continue;
+        for (let k = 0; k < pos.count; k++) {
+          if (inBox(toScreen(q.fromBufferAttribute(pos, k).applyMatrix4(at)))) {
+            found.push({ m, i });
+            break;
+          }
+        }
       }
     });
-    if (inside.length) measure().box(inside);
+    if (found.length) measure().box(found, drop);
   };
   const onBoxDown = (e: PointerEvent) => {
-    if (e.target !== canvas || e.button !== 0 || !e.shiftKey || e.pointerType !== "mouse" || !measure().filter() || hitAt(e)) return;
+    if (e.target !== canvas || e.button !== 0 || e.pointerType !== "mouse" || !measure().filter() || hitAt(e)) return;
     e.stopPropagation(); // not to the camera controls
     e.preventDefault();
     hideLabel();
     const div = document.createElement("div");
-    div.className = "pointer-events-none absolute z-20 border border-dashed border-accent bg-accent/10";
+    div.className = boxLook(false);
     el.appendChild(div);
-    box = { x: e.clientX, y: e.clientY, div };
+    box = { x: e.clientX, y: e.clientY, div, drop: e.ctrlKey || e.metaKey };
     onBoxMove(e);
     window.addEventListener("pointermove", onBoxMove);
     window.addEventListener("pointerup", onBoxUp);
@@ -740,6 +780,7 @@ export function createPicking(
 
   el.addEventListener("pointerdown", onBoxDown, { capture: true });
   canvas.addEventListener("pointermove", onMove);
+  canvas.addEventListener("pointermove", onTouchMove);
   canvas.addEventListener("pointerleave", onLeave);
   window.addEventListener("keydown", onKey);
   canvas.addEventListener("pointerdown", onDown);
@@ -762,6 +803,7 @@ export function createPicking(
       canvas.removeEventListener("contextmenu", onMenu);
       canvas.removeEventListener("wheel", onWheel);
       canvas.removeEventListener("pointermove", onMove);
+      canvas.removeEventListener("pointermove", onTouchMove);
       canvas.removeEventListener("pointerleave", onLeave);
       window.removeEventListener("keydown", onKey);
       cancelAnimationFrame(frame);
