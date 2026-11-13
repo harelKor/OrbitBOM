@@ -75,7 +75,9 @@ else
       bomRows = [row("A", "Plate", 2), row("B", "Bolt", 8, null), row("C", "Tube", 1)];
       const s = await updateBomFromOnshape(system.id, member.id);
       expect(s.added.sort()).toEqual(["Bolt", "Plate", "Tube"]);
-      expect(s.calls).toBe(3); // change check, BOM, the Part Studio's parts list
+      // Change check, BOM, and the parts' shapes stored at the first sync: the workspace's Part
+      // Studio revisions and the Part Studio's mass properties.
+      expect(s.calls).toBe(4);
       expect(s.version).toBe("#1");
       const ps = await live();
       expect(ps.map((p) => [p.onshapeName, p.quantity, p.process1, p.classification])).toEqual([

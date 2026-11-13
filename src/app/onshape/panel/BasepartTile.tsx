@@ -20,8 +20,10 @@ export function BasepartTile({ robotId }: { robotId: string }) {
       setNote({ text: r.unchanged ? `The Basepart 3D view is up to date (${r.calls} Onshape calls).` : `Basepart 3D view updated: ${r.parts} parts (${r.calls} Onshape calls).` });
     });
   return (
-    <button type="button" onClick={update} disabled={busy} className={tileClass("accent")}>
-      <TileBody icon="⟳" title="Update 3D view" sub={progress ?? note?.text ?? "The Basepart and its Geometry sketches"} subClass={note?.bad ? "!text-rose-100" : ""} />
+    <button type="button" onClick={update} disabled={busy} aria-busy={busy} className={tileClass("accent")}>
+      {/* Loading… with a spinner while it works, like Update system (Harel, 2026-11-13). */}
+      <TileBody icon={busy ? "" : "⟳"} title={busy ? "Loading…" : "Update 3D view"} sub={progress ?? note?.text ?? "The Basepart and its Geometry sketches"} subClass={note?.bad && !busy ? "!text-rose-100" : ""} />
+      {busy && <span className="absolute top-1/2 left-9 h-8 w-8 -translate-y-1/2 animate-spin rounded-full border-4 border-white/30 border-t-white" aria-hidden />}
     </button>
   );
 }

@@ -66,7 +66,13 @@ else
       onshape.length = 0;
       const first = await checkSystem(system.id, member.id);
       expect(first.draft?.changes.map((c) => c.name)).toEqual(["Plate"]);
-      expect(onshape).toEqual([`GET documents/d/${DID}/versions`, expect.stringContaining(`assemblies/d/${DID}/v/v1/e/${EID}/bom`)]);
+      // The list, the BOM, and the parts' shapes stored at the first sync (revisions, mass properties).
+      expect(onshape).toEqual([
+        `GET documents/d/${DID}/versions`,
+        expect.stringContaining(`assemblies/d/${DID}/v/v1/e/${EID}/bom`),
+        expect.stringContaining(`documents/d/${DID}/v/v1/elements`),
+        expect.stringContaining(`/massproperties`),
+      ]);
       await commitDraft(system.id, member.id, { draftId: first.draft!.id, seen: new Date(first.draft!.detectedAt).toISOString(), name: "" });
 
       // Students keep editing between versions: the next check stops after 1 call.

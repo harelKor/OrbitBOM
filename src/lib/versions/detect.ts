@@ -30,6 +30,9 @@ export type Draft = {
   changes: VersionChange[];
 };
 
+// A change whose shape had nothing stored to compare with (see checkSystem).
+export const SHAPE_UNKNOWN = "Shape not compared before";
+
 export type CheckResult = {
   draft: Draft | null; // null: the system is up to date with Onshape
   unchanged: boolean; // nothing moved in Onshape since the last check
@@ -106,10 +109,10 @@ export async function checkSystem(systemId: string, memberId: string, { force = 
     if (p.isManual || p.shapeSig || !path || p.sourceWvm === "w" || fresh.has(path) || !names.has(p.onshapeName ?? "")) continue;
     old.set(path, [...(old.get(path) ?? []), p.onshapePartId!]);
   }
-  // A first sync has no committed parts to compare shapes with, so it skips the calls; the next
-  // check stores the fingerprints (same parts, same place: taken as they are).
-  const firstSync = !existing.some((p) => !p.isManual);
-  const [sigs, oldSigs] = firstSync ? [{}, {}] : await Promise.all([shapeFingerprints(client, fresh), shapeFingerprints(client, old)]);
+  // A first sync stores its parts' shapes too, so the next Update BOM can see a changed shape
+  // (it used to skip them, and the next check then took workspace parts' new shapes without
+  // asking: Harel, 2026-11-13). Kept per Part Studio revision, so it isn't paid twice.
+  const [sigs, oldSigs] = await Promise.all([shapeFingerprints(client, fresh), shapeFingerprints(client, old)]);
   const partSigs: Record<string, string> = {};
   for (const p of existing) {
     const sig = !p.shapeSig && oldSigs[sigKey(p)];
@@ -148,10 +151,14 @@ export async function checkSystem(systemId: string, memberId: string, { force = 
     if (material !== u.onshapeMaterial) fields.onshapeMaterial = { from: material, to: u.onshapeMaterial };
     const sig = sigs[sigKey(u.identity)];
     const before = committedSig(part);
-    const geometry = !!(sig && before && sig !== before);
+    // No committed shape (synced before shapes were stored, in a workspace that has moved on): the
+    // shape can't be compared, so the member looks at it in the Commit window instead of it being
+    // taken silently.
+    const unknown = !!(sig && !before);
+    const geometry = !!(sig && before && sig !== before) || unknown;
     const base = { key: partKey(u.identity), partId: u.id, name: u.identity.onshapeName, partNumber: part.partNumber, fields, geometry };
     if (u.restore) changes.push({ ...base, change: "added", note: "Back in CAD" });
-    else if (geometry || Object.keys(fields).length) changes.push({ ...base, change: "modified" });
+    else if (geometry || Object.keys(fields).length) changes.push({ ...base, change: "modified", ...(unknown ? { note: SHAPE_UNKNOWN } : {}) });
     else if (u.relinked || studioPath(part) !== studioPath(u.identity) || (sig && sig !== part.shapeSig)) moved = true;
   }
   for (const id of plan.remove) {

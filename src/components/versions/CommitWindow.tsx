@@ -236,7 +236,11 @@ export function ChangeBox({
       </button>
       {open && (
         <div className="space-y-2 border-t border-line px-3 py-3 text-sm">
-          {c.geometry && <p className="text-fg">The part&rsquo;s shape changed in Onshape.</p>}
+          {c.geometry && (
+            <p className="text-fg">
+              {c.note === "Shape not compared before" ? "No shape was stored for this part before, so it can't be compared: check Before → After." : "The part’s shape changed in Onshape."}
+            </p>
+          )}
           {c.change === "added" && <p className="text-muted">{c.note === "Back in CAD" ? "Back in the assembly; its BOM data is kept." : "New in the assembly."}</p>}
           {c.change === "removed" && <p className="text-muted">No longer in the assembly. It is hidden from the BOM; its data is kept.</p>}
           {fields.length > 0 && (
