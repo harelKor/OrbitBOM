@@ -40,8 +40,8 @@ export async function PanelHome({ robotId, systemId, query, model }: { robotId: 
         <h1 className="text-xl font-bold text-fg">{system?.name ?? "Whole robot"}</h1>
       </div>
       <div className="grid flex-1 auto-rows-fr grid-cols-1 gap-3 min-[520px]:grid-cols-2">
-        {!basepart && systemId && <UpdateTile systemId={systemId} />}
-        {basepart && <BasepartTile robotId={robotId} />}
+        {!basepart && systemId && <UpdateTile systemId={systemId} robotId={robotId} />}
+        {basepart && <BasepartTile robotId={robotId} systemId={systemId} />}
         <Tile href={commentHref} icon="💬" title="Comment" sub={n ? `${n} open comment${n === 1 ? "" : "s"}` : "Write a comment, snip the model"} tone="amber" badge={n || null} />
         {basepart && <Tile href={`/onshape/panel/geometry?${query}&${owner}`} icon="✎" title="Geometry" sub="Choose the sketches the 3D views show" tone="accent" />}
         {!basepart && <Tile href={base} icon="☰" title="View BOM" sub="Opens in a new tab" tone="sky" external />}

@@ -8,7 +8,9 @@ import { OnshapeError } from "@/lib/onshape/client";
 import { isUuid } from "@/lib/uuid";
 import { commitDraft, VersionError } from "@/lib/versions/commit";
 import { checkSystem, type Draft } from "@/lib/versions/detect";
-import { pinModelToVersion, updateCad } from "@/lib/versions/cad";
+import { checkModelUpdate, commitModelUpdate, pinModelToVersion } from "@/lib/versions/cad";
+import type { CadChange } from "@/lib/versions/cadDiff";
+import type { ModelKind } from "@/db/schema";
 import { releaseBomVersion } from "@/lib/versions/onshapeName";
 import { listPartVersions, revertSystem, updatePartToLatest, type PartVersionEntry } from "@/lib/versions/history";
 import { relockPart } from "@/lib/versions/release";
@@ -63,18 +65,39 @@ export async function commitChanges(systemId: string, draftId: string, seen: str
   }
 }
 
+// Update CAD (a system's Final) and Update Basepart (a system's or the robot's own) in the
+// Onshape panel (lib/versions/cad.ts): a check that the Commit window shows, then the commit.
+export type CadOwner = { systemId: string } | { robotId: string };
+// `rebuildOnly`: nothing to compare (the robot's own Basepart once systems have theirs): just
+// rebuild that robot's Basepart model.
+export type CadCheck = { error?: string; draftId?: string; changes?: CadChange[]; calls?: number; robotId?: string; rebuildOnly?: string };
 export type CadResult = { error?: string; message?: string; rebuild?: string; calls?: number };
 
-// Update CAD (the Onshape panel's Update system window): this system's 3D moves to the
-// assembly as it is now, as a new Onshape version or a sub-version (lib/versions/cad.ts).
-export async function updateSystemCad(systemId: string, makeVersion: boolean, name = ""): Promise<CadResult> {
+const validOwner = (o: CadOwner) => ("systemId" in o ? isUuid(o.systemId) : isUuid(o.robotId));
+
+export async function checkCad(kind: ModelKind, owner: CadOwner): Promise<CadCheck> {
   const member = await requireCapability("sync");
-  if (!isUuid(systemId)) return { error: "Unknown system." };
+  if (!validOwner(owner)) return { error: "Unknown system." };
   if (!member.onshapeConnected) return { error: "Connect your Onshape account first (Profile → Connect Onshape)." };
   try {
-    const r = await updateCad(systemId, member.id, { makeVersion, name });
+    const d = await checkModelUpdate(kind === "basepart" ? "basepart" : "final", "systemId" in owner ? { systemId: owner.systemId } : { robotId: owner.robotId }, member.id);
+    return { draftId: d.id, changes: d.changes, calls: d.calls, robotId: d.robotId };
+  } catch (err) {
+    if (err instanceof OnshapeError && err.status === 409 && "robotId" in owner) return { rebuildOnly: owner.robotId };
+    if (err instanceof OnshapeError) return { error: err.message };
+    throw err;
+  }
+}
+
+export async function commitCad(kind: ModelKind, owner: CadOwner, draftId: string, makeVersion: boolean, name = ""): Promise<CadResult> {
+  const member = await requireCapability("sync");
+  if (!validOwner(owner) || !isUuid(draftId)) return { error: "Unknown system." };
+  if (!member.onshapeConnected) return { error: "Connect your Onshape account first (Profile → Connect Onshape)." };
+  try {
+    const own = "systemId" in owner ? { systemId: owner.systemId } : { robotId: owner.robotId };
+    const r = await commitModelUpdate(kind === "basepart" ? "basepart" : "final", own, draftId, member.id, { makeVersion, name });
     revalidatePath("/robots", "layout");
-    return { message: r.unchanged ? `Nothing changed in Onshape since ${r.label}.` : `CAD updated as ${r.label}.`, rebuild: r.robotId, calls: r.calls };
+    return { message: `${kind === "basepart" ? "Basepart" : "CAD"} updated as ${r.label}.`, rebuild: r.robotId, calls: r.calls };
   } catch (err) {
     if (err instanceof OnshapeError) return { error: err.message };
     throw err;

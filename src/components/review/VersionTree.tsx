@@ -15,11 +15,13 @@ export function VersionTree({
   comments,
   onFocus,
   refresh,
+  empty = "No versions yet. Update system brings the first one.",
 }: {
   tree: TreeNode[];
   comments: Map<string, ReviewComment>;
   onFocus: (key: string) => void;
   refresh?: { systemId: string; readAt: string | null } | null; // the Refresh from Onshape button
+  empty?: string; // what an empty tree says
 }) {
   const [folded, setFolded] = useState<Set<string>>(() => new Set());
   const toggle = (key: string) =>
@@ -37,7 +39,7 @@ export function VersionTree({
         {refresh && <RefreshVersions systemId={refresh.systemId} readAt={refresh.readAt} />}
       </div>
       {!top ? (
-        <p className="text-sm text-muted">No versions yet. Update system brings the first one.</p>
+        <p className="text-sm text-muted">{empty}</p>
       ) : (
         <>
           <div className="rounded-lg border-2 border-accent/50 bg-accent/5 p-3">

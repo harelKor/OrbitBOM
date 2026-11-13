@@ -1,29 +1,22 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { buildModel } from "@/components/viewer/buildModel";
 import { tileClass, TileBody } from "./tiles";
+import { useModelUpdate } from "./useModelUpdate";
 
-// Update 3D view on a Basepart (Harel, 2026-11-12): the Basepart has no BOM, so its one update is
-// the Basepart 3D model (its Part Studio or assembly, and its Geometry sketches), built from here.
-export function BasepartTile({ robotId }: { robotId: string }) {
-  const [busy, start] = useTransition();
-  const [note, setNote] = useState<{ text: string; bad?: boolean } | null>(null);
-  const [progress, setProgress] = useState<string | null>(null);
-  const update = () =>
-    start(async () => {
-      setNote(null);
-      setProgress("Checking Onshape…");
-      const r = await buildModel(robotId, setProgress, "basepart");
-      setProgress(null);
-      if (!r.ok) return setNote({ text: r.error, bad: true });
-      setNote({ text: r.unchanged ? `The Basepart 3D view is up to date (${r.calls} Onshape calls).` : `Basepart 3D view updated: ${r.parts} parts (${r.calls} Onshape calls).` });
-    });
+// Update on a Basepart (Harel, 2026-11-12, 2026-11-13): the Basepart has no BOM, so its update is
+// the Basepart 3D model (its Part Studio or assembly, and its Geometry sketches). Like Update CAD:
+// Loading… while Onshape is checked, the Commit window with the parts that changed, Create version
+// or a sub-version, then the Basepart 3D rebuilds from here. A system's Basepart, or the robot's
+// own when `systemId` is null.
+export function BasepartTile({ robotId, systemId }: { robotId: string; systemId: string | null }) {
+  const u = useModelUpdate("basepart", systemId ? { systemId } : { robotId }, robotId);
   return (
-    <button type="button" onClick={update} disabled={busy} aria-busy={busy} className={tileClass("accent")}>
-      {/* Loading… with a spinner while it works, like Update system (Harel, 2026-11-13). */}
-      <TileBody icon={busy ? "" : "⟳"} title={busy ? "Loading…" : "Update 3D view"} sub={progress ?? note?.text ?? "The Basepart and its Geometry sketches"} subClass={note?.bad && !busy ? "!text-rose-100" : ""} />
-      {busy && <span className="absolute top-1/2 left-9 h-8 w-8 -translate-y-1/2 animate-spin rounded-full border-4 border-white/30 border-t-white" aria-hidden />}
-    </button>
+    <>
+      <button type="button" onClick={() => (u.reopen ? u.reopen() : u.check())} disabled={u.busy} aria-busy={u.busy} className={tileClass("accent")}>
+        <TileBody icon={u.busy ? "" : "⟳"} title={u.busy ? "Loading…" : "Update Basepart"} sub={u.status ?? u.note?.text ?? "See what changed, then update the Basepart's 3D and version tree"} subClass={u.note?.bad && !u.busy ? "!text-rose-100" : ""} />
+        {u.busy && <span className="absolute top-1/2 left-9 h-8 w-8 -translate-y-1/2 animate-spin rounded-full border-4 border-white/30 border-t-white" aria-hidden />}
+      </button>
+      {u.dialog}
+    </>
   );
 }

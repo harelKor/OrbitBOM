@@ -617,6 +617,13 @@
       "when": 1794573080507,
       "tag": "0087_comment_statuses",
       "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1794578095695,
+      "tag": "0088_cad_updates_basepart",
+      "breakpoints": true
     }
   ]
 }

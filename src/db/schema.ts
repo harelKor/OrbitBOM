@@ -87,6 +87,9 @@ const basepartColumns = () => ({
   basepartKind: text("basepart_kind").$type<BasepartKind>(),
   basepartStudioUrl: text("basepart_studio_url"),
   basepartSketches: jsonb("basepart_sketches").$type<GeometrySketch[]>().notNull().default([]),
+  // Where the Basepart 3D model reads it: the state its last Update was committed at (an Onshape
+  // version or a microversion; Harel, 2026-11-13). Null: its workspace, as before.
+  basepartModelRef: jsonb("basepart_model_ref").$type<{ wvm: "v" | "m"; wvmid: string }>(),
 });
 
 export const robots = pgTable("robots", {
@@ -157,14 +160,16 @@ export const systems = pgTable(
 
 // Update CAD in the Onshape panel (Harel, 2026-11-11): each one is a node of the CAD version
 // tree. With a new Onshape version (`onshapeVersionId`) it is that version; without one it is a
-// sub-version "V12 v1" of `parentVersionId`, pinned to the workspace's microversion.
+// sub-version "V12 v1" of `parentVersionId`, pinned to the workspace's microversion. `model`: the
+// Final's or the Basepart's (Harel, 2026-11-13), each with its own tree; a robot's own Basepart
+// has `robotId` and no system.
 export const cadUpdates = pgTable(
   "cad_updates",
   {
     id: id(),
-    systemId: uuid("system_id")
-      .notNull()
-      .references(() => systems.id, { onDelete: "cascade" }),
+    systemId: uuid("system_id").references(() => systems.id, { onDelete: "cascade" }),
+    robotId: uuid("robot_id").references(() => robots.id, { onDelete: "cascade" }),
+    model: text("model").$type<ModelKind>().notNull().default("final"),
     did: text("did").notNull(),
     microversion: text("microversion").notNull(),
     onshapeVersionId: text("onshape_version_id"),

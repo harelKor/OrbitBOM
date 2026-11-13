@@ -124,7 +124,12 @@ export function CadReview({
                 />
               </Suspense>
             )}
-            <VersionTree tree={sys.tree} comments={byId} onFocus={onFocus} refresh={canSync && me.onshape && sys.treeDid ? { systemId: sys.id, readAt: sys.treeReadAt } : null} />
+            {/* The Basepart and the Final each have their own tree (Harel, 2026-11-13). */}
+            {kind === "basepart" ? (
+              <VersionTree tree={sys.basepart?.tree ?? []} comments={byId} onFocus={onFocus} empty="No Basepart updates yet. Update Basepart in the Onshape panel brings the first one." />
+            ) : (
+              <VersionTree tree={sys.tree} comments={byId} onFocus={onFocus} refresh={canSync && me.onshape && sys.treeDid ? { systemId: sys.id, readAt: sys.treeReadAt } : null} />
+            )}
           </>
         )}
       />
@@ -160,14 +165,25 @@ export function CadReview({
               <p className="px-1.5 text-xs text-muted">No comments on the whole robot yet.</p>
             )}
           </Fold>
-          {review.systems.map((s) => {
-            const open = review.comments.filter((c) => c.systemId === s.id && isActive(c.state)).length;
-            return (
-              <Fold key={s.id} title={s.name} count={open} thumb={thumbs[s.id] ?? null} onIsolate={() => isolate(s.id)}>
-                <VersionTree tree={s.tree} comments={byId} onFocus={onFocus} />
-              </Fold>
-            );
-          })}
+          {kind === "basepart" && review.robotBasepart && (
+            <Fold title="Robot Basepart" count={0}>
+              <VersionTree tree={review.robotBasepart.tree} comments={byId} onFocus={onFocus} empty="No Basepart updates yet. Update Basepart in the Onshape panel brings the first one." />
+            </Fold>
+          )}
+          {review.systems
+            .filter((s) => (kind === "basepart" ? !!s.basepart : s.final))
+            .map((s) => {
+              const open = review.comments.filter((c) => c.systemId === s.id && isActive(c.state)).length;
+              return (
+                <Fold key={s.id} title={s.name} count={open} thumb={thumbs[s.id] ?? null} onIsolate={() => isolate(s.id)}>
+                  {kind === "basepart" ? (
+                    <VersionTree tree={s.basepart?.tree ?? []} comments={byId} onFocus={onFocus} empty="No Basepart updates yet. Update Basepart in the Onshape panel brings the first one." />
+                  ) : (
+                    <VersionTree tree={s.tree} comments={byId} onFocus={onFocus} />
+                  )}
+                </Fold>
+              );
+            })}
         </div>
       )}
     />

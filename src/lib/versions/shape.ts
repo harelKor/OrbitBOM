@@ -66,4 +66,4 @@ export async function shapeFingerprints(client: OnshapeClient, studios: Map<stri
   return out;
 }
 
-const sigsKey = (state: string) => `shape-sigs:${state}`;
+export const sigsKey = (state: string) => `shape-sigs:${state}`;

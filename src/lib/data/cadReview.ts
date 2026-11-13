@@ -7,12 +7,12 @@ import { parseOnshapeUrl } from "@/lib/onshape/url";
 import type { CommentStatus } from "@/lib/reviews/status";
 import { buildTree, type TreeNode } from "@/lib/reviews/tree";
 import { imageUrl } from "@/lib/storage/r2";
-import { listCadSubs } from "@/lib/versions/cad";
+import { listCadUpdates } from "@/lib/versions/cad";
 import { keptDocVersions } from "@/lib/versions/docVersions";
 import type { ModelKind, Snip } from "@/db/schema";
 import { primaryVersion, versionLabel } from "@/lib/versions/label";
 
-const { members, reviewComments, systems, systemVersions } = schema;
+const { members, reviewComments, robots, systems, systemVersions } = schema;
 
 // CAD Review's pages read the database only (plan/design-review.md): never Onshape.
 
@@ -100,11 +100,32 @@ export type SystemReview = {
   // Parts the current BOM version changed, by Onshape part id key, for the 3D Compare.
   changes: { partId: string | null; change: string; geometry: boolean; name: string }[];
   current: { id: string; label: string } | null;
+  // The Basepart's own tree (Harel, 2026-11-13), when the system has a Basepart.
+  basepart: BasepartTree | null;
 };
+
+// A Basepart's version tree: its document's Onshape versions from its first update on, its
+// updates' sub-versions, and the comments written on the Basepart model. No BOM marks.
+export type BasepartTree = { tree: TreeNode[]; treeDid: string | null; treeReadAt: string | null };
+
+async function basepartTree(owner: { systemId: string } | { robotId: string }, url: string | null, comments: ReviewComment[]): Promise<BasepartTree | null> {
+  const ref = url ? parseOnshapeUrl(url) : null;
+  if (!ref) return null;
+  const [kept, updates] = await Promise.all([keptDocVersions(ref.did), listCadUpdates(owner, "basepart")]);
+  const tree = buildTree(
+    kept?.versions ?? null,
+    [],
+    comments.filter((c) => c.model === "basepart").map(treeComment),
+    { since: updates.first, cad: updates.subs },
+  );
+  return { tree, treeDid: ref.did, treeReadAt: kept?.at.toISOString() ?? null };
+}
+
+const treeComment = (c: ReviewComment) => ({ id: c.id, createdAt: c.createdAt, doneAt: c.doneAt, doneVersionId: c.doneVersionId, state: c.state, onshapeVersionId: c.onshapeVersionId, onshapeVersionName: c.onshapeVersionName });
 
 export async function loadSystemReview(systemId: string): Promise<SystemReview | null> {
   const [system] = await db
-    .select({ assemblyUrl: systems.assemblyUrl, followVersions: systems.followVersions, currentVersionId: systems.currentVersionId })
+    .select({ assemblyUrl: systems.assemblyUrl, basepartUrl: systems.basepartUrl, followVersions: systems.followVersions, currentVersionId: systems.currentVersionId })
     .from(systems)
     .where(eq(systems.id, systemId));
   if (!system) return null;
@@ -116,7 +137,7 @@ export async function loadSystemReview(systemId: string): Promise<SystemReview |
       .where(and(eq(systemVersions.systemId, systemId), eq(systemVersions.state, "committed")))
       .orderBy(desc(systemVersions.seq)),
     listComments(systemId),
-    listCadSubs(systemId),
+    listCadUpdates({ systemId }, "final"),
   ]);
   const currentId = system.currentVersionId ?? versions[0]?.v.id ?? null;
   const current = versions.find((x) => x.v.id === currentId)?.v ?? null;
@@ -134,9 +155,10 @@ export async function loadSystemReview(systemId: string): Promise<SystemReview |
   const tree = buildTree(
     kept?.versions ?? null,
     versions.map(({ v, by }) => ({ id: v.id, label: versionLabel(v), at: v.committedAt?.toISOString() ?? null, by, vid: vidOf(v.onshapeRef), current: v.id === currentId })),
-    comments.map((c) => ({ id: c.id, createdAt: c.createdAt, doneAt: c.doneAt, doneVersionId: c.doneVersionId, state: c.state, onshapeVersionId: c.onshapeVersionId, onshapeVersionName: c.onshapeVersionName })),
+    // The Final's tree holds the comments written on the Final model (Harel, 2026-11-13).
+    comments.filter((c) => c.model !== "basepart").map(treeComment),
     // The tree starts at the system's first sync (Harel, 2026-11-11): its first BOM version.
-    { since: versions.reduce<string | null>((a, { v }) => (v.committedAt && (!a || v.committedAt.toISOString() < a) ? v.committedAt.toISOString() : a), null), cad },
+    { since: versions.reduce<string | null>((a, { v }) => (v.committedAt && (!a || v.committedAt.toISOString() < a) ? v.committedAt.toISOString() : a), null), cad: cad.subs },
   );
   return {
     comments,
@@ -145,6 +167,7 @@ export async function loadSystemReview(systemId: string): Promise<SystemReview |
     treeReadAt: kept?.at.toISOString() ?? null,
     changes: (current?.changes ?? []).map((c) => ({ partId: c.partId ?? null, change: c.change, geometry: !!c.geometry, name: c.name })),
     current: current ? { id: current.id, label: versionLabel(current) } : null,
+    basepart: await basepartTree({ systemId }, system.basepartUrl, comments),
   };
 }
 
@@ -181,23 +204,28 @@ export async function waitingOnYou(member: Member, robotId: string | null): Prom
 
 // The robot's CAD page (Harel, 2026-11-09): every comment of the robot, and each linked system's
 // version tree and what its current version changed (shown when the page isolates the system).
+// `final`: the system has a Final assembly (its tree is `tree`); `basepart` its Basepart's tree.
+// `robotBasepart`: the robot's own Basepart's tree.
 export type RobotReview = {
   comments: ReviewComment[];
-  systems: ({ id: string; name: string } & Omit<SystemReview, "comments">)[];
+  systems: ({ id: string; name: string; final: boolean } & Omit<SystemReview, "comments">)[];
+  robotBasepart: BasepartTree | null;
 };
 
 export async function loadRobotReview(robotId: string): Promise<RobotReview> {
-  const [rows, comments] = await Promise.all([
-    db.select({ id: systems.id, name: systems.name, url: systems.assemblyUrl }).from(systems).where(eq(systems.robotId, robotId)).orderBy(asc(systems.name)),
+  const [rows, comments, [robot]] = await Promise.all([
+    db.select({ id: systems.id, name: systems.name, url: systems.assemblyUrl, basepart: systems.basepartUrl }).from(systems).where(eq(systems.robotId, robotId)).orderBy(asc(systems.name)),
     listComments({ robotId }),
+    db.select({ basepart: robots.basepartUrl }).from(robots).where(eq(robots.id, robotId)),
   ]);
-  const linked = rows.filter((r) => r.url);
+  const linked = rows.filter((r) => r.url || r.basepart);
   const reviews = await Promise.all(linked.map((r) => loadSystemReview(r.id)));
   return {
     comments,
     systems: linked.map((r, i) => {
       const s = reviews[i];
-      return { id: r.id, name: r.name, tree: s?.tree ?? [], treeDid: s?.treeDid ?? null, treeReadAt: s?.treeReadAt ?? null, changes: s?.changes ?? [], current: s?.current ?? null };
+      return { id: r.id, name: r.name, final: !!r.url, tree: s?.tree ?? [], treeDid: s?.treeDid ?? null, treeReadAt: s?.treeReadAt ?? null, changes: s?.changes ?? [], current: s?.current ?? null, basepart: s?.basepart ?? null };
     }),
+    robotBasepart: await basepartTree({ robotId }, robot?.basepart ?? null, comments.filter((c) => !c.systemId)),
   };
 }

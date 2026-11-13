@@ -249,16 +249,18 @@ async function modelSources(robotId: string, kind: ModelKind = "final"): Promise
 async function basepartSources(robotId: string): Promise<ModelSource[]> {
   const [rows, [robot]] = await Promise.all([
     db
-      .select({ id: systems.id, name: systems.name, url: systems.basepartUrl, kind: systems.basepartKind, studio: systems.basepartStudioUrl, sketches: systems.basepartSketches })
+      .select({ id: systems.id, name: systems.name, url: systems.basepartUrl, kind: systems.basepartKind, studio: systems.basepartStudioUrl, sketches: systems.basepartSketches, pinned: systems.basepartModelRef })
       .from(systems)
       .where(eq(systems.robotId, robotId))
       .orderBy(asc(systems.createdAt)),
-    db.select({ name: robots.name, url: robots.basepartUrl, kind: robots.basepartKind, studio: robots.basepartStudioUrl, sketches: robots.basepartSketches }).from(robots).where(eq(robots.id, robotId)),
+    db.select({ name: robots.name, url: robots.basepartUrl, kind: robots.basepartKind, studio: robots.basepartStudioUrl, sketches: robots.basepartSketches, pinned: robots.basepartModelRef }).from(robots).where(eq(robots.id, robotId)),
   ]);
   const sources: ModelSource[] = [];
   for (const r of rows) {
-    const ref = r.url ? parseOnshapeUrl(r.url) : null;
-    if (!ref?.eid) continue;
+    const linked = r.url ? parseOnshapeUrl(r.url) : null;
+    if (!linked?.eid) continue;
+    // Where the last Basepart update was committed (Harel, 2026-11-13), else its workspace.
+    const ref = r.pinned ? { ...linked, wvm: r.pinned.wvm, wvmid: r.pinned.wvmid } : linked;
     const same = sources.find((o) => onshapeUrl(o) === onshapeUrl(ref));
     if (same) {
       same.group.systemIds.push(r.id);
@@ -266,7 +268,8 @@ async function basepartSources(robotId: string): Promise<ModelSource[]> {
     } else sources.push({ ...ref, kind: r.kind === "partstudio" ? "partstudio" : "assembly", group: { systemIds: [r.id], name: r.name }, sketch: sketchOf(r.studio, r.sketches, r.id) });
   }
   if (!robot) return sources;
-  const own = robot.url ? parseOnshapeUrl(robot.url) : null;
+  const ownLink = robot.url ? parseOnshapeUrl(robot.url) : null;
+  const own = ownLink && robot.pinned ? { ...ownLink, wvm: robot.pinned.wvm, wvmid: robot.pinned.wvmid } : ownLink;
   const sketch = sketchOf(robot.studio, robot.sketches, robotId);
   if (!sources.length && own?.eid) return [{ ...own, kind: robot.kind === "partstudio" ? "partstudio" : "assembly", group: { systemIds: [], name: robot.name }, sketch }];
   if (sketch) sources.push({ ...sketch.studio, kind: "sketches", group: { systemIds: [], name: `${robot.name} geometry` }, sketch });
@@ -523,3 +526,42 @@ export function mergePlans(sources: { did: string; eid?: string; kind?: ModelSou
   });
   return { rev, jobs, placements, groups: sources.map((s) => s.group), names, ...(sketches.length ? { sketches } : {}) };
 }
+
+// ---------- Update CAD / Update Basepart (Harel, 2026-11-13) ----------
+// The Commit window compares one system's (or the robot's own Basepart's) model as it is now in
+// Onshape with what the 3D model has. "Now" is the workspace pinned to its current microversion,
+// so what the member reviews is exactly what gets committed.
+
+export type ModelOwner = { systemId: string } | { robotId: string };
+const ownsSource = (owner: ModelOwner) => (s: ModelSource) =>
+  s.kind !== "sketches" && ("systemId" in owner ? s.group.systemIds.includes(owner.systemId) : s.group.systemIds.length === 0);
+
+export type GroupNow = { now: ModelSource; plan: GroupPlan; old: GroupPlan | null; microversion: string; workspace: OnshapeRef };
+
+// The owner's group read now (its definition or parts list, and its Part Studio revisions: 2–3
+// calls, plus 1 for the microversion) and the plan the built model has for it.
+export async function planGroupNow(client: OnshapeClient, robotId: string, kind: ModelKind, owner: ModelOwner, workspace: OnshapeRef): Promise<GroupNow> {
+  const sources = await modelSources(robotId, kind);
+  const source = sources.find(ownsSource(owner));
+  // 409: not one of the model's sources (the robot's own Basepart once systems have theirs: only
+  // its Geometry sketches are drawn then).
+  if (!source || source.did !== workspace.did || source.eid !== workspace.eid) throw new OnshapeError("This isn't drawn in the model on its own.", 409);
+  if (workspace.wvm !== "w") throw new OnshapeError("This is linked to a fixed Onshape version, so it can't move. Link its workspace to update it.");
+  const { microversion } = await client.json<{ microversion: string }>(`documents/d/${workspace.did}/w/${workspace.wvmid}/currentmicroversion`);
+  const now: ModelSource = { ...source, wvm: "m", wvmid: microversion };
+  const plan = await planGroup(client, now, groupRev(now, undefined));
+  const state = await loadState(robotId, kind);
+  return { now, plan, old: state.plans?.[groupKey(source)] ?? null, microversion, workspace };
+}
+
+// After the commit: the group's plan read for the Commit window becomes the model's plan at the
+// state it was pinned to (the same parts and files), so the rebuild reads nothing again for it.
+export async function adoptGroupPlan(robotId: string, kind: ModelKind, owner: ModelOwner, plan: GroupPlan) {
+  const sources = await modelSources(robotId, kind);
+  const source = sources.find(ownsSource(owner));
+  if (!source) return;
+  const state = await loadState(robotId, kind);
+  await saveState(robotId, { ...state, plans: { ...state.plans, [groupKey(source)]: { ...plan, rev: groupRev(source, undefined) } } }, kind);
+}
+
+export type { GroupPlan };

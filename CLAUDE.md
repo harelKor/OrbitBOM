@@ -28,11 +28,11 @@ server (`/api/mcp/<token>`).
 - `npm run dev` · `npm run lint` · `npm run typecheck` · `npm test` (unit only)
 - `npm run test:db`: every test, database ones included, against CI's Postgres 17 in Docker (port
   54329); `-- <path>` for some files, `-- --down` to stop it. Run before pushing anything that
-  touches the database. As of 2026-11-04, 5 tests fail on `main` already (inventory.db ×3,
-  cotsSync.db ×1, updateBom.db "pulls a new system's BOM"): compare against those.
+  touches the database. As of 2026-11-13, 4 tests fail on `main` already (inventory.db ×3,
+  cotsSync.db ×1): compare against those.
 - Schema: edit `src/db/schema.ts`, `npm run db:generate`, rename the file to a readable name
   (and its `tag` in `drizzle/meta/_journal.json`), add `ALTER TABLE "x" ENABLE ROW LEVEL SECURITY;`
-  for a new table, commit. Next migration: 0088.
+  for a new table, commit. Next migration: 0089.
 - Local site: README "Local development" (local Supabase in Docker, "Dev sign-in" button; Onshape
   and R2 deliberately unset). Never point local dev at production.
 - On Harel's Windows PC, Docker and `gh` aren't on the Bash PATH: run them from PowerShell, or
@@ -112,8 +112,11 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
 - Versions: `src/lib/versions/` (check → draft → commit; `checkSystem` re-checks under a lock).
   A system with `followVersions` is read at its CAD document's newest Onshape version (no
   Manufacture document). The panel's Update system = Update BOM (commit makes Onshape's
-  "V<next> BOM release" version, `onshapeName.ts`; "Update 3D views" checkbox) and Update CAD
-  (`cad.ts`, `cad_updates`: a new version or a sub-version "V12 v1"; pins `systems.model_ref`).
+  "V<next> BOM release" version, `onshapeName.ts`; "Update 3D views" checkbox) and Update CAD;
+  a Basepart has Update Basepart. Both: check → Commit window (`cadDiff.ts`, `CadCommitWindow`) →
+  commit (`cad.ts`, `cad_updates` with `model`: a new version or a sub-version "V12 v1"; pins
+  `systems.model_ref` / `basepart_model_ref`). The CAD page shows the Final's or the Basepart's
+  own tree; BOM pages show the Final model only.
 - Basepart and Final (2026-11-12): `systems.assembly_url` / `robots.main_assembly_url` are the
   **Final** (the only BOM source). The **Basepart** (`basepart_url`, `basepart_kind` partstudio |
   assembly, `basepart_studio_url`, `basepart_sketches`) is 3D and comments only: synced from the
