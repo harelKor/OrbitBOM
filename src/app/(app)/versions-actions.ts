@@ -54,7 +54,7 @@ export async function commitChanges(systemId: string, draftId: string, seen: str
     revalidatePath("/robots", "layout");
     const label = named.label ?? c.label;
     const warning = (c.unknownMachines.length ? ` Unknown machines in Onshape: ${c.unknownMachines.join(", ")}.` : "") + (named.note ? ` ${named.note}` : "");
-    const done = ticked ? ` ${ticked} ${ticked === 1 ? "comment" : "comments"} ticked off.` : "";
+    const done = ticked ? ` ${ticked} ${ticked === 1 ? "comment" : "comments"} sent To check.` : "";
     if (only) return { message: `Committed to ${label}.${done}`, rebuild };
     return { message: `Committed as ${label}: ${c.added.length} added, ${c.updated} updated, ${c.removed.length} removed.${warning}${done}`, rebuild };
   } catch (err) {

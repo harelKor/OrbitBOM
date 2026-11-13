@@ -1,12 +1,25 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
-import { addReviewComment, approveReviewComment, deleteReviewComment, rejectReviewComment, setReviewCommentDone, type CommentResult } from "@/app/(app)/review-comments-actions";
+import { createContext, useContext, useState, useTransition } from "react";
+import { addReviewComment, deleteReviewComment, setReviewCommentStatus, type CommentResult } from "@/app/(app)/review-comments-actions";
+import { Popover } from "@/components/bom/Popover";
+import { textOn } from "@/components/bom/options";
 import { Dialog } from "@/components/Dialog";
 import { LocalTime } from "@/components/ui/LocalTime";
 import type { ReviewComment } from "@/lib/data/cadReview";
+import { allowedStatuses, isActive, needsNote, statusOf, type CommentStatus } from "@/lib/reviews/status";
 import { CommentSnip, SnipPicture, uploadSnip, type SnipDraft } from "./Snip";
+
+// Who is looking, for the status pills, and the comment window the version tree opens (Harel,
+// 2026-11-13). Set by the CAD page and the Onshape panel.
+export type CommentCtx = {
+  me: { id: string; isAdmin: boolean; isMentor: boolean };
+  canTick: boolean; // CAD Team or mentor
+  canApprove: boolean; // mentor, or an admin in Edit mode
+  open?: (c: ReviewComment) => void; // the comment window
+};
+export const CommentContext = createContext<CommentCtx | null>(null);
 
 // One action at a time, the page refreshed after it, its error shown under the comment.
 function useCommentAction() {
@@ -24,6 +37,94 @@ function useCommentAction() {
   return { pending, error, run };
 }
 
+// Lists that keep a comment whose status moved it out (struck through, where it was) until the
+// page is left, so a tap doesn't make the list jump (Harel, 2026-11-13). `keep`: what belongs.
+export function useStickyList(comments: ReviewComment[], keep: (c: ReviewComment) => boolean): { c: ReviewComment; gone: boolean }[] {
+  const [seen, setSeen] = useState<Set<string>>(() => new Set(comments.filter(keep).map((c) => c.id)));
+  const fresh = comments.filter((c) => keep(c) && !seen.has(c.id));
+  if (fresh.length) setSeen(new Set([...seen, ...fresh.map((c) => c.id)]));
+  return comments.filter((c) => keep(c) || seen.has(c.id)).map((c) => ({ c, gone: !keep(c) }));
+}
+
+// A status as a coloured pill.
+export function CommentStatusPill({ status, caret = false }: { status: string; caret?: boolean }) {
+  const s = statusOf(status);
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold whitespace-nowrap" style={{ background: s.color, color: textOn(s.color) }} title={s.hint}>
+      {s.label}
+      {caret && (
+        <span className="opacity-70" aria-hidden>
+          ▾
+        </span>
+      )}
+    </span>
+  );
+}
+
+// The pill that changes the status, like a BOM part's: a tap lists what this member may pick. A
+// mentor sending a To check one back writes why first.
+export function StatusMenu({ c, onDone }: { c: ReviewComment; onDone?: () => void }) {
+  const ctx = useContext(CommentContext);
+  const { pending, error, run } = useCommentAction();
+  const [asking, setAsking] = useState<CommentStatus | null>(null);
+  const [note, setNote] = useState("");
+  const who = { team: !!ctx?.canTick, approver: !!ctx?.canApprove, author: !!ctx && c.authorId === ctx.me.id };
+  const choices = allowedStatuses(c.state, who);
+  const pick = (to: CommentStatus, close: () => void) => {
+    if (needsNote(c.state, to, { mentor: !!ctx?.me.isMentor })) return setAsking(to);
+    close();
+    run(() => setReviewCommentStatus(c.id, to), onDone);
+  };
+  return (
+    <span className={`inline-flex flex-col ${pending ? "opacity-60" : ""}`}>
+      <Popover locked={!choices.length || pending} hideCaret width={220} trigger={<CommentStatusPill status={c.state} caret={choices.length > 0} />} onClosed={() => setAsking(null)}>
+        {(close) =>
+          asking ? (
+            <form
+              className="space-y-2 p-1"
+              onSubmit={(e) => {
+                e.preventDefault();
+                close();
+                run(
+                  () => setReviewCommentStatus(c.id, asking, note),
+                  () => {
+                    setNote("");
+                    onDone?.();
+                  },
+                );
+              }}
+            >
+              <p className="text-xs text-muted">Back to {statusOf(asking).label}: why isn&rsquo;t it done yet?</p>
+              <textarea autoFocus required value={note} onChange={(e) => setNote(e.target.value)} rows={3} className="input min-h-16 w-full text-sm" />
+              <button className="btn-danger h-9 w-full justify-center text-xs active:scale-[0.98]" disabled={!note.trim()}>
+                Send back
+              </button>
+            </form>
+          ) : (
+            <ul className="text-sm">
+              {choices.map((k) => {
+                const s = statusOf(k);
+                return (
+                  <li key={k}>
+                    <button type="button" onClick={() => pick(k, close)} className="flex min-h-9 w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-fg-2 hover:bg-raised active:scale-[0.98]">
+                      <span className="h-3 w-3 shrink-0 rounded-full ring-1 ring-black/10" style={{ background: s.color }} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-semibold text-fg">{s.label}</span>
+                        <span className="block text-[0.6875rem] text-subtle">{s.hint}</span>
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )
+        }
+      </Popover>
+      {error && <span className="mt-0.5 text-[0.6875rem] text-rose-600">{error}</span>}
+    </span>
+  );
+}
+
 function Meta({ c, where }: { c: ReviewComment; where?: boolean }) {
   return (
     <span className="mt-0.5 block text-[0.6875rem] text-subtle">
@@ -31,6 +132,7 @@ function Meta({ c, where }: { c: ReviewComment; where?: boolean }) {
       {c.model === "basepart" && <span className="mr-1 rounded bg-violet-500/15 px-1 py-px font-semibold text-violet-600 dark:text-violet-300" title="Written on the Basepart 3D model">Basepart</span>}
       {c.author ?? "Someone"} · <LocalTime at={c.createdAt} />
       {c.onshapeVersionId && <span title="Written in the Onshape panel on this Onshape version"> · on {c.onshapeVersionName || "an Onshape version"}</span>}
+      {c.state === "on_it" && c.onItBy && <span className="font-semibold text-blue-600 dark:text-blue-400"> · {c.onItBy} is on it</span>}
     </span>
   );
 }
@@ -49,18 +151,18 @@ function PartChip({ c, onFocus }: { c: ReviewComment; onFocus?: (key: string) =>
   );
 }
 
-// An open comment: its tick box ticks it off; a mentor's last rejection shows under it.
-// `where`: show its system (or "Robot"), on the robot's page.
 // A tap on a comment's text turns the 3D view back to the one it was written in (`onView`, S6),
 // else shows its part. `n`: its pin's number in the 3D view.
 const tapText = (c: ReviewComment, onFocus?: (key: string) => void, onView?: (c: ReviewComment) => void) => () => (c.view && onView ? onView(c) : c.partKey && onFocus?.(c.partKey));
 
 function PinBadge({ n, c, onView }: { n?: number; c: ReviewComment; onView?: (c: ReviewComment) => void }) {
   if (!n || !c.pin) return null;
+  const color = statusOf(c.state).color;
   return (
     <button
       onClick={() => onView?.(c)}
-      className={`press mt-0.5 flex h-4.5 min-w-4.5 shrink-0 items-center justify-center rounded-full px-1 text-[0.625rem] font-semibold text-white tabular-nums shadow-sm pointer-coarse:h-6 pointer-coarse:min-w-6 ${c.state === "open" ? "bg-amber-500" : "bg-sky-500"}`}
+      className="press mt-0.5 flex h-4.5 min-w-4.5 shrink-0 items-center justify-center rounded-full px-1 text-[0.625rem] font-semibold tabular-nums shadow-sm pointer-coarse:h-6 pointer-coarse:min-w-6"
+      style={{ background: color, color: textOn(color) }}
       title="Its pin in the 3D view: go to the view it was written in"
       aria-label={`Comment ${n}: go to its view`}
     >
@@ -69,33 +171,52 @@ function PinBadge({ n, c, onView }: { n?: number; c: ReviewComment; onView?: (c:
   );
 }
 
-export function OpenComment({ c, n, canTick, canDelete, onFocus, onView, where }: { c: ReviewComment; n?: number; canTick: boolean; canDelete: boolean; onFocus?: (key: string) => void; onView?: (c: ReviewComment) => void; where?: boolean }) {
+function Rejected({ c }: { c: ReviewComment }) {
+  if (!c.rejectNote || !isActive(c.state)) return null;
+  return (
+    <p className="mt-1 rounded border border-rose-400/40 bg-rose-500/5 px-2 py-1 text-xs text-rose-600">
+      Sent back{c.rejectedBy ? ` by ${c.rejectedBy}` : ""}: {c.rejectNote}
+    </p>
+  );
+}
+
+// A comment in a list: its status pill, its text (struck through once `gone`: its status took it
+// out of this list while the page stays open), part, snip and who wrote it. `where`: show its
+// system (or "Robot"), on the robot's page.
+export function CommentRow({ c, n, gone = false, onFocus, onView, where }: { c: ReviewComment; n?: number; gone?: boolean; onFocus?: (key: string) => void; onView?: (c: ReviewComment) => void; where?: boolean }) {
+  const ctx = useContext(CommentContext);
   const { pending, error, run } = useCommentAction();
+  const canDelete = !!ctx && (ctx.me.isAdmin || (c.authorId === ctx.me.id && c.state === "open"));
   return (
     <li className={`rounded-md p-2 hover:bg-raised/70 ${pending ? "opacity-60" : ""}`}>
       <div className="flex gap-2.5">
-        <input
-          type="checkbox"
-          checked={false}
-          disabled={!canTick || pending}
-          onChange={() => run(() => setReviewCommentDone(c.id, true))}
-          aria-label="Tick off"
-          title={canTick ? "Tick off: done" : "The CAD Team ticks comments off"}
-          className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-accent)] pointer-coarse:h-5 pointer-coarse:w-5"
-        />
         <PinBadge n={n} c={c} onView={onView} />
         <div className="min-w-0 flex-1 text-sm">
-          <button className="block w-full text-left whitespace-pre-wrap break-words text-fg" onClick={tapText(c, onFocus, onView)}>
+          <div className="mb-1 flex items-center gap-2">
+            <StatusMenu c={c} />
+            {ctx?.canApprove && c.state === "to_check" && (
+              <button
+                className="press rounded-full border border-emerald-500/50 px-2 py-0.5 text-[0.6875rem] font-semibold text-emerald-600 hover:bg-emerald-500/10 active:scale-[0.98] pointer-coarse:min-h-8"
+                disabled={pending}
+                onClick={() => run(() => setReviewCommentStatus(c.id, "done"))}
+                title="Approve: Done"
+              >
+                ✓ Done
+              </button>
+            )}
+          </div>
+          <button className={`block w-full text-left whitespace-pre-wrap break-words ${gone ? "text-muted line-through" : "text-fg"}`} onClick={tapText(c, onFocus, onView)}>
             {c.body}
           </button>
           <PartChip c={c} onFocus={onFocus} />
           <CommentSnip c={c} />
           <Meta c={c} where={where} />
-          {c.rejectNote && (
-            <p className="mt-1 rounded border border-rose-400/40 bg-rose-500/5 px-2 py-1 text-xs text-rose-600">
-              Rejected{c.rejectedBy ? ` by ${c.rejectedBy}` : ""}: {c.rejectNote}
-            </p>
+          {c.state === "to_check" && c.doneAt && (
+            <span className="block text-[0.6875rem] text-subtle">
+              To check{c.doneBy ? ` from ${c.doneBy}` : ""} · <LocalTime at={c.doneAt} />
+            </span>
           )}
+          <Rejected c={c} />
           {error && <p className="mt-1 text-xs text-rose-600">{error}</p>}
         </div>
         {canDelete && (
@@ -113,90 +234,78 @@ export function OpenComment({ c, n, canTick, canDelete, onFocus, onView, where }
   );
 }
 
-// A ticked-off comment waiting for a mentor: Approve, or Reject with why (it opens again).
-export function WaitingComment({ c, n, isMentor, canTick, onFocus, onView, where }: { c: ReviewComment; n?: number; isMentor: boolean; canTick: boolean; onFocus?: (key: string) => void; onView?: (c: ReviewComment) => void; where?: boolean }) {
-  const { pending, error, run } = useCommentAction();
-  const [rejecting, setRejecting] = useState(false);
-  const [note, setNote] = useState("");
-  return (
-    <li className={`rounded-md p-2 hover:bg-raised/70 ${pending ? "opacity-60" : ""}`}>
-      <div className="flex gap-2.5">
-        <input
-          type="checkbox"
-          checked
-          disabled={!canTick || pending}
-          onChange={() => run(() => setReviewCommentDone(c.id, false))}
-          aria-label="Take the tick back"
-          title={canTick ? "Take the tick back" : "Ticked off"}
-          className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-accent)] pointer-coarse:h-5 pointer-coarse:w-5"
-        />
-        <PinBadge n={n} c={c} onView={onView} />
-        <div className="min-w-0 flex-1 text-sm">
-          <button className="block w-full text-left whitespace-pre-wrap break-words text-muted line-through" onClick={tapText(c, onFocus, onView)}>
-            {c.body}
-          </button>
-          <PartChip c={c} onFocus={onFocus} />
-          <CommentSnip c={c} />
-          <Meta c={c} where={where} />
-          {c.doneAt && (
-            <span className="block text-[0.6875rem] text-subtle">
-              Ticked off{c.doneBy ? ` by ${c.doneBy}` : ""} · <LocalTime at={c.doneAt} />
-            </span>
-          )}
-        </div>
-      </div>
-      {isMentor && !rejecting && (
-        <div className="mt-2 flex gap-2 pl-6.5">
-          <button className="btn-primary h-8 flex-1 justify-center text-xs active:scale-[0.98] pointer-coarse:h-9" disabled={pending} onClick={() => run(() => approveReviewComment(c.id))}>
-            Approve
-          </button>
-          <button className="btn h-8 flex-1 justify-center text-xs active:scale-[0.98] pointer-coarse:h-9" disabled={pending} onClick={() => setRejecting(true)}>
-            Reject
-          </button>
-        </div>
-      )}
-      {isMentor && rejecting && (
-        <form
-          className="mt-2 space-y-2 pl-6.5"
-          onSubmit={(e) => {
-            e.preventDefault();
-            run(() => rejectReviewComment(c.id, note), () => setRejecting(false));
-          }}
-        >
-          <textarea autoFocus required value={note} onChange={(e) => setNote(e.target.value)} rows={2} className="input min-h-16 w-full text-sm" placeholder="Why isn't it done yet?" />
-          <div className="flex gap-2">
-            <button className="btn-danger h-8 flex-1 justify-center text-xs active:scale-[0.98] pointer-coarse:h-9" disabled={pending || !note.trim()}>
-              Reject and reopen
-            </button>
-            <button type="button" className="btn h-8 justify-center text-xs pointer-coarse:h-9" onClick={() => setRejecting(false)}>
-              Cancel
-            </button>
-          </div>
-        </form>
-      )}
-      {error && <p className="mt-1 pl-6.5 text-xs text-rose-600">{error}</p>}
-    </li>
-  );
-}
-
-// A comment as the version tree lists it: its state, its text, a tap shows its part.
+// A comment as the version tree lists it: its status, its text; a tap opens the comment window.
 export function TreeComment({ c, onFocus }: { c: ReviewComment; onFocus?: (key: string) => void }) {
-  const mark = c.state === "approved" ? { icon: "✓✓", cls: "text-emerald-600", title: `Approved${c.approvedBy ? ` by ${c.approvedBy}` : ""}` } : c.state === "done" ? { icon: "✓", cls: "text-sky-600", title: "Ticked off, waiting for a mentor" } : { icon: "○", cls: "text-amber-600", title: "Open" };
+  const ctx = useContext(CommentContext);
+  const s = statusOf(c.state);
   return (
     <li>
       <button
-        onClick={() => c.partKey && onFocus?.(c.partKey)}
-        className={`press flex w-full items-start gap-1.5 rounded px-1.5 py-1 text-left text-xs hover:bg-raised pointer-coarse:min-h-9 ${c.partKey ? "" : "cursor-default"}`}
-        title={mark.title}
+        onClick={() => (ctx?.open ? ctx.open(c) : c.partKey && onFocus?.(c.partKey))}
+        className="press flex w-full items-start gap-1.5 rounded px-1.5 py-1 text-left text-xs hover:bg-raised pointer-coarse:min-h-9"
+        title={`${s.label}: open the comment`}
       >
-        <span className={`w-4 shrink-0 text-center font-bold ${mark.cls}`}>{mark.icon}</span>
-        <span className={`min-w-0 flex-1 truncate ${c.state === "open" ? "text-fg-2" : "text-muted line-through"}`}>
+        <span className="mt-1 h-2 w-2 shrink-0 rounded-full" style={{ background: s.color }} />
+        <span className={`min-w-0 flex-1 truncate ${isActive(c.state) ? "text-fg-2" : "text-muted line-through"}`}>
           {c.partName && <span className="font-semibold">{c.partName}: </span>}
           {c.body}
           {c.snip && " 📷"}
         </span>
       </button>
     </li>
+  );
+}
+
+// The comment window, from the version tree (Harel, 2026-11-13): the whole comment, its status to
+// change, and what happened to it. Show in 3D turns the view to it.
+export function CommentWindow({ c, onClose, onFocus, onView }: { c: ReviewComment; onClose: () => void; onFocus?: (key: string) => void; onView?: (c: ReviewComment) => void }) {
+  const steps = [
+    { label: "Written", by: c.author, at: c.createdAt },
+    { label: "On it", by: c.onItBy, at: c.onItAt },
+    { label: "To check", by: c.doneBy, at: c.doneAt },
+    { label: "Done", by: c.approvedBy, at: c.approvedAt },
+  ].filter((x): x is { label: string; by: string | null; at: string } => !!x.at);
+  const show = tapText(c, onFocus, onView);
+  return (
+    <Dialog open onClose={onClose} title={c.systemName ? `Comment · ${c.systemName}` : "Comment · whole robot"} sheet>
+      <div className="space-y-3 p-5 text-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusMenu c={c} />
+          <PartChip
+            c={c}
+            onFocus={(k) => {
+              onFocus?.(k);
+              onClose();
+            }}
+          />
+        </div>
+        <p className="whitespace-pre-wrap break-words text-fg">{c.body}</p>
+        <CommentSnip c={c} />
+        <Rejected c={c} />
+        <ul className="space-y-1 border-t border-line pt-2 text-xs text-muted">
+          {steps.map((x) => (
+            <li key={x.label} className="flex gap-2">
+              <span className="w-16 shrink-0 font-semibold text-fg-2">{x.label}</span>
+              <span>
+                {x.by ?? "Someone"} · <LocalTime at={x.at} />
+              </span>
+            </li>
+          ))}
+          {c.onshapeVersionId && <li>Written on Onshape version {c.onshapeVersionName || "(unnamed)"}</li>}
+        </ul>
+        {(c.view || c.partKey) && (onView || onFocus) && (
+          <button
+            className="btn h-10 w-full justify-center active:scale-[0.98]"
+            onClick={() => {
+              show();
+              onClose();
+            }}
+          >
+            Show in 3D
+          </button>
+        )}
+      </div>
+    </Dialog>
   );
 }
 

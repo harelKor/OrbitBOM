@@ -3,7 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { addReviewComment } from "@/app/(app)/review-comments-actions";
-import { OpenComment, TreeComment, WaitingComment } from "@/components/review/Comments";
+import { CommentContext, CommentRow, CommentWindow, TreeComment, useStickyList } from "@/components/review/Comments";
+import { isActive } from "@/lib/reviews/status";
 import { SnipEditor, SnipMe, SnipPicture, uploadSnip, type SnipDraft } from "@/components/review/Snip";
 import type { ReviewComment } from "@/lib/data/cadReview";
 import type { ModelKind } from "@/db/schema";
@@ -33,7 +34,7 @@ export function PanelComments({
   parts: Part[];
   comments: ReviewComment[];
   place: PanelPlace;
-  me: { id: string; isAdmin: boolean };
+  me: { id: string; isAdmin: boolean; isMentor: boolean };
   canTick: boolean;
   canApprove: boolean;
   // A Basepart's comments go on the Basepart model, and on no Onshape version: versions belong
@@ -61,6 +62,8 @@ export function PanelComments({
   const part = partsHere.find((p) => p.key === partKey) ?? null;
   // A section per system, the whole robot's comments first (Harel, 2026-11-11).
   const sections = sectionsOf(comments);
+  const [windowed, setWindowed] = useState<string | null>(null);
+  const windowComment = windowed ? comments.find((c) => c.id === windowed) : undefined;
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -84,6 +87,7 @@ export function PanelComments({
 
   return (
     <SnipMe.Provider value={me.id}>
+    <CommentContext.Provider value={{ me, canTick, canApprove, open: (c) => setWindowed(c.id) }}>
     <div className="space-y-5">
       <form onSubmit={submit} className="space-y-2.5 rounded-lg border border-line bg-surface p-3">
         {!fixedSystem && (
@@ -132,7 +136,7 @@ export function PanelComments({
       </form>
 
       {sections.length ? (
-        sections.map((s) => <CommentSection key={s.id ?? "robot"} name={s.name} comments={s.comments} me={me} canTick={canTick} canApprove={canApprove} />)
+        sections.map((s) => <CommentSection key={s.id ?? "robot"} name={s.name} comments={s.comments} />)
       ) : (
         <p className="text-xs text-muted">No comments yet.</p>
       )}
@@ -153,6 +157,8 @@ export function PanelComments({
         />
       )}
     </div>
+    {windowComment && <CommentWindow c={windowComment} onClose={() => setWindowed(null)} />}
+    </CommentContext.Provider>
     </SnipMe.Provider>
   );
 }
@@ -214,46 +220,49 @@ function sectionsOf(comments: ReviewComment[]): Section[] {
   return [...by.values()].sort((a, b) => (a.id === null ? -1 : b.id === null ? 1 : a.name.localeCompare(b.name)));
 }
 
-// One system's comments, folded with a tap. Open while it has comments to act on; only approved
-// ones start folded.
-function CommentSection({ name, comments, me, canTick, canApprove }: { name: string; comments: ReviewComment[]; me: { id: string; isAdmin: boolean }; canTick: boolean; canApprove: boolean }) {
-  const open = comments.filter((c) => c.state === "open");
-  const waiting = comments.filter((c) => c.state === "done");
-  const approved = comments.filter((c) => c.state === "approved").reverse();
+// One system's comments, folded with a tap: Open and On it, then To check, then Done folded. A
+// comment whose status moves it stays where it was, struck through, until the page is left. Open
+// while it has comments to act on.
+function CommentSection({ name, comments }: { name: string; comments: ReviewComment[] }) {
+  const active = useStickyList(comments, (c) => isActive(c.state));
+  const toCheck = useStickyList(comments, (c) => c.state === "to_check");
+  const done = comments.filter((c) => c.state === "done").reverse();
+  const nActive = active.filter((r) => !r.gone).length;
+  const nCheck = toCheck.filter((r) => !r.gone).length;
   return (
-    <details open={open.length + waiting.length > 0} className="group rounded-lg border border-line bg-surface">
+    <details open={nActive + nCheck > 0} className="group rounded-lg border border-line bg-surface">
       <summary className="press flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 pointer-coarse:min-h-11 [&::-webkit-details-marker]:hidden">
         <span className="text-xs text-subtle transition-transform group-open:rotate-90" aria-hidden>
           ▶
         </span>
         <span className="min-w-0 flex-1 truncate font-semibold text-fg">{name}</span>
-        {open.length > 0 && <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[0.6875rem] font-semibold text-amber-600 tabular-nums">{open.length} open</span>}
-        {waiting.length > 0 && <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-[0.6875rem] font-semibold text-sky-600 tabular-nums">{waiting.length} waiting</span>}
-        {!open.length && !waiting.length && <span className="text-[0.6875rem] text-subtle tabular-nums">{approved.length} approved</span>}
+        {nActive > 0 && <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[0.6875rem] font-semibold text-amber-600 tabular-nums">{nActive} open</span>}
+        {nCheck > 0 && <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[0.6875rem] font-semibold text-violet-600 tabular-nums dark:text-violet-300">{nCheck} to check</span>}
+        {!nActive && !nCheck && <span className="text-[0.6875rem] text-subtle tabular-nums">{done.length} done</span>}
       </summary>
       <div className="space-y-3 border-t border-line px-2 pt-2 pb-3">
-        {open.length > 0 && (
+        {active.length > 0 && (
           <ul>
-            {open.map((c) => (
-              <OpenComment key={c.id} c={c} canTick={canTick} canDelete={me.isAdmin || c.authorId === me.id} />
+            {active.map(({ c, gone }) => (
+              <CommentRow key={c.id} c={c} gone={gone} />
             ))}
           </ul>
         )}
-        {waiting.length > 0 && (
+        {toCheck.length > 0 && (
           <div>
-            <h3 className="label px-2">Waiting for a mentor · {waiting.length}</h3>
+            <h3 className="label px-2">To check · {nCheck}</h3>
             <ul>
-              {waiting.map((c) => (
-                <WaitingComment key={c.id} c={c} isMentor={canApprove} canTick={canTick} />
+              {toCheck.map(({ c, gone }) => (
+                <CommentRow key={c.id} c={c} gone={gone} />
               ))}
             </ul>
           </div>
         )}
-        {approved.length > 0 && (
+        {done.length > 0 && (
           <details>
-            <summary className="label cursor-pointer px-2 pointer-coarse:min-h-9">Approved · {approved.length}</summary>
+            <summary className="label cursor-pointer px-2 pointer-coarse:min-h-9">Done · {done.length}</summary>
             <ul className="mt-1">
-              {approved.map((c) => (
+              {done.map((c) => (
                 <TreeComment key={c.id} c={c} />
               ))}
             </ul>

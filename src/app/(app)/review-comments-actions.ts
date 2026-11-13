@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { requireMember } from "@/lib/auth";
 import { getMode } from "@/lib/mode";
-import { addComment, approveComment, CommentError, deleteComment, rejectComment, saveSnipLines, tickComments, untickComment, type SnipInput } from "@/lib/reviews/comments";
+import { addComment, CommentError, deleteComment, saveSnipLines, setCommentStatus, type SnipInput } from "@/lib/reviews/comments";
+import type { CommentStatus } from "@/lib/reviews/status";
 import { deleteNamedView, saveNamedView } from "@/lib/reviews/namedViews";
 import { isUuid } from "@/lib/uuid";
 import type { ModelKind } from "@/db/schema";
@@ -51,22 +52,12 @@ export async function saveReviewSnip(id: string, own: unknown, keep: unknown): P
   return run(() => saveSnipLines(member, id, { own, keep }));
 }
 
-export async function setReviewCommentDone(id: string, done: boolean): Promise<CommentResult> {
+// A comment's status from its pill (rules in src/lib/reviews/status.ts). `note`: a mentor's why,
+// sending a To check one back.
+export async function setReviewCommentStatus(id: string, to: CommentStatus, note = ""): Promise<CommentResult> {
   const [member, mode] = await Promise.all([requireMember(), getMode()]);
-  if (!isUuid(id)) return { error: "Unknown comment." };
-  return run(() => (done ? tickComments(member, mode, null, [id]) : untickComment(member, mode, id)));
-}
-
-export async function approveReviewComment(id: string): Promise<CommentResult> {
-  const [member, mode] = await Promise.all([requireMember(), getMode()]);
-  if (!isUuid(id)) return { error: "Unknown comment." };
-  return run(() => approveComment(member, mode, id));
-}
-
-export async function rejectReviewComment(id: string, note: string): Promise<CommentResult> {
-  const [member, mode] = await Promise.all([requireMember(), getMode()]);
-  if (!isUuid(id)) return { error: "Unknown comment." };
-  return run(() => rejectComment(member, mode, id, note));
+  if (!isUuid(id) || typeof note !== "string") return { error: "Unknown comment." };
+  return run(() => setCommentStatus(member, mode, id, to, note));
 }
 
 export async function deleteReviewComment(id: string): Promise<CommentResult> {

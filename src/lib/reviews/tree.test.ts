@@ -10,8 +10,8 @@ describe("CAD Review version tree", () => {
       [{ id: "b1", label: "V2", at: "2026-11-04T00:00:00Z", by: "Noa", vid: "v2", current: true }],
       [
         { id: "early", createdAt: "2026-10-30T00:00:00Z", doneAt: null, doneVersionId: null, state: "open" },
-        { id: "c1", createdAt: "2026-11-02T00:00:00Z", doneAt: "2026-11-06T00:00:00Z", doneVersionId: "b1", state: "done" },
-        { id: "c2", createdAt: "2026-11-03T12:00:00Z", doneAt: "2026-11-05T12:00:00Z", doneVersionId: null, state: "approved" },
+        { id: "c1", createdAt: "2026-11-02T00:00:00Z", doneAt: "2026-11-06T00:00:00Z", doneVersionId: "b1", state: "to_check" },
+        { id: "c2", createdAt: "2026-11-03T12:00:00Z", doneAt: "2026-11-05T12:00:00Z", doneVersionId: null, state: "done" },
       ],
     );
     expect(tree.map((n) => n.key)).toEqual(["v3", "v2", "v1"]);

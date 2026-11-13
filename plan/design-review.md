@@ -43,7 +43,7 @@ check makes anyway; otherwise the tree's "Refresh from Onshape" reads it (1 call
 - Update system's Commit window has an Open comments panel: the ones ticked there are done at the
   version committed.
 - System page: a "CAD" chip with the counts. Home card badge: comments waiting on you.
-- MCP: `list_review_comments`, `add_review_comment`, `tick_review_comments`.
+- MCP: `list_review_comments`, `add_review_comment`, `set_review_comment_status` (was `tick_review_comments`).
 - Snip (2026-11-10): 📷 Snip in the Add comment window cuts a rectangle out of the 3D view,
   then a drawing window (pen size, 8 colours, eraser, undo, Confirm). The picture is in
   R2 (`review-snips/`), the lines in `review_comments.snip` (migration 0078) so they stay

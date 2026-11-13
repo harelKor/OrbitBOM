@@ -1,5 +1,6 @@
 "use client";
 
+import { isActive } from "@/lib/reviews/status";
 import { usePathname, useRouter } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
 import { TreeComment } from "@/components/review/Comments";
@@ -160,7 +161,7 @@ export function CadReview({
             )}
           </Fold>
           {review.systems.map((s) => {
-            const open = review.comments.filter((c) => c.systemId === s.id && c.state === "open").length;
+            const open = review.comments.filter((c) => c.systemId === s.id && isActive(c.state)).length;
             return (
               <Fold key={s.id} title={s.name} count={open} thumb={thumbs[s.id] ?? null} onIsolate={() => isolate(s.id)}>
                 <VersionTree tree={s.tree} comments={byId} onFocus={onFocus} />

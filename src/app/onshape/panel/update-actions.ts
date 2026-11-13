@@ -1,5 +1,6 @@
 "use server";
 
+import { isActive } from "@/lib/reviews/status";
 import { and, inArray, isNotNull } from "drizzle-orm";
 import { checkForChanges } from "@/app/(app)/versions-actions";
 import { db, schema } from "@/db";
@@ -35,7 +36,7 @@ export async function panelCheckSystem(systemId: string): Promise<PanelCheck> {
   return {
     draft: r.draft,
     thumbs,
-    comments: comments.filter((c) => c.state === "open").map((c) => ({ id: c.id, body: c.body, partName: c.partName, author: c.author, createdAt: c.createdAt })),
+    comments: comments.filter((c) => isActive(c.state)).map((c) => ({ id: c.id, body: c.body, partName: c.partName, author: c.author, createdAt: c.createdAt })),
   };
 }
 

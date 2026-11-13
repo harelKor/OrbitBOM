@@ -8,7 +8,8 @@ import type { Topo } from "./picking";
 import type { Stage } from "./stage";
 import type { PartMesh } from "./types";
 
-export type Pin = { id: string; n: number; at: [number, number, number]; done?: boolean };
+// `color`: its comment's status colour (Harel, 2026-11-13).
+export type Pin = { id: string; n: number; at: [number, number, number]; done?: boolean; color?: string };
 
 export type PinTools = {
   pins: (list: Pin[], onTap: ((id: string) => void) | null) => void;
@@ -70,7 +71,7 @@ export function createPins(stage: Stage, meshes: PartMesh[], topo: Topo, newest:
       el.textContent = String(pin.n);
       el.title = `Comment ${pin.n}`;
       el.setAttribute("aria-label", `Comment ${pin.n}`);
-      el.style.background = pin.done ? "#0ea5e9" : "#f59e0b";
+      el.style.background = pin.color ?? (pin.done ? "#0ea5e9" : "#f59e0b");
       el.style.color = "white";
     }
     stage.render();

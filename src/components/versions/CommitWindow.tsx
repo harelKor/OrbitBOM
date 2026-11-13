@@ -41,7 +41,7 @@ function shown(field: string, value: unknown) {
 // A change that is only Onshape fields (material, processes, quantity…) and not the shape.
 const kindOf = (c: VersionChange) => (c.change === "modified" && !c.geometry ? "props" : c.change);
 
-// An open CAD Review comment the commit can tick off.
+// A CAD Review comment still to act on (Open, On it) the commit can set To check.
 export type CommitComment = { id: string; body: string; partName: string | null; author: string | null; createdAt: string };
 
 // The Commit Changes window (plan/system-versioning.md §7): what changed in the Manufacture
@@ -129,7 +129,7 @@ export function CommitWindow({
               </span>
             </label>
             <button type="submit" className="btn-primary" disabled={committing}>
-              {committing ? "Committing…" : ticked.length ? `Commit · tick off ${ticked.length}` : "Commit changes"}
+              {committing ? "Committing…" : ticked.length ? `Commit · ${ticked.length} to check` : "Commit changes"}
             </button>
           </form>
         ) : (
@@ -158,7 +158,7 @@ export function CommitWindow({
         <aside className="flex min-h-0 flex-col rounded-lg border border-line bg-raised/50 md:max-h-[70dvh]">
           <div className="border-b border-line px-3 py-2">
             <h3 className="text-sm font-semibold text-fg">Open comments</h3>
-            <p className="text-xs text-muted">Tick the ones this version fixes. They go to the mentors to approve.</p>
+            <p className="text-xs text-muted">Tick the ones this version fixes. They go To check, for a mentor.</p>
           </div>
           <ul className="flex-1 space-y-1 overflow-y-auto p-2">
             {comments.map((c) => (

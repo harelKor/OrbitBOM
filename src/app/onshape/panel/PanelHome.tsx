@@ -1,4 +1,4 @@
-import { and, count, eq, isNull } from "drizzle-orm";
+import { and, count, eq, inArray, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { ModelKind } from "@/db/schema";
 import { BasepartTile } from "./BasepartTile";
@@ -20,7 +20,7 @@ export async function PanelHome({ robotId, systemId, query, model }: { robotId: 
     db
       .select({ n: count() })
       .from(reviewComments)
-      .where(and(systemId ? eq(reviewComments.systemId, systemId) : and(eq(reviewComments.robotId, robotId), isNull(reviewComments.systemId)), eq(reviewComments.state, "open"))),
+      .where(and(systemId ? eq(reviewComments.systemId, systemId) : and(eq(reviewComments.robotId, robotId), isNull(reviewComments.systemId)), inArray(reviewComments.state, ["open", "on_it"]))),
   ]);
   const basepart = model === "basepart";
   const base = systemId ? `/robots/${robotId}/systems/${systemId}` : `/robots/${robotId}`;

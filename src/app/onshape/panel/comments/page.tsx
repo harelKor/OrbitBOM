@@ -70,7 +70,7 @@ export default async function PanelCommentsPage({ searchParams }: { searchParams
         parts={partList}
         comments={comments}
         place={{ did: ref?.did ?? null, wv: ref?.wvm === "v" ? "v" : ref ? "w" : null, wvId: ref?.wvmid ?? null }}
-        me={{ id: member.id, isAdmin: member.isAdmin }}
+        me={{ id: member.id, isAdmin: member.isAdmin, isMentor: member.isMentor }}
         canTick={canTick(mode, member)}
         canApprove={canApprove(mode, member)}
         model={params.model === "basepart" ? "basepart" : "final"}

@@ -4,6 +4,7 @@ import type { ViewState } from "@/components/viewer/viewState";
 import { db, schema } from "@/db";
 import type { Member } from "@/lib/auth";
 import { parseOnshapeUrl } from "@/lib/onshape/url";
+import type { CommentStatus } from "@/lib/reviews/status";
 import { buildTree, type TreeNode } from "@/lib/reviews/tree";
 import { imageUrl } from "@/lib/storage/r2";
 import { listCadSubs } from "@/lib/versions/cad";
@@ -24,11 +25,13 @@ export type ReviewComment = {
   partName: string | null;
   onshapeVersionId: string | null;
   onshapeVersionName: string | null;
-  state: "open" | "done" | "approved";
+  state: CommentStatus;
+  onItAt: string | null;
+  onItBy: string | null; // who is on it
   createdAt: string;
   author: string | null;
   authorId: string | null;
-  doneAt: string | null;
+  doneAt: string | null; // set To check
   doneBy: string | null;
   doneVersionId: string | null;
   approvedAt: string | null;
@@ -51,7 +54,7 @@ export async function listComments(scope: string | { robotId: string }): Promise
     .where(typeof scope === "string" ? eq(reviewComments.systemId, scope) : eq(reviewComments.robotId, scope.robotId))
     .orderBy(asc(reviewComments.createdAt))
     .then((r) => r.map(({ c, systemName }) => ({ ...c, systemName })));
-  const ids = [...new Set(rows.flatMap((r) => [r.authorId, r.doneBy, r.approvedBy, r.rejectedBy]).filter((x): x is string => !!x))];
+  const ids = [...new Set(rows.flatMap((r) => [r.authorId, r.onItBy, r.doneBy, r.approvedBy, r.rejectedBy]).filter((x): x is string => !!x))];
   const names = new Map((ids.length ? await db.select({ id: members.id, name: members.name }).from(members).where(inArray(members.id, ids)) : []).map((m) => [m.id, m.name]));
   const name = (id: string | null) => (id ? (names.get(id) ?? null) : null);
   const iso = (d: Date | null) => d?.toISOString() ?? null;
@@ -67,6 +70,8 @@ export async function listComments(scope: string | { robotId: string }): Promise
     onshapeVersionId: r.onshapeVersionId,
     onshapeVersionName: r.onshapeVersionName,
     state: r.state,
+    onItAt: iso(r.onItAt),
+    onItBy: name(r.onItBy),
     createdAt: r.createdAt.toISOString(),
     author: name(r.authorId),
     authorId: r.authorId,
@@ -143,32 +148,32 @@ export async function loadSystemReview(systemId: string): Promise<SystemReview |
   };
 }
 
-// Open and ticked-off (waiting for a mentor) comments per system of a robot; "robot": those on
-// the whole robot.
+// Per system of a robot ("robot": those on the whole robot): `open` the ones still to act on (Open,
+// On it), `done` the ones To check (waiting for a mentor).
 export async function reviewCounts(robotId: string): Promise<Record<string, { open: number; done: number }>> {
   const rows = await db
     .select({ systemId: reviewComments.systemId, state: reviewComments.state, n: count() })
     .from(reviewComments)
-    .where(and(eq(reviewComments.robotId, robotId), inArray(reviewComments.state, ["open", "done"])))
+    .where(and(eq(reviewComments.robotId, robotId), inArray(reviewComments.state, ["open", "on_it", "to_check"])))
     .groupBy(reviewComments.systemId, reviewComments.state);
   const out: Record<string, { open: number; done: number }> = {};
   for (const r of rows) {
     const c = (out[r.systemId ?? "robot"] ??= { open: 0, done: 0 });
-    if (r.state === "open") c.open = r.n;
-    else c.done = r.n;
+    if (r.state === "to_check") c.done += r.n;
+    else c.open += r.n;
   }
   return out;
 }
 
-// The home card's badge: for a mentor the ticked-off comments waiting for them, for a CAD Team
-// member the open comments on their own system.
+// The home card's badge: for a mentor the To check comments waiting for them, for a CAD Team
+// member the Open and On it comments on their own system.
 export async function waitingOnYou(member: Member, robotId: string | null): Promise<number> {
   if (member.isMentor && robotId) {
     const counts = await reviewCounts(robotId);
     return Object.values(counts).reduce((n, c) => n + c.done, 0);
   }
   if (member.team === "cad" && member.systemId) {
-    const [row] = await db.select({ n: count() }).from(reviewComments).where(and(eq(reviewComments.systemId, member.systemId), eq(reviewComments.state, "open")));
+    const [row] = await db.select({ n: count() }).from(reviewComments).where(and(eq(reviewComments.systemId, member.systemId), inArray(reviewComments.state, ["open", "on_it"])));
     return row?.n ?? 0;
   }
   return 0;

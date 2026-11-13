@@ -7,6 +7,7 @@ import type { Member } from "@/lib/auth";
 import { cleanView, type ViewState } from "@/components/viewer/viewState";
 import { deleteObject } from "@/lib/storage/r2";
 import { cleanStrokes, mergeStrokes } from "./snipStrokes";
+import { allowedStatuses, COMMENT_STATUSES, needsNote, type CommentStatus } from "./status";
 
 // A snip as the browser sends it: its picture already uploaded (/api/review-snips), its lines.
 export type SnipInput = { path: string; w: number; h: number; strokes: unknown };
@@ -14,9 +15,9 @@ const SNIP_PATH = /^review-snips\/[0-9a-f-]{36}\.(jpg|png)$/;
 
 const { reviewComments, systems } = schema;
 
-// CAD Review comments (plan/design-review.md; Harel, 2026-11-08): anyone signed in writes one; the
-// CAD Team (and mentors) tick one off; a mentor approves it, or rejects it with a note, which opens
-// it again. Server actions and the MCP tools both come through here.
+// CAD Review comments (plan/design-review.md; Harel, 2026-11-08): anyone signed in writes one; its
+// status goes Open → On it → To check → Done (status.ts, Harel 2026-11-13). Server actions and the
+// MCP tools both come through here.
 export class CommentError extends Error {}
 
 export const MAX_BODY = 2000;
@@ -98,15 +99,15 @@ export async function saveSnipLines(member: Member, id: string, sent: { own: unk
   return c;
 }
 
-// Ticks off open comments (of one system, when `systemId` is given); `versionId`: the version the
-// Update system window just committed. Returns how many were ticked.
+// The Update system window's ticks: comments still to act on (of one system, when `systemId` is
+// given) go To check, with `versionId`, the version it just committed. Returns how many.
 export async function tickComments(member: Member, mode: Mode, systemId: string | null, ids: string[], versionId: string | null = null, tx: Pick<typeof db, "update"> = db) {
   if (!canTick(mode, member)) throw new CommentError("Only the CAD Team ticks comments off.");
   if (!ids.length) return 0;
   const rows = await tx
     .update(reviewComments)
-    .set({ state: "done", doneAt: new Date(), doneBy: member.id, doneVersionId: versionId })
-    .where(and(systemId ? eq(reviewComments.systemId, systemId) : undefined, inArray(reviewComments.id, ids), eq(reviewComments.state, "open")))
+    .set({ state: "to_check", doneAt: new Date(), doneBy: member.id, doneVersionId: versionId })
+    .where(and(systemId ? eq(reviewComments.systemId, systemId) : undefined, inArray(reviewComments.id, ids), inArray(reviewComments.state, ["open", "on_it"])))
     .returning({ id: reviewComments.id });
   return rows.length;
 }
@@ -117,42 +118,41 @@ async function commentOf(id: string) {
   return row;
 }
 
-const NOT_DONE = { doneAt: null, doneBy: null, doneVersionId: null } as const;
-
-// A tick taken back before a mentor answered it.
-export async function untickComment(member: Member, mode: Mode, id: string) {
-  if (!canTick(mode, member)) throw new CommentError("Only the CAD Team ticks comments off.");
+// Sets a comment's status (rules in status.ts). Each status keeps who set it and when; going back
+// clears what came after it. A mentor sending a To check one back writes `note`, kept as the
+// last rejection.
+export async function setCommentStatus(member: Member, mode: Mode, id: string, to: CommentStatus, note = "") {
+  if (!COMMENT_STATUSES.some((s) => s.key === to)) throw new CommentError("Unknown status.");
   const c = await commentOf(id);
-  if (c.state !== "done") throw new CommentError(c.state === "approved" ? "A mentor already approved it." : "It isn't ticked.");
-  await db.update(reviewComments).set({ state: "open", ...NOT_DONE }).where(and(eq(reviewComments.id, id), eq(reviewComments.state, "done")));
-  return c;
-}
-
-export async function approveComment(member: Member, mode: Mode, id: string) {
-  if (!canApprove(mode, member)) throw new CommentError("Only mentors approve comments.");
-  const c = await commentOf(id);
-  if (c.state !== "done") throw new CommentError(c.state === "approved" ? "It's already approved." : "Only a ticked-off comment can be approved.");
-  await db.update(reviewComments).set({ state: "approved", approvedAt: new Date(), approvedBy: member.id }).where(and(eq(reviewComments.id, id), eq(reviewComments.state, "done")));
-  return c;
-}
-
-export async function rejectComment(member: Member, mode: Mode, id: string, note: string) {
-  if (!canApprove(mode, member)) throw new CommentError("Only mentors reject comments.");
+  if (c.state === to) return c;
+  const who = { team: canTick(mode, member), approver: canApprove(mode, member), author: c.authorId === member.id };
+  if (!allowedStatuses(c.state, who).includes(to))
+    throw new CommentError(to === "done" || c.state === "done" ? "Only a mentor sets a comment Done or takes it back." : "Only the CAD Team or its author changes a comment's status.");
   const why = note.trim();
-  if (!why) throw new CommentError("Write why it isn't done yet.");
-  const c = await commentOf(id);
-  if (c.state !== "done") throw new CommentError("Only a ticked-off comment can be rejected.");
-  await db
-    .update(reviewComments)
-    .set({ state: "open", ...NOT_DONE, rejectNote: why.slice(0, MAX_BODY), rejectedAt: new Date(), rejectedBy: member.id })
-    .where(and(eq(reviewComments.id, id), eq(reviewComments.state, "done")));
+  if (needsNote(c.state, to, { mentor: member.isMentor }) && !why) throw new CommentError("Write why it isn't done yet.");
+  const now = new Date();
+  const order = ["open", "on_it", "to_check", "done"];
+  const back = order.indexOf(to) < order.indexOf(c.state);
+  const set: Partial<typeof reviewComments.$inferInsert> = { state: to };
+  if (to === "on_it") Object.assign(set, { onItAt: now, onItBy: member.id });
+  if (to === "to_check") Object.assign(set, { doneAt: now, doneBy: member.id, doneVersionId: null });
+  if (to === "done") Object.assign(set, { approvedAt: now, approvedBy: member.id });
+  if (back) {
+    Object.assign(set, { approvedAt: null, approvedBy: null });
+    if (to !== "to_check") Object.assign(set, { doneAt: null, doneBy: null, doneVersionId: null });
+    if (to === "open") Object.assign(set, { onItAt: null, onItBy: null });
+  }
+  if (why) Object.assign(set, { rejectNote: why.slice(0, MAX_BODY), rejectedAt: now, rejectedBy: member.id });
+  // Only if nobody changed it meanwhile.
+  const rows = await db.update(reviewComments).set(set).where(and(eq(reviewComments.id, id), eq(reviewComments.state, c.state))).returning({ id: reviewComments.id });
+  if (!rows.length) throw new CommentError("Someone changed it just now. Look again.");
   return c;
 }
 
 // Its author takes back an open comment; an admin removes any.
 export async function deleteComment(member: Member, id: string) {
   const c = await commentOf(id);
-  if (!member.isAdmin && (c.authorId !== member.id || c.state !== "open")) throw new CommentError("Only its author deletes an open comment.");
+  if (!member.isAdmin && (c.authorId !== member.id || c.state !== "open")) throw new CommentError("Only its author deletes an Open comment.");
   await db.delete(reviewComments).where(eq(reviewComments.id, id));
   if (c.snip) await deleteObject(c.snip.path).catch(() => {});
   return c;

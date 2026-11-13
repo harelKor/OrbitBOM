@@ -6,12 +6,13 @@ import { db, schema } from "@/db";
 import { listComments, loadSystemReview } from "@/lib/data/cadReview";
 import { partKey } from "@/lib/model/assembly";
 import { cleanView } from "@/components/viewer/viewState";
-import { addComment, canTick, cleanPin, CommentError, tickComments } from "@/lib/reviews/comments";
+import { addComment, canApprove, canTick, cleanPin, CommentError, setCommentStatus } from "@/lib/reviews/comments";
+import { allowedStatuses, isActive, needsNote } from "@/lib/reviews/status";
 import { read, uuid, write, ToolError } from "../registry";
 
 const { reviewComments, systems } = schema;
 
-// CAD Review comments (plan/design-review.md): read them as text, add one, tick some off.
+// CAD Review comments (plan/design-review.md): read them as text, add one, set their status.
 
 const asTool = async <T,>(fn: () => Promise<T>) => {
   try {
@@ -24,16 +25,16 @@ const asTool = async <T,>(fn: () => Promise<T>) => {
 
 read(
   "list_review_comments",
-  "A system's CAD Review comments (snip: a picture cut from the 3D view with lines drawn on it): state (open; done = ticked off, waiting for a mentor; approved), text, the part it's about, who wrote it and when, a mentor's last rejection note, its pin (x, y, z in assembly mm: the point in the 3D view it was written about) and view (the 3D view it was written in: camera, hidden / isolated parts, section, render mode), and the version tree (Onshape versions, newest first, which ones the BOM was updated to, and the comment ids added and ticked off at each).",
-  z.object({ system_id: uuid, state: z.enum(["open", "done", "approved"]).optional() }),
+  "A system's CAD Review comments (snip: a picture cut from the 3D view with lines drawn on it): status (open; on_it = someone is working on it; to_check = waiting for a mentor to check; done = a mentor approved it), text, the part it's about, who wrote it and when, a mentor's last note sending it back, its pin (x, y, z in assembly mm: the point in the 3D view it was written about) and view (the 3D view it was written in: camera, hidden / isolated parts, section, render mode), and the version tree (Onshape versions, newest first, which ones the BOM was updated to, and the comment ids added and set To check or Done at each).",
+  z.object({ system_id: uuid, state: z.enum(["open", "on_it", "to_check", "done"]).optional() }),
   async ({ system_id, state }) => {
     const review = await loadSystemReview(system_id);
     if (!review) throw new ToolError("Unknown system.");
     return {
       comments: review.comments
         .filter((c) => !state || c.state === state)
-        .map((c) => ({ id: c.id, state: c.state, text: c.body, part: c.partName, by: c.author, at: c.createdAt, ticked_by: c.doneBy, approved_by: c.approvedBy, rejected: c.rejectNote ? { note: c.rejectNote, by: c.rejectedBy, at: c.rejectedAt } : null, snip: c.snip ? { picture: c.snip.url, lines: c.snip.strokes.length, changed_by: (c.snip.changed ?? []).map((x) => x.name) } : null, pin: c.pin, view: c.view })),
-      versions: review.tree.map((n) => ({ name: n.name, at: n.at, bom: n.bom.map((b) => b.label), bom_current: n.bom.some((b) => b.current), added: n.added, ticked_off: n.done })),
+        .map((c) => ({ id: c.id, state: c.state, text: c.body, part: c.partName, by: c.author, at: c.createdAt, on_it_by: c.onItBy, to_check_by: c.doneBy, done_by: c.approvedBy, sent_back: c.rejectNote ? { note: c.rejectNote, by: c.rejectedBy, at: c.rejectedAt } : null, snip: c.snip ? { picture: c.snip.url, lines: c.snip.strokes.length, changed_by: (c.snip.changed ?? []).map((x) => x.name) } : null, pin: c.pin, view: c.view })),
+      versions: review.tree.map((n) => ({ name: n.name, at: n.at, bom: n.bom.map((b) => b.label), bom_current: n.bom.some((b) => b.current), added: n.added, checked: n.done })),
     };
   },
 );
@@ -64,21 +65,28 @@ write(
 );
 
 write(
-  "tick_review_comments",
-  "Tick off open CAD Review comments of a system (done; a mentor then approves or rejects them). The CAD Team and mentors may.",
-  z.object({ system_id: uuid, comment_ids: z.array(uuid).min(1).max(100) }),
-  async ({ system_id, comment_ids }, { member }) => {
+  "set_review_comment_status",
+  "Set the status of CAD Review comments of a system: open, on_it (someone is working on it), to_check (ready for a mentor) or done (approved). The CAD Team, mentors and each comment's author move it between open, on_it and to_check; only mentors (or an admin in Edit mode) set done or take a done one back. A mentor sending a to_check one back to open or on_it gives a note (why it isn't done).",
+  z.object({ system_id: uuid, comment_ids: z.array(uuid).min(1).max(100), status: z.enum(["open", "on_it", "to_check", "done"]), note: z.string().trim().max(2000).optional() }),
+  async ({ system_id, comment_ids, status, note }, { member }) => {
     const mode = effectiveMode(member);
-    if (!canTick(mode, member)) throw new ToolError("Only the CAD Team ticks comments off.");
     const rows = await db
-      .select({ id: reviewComments.id, body: reviewComments.body })
+      .select({ id: reviewComments.id, body: reviewComments.body, state: reviewComments.state, authorId: reviewComments.authorId })
       .from(reviewComments)
-      .where(and(eq(reviewComments.systemId, system_id), inArray(reviewComments.id, comment_ids), eq(reviewComments.state, "open")));
+      .where(and(eq(reviewComments.systemId, system_id), inArray(reviewComments.id, comment_ids)));
+    const who = (r: (typeof rows)[number]) => ({ team: canTick(mode, member), approver: canApprove(mode, member), author: r.authorId === member.id });
+    const ok = rows.filter((r) => r.state !== status && allowedStatuses(r.state, who(r)).includes(status));
+    if (!ok.length) throw new ToolError(rows.length ? "None of those comments can be set to that status by you." : "None of those comments are in this system.");
+    if (!note && ok.some((r) => needsNote(r.state, status, { mentor: member.isMentor }))) throw new ToolError("Sending a to_check comment back needs a note: why it isn't done yet.");
     return {
-      count: rows.length,
-      summary: `Ticked off ${rows.length} CAD Review ${rows.length === 1 ? "comment" : "comments"}`,
-      preview: rows.map((r) => ({ id: r.id, text: r.body })),
-      apply: () => asTool(async () => ({ ticked: await tickComments(member, mode, system_id, rows.map((r) => r.id)), open_left: (await listComments(system_id)).filter((c) => c.state === "open").length })),
+      count: ok.length,
+      summary: `Set ${ok.length} CAD Review ${ok.length === 1 ? "comment" : "comments"} to ${status}`,
+      preview: ok.map((r) => ({ id: r.id, text: r.body, from: r.state, to: status })),
+      apply: () =>
+        asTool(async () => {
+          for (const r of ok) await setCommentStatus(member, mode, r.id, status, note ?? "");
+          return { set: ok.length, still_to_act_on: (await listComments(system_id)).filter((c) => isActive(c.state)).length };
+        }),
     };
   },
 );

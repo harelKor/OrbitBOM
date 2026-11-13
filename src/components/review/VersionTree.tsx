@@ -164,7 +164,7 @@ function NodeComments({ node, comments, onFocus }: { node: TreeNode; comments: M
       )}
       {done.length > 0 && (
         <div>
-          <p className="text-[0.625rem] font-semibold tracking-wide text-subtle uppercase">Ticked off · {done.length}</p>
+          <p className="text-[0.625rem] font-semibold tracking-wide text-subtle uppercase">Checked · {done.length}</p>
           <ul>
             {done.map((c) => (
               <TreeComment key={c.id} c={c} onFocus={onFocus} />

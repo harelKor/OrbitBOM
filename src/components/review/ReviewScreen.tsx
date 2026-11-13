@@ -7,7 +7,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { openPartWindow } from "@/components/bom/PartDetailsHost";
 import { deleteReviewView, saveReviewView } from "@/app/(app)/review-comments-actions";
 import type { HiddenParts, MeasureInfo, NamedViews, PageMenu, SceneTools, ViewerModel, ViewerMode } from "@/components/dashboard/ModelCanvas";
-import { AddCommentDialog, OpenComment, WaitingComment, type CommentTarget } from "@/components/review/Comments";
+import { AddCommentDialog, CommentContext, CommentRow, CommentWindow, useStickyList, type CommentTarget } from "@/components/review/Comments";
+import { isActive, statusOf } from "@/lib/reviews/status";
 import { SnipEditor, SnipMe, SnipOverlay, type SnipDraft } from "@/components/review/Snip";
 import { ViewerToolbar } from "@/components/review/ViewerToolbar";
 import { MeasureBox } from "@/components/viewer/MeasureBox";
@@ -249,8 +250,15 @@ export function ReviewScreen({
       }
     : undefined;
 
-  const open = comments.filter((c) => c.state === "open").reverse();
-  const waiting = comments.filter((c) => c.state === "done");
+  // Open and On it, newest first, then To check: a comment whose status moves it out stays where it
+  // was, struck through, until the page is left (Harel, 2026-11-13).
+  const newest = useMemo(() => [...comments].reverse(), [comments]);
+  const open = newest.filter((c) => isActive(c.state));
+  const openRows = useStickyList(newest, (c) => isActive(c.state));
+  const waitingRows = useStickyList(comments, (c) => c.state === "to_check");
+  const waiting = comments.filter((c) => c.state === "to_check");
+  const [windowed, setWindowed] = useState<string | null>(null);
+  const windowComment = windowed ? comments.find((c) => c.id === windowed) : undefined;
   // Comment pins (S6): numbered in the order the comments were written; open and waiting ones
   // drawn in the 3D view. A tap on a pin or a comment turns the view back to the comment's.
   const pinNo = useMemo(() => new Map(comments.map((c, i) => [c.id, i + 1])), [comments]);
@@ -270,9 +278,9 @@ export function ReviewScreen({
   useEffect(() => {
     if (!tools) return;
     // Pins of the comments written on the model shown (they sit in its coordinates).
-    const shown = comments.filter((c) => c.pin && c.state !== "approved" && c.model === kind);
+    const shown = comments.filter((c) => c.pin && c.state !== "done" && c.model === kind);
     tools.pins(
-      shown.map((c) => ({ id: c.id, n: pinNo.get(c.id)!, at: c.pin!, done: c.state === "done" })),
+      shown.map((c) => ({ id: c.id, n: pinNo.get(c.id)!, at: c.pin!, color: statusOf(c.state).color })),
       (id) => {
         const c = comments.find((x) => x.id === id);
         if (c) viewComment(c);
@@ -334,6 +342,7 @@ export function ReviewScreen({
 
   return (
     <SnipMe.Provider value={me.id}>
+    <CommentContext.Provider value={{ me, canTick, canApprove, open: (c) => setWindowed(c.id) }}>
     <div ref={root} className="relative -m-4 flex h-[calc(100dvh-var(--topbar-h,2.75rem))] md:-m-6">
       {drawer && <button aria-label="Close versions" onClick={() => setDrawer(false)} className="fixed inset-0 z-30 modal-backdrop lg:hidden" />}
       <aside
@@ -480,36 +489,37 @@ export function ReviewScreen({
       {side && <PanelResizer root={root} side="right" />}
       <div data-comments className={`absolute top-[8rem] right-3 z-10 flex max-h-[calc(100%-12.5rem)] w-[min(20rem,calc(100%-1.5rem))] flex-col gap-2 pointer-coarse:top-[7.5rem] max-sm:w-48 xl:static xl:max-h-none xl:w-[var(--cad-comments-w,18rem)] xl:shrink-0 xl:overflow-y-auto xl:border-l xl:border-line xl:bg-surface xl:p-3 ${side ? "" : "hidden"}`}>
 
-        <Popup title="Open comments" count={open.length} onHide={() => setSide(false)} tone="amber">
-          {open.length ? (
+        <Popup title="Comments" count={open.length} onHide={() => setSide(false)} tone="amber">
+          {openRows.length ? (
             onRobot ? (
-              <BySystem comments={open} onIsolate={onIsolate}>
-                {(c) => <OpenComment key={c.id} c={c} n={pinNo.get(c.id)} onView={viewComment} canTick={canTick} canDelete={me.isAdmin || c.authorId === me.id} onFocus={showPart} />}
+              <BySystem rows={openRows} onIsolate={onIsolate}>
+                {({ c, gone }) => <CommentRow key={c.id} c={c} gone={gone} n={pinNo.get(c.id)} onView={viewComment} onFocus={showPart} />}
               </BySystem>
             ) : (
-              open.map((c) => <OpenComment key={c.id} c={c} n={pinNo.get(c.id)} onView={viewComment} canTick={canTick} canDelete={me.isAdmin || c.authorId === me.id} onFocus={showPart} />)
+              openRows.map(({ c, gone }) => <CommentRow key={c.id} c={c} gone={gone} n={pinNo.get(c.id)} onView={viewComment} onFocus={showPart} />)
             )
           ) : (
             <li className="p-2 text-xs text-muted">No open comments.</li>
           )}
         </Popup>
         {canApprove && (
-          <Popup title={me.isMentor ? "Waiting for you" : "Waiting for approval"} count={waiting.length} tone="sky">
-            {waiting.length ? (
+          <Popup title={me.isMentor ? "To check · waiting for you" : "To check"} count={waiting.length} tone="violet">
+            {waitingRows.length ? (
               onRobot ? (
-                <BySystem comments={waiting} onIsolate={onIsolate}>
-                  {(c) => <WaitingComment key={c.id} c={c} n={pinNo.get(c.id)} onView={viewComment} isMentor canTick={canTick} onFocus={showPart} />}
+                <BySystem rows={waitingRows} onIsolate={onIsolate}>
+                  {({ c, gone }) => <CommentRow key={c.id} c={c} gone={gone} n={pinNo.get(c.id)} onView={viewComment} onFocus={showPart} />}
                 </BySystem>
               ) : (
-                waiting.map((c) => <WaitingComment key={c.id} c={c} n={pinNo.get(c.id)} onView={viewComment} isMentor canTick={canTick} onFocus={showPart} />)
+                waitingRows.map(({ c, gone }) => <CommentRow key={c.id} c={c} gone={gone} n={pinNo.get(c.id)} onView={viewComment} onFocus={showPart} />)
               )
             ) : (
-              <li className="p-2 text-xs text-muted">Nothing ticked off to approve.</li>
+              <li className="p-2 text-xs text-muted">Nothing to check.</li>
             )}
           </Popup>
         )}
       </div>
 
+      {windowComment && <CommentWindow c={windowComment} onClose={() => setWindowed(null)} onFocus={showPart} onView={viewComment} />}
       {adding !== false && (
         <AddCommentDialog
           // Stays mounted (the text is kept) while the snip is taken and drawn on.
@@ -544,6 +554,7 @@ export function ReviewScreen({
         />
       )}
     </div>
+    </CommentContext.Provider>
     </SnipMe.Provider>
   );
 }
@@ -561,17 +572,20 @@ const NO_GROUPS = new Set<number>();
 
 // The robot's comments in a section per system, the whole robot's first, like CAD's old board
 // (Harel, 2026-11-10): a tap on a name folds its section, Isolate scopes the page to the system.
-function BySystem({ comments, onIsolate, children }: { comments: ReviewComment[]; onIsolate?: (systemId: string) => void; children: (c: ReviewComment) => React.ReactNode }) {
-  const groups = new Map<string, { id: string | null; name: string; list: ReviewComment[] }>();
-  for (const c of comments) {
+type Row = { c: ReviewComment; gone: boolean };
+
+function BySystem({ rows, onIsolate, children }: { rows: Row[]; onIsolate?: (systemId: string) => void; children: (r: Row) => React.ReactNode }) {
+  const groups = new Map<string, { id: string | null; name: string; list: Row[] }>();
+  for (const r of rows) {
+    const c = r.c;
     const k = c.systemId ?? "";
     const g = groups.get(k) ?? { id: c.systemId, name: c.systemId ? (c.systemName ?? "System") : "Whole robot", list: [] };
-    g.list.push(c);
+    g.list.push(r);
     groups.set(k, g);
   }
   const list = [...groups.values()].sort((a, b) => (a.id === null ? -1 : b.id === null ? 1 : a.name.localeCompare(b.name)));
   return list.map((g) => (
-    <SystemSection key={g.id ?? "robot"} name={g.name} count={g.list.length} onIsolate={g.id && onIsolate ? () => onIsolate(g.id!) : undefined}>
+    <SystemSection key={g.id ?? "robot"} name={g.name} count={g.list.filter((r) => !r.gone).length} onIsolate={g.id && onIsolate ? () => onIsolate(g.id!) : undefined}>
       {g.list.map(children)}
     </SystemSection>
   ));
@@ -599,8 +613,8 @@ function SystemSection({ name, count, onIsolate, children }: { name: string; cou
 }
 
 
-function Popup({ title, count, onHide, tone, children }: { title: string; count: number; onHide?: () => void; tone: "amber" | "sky"; children: React.ReactNode }) {
-  const badge = tone === "amber" ? "bg-amber-500/15 text-amber-600" : "bg-sky-500/15 text-sky-600";
+function Popup({ title, count, onHide, tone, children }: { title: string; count: number; onHide?: () => void; tone: "amber" | "violet"; children: React.ReactNode }) {
+  const badge = tone === "amber" ? "bg-amber-500/15 text-amber-600" : "bg-violet-500/15 text-violet-600 dark:text-violet-300";
   return (
     <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-line bg-surface/95 shadow-md backdrop-blur">
       {/* No folding up and down: the column folds sideways from the arrow (Harel, 2026-11-11). */}

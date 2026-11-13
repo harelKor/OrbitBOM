@@ -21,7 +21,7 @@ else
     const { checkSystem } = await import("./detect");
     const { commitDraft } = await import("./commit");
     const { docVersionsKey } = await import("./docVersions");
-    const { addComment, approveComment, rejectComment, saveSnipLines, tickComments, untickComment } = await import("@/lib/reviews/comments");
+    const { addComment, saveSnipLines, setCommentStatus, tickComments } = await import("@/lib/reviews/comments");
     const { loadSystemReview, reviewCounts } = await import("@/lib/data/cadReview");
 
     const onshape: string[] = [];
@@ -75,28 +75,31 @@ else
       expect(onshape).toEqual([`GET documents/d/${DID}/versions`]);
     });
 
-    it("comments: anyone writes, the CAD Team ticks, a mentor approves or rejects", async () => {
+    it("comment statuses: Open, On it, To check (the commit's ticks), Done by a mentor; sent back with why", async () => {
       const a = await addComment(builder, { systemId: system.id, body: "Bolt too close to the edge", partKey: `${DID}:${S1}:P1`, partName: "Plate" });
       const b = await addComment(builder, { systemId: system.id, body: "Add a chamfer" });
+      // Its author takes it on; someone who is neither the author nor the CAD Team can't.
+      await setCommentStatus(builder, "build", a.id, "on_it");
+      await expect(setCommentStatus(member, "none", b.id, "on_it")).rejects.toThrow("Only the CAD Team or its author");
       await expect(tickComments(builder, "build", system.id, [a.id])).rejects.toThrow("Only the CAD Team");
       expect(await tickComments(member, "cad", system.id, [a.id, b.id])).toBe(2);
       expect((await reviewCounts(robot.id))[system.id]).toEqual({ open: 0, done: 2 });
 
-      await expect(approveComment(member, "cad", a.id)).rejects.toThrow("Only mentors");
-      await approveComment(mentor, "none", a.id);
-      await expect(rejectComment(mentor, "none", b.id, " ")).rejects.toThrow("Write why");
-      await rejectComment(mentor, "none", b.id, "Still sharp");
-      await expect(untickComment(member, "cad", a.id)).rejects.toThrow("already approved");
+      await expect(setCommentStatus(member, "cad", a.id, "done")).rejects.toThrow("Only a mentor");
+      await setCommentStatus(mentor, "none", a.id, "done");
+      await expect(setCommentStatus(mentor, "none", b.id, "open", " ")).rejects.toThrow("Write why");
+      await setCommentStatus(mentor, "none", b.id, "open", "Still sharp");
+      await expect(setCommentStatus(member, "cad", a.id, "open")).rejects.toThrow("Only a mentor");
 
-      // An admin in Edit mode approves like a mentor (Harel, 2026-11-08).
+      // An admin in Edit mode sets Done like a mentor, straight from Open (Harel, 2026-11-13).
       const c = await addComment(builder, { systemId: system.id, body: "Label the wires" });
-      await tickComments(member, "cad", system.id, [c.id]);
-      await approveComment(builder, "edit", c.id);
+      await setCommentStatus(builder, "edit", c.id, "done");
 
       const review = await loadSystemReview(system.id);
       const byId = new Map(review!.comments.map((c) => [c.id, c]));
-      expect(byId.get(a.id)).toMatchObject({ state: "approved", approvedBy: "Mentor", author: "Builder", partName: "Plate" });
+      expect(byId.get(a.id)).toMatchObject({ state: "done", approvedBy: "Mentor", onItBy: "Builder", author: "Builder", partName: "Plate" });
       expect(byId.get(b.id)).toMatchObject({ state: "open", rejectNote: "Still sharp", rejectedBy: "Mentor", doneAt: null });
+      expect(byId.get(c.id)).toMatchObject({ state: "done", approvedBy: "Builder" });
     });
 
     it("comments on the whole robot: listed with the robot, counted apart from its systems", async () => {

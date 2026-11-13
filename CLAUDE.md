@@ -32,7 +32,7 @@ server (`/api/mcp/<token>`).
   cotsSync.db ×1, updateBom.db "pulls a new system's BOM"): compare against those.
 - Schema: edit `src/db/schema.ts`, `npm run db:generate`, rename the file to a readable name
   (and its `tag` in `drizzle/meta/_journal.json`), add `ALTER TABLE "x" ENABLE ROW LEVEL SECURITY;`
-  for a new table, commit. Next migration: 0087.
+  for a new table, commit. Next migration: 0088.
 - Local site: README "Local development" (local Supabase in Docker, "Dev sign-in" button; Onshape
   and R2 deliberately unset). Never point local dev at production.
 - On Harel's Windows PC, Docker and `gh` aren't on the Bash PATH: run them from PowerShell, or

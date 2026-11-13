@@ -7,7 +7,7 @@ export type OnshapeVersion = { id: string; name: string; createdAt: string; crea
 export type BomVersion = { id: string; label: string; at: string | null; by: string | null; vid: string | null; current: boolean };
 // `onshapeVersionId`: written in the Onshape panel on that version, so it sits there whatever its
 // date (Harel, 2026-11-09).
-export type TreeComment = { id: string; createdAt: string; doneAt: string | null; doneVersionId: string | null; state: "open" | "done" | "approved"; onshapeVersionId?: string | null; onshapeVersionName?: string | null };
+export type TreeComment = { id: string; createdAt: string; doneAt: string | null; doneVersionId: string | null; state: "open" | "on_it" | "to_check" | "done"; onshapeVersionId?: string | null; onshapeVersionName?: string | null };
 
 // An Update CAD without a new Onshape version (Harel, 2026-11-11): a sub-version "V12 v1" of the
 // Onshape version it was made on, drawn as a small branch off it.
@@ -80,7 +80,7 @@ export function buildTree(
   };
   for (const c of sorted) {
     ((c.onshapeVersionId && byVid.get(c.onshapeVersionId)) || at(c.createdAt)).added.push(c.id);
-    if (c.state === "open") continue;
+    if (c.state === "open" || c.state === "on_it") continue;
     const node = (c.doneVersionId && nodeOfBom.get(c.doneVersionId)) || (c.doneAt ? at(c.doneAt) : null);
     node?.done.push(c.id);
   }

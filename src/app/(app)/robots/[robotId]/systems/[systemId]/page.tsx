@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { isActive } from "@/lib/reviews/status";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { RecentActions } from "@/components/actions/RecentActions";
@@ -60,8 +61,8 @@ export default async function SystemPage({
   // A 3D view for a system with its Final, its Basepart (Harel, 2026-11-12), or both.
   const has3d = !!(system.assemblyUrl || system.basepartUrl);
   // Open CAD Review comments: ticked off in the Commit window, counted on the chip.
-  const openComments = comments.filter((c) => c.state === "open");
-  const waiting = comments.filter((c) => c.state === "done").length;
+  const openComments = comments.filter((c) => isActive(c.state));
+  const waiting = comments.filter((c) => c.state === "to_check").length;
   const thumbs = Object.fromEntries(parts.map((p) => [p.id, p.thumbUrl]));
   const statusColor = new Map<string, string>(STATUSES.map((s) => [s.name, s.color]));
   const viewerParts = parts.flatMap((p) =>

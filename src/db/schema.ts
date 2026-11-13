@@ -693,10 +693,11 @@ export const partVersions = pgTable(
 
 // ---------- CAD Review (plan/design-review.md) ----------
 
-// A comment on a system's design: anyone writes one, the CAD Team ticks it off (in the Update
-// system window, or by itself), a mentor approves it or rejects it with a note, which opens it
-// again (Harel, 2026-11-08).
-export const reviewCommentState = pgEnum("review_comment_state", ["open", "done", "approved"]);
+// A comment on a system's design and its status (Harel, 2026-11-13; ticks before): Open, On it
+// (someone is working on it), To check (waiting for a mentor; the Update system window sets it
+// for the comments it ticks) and Done (a mentor approved it). A mentor sending a To check one
+// back writes why. Rules: src/lib/reviews/status.ts.
+export const reviewCommentState = pgEnum("review_comment_state", ["open", "on_it", "to_check", "done"]);
 // A snip of the 3D view on a comment, with lines drawn on it (Harel, 2026-11-10): the picture in
 // R2, the lines kept apart so they can still be erased (the author any, others their own). `p`:
 // x, y pairs in the picture's pixels; `s`: the pen's width there. `changed`: members other than
@@ -733,10 +734,15 @@ export const reviewComments = pgTable(
     // in the system's comments; a tap opens the one it was written on.
     model: text("model").$type<ModelKind>().notNull().default("final"),
     createdAt: createdAt(),
+    // Who took it on (On it) and when.
+    onItAt: timestamp("on_it_at", { withTimezone: true }),
+    onItBy: uuid("on_it_by").references(() => members.id, { onDelete: "set null" }),
+    // Who set To check and when (the columns kept their names from when it was "ticked off").
     doneAt: timestamp("done_at", { withTimezone: true }),
     doneBy: uuid("done_by").references(() => members.id, { onDelete: "set null" }),
-    // Ticked off in the Update system window: the version that was committed.
+    // Set To check in the Update system window: the version that was committed.
     doneVersionId: uuid("done_version_id").references(() => systemVersions.id, { onDelete: "set null" }),
+    // Who set Done (approved) and when.
     approvedAt: timestamp("approved_at", { withTimezone: true }),
     approvedBy: uuid("approved_by").references(() => members.id, { onDelete: "set null" }),
     // The last rejection: why, by whom and when.
