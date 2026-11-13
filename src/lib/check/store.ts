@@ -108,7 +108,11 @@ export async function setPartWeight(key: string, grams: number | null, memberId:
 }
 
 export async function setIgnored(robotId: string, a: string, b: string, ignored: boolean, memberId: string) {
-  const pair = pairKey(a, b);
+  return setIgnoredId(robotId, pairKey(a, b), ignored, memberId);
+}
+
+// A finding marked fine, by its id (findingId in types.ts), or an overlapping pair by pairKey.
+export async function setIgnoredId(robotId: string, pair: string, ignored: boolean, memberId: string) {
   if (!ignored) return db.delete(designCheckIgnores).where(and(eq(designCheckIgnores.robotId, robotId), eq(designCheckIgnores.pair, pair)));
   return db.insert(designCheckIgnores).values({ robotId, pair, createdBy: memberId }).onConflictDoNothing();
 }

@@ -5,6 +5,7 @@ import * as THREE from "three";
 import type { CheckPart } from "@/components/viewer/checkScene";
 import type { ViewerModel } from "@/components/viewer/types";
 import { findClashes } from "@/lib/check/clash";
+import { contacts, floating, holeOffsets, merge, screwChecks, worldBoxes } from "@/lib/check/connections";
 import { buildEnvelope, hull, type PlanPart } from "@/lib/check/envelope";
 import type { CheckLimits, CheckResults } from "@/lib/check/types";
 import { meshVolume, weigh, type PartFacts, type WeighInput } from "@/lib/check/weight";
@@ -131,5 +132,15 @@ export async function runCheck(parts: CheckPart[], ctx: RunContext, progress: Pr
     { ignored: ctx.ignored, pause, progress: (done, total) => progress("Looking for overlaps", done, total) },
   );
 
-  return { v: 1, weight, envelope, clashes, ms: Math.round(performance.now() - started) };
+  // Connections (phase 2): round faces come from each mesh's topology, worked out in the
+  // viewer's workers just after the meshes arrive.
+  progress("Reading holes and screws", 0, 1);
+  for (let t = 0; t < 150 && placed.some((p) => !p.geometry.userData.topology); t++) await new Promise((r) => setTimeout(r, 200));
+  const list = placed.map((p) => ({ key: p.key, name: ctx.names.get(p.key) ?? "Unnamed part", geometry: p.geometry, matrix: p.matrix }));
+  const boxes = worldBoxes(list);
+  const touching = await contacts(list, boxes, { pause, progress: (done, total) => progress("Finding what touches what", done, total) });
+  const screws = screwChecks(list, boxes);
+  const findings = merge([...floating(list, boxes, touching), ...holeOffsets(list, touching), ...screws.findings]);
+
+  return { v: 1, weight, envelope, clashes, findings, ms: Math.round(performance.now() - started) };
 }

@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { saveCheckLimits, saveDesignCheck, savePartWeight, setOverlapIgnored } from "@/app/(app)/design-check-actions";
+import { saveCheckLimits, saveDesignCheck, savePartWeight, setFindingIgnored, setOverlapIgnored } from "@/app/(app)/design-check-actions";
 import { Dialog } from "@/components/Dialog";
 import type { SceneTools, ViewerModel } from "@/components/dashboard/ModelCanvas";
 import { LocalTime } from "@/components/ui/LocalTime";
 import { toast } from "@/components/ui/Toaster";
 import type { CheckData } from "@/lib/check/store";
-import { pairKey, type CheckLimits, type CheckResults, type Clash, type WeightPart } from "@/lib/check/types";
+import { pairKey, type CheckLimits, type CheckResults, type Clash, type DesignFinding, type FindingKind, type WeightPart } from "@/lib/check/types";
 import { reweigh } from "@/lib/check/weight";
 import { modelSig, runCheck } from "./runCheck";
 
@@ -35,6 +35,7 @@ export function DesignCheck({
   canManage,
   onShow,
   onOverlap,
+  onMark,
   onComment,
   sandbox,
 }: {
@@ -50,6 +51,7 @@ export function DesignCheck({
   canManage: boolean;
   onShow: (f: Finding) => void;
   onOverlap: (c: Clash) => void; // Show: the overlap in red, the rest dimmed
+  onMark: (f: DesignFinding) => void; // Show on any other finding: its parts, a red dot where
   onComment: (f: Finding) => void;
   sandbox?: CheckData; // /dev/viewer: this data, and nothing saved
 }) {
@@ -111,6 +113,13 @@ export function DesignCheck({
     }
   };
 
+  const setFindingFine = async (id: string, fine: boolean) => {
+    const r = sandbox ? {} : await setFindingIgnored(robotId, id, fine);
+    if (r.error) return toast(r.error, true);
+    if (!data) return;
+    setData({ ...data, ignored: fine ? [...data.ignored, id] : data.ignored.filter((x) => x !== id) });
+  };
+
   const setFine = async (c: Clash, fine: boolean) => {
     const r = sandbox ? {} : await setOverlapIgnored(robotId, c.a, c.b, fine);
     if (r.error) return toast(r.error, true);
@@ -122,13 +131,16 @@ export function DesignCheck({
   const inSystem = (key: string) => !onlySystem || (systemsOf.get(key) ?? []).includes(onlySystem);
   const clashes = (results?.clashes ?? []).filter((c) => !ignored.has(pairKey(c.a, c.b)) && (inSystem(c.a) || inSystem(c.b)));
   const real = clashes.filter((c) => !c.expected);
+  const findings = (results?.findings ?? []).filter((f) => !ignored.has(f.id) && (!onlySystem || f.keys.some(inSystem)));
+  const findingsFine = (results?.findings ?? []).filter((f) => ignored.has(f.id) && (!onlySystem || f.keys.some(inSystem)));
+  const ignoredPairs = (data?.ignored ?? []).filter((k) => k.split("|")[0].includes(":"));
   const usual = clashes.filter((c) => c.expected);
   const weightParts = (results?.weight.parts ?? []).filter((p) => !onlySystem || p.systemId === onlySystem);
   const limits = data?.limits ?? {};
   const totalG = onlySystem ? (results?.weight.bySystem.find((s) => s.systemId === onlySystem)?.g ?? 0) : (results?.weight.totalG ?? 0);
   const limitKg = onlySystem ? (limits.budgets?.[onlySystem] ?? null) : (limits.weightKg ?? null);
   const env = results?.envelope;
-  const issues = real.length + (limitKg && totalG / 1000 > limitKg ? 1 : 0) + (!onlySystem && env && limits.perimeterMm && env.perimeterMm > limits.perimeterMm ? 1 : 0) + (!onlySystem && env && limits.heightMm && env.heightMm > limits.heightMm ? 1 : 0);
+  const issues = real.length + findings.filter((f) => f.level === "warn").length + (limitKg && totalG / 1000 > limitKg ? 1 : 0) + (!onlySystem && env && limits.perimeterMm && env.perimeterMm > limits.perimeterMm ? 1 : 0) + (!onlySystem && env && limits.heightMm && env.heightMm > limits.heightMm ? 1 : 0);
 
   const showClash = (c: Clash) => ({ keys: [c.a, c.b], body: clashText(c), key: c.a, name: c.aName, systemId: pickSystem(systemsOf, c.a, onlySystem), pin: c.at });
 
@@ -219,9 +231,9 @@ export function DesignCheck({
                         ))}
                       </List>
                     )}
-                    {data.ignored.length > 0 && (
-                      <List title={`Marked fine (${data.ignored.length})`}>
-                        {data.ignored.map((k) => {
+                    {ignoredPairs.length > 0 && (
+                      <List title={`Marked fine (${ignoredPairs.length})`}>
+                        {ignoredPairs.map((k) => {
                           const [a, b] = k.split("|");
                           return (
                             <li key={k} className="flex items-center gap-2 px-1 py-1 text-xs">
@@ -239,6 +251,45 @@ export function DesignCheck({
                       </List>
                     )}
                   </Block>
+                  {results.findings &&
+                    KINDS.map(({ kind, title }) => {
+                      const list = findings.filter((f) => f.kind === kind);
+                      if (!list.length) return null;
+                      return (
+                        <Block key={kind} title={`${title} (${list.length})`}>
+                          <ul className="space-y-1">
+                            {list.slice(0, 60).map((f) => (
+                              <FindingRow
+                                key={f.id}
+                                f={f}
+                                canCheck={canCheck}
+                                onShow={() => onMark(f)}
+                                onComment={() => onComment({ keys: f.keys, body: f.text, key: f.keys[0] ?? null, name: f.names[0] ?? null, systemId: f.keys[0] ? pickSystem(systemsOf, f.keys[0], onlySystem) : null, pin: f.at })}
+                                onFine={() => setFindingFine(f.id, true)}
+                              />
+                            ))}
+                          </ul>
+                          {list.length > 60 && <p className="text-xs text-muted">And {list.length - 60} more.</p>}
+                        </Block>
+                      );
+                    })}
+                  {findingsFine.length > 0 && (
+                    <List title={`Other findings marked fine (${findingsFine.length})`}>
+                      {findingsFine.map((f) => (
+                        <li key={f.id} className="flex items-center gap-2 px-1 py-1 text-xs">
+                          <span className="min-w-0 flex-1 truncate text-fg-2" title={f.text}>
+                            {f.text}
+                          </span>
+                          {canCheck && (
+                            <button className="press font-semibold text-accent-hover hover:underline pointer-coarse:min-h-9" onClick={() => setFindingFine(f.id, false)}>
+                              Check again
+                            </button>
+                          )}
+                        </li>
+                      ))}
+                    </List>
+                  )}
+                  {results.findings && !findings.length && <p className="text-xs text-muted">Connections, screws and holes: nothing to look at.</p>}
                 </>
               )}
             </>
@@ -271,6 +322,42 @@ function clashText(c: Clash) {
   if (c.same) return `${c.aName} is placed twice in the same spot.`;
   const how = c.depthMm >= 0.1 ? ` by about ${c.depthMm.toFixed(1)} mm` : c.flush ? " (they share a face, side by side)" : "";
   return `${c.aName} and ${c.bName} overlap${how}.`;
+}
+
+// The sections the other findings are listed in, in this order.
+const KINDS: { kind: FindingKind; title: string }[] = [
+  { kind: "floating", title: "Not attached" },
+  { kind: "hole-offset", title: "Holes that don't line up" },
+  { kind: "hole-size", title: "Holes for screws" },
+  { kind: "screw-length", title: "Screw length and thread" },
+  { kind: "access", title: "Hard to reach" },
+  { kind: "one-screw", title: "Held by one screw" },
+  { kind: "plate", title: "Plates" },
+  { kind: "printed", title: "3D-printed parts" },
+];
+
+function FindingRow({ f, canCheck, onShow, onComment, onFine }: { f: DesignFinding; canCheck: boolean; onShow: () => void; onComment: () => void; onFine: () => void }) {
+  return (
+    <li className={`rounded-md border ${f.level === "warn" ? "border-red-500/40" : "border-line"}`}>
+      <button onClick={onShow} className="press w-full px-2.5 py-1.5 text-left text-xs text-fg hover:bg-raised pointer-coarse:min-h-10" title="Show these parts">
+        {f.text}
+        {f.copies > 1 && <span className="text-muted tabular-nums"> · {f.copies} places</span>}
+      </button>
+      <div className="flex gap-3 border-t border-line px-2.5 py-1 text-[0.6875rem] font-semibold">
+        <button className="press text-red-600 hover:underline pointer-coarse:min-h-9 dark:text-red-400" onClick={onShow} title="Dim everything else and mark the spot in red">
+          Show
+        </button>
+        <button className="press text-accent-hover hover:underline pointer-coarse:min-h-9" onClick={onComment}>
+          Comment
+        </button>
+        {canCheck && (
+          <button className="press text-subtle hover:text-fg hover:underline pointer-coarse:min-h-9" onClick={onFine} title="It's meant to be like this: don't list it again">
+            It&apos;s fine
+          </button>
+        )}
+      </div>
+    </li>
+  );
 }
 
 function ClashRow({ c, canCheck, onShow, onOverlap, onComment, onFine }: { c: Clash; canCheck: boolean; onShow: () => void; onOverlap: () => void; onComment: () => void; onFine: () => void }) {

@@ -4,7 +4,7 @@
 import * as THREE from "three";
 import type { SceneTools } from "@/components/viewer/types";
 import { overlapShape } from "@/lib/check/overlap";
-import type { Clash } from "@/lib/check/types";
+import type { Clash, DesignFinding } from "@/lib/check/types";
 
 export function showOverlap(tools: SceneTools, c: Clash): void {
   const parts = tools.checkParts();
@@ -37,4 +37,18 @@ export function showOverlap(tools: SceneTools, c: Clash): void {
 export function hideOverlap(tools: SceneTools, keys: string[]): void {
   tools.showOverlap(null);
   tools.setClear(keys, false);
+}
+
+// Show on any other finding: its parts with the rest dimmed, and a red dot on the spot.
+export function markFinding(tools: SceneTools, f: DesignFinding): void {
+  const keys = [...new Set(f.keys)];
+  tools.isolate(keys, { ghost: 1 });
+  if (!f.at) return tools.zoomTo(keys);
+  const at = new THREE.Vector3(...f.at).multiplyScalar(0.001);
+  const ball = new THREE.SphereGeometry(0.004, 16, 12).toNonIndexed();
+  ball.translate(at.x, at.y, at.z);
+  const tris = new Float32Array(ball.attributes.position.array);
+  ball.dispose();
+  const red = tools.showOverlap({ tris, lines: new Float32Array(), box: new THREE.Box3().setFromCenterAndSize(at, new THREE.Vector3(0.008, 0.008, 0.008)) });
+  if (red) tools.frameBox(red.expandByScalar(0.06));
 }

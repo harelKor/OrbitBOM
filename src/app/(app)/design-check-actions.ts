@@ -1,7 +1,7 @@
 "use server";
 
 import { requireCapability } from "@/lib/mode";
-import { saveCheck, setIgnored, setLimits, setPartWeight } from "@/lib/check/store";
+import { saveCheck, setIgnored, setIgnoredId, setLimits, setPartWeight } from "@/lib/check/store";
 import type { CheckLimits, CheckResults } from "@/lib/check/types";
 import { isUuid } from "@/lib/uuid";
 
@@ -44,5 +44,13 @@ export async function setOverlapIgnored(robotId: string, a: string, b: string, i
   const member = await requireCapability("check");
   if (!isUuid(robotId) || typeof a !== "string" || typeof b !== "string" || !a || !b || a.length > 300 || b.length > 300) return { error: "Not a part." };
   await setIgnored(robotId, a, b, ignored, member.id);
+  return {};
+}
+
+// A finding (connections, access, plates, printed parts) marked fine: not listed again.
+export async function setFindingIgnored(robotId: string, id: string, ignored: boolean): Promise<CheckActionResult> {
+  const member = await requireCapability("check");
+  if (!isUuid(robotId) || typeof id !== "string" || !id || id.length > 1000) return { error: "Not a finding." };
+  await setIgnoredId(robotId, id, ignored, member.id);
   return {};
 }

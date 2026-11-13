@@ -6,7 +6,7 @@ import type { HiddenParts, MeasureInfo, NamedViews, SceneTools, ViewerMode, View
 import { ViewerToolbar } from "@/components/review/ViewerToolbar";
 import { MeasureBox } from "@/components/viewer/MeasureBox";
 import { DesignCheck } from "@/components/check/DesignCheck";
-import { showOverlap } from "@/components/check/showOverlap";
+import { markFinding, showOverlap } from "@/components/check/showOverlap";
 import { applyView, captureView, hashWithView, type ViewState } from "@/components/viewer/viewState";
 import { Segmented } from "@/components/ui/Segmented";
 
@@ -147,6 +147,7 @@ export function Sandbox() {
               tools?.zoomTo(f.keys);
             }}
             onOverlap={(c) => tools && showOverlap(tools, c)}
+            onMark={(f) => tools && markFinding(tools, f)}
             onComment={(f) => alert(`Comment (sandbox): ${f.body}`)}
             sandbox={checkData}
           />

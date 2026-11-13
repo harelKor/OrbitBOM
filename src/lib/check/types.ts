@@ -45,11 +45,28 @@ export type EnvelopeResult = {
 // can read 0); `same`: one part placed twice in the same spot.
 export type Clash = { a: string; b: string; aName: string; bName: string; depthMm: number; at: [number, number, number]; copies: number; expected: string | null; same?: boolean; flush?: boolean };
 
+// Everything else the check finds (phases 2-6, Harel 2026-11-13), one shape for all: the parts
+// it's about, what's wrong in plain words, a point to show (model mm) and how many places.
+// `id` stays the same from run to run, so "It's fine" can be saved for it.
+export type FindingKind = "floating" | "hole-offset" | "hole-size" | "screw-length" | "one-screw" | "access" | "plate" | "printed";
+export type DesignFinding = {
+  id: string;
+  kind: FindingKind;
+  keys: string[];
+  names: string[];
+  text: string;
+  at: [number, number, number] | null;
+  level: "warn" | "info"; // warn: likely a mistake; info: worth a look
+  copies: number;
+};
+export const findingId = (code: string, keys: string[], extra = "") => [code, ...[...keys].sort(), extra].join("|");
+
 export type CheckResults = {
   v: 1;
   weight: WeightResult;
   envelope: EnvelopeResult | null;
   clashes: Clash[];
+  findings?: DesignFinding[]; // runs before phase 2 have none
   ms: number; // how long it took in the browser
 };
 

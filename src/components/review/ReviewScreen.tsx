@@ -12,8 +12,8 @@ import { isActive, statusOf } from "@/lib/reviews/status";
 import { SnipEditor, SnipMe, SnipOverlay, type SnipDraft } from "@/components/review/Snip";
 import { ViewerToolbar } from "@/components/review/ViewerToolbar";
 import { DesignCheck, type Finding } from "@/components/check/DesignCheck";
-import { hideOverlap, showOverlap } from "@/components/check/showOverlap";
-import type { Clash } from "@/lib/check/types";
+import { hideOverlap, markFinding, showOverlap } from "@/components/check/showOverlap";
+import type { Clash, DesignFinding } from "@/lib/check/types";
 import { MeasureBox } from "@/components/viewer/MeasureBox";
 import { applyView, captureView, cleanView, hashWithView, viewFromHash, type ViewState } from "@/components/viewer/viewState";
 import { Segmented } from "@/components/ui/Segmented";
@@ -180,6 +180,15 @@ export function ReviewScreen({
     setFocus(null);
     overlapKeys.current = [...new Set([c.a, c.b])];
     showOverlap(tools, c);
+    setOverlapOn(true);
+  };
+  const markCheckFinding = (f: DesignFinding) => {
+    if (!tools) return;
+    endOverlap();
+    setDrawer(false);
+    setFocus(null);
+    overlapKeys.current = [...new Set(f.keys)];
+    markFinding(tools, f);
     setOverlapOn(true);
   };
   const showFinding = (f: Finding) => {
@@ -430,6 +439,7 @@ export function ReviewScreen({
             canManage={check.canManage}
             onShow={showFinding}
             onOverlap={showClashOverlap}
+            onMark={markCheckFinding}
             onComment={commentFinding}
           />
         )}
@@ -488,7 +498,7 @@ export function ReviewScreen({
             parts are isolated: the quick way back on a phone. */}
         {(focusName || isolated) && (
           <div className="absolute z-20 flex animate-pop items-center gap-2 rounded-full border border-emerald-500/50 bg-surface/95 px-3 py-1.5 text-xs shadow-sm backdrop-blur max-lg:bottom-20 max-lg:left-1/2 max-lg:-translate-x-1/2 lg:top-3 lg:left-3">
-            <span className="font-semibold whitespace-nowrap text-fg">{focusName ? `Showing ${focusName}` : overlapOn ? "Overlap in red" : isolated && isolated.length > 1 ? `${isolated.length} parts isolated` : "Isolated"}</span>
+            <span className="font-semibold whitespace-nowrap text-fg">{focusName ? `Showing ${focusName}` : overlapOn ? "Marked in red" : isolated && isolated.length > 1 ? `${isolated.length} parts isolated` : "Isolated"}</span>
             <button
               onClick={() => {
                 setFocus(null);
