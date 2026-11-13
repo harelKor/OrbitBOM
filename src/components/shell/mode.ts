@@ -17,8 +17,10 @@ export const ROBOT_COOKIE = "orbit-robot";
 // from Onshape and system versions. classify: a part's type, COTS, In-House or back to Undefined (Harel, 2026-10-31 and 2026-11-01).
 // shape: a system page's Bulk edit, Merge parts and + Manual part (CAD too, Harel 2026-10-31).
 // instruct: write the Assembly page's steps (CAD too, Harel 2026-11-10; ticking them is work).
+// check: run the CAD page's Design check, set a part's weight, mark an overlap as fine (CAD too,
+// Harel 2026-11-13; its limits are manage).
 // manage: everything else (deletes, robot and system settings, Settings).
-export type Capability = "work" | "draw" | "review" | "sync" | "classify" | "shape" | "instruct" | "manage";
+export type Capability = "work" | "draw" | "review" | "sync" | "classify" | "shape" | "instruct" | "check" | "manage";
 
 export function can(mode: Mode, cap: Capability): boolean {
   if (cap === "work") return mode !== "none";

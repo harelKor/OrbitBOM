@@ -3,6 +3,7 @@
 // this file only wires them, so a session changing one module rarely needs to touch it.
 import * as THREE from "three";
 import { createCamera } from "./camera";
+import { createCheckTools } from "./checkScene";
 import { loadModel, partTools, placementsBox, refitNeeded } from "./load";
 import { createMeasureLayer, type MeasureInfo, type MeasureLayer } from "./measureLayer";
 import { createLooks, createPaint, type Paint } from "./paint";
@@ -135,6 +136,7 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
     ...stageTools(stage),
     ...motion.tools,
     ...pins.tools,
+    ...createCheckTools(meshes, visibility.place),
     whenLoaded: () => allIn, // every part file is in (a saved view's hidden parts can be found)
     // Onshape's render modes (S9): paint again, then put Make transparent's parts back.
     display: painter.display,

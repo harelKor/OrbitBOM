@@ -6,6 +6,7 @@ import type { Part as DrawingPart } from "../lib/drawing/read";
 import type { PieceRow } from "../lib/inventory/stock";
 import type { Shape } from "../lib/review/shape";
 import type { ViewState } from "../components/viewer/viewState";
+import type { CheckLimits, CheckResults } from "../lib/check/types";
 import {
   bigint,
   boolean,
@@ -113,6 +114,9 @@ export const robots = pgTable("robots", {
   // The robot's Basepart (Harel, 2026-11-12): its main Part Studio, later replaced by the robot
   // Basepart assembly in the same document. 3D only; `main_assembly_url` is the robot's Final.
   ...basepartColumns(),
+  // Design check (plan/design-check.md): the season's weight and size limits, the systems left
+  // out (bumpers) and each system's weight budget. Set on the CAD page in Edit mode.
+  checkLimits: jsonb("check_limits").$type<CheckLimits>().notNull().default({}),
   createdAt: createdAt(),
 });
 
@@ -793,6 +797,50 @@ export const namedViews = pgTable(
   },
   (t) => [index("named_views_robot_idx").on(t.robotId, t.name)],
 );
+
+// Design check runs (plan/design-check.md): weight, frame perimeter and interference worked out
+// in a CAD member's browser from the robot's 3D model and saved here for the team. The newest per
+// robot and model is the one shown; older ones are dropped on save.
+export const designChecks = pgTable(
+  "design_checks",
+  {
+    id: id(),
+    robotId: uuid("robot_id")
+      .notNull()
+      .references(() => robots.id, { onDelete: "cascade" }),
+    model: text("model").notNull().default("final"), // "final" | "basepart"
+    sig: text("sig").notNull(), // the 3D model it ran on: a newer model means old results
+    results: jsonb("results").$type<CheckResults>().notNull(),
+    ranBy: uuid("ran_by").references(() => members.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("design_checks_robot_idx").on(t.robotId, t.model, t.createdAt)],
+);
+
+// Interference a CAD member marked as fine (a press fit, a part drawn on purpose that way): the
+// part pair (pairKey in src/lib/check/types.ts) isn't checked again on this robot.
+export const designCheckIgnores = pgTable(
+  "design_check_ignores",
+  {
+    robotId: uuid("robot_id")
+      .notNull()
+      .references(() => robots.id, { onDelete: "cascade" }),
+    pair: text("pair").notNull(),
+    createdBy: uuid("created_by").references(() => members.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.robotId, t.pair] })],
+);
+
+// A part's real weight, set by hand on the CAD page's weight list (a motor, a gearbox: what the
+// mesh's volume can't tell). Keyed by the BOM key (did:eid:partId), so a COTS part keeps it in
+// every system and robot that uses the same Onshape part. Grams, one copy.
+export const partWeights = pgTable("part_weights", {
+  key: text("key").primaryKey(),
+  grams: real("grams").notNull(),
+  setBy: uuid("set_by").references(() => members.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 // Every time a part was released to fab (Released, Reproduction, Secondary Production) and the
 // version it was on, so its version history can tag those versions.

@@ -50,6 +50,8 @@ export default async function CadPage({ params, searchParams }: { params: Promis
       canTick={canTick(mode, member)}
       canApprove={canApprove(mode, member)}
       canSync={can(mode, "sync")}
+      canCheck={can(mode, "check")}
+      canManage={can(mode, "manage")}
     />
   );
 }

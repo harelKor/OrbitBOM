@@ -38,6 +38,8 @@ export function CadReview({
   canTick,
   canApprove,
   canSync,
+  canCheck,
+  canManage,
   hasBasepart,
   initialModel,
 }: {
@@ -53,6 +55,8 @@ export function CadReview({
   canTick: boolean;
   canApprove: boolean;
   canSync: boolean;
+  canCheck: boolean; // run the Design check, set weights, mark overlaps fine
+  canManage: boolean; // the Design check's limits
   hasBasepart: boolean; // a Basepart is linked (Harel, 2026-11-12)
   initialModel?: ModelKind;
 }) {
@@ -89,6 +93,7 @@ export function CadReview({
   const sysParts = useMemo(() => (sys ? parts.filter((p) => p.systemId === sys.id) : parts), [parts, sys]);
   const own = review.comments.filter((c) => !c.systemId).reverse();
   const extra = sys && extras?.systemId === sys.id ? extras : null;
+  const check = useMemo(() => ({ systems, parts, canCheck, canManage }), [systems, parts, canCheck, canManage]);
 
   if (sys) {
     const comments = review.comments.filter((c) => c.systemId === sys.id);
@@ -105,6 +110,7 @@ export function CadReview({
         comments={comments}
         target={{ systemId: sys.id }}
         onlySystem={sys.id}
+        check={check}
         me={me}
         canTick={canTick}
         canApprove={canApprove}
@@ -149,6 +155,7 @@ export function CadReview({
       target={{ systems }}
       onlySystem={null}
       onIsolate={isolate}
+      check={check}
       me={me}
       canTick={canTick}
       canApprove={canApprove}

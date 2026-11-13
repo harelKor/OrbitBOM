@@ -32,7 +32,7 @@ server (`/api/mcp/<token>`).
   cotsSync.db ×1): compare against those.
 - Schema: edit `src/db/schema.ts`, `npm run db:generate`, rename the file to a readable name
   (and its `tag` in `drizzle/meta/_journal.json`), add `ALTER TABLE "x" ENABLE ROW LEVEL SECURITY;`
-  for a new table, commit. Next migration: 0090.
+  for a new table, commit. Next migration: 0091.
 - Local site: README "Local development" (local Supabase in Docker, "Dev sign-in" button; Onshape
   and R2 deliberately unset). Never point local dev at production.
 - On Harel's Windows PC, Docker and `gh` aren't on the Bash PATH: run them from PowerShell, or
@@ -156,6 +156,10 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
   (Harel, 2026-11-11): the 3D view copies Onshape's assembly view unless he decided otherwise
   (kept: hover blue / picked orange, Shift+Y brings back the hidden part under the mouse, Space
   drops the newest pick, no parts list, no Hide others / Zoom to). Test 3D changes on `/dev/viewer`.
+- **Design check** (plan/design-check.md, 2026-11-13): phase 1 built (weight, frame perimeter
+  and height, interference) in the CAD page's panel; runs in the CAD member's browser on the loaded
+  model (`SceneTools.checkParts`), maths in `src/lib/check/`, UI `src/components/check/`, saved in
+  `design_checks`. Phases 2-7 (connections, assembly access, plates, printed parts, stress, AI) wait.
 - Assembly page (`/robots/<id>/assembly`, plan/assembly-guides.md): sub-assemblies come from the
   part number (`src/lib/assembly/groups.ts`, 1690-26-421-01 → "42"), steps and ticks in
   `src/lib/assembly/steps.ts` (CAD writes with `instruct`, any team member ticks with `work`), page

@@ -11,6 +11,7 @@ import { AddCommentDialog, CommentContext, CommentRow, CommentWindow, useStickyL
 import { isActive, statusOf } from "@/lib/reviews/status";
 import { SnipEditor, SnipMe, SnipOverlay, type SnipDraft } from "@/components/review/Snip";
 import { ViewerToolbar } from "@/components/review/ViewerToolbar";
+import { DesignCheck, type Finding } from "@/components/check/DesignCheck";
 import { MeasureBox } from "@/components/viewer/MeasureBox";
 import { applyView, captureView, cleanView, hashWithView, viewFromHash, type ViewState } from "@/components/viewer/viewState";
 import { Segmented } from "@/components/ui/Segmented";
@@ -49,6 +50,7 @@ export function ReviewScreen({
   onIsolate,
   panel,
   models,
+  check,
 }: {
   robotId: string;
   title: string;
@@ -69,6 +71,9 @@ export function ReviewScreen({
   // toggle), and switching. Comments of both are listed; a tap on one written on the other model
   // switches to it, at its view.
   models?: { kind: ModelKind; both: boolean; onKind: (k: ModelKind) => void };
+  // The Design check (plan/design-check.md): the robot's systems, and who may run it and set its limits.
+  // `parts`: the whole robot's, also when one system is isolated (a run covers the robot).
+  check?: { systems: { id: string; name: string }[]; parts: ReviewPart[]; canCheck: boolean; canManage: boolean };
 }) {
   const kind: ModelKind = models?.kind ?? "final";
   const [model, setModel] = useState<ViewerModel | null | undefined>(builtAt ? undefined : null);
@@ -100,8 +105,10 @@ export function ReviewScreen({
   // + Add comment keeps the 3D view as it is when the window opens, and the newest pick's point
   // as the comment's pin (S6).
   const [addingAt, setAddingAt] = useState<{ view: ViewState; pin: [number, number, number] | null } | null>(null);
-  const startAdding = (part: { key: string; name: string | null; systemId: string | null } | null) => {
-    setAddingAt(tools ? { view: captureView(tools, changes ? colors : undefined), pin: tools.pickPoint() } : null);
+  const [addingBody, setAddingBody] = useState("");
+  const startAdding = (part: { key: string; name: string | null; systemId: string | null } | null, from?: { body: string; pin: [number, number, number] | null }) => {
+    setAddingAt(tools ? { view: captureView(tools, changes ? colors : undefined), pin: from ? from.pin : tools.pickPoint() } : null);
+    setAddingBody(from?.body ?? "");
     setAdding(part);
   };
   const [hidden, setHidden] = useState<HiddenParts | null>(null);
@@ -143,6 +150,26 @@ export function ReviewScreen({
   }, [modelUrl, builtAt]);
 
   const partByKey = useMemo(() => new Map(parts.map((p) => [p.key, p])), [parts]);
+  const checkParts = check?.parts ?? parts;
+  const systemsOf = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const p of checkParts) if (p.systemId) m.set(p.key, [...(m.get(p.key) ?? []), p.systemId]);
+    return m;
+  }, [checkParts]);
+  const checkNames = useMemo(() => new Map(checkParts.map((p) => [p.key, p.name])), [checkParts]);
+  // A Design check finding: its parts alone in the view (the rest see-through round them), framed.
+  const showFinding = (f: Finding) => {
+    if (!tools) return;
+    setDrawer(false);
+    setFocus(null);
+    tools.isolate(f.keys, { ghost: 0.35 });
+    tools.zoomTo(f.keys);
+  };
+  const commentFinding = (f: Finding) => {
+    showFinding(f);
+    // The comment keeps the view once the camera got there.
+    window.setTimeout(() => startAdding(f.key ? { key: f.key, name: f.name, systemId: f.systemId } : null, { body: f.body, pin: f.pin }), 700);
+  };
   const nameByKey = useMemo(() => new Map(parts.map((p) => [p.key, p.name])), [parts]);
   const compareColors = useMemo(() => {
     const m = new Map<string, string>(parts.map((p) => [p.key, COMPARE.same]));
@@ -363,6 +390,23 @@ export function ReviewScreen({
         <button className="btn-primary h-12 w-full justify-center text-base shadow-[0_0_18px_-4px_var(--color-accent)] active:scale-[0.98] max-lg:hidden" onClick={() => startAdding(picked)}>
           + Add comment
         </button>
+        {check && (
+          <DesignCheck
+            key={kind}
+            robotId={robotId}
+            kind={kind}
+            model={model}
+            tools={tools}
+            names={checkNames}
+            systemsOf={systemsOf}
+            systems={check.systems}
+            onlySystem={onlySystem}
+            canCheck={check.canCheck}
+            canManage={check.canManage}
+            onShow={showFinding}
+            onComment={commentFinding}
+          />
+        )}
         {panel(showPart, open)}
       </aside>
       <PanelResizer root={root} />
@@ -535,6 +579,7 @@ export function ReviewScreen({
           onRemoveSnip={() => setSnipDraft(null)}
           at={addingAt}
           model={kind}
+          initialBody={addingBody}
         />
       )}
       {snipStep === "draw" && snipDraft && (

@@ -40,6 +40,7 @@ export const DENIED: Record<Capability, string> = {
   classify: "Only the CAD Team can change a part's type (COTS, In-House or Undefined).",
   shape: "Only the CAD Team can bulk edit, merge or add parts.",
   instruct: "Only the CAD Team can write assembly steps.",
+  check: "Only the CAD Team can run the design check.",
   manage: "Only an admin in Edit mode can do this.",
 };
 

@@ -555,6 +555,7 @@ export function AddCommentDialog({
   onRemoveSnip,
   at,
   model = "final",
+  initialBody = "",
 }: {
   open: boolean;
   onClose: () => void;
@@ -568,8 +569,9 @@ export function AddCommentDialog({
   onRemoveSnip: () => void;
   at?: { view: unknown; pin: [number, number, number] | null } | null; // the 3D view when it opened, and the newest pick's point (S6)
   model?: "basepart" | "final"; // the 3D model it's written on (Harel, 2026-11-12)
+  initialBody?: string; // a Design check finding's words, to edit before saving
 }) {
-  const [body, setBody] = useState("");
+  const [body, setBody] = useState(initialBody);
   const { pending, error, run } = useCommentAction();
   const onRobot = "systems" in target;
   const [scope, setScope] = useState<"system" | "robot">(onRobot && !part?.systemId ? "robot" : "system");
