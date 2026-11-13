@@ -21,7 +21,7 @@ else
     const { checkSystem } = await import("./detect");
     const { commitDraft } = await import("./commit");
     const { docVersionsKey } = await import("./docVersions");
-    const { addComment, saveSnipLines, setCommentStatus, tickComments } = await import("@/lib/reviews/comments");
+    const { addComment, addReply, deleteReply, editComment, editReply, saveSnipLines, setCommentStatus, tickComments } = await import("@/lib/reviews/comments");
     const { loadSystemReview, reviewCounts } = await import("@/lib/data/cadReview");
 
     const onshape: string[] = [];
@@ -105,7 +105,29 @@ else
       const byId = new Map(review!.comments.map((c) => [c.id, c]));
       expect(byId.get(a.id)).toMatchObject({ state: "done", approvedBy: "Mentor", onItBy: "Builder", author: "Builder", partName: "Plate" });
       expect(byId.get(b.id)).toMatchObject({ state: "open", rejectNote: "Still sharp", rejectedBy: "Mentor", doneAt: null });
+      // The mentor's why is in the thread.
+      expect(byId.get(b.id)!.replies.map((r) => [r.author, r.body])).toEqual([["Mentor", "Still sharp"]]);
       expect(byId.get(c.id)).toMatchObject({ state: "done", approvedBy: "Builder" });
+    });
+
+    it("a thread: anyone replies, only the author edits, the author or an admin deletes; edits show", async () => {
+      const c = await addComment(builder, { systemId: system.id, body: "Spacer missing" });
+      await expect(editComment(member, c.id, "Hijacked")).rejects.toThrow("Only its author");
+      await editComment(builder, c.id, "Spacer missing on the left");
+      const r1 = await addReply(member, c.id, "On the left or both?");
+      const r2 = await addReply(builder, c.id, "Left only");
+      await expect(addReply(member, c.id, "  ")).rejects.toThrow("Write the reply");
+      await expect(editReply(builder, r1.id, "x")).rejects.toThrow("Only its author");
+      await editReply(member, r1.id, "Left, or both sides?");
+      await expect(deleteReply(mentor, r2.id)).rejects.toThrow("Only its author");
+      await deleteReply(builder, r2.id);
+      const saved = (await loadSystemReview(system.id))!.comments.find((x) => x.id === c.id)!;
+      expect(saved).toMatchObject({ body: "Spacer missing on the left", author: "Builder" });
+      expect(saved.editedAt).not.toBeNull();
+      expect(saved.version?.name).toBe("V1");
+      expect(saved.replies).toMatchObject([{ body: "Left, or both sides?", author: "Review Tester" }]);
+      expect(saved.replies[0].editedAt).not.toBeNull();
+      await db.delete(schema.reviewComments).where(eq(schema.reviewComments.id, c.id));
     });
 
     it("comments on the whole robot: listed with the robot, counted apart from its systems", async () => {

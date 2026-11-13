@@ -6,7 +6,7 @@ import { db, schema } from "@/db";
 import { listComments, loadSystemReview } from "@/lib/data/cadReview";
 import { partKey } from "@/lib/model/assembly";
 import { cleanView } from "@/components/viewer/viewState";
-import { addComment, canApprove, canTick, cleanPin, CommentError, setCommentStatus } from "@/lib/reviews/comments";
+import { addComment, addReply, canApprove, canTick, cleanPin, CommentError, setCommentStatus } from "@/lib/reviews/comments";
 import { allowedStatuses, isActive, needsNote } from "@/lib/reviews/status";
 import { read, uuid, write, ToolError } from "../registry";
 
@@ -25,7 +25,7 @@ const asTool = async <T,>(fn: () => Promise<T>) => {
 
 read(
   "list_review_comments",
-  "A system's CAD Review comments (snip: a picture cut from the 3D view with lines drawn on it): status (open; on_it = someone is working on it; to_check = waiting for a mentor to check; done = a mentor approved it), text, the part it's about, who wrote it and when, a mentor's last note sending it back, its pin (x, y, z in assembly mm: the point in the 3D view it was written about) and view (the 3D view it was written in: camera, hidden / isolated parts, section, render mode), and the version tree (Onshape versions, newest first, which ones the BOM was updated to, and the comment ids added and set To check or Done at each).",
+  "A system's CAD Review comments (snip: a picture cut from the 3D view with lines drawn on it): status (open; on_it = someone is working on it; to_check = waiting for a mentor to check; done = a mentor approved it), text, the part it's about, who wrote it and when, the version it is on, its replies (a thread like Onshape's; a mentor sending it back writes why there), its pin (x, y, z in assembly mm: the point in the 3D view it was written about) and view (the 3D view it was written in: camera, hidden / isolated parts, section, render mode), and the version tree (Onshape versions, newest first, which ones the BOM was updated to, and the comment ids added and set To check or Done at each).",
   z.object({ system_id: uuid, state: z.enum(["open", "on_it", "to_check", "done"]).optional() }),
   async ({ system_id, state }) => {
     const review = await loadSystemReview(system_id);
@@ -33,7 +33,7 @@ read(
     return {
       comments: review.comments
         .filter((c) => !state || c.state === state)
-        .map((c) => ({ id: c.id, state: c.state, text: c.body, part: c.partName, by: c.author, at: c.createdAt, on_it_by: c.onItBy, to_check_by: c.doneBy, done_by: c.approvedBy, sent_back: c.rejectNote ? { note: c.rejectNote, by: c.rejectedBy, at: c.rejectedAt } : null, snip: c.snip ? { picture: c.snip.url, lines: c.snip.strokes.length, changed_by: (c.snip.changed ?? []).map((x) => x.name) } : null, pin: c.pin, view: c.view })),
+        .map((c) => ({ id: c.id, state: c.state, text: c.body, part: c.partName, by: c.author, at: c.createdAt, on_it_by: c.onItBy, to_check_by: c.doneBy, done_by: c.approvedBy, version: c.version?.name ?? null, edited: c.editedAt, replies: c.replies.map((r) => ({ text: r.body, by: r.author, at: r.createdAt, edited: r.editedAt })), snip: c.snip ? { picture: c.snip.url, lines: c.snip.strokes.length, changed_by: (c.snip.changed ?? []).map((x) => x.name) } : null, pin: c.pin, view: c.view })),
       versions: review.tree.map((n) => ({ name: n.name, at: n.at, bom: n.bom.map((b) => b.label), bom_current: n.bom.some((b) => b.current), added: n.added, checked: n.done })),
     };
   },
@@ -87,6 +87,22 @@ write(
           for (const r of ok) await setCommentStatus(member, mode, r.id, status, note ?? "");
           return { set: ok.length, still_to_act_on: (await listComments(system_id)).filter((c) => isActive(c.state)).length };
         }),
+    };
+  },
+);
+
+write(
+  "reply_to_review_comment",
+  "Reply in a CAD Review comment's thread (comment_id from list_review_comments). Anyone on the team may.",
+  z.object({ comment_id: uuid, text: z.string().trim().min(1).max(2000) }),
+  async ({ comment_id, text }, { member }) => {
+    const [c] = await db.select({ body: reviewComments.body }).from(reviewComments).where(eq(reviewComments.id, comment_id));
+    if (!c) throw new ToolError("Unknown comment.");
+    return {
+      count: 1,
+      summary: "Replied to a CAD Review comment",
+      preview: { comment: c.body, reply: text },
+      apply: () => asTool(async () => ({ id: (await addReply(member, comment_id, text)).id })),
     };
   },
 );

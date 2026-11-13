@@ -13,7 +13,7 @@ import { allowedStatuses, COMMENT_STATUSES, needsNote, type CommentStatus } from
 export type SnipInput = { path: string; w: number; h: number; strokes: unknown };
 const SNIP_PATH = /^review-snips\/[0-9a-f-]{36}\.(jpg|png)$/;
 
-const { reviewComments, systems } = schema;
+const { reviewComments, reviewCommentReplies, systems } = schema;
 
 // CAD Review comments (plan/design-review.md; Harel, 2026-11-08): anyone signed in writes one; its
 // status goes Open → On it → To check → Done (status.ts, Harel 2026-11-13). Server actions and the
@@ -146,7 +146,55 @@ export async function setCommentStatus(member: Member, mode: Mode, id: string, t
   // Only if nobody changed it meanwhile.
   const rows = await db.update(reviewComments).set(set).where(and(eq(reviewComments.id, id), eq(reviewComments.state, c.state))).returning({ id: reviewComments.id });
   if (!rows.length) throw new CommentError("Someone changed it just now. Look again.");
+  // The why goes in the thread too, where the conversation is (Harel, 2026-11-13).
+  if (why) await db.insert(reviewCommentReplies).values({ commentId: id, authorId: member.id, body: why.slice(0, MAX_BODY) });
   return c;
+}
+
+function cleanBody(text: string, what: string) {
+  const body = text.trim();
+  if (!body) throw new CommentError(`Write the ${what} first.`);
+  if (body.length > MAX_BODY) throw new CommentError(`Keep a ${what} under ${MAX_BODY} characters.`);
+  return body;
+}
+
+// Its author changes a comment's text, whatever its status; it shows as edited.
+export async function editComment(member: Member, id: string, text: string) {
+  const body = cleanBody(text, "comment");
+  const c = await commentOf(id);
+  if (c.authorId !== member.id) throw new CommentError("Only its author edits a comment.");
+  if (c.body !== body) await db.update(reviewComments).set({ body, editedAt: new Date() }).where(eq(reviewComments.id, id));
+  return c;
+}
+
+// A reply in a comment's thread: anyone signed in, like the comment itself.
+export async function addReply(member: Member, commentId: string, text: string) {
+  const body = cleanBody(text, "reply");
+  await commentOf(commentId);
+  const [row] = await db.insert(reviewCommentReplies).values({ commentId, authorId: member.id, body }).returning();
+  return row;
+}
+
+async function replyOf(id: string) {
+  const [row] = await db.select().from(reviewCommentReplies).where(eq(reviewCommentReplies.id, id));
+  if (!row) throw new CommentError("That reply is gone.");
+  return row;
+}
+
+export async function editReply(member: Member, id: string, text: string) {
+  const body = cleanBody(text, "reply");
+  const r = await replyOf(id);
+  if (r.authorId !== member.id) throw new CommentError("Only its author edits a reply.");
+  if (r.body !== body) await db.update(reviewCommentReplies).set({ body, editedAt: new Date() }).where(eq(reviewCommentReplies.id, id));
+  return r;
+}
+
+// Its author takes a reply back; an admin removes any.
+export async function deleteReply(member: Member, id: string) {
+  const r = await replyOf(id);
+  if (!member.isAdmin && r.authorId !== member.id) throw new CommentError("Only its author deletes a reply.");
+  await db.delete(reviewCommentReplies).where(eq(reviewCommentReplies.id, id));
+  return r;
 }
 
 // Its author takes back an open comment; an admin removes any.

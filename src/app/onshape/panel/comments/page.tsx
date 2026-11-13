@@ -2,7 +2,7 @@ import { and, asc, eq, isNotNull } from "drizzle-orm";
 import Link from "next/link";
 import { db, schema } from "@/db";
 import { getMember } from "@/lib/auth";
-import { listComments } from "@/lib/data/cadReview";
+import { loadRobotReview, loadSystemReview } from "@/lib/data/cadReview";
 import { getMode } from "@/lib/mode";
 import { partKey } from "@/lib/model/assembly";
 import { canApprove, canTick } from "@/lib/reviews/comments";
@@ -40,7 +40,8 @@ export default async function PanelCommentsPage({ searchParams }: { searchParams
 
   const [mode, comments, systemRows, partRows] = await Promise.all([
     getMode(),
-    systemId ? listComments(systemId) : listComments({ robotId }),
+    // Through the version trees (database only), so each comment shows the version it is on.
+    systemId ? loadSystemReview(systemId).then((r) => r?.comments ?? []) : loadRobotReview(robotId).then((r) => r.comments),
     // On a robot's main assembly a comment goes on the robot or one of its linked systems.
     systemId ? Promise.resolve([]) : db.select({ id: systems.id, name: systems.name }).from(systems).where(and(eq(systems.robotId, robotId), isNotNull(systems.assemblyUrl))).orderBy(asc(systems.name)),
     db

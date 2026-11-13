@@ -12,7 +12,7 @@ import { keptDocVersions } from "@/lib/versions/docVersions";
 import type { ModelKind, Snip } from "@/db/schema";
 import { primaryVersion, versionLabel } from "@/lib/versions/label";
 
-const { members, reviewComments, robots, systems, systemVersions } = schema;
+const { members, reviewCommentReplies, reviewComments, robots, systems, systemVersions } = schema;
 
 // CAD Review's pages read the database only (plan/design-review.md): never Onshape.
 
@@ -43,7 +43,16 @@ export type ReviewComment = {
   view: ViewState | null; // the 3D view it was written in (S6)
   pin: [number, number, number] | null; // its point there, assembly mm
   model: ModelKind; // written on the Basepart or the Final 3D model (Harel, 2026-11-12)
+  authorAvatar: string | null;
+  editedAt: string | null;
+  replies: CommentReply[]; // its thread, oldest first (Harel, 2026-11-13)
+  // The version it is on, where Onshape shows a comment's branch (Harel, 2026-11-13): the version
+  // tree's node it was added under (its Onshape version from the panel, else by its date).
+  // `ahead`: newer than the version the BOM is on.
+  version: { name: string; ahead: boolean } | null;
 };
+
+export type CommentReply = { id: string; body: string; author: string | null; authorId: string | null; authorAvatar: string | null; createdAt: string; editedAt: string | null };
 
 // A system's comments, or with `robotId` every comment of the robot (its own and its systems').
 export async function listComments(scope: string | { robotId: string }): Promise<ReviewComment[]> {
@@ -54,9 +63,23 @@ export async function listComments(scope: string | { robotId: string }): Promise
     .where(typeof scope === "string" ? eq(reviewComments.systemId, scope) : eq(reviewComments.robotId, scope.robotId))
     .orderBy(asc(reviewComments.createdAt))
     .then((r) => r.map(({ c, systemName }) => ({ ...c, systemName })));
-  const ids = [...new Set(rows.flatMap((r) => [r.authorId, r.onItBy, r.doneBy, r.approvedBy, r.rejectedBy]).filter((x): x is string => !!x))];
-  const names = new Map((ids.length ? await db.select({ id: members.id, name: members.name }).from(members).where(inArray(members.id, ids)) : []).map((m) => [m.id, m.name]));
-  const name = (id: string | null) => (id ? (names.get(id) ?? null) : null);
+  const replies = rows.length
+    ? await db
+        .select()
+        .from(reviewCommentReplies)
+        .where(inArray(reviewCommentReplies.commentId, rows.map((r) => r.id)))
+        .orderBy(asc(reviewCommentReplies.createdAt))
+    : [];
+  const ids = [...new Set([...rows.flatMap((r) => [r.authorId, r.onItBy, r.doneBy, r.approvedBy, r.rejectedBy]), ...replies.map((r) => r.authorId)].filter((x): x is string => !!x))];
+  const people = new Map((ids.length ? await db.select({ id: members.id, name: members.name, avatarUrl: members.avatarUrl }).from(members).where(inArray(members.id, ids)) : []).map((m) => [m.id, m]));
+  const name = (id: string | null) => (id ? (people.get(id)?.name ?? null) : null);
+  const avatar = (id: string | null) => (id ? (people.get(id)?.avatarUrl ?? null) : null);
+  const thread = new Map<string, CommentReply[]>();
+  for (const r of replies) {
+    const list = thread.get(r.commentId) ?? [];
+    list.push({ id: r.id, body: r.body, author: name(r.authorId), authorId: r.authorId, authorAvatar: avatar(r.authorId), createdAt: r.createdAt.toISOString(), editedAt: r.editedAt?.toISOString() ?? null });
+    thread.set(r.commentId, list);
+  }
   const iso = (d: Date | null) => d?.toISOString() ?? null;
   const paths = rows.flatMap((r) => (r.snip ? [r.snip.path] : []));
   const urls = new Map(await Promise.all(paths.map(async (p) => [p, await imageUrl(p)] as const)));
@@ -87,6 +110,10 @@ export async function listComments(scope: string | { robotId: string }): Promise
     view: r.view ?? null,
     pin: r.pin ?? null,
     model: r.model,
+    authorAvatar: avatar(r.authorId),
+    editedAt: iso(r.editedAt),
+    replies: thread.get(r.id) ?? [],
+    version: r.onshapeVersionId ? { name: r.onshapeVersionName || "Onshape version", ahead: false } : null,
   }));
 }
 
@@ -122,6 +149,17 @@ async function basepartTree(owner: { systemId: string } | { robotId: string }, u
 }
 
 const treeComment = (c: ReviewComment) => ({ id: c.id, createdAt: c.createdAt, doneAt: c.doneAt, doneVersionId: c.doneVersionId, state: c.state, onshapeVersionId: c.onshapeVersionId, onshapeVersionName: c.onshapeVersionName });
+
+// Each comment's version chip: the tree node it was added under. `bom`: the tree has BOM marks,
+// so "ahead" means newer than the BOM (a Basepart's tree has none).
+function markVersions(comments: ReviewComment[], tree: TreeNode[], bom: boolean) {
+  const byId = new Map(comments.map((c) => [c.id, c]));
+  for (const node of tree)
+    for (const id of node.added) {
+      const c = byId.get(id);
+      if (c) c.version = { name: node.name, ahead: bom && node.ahead };
+    }
+}
 
 export async function loadSystemReview(systemId: string): Promise<SystemReview | null> {
   const [system] = await db
@@ -160,6 +198,9 @@ export async function loadSystemReview(systemId: string): Promise<SystemReview |
     // The tree starts at the system's first sync (Harel, 2026-11-11): its first BOM version.
     { since: versions.reduce<string | null>((a, { v }) => (v.committedAt && (!a || v.committedAt.toISOString() < a) ? v.committedAt.toISOString() : a), null), cad: cad.subs },
   );
+  markVersions(comments, tree, true);
+  const basepart = await basepartTree({ systemId }, system.basepartUrl, comments);
+  if (basepart) markVersions(comments, basepart.tree, false);
   return {
     comments,
     tree,
@@ -167,7 +208,7 @@ export async function loadSystemReview(systemId: string): Promise<SystemReview |
     treeReadAt: kept?.at.toISOString() ?? null,
     changes: (current?.changes ?? []).map((c) => ({ partId: c.partId ?? null, change: c.change, geometry: !!c.geometry, name: c.name })),
     current: current ? { id: current.id, label: versionLabel(current) } : null,
-    basepart: await basepartTree({ systemId }, system.basepartUrl, comments),
+    basepart,
   };
 }
 
@@ -220,12 +261,16 @@ export async function loadRobotReview(robotId: string): Promise<RobotReview> {
   ]);
   const linked = rows.filter((r) => r.url || r.basepart);
   const reviews = await Promise.all(linked.map((r) => loadSystemReview(r.id)));
+  const versions = new Map(reviews.flatMap((s) => s?.comments.map((c) => [c.id, c.version] as const) ?? []));
+  for (const c of comments) c.version = versions.get(c.id) ?? c.version;
+  const robotBasepart = await basepartTree({ robotId }, robot?.basepart ?? null, comments.filter((c) => !c.systemId));
+  if (robotBasepart) markVersions(comments, robotBasepart.tree, false);
   return {
     comments,
     systems: linked.map((r, i) => {
       const s = reviews[i];
       return { id: r.id, name: r.name, final: !!r.url, tree: s?.tree ?? [], treeDid: s?.treeDid ?? null, treeReadAt: s?.treeReadAt ?? null, changes: s?.changes ?? [], current: s?.current ?? null, basepart: s?.basepart ?? null };
     }),
-    robotBasepart: await basepartTree({ robotId }, robot?.basepart ?? null, comments.filter((c) => !c.systemId)),
+    robotBasepart,
   };
 }

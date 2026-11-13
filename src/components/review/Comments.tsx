@@ -2,12 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { createContext, useContext, useState, useTransition } from "react";
-import { addReviewComment, deleteReviewComment, setReviewCommentStatus, type CommentResult } from "@/app/(app)/review-comments-actions";
+import { addReviewComment, deleteReviewComment, deleteReviewReply, editReviewComment, editReviewReply, replyToReviewComment, setReviewCommentStatus, type CommentResult } from "@/app/(app)/review-comments-actions";
 import { Popover } from "@/components/bom/Popover";
 import { textOn } from "@/components/bom/options";
 import { Dialog } from "@/components/Dialog";
 import { LocalTime } from "@/components/ui/LocalTime";
-import type { ReviewComment } from "@/lib/data/cadReview";
+import type { CommentReply, ReviewComment } from "@/lib/data/cadReview";
 import { allowedStatuses, isActive, needsNote, statusOf, type CommentStatus } from "@/lib/reviews/status";
 import { CommentSnip, SnipPicture, uploadSnip, type SnipDraft } from "./Snip";
 
@@ -125,14 +125,51 @@ export function StatusMenu({ c, onDone }: { c: ReviewComment; onDone?: () => voi
   );
 }
 
-function Meta({ c, where }: { c: ReviewComment; where?: boolean }) {
+// Comments laid out like Onshape's (Harel, 2026-11-13): a card with the author's picture, name and
+// how long ago, where Onshape shows the branch the version it is on, the text, then its thread
+// of replies and a Reply box. Our status pill takes the place of Onshape's resolve tick.
+
+// The author's Google picture, else their initials on a colour of their own.
+export function Avatar({ name, src, id, small = false }: { name: string | null; src?: string | null; id?: string | null; small?: boolean }) {
+  const size = small ? "h-6 w-6 text-[0.625rem]" : "h-8 w-8 text-xs";
+  if (src)
+    // eslint-disable-next-line @next/next/no-img-element -- Google's picture link, no referrer or it refuses
+    return <img src={src} alt="" referrerPolicy="no-referrer" className={`${size} shrink-0 rounded-full bg-raised object-cover`} />;
+  const initials = (name ?? "?").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("") || "?";
+  let hue = 0;
+  for (const ch of id ?? name ?? "") hue = (hue * 31 + ch.charCodeAt(0)) % 360;
   return (
-    <span className="mt-0.5 block text-[0.6875rem] text-subtle">
-      {where && <span className="font-semibold text-fg-2">{c.systemName ?? "Robot"} · </span>}
-      {c.model === "basepart" && <span className="mr-1 rounded bg-violet-500/15 px-1 py-px font-semibold text-violet-600 dark:text-violet-300" title="Written on the Basepart 3D model">Basepart</span>}
-      {c.author ?? "Someone"} · <LocalTime at={c.createdAt} />
-      {c.onshapeVersionId && <span title="Written in the Onshape panel on this Onshape version"> · on {c.onshapeVersionName || "an Onshape version"}</span>}
-      {c.state === "on_it" && c.onItBy && <span className="font-semibold text-blue-600 dark:text-blue-400"> · {c.onItBy} is on it</span>}
+    <span className={`${size} flex shrink-0 items-center justify-center rounded-full font-semibold text-white`} style={{ background: `hsl(${hue} 55% 45%)` }} aria-hidden>
+      {initials}
+    </span>
+  );
+}
+
+function When({ at, edited }: { at: string; edited?: string | null }) {
+  return (
+    <span className="text-[0.6875rem] text-subtle tabular-nums">
+      <LocalTime at={at} style="ago" />
+      {edited && <span title="Changed after it was posted"> · edited</span>}
+    </span>
+  );
+}
+
+// Where Onshape shows the branch: the version it is on. Amber when newer than the BOM's.
+function VersionChip({ c }: { c: ReviewComment }) {
+  if (!c.version) return null;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold ${c.version.ahead ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" : "bg-raised text-fg-2"}`}
+      title={c.version.ahead ? "Written on a version newer than the one the BOM is on" : "The version it was written on"}
+    >
+      <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
+        <circle cx="4" cy="3.5" r="1.7" />
+        <circle cx="4" cy="12.5" r="1.7" />
+        <circle cx="12" cy="6" r="1.7" />
+        <path d="M4 5.2v5.6M12 7.7c0 2.5-3 2.6-6.6 3.6" />
+      </svg>
+      {c.version.name}
+      {c.version.ahead && <span aria-hidden>↑</span>}
     </span>
   );
 }
@@ -142,7 +179,7 @@ function PartChip({ c, onFocus }: { c: ReviewComment; onFocus?: (key: string) =>
   return (
     <button
       onClick={() => onFocus?.(c.partKey!)}
-      className="press mt-1 inline-flex max-w-full items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-[0.6875rem] font-semibold text-accent-hover hover:bg-accent/20 pointer-coarse:min-h-8"
+      className="press inline-flex max-w-full items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-[0.6875rem] font-semibold text-accent-hover hover:bg-accent/20 pointer-coarse:min-h-8"
       title="Show the part"
     >
       <span className="h-1.5 w-1.5 rounded-full bg-accent" />
@@ -151,52 +188,267 @@ function PartChip({ c, onFocus }: { c: ReviewComment; onFocus?: (key: string) =>
   );
 }
 
-// A tap on a comment's text turns the 3D view back to the one it was written in (`onView`, S6),
-// else shows its part. `n`: its pin's number in the 3D view.
-const tapText = (c: ReviewComment, onFocus?: (key: string) => void, onView?: (c: ReviewComment) => void) => () => (c.view && onView ? onView(c) : c.partKey && onFocus?.(c.partKey));
+// A tap on "View" turns the 3D view back to the one it was written in (`onView`, S6), else shows
+// its part.
+const tapView = (c: ReviewComment, onFocus?: (key: string) => void, onView?: (c: ReviewComment) => void) => () => (c.view && onView ? onView(c) : c.partKey && onFocus?.(c.partKey));
 
-function PinBadge({ n, c, onView }: { n?: number; c: ReviewComment; onView?: (c: ReviewComment) => void }) {
-  if (!n || !c.pin) return null;
-  const color = statusOf(c.state).color;
+// ⋯ beside the status: Edit and Delete, for whoever may.
+function MoreMenu({ items }: { items: { label: string; danger?: boolean; run: () => void }[] }) {
+  if (!items.length) return null;
   return (
-    <button
-      onClick={() => onView?.(c)}
-      className="press mt-0.5 flex h-4.5 min-w-4.5 shrink-0 items-center justify-center rounded-full px-1 text-[0.625rem] font-semibold tabular-nums shadow-sm pointer-coarse:h-6 pointer-coarse:min-w-6"
-      style={{ background: color, color: textOn(color) }}
-      title="Its pin in the 3D view: go to the view it was written in"
-      aria-label={`Comment ${n}: go to its view`}
+    <Popover
+      align="right"
+      hideCaret
+      width={150}
+      triggerClassName="press -my-1 flex h-7 w-7 items-center justify-center rounded-md text-subtle hover:bg-raised hover:text-fg pointer-coarse:h-9 pointer-coarse:w-9"
+      trigger={<span aria-label="More">⋯</span>}
     >
-      {n}
-    </button>
+      {(close) => (
+        <ul className="text-sm">
+          {items.map((it) => (
+            <li key={it.label}>
+              <button
+                type="button"
+                onClick={() => {
+                  close();
+                  it.run();
+                }}
+                className={`flex min-h-9 w-full items-center rounded-md px-2.5 py-1.5 text-left hover:bg-raised active:scale-[0.98] ${it.danger ? "text-rose-600" : "text-fg-2"}`}
+              >
+                {it.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Popover>
   );
 }
 
-function Rejected({ c }: { c: ReviewComment }) {
-  if (!c.rejectNote || !isActive(c.state)) return null;
+// A text box that saves on Ctrl+Enter (⌘+Enter) and cancels on Escape: editing and replying.
+function TextBox({ initial = "", placeholder, action, pending, onSave, onCancel, autoFocus = true }: { initial?: string; placeholder?: string; action: string; pending: boolean; onSave: (text: string) => void; onCancel?: () => void; autoFocus?: boolean }) {
+  const [text, setText] = useState(initial);
+  const save = () => text.trim() && onSave(text);
   return (
-    <p className="mt-1 rounded border border-rose-400/40 bg-rose-500/5 px-2 py-1 text-xs text-rose-600">
-      Sent back{c.rejectedBy ? ` by ${c.rejectedBy}` : ""}: {c.rejectNote}
-    </p>
+    <form
+      className="mt-1.5 space-y-1.5"
+      onSubmit={(e) => {
+        e.preventDefault();
+        save();
+      }}
+    >
+      <textarea
+        autoFocus={autoFocus}
+        value={text}
+        placeholder={placeholder}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            save();
+          }
+          if (e.key === "Escape" && onCancel) {
+            e.stopPropagation();
+            onCancel();
+          }
+        }}
+        rows={Math.min(8, Math.max(2, text.split("\n").length))}
+        maxLength={2000}
+        className="input w-full resize-none text-sm"
+      />
+      <div className="flex items-center justify-end gap-1.5">
+        <span className="mr-auto text-[0.625rem] text-subtle max-sm:hidden">Ctrl+Enter</span>
+        {onCancel && (
+          <button type="button" className="btn h-8 px-3 text-xs active:scale-[0.98]" onClick={onCancel}>
+            Cancel
+          </button>
+        )}
+        <button className="btn-primary h-8 px-3 text-xs active:scale-[0.98]" disabled={pending || !text.trim() || text === initial}>
+          {pending ? "Saving…" : action}
+        </button>
+      </div>
+    </form>
   );
 }
 
-// A comment in a list: its status pill, its text (struck through once `gone`: its status took it
-// out of this list while the page stays open), part, snip and who wrote it. `where`: show its
-// system (or "Robot"), on the robot's page.
-export function CommentRow({ c, n, gone = false, onFocus, onView, where }: { c: ReviewComment; n?: number; gone?: boolean; onFocus?: (key: string) => void; onView?: (c: ReviewComment) => void; where?: boolean }) {
+function ReplyItem({ r }: { r: CommentReply }) {
   const ctx = useContext(CommentContext);
   const { pending, error, run } = useCommentAction();
-  const canDelete = !!ctx && (ctx.me.isAdmin || (c.authorId === ctx.me.id && c.state === "open"));
+  const [editing, setEditing] = useState(false);
+  const mine = !!ctx && r.authorId === ctx.me.id;
+  const items = [
+    ...(mine ? [{ label: "Edit", run: () => setEditing(true) }] : []),
+    ...(mine || ctx?.me.isAdmin ? [{ label: "Delete", danger: true, run: () => confirm("Delete this reply?") && run(() => deleteReviewReply(r.id)) }] : []),
+  ];
   return (
-    <li className={`mb-1.5 rounded-md border border-line/70 bg-surface p-2 last:mb-0 hover:bg-raised/70 ${pending ? "opacity-60" : ""}`}>
+    <li className={`flex gap-2 ${pending ? "opacity-60" : ""}`}>
+      <Avatar name={r.author} src={r.authorAvatar} id={r.authorId} small />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className="truncate text-xs font-semibold text-fg">{r.author ?? "Someone"}</span>
+          <When at={r.createdAt} edited={r.editedAt} />
+          <span className="ml-auto">
+            <MoreMenu items={items} />
+          </span>
+        </div>
+        {editing ? (
+          <TextBox initial={r.body} action="Save" pending={pending} onCancel={() => setEditing(false)} onSave={(t) => run(() => editReviewReply(r.id, t), () => setEditing(false))} />
+        ) : (
+          <p className="text-sm whitespace-pre-wrap break-words text-fg-2">{r.body}</p>
+        )}
+        {error && <p className="text-xs text-rose-600">{error}</p>}
+      </div>
+    </li>
+  );
+}
+
+// The thread: the newest 2 replies with the earlier ones folded (all of them with `full`), and
+// the Reply box (open in the comment window, a "Reply" link in lists).
+function Thread({ c, full }: { c: ReviewComment; full: boolean }) {
+  const { pending, error, run } = useCommentAction();
+  const [all, setAll] = useState(full);
+  const [replying, setReplying] = useState(false);
+  const [box, setBox] = useState(0); // a fresh box after each reply
+  const hidden = all ? 0 : Math.max(0, c.replies.length - 2);
+  return (
+    <div className="mt-2">
+      {c.replies.length > 0 && (
+        <ul className="space-y-2 border-l-2 border-line pl-2.5">
+          {hidden > 0 && (
+            <li>
+              <button className="press text-xs font-semibold text-accent-hover hover:underline pointer-coarse:min-h-8" onClick={() => setAll(true)}>
+                Show {hidden} earlier {hidden === 1 ? "reply" : "replies"}
+              </button>
+            </li>
+          )}
+          {c.replies.slice(hidden).map((r) => (
+            <ReplyItem key={r.id} r={r} />
+          ))}
+        </ul>
+      )}
+      {full || replying ? (
+        <TextBox
+          key={box}
+          placeholder="Reply…"
+          action="Reply"
+          autoFocus={!full}
+          pending={pending}
+          onCancel={full ? undefined : () => setReplying(false)}
+          onSave={(t) =>
+            run(
+              () => replyToReviewComment(c.id, t),
+              () => {
+                setBox((n) => n + 1);
+                setReplying(false);
+              },
+            )
+          }
+        />
+      ) : (
+        <button className="press mt-1 text-xs font-semibold text-accent-hover hover:underline pointer-coarse:min-h-8" onClick={() => setReplying(true)}>
+          Reply{c.replies.length ? ` · ${c.replies.length}` : ""}
+        </button>
+      )}
+      {error && <p className="mt-1 text-xs text-rose-600">{error}</p>}
+    </div>
+  );
+}
+
+// A comment's card. In a list (`gone`: its status took it out of this list while the page stays
+// open, so it stays struck through) a tap on its text opens the comment window; `full` is that
+// window's card, with the whole thread and the Reply box open. `n`: its pin's number in the 3D
+// view. `where`: show its system (or "Robot"), on the robot's page.
+export function CommentRow({
+  c,
+  n,
+  gone = false,
+  full = false,
+  onFocus,
+  onView,
+  where,
+}: {
+  c: ReviewComment;
+  n?: number;
+  gone?: boolean;
+  full?: boolean;
+  onFocus?: (key: string) => void;
+  onView?: (c: ReviewComment) => void;
+  where?: boolean;
+}) {
+  const ctx = useContext(CommentContext);
+  const { pending, error, run } = useCommentAction();
+  const [editing, setEditing] = useState(false);
+  const mine = !!ctx && c.authorId === ctx.me.id;
+  const items = [
+    ...(mine ? [{ label: "Edit", run: () => setEditing(true) }] : []),
+    ...(ctx && (ctx.me.isAdmin || (mine && c.state === "open")) ? [{ label: "Delete", danger: true, run: () => confirm("Delete this comment and its replies?") && run(() => deleteReviewComment(c.id)) }] : []),
+  ];
+  const pin = n && c.pin ? statusOf(c.state).color : null;
+  const tappable = !full && !!ctx?.open;
+  const bodyClass = `mt-1.5 block w-full text-left whitespace-pre-wrap break-words ${gone ? "text-muted line-through" : "text-fg"}`;
+  return (
+    <li className={`${full ? "" : "mb-2 rounded-lg border border-line/70 bg-surface p-2.5 shadow-sm last:mb-0"} list-none ${pending ? "opacity-60" : ""}`}>
       <div className="flex gap-2.5">
-        <PinBadge n={n} c={c} onView={onView} />
+        <div className="relative h-8 shrink-0">
+          <Avatar name={c.author} src={c.authorAvatar} id={c.authorId} />
+          {pin && (
+            <button
+              onClick={() => onView?.(c)}
+              className="press absolute -right-1.5 -bottom-1.5 flex h-4.5 min-w-4.5 items-center justify-center rounded-full px-1 text-[0.625rem] font-semibold tabular-nums ring-2 ring-surface pointer-coarse:h-6 pointer-coarse:min-w-6"
+              style={{ background: pin, color: textOn(pin) }}
+              title="Its pin in the 3D view: go to the view it was written in"
+              aria-label={`Comment ${n}: go to its view`}
+            >
+              {n}
+            </button>
+          )}
+        </div>
         <div className="min-w-0 flex-1 text-sm">
-          <div className="mb-1 flex items-center gap-2">
-            <StatusMenu c={c} />
+          <div className="flex items-center gap-1.5">
+            <span className="min-w-0 truncate font-semibold text-fg">{c.author ?? "Someone"}</span>
+            <When at={c.createdAt} edited={c.editedAt} />
+            <span className="ml-auto flex shrink-0 items-center gap-1">
+              <StatusMenu c={c} />
+              <MoreMenu items={items} />
+            </span>
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-1">
+            {where && <span className="rounded-full bg-raised px-2 py-0.5 text-[0.6875rem] font-semibold text-fg-2">{c.systemName ?? "Robot"}</span>}
+            <VersionChip c={c} />
+            {c.model === "basepart" && (
+              <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[0.6875rem] font-semibold text-violet-600 dark:text-violet-300" title="Written on the Basepart 3D model">
+                Basepart
+              </span>
+            )}
+            <PartChip c={c} onFocus={onFocus} />
+          </div>
+          {editing ? (
+            <TextBox initial={c.body} action="Save" pending={pending} onCancel={() => setEditing(false)} onSave={(t) => run(() => editReviewComment(c.id, t), () => setEditing(false))} />
+          ) : (
+            tappable ? (
+              <button className={`${bodyClass} press`} onClick={() => ctx?.open?.(c)} title="Open the comment">
+                {c.body}
+              </button>
+            ) : (
+              <p className={bodyClass}>{c.body}</p>
+            )
+          )}
+          <CommentSnip c={c} />
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.6875rem] text-subtle">
+            {(c.view || c.partKey) && (onView || onFocus) && (
+              <button className="press font-semibold text-accent-hover hover:underline pointer-coarse:min-h-8" onClick={tapView(c, onFocus, onView)} title="Turn the 3D view to where it was written">
+                ◎ View
+              </button>
+            )}
+            {c.state === "on_it" && c.onItBy && <span className="font-semibold text-blue-600 dark:text-blue-400">{c.onItBy} is on it</span>}
+            {c.state === "to_check" && c.doneAt && (
+              <span>
+                To check{c.doneBy ? ` from ${c.doneBy}` : ""} · <LocalTime at={c.doneAt} style="ago" />
+              </span>
+            )}
             {ctx?.canApprove && c.state === "to_check" && (
               <button
-                className="press rounded-full border border-emerald-500/50 px-2 py-0.5 text-[0.6875rem] font-semibold text-emerald-600 hover:bg-emerald-500/10 active:scale-[0.98] pointer-coarse:min-h-8"
+                className="press rounded-full border border-emerald-500/50 px-2 py-0.5 font-semibold text-emerald-600 hover:bg-emerald-500/10 active:scale-[0.98] pointer-coarse:min-h-8"
                 disabled={pending}
                 onClick={() => run(() => setReviewCommentStatus(c.id, "done"))}
                 title="Approve: Done"
@@ -204,30 +456,9 @@ export function CommentRow({ c, n, gone = false, onFocus, onView, where }: { c: 
                 ✓ Done
               </button>
             )}
-            {canDelete && (
-              <button
-                onClick={() => confirm("Delete this comment?") && run(() => deleteReviewComment(c.id))}
-                className="press -my-1 ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded text-xs text-subtle hover:bg-raised hover:text-rose-500 pointer-coarse:h-8 pointer-coarse:w-8"
-                aria-label="Delete comment"
-                title="Delete"
-              >
-                ✕
-              </button>
-            )}
           </div>
-          <button className={`block w-full text-left whitespace-pre-wrap break-words ${gone ? "text-muted line-through" : "text-fg"}`} onClick={ctx?.open ? () => ctx.open!(c) : tapText(c, onFocus, onView)} title="Open the comment">
-            {c.body}
-          </button>
-          <PartChip c={c} onFocus={onFocus} />
-          <CommentSnip c={c} />
-          <Meta c={c} where={where} />
-          {c.state === "to_check" && c.doneAt && (
-            <span className="block text-[0.6875rem] text-subtle">
-              To check{c.doneBy ? ` from ${c.doneBy}` : ""} · <LocalTime at={c.doneAt} />
-            </span>
-          )}
-          <Rejected c={c} />
           {error && <p className="mt-1 text-xs text-rose-600">{error}</p>}
+          <Thread c={c} full={full} />
         </div>
       </div>
     </li>
@@ -250,59 +481,56 @@ export function TreeComment({ c, onFocus }: { c: ReviewComment; onFocus?: (key: 
           {c.partName && <span className="font-semibold">{c.partName}: </span>}
           {c.body}
           {c.snip && " 📷"}
+          {c.replies.length > 0 && <span className="text-subtle"> · 💬 {c.replies.length}</span>}
         </span>
       </button>
     </li>
   );
 }
 
-// The comment window, from the version tree (Harel, 2026-11-13): the whole comment, its status to
-// change, and what happened to it. Show in 3D turns the view to it.
+// The comment window (Harel, 2026-11-13): the comment's card with its whole thread and the Reply
+// box, and what happened to it.
 export function CommentWindow({ c, onClose, onFocus, onView }: { c: ReviewComment; onClose: () => void; onFocus?: (key: string) => void; onView?: (c: ReviewComment) => void }) {
   const steps = [
-    { label: "Written", by: c.author, at: c.createdAt },
     { label: "On it", by: c.onItBy, at: c.onItAt },
     { label: "To check", by: c.doneBy, at: c.doneAt },
     { label: "Done", by: c.approvedBy, at: c.approvedAt },
   ].filter((x): x is { label: string; by: string | null; at: string } => !!x.at);
-  const show = tapText(c, onFocus, onView);
+
   return (
     <Dialog open onClose={onClose} title={c.systemName ? `Comment · ${c.systemName}` : "Comment · whole robot"} sheet>
-      <div className="space-y-3 p-5 text-sm">
-        <div className="flex flex-wrap items-center gap-2">
-          <StatusMenu c={c} />
-          <PartChip
+      <div className="space-y-3 p-4 text-sm">
+        <ul>
+          <CommentRow
             c={c}
-            onFocus={(k) => {
-              onFocus?.(k);
-              onClose();
-            }}
+            full
+            onFocus={
+              onFocus &&
+              ((k) => {
+                onFocus(k);
+                onClose();
+              })
+            }
+            onView={
+              onView &&
+              ((x) => {
+                onView(x);
+                onClose();
+              })
+            }
           />
-        </div>
-        <p className="whitespace-pre-wrap break-words text-fg">{c.body}</p>
-        <CommentSnip c={c} />
-        <Rejected c={c} />
-        <ul className="space-y-1 border-t border-line pt-2 text-xs text-muted">
-          {steps.map((x) => (
-            <li key={x.label} className="flex gap-2">
-              <span className="w-16 shrink-0 font-semibold text-fg-2">{x.label}</span>
-              <span>
-                {x.by ?? "Someone"} · <LocalTime at={x.at} />
-              </span>
-            </li>
-          ))}
-          {c.onshapeVersionId && <li>Written on Onshape version {c.onshapeVersionName || "(unnamed)"}</li>}
         </ul>
-        {(c.view || c.partKey) && (onView || onFocus) && (
-          <button
-            className="btn h-10 w-full justify-center active:scale-[0.98]"
-            onClick={() => {
-              show();
-              onClose();
-            }}
-          >
-            Show in 3D
-          </button>
+        {steps.length > 0 && (
+          <ul className="space-y-1 border-t border-line pt-2 text-xs text-muted">
+            {steps.map((x) => (
+              <li key={x.label} className="flex gap-2">
+                <span className="w-16 shrink-0 font-semibold text-fg-2">{x.label}</span>
+                <span>
+                  {x.by ?? "Someone"} · <LocalTime at={x.at} />
+                </span>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
     </Dialog>

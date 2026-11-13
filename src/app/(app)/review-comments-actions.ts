@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireMember } from "@/lib/auth";
 import { getMode } from "@/lib/mode";
-import { addComment, CommentError, deleteComment, saveSnipLines, setCommentStatus, type SnipInput } from "@/lib/reviews/comments";
+import { addComment, addReply, CommentError, deleteComment, deleteReply, editComment, editReply, saveSnipLines, setCommentStatus, type SnipInput } from "@/lib/reviews/comments";
 import type { CommentStatus } from "@/lib/reviews/status";
 import { deleteNamedView, saveNamedView } from "@/lib/reviews/namedViews";
 import { isUuid } from "@/lib/uuid";
@@ -64,6 +64,31 @@ export async function deleteReviewComment(id: string): Promise<CommentResult> {
   const member = await requireMember();
   if (!isUuid(id)) return { error: "Unknown comment." };
   return run(() => deleteComment(member, id));
+}
+
+// Edit a comment's or a reply's text (its author), reply in a thread (anyone), delete a reply.
+export async function editReviewComment(id: string, body: string): Promise<CommentResult> {
+  const member = await requireMember();
+  if (!isUuid(id) || typeof body !== "string") return { error: "Unknown comment." };
+  return run(() => editComment(member, id, body));
+}
+
+export async function replyToReviewComment(commentId: string, body: string): Promise<CommentResult> {
+  const member = await requireMember();
+  if (!isUuid(commentId) || typeof body !== "string") return { error: "Unknown comment." };
+  return run(() => addReply(member, commentId, body));
+}
+
+export async function editReviewReply(id: string, body: string): Promise<CommentResult> {
+  const member = await requireMember();
+  if (!isUuid(id) || typeof body !== "string") return { error: "Unknown reply." };
+  return run(() => editReply(member, id, body));
+}
+
+export async function deleteReviewReply(id: string): Promise<CommentResult> {
+  const member = await requireMember();
+  if (!isUuid(id)) return { error: "Unknown reply." };
+  return run(() => deleteReply(member, id));
 }
 
 // Onshape's Named views of a robot (S6): no page refresh, the view cube reads them again itself.

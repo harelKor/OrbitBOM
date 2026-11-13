@@ -754,8 +754,27 @@ export const reviewComments = pgTable(
     rejectNote: text("reject_note"),
     rejectedAt: timestamp("rejected_at", { withTimezone: true }),
     rejectedBy: uuid("rejected_by").references(() => members.id, { onDelete: "set null" }),
+    // Its author changed the text after posting it (shown as "edited", Harel 2026-11-13).
+    editedAt: timestamp("edited_at", { withTimezone: true }),
   },
   (t) => [index("review_comments_system_idx").on(t.systemId, t.createdAt), index("review_comments_robot_idx").on(t.robotId, t.createdAt)],
+);
+
+// Replies under a CAD comment, a thread like Onshape's (Harel, 2026-11-13). No status of their
+// own; a mentor's "sent back" note is posted as one.
+export const reviewCommentReplies = pgTable(
+  "review_comment_replies",
+  {
+    id: id(),
+    commentId: uuid("comment_id")
+      .notNull()
+      .references(() => reviewComments.id, { onDelete: "cascade" }),
+    authorId: uuid("author_id").references(() => members.id, { onDelete: "set null" }),
+    body: text("body").notNull(),
+    createdAt: createdAt(),
+    editedAt: timestamp("edited_at", { withTimezone: true }),
+  },
+  (t) => [index("review_comment_replies_comment_idx").on(t.commentId, t.createdAt)],
 );
 
 // Onshape's Named views of a robot's 3D view (S6, plan/cad-3d-viewer.md): saved from the view
