@@ -9,6 +9,10 @@ import type { PartMesh, ViewerMode } from "./types";
 
 export const PLAIN = "#9aa1ad"; // a part with no Onshape appearance in its file
 export const UNKNOWN = "#b8bec9"; // placed in CAD but not on the BOM
+// Tint mode: how far a part's Onshape colour moves toward its status colour. Light, so the robot
+// still reads as the CAD and the status shows as a hint, not a patchwork (Harel, 2026-11-13).
+const TINT = 0.3;
+const NOT_STARTED = new THREE.Color("#cbd5e1"); // statuses.ts; not tinted, like UNKNOWN
 export const LOCATED = "#22ff5e"; // the located part: bright green, through a see-through robot
 export const HOVER = "#6f9bff"; // a light blue wash over the part under the mouse, like Onshape's
 export const EDGE = "#15171d"; // Onshape's dark face borders
@@ -29,6 +33,13 @@ const TRANSLUCENT = 0.3;
 
 // Onshape's colours are sRGB; three.js works in linear light, so they're converted on the way
 // in (read as linear, every colour came out pale: aluminium white, greens pastel).
+// A part's Onshape colour with a light wash of its status colour; untouched when it has no status
+// yet (Not Started, or not on the BOM).
+function tinted(onshape: THREE.Color, status: string | undefined): THREE.Color {
+  if (!status) return onshape;
+  const c = new THREE.Color(status);
+  return c.equals(NOT_STARTED) ? onshape : onshape.clone().lerp(c, TINT);
+}
 export const srgb = ([r, g, b]: [number, number, number]) => new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
 
 // The face borders of every copy of a part, drawn in one call: the lines read the part's own
@@ -238,9 +249,10 @@ export function createPaint(stage: Stage, meshes: PartMesh[], looks: Looks, fit:
     highlights.clear();
     // Hidden-line modes: white faces, dark edges, no colours (Onshape's); locating overrides them.
     const lines = !locateKey && (display === "hiddenRemoved" || display === "hiddenVisible");
-    world.environment = mode === "cad" && !locateKey && !lines ? studio : null;
+    const cadLike = mode !== "status";
+    world.environment = cadLike && !locateKey && !lines ? studio : null;
     // Edges fade with the robot while locating, and are lighter over status colours.
-    edgeLook.uniforms.opacity.value = locateKey ? 0.05 : lines ? 0.95 : mode === "cad" ? 0.85 : 0.55;
+    edgeLook.uniforms.opacity.value = locateKey ? 0.05 : lines ? 0.95 : cadLike ? 0.85 : 0.55;
     edgeLook.visible = display !== "shaded" || !!locateKey;
     hiddenEdgeLook.visible = !locateKey && (display === "shadedHidden" || display === "hiddenVisible");
     const plain = new THREE.Color(PLAIN);
@@ -250,12 +262,12 @@ export function createPaint(stage: Stage, meshes: PartMesh[], looks: Looks, fit:
     for (const { mesh, keys, look, sketch } of meshes) {
       if (sketch) continue; // Geometry sketches keep their own lines (sketches.ts)
       extras(mesh);
-      const own = mode === "cad" && look;
-      const base = locateKey ? ghost : own && look.opacity < 1 ? seeThrough(look.opacity) : mode === "cad" ? cad : material;
+      const own = cadLike && look;
+      const base = locateKey ? ghost : own && look.opacity < 1 ? seeThrough(look.opacity) : cadLike ? cad : material;
       mesh.material = locateKey ? base : lines ? lineFace : display === "translucent" ? translucent(base) : base;
       const onshape = own ? srgb(look.color) : plain;
       keys.forEach((k, i) => {
-        mesh.setColorAt(i, locateKey ? plain : lines ? white : mode === "status" ? new THREE.Color(colors.get(k) ?? UNKNOWN) : onshape);
+        mesh.setColorAt(i, locateKey ? plain : lines ? white : mode === "status" ? new THREE.Color(colors.get(k) ?? UNKNOWN) : mode === "tint" ? tinted(onshape, colors.get(k)) : onshape);
         if (k !== locateKey) return;
         // The located part, drawn solid on top of its see-through instance.
         const lit = new THREE.Mesh(mesh.geometry, glow);

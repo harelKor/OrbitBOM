@@ -28,7 +28,9 @@ export type ViewerModel = {
   sketchesHidden?: boolean;
 };
 
-export type ViewerMode = "status" | "cad";
+// status: parts in their BOM status colours; cad: as Onshape draws them; tint: Onshape's look with
+// a light wash of the status colour (the BOM pages' 3D views, Harel 2026-11-13).
+export type ViewerMode = "status" | "cad" | "tint";
 
 // One instanced mesh per (subsystem, Part Studio, part): `keys[i]` is the BOM key of copy i, `g`
 // its subsystem group, `look` Onshape's appearance from the file.

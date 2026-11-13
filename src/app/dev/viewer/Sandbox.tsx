@@ -113,6 +113,7 @@ export function Sandbox() {
           options={[
             { value: "cad", label: "CAD" },
             { value: "status", label: "Status" },
+            { value: "tint", label: "Tint" },
           ]}
         />
         {data?.model.groups && (

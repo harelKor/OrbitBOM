@@ -4,7 +4,6 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StatusCount } from "@/lib/stats";
-import { Segmented } from "@/components/ui/Segmented";
 import { Icon } from "@/components/ui/Icon";
 import { buildModel } from "@/components/viewer/buildModel";
 import { drawPictures } from "@/components/viewer/pictures";
@@ -66,10 +65,9 @@ export function RobotViewer({
   const hasBasepart = !!basepart && (basepart.linked || !!basepart.builtAt);
   const [kind, setKind] = useState<ModelKind>(() => startModel(initialModel, hasFinal, hasBasepart));
   const isBasepart = kind === "basepart";
-  // Status colours parts by their BOM status; CAD shows them as Onshape draws the assembly. The
-  // Basepart isn't on the BOM: always its CAD colours.
-  const [colorChoice, setColors] = useState<ViewerMode>("status");
-  const colors: ViewerMode = isBasepart ? "cad" : colorChoice;
+  // Parts look as Onshape draws them, with a light wash of their BOM status colour; no Status / CAD
+  // switch any more (Harel, 2026-11-13). The Basepart isn't on the BOM: plain CAD colours.
+  const colors: ViewerMode = isBasepart ? "cad" : "tint";
   const router = useRouter();
   const [large, setLarge] = useState(false);
   const [bar, setBar] = useState(false);
@@ -91,7 +89,7 @@ export function RobotViewer({
   const [building, setBuilding] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
   const colorMap = useMemo(() => new Map(parts.map((p) => [p.key, p.color])), [parts]);
-  const legend = colors === "status" && !isBasepart ? statuses.filter((s) => s.count > 0) : [];
+  const legend = !isBasepart ? statuses.filter((s) => s.count > 0) : [];
   const onLocated = useCallback(() => {}, []);
   const partByKey = useMemo(() => new Map(parts.map((p) => [p.key, p])), [parts]);
   const nameByKey = useMemo(() => new Map(parts.map((p) => [p.key, p.name])), [parts]);
@@ -285,17 +283,6 @@ export function RobotViewer({
               <button className="btn h-8 text-xs" onClick={build} disabled={!!building}>
                 {building ?? "Update 3D model"}
               </button>
-            )}
-            {!isBasepart && (
-              <Segmented
-                label="Part colours"
-                value={colors}
-                onChange={setColors}
-                options={[
-                  { value: "status", label: "Status" },
-                  { value: "cad", label: "CAD" },
-                ]}
-              />
             )}
             {!systemId && groups.length > 1 && (
               <button className="btn h-8 text-xs" aria-pressed={bar} onClick={() => setBar(!bar)}>
