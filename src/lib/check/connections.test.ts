@@ -1,10 +1,12 @@
 import * as THREE from "three";
 import { MeshBVH } from "three-mesh-bvh";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { describe, expect, it } from "vitest";
 import { sandboxStudio } from "@/lib/model/sandbox";
 import { topology } from "@/lib/model/topology";
 import { contacts, floating, holeOffsets, screwChecks, worldBoxes, type Inst } from "./connections";
 import { cylinders } from "./features";
+import { accessChecks } from "./access";
 
 // The sandbox's parts, prepared as the viewer does: BVH and topology on each mesh.
 const meshes = sandboxStudio();
@@ -64,5 +66,36 @@ describe("connections", () => {
     expect(findings.find((f) => f.kind === "hole-size")?.text).toContain("loose");
     expect(findings.some((f) => f.kind === "screw-length" && f.text.includes("sticks out"))).toBe(true);
     expect(findings.find((f) => f.kind === "one-screw")?.names.sort()).toEqual(["Plate A", "Plate B"]);
+  });
+});
+
+describe("access", () => {
+  // A #10-ish screw standing up: Ø4.8 shaft 20 mm long under a Ø8 head 5 mm tall, head on top.
+  const screwGeo = (() => {
+    const shaft = new THREE.CylinderGeometry(0.0024, 0.0024, 0.02, 24, 1);
+    shaft.translate(0, 0.01, 0);
+    const head = new THREE.CylinderGeometry(0.004, 0.004, 0.005, 24, 1);
+    head.translate(0, 0.0225, 0);
+    const g = mergeGeometries([shaft, head])!;
+    g.boundsTree = new MeshBVH(g);
+    g.userData.topology = topology(g.attributes.position.array, g.index!.array);
+    return g;
+  })();
+  const lid = (y: number) => {
+    const g = new THREE.BoxGeometry(0.1, 0.004, 0.1);
+    g.boundsTree = new MeshBVH(g);
+    g.userData.topology = topology(g.attributes.position.array, g.index!.array);
+    return inst("lid", "Cover plate", g, at(0, y, 0));
+  };
+  const run = (y: number) => {
+    const list = [inst("s", "SHCS #10-32 x 0.75", screwGeo, at(0, 0, 0)), lid(y)];
+    const boxes = worldBoxes(list);
+    return accessChecks(list, boxes, screwChecks(list, boxes).screws);
+  };
+  it("finds no room for a key, a short key only, or nothing", () => {
+    // The head's top is at y = 25 mm; the lid's underside at y - 2 mm.
+    expect(run(0.025 + 0.007)[0]).toMatchObject({ kind: "access", level: "warn" });
+    expect(run(0.025 + 0.032)[0]).toMatchObject({ kind: "access", level: "info" });
+    expect(run(0.025 + 0.2)).toHaveLength(0);
   });
 });
