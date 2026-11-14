@@ -42,4 +42,14 @@ else
       made.push(row.id);
       expect((await listInventoryNames()).some((i) => i.name === name)).toBe(true);
     });
+
+    it("watches inventory groups and conditions (migration 0093)", async () => {
+      const before = { groups: await version("inventory_groups"), conditions: await version("inventory_conditions") };
+      const [g] = await db.insert(schema.inventoryGroups).values({ name: `Cache G ${randomUUID()}` }).returning();
+      const [c] = await db.insert(schema.inventoryConditions).values({ label: `Cache ${randomUUID()}`, color: "#000" }).returning();
+      await db.delete(schema.inventoryGroups).where(eq(schema.inventoryGroups.id, g.id));
+      await db.delete(schema.inventoryConditions).where(eq(schema.inventoryConditions.id, c.id));
+      expect(await version("inventory_groups")).toBe(before.groups + 2);
+      expect(await version("inventory_conditions")).toBe(before.conditions + 2);
+    });
   });

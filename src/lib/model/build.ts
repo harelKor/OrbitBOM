@@ -61,6 +61,32 @@ async function loadState(robotId: string, kind: ModelKind = "final"): Promise<St
   return (row?.payload as State) ?? {};
 }
 
+// Only the built model, for the viewer and the part windows: the draft and the group plans can
+// be far bigger and only the build steps need them (every 3D view sent the whole payload before,
+// 2026-11-14).
+async function loadBuilt(robotId: string, kind: ModelKind = "final"): Promise<Built | undefined> {
+  const [row] = await db
+    .select({ built: sql<Built | null>`${onshapeCache.payload} -> 'built'` })
+    .from(onshapeCache)
+    .where(eq(onshapeCache.key, cacheKey(robotId, kind)));
+  return row?.built ?? undefined;
+}
+
+// The Final model's built state and, in the same read, the Basepart's sketches (its studios and
+// sketch placements, not its parts), since the Final model shows them too.
+async function loadFinalWithSketches(robotId: string): Promise<{ built?: Built; basepart?: Pick<Built, "studios" | "sketches"> }> {
+  const finalKey = cacheKey(robotId, "final");
+  const rows = await db
+    .select({
+      key: onshapeCache.key,
+      built: sql<Built | null>`case when ${onshapeCache.key} = ${finalKey} then ${onshapeCache.payload} -> 'built' else jsonb_build_object('studios', ${onshapeCache.payload} -> 'built' -> 'studios', 'sketches', ${onshapeCache.payload} -> 'built' -> 'sketches') end`,
+    })
+    .from(onshapeCache)
+    .where(inArray(onshapeCache.key, [finalKey, cacheKey(robotId, "basepart")]));
+  const of = (key: string) => rows.find((r) => r.key === key)?.built ?? undefined;
+  return { built: of(finalKey), basepart: of(cacheKey(robotId, "basepart")) };
+}
+
 async function saveState(robotId: string, state: State, kind: ModelKind = "final") {
   const values = { payload: state, microversion: state.built?.rev ?? null, fetchedAt: new Date() };
   await db
@@ -104,7 +130,7 @@ export async function robotModelsBuiltAt(robotId: string): Promise<Record<ModelK
 export type ModelSketches = { url: string | null; key: string; t: number[]; g?: number; owner: string };
 export type RobotModel = { builtAt: string; studios: (string | null)[]; keys: string[]; placements: ModelPlacement[]; groups: ModelGroup[]; sketches: ModelSketches[]; sketchesHidden?: boolean };
 export async function robotModel(robotId: string, systemId?: string, kind: ModelKind = "final"): Promise<RobotModel | null> {
-  const { built } = await loadState(robotId, kind);
+  const { built, basepart } = kind === "final" ? await loadFinalWithSketches(robotId) : { built: await loadBuilt(robotId, kind), basepart: undefined };
   if (!built || !storageConfigured()) return null;
   const groups = built.groups ?? [];
   const own = (g: number | undefined) => !systemId || !groups.length || (g !== undefined && !!groups[g]?.systemIds.includes(systemId));
@@ -120,7 +146,7 @@ export async function robotModel(robotId: string, systemId?: string, kind: Model
     placements = kept.map((p) => ({ ...p, s: index.get(p.s)! }));
   }
   let sketches: Omit<ModelSketches, "url">[] = (built.sketches ?? []).filter((s) => own(s.g)).map((s) => ({ key: built.studios[s.s], t: s.t, g: s.g, owner: s.owner }));
-  if (kind === "final") sketches = await basepartSketchesFor(robotId, groups, systemId);
+  if (kind === "final") sketches = basepartSketchesFor(basepart, robotId, groups, systemId);
   return {
     builtAt: built.builtAt,
     studios: await Promise.all(studios.map((key) => (key ? imageUrl(key) : null))),
@@ -135,8 +161,7 @@ export async function robotModel(robotId: string, systemId?: string, kind: Model
 // The Basepart model's sketches, moved onto the Final model's groups: a system's sketches go with
 // the Final group that system is in (a system without a Final has nowhere to show them); the
 // robot's own stay ungrouped.
-async function basepartSketchesFor(robotId: string, groups: ModelGroup[], systemId?: string): Promise<Omit<ModelSketches, "url">[]> {
-  const { built } = await loadState(robotId, "basepart");
+function basepartSketchesFor(built: Pick<Built, "studios" | "sketches"> | undefined, robotId: string, groups: ModelGroup[], systemId?: string): Omit<ModelSketches, "url">[] {
   if (!built?.sketches?.length) return [];
   return built.sketches.flatMap((s) => {
     const key = built.studios[s.s];
@@ -149,13 +174,13 @@ async function basepartSketchesFor(robotId: string, groups: ModelGroup[], system
 
 // Every part key in the built model with the R2 file of the Part Studio that holds it.
 export async function builtStudios(robotId: string): Promise<Map<string, string>> {
-  const { built } = await loadState(robotId);
+  const built = await loadBuilt(robotId);
   return new Map(built?.placements.map((p) => [p.k, built.studios[p.s]]) ?? []);
 }
 
 // The R2 file of the robot model's Part Studio that holds this part, if the model has it.
 export async function builtStudioFor(robotId: string, key: string): Promise<string | null> {
-  const { built } = await loadState(robotId);
+  const built = await loadBuilt(robotId);
   const placement = built?.placements.find((p) => p.k === key);
   return placement ? built!.studios[placement.s] : null;
 }

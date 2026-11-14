@@ -161,24 +161,31 @@ function markVersions(comments: ReviewComment[], tree: TreeNode[], bom: boolean)
     }
 }
 
-export async function loadSystemReview(systemId: string): Promise<SystemReview | null> {
+// `comments`: the system's comments when the caller already has them (the robot's CAD page reads
+// every comment of the robot once). `changes: false` skips what the current version changed, for
+// pages that show only the comments (the Onshape panel).
+export async function loadSystemReview(systemId: string, opts: { comments?: ReviewComment[]; changes?: boolean } = {}): Promise<SystemReview | null> {
   const [system] = await db
     .select({ assemblyUrl: systems.assemblyUrl, basepartUrl: systems.basepartUrl, followVersions: systems.followVersions, currentVersionId: systems.currentVersionId })
     .from(systems)
     .where(eq(systems.id, systemId));
   if (!system) return null;
   const [versions, comments, cad] = await Promise.all([
+    // Only what the tree needs: each version's `changes` and `rows` JSON can be large, and only
+    // the current one's changes are shown (read below).
     db
-      .select({ v: systemVersions, by: members.name })
+      .select({ v: { id: systemVersions.id, seq: systemVersions.seq, onshapeRef: systemVersions.onshapeRef, committedAt: systemVersions.committedAt }, by: members.name })
       .from(systemVersions)
       .leftJoin(members, eq(members.id, systemVersions.committedBy))
       .where(and(eq(systemVersions.systemId, systemId), eq(systemVersions.state, "committed")))
       .orderBy(desc(systemVersions.seq)),
-    listComments(systemId),
+    opts.comments ?? listComments(systemId),
     listCadUpdates({ systemId }, "final"),
   ]);
   const currentId = system.currentVersionId ?? versions[0]?.v.id ?? null;
   const current = versions.find((x) => x.v.id === currentId)?.v ?? null;
+  const changesRead =
+    current && opts.changes !== false ? db.select({ changes: systemVersions.changes }).from(systemVersions).where(eq(systemVersions.id, current.id)).then(([r]) => r?.changes ?? []) : Promise.resolve([]);
   // The design's own document: the assembly's when the system follows its versions, else the
   // document most of its BOM comes from (the CAD document inserted in a Manufacture assembly).
   const asm = system.assemblyUrl ? parseOnshapeUrl(system.assemblyUrl) : null;
@@ -206,7 +213,7 @@ export async function loadSystemReview(systemId: string): Promise<SystemReview |
     tree,
     treeDid,
     treeReadAt: kept?.at.toISOString() ?? null,
-    changes: (current?.changes ?? []).map((c) => ({ partId: c.partId ?? null, change: c.change, geometry: !!c.geometry, name: c.name })),
+    changes: ((await changesRead) ?? []).map((c) => ({ partId: c.partId ?? null, change: c.change, geometry: !!c.geometry, name: c.name })),
     current: current ? { id: current.id, label: versionLabel(current) } : null,
     basepart,
   };
@@ -253,16 +260,16 @@ export type RobotReview = {
   robotBasepart: BasepartTree | null;
 };
 
-export async function loadRobotReview(robotId: string): Promise<RobotReview> {
+export async function loadRobotReview(robotId: string, opts: { changes?: boolean } = {}): Promise<RobotReview> {
   const [rows, comments, [robot]] = await Promise.all([
     db.select({ id: systems.id, name: systems.name, url: systems.assemblyUrl, basepart: systems.basepartUrl }).from(systems).where(eq(systems.robotId, robotId)).orderBy(asc(systems.name)),
     listComments({ robotId }),
     db.select({ basepart: robots.basepartUrl }).from(robots).where(eq(robots.id, robotId)),
   ]);
   const linked = rows.filter((r) => r.url || r.basepart);
-  const reviews = await Promise.all(linked.map((r) => loadSystemReview(r.id)));
-  const versions = new Map(reviews.flatMap((s) => s?.comments.map((c) => [c.id, c.version] as const) ?? []));
-  for (const c of comments) c.version = versions.get(c.id) ?? c.version;
+  // Each system's tree marks its own comments' versions on these same objects (no second read
+  // of the comments per system).
+  const reviews = await Promise.all(linked.map((r) => loadSystemReview(r.id, { comments: comments.filter((c) => c.systemId === r.id), changes: opts.changes })));
   const robotBasepart = await basepartTree({ robotId }, robot?.basepart ?? null, comments.filter((c) => !c.systemId));
   if (robotBasepart) markVersions(comments, robotBasepart.tree, false);
   return {

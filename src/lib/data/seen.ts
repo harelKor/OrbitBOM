@@ -2,6 +2,7 @@ import "server-only";
 import { and, eq, gt, isNotNull, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { arrivalPage } from "@/lib/seen";
+import { cached } from "./cache";
 
 const { parts, systems, pageSeen } = schema;
 
@@ -31,7 +32,26 @@ export async function markSeen(memberId: string, page: string) {
 // out: they've seen it.
 export async function listNewest(memberId: string): Promise<Record<string, string>> {
   const since = new Date(Date.now() - GLOW_DAYS * 86_400_000);
-  const rows = await db
+  // The layout reads this on every navigation and save: the team's rows stay in the server's
+  // memory until a part or system changes, and each member's view is filtered from them here.
+  // The window is cut again below, since a kept list can be older than today's cut-off.
+  const rows = await cached("arrivals", ["parts", "systems"], () => loadArrivals(new Date(Date.now() - GLOW_DAYS * 86_400_000)));
+  const newest: Record<string, string> = {};
+  const keep = (key: string, at: Date) => {
+    if (!newest[key] || newest[key] < at.toISOString()) newest[key] = at.toISOString();
+  };
+  for (const r of rows) {
+    if (!r.stageAt || r.stageAt <= since || r.by === memberId) continue;
+    const where = arrivalPage(r, r.robotId);
+    if (!where) continue;
+    keep(where.page, r.stageAt);
+    if (where.machine) keep(`${where.page}@${where.machine}`, r.stageAt);
+  }
+  return newest;
+}
+
+function loadArrivals(since: Date) {
+  return db
     .select({
       stageAt: parts.stageAt,
       by: parts.lastModifiedBy,
@@ -49,15 +69,4 @@ export async function listNewest(memberId: string): Promise<Record<string, strin
     .from(parts)
     .leftJoin(systems, eq(systems.id, parts.systemId))
     .where(and(isNotNull(parts.stageAt), gt(parts.stageAt, since), isNull(parts.removedFromCadAt)));
-  const newest: Record<string, string> = {};
-  const keep = (key: string, at: Date) => {
-    if (!newest[key] || newest[key] < at.toISOString()) newest[key] = at.toISOString();
-  };
-  for (const r of rows) {
-    const where = arrivalPage(r, r.robotId);
-    if (!where || !r.stageAt || r.by === memberId) continue;
-    keep(where.page, r.stageAt);
-    if (where.machine) keep(`${where.page}@${where.machine}`, r.stageAt);
-  }
-  return newest;
 }

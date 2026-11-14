@@ -24,7 +24,9 @@ export type Watched =
   | "robots"
   | "members"
   | "part_drawings"
-  | "part_reviews";
+  | "part_reviews"
+  | "inventory_groups"
+  | "inventory_conditions";
 
 // null when the counters can't be read (the migration hasn't run yet): every read goes to the
 // database as before.
@@ -39,16 +41,47 @@ async function readVersions(): Promise<Map<string, number> | null> {
 // Once per server render; route handlers and actions read them per call.
 const versions = perRender(readVersions);
 
-type Entry = { stamp: string; value: unknown };
+// Kept by count and by an estimated size: a few big reads (every part of the team, the whole
+// shelf) could otherwise fill the small server's memory (audit, 2026-11-14). The estimate is the
+// value's JSON length times 3, about what V8's objects take for this kind of row data.
+type Entry = { stamp: string; value: unknown; bytes: number };
 const MAX_ENTRIES = 300;
+const MAX_BYTES = 200 * 2 ** 20;
 const store = new Map<string, Entry>();
+let storedBytes = 0;
 // Loads in flight, so a burst of requests (the layout and a page side by side) reads once.
 const loading = new Map<string, Promise<unknown>>();
 
+function sizeOf(value: unknown): number {
+  try {
+    return (JSON.stringify(value)?.length ?? 0) * 3;
+  } catch {
+    return MAX_BYTES; // can't tell (a cycle, a BigInt): not kept
+  }
+}
+
+function forget(key: string) {
+  const old = store.get(key);
+  if (!old) return;
+  store.delete(key);
+  storedBytes -= old.bytes;
+}
+
+function keep(key: string, stamp: string, value: unknown) {
+  forget(key);
+  const bytes = sizeOf(value);
+  if (bytes > MAX_BYTES / 4) return; // one read that big isn't worth pushing everything else out
+  store.set(key, { stamp, value, bytes });
+  storedBytes += bytes;
+  while (store.size > MAX_ENTRIES || storedBytes > MAX_BYTES) forget(store.keys().next().value!);
+}
+
 export async function cached<T>(key: string, tables: Watched[], load: () => Promise<T>): Promise<T> {
   const v = await versions();
-  if (!v) return load();
-  const stamp = tables.map((t) => v.get(t) ?? "-").join(".");
+  // A table without a counter isn't watched yet (its migration hasn't run): nothing would tell
+  // the kept copy it's stale, so it reads the database as before.
+  if (!v || tables.some((t) => !v.has(t))) return load();
+  const stamp = tables.map((t) => v.get(t)).join(".");
   const hit = store.get(key);
   if (hit?.stamp === stamp) {
     // Most recently used last, so the oldest goes first when the store is full.
@@ -61,9 +94,7 @@ export async function cached<T>(key: string, tables: Watched[], load: () => Prom
   let pending = loading.get(id) as Promise<T> | undefined;
   if (!pending) {
     pending = load().then((value) => {
-      store.delete(key);
-      store.set(key, { stamp, value });
-      if (store.size > MAX_ENTRIES) store.delete(store.keys().next().value!);
+      keep(key, stamp, value);
       return value;
     });
     loading.set(id, pending);
@@ -85,5 +116,11 @@ export function cachedQuery<T>(query: PromiseLike<T> & { toSQL(): { sql: string;
 // For tests.
 export function clearCache() {
   store.clear();
+  storedBytes = 0;
   loading.clear();
+}
+
+// For tests: how much is kept.
+export function cacheStats() {
+  return { entries: store.size, bytes: storedBytes };
 }

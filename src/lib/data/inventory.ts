@@ -108,8 +108,8 @@ export async function listInventory({ itemIds }: { itemIds?: string[] } = {}) {
         .orderBy(asc(inventoryItems.name)),
       ["inventory_items"],
     ),
-    db.select().from(inventoryGroups).orderBy(asc(inventoryGroups.name)),
-    db.select().from(inventoryConditions).orderBy(asc(inventoryConditions.label)),
+    cachedQuery(db.select().from(inventoryGroups).orderBy(asc(inventoryGroups.name)), ["inventory_groups"]),
+    cachedQuery(db.select().from(inventoryConditions).orderBy(asc(inventoryConditions.label)), ["inventory_conditions"]),
     listPlaces(),
     usageParts(db, { itemIds }),
     listCategories(),
@@ -161,17 +161,20 @@ export async function listFitTargets() {
 
 // Each item's newest COTS card on its way (lib/inventory/season.ts says which count).
 async function openOrders(itemIds?: string[]) {
-  const rows = await db
-    .select({ itemId: parts.inventoryItemId, partId: parts.id, designState: parts.designState, systemId: parts.systemId, restock: parts.restock, at: parts.createdAt })
-    .from(parts)
-    .where(
-      and(
-        isNotNull(parts.inventoryItemId),
-        isNull(parts.removedFromCadAt),
-        eq(parts.classification, "cots"),
-        itemIds ? inArray(parts.inventoryItemId, itemIds) : undefined,
+  const rows = await cachedQuery(
+    db
+      .select({ itemId: parts.inventoryItemId, partId: parts.id, designState: parts.designState, systemId: parts.systemId, restock: parts.restock, at: parts.createdAt })
+      .from(parts)
+      .where(
+        and(
+          isNotNull(parts.inventoryItemId),
+          isNull(parts.removedFromCadAt),
+          eq(parts.classification, "cots"),
+          itemIds ? inArray(parts.inventoryItemId, itemIds) : undefined,
+        ),
       ),
-    );
+    ["parts"],
+  );
   return newestOpenOrders(rows.map((r) => ({ ...r, itemId: r.itemId!, status: cotsStatusOf(r.designState) })));
 }
 
@@ -190,11 +193,15 @@ export async function itemThumbs(items: (Named & { imagePath: string | null })[]
   const own = await Promise.all(items.filter((i) => photo(i)).map(async (i) => [i.id, await imageUrl(photo(i)!)] as const));
   const itemIds = items.filter((i) => !photo(i) && !raw.has(i.id)).map((i) => i.id);
   if (!itemIds.length) return new Map(own.filter((u): u is readonly [string, string] => !!u[1]));
-  const rows = await db
-    .selectDistinctOn([parts.inventoryItemId], { itemId: parts.inventoryItemId, partId: parts.id, rev: parts.thumbnailRev })
-    .from(parts)
-    .where(and(inArray(parts.inventoryItemId, itemIds), isNotNull(parts.thumbnailRev)))
-    .orderBy(parts.inventoryItemId, desc(parts.lastModifiedAt));
+  // The parts' rows are kept until a part changes; the links are signed fresh (never cached).
+  const rows = await cachedQuery(
+    db
+      .selectDistinctOn([parts.inventoryItemId], { itemId: parts.inventoryItemId, partId: parts.id, rev: parts.thumbnailRev })
+      .from(parts)
+      .where(and(inArray(parts.inventoryItemId, itemIds), isNotNull(parts.thumbnailRev)))
+      .orderBy(parts.inventoryItemId, desc(parts.lastModifiedAt)),
+    ["parts"],
+  );
   const urls = await Promise.all(rows.map(async (r) => [r.itemId!, await imageUrl(thumbKey(r.partId, r.rev!))] as const));
   return new Map([...own, ...urls].filter((u): u is readonly [string, string] => !!u[1]));
 }

@@ -3,35 +3,32 @@ import Image from "next/image";
 import { ROBOT_COOKIE } from "@/components/shell/mode";
 import { FastLink } from "@/components/ui/FastLink";
 import { requireMember } from "@/lib/auth";
-import { asc, desc } from "drizzle-orm";
-import { db, schema } from "@/db";
 import { waitingOnYou } from "@/lib/data/cadReview";
-import { getRobot } from "@/lib/data/robots";
+import { listShellRobots } from "@/lib/data/shell";
 
 // The landing page: one full-height picture card per app. Robots are picked in the right sidebar. Every team
 // opens the app here, not on To Fab or a dashboard (Harel, 2026-11-07).
 export default async function HomePage() {
   const member = await requireMember();
-  const [robots, jar] = await Promise.all([
-    db.select({ id: schema.robots.id, archived: schema.robots.archived }).from(schema.robots).orderBy(desc(schema.robots.year), asc(schema.robots.name)),
-    cookies(),
-  ]);
+  // The robots and their completion come from the shell's read (the layout makes the same one in
+  // this render, from the server's memory), not a read of their own.
+  const [robots, jar] = await Promise.all([listShellRobots(), cookies()]);
   const last = jar.get(ROBOT_COOKIE)?.value;
-  const picked = robots.find((r) => r.id === last) ?? robots.find((r) => !r.archived);
-  const [robot, waiting] = await Promise.all([picked ? getRobot(picked.id) : null, waitingOnYou(member, picked?.id ?? null)]);
+  const robot = robots.find((r) => r.id === last) ?? robots.find((r) => !r.archived) ?? null;
+  const waiting = await waitingOnYou(member, robot?.id ?? null);
 
   const tiles = [
     {
-      href: robot ? `/robots/${robot.robot.id}` : "/robots/new",
+      href: robot ? `/robots/${robot.id}` : "/robots/new",
       title: "BOM",
-      text: robot ? `${robot.robot.name} · ${robot.breakdown.percent}% complete` : "Create the first robot",
+      text: robot ? `${robot.name} · ${robot.percent}% complete` : "Create the first robot",
       image: "/apps/bom.png",
     },
     { href: "/inventory", title: "Inventory", text: null, image: "/apps/inventory.png" },
     { href: "/cots", title: "Orders", text: null, image: "/apps/cots.png" },
     // Harel's picture (2026-11-09): portrait, so the crop aims at the model on the screen.
     // The badge: comments waiting on you (a mentor: to approve; the CAD Team: open on your system).
-    { href: robot ? `/robots/${robot.robot.id}/cad-review` : "/robots/new", title: "CAD", text: waiting ? (member.isMentor ? `${waiting} to approve` : `${waiting} open on your system`) : null, image: "/apps/cad.webp", focus: "object-[center_30%]", badge: waiting },
+    { href: robot ? `/robots/${robot.id}/cad-review` : "/robots/new", title: "CAD", text: waiting ? (member.isMentor ? `${waiting} to approve` : `${waiting} open on your system`) : null, image: "/apps/cad.webp", focus: "object-[center_30%]", badge: waiting },
   ];
 
   // The cards fill the space between the sidebars: the negative margins undo the shell's own

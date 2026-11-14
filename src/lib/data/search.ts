@@ -6,6 +6,7 @@ import { categoryOf } from "@/lib/inventory/categories";
 import { searchRank } from "@/lib/inventory/searchWords";
 import { thumbKey } from "@/lib/onshape/thumbnails";
 import { imageUrl } from "@/lib/storage/r2";
+import { cachedQuery } from "./cache";
 import { listCategories } from "./categories";
 import { itemThumbs } from "./inventory";
 
@@ -33,38 +34,46 @@ function sections<T extends { rank: number }>(hits: T[], keyOf: (h: T) => string
 // system, then every inventory item, by category. Matches anywhere in the name, part number,
 // material or (items) aliases and specs, the way matchesSearch does everywhere else.
 export async function globalSearch(q: string): Promise<SearchResults> {
+  // Both lists come from the server's memory until a part, system, robot or item changes (one
+  // search per keystroke read every part and item from Supabase before, 2026-11-14).
   const [partRows, itemRows, categories] = await Promise.all([
-    db
-      .select({
-        part: {
-          id: parts.id,
-          displayName: parts.displayName,
-          onshapeName: parts.onshapeName,
-          partNumber: parts.partNumber,
-          material: parts.material,
-          thumbnailRev: parts.thumbnailRev,
-          classification: parts.classification,
-          quantity: parts.quantity,
-          designState: parts.designState,
-          preProcess: parts.preProcess,
-          process1: parts.process1,
-          process2: parts.process2,
-          donePreprocess: parts.donePreprocess,
-          doneProcess1: parts.doneProcess1,
-          doneProcess2: parts.doneProcess2,
-        },
-        systemId: systems.id,
-        systemName: systems.name,
-        robotId: robots.id,
-        robotName: robots.name,
-      })
-      .from(parts)
-      .innerJoin(systems, eq(systems.id, parts.systemId))
-      .innerJoin(robots, eq(robots.id, systems.robotId))
-      .where(and(isNull(parts.removedFromCadAt), eq(robots.archived, false))),
-    db
-      .select({ id: inventoryItems.id, name: inventoryItems.name, category: inventoryItems.category, imagePath: inventoryItems.imagePath, inStock: inventoryItems.inStock, aliases: inventoryItems.aliases, specs: inventoryItems.specs })
-      .from(inventoryItems),
+    cachedQuery(
+      db
+        .select({
+          part: {
+            id: parts.id,
+            displayName: parts.displayName,
+            onshapeName: parts.onshapeName,
+            partNumber: parts.partNumber,
+            material: parts.material,
+            thumbnailRev: parts.thumbnailRev,
+            classification: parts.classification,
+            quantity: parts.quantity,
+            designState: parts.designState,
+            preProcess: parts.preProcess,
+            process1: parts.process1,
+            process2: parts.process2,
+            donePreprocess: parts.donePreprocess,
+            doneProcess1: parts.doneProcess1,
+            doneProcess2: parts.doneProcess2,
+          },
+          systemId: systems.id,
+          systemName: systems.name,
+          robotId: robots.id,
+          robotName: robots.name,
+        })
+        .from(parts)
+        .innerJoin(systems, eq(systems.id, parts.systemId))
+        .innerJoin(robots, eq(robots.id, systems.robotId))
+        .where(and(isNull(parts.removedFromCadAt), eq(robots.archived, false))),
+      ["parts", "systems", "robots"],
+    ),
+    cachedQuery(
+      db
+        .select({ id: inventoryItems.id, name: inventoryItems.name, category: inventoryItems.category, imagePath: inventoryItems.imagePath, inStock: inventoryItems.inStock, aliases: inventoryItems.aliases, specs: inventoryItems.specs })
+        .from(inventoryItems),
+      ["inventory_items"],
+    ),
     listCategories(),
   ]);
 

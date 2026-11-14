@@ -1,4 +1,5 @@
 import "server-only";
+import { cache as perRender } from "react";
 import { and, asc, count, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { thumbKey } from "@/lib/onshape/thumbnails";
@@ -33,8 +34,9 @@ export type ShellRobot = {
 
 // The right sidebar: every robot with its systems, completion and a picture. A system's
 // picture is its stored thumbnail or, until one exists, one of its part thumbnails, so this
-// never calls Onshape.
-export async function listShellRobots(): Promise<ShellRobot[]> {
+// never calls Onshape. Once per server render: the layout and the page (home, CAD) share it.
+export const listShellRobots = perRender(loadShellRobots);
+async function loadShellRobots(): Promise<ShellRobot[]> {
   // One read of the systems for the panel and their sync state (a Drizzle query runs again each
   // time it is awaited, so it is turned into a promise once).
   const systemsRead = cachedQuery(db.select().from(systems).orderBy(asc(systems.name)), ["systems"]);

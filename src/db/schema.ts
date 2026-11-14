@@ -185,7 +185,7 @@ export const cadUpdates = pgTable(
     memberId: uuid("member_id").references(() => members.id, { onDelete: "set null" }),
     createdAt: createdAt(),
   },
-  (t) => [index("cad_updates_system_idx").on(t.systemId, t.createdAt)],
+  (t) => [index("cad_updates_system_idx").on(t.systemId, t.createdAt), index("cad_updates_robot_idx").on(t.robotId, t.createdAt)],
 );
 
 // ---------- Parts (one BOM row) ----------
@@ -322,6 +322,10 @@ export const parts = pgTable(
     index("parts_robot_idx").on(t.robotId),
     index("parts_identity_idx").on(t.sourceDid, t.sourceEid, t.onshapePartId),
     index("parts_inventory_item_idx").on(t.inventoryItemId),
+    // stage_at: the layout's arrivals (data/seen.ts). released_version_id: deleting a BOM version
+    // sets it to null here, which scanned every part.
+    index("parts_stage_at_idx").on(t.stageAt),
+    index("parts_released_version_idx").on(t.releasedVersionId),
   ],
 );
 
@@ -764,7 +768,11 @@ export const reviewComments = pgTable(
     // Its author changed the text after posting it (shown as "edited", Harel 2026-11-13).
     editedAt: timestamp("edited_at", { withTimezone: true }),
   },
-  (t) => [index("review_comments_system_idx").on(t.systemId, t.createdAt), index("review_comments_robot_idx").on(t.robotId, t.createdAt)],
+  (t) => [
+    index("review_comments_system_idx").on(t.systemId, t.createdAt),
+    index("review_comments_robot_idx").on(t.robotId, t.createdAt),
+    index("review_comments_done_version_idx").on(t.doneVersionId),
+  ],
 );
 
 // Replies under a CAD comment, a thread like Onshape's (Harel, 2026-11-13). No status of their
@@ -861,7 +869,7 @@ export const partReleases = pgTable(
     batchId: uuid("batch_id"),
     at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("part_releases_part_idx").on(t.partId)],
+  (t) => [index("part_releases_part_idx").on(t.partId), index("part_releases_version_idx").on(t.versionId)],
 );
 
 // What is stored in R2, key by key (plan/system-versioning.md §5): putObject and deleteObject
@@ -1038,7 +1046,12 @@ export const inventoryMoves = pgTable(
     page: text("page"),
     at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("inventory_moves_item_idx").on(t.itemId, t.at), index("inventory_moves_batch_idx").on(t.batchId), index("inventory_moves_visit_idx").on(t.visitId)],
+  (t) => [
+    index("inventory_moves_item_idx").on(t.itemId, t.at),
+    index("inventory_moves_batch_idx").on(t.batchId),
+    index("inventory_moves_visit_idx").on(t.visitId),
+    index("inventory_moves_part_idx").on(t.partId),
+  ],
 );
 
 // Every COTS order, one card each on the COTS Order History page and in the item's Past orders:

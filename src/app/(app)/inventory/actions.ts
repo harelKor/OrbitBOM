@@ -363,7 +363,8 @@ export async function adjustStock(itemId: string, delta: number, size?: string):
   const member = await requireCapability("work");
   if (!isUuid(itemId) || !Number.isFinite(delta) || !delta) return { error: "Unknown item." };
   if (size !== undefined && !SIZE_KEY.test(size)) return { error: "Unknown piece size." };
-  await db.transaction((tx) => moveStock(tx, { itemId, delta, reason: delta > 0 ? "received" : "used", size }, { memberId: member.id, via: "ui" }));
+  const cats = await listCategories(); // cached, read before the transaction
+  await db.transaction((tx) => moveStock(tx, { itemId, delta, reason: delta > 0 ? "received" : "used", size }, { memberId: member.id, via: "ui", cats }));
   refresh();
   return {};
 }
@@ -373,7 +374,8 @@ export async function editItemPieces(itemId: string, op: PieceOp): Promise<Actio
   const member = await requireCapability("work");
   if (!isUuid(itemId) || !SIZE_KEY.test(op.size) || (op.kind === "rename" && !SIZE_KEY.test(op.to))) return { error: "Unknown piece size." };
   if (op.kind === "count" && (!Number.isInteger(op.count) || op.count < 0 || op.count > 100000)) return { error: "Type a whole number of pieces." };
-  await db.transaction((tx) => editPieces(tx, itemId, op, { memberId: member.id, via: "ui" }));
+  const cats = await listCategories();
+  await db.transaction((tx) => editPieces(tx, itemId, op, { memberId: member.id, via: "ui", cats }));
   refresh();
   return {};
 }
@@ -382,7 +384,8 @@ export async function editItemPieces(itemId: string, op: PieceOp): Promise<Actio
 export async function countStock(itemId: string, amount: number): Promise<ActionResult> {
   const member = await requireCapability("work");
   if (!isUuid(itemId) || !Number.isFinite(amount) || amount < 0) return { error: "Type a count of 0 or more." };
-  await db.transaction((tx) => setStock(tx, itemId, amount, { memberId: member.id, via: "ui" }));
+  const cats = await listCategories();
+  await db.transaction((tx) => setStock(tx, itemId, amount, { memberId: member.id, via: "ui", cats }));
   refresh();
   return {};
 }
@@ -488,7 +491,8 @@ export async function stepShelfStock(partIds: string[], delta: number): Promise<
   const rows = await db.select().from(parts).where(inArray(parts.id, partIds));
   const itemId = rows.find((p) => p.inventoryItemId)?.inventoryItemId;
   if (!itemId) return { error: "This part isn't linked to an inventory item." };
-  await db.transaction((tx) => moveStock(tx, { itemId, delta, reason: delta > 0 ? "received" : "used", partId: rows[0].id }, { memberId: member.id, via: "ui" }));
+  const cats = await listCategories();
+  await db.transaction((tx) => moveStock(tx, { itemId, delta, reason: delta > 0 ? "received" : "used", partId: rows[0].id }, { memberId: member.id, via: "ui", cats }));
   if (delta > 0) {
     const { usage } = await usageOf([itemId]);
     const covered = usage.get(itemId)?.coveredOf;

@@ -1,7 +1,7 @@
 import "server-only";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { categoryOf, getCategory } from "./categories";
+import { categoryOf, getCategory, type InvCategory } from "./categories";
 import { listCategories } from "@/lib/data/categories";
 import { currentVisit } from "@/lib/visits";
 import { type PieceOp, type PieceRow, type StoredPieces, applyPieceOp, countPieces, snapStock, stepStock } from "./stock";
@@ -10,7 +10,9 @@ const { inventoryItems, inventoryMoves } = schema;
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export type StockReason = (typeof schema.stockReason.enumValues)[number];
-export type MoveCtx = { memberId: string | null; via: "ui" | "sync" | "mcp"; aiName?: string | null; batchId?: string | null };
+// `cats`: the categories, when the caller read them (cached) before opening the transaction: a
+// stock tap then doesn't re-read the three settings tables under the row lock (2026-11-14).
+export type MoveCtx = { memberId: string | null; via: "ui" | "sync" | "mcp"; aiName?: string | null; batchId?: string | null; cats?: InvCategory[] };
 
 // The one way stock changes: the item's count and a line in inventory_moves, together. The amount
 // is snapped (whole units, or twelfths of a sheet) and never goes below zero; the move records
@@ -39,7 +41,7 @@ async function changeStock(
 ) {
   const [item] = await tx.select().from(inventoryItems).where(eq(inventoryItems.id, itemId)).for("update");
   if (!item) return null;
-  const cats = await listCategories(tx);
+  const cats = ctx.cats ?? (await listCategories(tx));
   const sheet = !!getCategory(cats, categoryOf(item, cats))?.sheet;
   const after = next({ inStock: item.inStock, sheet, pieces: item.pieces, specs: item.specs, name: item.name });
   // A fraction item's stock is its pieces' sum (a custom size can be any share), so it isn't snapped.

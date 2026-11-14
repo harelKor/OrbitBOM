@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { analyseMissing, type MissingReport } from "@/lib/groups/missing";
 import { computeStatus } from "@/lib/status";
@@ -82,7 +82,7 @@ export async function listGroups(): Promise<GroupSummary[]> {
 export async function listRobotGroups(robotId: string) {
   const [groups, gcodes] = await Promise.all([
     db
-      .select({ id: partGroups.id, name: partGroups.name, color: partGroups.color, machine: partGroups.machine, madeBy: partGroups.madeBy, priority: partGroups.priority, layoutData: partGroups.layoutData, createdAt: partGroups.createdAt })
+      .select({ id: partGroups.id, name: partGroups.name, color: partGroups.color, machine: partGroups.machine, madeBy: partGroups.madeBy, priority: partGroups.priority, onshapeLayoutUrl: sql<string | null>`${partGroups.layoutData} -> 'onshape' ->> 'url'`, createdAt: partGroups.createdAt })
       .from(partGroups)
       .where(eq(partGroups.robotId, robotId))
       .orderBy(asc(partGroups.name)),
@@ -94,12 +94,9 @@ export async function listRobotGroups(robotId: string) {
       .where(and(eq(partGroups.robotId, robotId), eq(groupFiles.type, "gcode"))),
   ]);
   const gcodeOf = new Map(gcodes.map(({ groupId, ...f }) => [groupId, f]));
-  // A batch's Onshape layout assembly (src/lib/fab/onshapeLayout.ts), as a link to open it.
-  return groups.map(({ layoutData, ...g }) => ({
-    ...g,
-    gcode: gcodeOf.get(g.id) ?? null,
-    onshapeLayoutUrl: layoutData?.onshape?.url ?? null,
-  }));
+  // `onshapeLayoutUrl`: a batch's Onshape layout assembly (src/lib/fab/onshapeLayout.ts), as a
+  // link to open it. Only that string is read: `layout_data` can hold thousands of placements.
+  return groups.map((g) => ({ ...g, gcode: gcodeOf.get(g.id) ?? null }));
 }
 
 // Group badges on BOM parts.

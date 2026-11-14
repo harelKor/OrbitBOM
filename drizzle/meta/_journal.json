@@ -652,6 +652,13 @@
       "when": 1794642142181,
       "tag": "0092_drop_map_pins",
       "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1794673607846,
+      "tag": "0093_egress_indexes",
+      "breakpoints": true
     }
   ]
 }

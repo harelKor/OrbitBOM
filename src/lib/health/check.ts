@@ -22,6 +22,13 @@ const WANTED_INDEXES: [string, string[]][] = [
   ["part_history", ["part_id", "at"]],
   ["part_history", ["at"]],
   ["inventory_moves", ["item_id", "at"]],
+  // Migration 0093: the layout's arrivals, and foreign keys Postgres checks on every delete.
+  ["parts", ["stage_at"]],
+  ["parts", ["released_version_id"]],
+  ["inventory_moves", ["part_id"]],
+  ["review_comments", ["done_version_id"]],
+  ["part_releases", ["version_id"]],
+  ["cad_updates", ["robot_id"]],
 ];
 
 export async function healthCheck() {

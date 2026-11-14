@@ -2,6 +2,7 @@ import "server-only";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { factoryOf, packsByMaterial } from "@/config/machines";
 import { db, schema } from "@/db";
+import { cachedQuery } from "@/lib/data/cache";
 import { computeStatus } from "@/lib/status";
 
 const { parts, systems, robots, partGroups, groupMembers } = schema;
@@ -15,6 +16,7 @@ export const packName = (material: string | null) => material || "No material";
 // two loads at once don't make the same pack twice. Returns how many parts were packed.
 export async function autoPackByMaterial(robotId: string, factory: string): Promise<number> {
   if (!packsByMaterial(factory)) return 0;
+  if (!(await hasLooseReleased(robotId, factory))) return 0;
   return db.transaction(async (tx) => {
     const rows = await tx
       .select({ part: parts })
@@ -71,4 +73,37 @@ export async function autoPackByMaterial(robotId: string, factory: string): Prom
     }
     return todo.length;
   });
+}
+
+// The cheap check before the write transaction: is any of the factory's Released parts still in no
+// pack? Usually none, and every visit to its pages opened a transaction and read the robot's full
+// parts rows before (2026-11-14). The status columns come from the server's memory.
+async function hasLooseReleased(robotId: string, factory: string): Promise<boolean> {
+  const rows = await cachedQuery(
+    db
+      .select({
+        id: parts.id,
+        classification: parts.classification,
+        quantity: parts.quantity,
+        designState: parts.designState,
+        preProcess: parts.preProcess,
+        process1: parts.process1,
+        process2: parts.process2,
+        donePreprocess: parts.donePreprocess,
+        doneProcess1: parts.doneProcess1,
+        doneProcess2: parts.doneProcess2,
+      })
+      .from(parts)
+      .innerJoin(systems, eq(systems.id, parts.systemId))
+      .where(and(eq(systems.robotId, robotId), isNull(parts.removedFromCadAt))),
+    ["parts", "systems"],
+  );
+  const released = rows.filter((p) => p.classification !== "cots" && factoryOf(p) === factory && computeStatus(p) === "Released").map((p) => p.id);
+  if (!released.length) return false;
+  const packed = await db
+    .selectDistinct({ partId: groupMembers.partId })
+    .from(groupMembers)
+    .innerJoin(partGroups, eq(partGroups.id, groupMembers.groupId))
+    .where(and(eq(partGroups.machine, factory), inArray(groupMembers.partId, released)));
+  return packed.length < released.length;
 }
