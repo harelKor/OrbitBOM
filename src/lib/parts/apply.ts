@@ -65,6 +65,18 @@ export async function applyEachPartChanges(
     // Locked in id order, so two bulk edits over the same parts wait for each other instead of deadlocking.
     const rows = await tx.select().from(parts).where(inArray(parts.id, [...byId.keys()])).orderBy(asc(parts.id)).for("update");
     let changed = 0;
+    // A plain edit (a made part, nothing linked, no release) touches only its own row and its
+    // history: those wait here and go out together, a few queries for a whole bulk edit instead of
+    // two per part. Anything else first sends what's waiting, so it reads the parts as before.
+    const now = new Date();
+    const waiting = new Map<string, { values: Partial<typeof parts.$inferInsert>; ids: string[] }>();
+    const waitingHistory: (typeof partHistory.$inferInsert)[] = [];
+    const flush = async () => {
+      for (const { values, ids } of waiting.values()) await tx.update(parts).set(values).where(inArray(parts.id, ids));
+      waiting.clear();
+      for (let i = 0; i < waitingHistory.length; i += 1000) await tx.insert(partHistory).values(waitingHistory.slice(i, i + 1000));
+      waitingHistory.length = 0;
+    };
     for (const row of rows) {
       if (ctx.onlyIf && !ctx.onlyIf(row)) continue;
       const own = byId.get(row.id)!;
@@ -77,6 +89,8 @@ export async function applyEachPartChanges(
       // An order arrived: a linked COTS part going from the Order List to In Stock adds what the
       // shelf was missing for it to its item's stock (nothing when the shelf already had it).
       const after = { ...row, ...set };
+      const plain = !ctx.afterEach && row.classification !== "cots" && after.classification !== "cots" && !set.inventoryItemId && !isReleaseMove(row, after);
+      if (!plain) await flush(); // what follows may read other parts (the shelf's count below)
       let received = 0;
       if (
         ctx.receive !== false &&
@@ -95,35 +109,41 @@ export async function applyEachPartChanges(
           received = item ? Math.min(after.quantity, Math.max(0, Math.ceil(total - item.inStock - 1e-9))) : 0;
         } else received = Math.max(0, after.quantity - (usage.get(after.inventoryItemId)?.coveredOf.get(row.id) ?? 0));
       }
-      await tx
-        .update(parts)
-        .set({
-          ...set,
-          // Made parts carry when they were finished (a factory's or printer's part: when it reached In Stock);
-          // a part sent back to work loses it.
-          fabFinishedAt: isFabFinished({ ...row, ...set }) || isAreaInStock({ ...row, ...set }) ? (row.fabFinishedAt ?? new Date()) : null,
-          // A COTS part keeps when it arrived while it stays In Stock; leaving In Stock un-clears it.
-          ...(inStockNow(after) ? { cotsInStockAt: row.cotsInStockAt ?? new Date() } : { cotsInStockAt: null, cotsClearedAt: null }),
-          // Arriving in a page's list (Released, In process, the Order List...) makes it glow there
-          // for members who haven't opened that page since (src/lib/seen.ts).
-          ...(arrives(row, after) && { stageAt: new Date() }),
-          lastModifiedAt: new Date(),
-          lastModifiedBy: ctx.memberId,
-        })
-        .where(eq(parts.id, row.id));
-      await tx.insert(partHistory).values(
-        history.map((h) => ({
-          partId: row.id,
-          field: h.field,
-          oldValue: h.oldValue,
-          newValue: h.newValue,
-          memberId: ctx.memberId,
-          via: ctx.via,
-          batchId,
-          visitId: visit?.id,
-          page: visit?.page,
-        })),
-      );
+      const values = {
+        ...set,
+        // Made parts carry when they were finished (a factory's or printer's part: when it reached In Stock);
+        // a part sent back to work loses it.
+        fabFinishedAt: isFabFinished({ ...row, ...set }) || isAreaInStock({ ...row, ...set }) ? (row.fabFinishedAt ?? now) : null,
+        // A COTS part keeps when it arrived while it stays In Stock; leaving In Stock un-clears it.
+        ...(inStockNow(after) ? { cotsInStockAt: row.cotsInStockAt ?? now } : { cotsInStockAt: null, cotsClearedAt: null }),
+        // Arriving in a page's list (Released, In process, the Order List...) makes it glow there
+        // for members who haven't opened that page since (src/lib/seen.ts).
+        ...(arrives(row, after) && { stageAt: now }),
+        lastModifiedAt: now,
+        lastModifiedBy: ctx.memberId,
+      };
+      const historyRows = history.map((h) => ({
+        partId: row.id,
+        field: h.field,
+        oldValue: h.oldValue,
+        newValue: h.newValue,
+        memberId: ctx.memberId,
+        via: ctx.via,
+        batchId,
+        visitId: visit?.id,
+        page: visit?.page,
+      }));
+      if (plain) {
+        // Parts given the very same values share one update.
+        const key = JSON.stringify(values);
+        const group = waiting.get(key);
+        if (group) group.ids.push(row.id);
+        else waiting.set(key, { values, ids: [row.id] });
+        waitingHistory.push(...historyRows);
+        continue;
+      }
+      await tx.update(parts).set(values).where(eq(parts.id, row.id));
+      await tx.insert(partHistory).values(historyRows);
       // A COTS order went In Route, arrived, or was taken back: its Order History card follows.
       if (set.designState !== undefined && !own.fromShelfPrompt) await recordOrderHistory(tx, row, after);
       // Sent to fab: To Fab keeps this state until the part is released again (plan/fab-version-lock.md).
@@ -139,6 +159,7 @@ export async function applyEachPartChanges(
       if (ctx.via !== "sync") await pushCardToItem(tx, row, after, { memberId: ctx.memberId, via: ctx.via, batchId });
       await ctx.afterEach?.(tx, row, plan);
     }
+    await flush();
     return { batchId, changed };
   };
   return ctx.tx ? run(ctx.tx) : db.transaction(run);
