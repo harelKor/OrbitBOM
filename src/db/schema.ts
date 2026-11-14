@@ -1166,6 +1166,18 @@ export const onshapeUsage = pgTable("onshape_usage", {
   background: integer("background").notNull().default(0), // of them, automatic (thumbnails, previews)
 });
 
+// Paid or capped outside APIs counted per day (Serper web search and Lens, Gemini), so a daily
+// cap survives restarts and deploys (src/lib/apiUsage.ts, limits in src/config/apiLimits.ts).
+export const apiUsage = pgTable(
+  "api_usage",
+  {
+    day: date("day").notNull(),
+    service: text("service").notNull(),
+    calls: integer("calls").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.day, t.service] })],
+);
+
 export const onshapeCache = pgTable("onshape_cache", {
   key: text("key").primaryKey(),
   microversion: text("microversion"),

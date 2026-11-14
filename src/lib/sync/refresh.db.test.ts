@@ -112,7 +112,7 @@ else
       expect(draft.changes.map((c) => [c.change, c.name])).toEqual([["added", "Spacer"]]);
     });
 
-    it("moves to another connected member when the refresh account is out of calls or refused", async () => {
+    it("never borrows another member's account when the refresh account is out of calls", async () => {
       const { DAILY_CALL_BUDGET } = await import("@/lib/onshape/client");
       const backupUser = randomUUID();
       const [backup] = await db
@@ -130,17 +130,12 @@ else
         await db.update(schema.onshapeTokens).set({ callsToday: DAILY_CALL_BUDGET, callsDay: today }).where(eq(schema.onshapeTokens.memberId, member.id));
         await db.update(schema.systems).set({ lastCheckedAt: null, refreshMemberId: member.id }).where(eq(schema.systems.id, system.id));
         const spent = await refreshSystem(system.id, member.id, later, 10);
-        expect(spent?.error).toBeUndefined();
-        expect((await getSystem()).refreshMemberId).toBe(backup.id);
-
-        await db.update(schema.onshapeTokens).set({ callsToday: 0 }).where(eq(schema.onshapeTokens.memberId, member.id));
-        await db.update(schema.systems).set({ lastCheckedAt: null, refreshMemberId: member.id }).where(eq(schema.systems.id, system.id));
-        refused.add("access");
-        const denied = await refreshSystem(system.id, member.id, later, 10);
-        expect(denied?.error).toBeUndefined();
-        expect((await getSystem()).refreshMemberId).toBe(backup.id);
+        expect(spent?.error).toMatch(/budget/);
+        expect((await getSystem()).refreshMemberId).toBe(member.id);
+        const [b] = await db.select().from(schema.onshapeTokens).where(eq(schema.onshapeTokens.memberId, backup.id));
+        expect(b.callsToday).toBe(0);
       } finally {
-        refused.clear();
+        await db.update(schema.onshapeTokens).set({ callsToday: 0 }).where(eq(schema.onshapeTokens.memberId, member.id));
         await db.update(schema.systems).set({ refreshMemberId: member.id }).where(eq(schema.systems.id, system.id));
         await db.delete(schema.members).where(eq(schema.members.id, backup.id));
       }

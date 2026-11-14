@@ -6,6 +6,7 @@ import { writeDxf } from "@/lib/drawing/dxf";
 import { batchLayout } from "@/lib/fab/batchLayout";
 import { DEFAULT_GAP, DEFAULT_MARGIN, sheetLoops } from "@/lib/fab/layout";
 import { isUuid } from "@/lib/uuid";
+import { contentDisposition } from "@/lib/http/disposition";
 
 export const maxDuration = 60;
 
@@ -34,5 +35,5 @@ export async function GET(_request: Request, { params }: { params: Promise<{ gro
 
   const text = writeDxf(sheetLoops(new Map(layout.parts.map((p) => [p.partId, p])), placements));
   const filename = `${layout.name.replace(/[^\w.\- ]+/g, "_")} layout.dxf`;
-  return new NextResponse(text, { headers: { "content-type": "image/vnd.dxf", "content-disposition": `attachment; filename="${filename}"` } });
+  return new NextResponse(text, { headers: { "content-type": "image/vnd.dxf", "content-disposition": contentDisposition(filename) } });
 }

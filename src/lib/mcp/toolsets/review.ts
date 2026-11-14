@@ -1,6 +1,7 @@
 import "server-only";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
+import { effectiveMode, partChangesCapability } from "@/components/shell/mode";
 import { db, schema } from "@/db";
 import { autoLink, findLinks } from "@/lib/inventory/autolink";
 import { listRawStock } from "@/lib/data/materials";
@@ -10,6 +11,7 @@ import { planUndo } from "@/lib/parts/undo";
 import { applySuggestions, partsToSetUp, revertAiBatch } from "@/lib/review/review";
 import { cotsLinkDenied } from "@/lib/parts/cotsLink";
 import { fabSetupDenied } from "@/lib/parts/fabSetup";
+import { statusChangeDeniedFor } from "@/lib/mode";
 import { computeStatus } from "@/lib/status";
 import { uuid, read, write, ToolError, nameOf, machineId, normaliseChanges, summarise, readable } from "../registry";
 
@@ -19,6 +21,7 @@ const { parts, systems, partGroups, groupMembers, inventoryItems, inventoryMoves
 
 read(
   "parts_to_set_up",
+  "member",
   "A robot's CAD parts that have no material or no processes and aren't waiting in To Review, with their size (size_mm: the 3D model's extents, smallest first, so a flat plate's thickness is size_mm[0]; for bent sheet, such as an angle or U channel, use wall_mm, and sheet_metal says Onshape can flatten it), the site's own setup guess (site_guess) where its rules can tell, and auto-link's guess of the inventory item it is (link_guess: score 0-100 and why). Configuring a part always includes linking it to its inventory item: a COTS part to the item it is, an in-house part to the Raw Stock item it's cut from. Match by name, sizes and specs, material and picture (search_inventory for items with their specs; inventory_to_link's item list) and pass inventory_item_id to set_up_parts. Sizes need the robot's 3D model to be built.",
   z.object({ robot_id: uuid, system_id: uuid.optional(), limit: z.number().int().min(1).max(500).optional() }),
   async ({ robot_id, system_id, limit = 200 }) => {
@@ -60,6 +63,7 @@ const setupInput = z.object({
 
 write(
   "set_up_parts",
+  { cap: ({ parts }) => parts.map((e) => partChangesCapability(e.type === undefined ? {} : { classification: e.type })), destructive: true },
   "Set the material, processes, type and inventory item you worked out for parts (each part can differ). Always link each part to its inventory item too (inventory_item_id: COTS parts to the item they are, in-house parts to their Raw Stock item); parts you leave without one get auto-link's suggestion. The parts change at once and wait in To Review, where their designer approves or rejects each one; Reject puts the old values back. Use this, not update_parts, for setups you inferred yourself.",
   z.object({ parts: z.array(setupInput).min(1).max(500) }),
   async ({ parts: input }, { member, aiName }) => {
@@ -113,6 +117,10 @@ write(
     });
     const ids = [...new Set(edits.map((e) => e.id))];
     if (ids.length !== edits.length) throw new ToolError("Each part may appear once.");
+    for (const e of edits) {
+      const denied = await statusChangeDeniedFor(effectiveMode(member), [e.id], e.changes);
+      if (denied) throw new ToolError(denied);
+    }
     const rows = await db.select().from(parts).where(inArray(parts.id, ids));
     if (rows.length !== ids.length) throw new ToolError("Some part ids don't exist.");
     const byId = new Map(edits.map((e) => [e.id, e]));
@@ -136,6 +144,7 @@ write(
 
 write(
   "undo_batch",
+  { cap: "manage", destructive: true },
   "Revert every change in a batch (from any write tool or the UI): part fields, inventory item edits, stock, and items or categories it added (those are removed). Fields edited again since are left alone. The AI logs page's Revert change does the same.",
   z.object({ batch_id: uuid }),
   async ({ batch_id }, { member }) => {
@@ -169,6 +178,7 @@ write(
 
 write(
   "add_manual_part",
+  { cap: "shape", destructive: false },
   "Add a part that isn't in CAD to a system's BOM.",
   z.object({
     system_id: uuid,
@@ -208,6 +218,7 @@ write(
 
 write(
   "group_parts",
+  { cap: "work", destructive: false },
   "Bundle parts of one robot into a new part group, or add them to an existing group (group_id).",
   z.object({ part_ids: z.array(uuid).min(1), name: z.string().optional(), group_id: uuid.optional(), color: z.string().optional() }),
   async (a) => {
@@ -256,6 +267,7 @@ write(
 
 write(
   "set_group_status",
+  { cap: "work", destructive: true },
   "Set one status on every member of a part group that is still on the BOM.",
   z.object({ group_id: uuid, status: z.string() }),
   async ({ group_id, status }, { member }) => {
@@ -269,6 +281,8 @@ write(
       const denied = cotsLinkDenied(r.part, normal) ?? fabSetupDenied(r.part, normal);
       if (denied) throw new ToolError(`${nameOf(r.part)}: ${denied}`);
     }
+    const denied = await statusChangeDeniedFor(effectiveMode(member), rows.map((r) => r.part.id), normal);
+    if (denied) throw new ToolError(denied);
     const changing = rows.filter((r) => planPartUpdate(r.part, normal, "mcp").history.length);
     return {
       count: changing.length,

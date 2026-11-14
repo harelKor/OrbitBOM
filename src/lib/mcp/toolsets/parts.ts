@@ -1,6 +1,7 @@
 import "server-only";
 import { and, asc, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
+import { effectiveMode, partChangesCapability } from "@/components/shell/mode";
 import { PRIORITIES } from "@/config/priorities";
 import { db, schema } from "@/db";
 import { listInventory } from "@/lib/data/inventory";
@@ -14,6 +15,7 @@ import { planPartUpdate } from "@/lib/parts/changes";
 import { applySuggestions } from "@/lib/review/review";
 import { cotsLinkDenied } from "@/lib/parts/cotsLink";
 import { fabSetupDenied } from "@/lib/parts/fabSetup";
+import { statusChangeDeniedFor } from "@/lib/mode";
 import { computeStatus } from "@/lib/status";
 import { statusBreakdown } from "@/lib/stats";
 import { updateBomFromOnshape } from "@/lib/sync/updateBom";
@@ -23,7 +25,7 @@ const { parts, systems, partFiles, partGroups, groupMembers } = schema;
 
 // Robots, systems and parts: reading them, editing them, and pulling a system from Onshape.
 
-read("list_robots", "Robots with their completion.", z.object({}), async () =>
+read("list_robots", "member", "Robots with their completion.", z.object({}), async () =>
   (await listRobots()).map((r) => ({
     id: r.id,
     name: r.name,
@@ -35,7 +37,7 @@ read("list_robots", "Robots with their completion.", z.object({}), async () =>
   })),
 );
 
-read("list_systems", "A robot's systems with their completion.", z.object({ robot_id: uuid }), async ({ robot_id }) => {
+read("list_systems", "member", "A robot's systems with their completion.", z.object({ robot_id: uuid }), async ({ robot_id }) => {
   const rows = await db.select().from(systems).where(eq(systems.robotId, robot_id)).orderBy(asc(systems.name));
   const live = await db
     .select()
@@ -49,6 +51,7 @@ read("list_systems", "A robot's systems with their completion.", z.object({ robo
 
 read(
   "find_parts",
+  "member",
   "Search BOM parts. All filters are optional and combine. Returns at most `limit` parts (default 200).",
   z.object({
     robot_id: uuid.optional(),
@@ -61,9 +64,12 @@ read(
     onshape_material: z.string().optional().describe("Substring of Onshape's own material, e.g. 'aluminum'."),
     body_type: z.string().optional().describe("Onshape body type, e.g. 'sheet' or 'solid'."),
     missing_file: z.enum(["drawing", "gcode", "image", "flattened"]).optional(),
-    limit: z.number().int().min(1).max(1000).optional(),
+    limit: z.number().int().min(1).max(500).optional(),
   }),
   async (f) => {
+    const limit = f.limit ?? 200;
+    // Status and missing files are worked out here, so only without them can the database stop at the limit.
+    const inSql = !f.status && !f.missing_file;
     const where = [isNull(parts.removedFromCadAt)];
     if (f.system_id) where.push(eq(parts.systemId, f.system_id));
     if (f.robot_id) where.push(eq(systems.robotId, f.robot_id));
@@ -79,14 +85,15 @@ read(
       const m = machineId(f.machine)!;
       where.push(sql`${m} in (${parts.preProcess}, ${parts.process1}, ${parts.process2})`);
     }
-    let rows = (
-      await db
-        .select({ part: parts, systemName: systems.name })
-        .from(parts)
-        .innerJoin(systems, eq(systems.id, parts.systemId))
-        .where(and(...where))
-        .orderBy(asc(systems.name), asc(parts.partNumber), asc(parts.onshapeName))
-    ).map((r) => ({ ...r.part, systemName: r.systemName }));
+    const query = db
+      .select({ part: parts, systemName: systems.name, total: sql<number>`count(*) over ()`.mapWith(Number) })
+      .from(parts)
+      .innerJoin(systems, eq(systems.id, parts.systemId))
+      .where(and(...where))
+      .orderBy(asc(systems.name), asc(parts.partNumber), asc(parts.onshapeName));
+    const found = await (inSql ? query.limit(limit) : query);
+    const total = inSql ? (found[0]?.total ?? 0) : found.length;
+    let rows = found.map((r) => ({ ...r.part, systemName: r.systemName }));
     if (f.status) rows = rows.filter((p) => computeStatus(p).toLowerCase() === f.status!.toLowerCase());
     if (f.missing_file) {
       const has = new Set(
@@ -99,12 +106,12 @@ read(
       );
       rows = rows.filter((p) => !has.has(p.id) && !(f.missing_file === "drawing" && p.drawingUrl));
     }
-    const limit = f.limit ?? 200;
-    return { total: rows.length, parts: rows.slice(0, limit).map(summarise), truncated: rows.length > limit };
+    const count = inSql ? total : rows.length;
+    return { total: count, parts: rows.slice(0, limit).map(summarise), truncated: count > limit };
   },
 );
 
-read("get_part", "One part with every field, its files, groups and recent history.", z.object({ part_id: uuid }), async ({ part_id }) => {
+read("get_part", "member", "One part with every field, its files, groups and recent history.", z.object({ part_id: uuid }), async ({ part_id }) => {
   const [row] = await db
     .select({ part: parts, systemName: systems.name })
     .from(parts)
@@ -141,7 +148,7 @@ read("get_part", "One part with every field, its files, groups and recent histor
   };
 });
 
-read("system_stats", "A system's completion and count per status.", z.object({ system_id: uuid }), async ({ system_id }) => {
+read("system_stats", "member", "A system's completion and count per status.", z.object({ system_id: uuid }), async ({ system_id }) => {
   const live = await db.select().from(parts).where(and(eq(parts.systemId, system_id), isNull(parts.removedFromCadAt)));
   const b = statusBreakdown(live);
   return { done: b.done, total: b.total, percent: b.percent, statuses: b.statuses.filter((s) => s.count).map(({ name, count }) => ({ name, count })) };
@@ -149,13 +156,16 @@ read("system_stats", "A system's completion and count per status.", z.object({ s
 
 read(
   "search_inventory",
+  "member",
   "Inventory items with stock, category and specs (use them to match BOM parts to items when setting up parts: pass the id to set_up_parts as inventory_item_id). All active robots share one shelf: need is what every robot's linked parts need together, short what the stock doesn't cover, free what no part needs. Sheet items (plates) count sheets and pieces (2.75 = 2 ¾ sheets) and have no need. season_need is a separate shelf target for the season (season_short what the stock is under it); on_order is the status of a COTS card already ordering it.",
-  z.object({ text: z.string().optional() }),
-  async ({ text }) => {
+  z.object({ text: z.string().optional(), limit: z.number().int().min(1).max(500).optional().describe("At most this many items (default 200).") }),
+  async ({ text, limit = 200 }) => {
     const { items } = await listInventory();
-    return items
-      .filter((i) => !text || i.name.toLowerCase().includes(text.toLowerCase()))
-      .map((i) => ({
+    const found = items.filter((i) => !text || i.name.toLowerCase().includes(text.toLowerCase()));
+    return {
+      total: found.length,
+      truncated: found.length > limit,
+      items: found.slice(0, limit).map((i) => ({
         id: i.id,
         name: i.name,
         in_stock: i.inStock,
@@ -173,19 +183,22 @@ read(
         has_image: Boolean(i.imagePath),
         image_path: i.imagePath,
         per_robot: i.usage?.robots.map((r) => ({ robot: r.robotName, needed: r.needed, covered: r.allocated })) ?? [],
-      }));
+      })),
+    };
   },
 );
 
 read(
   "search_online_products",
+  "member",
   "Search the vendors' stores (WCP, AndyMark, ThriftyBot, SDS, CTRE and more) and the wider web for a product, the same search as the inventory's product search. Each result is one store's offer with its page, price in US dollars and picture. Stores that can't be searched (REV, Redux, VEX...) come back as search links under elsewhere. Use the exact product or variant page with link_inventory_products.",
   z.object({ query: z.string().trim().min(3).max(80).describe("In English works best, e.g. '4in Colson wheel 1/2 hex'.") }),
   async ({ query }) => {
-    const { groups, elsewhere } = await searchProducts(query);
+    const { groups, elsewhere, web } = await searchProducts(query, { web: true });
     return {
       results: groups.flatMap((g) => g.offers.map((o) => ({ title: o.title, url: o.url, site: o.vendor, price: o.price, imageUrl: o.image ?? g.image }))),
       elsewhere,
+      ...(web === "used-up" ? { note: "Today's web searches are used up; only the vendors' stores were searched." } : {}),
     };
   },
 );
@@ -217,6 +230,7 @@ const changesInput = z
 
 write(
   "update_parts",
+  { cap: ({ changes }) => partChangesCapability(changes), destructive: true },
   "Change fields on one or more parts, the same as the BOM's editors and Bulk edit.",
   z.object({ part_ids: z.array(uuid).min(1).max(1000), changes: changesInput }),
   async ({ part_ids, changes }, { member, aiName }) => {
@@ -227,6 +241,9 @@ write(
       const denied = cotsLinkDenied(p, normal) ?? fabSetupDenied(p, normal);
       if (denied) throw new ToolError(`${nameOf(p)}: ${denied}`);
     }
+    // The team's status rules, as the BOM's editors apply them.
+    const denied = await statusChangeDeniedFor(effectiveMode(member), part_ids, normal);
+    if (denied) throw new ToolError(denied);
     const diffs = rows
       .map((p) => ({ part: nameOf(p), id: p.id, changes: planPartUpdate(p, normal, "mcp").history }))
       .filter((d) => d.changes.length);
@@ -249,6 +266,7 @@ write(
 
 write(
   "update_bom_from_onshape",
+  { cap: "sync", destructive: true },
   "Pull a system's BOM from Onshape with the member's Onshape account and commit every change as the system's next version (in the app, Update System shows the changes to commit first).",
   z.object({ system_id: uuid }),
   async ({ system_id }, { member }) => {

@@ -1,10 +1,12 @@
 import "server-only";
 import { z } from "zod";
+import { can, effectiveMode, type Capability } from "@/components/shell/mode";
 import { findMachineByName, getMachine } from "@/config/machines";
 import { schema } from "@/db";
 import type { Member } from "@/lib/auth";
 import { partChangesSchema, type PartChanges } from "@/lib/parts/changes";
 import { logAiAction } from "@/lib/review/review";
+import { DENIED } from "@/lib/mode";
 import { computeStatus } from "@/lib/status";
 import { checkConfirmToken, confirmToken } from "./confirm";
 
@@ -20,20 +22,31 @@ export const uuid = z.guid(); // any UUID shape, like isUuid
 export type Ctx = { member: Member; aiName?: string };
 export type Planned = { preview: unknown; count: number; summary?: string; apply: () => Promise<unknown> };
 
+// Who may call a tool: the capability its button in the app needs (mode.ts), or "member" for
+// what any signed-in member may do there (reading, CAD Review comments). A function picks it from
+// the arguments, like the part window does for each field; several must all be allowed.
+export type ToolCap = Capability | "member";
+type CapRule<A> = ToolCap | ToolCap[] | ((args: A) => ToolCap | ToolCap[]);
+
 export type Tool = {
   name: string;
   description: string;
   input: z.ZodObject;
   write?: boolean;
+  destructive?: boolean;
+  cap: CapRule<never>;
   run: (args: never, ctx: Ctx) => Promise<unknown>;
 };
 
 export const tools: Tool[] = [];
-export function read<S extends z.ZodObject>(name: string, description: string, input: S, run: (args: z.infer<S>, ctx: Ctx) => Promise<unknown>) {
-  tools.push({ name, description, input, run: run as Tool["run"] });
+export function read<S extends z.ZodObject>(name: string, cap: CapRule<z.infer<S>>, description: string, input: S, run: (args: z.infer<S>, ctx: Ctx) => Promise<unknown>) {
+  tools.push({ name, description, input, cap: cap as Tool["cap"], run: run as Tool["run"] });
 }
+
+// `destructive`: the tool overwrites or removes what is there (MCP's destructiveHint), not only adds.
 export function write<S extends z.ZodObject>(
   name: string,
+  access: { cap: CapRule<z.infer<S>>; destructive: boolean },
   description: string,
   input: S,
   plan: (args: z.infer<S>, ctx: Ctx) => Promise<Planned>,
@@ -47,6 +60,8 @@ export function write<S extends z.ZodObject>(
       confirm_large: z.boolean().optional().describe(`Required with confirm_token when more than ${LARGE} parts change.`),
     }),
     write: true,
+    destructive: access.destructive,
+    cap: access.cap as Tool["cap"],
     run: (async (allArgs: z.infer<S> & { ai_name: string; confirm_token?: string; confirm_large?: boolean }, member: Ctx) => {
       // The AI's name labels the action but isn't part of what the member confirms.
       const { ai_name: aiName, ...args } = allArgs;
@@ -151,7 +166,7 @@ export function listTools() {
     name: t.name,
     description: t.description,
     inputSchema: z.toJSONSchema(t.input, { io: "input" }),
-    annotations: { readOnlyHint: !t.write, destructiveHint: false },
+    annotations: { readOnlyHint: !t.write, destructiveHint: !!t.destructive },
   }));
 }
 
@@ -160,5 +175,18 @@ export async function callTool(name: string, args: unknown, ctx: Ctx) {
   if (!tool) throw new ToolError(`Unknown tool ${name}.`);
   const parsed = tool.input.safeParse(args ?? {});
   if (!parsed.success) throw new ToolError(parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
+  // The same role rules as the app's buttons: a member's token can't do more than they can there.
+  const denied = capabilityDenied(tool, parsed.data, ctx.member);
+  if (denied) throw new ToolError(denied);
   return tool.run(parsed.data as never, ctx);
+}
+
+// Why the member's mode can't call this tool with these arguments, or null. MCP has no mode
+// cookie, so an admin counts as Edit and everyone else as their team ("none" without one).
+export function capabilityDenied(tool: Pick<Tool, "cap">, args: unknown, member: Pick<Member, "isAdmin" | "team">): string | null {
+  const rule = tool.cap as CapRule<unknown>;
+  const caps = [typeof rule === "function" ? rule(args) : rule].flat();
+  const mode = effectiveMode(member);
+  for (const cap of caps) if (cap !== "member" && !can(mode, cap)) return DENIED[cap];
+  return null;
 }

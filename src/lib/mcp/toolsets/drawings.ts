@@ -15,6 +15,7 @@ const { parts } = schema;
 
 read(
   "get_drawing",
+  "member",
   "A part's fabrication drawing: the stock it's read as (plate, square tube, hex shaft or round tube), its exact sizes, every hole with any tap or bearing it matches, and the drawing's notes. Drawings only note taps (Ø4.2 = M5 tapped) and fits; other holes get no note.",
   z.object({ part_id: uuid }),
   async ({ part_id }) => {
@@ -26,6 +27,7 @@ read(
 
 write(
   "create_drawings",
+  { cap: "draw", destructive: true },
   "Make fabrication drawings for parts of one system from their exact Onshape geometry (2 Onshape calls per Part Studio, with the member's account). Plates, square tubes, hex shafts and round tubes get one; other parts are skipped. Notes added in the editor are kept.",
   z.object({ system_id: uuid, part_ids: z.array(uuid).min(1).max(200) }),
   async ({ system_id, part_ids }, { member }) => {
@@ -53,6 +55,7 @@ write(
 
 write(
   "edit_drawing",
+  { cap: "draw", destructive: true },
   "Change a part's drawing notes: add notes (attached to the first hole of hole_diameter_mm, or free), retype or hide existing ones (ids from get_drawing). Fit notes have three lines, like 'light press fit for' / '1/2IN HEX Bearing' / 'Ø28.7', joined by newlines; fits are light press, heavy press, slip, precise slip.",
   z.object({
     part_id: uuid,

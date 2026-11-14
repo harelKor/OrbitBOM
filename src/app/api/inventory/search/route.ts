@@ -7,7 +7,9 @@ import { searchProducts } from "@/lib/inventory/search";
 // The box aborts it as soon as the typing changes or an item is added.
 export async function GET(req: Request) {
   if (!(await getMember())) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
-  const q = new URL(req.url).searchParams.get("q")?.trim() ?? "";
-  if (q.length < 3) return NextResponse.json({ groups: [], elsewhere: [], english: null });
-  return NextResponse.json(await searchProducts(q));
+  const params = new URL(req.url).searchParams;
+  const q = params.get("q")?.trim() ?? "";
+  if (q.length < 3) return NextResponse.json({ groups: [], elsewhere: [], english: null, web: null });
+  // web=1: the box's "Search the web" (Serper credits, capped a day); never on its own.
+  return NextResponse.json(await searchProducts(q, { web: params.get("web") === "1" }));
 }

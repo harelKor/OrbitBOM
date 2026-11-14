@@ -9,7 +9,7 @@ import { afterPartsUpdate } from "@/components/versions/afterUpdate";
 import { CommitWindow } from "@/components/versions/CommitWindow";
 import { panelCheckSystem, type PanelCheck } from "./update-actions";
 import { tileClass, TileBody } from "./tiles";
-import { useModelUpdate } from "./useModelUpdate";
+import { asError, useModelUpdate } from "./useModelUpdate";
 
 // Update system in the Onshape panel (Harel, 2026-11-11): a window with two big buttons.
 // Update BOM checks Onshape and opens the Commit window right there (the commit makes Onshape's
@@ -35,7 +35,7 @@ export function UpdateTile({ systemId, robotId }: { systemId: string; robotId: s
   // The 3D model and pictures after an update, with the steps on the tile.
   const rebuild = async (robotId: string, done: string) => {
     setProgress("Updating the 3D views…");
-    const r = await buildModelAndPictures(robotId, systemId, setProgress);
+    const r = await buildModelAndPictures(robotId, systemId, setProgress).catch((err) => ({ ok: false as const, calls: 0, ...asError(err) }));
     setProgress(null);
     setNote(r.ok ? { text: `${done} 3D views updated (${r.calls} Onshape calls).` } : { text: `${done} The 3D views didn't update: ${r.error}`, bad: true });
     router.refresh();
@@ -45,7 +45,7 @@ export function UpdateTile({ systemId, robotId }: { systemId: string; robotId: s
     startCheck(async () => {
       setChoose(false);
       setNote(null);
-      const r = await panelCheckSystem(systemId);
+      const r = await panelCheckSystem(systemId).catch(asError);
       if (r.error) return setNote({ text: r.error, bad: true });
       setFound(r);
       if (r.draft) {
@@ -58,7 +58,7 @@ export function UpdateTile({ systemId, robotId }: { systemId: string; robotId: s
     startCommit(async () => {
       if (!draft) return;
       setCommitError(null);
-      const r = await commitChanges(systemId, draft.id, new Date(draft.detectedAt).toISOString(), name, only, tick, update3d);
+      const r = await commitChanges(systemId, draft.id, new Date(draft.detectedAt).toISOString(), name, only, tick, update3d).catch(asError);
       if (r.error) return setCommitError(r.error);
       const rest = only ? draft.changes.filter((c) => c.key !== only) : [];
       if (!rest.length) {

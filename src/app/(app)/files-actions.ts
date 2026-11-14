@@ -10,7 +10,7 @@ import { READY_STATUSES } from "@/lib/fab";
 import { applyPartChanges } from "@/lib/parts/apply";
 import { replacePartFile } from "@/lib/parts/files";
 import { computeStatus } from "@/lib/status";
-import { StorageNotConfiguredError, deleteObject, fileKey, objectExists, presignUpload } from "@/lib/storage/r2";
+import { StorageNotConfiguredError, deleteObject, fileKey, objectSize, presignUpload } from "@/lib/storage/r2";
 import { isUuid } from "@/lib/uuid";
 
 const { partFiles, groupFiles, groupMembers, parts, partGroups } = schema;
@@ -61,7 +61,12 @@ export async function finishUpload(
   if (!isType(type) || !key.startsWith(`${prefix(owner, type)}/`)) {
     return { error: "Unknown upload." };
   }
-  if (!(await objectExists(key))) return { error: "The upload didn't reach file storage. Try again." };
+  const size = await objectSize(key);
+  if (size === null) return { error: "The upload didn't reach file storage. Try again." };
+  if (size > MAX_BYTES) {
+    await deleteObject(key).catch(() => {});
+    return { error: "Files can be at most 200 MB." };
+  }
   const name = filename.slice(0, 255);
   if (owner.kind === "part") {
     await replacePartFile(owner.id, type, { key, filename: name, contentType: contentType || null, memberId: member.id });

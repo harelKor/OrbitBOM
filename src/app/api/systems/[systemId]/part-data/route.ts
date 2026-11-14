@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { getMember } from "@/lib/auth";
+import { DENIED, hasCapability } from "@/lib/mode";
 import { OnshapeError } from "@/lib/onshape/client";
 import { refreshPartData } from "@/lib/onshape/thumbnails";
 import { isUuid } from "@/lib/uuid";
@@ -11,6 +12,8 @@ import { isUuid } from "@/lib/uuid";
 export async function POST(_: Request, { params }: { params: Promise<{ systemId: string }> }) {
   const member = await getMember();
   if (!member) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
+  // It spends the member's and the team's Onshape calls, like Update BOM.
+  if (!(await hasCapability("sync"))) return NextResponse.json({ error: DENIED.sync }, { status: 403 });
   const { systemId } = await params;
   if (!isUuid(systemId)) return NextResponse.json({ error: "Unknown system." }, { status: 404 });
   if (!member.onshapeConnected) {

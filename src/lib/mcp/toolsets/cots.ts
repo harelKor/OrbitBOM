@@ -1,6 +1,7 @@
 import "server-only";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
+import { partChangesCapability } from "@/components/shell/mode";
 import { db, schema } from "@/db";
 import { autoLink } from "@/lib/inventory/autolink";
 import { listCategories } from "@/lib/data/categories";
@@ -23,6 +24,7 @@ const COTS_WORKFLOW =
 
 read(
   "cots_parts_to_look_up",
+  "member",
   `COTS parts to look up online. The same part in several systems of a robot comes back once, with every part_id and the total quantity. By default only parts missing links or a price. ${COTS_WORKFLOW}`,
   z.object({
     robot_id: uuid.optional(),
@@ -84,9 +86,20 @@ const cotsInfoInput = z.object({
   category: z.string().optional().describe("The COTS page filter box: an inventory category id from list_inventory_categories (a linked item's category wins)."),
 });
 
+// The COTS page's rule for the same fields: links, price and filter box are team work; a new
+// name is a part field only an admin in Edit mode changes (partChangesCapability).
+const cotsInfoCapability = (i: z.infer<typeof cotsInfoInput>) =>
+  partChangesCapability({
+    ...(i.official_name !== undefined ? { displayName: true } : {}),
+    ...(i.links !== undefined ? { cotsLinks: true } : {}),
+    ...(i.unit_price_usd !== undefined ? { unitPrice: true } : {}),
+    ...(i.category !== undefined ? { cotsCategory: true } : {}),
+  });
+
 write(
   "set_cots_info",
-  `Set COTS parts' official name, product links, average price and filter box, found online. The parts change at once (undo_batch reverts it). ${COTS_WORKFLOW}`,
+  { cap: ({ items }) => items.map(cotsInfoCapability), destructive: true },
+  `Set COTS parts' official name, product links, average price and filter box, found online. The parts change at once (undo_batch reverts it). A new official name needs an admin in Edit mode, as renaming a part does in the app; links, prices and the filter box need a team. ${COTS_WORKFLOW}`,
   z.object({ items: z.array(cotsInfoInput).min(1).max(200) }),
   async ({ items }, { member, aiName }) => {
     const edits = items.flatMap((item) => {

@@ -1,4 +1,5 @@
 import "server-only";
+import { takeApiCall } from "@/lib/apiUsage";
 import type { InvCategory } from "@/lib/inventory/categories";
 import { prompt, type ModelAnswer } from "./answer";
 
@@ -77,6 +78,8 @@ export class GeminiError extends Error {
 export async function geminiJson<T>(parts: unknown[], schema: object, thinking: "low" | "high" = "low"): Promise<{ value: T; model: string }> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new GeminiError("unset", "The server has no GEMINI_API_KEY.");
+  // The team's own daily cap (config/apiLimits.ts), kept across restarts.
+  if (!(await takeApiCall("gemini"))) throw new GeminiError("quota", "Today's AI allowance is used up.");
   const list = process.env.GEMINI_MODEL ? process.env.GEMINI_MODEL.split(",").map((m) => m.trim()).filter(Boolean) : MODELS;
   const now = Date.now();
   const resting = (m: string) => now - (failedAt.get(m) ?? 0) < SIT_OUT_MS;

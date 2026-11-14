@@ -1,5 +1,6 @@
 import "server-only";
 import { AwsClient } from "aws4fetch";
+import { contentDisposition } from "@/lib/http/disposition";
 import { recordDeleted, recordStored } from "./ledger";
 
 // Cloudflare R2 through its S3 API (plan §1). The browser uploads and downloads with short-lived
@@ -90,9 +91,8 @@ async function signImage(c: { client: AwsClient; base: string }, key: string, sl
 
 // `contentType` overrides the stored one, so a PDF or SVG uploaded without it still opens inline.
 export function presignDownload(key: string, filename: string, inline = true, contentType?: string | null) {
-  const safe = filename.replace(/["\\\r\n]/g, "_");
   return presign("GET", key, 300, {
-    "response-content-disposition": `${inline ? "inline" : "attachment"}; filename="${safe}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    "response-content-disposition": contentDisposition(filename, inline),
     ...(contentType ? { "response-content-type": contentType } : {}),
   });
 }
@@ -101,6 +101,16 @@ export async function objectExists(key: string) {
   const { client, base } = mustConfig();
   const res = await client.fetch(objectUrl(base, key), { method: "HEAD" });
   return res.ok;
+}
+
+// The stored object's size in bytes, or null when there is none. A presigned PUT can't limit
+// what the browser sends, so an upload's real size is checked here after it arrives.
+export async function objectSize(key: string): Promise<number | null> {
+  const { client, base } = mustConfig();
+  const res = await client.fetch(objectUrl(base, key), { method: "HEAD" });
+  if (!res.ok) return null;
+  const n = Number(res.headers.get("content-length"));
+  return Number.isFinite(n) ? n : null;
 }
 
 // R2 needs a Content-Length on uploads. A signed Request carries its body as a stream, which

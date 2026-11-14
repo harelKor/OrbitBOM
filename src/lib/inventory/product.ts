@@ -1,7 +1,12 @@
 import "server-only";
 import { createHash } from "node:crypto";
+import dns, { type LookupAddress } from "node:dns";
+import https from "node:https";
+import type { LookupFunction } from "node:net";
+import zlib from "node:zlib";
 import { ILS_PER_USD } from "@/config/cots";
 import { VENDORS } from "@/config/vendors";
+import { isPrivateAddress } from "@/lib/net/address";
 import { putObject, storageConfigured } from "@/lib/storage/r2";
 import { readProductPage, siteOf, type Product } from "./productPage";
 import { pickVariant, variantImage, variantTitle, type ShopifyProduct } from "./shopifyVariant";
@@ -10,7 +15,8 @@ export type { Product };
 
 const UA = "Mozilla/5.0 (compatible; OrbitParts-BOM/1.0; +https://orbitparts.duckdns.org)";
 
-// Only public web pages: no local or private addresses, so a pasted link can't reach inside.
+// Only public web pages over HTTPS: no local or private addresses, so a pasted link can't reach
+// inside. This checks the name; get() checks the address it resolves to as well.
 export function publicUrl(raw: string): URL | null {
   let u: URL;
   try {
@@ -18,22 +24,78 @@ export function publicUrl(raw: string): URL | null {
   } catch {
     return null;
   }
-  if (u.protocol !== "https:" && u.protocol !== "http:") return null;
+  if (u.protocol !== "https:" || u.username || u.password) return null;
+  if (u.port && u.port !== "443") return null;
   const h = u.hostname.toLowerCase();
-  if (!h.includes(".") || h === "localhost" || h.endsWith(".local") || h.endsWith(".internal")) return null;
+  if (!h.includes(".") || h === "localhost" || h.endsWith(".localhost") || h.endsWith(".local") || h.endsWith(".internal")) return null;
   if (/^\d+\.\d+\.\d+\.\d+$/.test(h) || h.includes(":") || h.startsWith("[")) return null;
   return u;
 }
 
-async function get(url: URL, accept: string, maxBytes: number, ms = 8000) {
-  const res = await fetch(url, { headers: { "user-agent": UA, accept }, redirect: "follow", signal: AbortSignal.timeout(ms), cache: "no-store" });
-  if (!res.ok) throw new Error(`The site answered ${res.status}.`);
-  if (!publicUrl(res.url)) throw new Error("The link redirected somewhere private.");
-  const length = Number(res.headers.get("content-length") ?? 0);
-  if (length > maxBytes) throw new Error("The page is too big to read.");
-  const bytes = new Uint8Array(await res.arrayBuffer());
-  if (bytes.byteLength > maxBytes) throw new Error("The page is too big to read.");
-  return { bytes, type: res.headers.get("content-type") ?? "", finalUrl: res.url };
+// A DNS lookup that refuses private addresses. The socket connects to the address checked here,
+// so a name can't resolve to a public address for the check and a private one for the request.
+const publicLookup: LookupFunction = (hostname, options, callback) => {
+  dns.lookup(hostname, { all: true, family: options.family, hints: options.hints }, (err, addresses) => {
+    if (err) return callback(err, "", 4);
+    const list = addresses as LookupAddress[];
+    if (!list.length || list.some((a) => isPrivateAddress(a.address))) {
+      return callback(Object.assign(new Error("The link points to a private address."), { code: "EPRIVATE" }), "", 4);
+    }
+    if (options.all) return (callback as unknown as (e: null, a: LookupAddress[]) => void)(null, list);
+    callback(null, list[0].address, list[0].family);
+  });
+};
+
+const MAX_HOPS = 5;
+
+// One page or picture from the public web: HTTPS only, each redirect checked again, the address
+// pinned by publicLookup, at most `maxBytes`, and `ms` for the whole thing.
+async function get(start: URL, accept: string, maxBytes: number, ms = 8000) {
+  const signal = AbortSignal.timeout(ms);
+  let url = start;
+  for (let hop = 0; ; hop++) {
+    if (!publicUrl(url.toString())) throw new Error("The link redirected somewhere private.");
+    const res = await request(url, accept, maxBytes, signal);
+    if (res.status >= 300 && res.status < 400 && res.location) {
+      if (hop >= MAX_HOPS) throw new Error("The link redirected too many times.");
+      url = new URL(res.location, url);
+      continue;
+    }
+    if (res.status < 200 || res.status >= 300) throw new Error(`The site answered ${res.status}.`);
+    return { bytes: res.bytes, type: res.type, finalUrl: url.toString() };
+  }
+}
+
+function request(url: URL, accept: string, maxBytes: number, signal: AbortSignal) {
+  return new Promise<{ status: number; location: string | null; type: string; bytes: Uint8Array }>((resolve, reject) => {
+    const req = https.get(url, { headers: { "user-agent": UA, accept, "accept-encoding": "gzip, deflate, br" }, lookup: publicLookup, signal }, (res) => {
+      const status = res.statusCode ?? 0;
+      if (status >= 300 && status < 400) {
+        res.resume();
+        return resolve({ status, location: res.headers.location ?? null, type: "", bytes: new Uint8Array() });
+      }
+      if (Number(res.headers["content-length"] ?? 0) > maxBytes) {
+        res.destroy();
+        return reject(new Error("The page is too big to read."));
+      }
+      const encoding = String(res.headers["content-encoding"] ?? "").toLowerCase();
+      const body: NodeJS.ReadableStream =
+        encoding === "gzip" ? res.pipe(zlib.createGunzip()) : encoding === "deflate" ? res.pipe(zlib.createInflate()) : encoding === "br" ? res.pipe(zlib.createBrotliDecompress()) : res;
+      const chunks: Buffer[] = [];
+      let size = 0;
+      body.on("data", (c: Buffer) => {
+        size += c.length;
+        if (size > maxBytes) {
+          res.destroy();
+          reject(new Error("The page is too big to read."));
+        } else chunks.push(c);
+      });
+      body.on("end", () => resolve({ status, location: null, type: String(res.headers["content-type"] ?? ""), bytes: new Uint8Array(Buffer.concat(chunks)) }));
+      body.on("error", reject);
+      res.on("error", reject);
+    });
+    req.on("error", (err) => reject((err as { code?: string }).code === "EPRIVATE" ? new Error("The link points to a private address.") : err));
+  });
 }
 
 // A pasted product link: the page's own product tags (the ones stores publish for Google). On a

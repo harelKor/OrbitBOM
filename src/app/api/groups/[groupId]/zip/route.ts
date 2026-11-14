@@ -9,6 +9,7 @@ import { isExportFormat, type ExportFormat } from "@/lib/onshape/export";
 import { PartFileError, partFileBytes } from "@/lib/onshape/partFile";
 import { isUuid } from "@/lib/uuid";
 import { zip } from "@/lib/zip";
+import { contentDisposition } from "@/lib/http/disposition";
 
 export const maxDuration = 60;
 
@@ -84,6 +85,6 @@ export async function GET(_request: Request, { params }: { params: Promise<{ gro
   // The pack is named after its factory and day ("Zivudim 04/11").
   const filename = `${group.name.replace(/[^\w.\- ]+/g, "_")}.zip`;
   return new NextResponse(zip(named, (data) => deflateRawSync(data)) as BodyInit, {
-    headers: { "content-type": "application/zip", "content-disposition": `attachment; filename="${filename}"` },
+    headers: { "content-type": "application/zip", "content-disposition": contentDisposition(filename) },
   });
 }

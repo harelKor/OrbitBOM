@@ -8,3 +8,9 @@ it("keeps same-site paths and drops anything else", () => {
   expect(safeNext("//evil.com")).toBe("/");
   expect(safeNext("/\\evil.com")).toBe("/");
 });
+
+it("refuses control characters a browser would drop", () => {
+  expect(safeNext("/\t/evil.com")).toBe("/");
+  expect(safeNext("/\n/evil.com")).toBe("/");
+  expect(safeNext("/robots/\u0000")).toBe("/");
+});

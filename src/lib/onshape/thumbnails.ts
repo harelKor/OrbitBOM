@@ -1,7 +1,7 @@
 import "server-only";
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { logCalls, onshapeClient } from "@/lib/onshape/client";
+import { BudgetError, NotConnectedError, QuotaError, RateLimitError, TeamBudgetError, logCalls, onshapeClient } from "@/lib/onshape/client";
 import { parseOnshapeUrl } from "@/lib/onshape/url";
 import { studioPath } from "./parts";
 import { partsList } from "./partsList";
@@ -47,6 +47,12 @@ export async function refreshPartData(systemId: string, memberId: string, { only
       try {
         listed = await partsList(client, path, states.get(path) ?? null);
       } catch (err) {
+        // Out of calls, or no account: every other Part Studio would fail the same way, so stop
+        // and say so instead of skipping them one by one.
+        if (err instanceof BudgetError || err instanceof TeamBudgetError || err instanceof QuotaError || err instanceof RateLimitError || err instanceof NotConnectedError) {
+          queue.length = 0;
+          throw err;
+        }
         console.warn("Parts list skipped", path, err instanceof Error ? err.message : err);
         continue;
       }

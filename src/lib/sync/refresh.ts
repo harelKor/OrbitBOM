@@ -1,40 +1,12 @@
 import "server-only";
-import { and, asc, eq, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { refreshIntervalMinutes } from "@/config/refresh";
-import { BudgetError, DAILY_CALL_BUDGET, NotConnectedError, OnshapeError, QuotaError, TeamBudgetError } from "@/lib/onshape/client";
+import { NotConnectedError, OnshapeError, QuotaError, RateLimitError, TeamBudgetError } from "@/lib/onshape/client";
 import { refreshPartData } from "@/lib/onshape/thumbnails";
 import { checkSystem } from "@/lib/versions/detect";
 
-const { members, onshapeTokens, robots, syncJobs, systems } = schema;
-
-// A pool account is only borrowed while it has this many calls left today, so a background
-// check never spends a member's last calls.
-const POOL_RESERVE = 200;
-const MAX_ACCOUNTS = 3;
-
-// Other members' connected Onshape accounts with calls to spare today, least used first.
-async function poolAccounts(exclude: string | null): Promise<string[]> {
-  const today = new Date().toISOString().slice(0, 10);
-  const rows = await db
-    .select({ id: onshapeTokens.memberId })
-    .from(onshapeTokens)
-    .innerJoin(members, eq(members.id, onshapeTokens.memberId))
-    .where(
-      and(
-        eq(members.onshapeConnected, true),
-        exclude ? ne(onshapeTokens.memberId, exclude) : undefined,
-        or(
-          isNull(onshapeTokens.callsDay),
-          ne(onshapeTokens.callsDay, today),
-          lt(onshapeTokens.callsToday, DAILY_CALL_BUDGET - POOL_RESERVE),
-        ),
-      ),
-    )
-    .orderBy(asc(sql`case when ${onshapeTokens.callsDay} = ${today} then ${onshapeTokens.callsToday} else 0 end`))
-    .limit(MAX_ACCOUNTS);
-  return rows.map((r) => r.id);
-}
+const { robots, syncJobs, systems } = schema;
 
 export type RefreshResult = { systemId: string; changed: boolean; calls: number; error?: string; outOfCalls?: boolean };
 
@@ -59,9 +31,9 @@ async function claim(systemId: string, intervalMinutes: number): Promise<boolean
 // Checks one system if it is due (plan/system-versioning.md §4): one call when the Onshape
 // document didn't change; otherwise what changed is kept in the system's draft for a member to
 // commit. Nothing reaches the BOM here. `changed` says a check found new changes. Returns null
-// when the system wasn't due. When the account is missing, disconnected or out of calls for the
-// day, the check moves to another member's connected account, which becomes the system's
-// refresh account so later checks start there.
+// when the system wasn't due. Only the system's own refresh account is used: a check never
+// borrows another member's Onshape account (it could read documents that member was never
+// asked to share; the old pool fallback was removed, audit 2026-11-14).
 export async function refreshSystem(
   systemId: string,
   memberId: string | null,
@@ -69,36 +41,22 @@ export async function refreshSystem(
   intervalMinutes = refreshIntervalMinutes(),
 ): Promise<RefreshResult | null> {
   if (!(await claim(systemId, intervalMinutes))) return null;
-  const accounts = memberId ? [memberId] : [];
-  let lastError = new NotConnectedError().message;
-  for (let i = 0; i < MAX_ACCOUNTS + 1; i++) {
-    if (i === accounts.length) accounts.push(...(await poolAccounts(memberId)).filter((a) => !accounts.includes(a)));
-    const account = accounts[i];
-    if (!account || Date.now() > deadline - 15_000) break;
-    try {
-      const c = await checkSystem(systemId, account, { force: false });
-      let calls = c.calls;
-      if (!c.unchanged && !c.draft) calls += (await refreshPartData(systemId, account)).calls;
-      if (account !== memberId) await db.update(systems).set({ refreshMemberId: account }).where(eq(systems.id, systemId));
-      return { systemId, changed: !c.unchanged, calls };
-    } catch (err) {
-      // A refused account (token Onshape no longer takes, or no access to the document) is like a
-      // missing one: another member's account may still read the document.
-      if (err instanceof NotConnectedError || err instanceof BudgetError || (err instanceof OnshapeError && (err.status === 401 || err.status === 403))) {
-        lastError = err.message;
-        continue;
-      }
-      // Out of the yearly allowance, or the team's own cap: the other systems would only fail too.
-      if (err instanceof OnshapeError) return { systemId, changed: false, calls: 0, error: err.message, outOfCalls: err instanceof QuotaError || err instanceof TeamBudgetError };
-      throw err;
-    }
+  if (!memberId) return { systemId, changed: false, calls: 0, error: new NotConnectedError().message };
+  if (Date.now() > deadline - 15_000) return { systemId, changed: false, calls: 0, error: "Out of time." };
+  try {
+    const c = await checkSystem(systemId, memberId, { force: false });
+    let calls = c.calls;
+    if (!c.unchanged && !c.draft) calls += (await refreshPartData(systemId, memberId)).calls;
+    return { systemId, changed: !c.unchanged, calls };
+  } catch (err) {
+    // Out of the yearly allowance, the team's own cap or Onshape's rate limit: the other systems would only fail too.
+    if (err instanceof OnshapeError) return { systemId, changed: false, calls: 0, error: err.message, outOfCalls: err instanceof QuotaError || err instanceof TeamBudgetError || err instanceof RateLimitError };
+    throw err;
   }
-  return { systemId, changed: false, calls: 0, error: lastError };
 }
 
 // The scheduled refresh: every due system of every active robot, on the account of the member
-// who last ran Update BOM on it (or, when that account can't, another connected member's), until
-// the deadline.
+// who last ran Update BOM on it, until the deadline.
 export async function refreshDueSystems(deadline: number): Promise<RefreshResult[]> {
   const interval = refreshIntervalMinutes();
   const due = await db
@@ -109,12 +67,9 @@ export async function refreshDueSystems(deadline: number): Promise<RefreshResult
       and(
         eq(robots.archived, false),
         isNotNull(systems.assemblyUrl),
-        // Systems nobody has pulled yet wait for a member's first Update BOM. One whose refresh
-        // account is gone (the member left) still has its parts from Onshape and keeps going.
-        or(
-          isNotNull(systems.refreshMemberId),
-          sql`exists (select 1 from ${schema.parts} where ${schema.parts.systemId} = ${systems.id} and not ${schema.parts.isManual})`,
-        ),
+        // Checked on the account of the member who last ran Update BOM; systems without one
+        // (nobody pulled them yet, or that member left) wait for a member's next Update BOM.
+        isNotNull(systems.refreshMemberId),
         or(
           isNull(systems.lastCheckedAt),
           lt(systems.lastCheckedAt, sql`now() - make_interval(mins => ${interval})`),
@@ -132,7 +87,7 @@ export async function refreshDueSystems(deadline: number): Promise<RefreshResult
       (err): RefreshResult => ({ systemId: s.id, changed: false, calls: 0, error: (err as Error).message || "Check failed" }),
     );
     if (r) results.push(r);
-    // Out of yearly API calls (402) on every account at once: the other systems would only fail too.
+    // Out of the year's or the day's calls: the other systems would only fail too.
     if (r?.outOfCalls) break;
   }
 

@@ -1,6 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { VENDORS, vendorOfUrl } from "@/config/vendors";
+import { takeApiCall } from "@/lib/apiUsage";
 import { publicUrl, toUsd } from "@/lib/inventory/product";
 import type { Offer } from "@/lib/inventory/productGroups";
 import { deleteObject, presignDownload, putObject, storageConfigured } from "@/lib/storage/r2";
@@ -10,12 +11,10 @@ import { deleteObject, presignDownload, putObject, storageConfigured } from "@/l
 // and Gemini's Google Search answers "quota exceeded" on the free tier (checked 2026-11-12).
 // Every Capture runs it now, beside the AI, and its hits come back as they are (no page reads),
 // so they show in seconds. Each search costs 3 of Serper's free credits, shared with the add box,
-// so at most LENS_DAILY a day. Serper fetches the photo from a 5-minute R2 link; the copy is
-// deleted straight after.
+// so at most API_DAILY["serper-lens"] a day (config/apiLimits.ts), counted in the database so a
+// deploy doesn't reset it. Serper fetches the photo from a 5-minute R2 link; the copy is deleted
+// straight after.
 
-const LENS_DAILY = 60;
-let day = "";
-let used = 0;
 
 const STORES = new Set(VENDORS.map((v) => v.host.replace(/^www\./, "")));
 const hostOf = (url: string) => new URL(url).hostname.replace(/^www\./, "");
@@ -34,13 +33,7 @@ const parsePrice = (s: string | undefined) => {
 export async function lensSearch(jpeg: Buffer): Promise<{ offers: Offer[]; error?: string }> {
   const key = process.env.SERPER_API_KEY;
   if (!key || !storageConfigured()) return { offers: [], error: "The photo search isn't set up on the server." };
-  const today = new Date().toISOString().slice(0, 10);
-  if (day !== today) {
-    day = today;
-    used = 0;
-  }
-  if (used >= LENS_DAILY) return { offers: [], error: "The photo search is used up for today." };
-  used++;
+  if (!(await takeApiCall("serper-lens"))) return { offers: [], error: "The photo search is used up for today." };
   const objectKey = `scan/${randomUUID()}.jpg`;
   try {
     await putObject(objectKey, jpeg, "image/jpeg");

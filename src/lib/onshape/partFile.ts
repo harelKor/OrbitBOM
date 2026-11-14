@@ -36,7 +36,8 @@ export function partFileTarget(row: PartRow, format: ExportFormat, fab: boolean)
   const name = (row.part.displayName ?? row.part.onshapeName ?? "part").replace(/[^\w.\- ]+/g, "_");
   const wall = row.part.geometry?.wallMm;
   const suffix = flat ? ` (flat${wall ? ` ${wall}mm` : ""})` : "";
-  const filename = `${row.part.partNumber ? `${row.part.partNumber} ` : ""}${name}${suffix}.${ext}`;
+  const number = row.part.partNumber?.replace(/[^\w.\- ]+/g, "_");
+  const filename = `${number ? `${number} ` : ""}${name}${suffix}.${ext}`;
   const key = rev ? `exports/${row.part.id}/${rev}${flat ? ".flat" : ""}.${ext}` : null;
   return { studio, ref, partId: flat ? flatPartId! : onshapePartId, format, type, ext, filename, key };
 }

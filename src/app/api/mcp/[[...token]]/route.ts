@@ -25,6 +25,8 @@ const INSTRUCTIONS =
   "The site suggests links from BOM parts to items (auto-link); like yours, they wait in To Review until a member approves. " +
   "Members can revert any of your runs from the AI logs page.";
 
+const MAX_BATCH = 10;
+
 type Rpc = { jsonrpc: "2.0"; id?: string | number | null; method: string; params?: Record<string, unknown> };
 
 export async function POST(request: Request, { params }: { params: Promise<{ token?: string[] }> }) {
@@ -46,6 +48,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   }
 
   const handle = async (msg: Rpc) => {
+    if (!msg || typeof msg !== "object") return { jsonrpc: "2.0", id: null, error: { code: -32600, message: "Invalid request" } };
     const reply = (result: unknown) => ({ jsonrpc: "2.0", id: msg.id ?? null, result });
     const fail = (code: number, message: string) => ({ jsonrpc: "2.0", id: msg.id ?? null, error: { code, message } });
     switch (msg.method) {
@@ -77,7 +80,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   };
 
   const messages = Array.isArray(body) ? body : [body];
-  const replies = (await Promise.all(messages.map(handle))).filter((r) => r !== null);
+  if (messages.length > MAX_BATCH) {
+    return NextResponse.json({ jsonrpc: "2.0", id: null, error: { code: -32600, message: `At most ${MAX_BATCH} messages in one batch.` } }, { status: 400 });
+  }
+  // One at a time, in order: a batch's writes may depend on each other, and parallel tool calls
+  // would each take a database connection from the small pool.
+  const replies: NonNullable<Awaited<ReturnType<typeof handle>>>[] = [];
+  for (const msg of messages) {
+    const r = await handle(msg);
+    if (r !== null) replies.push(r);
+  }
   if (!replies.length) return new NextResponse(null, { status: 202 });
   return NextResponse.json(Array.isArray(body) ? replies : replies[0], {
     headers: { "mcp-protocol-version": PROTOCOL },

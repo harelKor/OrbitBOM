@@ -32,7 +32,7 @@ server (`/api/mcp/<token>`).
   cotsSync.db ×1): compare against those.
 - Schema: edit `src/db/schema.ts`, `npm run db:generate`, rename the file to a readable name
   (and its `tag` in `drizzle/meta/_journal.json`), add `ALTER TABLE "x" ENABLE ROW LEVEL SECURITY;`
-  for a new table, commit. Next migration: 0094.
+  for a new table, commit. Next migration: 0095.
 - Local site: README "Local development" (local Supabase in Docker, "Dev sign-in" button; Onshape
   and R2 deliberately unset). Never point local dev at production.
 - On Harel's Windows PC, Docker and `gh` aren't on the Bash PATH: run them from PowerShell, or
@@ -190,7 +190,13 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
   to drop its caches. Service workers don't run in the desktop app's browser pane: test with
   real Chrome.
 - MCP: `src/lib/mcp/registry.ts` (`read` / `write`, preview → confirm token → apply) and one file
-  per area in `src/lib/mcp/toolsets/`; `src/lib/mcp/tools.test.ts` counts the tools.
+  per area in `src/lib/mcp/toolsets/`; `src/lib/mcp/tools.test.ts` counts the tools. Every tool
+  names the capability its app button needs (`callTool` checks it on `effectiveMode(member)`; status
+  rules via `statusChangeDeniedFor`), and writes say whether they're destructive.
+- Paid / capped outside APIs (Serper web search and Lens, Gemini): `takeApiCall` (`src/lib/apiUsage.ts`,
+  `api_usage` table) against `src/config/apiLimits.ts`. Web search runs only on "Search the web".
+- Pages from links (product pages, pictures): `get()` in `src/lib/inventory/product.ts` (HTTPS only,
+  private addresses refused after DNS, `src/lib/net/address.ts`). Don't `fetch` a user's URL directly.
 - To Fab: `src/components/fab/` (`fabModel.ts` rules, `BatchCard`, `MachineFilters`, Auto Layout in
   `BatchLayoutDialog` + `src/lib/fab/layout.ts`, `batchLayout.ts`).
 - Data loaders for pages: `src/lib/data/`. The `(app)` layout must stay light: it runs on every

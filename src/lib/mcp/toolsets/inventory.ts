@@ -2,6 +2,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
+import { effectiveMode } from "@/components/shell/mode";
 import { db, schema } from "@/db";
 import { vendorOfUrl } from "@/config/vendors";
 import { listInventory } from "@/lib/data/inventory";
@@ -15,6 +16,7 @@ import { addCategoryForReview, applyItemEdits } from "@/lib/review/inventory";
 import { createItem } from "@/lib/inventory/create";
 import { listCategories } from "@/lib/data/categories";
 import { moveStock } from "@/lib/inventory/moves";
+import { statusChangeDeniedFor } from "@/lib/mode";
 import { applyEachPartChanges } from "@/lib/parts/apply";
 import { uuid, read, write, ToolError, nameOf } from "../registry";
 
@@ -24,6 +26,7 @@ const { parts, systems, robots, inventoryItems, inventoryLocations } = schema;
 
 write(
   "adjust_stock",
+  { cap: "work", destructive: true },
   "Add to or take from an inventory item's stock (delta can be negative; sheet items take pieces such as 0.25, 1/3 = 0.3333). Say why: received (an order came), used, broke, counted (a recount), returned.",
   z.object({ item_id: uuid, delta: z.number(), reason: z.enum(["received", "used", "broke", "counted", "returned"]).optional() }),
   async ({ item_id, delta, reason }, { member, aiName }) => {
@@ -46,6 +49,7 @@ write(
 
 write(
   "add_inventory_item",
+  { cap: "work", destructive: false },
   "Add an item to the team inventory.",
   z.object({
     name: z.string().min(1),
@@ -70,6 +74,7 @@ write(
 
 read(
   "list_inventory_categories",
+  "member",
   "The inventory's categories and each one's fields (number, text, options, or a base material from the Settings list), with the allowed choices. Use the ids with add_inventory_items and set_inventory_info. Sheet categories count sheets and pieces of a sheet. The team edits these on the Settings page.",
   z.object({}),
   async () => ({
@@ -85,6 +90,7 @@ read(
 
 read(
   "inventory_to_link",
+  "member",
   "COTS parts on active robots that aren't linked to an inventory item yet, with the item the site's auto-link thinks each one is (score 0-100 and why: same Onshape part or product link, sizes and words in the name, same picture as a linked part) and a compact list of every item, so you can match the rest. Suggest links with link_inventory; they wait in To Review.",
   z.object({ robot_id: uuid.optional(), limit: z.number().int().min(1).max(500).optional() }),
   async ({ robot_id, limit = 200 }) => {
@@ -121,6 +127,7 @@ read(
 
 write(
   "link_inventory",
+  { cap: "work", destructive: true },
   "Suggest links from BOM parts to inventory items (item_id null unlinks at once). A link waits in To Review with your name until the part's designer approves it; then the part draws on the item's stock, shared by every active robot. Rejected links are remembered.",
   z.object({ links: z.array(z.object({ part_id: uuid, item_id: uuid.nullable(), reason: z.string().max(300).optional() })).min(1).max(1000) }),
   async ({ links }, { member, aiName }) => {
@@ -134,6 +141,9 @@ write(
     });
     const bad = links.find((l) => l.item_id && !items.some((i) => i.id === l.item_id));
     if (bad) throw new ToolError(`No inventory item ${bad.item_id}.`);
+    const unlinking = changes.filter((c) => !c.itemId).map((c) => c.part.id);
+    const denied = unlinking.length ? await statusChangeDeniedFor(effectiveMode(member), unlinking, { inventoryItemId: null }) : null;
+    if (denied) throw new ToolError(denied);
     return {
       count: changes.length,
       summary: `${changes.length} inventory ${changes.length === 1 ? "link" : "links"}: unlinks at once, links wait in To Review`,
@@ -157,6 +167,7 @@ write(
 
 read(
   "inventory_shortages",
+  "member",
   "Items the active robots need more of than the shelf has (all robots share one shelf), with the parts the stock doesn't cover and how many each is missing.",
   z.object({ robot_id: uuid.optional() }),
   async ({ robot_id }) => {
@@ -212,6 +223,7 @@ function checkItemInfo(info: z.infer<typeof itemInfo>, current: { category: stri
 
 write(
   "add_inventory_items",
+  { cap: "work", destructive: false },
   "Add several items to the team inventory at once, e.g. from a spreadsheet, an order email or a photo of a shelf the member shares with you. New items are added at once (not to To Review) and show in AI logs, where they can be reverted. in_stock for sheet categories can have pieces (2.75 = 2 ¾ sheets). location is a shop map zone or drawer name (as items show it; Settings → Map); an unknown name creates a zone that an admin still has to draw on the map. BOM parts with the same product link or Onshape part are linked to the new items and wait in To Review.",
   z.object({ items: z.array(itemInfo.extend({ name: z.string().trim().min(1).max(200), in_stock: z.number().min(0).default(0), location: z.string().trim().max(100).optional() })).min(1).max(500) }),
   async ({ items }, { member, aiName }) => {
@@ -249,6 +261,7 @@ write(
 
 read(
   "inventory_to_look_up",
+  "member",
   "Inventory items missing a category, specs, product link or price. Look them up (FRCDesign.org, the vendors' sites) and fill them in with set_inventory_info.",
   z.object({ limit: z.number().int().min(1).max(500).optional() }),
   async ({ limit = 200 }) => {
@@ -304,6 +317,7 @@ async function savePhotos(jobs: PhotoJob[], ctx: { memberId: string; aiName: str
 
 write(
   "set_inventory_info",
+  { cap: "work", destructive: true },
   "Edit existing inventory items (each item can differ): rename them (name), move them to another category or location, and fill in specs, product link, price, picture and season need. Name, category, specs, location and season need apply at once and wait in To Review's Inventory section with your name until a member approves (Reject puts the old values back). Product link, price and picture apply at once without To Review, and linked COTS cards follow. A new product_url replaces the item's link from the same store. Any product_url, even one the item already has, re-reads the page for its picture: for a Shopify family page (AndyMark, WCP, ThriftyBot) the variant is picked from ?variant= or the item's name and specs (color, durometer, teeth, bore, size), and the link becomes that variant's. image_url saves that exact picture instead; refresh_photo: true re-reads the item's current link without giving one, false skips the picture. REV and Redux pages can't be read per variant: pass image_url for them. Specs must use the category's fields and choices from list_inventory_categories. BOM parts with the same product link are then linked to the item and wait in To Review.",
   z.object({
     items: z
@@ -402,6 +416,7 @@ write(
 
 write(
   "link_inventory_products",
+  { cap: "work", destructive: true },
   "Link inventory items to their exact product page (one batch of up to 40). Applies at once, not through To Review, and shows in AI logs where it can be reverted. The link becomes the item's first product link (replacing the old link from the same store); image_url and price are read from the page when not given (a Shopify ?variant= link gives that variant's own picture and price). The picture is copied into the app as the item's thumbnail, official_name renames the item, and COTS cards linked to the item get the new link and price. Find items without pictures with search_inventory (has_image) and products with search_online_products. The preview shows the given values; what is read from the pages shows in the result.",
   z.object({
     items: z
@@ -482,6 +497,7 @@ write(
 
 write(
   "add_inventory_category",
+  { cap: "manage", destructive: false },
   `Add a new inventory category with its fields, when items don't fit any category in list_inventory_categories (check it first so you don't make a duplicate). It is created at once, so you can put items in it with set_inventory_info or add_inventory_items, and waits in To Review's Inventory section with your name; Reject removes it again and its items lose the category. group is one of: ${CATEGORY_GROUPS.map((g) => `${g.id} (${g.text})`).join(", ")}.`,
   z.object({
     label: z.string().trim().min(1).max(60).describe("Plural name, e.g. 'Pulleys'."),

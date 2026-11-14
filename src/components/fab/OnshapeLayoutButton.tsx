@@ -76,7 +76,7 @@ export function OnshapeLayoutButton({
         }
       }
     } catch {
-      failed = "Couldn't reach OrbitBOM. Check your connection and try again.";
+      failed = "Couldn't reach OrbitParts. Check your connection and try again.";
     }
     if (failed) {
       tab?.close();
@@ -89,7 +89,7 @@ export function OnshapeLayoutButton({
 
   const step = async () => {
     setStepBusy(true);
-    await downloadExport(`/api/groups/${groupId}/onshape-layout/step`);
+    await downloadExport(`/api/groups/${groupId}/onshape-layout/step`, "POST");
     setStepBusy(false);
   };
 

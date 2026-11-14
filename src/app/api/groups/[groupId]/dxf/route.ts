@@ -7,6 +7,7 @@ import { NeedsOnshapeError } from "@/lib/model/part";
 import { OnshapeError } from "@/lib/onshape/client";
 import { isUuid } from "@/lib/uuid";
 import { zip } from "@/lib/zip";
+import { contentDisposition } from "@/lib/http/disposition";
 
 export const maxDuration = 60;
 
@@ -71,6 +72,6 @@ export async function GET(_request: Request, { params }: { params: Promise<{ gro
   if (skipped.length) named.push(["skipped.txt", `Not in this zip (not flat plates):\r\n${skipped.join("\r\n")}\r\n`]);
   const filename = `${group.name.replace(/[^\w.\- ]+/g, "_")} DXF.zip`;
   return new NextResponse(zip(named) as BodyInit, {
-    headers: { "content-type": "application/zip", "content-disposition": `attachment; filename="${filename}"` },
+    headers: { "content-type": "application/zip", "content-disposition": contentDisposition(filename) },
   });
 }

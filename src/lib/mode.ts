@@ -48,10 +48,14 @@ export const DENIED: Record<Capability, string> = {
 // (statusDenied in mode.ts), or null when it can. COTS parts follow their own rule, and in every
 // mode a COTS part needs its inventory item for Released and the Order List (cotsLinkDenied), and a
 // made part its machine and material for Released (fabSetupDenied).
-export async function statusChangeDenied(
-  partIds: string[],
-  changes: { status?: string; note?: string | null; inventoryItemId?: string | null; classification?: string; material?: string | null; preProcess?: string | null; process1?: string | null; process2?: string | null },
-): Promise<string | null> {
+export async function statusChangeDenied(partIds: string[], changes: StatusChange): Promise<string | null> {
+  return statusChangeDeniedFor(() => getMode(), partIds, changes);
+}
+
+type StatusChange = { status?: string; note?: string | null; inventoryItemId?: string | null; classification?: string; material?: string | null; preProcess?: string | null; process1?: string | null; process2?: string | null };
+
+// The same, for a mode that doesn't come from this request's cookies (MCP: effectiveMode(member)).
+export async function statusChangeDeniedFor(mode: Mode | (() => Promise<Mode>), partIds: string[], changes: StatusChange): Promise<string | null> {
   if (changes.status === undefined && changes.inventoryItemId !== null) return null;
   const ids = partIds.filter(isUuid);
   const rows = ids.length
@@ -73,7 +77,7 @@ export async function statusChangeDenied(
     if (denied) return denied;
   }
   if (!changes.status) return null;
-  const mode = await getMode();
+  const m = typeof mode === "function" ? await mode() : mode;
   // Each kind of part once: COTS, made at a Factory Fab factory, on a team printer, or in the shop.
   const kinds = new Map(
     rows.map((r) => {
@@ -83,7 +87,7 @@ export async function statusChangeDenied(
   );
   if (!kinds.size) kinds.set("", { cots: false, factory: false, print: false });
   for (const kind of kinds.values()) {
-    const denied = statusDenied(mode, changes.status, { ...kind, note: changes.note, reset: isSpecReset(changes) });
+    const denied = statusDenied(m, changes.status, { ...kind, note: changes.note, reset: isSpecReset(changes) });
     if (denied) return denied;
   }
   return null;

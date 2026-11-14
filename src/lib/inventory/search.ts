@@ -1,6 +1,7 @@
 import "server-only";
 import { and, isNull, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { takeApiCall } from "@/lib/apiUsage";
 import { VENDORS, vendorOfUrl, type Vendor } from "@/config/vendors";
 import { normUrl } from "./match";
 import { UA, publicUrl, readProduct, toUsd } from "./product";
@@ -131,7 +132,10 @@ type Organic = { organic?: { link?: string }[] };
 // Anything the FRC stores don't sell (glue, wire, taps, hand tools): Google Shopping through
 // Serper, and the top web pages read for their own product tags (photo, price). Only when
 // SERPER_API_KEY is set; there is no free web search a server may call, so without it the box
-// links to Amazon, McMaster, DigiKey and Mouser instead.
+// links to Amazon, McMaster, DigiKey and Mouser instead. Each search spends Serper credits, so it
+// runs only when asked ("Search the web", Harel's free-tier rule) and at most API_DAILY a day.
+export const webSearchConfigured = () => !!process.env.SERPER_API_KEY;
+
 export async function searchWebProducts(q: string): Promise<Offer[]> {
   const [shop, web] = await Promise.all([serper<Shopping>("shopping", q), serper<Organic>("search", q)]);
   const offers: Offer[] = (shop?.shopping ?? []).flatMap((p) => {
@@ -158,22 +162,35 @@ function relevance(title: string, words: string[]) {
   return words.filter((w) => t.some((x) => x === w || (w.length > 2 && x.startsWith(w)))).length / (words.length || 1);
 }
 
-export async function searchProducts(query: string): Promise<{ groups: ProductGroup[]; elsewhere: { name: string; url: string }[]; english: string | null }> {
+export type ProductSearch = {
+  groups: ProductGroup[];
+  elsewhere: { name: string; url: string }[];
+  english: string | null;
+  // "offer": a web search can be asked for; "used-up": today's are spent; null: none (no key, or done).
+  web: "offer" | "used-up" | null;
+};
+
+// `web`: also search the wider web (Serper) when the stores find little. Only on request.
+export async function searchProducts(query: string, opts: { web?: boolean } = {}): Promise<ProductSearch> {
   const q = query.trim().replace(/\s+/g, " ").slice(0, 80);
   // The stores are searched in English; Hebrew is turned into shop words first (the team's own
   // BOM is searched with what was typed).
   const english = toEnglishQuery(q);
   const eq = english ?? q;
   const elsewhere = VENDORS.filter((v) => !v.api).map((v) => ({ name: v.name, url: v.searchUrl(v.hebrew ? q : eq) }));
-  if (q.length < 3) return { groups: [], elsewhere, english };
-  const key = q.toLowerCase();
+  if (q.length < 3) return { groups: [], elsewhere, english, web: null };
+  const wantWeb = !!opts.web && webSearchConfigured();
+  const key = `${wantWeb ? "web:" : ""}${q.toLowerCase()}`;
   let hit = cache.get(key);
+  let web: ProductSearch["web"] = wantWeb ? null : webSearchConfigured() ? "offer" : null;
   if (!hit || Date.now() - hit.at > DAY) {
     const stores = await Promise.all([searchBom(q), ...(english ? [searchBom(english)] : []), ...VENDORS.filter((v) => v.api).map((v) => (v.api === "woo" ? searchWoo : searchShopify)(v, eq))]);
-    // Few store results (shop supplies, tools): look on the wider web too.
-    const words = eq.toLowerCase().split(/\s+/).filter((w) => w.length > 1);
-    const good = stores.flat().filter((o) => relevance(o.title, words) >= 0.5).length;
-    const lists = good < 5 ? [...stores, await searchWebProducts(eq)] : stores;
+    // Asked for (shop supplies, tools the stores don't sell): the wider web too.
+    let lists = stores;
+    if (wantWeb) {
+      if (await takeApiCall("serper-web")) lists = [...stores, await searchWebProducts(eq)];
+      else web = "used-up";
+    }
     // One from each store in turn, so no single store fills the list.
     const offers: Offer[] = [];
     const seen = new Set<string>();
@@ -186,7 +203,7 @@ export async function searchProducts(query: string): Promise<{ groups: ProductGr
       }
     hit = { at: Date.now(), offers };
     // An empty answer may be a store that stopped answering: ask again next time.
-    if (offers.length) cache.set(key, hit);
+    if (offers.length && web !== "used-up") cache.set(key, hit);
     if (cache.size > 500) cache.delete(cache.keys().next().value!);
   }
   const words = eq.toLowerCase().split(/\s+/).filter((w) => w.length > 1);
@@ -194,5 +211,5 @@ export async function searchProducts(query: string): Promise<{ groups: ProductGr
     .map((g, i) => ({ g, i, r: relevance(g.title, words) }))
     .sort((a, b) => b.r - a.r || a.i - b.i)
     .map((x) => x.g);
-  return { groups: groups.slice(0, 12), elsewhere, english };
+  return { groups: groups.slice(0, 12), elsewhere, english, web };
 }

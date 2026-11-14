@@ -21,14 +21,15 @@ import type { Condition, InvCategory, Item, Location } from "./types";
 // Opens the add form from outside the box: the phone's Scan fills it with what it recognised.
 export type AddBoxHandle = { start: (over: Partial<Draft>) => void };
 
-type Found = { q: string; groups: ProductGroup[]; elsewhere: { name: string; url: string }[] };
+type Found = { q: string; groups: ProductGroup[]; elsewhere: { name: string; url: string }[]; web?: "offer" | "used-up" | null };
 
 export const isLink = (s: string) => /^https?:\/\/\S+\.\S+/i.test(s.trim());
 
 // The stores, asked through a GET route rather than a server action: the browser runs server
 // actions one at a time, so a slow store search held up saving an item for seconds.
-export async function searchStores(q: string, signal: AbortSignal): Promise<Omit<Found, "q">> {
-  const res = await fetch(`/api/inventory/search?q=${encodeURIComponent(q)}`, { signal });
+// `web`: the wider web too, only when the member asks (it spends the day's capped Serper credits).
+export async function searchStores(q: string, signal: AbortSignal, web = false): Promise<Omit<Found, "q">> {
+  const res = await fetch(`/api/inventory/search?q=${encodeURIComponent(q)}${web ? "&web=1" : ""}`, { signal });
   if (!res.ok) return { groups: [], elsewhere: [] };
   return res.json();
 }
@@ -137,6 +138,22 @@ export function AddBox({
     };
   }, [edit, link, query, draft]);
   const products = found?.q === query ? found : null;
+  // "Search the web": the same search with the wider web, on a tap.
+  const searchWeb = () => {
+    search.current?.abort();
+    const c = new AbortController();
+    search.current = c;
+    setSearching(true);
+    searchStores(query, c.signal, true)
+      .then((r) => setFound({ q: query, ...r }))
+      .catch(() => {})
+      .finally(() => {
+        if (search.current === c) {
+          search.current = null;
+          setSearching(false);
+        }
+      });
+  };
 
   const start = (over: Partial<Draft>) => {
     stopSearch();
@@ -344,6 +361,17 @@ export function AddBox({
               </div>
             </div>
           ))}
+          {products?.web === "offer" && (
+            <button
+              type="button"
+              onClick={searchWeb}
+              disabled={searching}
+              className="press mx-2 mt-1 min-h-9 rounded-full border border-line-strong px-3 text-xs font-semibold text-fg-2 hover:border-accent hover:text-accent active:scale-[0.98] disabled:opacity-60"
+            >
+              {searching ? "Searching the web…" : "Search the web"}
+            </button>
+          )}
+          {products?.web === "used-up" && <p className="px-2 text-xs text-muted">Today&apos;s web searches are used up; try again tomorrow.</p>}
           {products && (
             <p className="px-2 pt-1 text-xs text-muted">
               Also look on{" "}

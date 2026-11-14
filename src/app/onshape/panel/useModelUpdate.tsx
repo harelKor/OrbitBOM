@@ -26,10 +26,10 @@ export function useModelUpdate(kind: ModelKind, owner: CadOwner, robotId: string
     startCheck(async () => {
       setNote(null);
       setError(null);
-      const r = await checkCad(kind, owner);
+      const r = await checkCad(kind, owner).catch(asError);
       if (r.rebuildOnly) {
         setProgress("Updating the 3D view…");
-        const b = await buildModel(r.rebuildOnly, setProgress, kind);
+        const b = await buildModel(r.rebuildOnly, setProgress, kind).catch((err) => ({ ok: false as const, calls: 0, ...asError(err) }));
         setProgress(null);
         return setNote(b.ok ? { text: `3D view updated (${b.calls} Onshape calls).` } : { text: b.error, bad: true });
       }
@@ -42,14 +42,14 @@ export function useModelUpdate(kind: ModelKind, owner: CadOwner, robotId: string
     startCommit(async () => {
       if (!found) return;
       setError(null);
-      const r = await commitCad(kind, owner, found.draftId, makeVersion, name);
+      const r = await commitCad(kind, owner, found.draftId, makeVersion, name).catch(asError);
       if (r.error) return setError(r.error);
       setOpen(false);
       setFound(null);
       const done = r.message ?? `${what} updated.`;
       setNote({ text: done });
       setProgress("Updating the 3D views…");
-      const b = kind === "basepart" ? await buildModel(robotId, setProgress, "basepart") : await buildModelAndPictures(robotId, "systemId" in owner ? owner.systemId : undefined, setProgress);
+      const b = await (kind === "basepart" ? buildModel(robotId, setProgress, "basepart") : buildModelAndPictures(robotId, "systemId" in owner ? owner.systemId : undefined, setProgress)).catch((err) => ({ ok: false as const, calls: 0, ...asError(err) }));
       setProgress(null);
       setNote(b.ok ? { text: `${done} 3D views updated (${(r.calls ?? 0) + b.calls} Onshape calls).` } : { text: `${done} The 3D views didn't update: ${b.error}`, bad: true });
       router.refresh();
@@ -76,4 +76,11 @@ export function useModelUpdate(kind: ModelKind, owner: CadOwner, robotId: string
     note,
     dialog,
   };
+}
+
+// A server action or build that threw (Onshape or the site unreachable, a lost connection): the
+// tile says so instead of the panel falling to the error page.
+export function asError(err: unknown): { error: string } & Partial<Record<"rebuildOnly" | "draftId" | "draft" | "changes" | "message" | "calls" | "rebuild", undefined>> {
+  console.error(err);
+  return { error: "The update didn't get an answer. Check the connection and try again." };
 }

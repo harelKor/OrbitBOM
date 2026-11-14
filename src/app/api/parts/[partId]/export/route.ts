@@ -9,6 +9,7 @@ import { presignDownload, storageConfigured } from "@/lib/storage/r2";
 import { isUuid } from "@/lib/uuid";
 import { PlateDxfError, plateDxf, plateDxfKey, plateDxfName } from "@/lib/drawing/plateDxf";
 import { NeedsOnshapeError } from "@/lib/model/part";
+import { contentDisposition } from "@/lib/http/disposition";
 
 export const maxDuration = 60;
 
@@ -38,7 +39,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ part
     const got = await ensurePartFile(target, member, started + 50_000);
     if (!got.cached) {
       return new NextResponse(got.body, {
-        headers: { "content-type": target.type, "content-disposition": `attachment; filename="${target.filename}"` },
+        headers: { "content-type": target.type, "content-disposition": contentDisposition(target.filename) },
       });
     }
     return NextResponse.redirect(await presignDownload(target.key!, target.filename, false));
@@ -60,7 +61,7 @@ async function flatDxf(
     const text = await plateDxf(row, member, fab, deadline);
     const key = storageConfigured() ? plateDxfKey(row, fab) : null;
     if (key) return NextResponse.redirect(await presignDownload(key, filename, false));
-    return new NextResponse(text, { headers: { "content-type": "image/vnd.dxf", "content-disposition": `attachment; filename="${filename}"` } });
+    return new NextResponse(text, { headers: { "content-type": "image/vnd.dxf", "content-disposition": contentDisposition(filename) } });
   } catch (err) {
     if (err instanceof PlateDxfError) return new NextResponse(err.message, { status: err.status });
     if (err instanceof NeedsOnshapeError) return new NextResponse(err.message, { status: 403 });

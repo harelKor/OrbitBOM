@@ -25,6 +25,7 @@ const asTool = async <T,>(fn: () => Promise<T>) => {
 
 read(
   "list_review_comments",
+  "member",
   "A system's CAD Review comments (snip: a picture cut from the 3D view with lines drawn on it): status (open; on_it = someone is working on it; to_check = waiting for a mentor to check; done = a mentor approved it), text, the part it's about, who wrote it and when, the version it is on, its replies (a thread like Onshape's; a mentor sending it back writes why there), its pin (x, y, z in assembly mm: the point in the 3D view it was written about) and view (the 3D view it was written in: camera, hidden / isolated parts, section, render mode), and the version tree (Onshape versions, newest first, which ones the BOM was updated to, and the comment ids added and set To check or Done at each).",
   z.object({ system_id: uuid, state: z.enum(["open", "on_it", "to_check", "done"]).optional() }),
   async ({ system_id, state }) => {
@@ -41,6 +42,7 @@ read(
 
 write(
   "add_review_comment",
+  { cap: "member", destructive: false },
   "Add a CAD Review comment to a system, optionally about one of its parts (part_id from find_parts), with a pin (x, y, z in assembly mm) and a view (as list_review_comments gives one, e.g. copied from another comment). Anyone on the team may.",
   z.object({ system_id: uuid, text: z.string().trim().min(1).max(2000), part_id: uuid.optional(), pin: z.tuple([z.number(), z.number(), z.number()]).optional(), view: z.record(z.string(), z.unknown()).optional() }),
   async ({ system_id, text, part_id, pin, view }, { member }) => {
@@ -66,6 +68,7 @@ write(
 
 write(
   "set_review_comment_status",
+  { cap: "member", destructive: true },
   "Set the status of CAD Review comments of a system: open, on_it (someone is working on it), to_check (ready for a mentor) or done (approved). The CAD Team, mentors and each comment's author move it between open, on_it and to_check; only mentors (or an admin in Edit mode) set done or take a done one back. A mentor sending a to_check one back to open or on_it gives a note (why it isn't done).",
   z.object({ system_id: uuid, comment_ids: z.array(uuid).min(1).max(100), status: z.enum(["open", "on_it", "to_check", "done"]), note: z.string().trim().max(2000).optional() }),
   async ({ system_id, comment_ids, status, note }, { member }) => {
@@ -93,6 +96,7 @@ write(
 
 write(
   "reply_to_review_comment",
+  { cap: "member", destructive: false },
   "Reply in a CAD Review comment's thread (comment_id from list_review_comments). Anyone on the team may.",
   z.object({ comment_id: uuid, text: z.string().trim().min(1).max(2000) }),
   async ({ comment_id, text }, { member }) => {
@@ -109,6 +113,7 @@ write(
 
 read(
   "get_design_check",
+  "member",
   "A robot's newest Design check (plan/design-check.md: run by the CAD Team on the CAD page, from the 3D model): when and by whom, the limits set, weight (total, by system, the heaviest parts, ones whose weight is a guess), frame perimeter / size / height and parts past the frame perimeter, overlapping parts (depth in mm, the usual kinds such as screws in tapped holes marked), and every other finding (not attached, holes that don't line up, hole sizes, screw length and thread, hard to reach, held by one screw, plates, printed parts) with its parts, plain-words text, level (warn / info), a point in assembly mm, and the AI write-up if one was made. Findings and overlaps marked fine are left out. robot_id from list_robots.",
   z.object({ robot_id: uuid, model: z.enum(["final", "basepart"]).optional() }),
   async ({ robot_id, model }) => {

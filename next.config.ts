@@ -20,11 +20,17 @@ const nextConfig: NextConfig = {
     // Pages prefetched in full on hover (Link unstable_dynamicOnHover) are kept the same 30 s.
     staleTimes: { dynamic: 30, static: 30 },
   },
-  // The panel inside Onshape (cad.onshape.com or the team's Enterprise domain) frames the app.
+  // The panel inside Onshape (cad.onshape.com or the team's Enterprise domain) frames only the
+  // panel's own pages (/onshape/*); the rest of the site can't be framed by another site, so it
+  // can't be clicked through from inside a frame. The later rule wins for /onshape.
   async headers() {
     return [
       {
         source: "/:path*",
+        headers: [{ key: "Content-Security-Policy", value: "frame-ancestors 'self'" }],
+      },
+      {
+        source: "/onshape/:path*",
         headers: [{ key: "Content-Security-Policy", value: "frame-ancestors 'self' https://*.onshape.com" }],
       },
     ];
