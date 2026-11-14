@@ -1,4 +1,5 @@
 import type { InvCategory } from "@/lib/inventory/categories";
+import type { Place } from "@/lib/inventory/places";
 import type { OpenOrder } from "@/lib/inventory/season";
 import type { ItemUsage } from "@/lib/inventory/usage";
 import type { StoredPieces } from "@/lib/inventory/stock";
@@ -29,7 +30,8 @@ export type Item = {
 };
 export type Group = { id: string; name: string; parentId: string | null; templateId: string | null; locationId: string | null };
 export type Condition = { id: string; label: string; color: string };
-export type Location = { id: string; name: string; mapX?: number | null; mapY?: number | null };
+// A zone or a drawer / shelf on the shop map (lib/inventory/places.ts).
+export type Location = Place;
 export type BomTarget = { id: string; name: string; systems: { id: string; name: string }[] };
 
 export type Lookups = { groups: Group[]; conditions: Condition[]; locations: Location[]; categories: InvCategory[] };

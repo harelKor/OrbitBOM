@@ -1,5 +1,7 @@
 "use client";
 
+import { FindButton } from "@/components/map/FindButton";
+
 import { useRouter } from "next/navigation";
 import { useOptimistic, useState, useTransition } from "react";
 import { adjustStock, deleteItem, linkPartsToItem } from "@/app/(app)/inventory/actions";
@@ -66,7 +68,7 @@ export function ItemPage({
   const category = getCategory(categories, item.category);
   const condition = conditions.find((c) => c.id === item.conditionId);
   const color = condition ? conditionColor(condition.color) : undefined;
-  const location = locations.find((l) => l.id === (item.locationId ?? groups.find((g) => g.id === item.groupId)?.locationId))?.name;
+  const location = locations.find((l) => l.id === (item.locationId ?? groups.find((g) => g.id === item.groupId)?.locationId));
   const spec = specLine(category, item.specs);
   const [draft, setDraft] = useState(() => draftOf(initial));
   const usage = item.usage;
@@ -89,7 +91,11 @@ export function ItemPage({
               </span>
             )}
           </div>
-          {location && <span className="absolute top-3 right-3 rounded-full border border-line bg-surface/90 px-2.5 py-0.5 text-xs font-semibold text-fg-2">📍 {location}</span>}
+          {location && (
+            <span className="absolute top-3 right-3 rounded-full border border-line bg-surface/90">
+              <FindButton places={locations} placeId={location.id} />
+            </span>
+          )}
         </div>
         <div className="space-y-4 p-4">
           <div>

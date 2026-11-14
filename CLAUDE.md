@@ -32,7 +32,7 @@ server (`/api/mcp/<token>`).
   cotsSync.db ×1): compare against those.
 - Schema: edit `src/db/schema.ts`, `npm run db:generate`, rename the file to a readable name
   (and its `tag` in `drizzle/meta/_journal.json`), add `ALTER TABLE "x" ENABLE ROW LEVEL SECURITY;`
-  for a new table, commit. Next migration: 0091.
+  for a new table, commit. Next migration: 0093.
 - Local site: README "Local development" (local Supabase in Docker, "Dev sign-in" button; Onshape
   and R2 deliberately unset). Never point local dev at production.
 - On Harel's Windows PC, Docker and `gh` aren't on the Bash PATH: run them from PowerShell, or
@@ -173,6 +173,14 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
   (`shelf.ts`), search results (stores by name + Google Lens through Serper, `/api/inventory/lens`,
   `lens.ts`, 3 credits a search, 60 a day). Nothing opens by itself; each result opens the add
   window. Raw answers and what the counter saw on `/inventory/scan-test`.
+- Shop map (2026-11-14): places are `inventory_locations` rows: a zone (outline on the floor plan
+  `config/workshopMap.ts`, colour, first-person picture in R2 `map/zones/`, `facing`) or a spot
+  (`parent_id` = zone, `spot_x/y` 0..1 of the picture, drawer / shelf / bin). Names stay for AI,
+  search, history; the map never shows them. `src/components/map/` (`ShopMap` zoom → category icons
+  → dive into the picture, `camera.ts` maths and the 2 s `findCam` flight, `FindButton` map icon,
+  `SystemDrawerButton`), helpers `src/lib/inventory/places.ts`, edits `settings/mapActions.ts` +
+  `components/settings/MapSettings.tsx` (Settings → Map), `systems.drawers` = a system's drawer
+  per status. Sandbox `/dev/shop-map`. `GET /api/places` for pages without them.
 - Files: `src/lib/storage/r2.ts`; backups and restore: `src/lib/storage/backup.ts`, `restore.ts`.
 - Work the user needn't wait for: `afterResponse` (`src/lib/later.ts`).
 - Installed app / offline (2026-11-13): `public/sw.js` (plain JS, production only, registered by

@@ -212,7 +212,7 @@ function checkItemInfo(info: z.infer<typeof itemInfo>, current: { category: stri
 
 write(
   "add_inventory_items",
-  "Add several items to the team inventory at once, e.g. from a spreadsheet, an order email or a photo of a shelf the member shares with you. New items are added at once (not to To Review) and show in AI logs, where they can be reverted. in_stock for sheet categories can have pieces (2.75 = 2 ¾ sheets). location is a shelf or bin name; a new name is created. BOM parts with the same product link or Onshape part are linked to the new items and wait in To Review.",
+  "Add several items to the team inventory at once, e.g. from a spreadsheet, an order email or a photo of a shelf the member shares with you. New items are added at once (not to To Review) and show in AI logs, where they can be reverted. in_stock for sheet categories can have pieces (2.75 = 2 ¾ sheets). location is a shop map zone or drawer name (as items show it; Settings → Map); an unknown name creates a zone that an admin still has to draw on the map. BOM parts with the same product link or Onshape part are linked to the new items and wait in To Review.",
   z.object({ items: z.array(itemInfo.extend({ name: z.string().trim().min(1).max(200), in_stock: z.number().min(0).default(0), location: z.string().trim().max(100).optional() })).min(1).max(500) }),
   async ({ items }, { member, aiName }) => {
     const cats = await listCategories();
@@ -311,7 +311,7 @@ write(
         itemInfo.extend({
           item_id: uuid,
           name: z.string().trim().min(1).max(200).optional().describe("A new name for the item."),
-          location: z.string().trim().min(1).max(100).optional().describe("The shelf or bin it moves to; a new name is created."),
+          location: z.string().trim().min(1).max(100).optional().describe("The shop map zone or drawer it moves to, by name; a new name creates a zone still to be drawn."),
           image_url: z.url().optional().describe("The exact picture to save as the item's thumbnail."),
           refresh_photo: z.boolean().optional().describe("true: re-read the item's product page for its picture. false: leave the picture alone. Default: re-read when product_url is given."),
           reason: z.string().max(300).optional().describe("Why, shown on To Review."),

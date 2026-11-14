@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import { FindButton } from "@/components/map/FindButton";
 import { saveBatchLayout, setPartFace } from "@/app/(app)/groups/actions";
 import { Dialog } from "@/components/Dialog";
 import type { BatchLayout, BatchPart } from "@/lib/fab/batchLayout";
@@ -473,7 +474,8 @@ export function BatchLayoutDialog({ groupId, name, machine = null, open, onClose
 }
 
 function Advisor({ data, advice }: { data: BatchLayout; advice: ReturnType<typeof advisePlate>["advice"] }) {
-  const where = data.stock?.location ? ` in 📍 ${data.stock.location}` : "";
+  // The shelf's map icon flies to the plate on the shop map.
+  const where = data.stock?.locationId ? <FindButton placeId={data.stock.locationId} title="Where the stock is" className="press inline-flex h-6 w-6 translate-y-1 items-center justify-center rounded-md text-accent hover:bg-accent/10 active:scale-[0.98] pointer-coarse:h-9 pointer-coarse:w-9" /> : null;
   if (!data.stock) {
     return (
       <div className="rounded-lg border border-line bg-surface p-3 text-sm text-muted">
@@ -503,7 +505,7 @@ function Advisor({ data, advice }: { data: BatchLayout; advice: ReturnType<typeo
         </span>
         <span className="text-muted">
           {" "}
-          — <span className="font-mono tabular-nums">{advice.piece.count}</span> available{where} · {data.stock.name}
+          — <span className="font-mono tabular-nums">{advice.piece.count}</span> available {where} · {data.stock.name}
         </span>
       </div>
     );
@@ -515,7 +517,7 @@ function Advisor({ data, advice }: { data: BatchLayout; advice: ReturnType<typeo
       {biggest && advice.sheetsNeeded > 0 ? (
         <span className="text-muted">
           It splits over <span className="font-mono tabular-nums text-fg">{advice.sheetsNeeded}</span> × {biggest.label}mm (
-          <span className="font-mono tabular-nums">{biggest.count}</span> in stock{where}).
+          <span className="font-mono tabular-nums">{biggest.count}</span> in stock {where}).
         </span>
       ) : biggest ? (
         <span className="text-muted">A part is bigger than the largest piece ({biggest.label}mm).</span>

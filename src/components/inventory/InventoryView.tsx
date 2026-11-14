@@ -52,10 +52,12 @@ import { useInventoryPopup } from "./InventoryPopup";
 import { ItemListRow } from "./ItemListRow";
 import { ItemCard } from "./ItemCard";
 import { ItemTable } from "./ItemTable";
-import { usePhone } from "@/components/ui/usePhone";
+import { useDesktop, usePhone } from "@/components/ui/usePhone";
 import { ScanButton } from "./ScanButton";
 import { LocationPicker } from "./LocationPicker";
-import { WorkshopMap, type PinStats } from "./WorkshopMap";
+import { ShopMap } from "@/components/map/ShopMap";
+import { placeStats } from "@/components/map/stats";
+import { inPlace, placeIndex, placeWord, zoneColor, zoneOf } from "@/lib/inventory/places";
 import type { Condition, Item, Lookups } from "./types";
 
 export type InventoryScope =
@@ -197,43 +199,45 @@ export function InventoryView({
     i.locationId ??
     lookups.groups.find((g) => g.id === i.groupId)?.locationId ??
     null;
-  // The workshop map window: each pin's items and how many are short.
+  // The shop map (Harel, 2026-11-14): each zone's and drawer's items, categories and short ones.
   const [mapOpen, setMapOpen] = useState(false);
-  const activeLocation = locations.find((l) => l.id === locationId);
-  const pinStats = useMemo(() => {
-    const m: PinStats = new Map();
-    for (const i of optimistic) {
-      const at = locationOf(i);
-      if (!at) continue;
-      const c = m.get(at) ?? { count: 0, short: 0 };
-      c.count++;
-      if (standing(i, "any") === "short") c.short++;
-      m.set(at, c);
-    }
-    return m;
+  const placeById = useMemo(() => placeIndex(locations), [locations]);
+  const activeLocation = placeById.get(locationId);
+  const inLocation = (i: Item) => !locationId || inPlace(locationOf(i), locationId, placeById);
+  const mapStats = useMemo(
+    () =>
+      placeStats(
+        optimistic.map((i) => ({ id: i.id, name: i.name, category: i.category, place: locationOf(i), short: standing(i, "any") === "short" })),
+        locations,
+        categories,
+      ),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- locationOf follows the groups
-  }, [optimistic, lookups.groups]);
-  // The map is the only location filter; a pin picked there shows as a ✕ chip beside the button.
+    [optimistic, lookups.groups, locations, categories],
+  );
+  // On a computer the map sits docked above the page and expands into a window; on phones and
+  // tablets the Map button opens the window. A place picked there filters the page (?loc=) and
+  // shows as a ✕ chip.
+  const desktop = useDesktop();
+  const pickPlace = (id: string | null) => setLocationId(!id || locationId === id ? "" : id);
+  const filterChip = activeLocation && (
+    <button
+      type="button"
+      onClick={() => setLocationId("")}
+      className="press flex shrink-0 items-center gap-1.5 rounded-full border border-accent bg-accent px-3 py-1.5 text-xs font-semibold text-white active:scale-[0.98]"
+      title="Clear the place filter"
+    >
+      <span className="h-2.5 w-2.5 rounded-full border border-white/70" style={{ background: zoneColor(zoneOf(activeLocation.id, placeById)) }} />
+      {placeWord(activeLocation)} ✕
+    </button>
+  );
   const mapButton = (
     <div className="flex shrink-0 items-center gap-1.5 self-start">
-      <button
-        type="button"
-        onClick={() => setMapOpen(true)}
-        className="btn min-h-12 active:scale-[0.98]"
-        title="Open the workshop map"
-      >
-        <span aria-hidden>🗺️</span> Map
-      </button>
-      {activeLocation && (
-        <button
-          type="button"
-          onClick={() => setLocationId("")}
-          className="press max-w-32 truncate rounded-full border border-accent bg-accent px-3 py-1.5 text-xs font-semibold text-white active:scale-[0.98]"
-          title="Clear the location filter"
-        >
-          📍 {activeLocation.name} ✕
+      {!desktop && (
+        <button type="button" onClick={() => setMapOpen(true)} className="btn min-h-12 active:scale-[0.98]" title="Open the shop map">
+          <Icon name="map" className="h-4 w-4" /> Map
         </button>
       )}
+      {filterChip}
     </div>
   );
   const query = q.trim().toLowerCase();
@@ -252,7 +256,7 @@ export function InventoryView({
     scope.kind === "category"
       ? i.category === scope.id
       : scope.kind === "location"
-        ? locationOf(i) === scope.id
+        ? inPlace(locationOf(i), scope.id, placeById)
         : scope.kind === "condition"
           ? i.conditionId === scope.id
           : true;
@@ -314,7 +318,7 @@ export function InventoryView({
         inSub(i) &&
         matches(i) &&
         (!conditionId || i.conditionId === conditionId) &&
-        (!locationId || locationOf(i) === locationId),
+        inLocation(i),
     )
     .sort((a, b) =>
       view ? RANK[standing(a, view)] - RANK[standing(b, view)] : 0,
@@ -335,7 +339,7 @@ export function InventoryView({
           inBox(i) &&
           !mainIds.has(i.id) &&
           (!conditionId || i.conditionId === conditionId) &&
-          (!locationId || locationOf(i) === locationId),
+          inLocation(i),
       )
     : [];
   const showBoxes = home && (!query || !!view);
@@ -574,6 +578,7 @@ export function InventoryView({
             condition={conditions.find((c) => c.id === item.conditionId)}
             location={locations.find((l) => l.id === locationOf(item))}
             locations={locations}
+            placeStats={mapStats}
             view={cardView}
             onStep={(d, b) => step(item.id, d, b)}
             onCount={(n) => count(item.id, n)}
@@ -630,6 +635,26 @@ export function InventoryView({
         </div>
       </EditOnly>
 
+      {desktop && (
+        <ShopMap
+          places={locations}
+          stats={mapStats}
+          selectedId={locationId || null}
+          onFilter={pickPlace}
+          className="h-[clamp(11rem,26vh,17rem)] w-full"
+          toolbar={
+            <button
+              type="button"
+              onClick={() => setMapOpen(true)}
+              className="press flex h-9 items-center gap-1.5 rounded-lg border border-white/15 bg-[#0D111A]/85 px-2.5 text-xs font-semibold text-slate-100 backdrop-blur-md hover:border-sky-400/50 hover:text-sky-300 active:scale-[0.98]"
+              title="Open the shop map in a window"
+            >
+              <Icon name="expand" className="h-4 w-4" /> Expand
+            </button>
+          }
+        />
+      )}
+
       {/* The search row stays under the top bar while the list scrolls. */}
       {/* On phones the box and Scan get the whole first row and the filters the next. */}
       <div className="sticky top-[var(--topbar-h)] z-20 -mx-2 flex flex-wrap gap-2 bg-ink/95 px-2 py-2 backdrop-blur">
@@ -662,35 +687,32 @@ export function InventoryView({
         <div className="ml-auto self-center">{layoutSwitch}</div>
       </div>
 
-      {/* The workshop map opens as a window over the page; a pin picked there stays as the
-          location filter after it closes (Harel, 2026-10-28). */}
+      {/* The shop map as a window: the Map button on phones, ⤢ on the docked map on a computer.
+          "Show these items" filters the page and closes it. */}
       <Dialog
         open={mapOpen}
         onClose={() => setMapOpen(false)}
-        width="w-[min(72rem,calc(100vw-2rem))]"
+        width="w-[min(80rem,calc(100vw-1rem))]"
         title={
           <span className="flex items-center gap-2">
-            🗺️ Workshop map
-            {activeLocation && (
-              <button
-                type="button"
-                onClick={() => setLocationId("")}
-                className="press rounded-full border border-accent bg-accent px-2.5 py-0.5 text-xs font-semibold text-white active:scale-[0.98]"
-                title="Clear the location filter"
-              >
-                📍 {activeLocation.name} ✕
-              </button>
-            )}
+            <Icon name="map" className="h-4 w-4 text-accent" /> Shop map
+            {filterChip}
           </span>
         }
       >
-        <WorkshopMap
-          locations={locations}
-          stats={pinStats}
-          selectedId={locationId || undefined}
-          onPick={(id) => setLocationId(locationId === id ? "" : id)}
-          editable={edit}
-        />
+        {mapOpen && (
+          <ShopMap
+            places={locations}
+            stats={mapStats}
+            selectedId={locationId || null}
+            find={desktop ? null : locationId || null}
+            onFilter={(id) => {
+              setMapOpen(false);
+              pickPlace(id);
+            }}
+            className="h-[min(74dvh,46rem)] w-full"
+          />
+        )}
       </Dialog>
 
       {error && (
@@ -845,7 +867,7 @@ export function InventoryView({
                   (i) =>
                     (!conditionId || i.conditionId === conditionId) &&
                     (!season || i.seasonTag === season) &&
-                    (!locationId || locationOf(i) === locationId),
+                    inLocation(i),
                 ),
                 need,
                 !!season,

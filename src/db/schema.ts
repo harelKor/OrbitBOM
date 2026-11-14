@@ -153,6 +153,9 @@ export const systems = pgTable(
     // or a microversion, which never change, so a rebuild reads nothing again for it. Null: the
     // assembly's own link (its workspace), as before.
     modelRef: jsonb("model_ref").$type<{ wvm: "v" | "m"; wvmid: string }>(),
+    // Where the system's made parts wait, by status (Harel, 2026-11-14): "Ready for QA" parts in
+    // one drawer, "In Stock" in another. Status name → inventory_locations id (a zone or a spot).
+    drawers: jsonb("drawers").$type<Record<string, string>>().notNull().default({}),
     // The system's Basepart (Harel, 2026-11-12): designed first in a Part Studio, then replaced by
     // the Basepart assembly in the same document. 3D views and comments only: the BOM is read
     // from `assembly_url`, the system's Final assembly.
@@ -879,13 +882,30 @@ export const storedFiles = pgTable(
 
 // ---------- Inventory ----------
 
-// map_x / map_y place the location's pin on the workshop map (config/workshopMap.ts units);
-// null keeps it off the map.
+// The shop map's places (Harel, 2026-11-14): a zone (parent_id null) is an outline on the floor
+// plan (config/workshopMap.ts units) with an optional first-person picture; a spot (parent_id =
+// its zone) is one drawer / shelf / bin pinned on that picture (spot_x / spot_y, 0..1 of it).
+// Items, groups, categories and system drawers point at either. The map never shows `name`; it
+// stays for the AI tools, search, history and backups. No foreign key on parent_id, so a restore
+// can insert the rows in any order; deleting a zone moves its spots' items to nothing in code.
+export type MapPoint = [number, number];
+export type SpotKind = "drawer" | "shelf" | "bin";
 export const inventoryLocations = pgTable("inventory_locations", {
   id: id(),
   name: text("name").notNull().unique(),
-  mapX: real("map_x"),
-  mapY: real("map_y"),
+  parentId: uuid("parent_id"),
+  outline: jsonb("outline").$type<MapPoint[]>(),
+  color: text("color"),
+  // The zone's first-person picture: an R2 key, or a /public path; its size in pixels.
+  imageKey: text("image_key"),
+  imageW: integer("image_w"),
+  imageH: integer("image_h"),
+  // Which way the picture looks, in degrees on the floor plan (0 = up), for the dive.
+  facing: real("facing").notNull().default(0),
+  spotX: real("spot_x"),
+  spotY: real("spot_y"),
+  kind: text("kind").$type<SpotKind>(),
+  position: integer("position").notNull().default(0),
 });
 
 export const inventoryConditions = pgTable("inventory_conditions", {

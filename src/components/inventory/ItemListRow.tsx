@@ -10,7 +10,8 @@ import { hasSeasonNeed, missing, neededFor, standing, type NeedView } from "@/li
 import { formatStock, isSheetGoods } from "@/lib/inventory/stock";
 import { CountBox, PieceStepper, conditionColor, standingTint } from "./ItemCard";
 import { ConditionSelect } from "./ConditionSelect";
-import { LocationPicker } from "./LocationPicker";
+import { Icon } from "@/components/ui/Icon";
+import { LocationPicker, PlaceTag } from "./LocationPicker";
 import { useInventoryPopup } from "./InventoryPopup";
 import { SeasonTag } from "./SeasonTag";
 import type { Condition, InvCategory, Item, Location } from "./types";
@@ -137,12 +138,12 @@ export function ItemListRow({
                   })
                 }
                 disabled={saving}
-                ariaLabel={location ? `Location: ${location.name}` : "Add location"}
+                ariaLabel={location ? "Place on the shop map" : "Add a place"}
                 className={`press max-w-full truncate rounded-full border px-2.5 py-0.5 text-[0.6875rem] font-medium hover:border-sky-400/40 hover:text-accent active:scale-[0.98] disabled:opacity-60 ${
                   location ? "border-line-strong bg-ink/60 text-fg-2" : "border-dashed border-line-strong text-muted"
                 }`}
               >
-                {location ? `📍 ${location.name}` : "+ Location"}
+                <PlaceTag place={location ? locations.find((l) => l.id === location.id) : null} places={locations} />
               </LocationPicker>
             )}
             {conditions && (
@@ -167,7 +168,7 @@ export function ItemListRow({
           </span>
         ) : (
           <>
-            {location && !rawStock && <ListPill>📍 {location.name}</ListPill>}
+            {location && !rawStock && <ListPill><Icon name="map" className="inline h-3.5 w-3.5" /></ListPill>}
             {condition && <ListPill color={conditionColor(condition.color)}>{condition.label}</ListPill>}
             {!hideSeason && <SeasonTag itemId={item.id} tag={item.seasonTag} className="rounded-full border border-transparent px-2.5 py-0.5 text-[0.6875rem]" />}
             {showStanding && state !== "ok" && <ListPill color={STANDING[state].color}>{STANDING[state].label(formatStock(gap, item.sheet))}</ListPill>}

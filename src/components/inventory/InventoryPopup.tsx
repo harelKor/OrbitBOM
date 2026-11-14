@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useRef, useState, useTransition } from "react";
 import {
   adjustStock,
@@ -38,10 +39,10 @@ import { ConditionSelect } from "./ConditionSelect";
 import { CotsOrderBox, showsOrder, type CotsOrderInfo } from "./CotsOrderBox";
 import { ItemHistory } from "./ItemHistory";
 import { usePhotoPicker } from "./photo";
-import { LocationPicker } from "./LocationPicker";
+import { LocationPicker, PlaceTag } from "./LocationPicker";
 import { SeasonTag } from "./SeasonTag";
 import { UsedIn } from "./UsedIn";
-import { WorkshopMap } from "./WorkshopMap";
+import { FindButton } from "@/components/map/FindButton";
 import type { Condition, InvCategory, Item, Location } from "./types";
 
 // Anything connected to the inventory (a part card's material or inventory pill, a robot's
@@ -484,6 +485,7 @@ function ItemBody({
   startEdit?: boolean;
 }) {
   const work = useCan("work");
+  const router = useRouter();
   const [mode, setMode] = useState<"view" | "edit">(startEdit && work ? "edit" : "view");
   const [spreadOpen, setSpreadOpen] = useState(false);
   const [draft, setDraft] = useState(() => draftOf(item));
@@ -505,8 +507,6 @@ function ItemBody({
   const condition = conditions.find((c) => c.id === item.conditionId);
   const color = condition ? conditionColor(condition.color) : undefined;
   const location = locations.find((l) => l.id === item.locationId);
-  const onMap = location?.mapX != null && location?.mapY != null;
-  const [showMap, setShowMap] = useState(false);
   const usage = item.usage;
   // The picture box is always there, so the cart, ⋮ and price sit in the same place on every item:
   // the item's own photo, or its category's drawing dimmed when it has none.
@@ -646,10 +646,11 @@ function ItemBody({
                     locations={locations}
                     value={item.locationId}
                     onChange={(id) => onChange(() => ({ locationId: id }), () => setItemLocation(item.id, id))}
-                    className={`${tag} press border bg-transparent hover:border-sky-400/40 active:scale-[0.98] disabled:opacity-60 ${location ? "border-line text-fg-2" : "border-dashed border-line-strong text-muted"}`}
+                    className={`${tag} press flex items-center gap-1.5 border bg-transparent hover:border-sky-400/40 active:scale-[0.98] disabled:opacity-60 ${location ? "border-line text-fg-2" : "border-dashed border-line-strong text-muted"}`}
                   >
-                    {location ? `📍 ${location.name}` : "📍 Location"}
+                    <PlaceTag place={location} places={locations} />
                   </LocationPicker>
+                  <FindButton places={locations} placeId={location?.id} onFilter={(id) => { onClose(); router.push(`/inventory?loc=${id}`); }} />
                 </>
               ) : (
                 <>
@@ -658,17 +659,7 @@ function ItemBody({
                       {condition.label}
                     </Link>
                   )}
-                  {location && (
-                    <button
-                      type="button"
-                      onClick={() => setShowMap((v) => !v)}
-                      aria-expanded={showMap}
-                      title={onMap ? "Show where it is on the workshop map" : "Show the workshop map"}
-                      className={`${tag} press border active:scale-[0.98] ${showMap ? "border-sky-400/60 bg-sky-500/15 text-sky-300" : "border-line text-fg-2 hover:border-sky-400/40 hover:text-accent"}`}
-                    >
-                      📍 {location.name}
-                    </button>
-                  )}
+                  <FindButton places={locations} placeId={location?.id} onFilter={(id) => { onClose(); router.push(`/inventory?loc=${id}`); }} />
                 </>
               )}
             </div>
@@ -679,15 +670,6 @@ function ItemBody({
               </div>
             )}
           </div>
-          {showMap && location && (
-            // A compact map centred on the item's shelf, its pin lit in Orbit blue.
-            <div className={`map-unfold w-full max-w-md space-y-1 ${wide}`}>
-              <WorkshopMap key={location.id} locations={locations} focusId={location.id} selectedId={location.id} compact />
-              <Link href={`/inventory?loc=${location.id}`} onClick={onClose} className="inline-block text-xs font-semibold text-accent hover:underline">
-                {onMap ? `Everything at ${location.name} →` : `${location.name} isn't on the map yet. See everything there →`}
-              </Link>
-            </div>
-          )}
           {/* The count and Season needs fill one line, as wide as the Notes box below. */}
           <div className={`flex w-full flex-wrap items-center justify-between gap-2.5 ${wide}`}>
             <Stepper item={item} onStep={onStep} onCount={onCount} big pieces={false}>
@@ -917,9 +899,9 @@ function MaterialBody({ data, onStep, onOpen, onClose }: { data: MaterialData; o
             <div className="truncate font-semibold hover:text-accent">{i.name}</div>
             <div className="text-xs text-muted">
               {getCategory(categories, i.category)?.label}
-              {locations.find((l: Location) => l.id === i.locationId) && <> · 📍 {locations.find((l: Location) => l.id === i.locationId)!.name}</>}
             </div>
           </button>
+          <FindButton places={locations} placeId={i.locationId} title="Where it is" />
           <Stepper item={i} onStep={(d, b) => onStep(i.id, d, b)} />
         </li>
       ))}

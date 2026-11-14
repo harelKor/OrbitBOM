@@ -1,6 +1,6 @@
 import "server-only";
 import { gunzipSync } from "node:zlib";
-import { eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { LayoutData } from "@/db/schema";
 import { partKey } from "@/lib/model/assembly";
@@ -12,7 +12,7 @@ import { getObject, imageUrl, objectExists, storageConfigured } from "@/lib/stor
 import { pieceBase, pieceLabel, pieceRows, sortedRows } from "@/lib/inventory/stock";
 import { DEFAULT_GAP, DEFAULT_MARGIN, advisePlate, flattenMesh, type FlatGeom, type FlatPart, type Nest, type PlateAdvice, type StockPiece } from "./layout";
 
-const { parts, systems, groupMembers, partGroups, inventoryItems, inventoryLocations, inventoryGroups } = schema;
+const { parts, systems, groupMembers, partGroups, inventoryItems, inventoryGroups } = schema;
 
 export type MissingPart = { partId: string; name: string; reason: string };
 // A part as the layout window gets it: flat, plus where its saved 3D mesh is (for the preview)
@@ -20,7 +20,7 @@ export type MissingPart = { partId: string; name: string; reason: string };
 // `onshapePartId` the flat body's.
 export type BatchPart = FlatPart & { meshUrl: string | null; onshapePartId: string; chosen: boolean };
 type Member = { id: string; onshapeConnected: boolean };
-export type BatchStock = { itemId: string; name: string; location: string | null; pieces: StockPiece[] } | null;
+export type BatchStock = { itemId: string; name: string; locationId: string | null; pieces: StockPiece[] } | null;
 export type BatchLayout = {
   groupId: string;
   name: string;
@@ -168,19 +168,15 @@ export async function batchStock(groupId: string): Promise<{ material: string | 
   };
   const material = most(rows.map((r) => r.material).filter((m): m is string => !!m)) ?? null;
   const itemId = most(rows.map((r) => r.itemId).filter((m): m is string => !!m));
-  const cols = { id: inventoryItems.id, name: inventoryItems.name, specs: inventoryItems.specs, inStock: inventoryItems.inStock, pieces: inventoryItems.pieces, location: inventoryLocations.name, groupLocation: inventoryGroups.locationId };
+  const cols = { id: inventoryItems.id, name: inventoryItems.name, specs: inventoryItems.specs, inStock: inventoryItems.inStock, pieces: inventoryItems.pieces, locationId: inventoryItems.locationId, groupLocation: inventoryGroups.locationId };
   const base = db
     .select(cols)
     .from(inventoryItems)
-    .leftJoin(inventoryLocations, eq(inventoryLocations.id, inventoryItems.locationId))
     .leftJoin(inventoryGroups, eq(inventoryGroups.id, inventoryItems.groupId));
   const [item] = itemId ? await base.where(eq(inventoryItems.id, itemId)) : material ? await base.where(eq(inventoryItems.name, material)) : [];
   if (!item) return { material, stock: null };
-  let location = item.location;
-  if (!location && item.groupLocation) {
-    const [loc] = await db.select({ name: inventoryLocations.name }).from(inventoryLocations).where(inArray(inventoryLocations.id, [item.groupLocation]));
-    location = loc?.name ?? null;
-  }
+  // Its place on the shop map (the dialog's map icon flies there), or its group's.
+  const locationId = item.locationId ?? item.groupLocation ?? null;
   const pb = pieceBase(item.specs, item.name);
   const rowsNow = sortedRows(pieceRows(item.inStock, item.pieces, pb), pb);
   const pieces: StockPiece[] = rowsNow.flatMap((r) => {
@@ -189,7 +185,7 @@ export async function batchStock(groupId: string): Promise<{ material: string | 
     if (!m) return [];
     return [{ size: r.size, label: primary, share: sub, x: Number(m[1]), y: Number(m[2]), count: r.count }];
   });
-  return { material, stock: { itemId: item.id, name: item.name, location, pieces } };
+  return { material, stock: { itemId: item.id, name: item.name, locationId, pieces } };
 }
 
 // The batch laid out on the smallest stock piece that takes it all (or a default sheet).

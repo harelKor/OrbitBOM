@@ -540,7 +540,7 @@ export async function addItemToBom(itemId: string, systemId: string, quantity: n
   return { message: `Added ${quantity} × ${item.name} to the BOM.` };
 }
 
-// ---------- Conditions and locations (editable from the toolbar, like FRCBOM) ----------
+// ---------- Conditions (editable from the toolbar, like FRCBOM); places are edited in Settings → Map ----------
 
 export async function addCondition(label: string, color: string): Promise<ActionResult> {
   await requireCapability("manage");
@@ -556,36 +556,6 @@ export async function deleteCondition(id: string) {
   await requireCapability("manage");
   if (isUuid(id)) await db.delete(inventoryConditions).where(eq(inventoryConditions.id, id));
   refresh();
-}
-
-export async function addLocation(name: string): Promise<ActionResult> {
-  await requireCapability("manage");
-  name = name.trim();
-  if (!name) return { error: "Location name is required." };
-  await db.insert(inventoryLocations).values({ name }).onConflictDoNothing();
-  refresh();
-  return {};
-}
-
-export async function deleteLocation(id: string) {
-  await requireCapability("manage");
-  if (isUuid(id)) await db.delete(inventoryLocations).where(eq(inventoryLocations.id, id));
-  refresh();
-}
-
-// Edit mode's workshop map: a dragged pin saves its spot (map units, 0..1000 x 0..560); null takes
-// the location off the map.
-export async function setLocationSpot(id: string, spot: { x: number; y: number } | null): Promise<ActionResult> {
-  await requireCapability("manage");
-  if (!isUuid(id)) return { error: "Unknown location." };
-  const ok = (v: number, max: number) => Number.isFinite(v) && v >= 0 && v <= max;
-  if (spot && !(ok(spot.x, 1000) && ok(spot.y, 560))) return { error: "That spot is off the map." };
-  await db
-    .update(inventoryLocations)
-    .set(spot ? { mapX: Math.round(spot.x), mapY: Math.round(spot.y) } : { mapX: null, mapY: null })
-    .where(eq(inventoryLocations.id, id));
-  refresh();
-  return {};
 }
 
 // ---------- Spreadsheet import ----------

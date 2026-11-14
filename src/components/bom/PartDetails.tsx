@@ -21,6 +21,8 @@ import { ShelfPill } from "@/components/cots/ShelfPill";
 import { Icon } from "@/components/ui/Icon";
 import { SuggestIcon } from "@/components/ui/SuggestIcon";
 import { usePhone } from "@/components/ui/usePhone";
+import { computeStatus } from "@/lib/status";
+import { SystemDrawerButton } from "@/components/map/SystemDrawerButton";
 import { getMachine } from "@/config/machines";
 import { FabVersionBadge, PartVersionsButton } from "@/components/versions/PartVersionsWindow";
 import { cotsTotal, siteOf } from "@/lib/cots";
@@ -71,6 +73,7 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
       {!cots && canDraw && !part.isManual && <DrawingAction partId={ownerPartId(part)} hasDrawing={!!part.hasDrawing} />}
       {!cots && canDraw && !part.isManual && part.systemId && <FindDrawingButton part={part} />}
       {!cots && canDraw && <DrawingFileButton part={part} />}
+      {!cots && <SystemDrawerButton systemId={part.systemId} status={computeStatus(part)} className={`${overlay} text-accent`} />}
     </>
   );
 

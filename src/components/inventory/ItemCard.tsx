@@ -18,6 +18,8 @@ import { type PieceBase, canTakePiece, formatStock, formatStockExact, isSheetGoo
 import { useCan } from "@/components/shell/ModeContext";
 import { useInventoryPopup } from "./InventoryPopup";
 import { LocationPicker } from "./LocationPicker";
+import { FindButton } from "@/components/map/FindButton";
+import type { PlaceStats } from "@/components/map/ShopMap";
 import { SeasonTag } from "./SeasonTag";
 import type { InvCategory, Item, Location } from "./types";
 
@@ -97,6 +99,7 @@ export function ItemCard({
   condition,
   location,
   locations,
+  placeStats,
   view = "any",
   onStep,
   onCount,
@@ -116,8 +119,9 @@ export function ItemCard({
   categories: InvCategory[];
   condition?: { id: string; label: string; color: string };
   location?: { id: string; name: string };
-  // With every location, the card's 📍 tag opens the workshop map window.
+  // With every place, the card's map icon opens the shop map and flies to it.
   locations?: Location[];
+  placeStats?: PlaceStats;
   onStep: (delta: number, size?: string) => void;
   onCount: (amount: number) => void;
 }) {
@@ -192,52 +196,50 @@ export function ItemCard({
       </div>
       <div className="card-overlay absolute top-2 right-2 flex max-w-[38%] flex-col items-end gap-1">
         {(gap > 0 || item.openOrder) && <CartButton item={item} gap={gap} />}
-        {rawStock ? null : location && locations ? (
-          // Opens the workshop map with this item's spot lit: a team member moves the item to the pin
-          // tapped; a member without a team can filter the page to it (Harel, 2026-10-28).
-          <span onClick={stop} className="max-w-full">
-            <LocationPicker
-              locations={locations}
-              value={item.locationId ?? location.id}
-              readOnly={!work}
-              onChange={(id) =>
-                startLocation(async () => {
-                  await setItemLocation(item.id, id);
-                })
+        {rawStock || !location ? null : locations ? (
+          // The map icon flies to the item's drawer on the shop map (Harel, 2026-11-14); from there
+          // a team member moves it, anyone shows everything in that place.
+          <span onClick={stop} className="rounded-full border border-line bg-surface/90 backdrop-blur-md">
+            <FindButton
+              places={locations}
+              placeId={location.id}
+              stats={placeStats}
+              onFilter={(id) => pushQuery({ loc: id })}
+              footer={(close) =>
+                work ? (
+                  <LocationPicker
+                    locations={locations}
+                    value={item.locationId ?? location.id}
+                    onChange={(id) => {
+                      close();
+                      startLocation(async () => {
+                        await setItemLocation(item.id, id);
+                      });
+                    }}
+                    disabled={movingLocation}
+                    ariaLabel="Move to another place"
+                    className="btn min-h-9 text-xs active:scale-[0.98]"
+                  >
+                    Move to another place
+                  </LocationPicker>
+                ) : null
               }
-              disabled={movingLocation}
-              ariaLabel={`Location: ${location.name}`}
-              className="block max-w-full truncate rounded-full border border-line bg-surface/90 px-2 py-0.5 text-[0.6875rem] font-semibold text-fg-2 backdrop-blur-md hover:border-accent hover:text-accent active:scale-[0.98] disabled:opacity-60"
-              footer={(close) => (
-                <button
-                  type="button"
-                  className="btn min-h-9 text-xs active:scale-[0.98]"
-                  onClick={() => {
-                    close();
-                    pushQuery({ loc: location.id });
-                  }}
-                >
-                  Show everything at {location.name}
-                </button>
-              )}
-            >
-              📍 {location.name}
-            </LocationPicker>
+            />
           </span>
         ) : (
-          location && (
-            // Filters the page to this location in place.
-            <button
-              type="button"
-              onClick={(e) => {
-                stop(e);
-                pushQuery({ loc: location.id });
-              }}
-              className="max-w-full truncate rounded-full border border-line bg-surface/90 px-2 py-0.5 text-[0.6875rem] font-semibold text-fg-2 backdrop-blur-md hover:border-accent hover:text-accent active:scale-[0.98]"
-            >
-              📍 {location.name}
-            </button>
-          )
+          // Filters the page to this place in place.
+          <button
+            type="button"
+            aria-label="Show everything in this place"
+            title="Show everything in this place"
+            onClick={(e) => {
+              stop(e);
+              pushQuery({ loc: location.id });
+            }}
+            className="press flex h-7 w-7 items-center justify-center rounded-full border border-line bg-surface/90 text-accent backdrop-blur-md active:scale-[0.98]"
+          >
+            <Icon name="map" className="h-4 w-4" />
+          </button>
         )}
       </div>
 

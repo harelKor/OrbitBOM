@@ -1,7 +1,6 @@
-// The workshop floor plan behind Inventory's map (Harel, 2026-10-28), in the map's own units
-// (viewBox 0 0 1000 560), traced from the labeled floor plan. Rooms are fixed; the 16 shelf pins
-// are seeded into inventory_locations (map_x, map_y) by migration 0044 and can be dragged in Edit
-// mode, so the database holds their live positions.
+// The workshop floor plan under the shop map (Harel, 2026-10-28), in the map's own units
+// (viewBox 0 0 1000 560), traced from the labeled floor plan. Rooms are fixed; the zones drawn on
+// top live in inventory_locations (Settings → Map, components/map/ShopMap.tsx).
 
 export const MAP_W = 1000;
 export const MAP_H = 560;
@@ -76,51 +75,3 @@ export const WORKSHOP_ROOMS: WorkshopRoom[] = [
   { id: "tent", label: "אוהל", labelPos: [832, 148], labelSize: 16, points: "894,18 980,108 791,274 708,175" },
   { id: "container-g1", label: "מכולה", labelPos: [901, 255], labelSize: 13, points: "915,210 955,251 869,333 829,291" },
 ];
-
-export const DEFAULT_LOCATION_PINS: { name: string; room: string; x: number; y: number }[] = [
-  // Main hall, bottom wall (above חדר פיסי)
-  { name: "A1", room: "קרקס", x: 356, y: 312 },
-  { name: "A2", room: "קרקס", x: 317, y: 312 },
-  // Main hall, top entry wing
-  { name: "B1", room: "קרקס", x: 318, y: 95 },
-  { name: "B2", room: "קרקס", x: 285, y: 100 },
-  { name: "B3", room: "קרקס", x: 233, y: 98 },
-  // Main hall, left electronics alcove
-  { name: "C1", room: "קרקס (אלק׳)", x: 247, y: 210 },
-  { name: "C2", room: "קרקס (אלק׳)", x: 226, y: 183 },
-  // Main hall, center floor
-  { name: "D1", room: "קרקס", x: 359, y: 215 },
-  { name: "D2", room: "קרקס", x: 311, y: 217 },
-  // Bottom right
-  { name: "E1", room: "כלוב", x: 706, y: 492 },
-  { name: "E2", room: "כלוב", x: 765, y: 460 },
-  // Main entrance
-  { name: "F1", room: "כניסה", x: 506, y: 338 },
-  // Right side
-  { name: "G1", room: "מכולה (ימין)", x: 873, y: 291 },
-  { name: "G2", room: "אוהל", x: 782, y: 142 },
-  // Left side
-  { name: "H1", room: "מכולה (שמאל)", x: 103, y: 263 },
-  { name: "H2", room: "מחסן", x: 84, y: 198 },
-];
-
-const parsed = new Map(
-  WORKSHOP_ROOMS.map((r) => [r.id, r.points.split(" ").map((p) => p.split(",").map(Number) as [number, number])]),
-);
-
-// The room a map point falls in (ray casting), for the pin's tooltip and the room glow.
-export function roomAt(x: number, y: number): WorkshopRoom | null {
-  // Smaller rooms first, so a point in סנס isn't read as קרקס.
-  const order = [...WORKSHOP_ROOMS].reverse();
-  for (const room of order) {
-    const pts = parsed.get(room.id)!;
-    let inside = false;
-    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
-      const [xi, yi] = pts[i];
-      const [xj, yj] = pts[j];
-      if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
-    }
-    if (inside) return room;
-  }
-  return null;
-}

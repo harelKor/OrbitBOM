@@ -6,6 +6,7 @@ import { NOT_LAID_OUT } from "@/config/rawStock";
 import { categoryOf, getCategory, type InvCategory } from "@/lib/inventory/categories";
 import { cachedQuery } from "./cache";
 import { categoryImageUrl, listCategories } from "./categories";
+import { listPlaces } from "./places";
 import type { Shelf, ShelfSuggestion } from "@/components/bom/types";
 import { itemMatcher, suggestItem } from "@/lib/inventory/match";
 import { computeUsage, type ItemUsage, type UsagePart } from "@/lib/inventory/usage";
@@ -13,7 +14,7 @@ import { newestOpenOrders, type OpenOrder } from "@/lib/inventory/season";
 import { thumbKey } from "@/lib/onshape/thumbnails";
 import { imageUrl } from "@/lib/storage/r2";
 
-const { inventoryItems, inventoryLinkRejections, partReviews, inventoryGroups, inventoryConditions, inventoryLocations, inventoryMoves, inventoryItemHistory, members, parts, systems, robots } = schema;
+const { inventoryItems, inventoryLinkRejections, partReviews, inventoryGroups, inventoryConditions, inventoryMoves, inventoryItemHistory, members, parts, systems, robots } = schema;
 
 // `category` is resolved (set, or guessed from the name); `thumbUrl` is the item's own photo
 // (a product's picture saved to R2), else the Onshape thumbnail of a part linked to it.
@@ -27,7 +28,7 @@ export type InventoryItem = Omit<typeof inventoryItems.$inferSelect, "category">
 };
 export type InventoryGroup = typeof inventoryGroups.$inferSelect;
 export type InventoryCondition = typeof inventoryConditions.$inferSelect;
-export type InventoryLocation = typeof inventoryLocations.$inferSelect;
+export type InventoryLocation = typeof schema.inventoryLocations.$inferSelect;
 
 type Exec = Pick<typeof db, "select">;
 
@@ -109,7 +110,7 @@ export async function listInventory({ itemIds }: { itemIds?: string[] } = {}) {
     ),
     db.select().from(inventoryGroups).orderBy(asc(inventoryGroups.name)),
     db.select().from(inventoryConditions).orderBy(asc(inventoryConditions.label)),
-    db.select().from(inventoryLocations).orderBy(asc(inventoryLocations.name)),
+    listPlaces(),
     usageParts(db, { itemIds }),
     listCategories(),
     openOrders(itemIds),

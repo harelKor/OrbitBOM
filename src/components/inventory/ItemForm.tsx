@@ -8,7 +8,7 @@ import { formatStockExact as formatStock, isSheetGoods, parseStock } from "@/lib
 import { useManage } from "@/components/shell/ModeContext";
 import { FieldInput } from "./fields";
 import { hostOf } from "./ItemCard";
-import { LocationPicker } from "./LocationPicker";
+import { LocationPicker, PlaceTag } from "./LocationPicker";
 import { PhotoButtons } from "./photo";
 import { ProductPicker, type ChosenProduct } from "./ProductSearch";
 import type { Condition, InvCategory, Item, Location } from "./types";
@@ -216,16 +216,16 @@ export function ItemForm({
         </div>
         <div className="min-w-40 flex-1">
           <label className="label">
-            Location
+            Place
           </label>
           <LocationPicker
             locations={locations}
             value={d.locationId}
             onChange={(id) => setDraft({ ...d, locationId: id, locationTouched: true })}
-            className="input min-h-11 w-full text-left active:scale-[0.98]"
+            className="input flex min-h-11 w-full items-center text-left active:scale-[0.98]"
             choices={d.locationId ? [{ value: null, label: "Not set" }] : []}
           >
-            📍 {locations.find((l) => l.id === d.locationId)?.name ?? "Not set"} <span className="text-subtle">▾</span>
+            <PlaceTag place={locations.find((l) => l.id === d.locationId)} places={locations} /> <span className="ml-auto text-subtle">▾</span>
           </LocationPicker>
         </div>
         <div className="min-w-36">

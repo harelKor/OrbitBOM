@@ -11,3 +11,12 @@ const subscribe = (on: () => void) => {
   return () => mq.removeEventListener("change", on);
 };
 export const usePhone = () => useSyncExternalStore(subscribe, () => matchMedia(QUERY).matches, () => false);
+
+// A computer's screen (Tailwind's `lg` and up): Inventory keeps the shop map docked at the top.
+const WIDE = "(min-width: 1024px)";
+const subscribeWide = (on: () => void) => {
+  const mq = matchMedia(WIDE);
+  mq.addEventListener("change", on);
+  return () => mq.removeEventListener("change", on);
+};
+export const useDesktop = () => useSyncExternalStore(subscribeWide, () => matchMedia(WIDE).matches, () => false);

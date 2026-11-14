@@ -6,12 +6,13 @@ import { isEditMode } from "@/lib/mode";
 import { listBaseMaterials } from "@/lib/data/baseMaterials";
 import { listBores } from "@/lib/data/bores";
 import { listCategories } from "@/lib/data/categories";
+import { listPlaces } from "@/lib/data/places";
 import { backupInfo } from "@/lib/storage/backup";
 import { RESTORE_SCOPES } from "@/lib/storage/restore";
 import { KEEP_DAYS, listTrash } from "@/lib/trash";
 import { SettingsView } from "./SettingsView";
 
-const { inventoryItems, inventoryConditions, inventoryLocations } = schema;
+const { inventoryItems, inventoryConditions } = schema;
 
 // The team's lists in one place: inventory categories, base materials, the Bore list, locations, conditions and
 // the nightly backups, and what was deleted lately. BOM materials are inventory items now, so they're edited in Inventory.
@@ -24,7 +25,7 @@ export default async function SettingsPage() {
     listBaseMaterials(),
     listBores(),
     db.select().from(inventoryConditions).orderBy(asc(inventoryConditions.label)),
-    db.select().from(inventoryLocations).orderBy(asc(inventoryLocations.name)),
+    listPlaces(),
     db.select({ category: inventoryItems.category, specs: inventoryItems.specs }).from(inventoryItems),
     backupInfo(),
     db
@@ -34,6 +35,13 @@ export default async function SettingsPage() {
       .orderBy(desc(schema.robots.year), asc(schema.robots.name)),
     listTrash(),
   ]);
+  // Systems of the robots in use, for Map → System drawers.
+  const drawerSystems = await db
+    .select({ id: schema.systems.id, name: schema.systems.name, robot: schema.robots.name, drawers: schema.systems.drawers })
+    .from(schema.systems)
+    .innerJoin(schema.robots, eq(schema.robots.id, schema.systems.robotId))
+    .where(eq(schema.robots.archived, false))
+    .orderBy(desc(schema.robots.year), asc(schema.robots.name), asc(schema.systems.name));
 
   return (
     <div className="space-y-4">
@@ -49,6 +57,7 @@ export default async function SettingsPage() {
         bores={boreList}
         conditions={conditions}
         locations={locations}
+        drawerSystems={drawerSystems}
         items={items.map((i) => ({ category: i.category ?? "", specs: i.specs }))}
         backups={backups.all}
         restoreScopes={Object.entries(RESTORE_SCOPES).map(([id, s]) => ({ id, label: s.label, text: s.text }))}

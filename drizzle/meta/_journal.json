@@ -638,6 +638,20 @@
       "when": 1794580206097,
       "tag": "0090_design_check",
       "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1794642116963,
+      "tag": "0091_shop_map_places",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1794642142181,
+      "tag": "0092_drop_map_pins",
+      "breakpoints": true
     }
   ]
 }

@@ -2,7 +2,8 @@
 
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { addCondition, addLocation, deleteCondition, deleteLocation } from "@/app/(app)/inventory/actions";
+import { addCondition, deleteCondition } from "@/app/(app)/inventory/actions";
+import { MapSettings, type DrawerSystem } from "@/components/settings/MapSettings";
 import { CategorySettings } from "@/components/inventory/CategorySettings";
 import { BackupsSettings, type ScopeInfo } from "@/components/settings/BackupsSettings";
 import { RecentlyDeleted, type DeletedEntry } from "@/components/settings/RecentlyDeleted";
@@ -10,13 +11,13 @@ import { LayoutsDocumentSettings, type RobotLayoutsDoc } from "@/components/sett
 import type { Condition, InvCategory, Location } from "@/components/inventory/types";
 import { pushQuery } from "@/components/ui/CategoryBoxes";
 import type { BackupFile } from "@/lib/storage/backup";
-import { addBaseMaterial, addBore, deleteBaseMaterial, deleteBore, renameBaseMaterial, renameBore, renameLocation, updateCondition, type ActionResult } from "./actions";
+import { addBaseMaterial, addBore, deleteBaseMaterial, deleteBore, renameBaseMaterial, renameBore, updateCondition, type ActionResult } from "./actions";
 
 const TABS = [
   { id: "categories", label: "Inventory categories" },
   { id: "materials", label: "Materials" },
   { id: "bores", label: "Bores" },
-  { id: "locations", label: "Locations" },
+  { id: "map", label: "Map" },
   { id: "conditions", label: "Conditions" },
   { id: "layouts", label: "Batch layouts" },
   { id: "backups", label: "Backups" },
@@ -31,6 +32,7 @@ export function SettingsView({
   bores,
   conditions,
   locations,
+  drawerSystems,
   items,
   backups,
   restoreScopes,
@@ -44,6 +46,7 @@ export function SettingsView({
   bores: BaseMaterial[];
   conditions: Condition[];
   locations: Location[];
+  drawerSystems: DrawerSystem[];
   items: { category: string; specs: Record<string, string> }[];
   backups: BackupFile[];
   restoreScopes: ScopeInfo[];
@@ -77,7 +80,7 @@ export function SettingsView({
       {tab === "categories" && <CategorySettings categories={categories} baseMaterials={materials.map((m) => m.name)} bores={bores.map((b) => b.name)} locations={locations} items={items} />}
       {tab === "materials" && <MaterialsSettings materials={materials} />}
       {tab === "bores" && <BoresSettings bores={bores} />}
-      {tab === "locations" && <LocationsSettings locations={locations} />}
+      {tab === "map" && <MapSettings places={locations} systems={drawerSystems} />}
       {tab === "conditions" && <ConditionsSettings conditions={conditions} />}
       {tab === "layouts" && <LayoutsDocumentSettings robots={robots} />}
       {tab === "backups" && <BackupsSettings backups={backups} scopes={restoreScopes} isAdmin={isAdmin} />}
@@ -201,49 +204,6 @@ function BoresSettings({ bores }: { bores: BaseMaterial[] }) {
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder='Bore, e.g. 1/4" Hex' className="input min-h-11 w-64 max-w-full" />
         <button className="btn min-h-11 active:scale-[0.98]" disabled={pending || !name.trim()}>
           + Add bore
-        </button>
-      </form>
-    </div>
-  );
-}
-
-// ---------- Locations ----------
-
-function LocationsSettings({ locations }: { locations: Location[] }) {
-  const { run, pending, banner } = useRun();
-  const [name, setName] = useState("");
-  return (
-    <div className="space-y-4">
-      <p className="max-w-3xl text-sm text-muted">The shelves and bins items live on. Renaming one keeps its items on it.</p>
-      {banner}
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {locations.map((l) => (
-          <div key={l.id} className="panel flex items-center gap-2 p-2 transition-colors duration-150 hover:border-sky-400/40">
-            <span className="pl-1 text-subtle">📍</span>
-            <InlineName value={l.name} label="Location name" onSave={(v) => run(() => renameLocation(l.id, v))} />
-            <SmallButton
-              label={`Delete ${l.name}`}
-              danger
-              onClick={() => {
-                if (confirm(`Delete the location "${l.name}"? Its items stay, without a location.`)) run(() => deleteLocation(l.id));
-              }}
-            >
-              ✕
-            </SmallButton>
-          </div>
-        ))}
-        {!locations.length && <p className="text-sm text-muted">No locations yet.</p>}
-      </div>
-      <form
-        className="flex flex-wrap gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          run(() => addLocation(name), () => setName(""));
-        }}
-      >
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Shelf or bin, e.g. A1" className="input min-h-11 w-64 max-w-full" />
-        <button className="btn min-h-11 active:scale-[0.98]" disabled={pending || !name.trim()}>
-          + Add location
         </button>
       </form>
     </div>

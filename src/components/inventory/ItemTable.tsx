@@ -24,7 +24,7 @@ import {
   standingTint,
 } from "./ItemCard";
 import { useInventoryPopup } from "./InventoryPopup";
-import { LocationPicker } from "./LocationPicker";
+import { LocationPicker, PlaceTag } from "./LocationPicker";
 import { SeasonTag } from "./SeasonTag";
 import type { Condition, InvCategory, Item, Location } from "./types";
 import { SheetViewport } from "@/components/ui/SheetViewport";
@@ -76,7 +76,7 @@ export function ItemTable({
             {!hideCategory && <th>Category</th>}
             <th className="text-center">In stock</th>
             <th>Specs</th>
-            <th>Location</th>
+            <th>Place</th>
             <th className="text-center">Needed for Season</th>
             <th>Price</th>
           </tr>
@@ -218,7 +218,7 @@ export function ItemTable({
                   </td>
                 ) : (
                   <td className="text-xs whitespace-nowrap text-muted">
-                    {location ? `📍 ${location.name}` : ""}
+                    {location ? <PlaceTag place={locations.find((l) => l.id === location.id)} places={locations} /> : ""}
                   </td>
                 )}
                 <td onClick={stop} className="text-center">
@@ -263,12 +263,12 @@ function LocationCell({
           setValue(null);
         });
       }}
-      ariaLabel={`Location: ${item.name}`}
+      ariaLabel={`Place of ${item.name}`}
       className={`input min-h-9 w-auto py-1 text-left text-xs active:scale-[0.98] ${error ? "border-rose-500" : ""}`}
     >
       {(() => {
         const at = locations.find((l) => l.id === (value ?? item.locationId));
-        return at ? `📍 ${at.name}` : inherited ? `📍 ${inherited.name} (group)` : "No location";
+        return at ? <PlaceTag place={at} places={locations} /> : inherited ? <PlaceTag place={inherited} places={locations} suffix="(group)" /> : "No place";
       })()}
     </LocationPicker>
   );

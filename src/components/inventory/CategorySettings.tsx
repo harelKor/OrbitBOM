@@ -6,6 +6,7 @@ import { CATEGORY_GROUPS, DEFAULT_GROUP, groupOf } from "@/config/inventory";
 import { Chevron } from "@/components/ui/Chevron";
 import { DEFAULT_NAME, withBoreList, type CategoryField } from "@/lib/inventory/categories";
 import type { InvCategory, Item, Location } from "./types";
+import { LocationPicker, PlaceTag } from "./LocationPicker";
 
 const KINDS: { id: CategoryField["kind"]; label: string }[] = [
   { id: "number", label: "Number" },
@@ -171,17 +172,18 @@ export function CategorySettings({
                     ))}
                   </select>
                 </label>
-                <label>
-                  <span className="label">Location for new items</span>
-                  <select value={cat.defaultLocationId ?? ""} onChange={(e) => change({ ...cat, defaultLocationId: e.target.value || null })} className="input min-h-11">
-                    <option value="">Where most of its items are</option>
-                    {locations.map((l) => (
-                      <option key={l.id} value={l.id}>
-                        {l.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <div>
+                  <span className="label">Place for new items</span>
+                  <LocationPicker
+                    locations={locations}
+                    value={cat.defaultLocationId}
+                    onChange={(id) => change({ ...cat, defaultLocationId: id })}
+                    choices={cat.defaultLocationId ? [{ value: null, label: "Where most of its items are" }] : []}
+                    className="input flex min-h-11 w-full items-center text-left active:scale-[0.98]"
+                  >
+                    {cat.defaultLocationId ? <PlaceTag place={locations.find((l) => l.id === cat.defaultLocationId)} places={locations} /> : <span className="text-muted">Where most of its items are</span>}
+                  </LocationPicker>
+                </div>
                 <label className="flex items-center gap-2 self-end pb-2 text-sm">
                   <input type="checkbox" checked={cat.sheet} onChange={(e) => change({ ...cat, sheet: e.target.checked })} className="h-5 w-5" />
                   Allow fractions / pieces (¼ ⅓ ½ ⅔ ¾)
