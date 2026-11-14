@@ -1,7 +1,7 @@
 import { InventoryCrumbs } from "@/components/inventory/InventoryCrumbs";
 import { InventoryView } from "@/components/inventory/InventoryView";
 import { requireMember } from "@/lib/auth";
-import { listInventory } from "@/lib/data/inventory";
+import { listInventory, shelfForPage } from "@/lib/data/inventory";
 import { listInventoryActions } from "@/lib/data/inventoryActions";
 
 // The Inventory home: search first, then a box per category and the Short for robots card, then
@@ -15,7 +15,7 @@ export default async function InventoryPage() {
         <InventoryCrumbs categories={inventory.categories} />
         <h1 className="display text-3xl text-accent">Inventory</h1>
       </div>
-      <InventoryView {...inventory} actions={actions} scope={{ kind: "home" }} />
+      <InventoryView {...shelfForPage(inventory)} actions={actions} scope={{ kind: "home" }} />
     </div>
   );
 }

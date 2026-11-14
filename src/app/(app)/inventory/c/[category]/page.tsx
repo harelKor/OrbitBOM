@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { InventoryView } from "@/components/inventory/InventoryView";
 import { CATEGORY_GROUPS } from "@/config/inventory";
 import { requireMember } from "@/lib/auth";
-import { listInventory } from "@/lib/data/inventory";
+import { listInventory, shelfForPage } from "@/lib/data/inventory";
 
 // One inventory category's item cards, under a route back to its group and the Inventory home.
 export default async function InventoryCategoryPage({ params }: { params: Promise<{ category: string }> }) {
@@ -30,7 +30,7 @@ export default async function InventoryCategoryPage({ params }: { params: Promis
         </nav>
         <h1 className="display text-3xl text-accent">{c.label}</h1>
       </div>
-      <InventoryView {...inventory} scope={{ kind: "category", id: c.id }} />
+      <InventoryView {...shelfForPage(inventory)} scope={{ kind: "category", id: c.id }} />
     </div>
   );
 }

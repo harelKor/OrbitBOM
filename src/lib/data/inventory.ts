@@ -135,6 +135,19 @@ export async function listInventory({ itemIds }: { itemIds?: string[] } = {}) {
   };
 }
 
+// Columns only the server reads (matching, the picture's R2 key, when it was made). Pages send
+// the whole shelf, so they leave these out: about 15% of an Inventory page.
+const SERVER_ONLY = ["onshapeKey", "aliases", "createdAt", "imagePath"] as const;
+export type PageItem = Omit<InventoryItem, (typeof SERVER_ONLY)[number]>;
+export function forPage(item: InventoryItem): PageItem {
+  const out: Partial<InventoryItem> = { ...item };
+  for (const k of SERVER_ONLY) delete out[k];
+  return out as PageItem;
+}
+export function shelfForPage<T extends { items: InventoryItem[] }>(inventory: T): Omit<T, "items"> & { items: PageItem[] } {
+  return { ...inventory, items: inventory.items.map(forPage) };
+}
+
 // Every item as the drawing editor's Fit picker shows it: name, category and picture only.
 export async function listFitTargets() {
   const [items, categories] = await Promise.all([

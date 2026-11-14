@@ -190,7 +190,6 @@ export function AddBox({
         seasonTag: "2027",
         note: null,
         price: input.price ?? null,
-        imagePath: null,
         usage: null,
         openOrder: null,
         sheet,

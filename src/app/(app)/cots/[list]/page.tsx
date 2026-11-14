@@ -5,7 +5,7 @@ import { MarkSeen } from "@/components/shell/Arrivals";
 import { requireMember } from "@/lib/auth";
 import { getSeenAt } from "@/lib/data/seen";
 import { listCotsCarts } from "@/lib/data/cotsCarts";
-import { listInventory } from "@/lib/data/inventory";
+import { forPage, listInventory } from "@/lib/data/inventory";
 import { listCotsParts } from "@/lib/data/parts";
 
 const LISTS = {
@@ -45,7 +45,7 @@ export default async function CotsListPage({ params }: { params: Promise<{ list:
         robots={robots}
         categories={categories}
         carts={carts}
-        shelf={inventory ? { items: inventory.items, categories: inventory.categories, locations: inventory.locations, conditions: inventory.conditions } : undefined}
+        shelf={inventory ? { items: inventory.items.map(forPage), categories: inventory.categories, locations: inventory.locations, conditions: inventory.conditions } : undefined}
       />
     </div>
   );

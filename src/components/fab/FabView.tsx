@@ -58,8 +58,14 @@ export function FabView({
   // Any team works the To Fab page; without a team (read only) nothing moves or changes.
   const work = useCan("work");
   const locked = useMemo(() => parts.map(fabState), [parts]);
-  const [optimistic, addOptimistic] = useOptimistic(locked, (state, { ids, changes }: { ids: string[]; changes: PartChanges }) =>
-    state.map((p) => (ids.includes(p.id) ? { ...p, ...planPartUpdate(p, changes, "ui").set } : p)),
+  // A change shows at once; `to` / `from` also move the parts between batches while the save runs.
+  type Shown = { ids: string[]; changes: PartChanges; to?: CardPart["groups"][number]; from?: string | null };
+  const [optimistic, addOptimistic] = useOptimistic(locked, (state, { ids, changes, to, from }: Shown) =>
+    state.map((p) => {
+      if (!ids.includes(p.id)) return p;
+      const groups = p.groups.filter((g) => g.id !== from && g.id !== to?.id);
+      return { ...p, ...planPartUpdate(p, changes, "ui").set, groups: to ? [...groups, to] : groups };
+    }),
   );
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -344,6 +350,17 @@ export function FabView({
       </div>
     );
   };
+  // Parts dropped on a batch show in it straight away; a failed save puts them back.
+  const moveInto = (b: Batch & { members: CardPart[] }, load: DragLoad) => {
+    const status = batchStatus(b.members);
+    setError(null);
+    startTransition(async () => {
+      const color = b.members.flatMap((p) => p.groups).find((g) => g.id === b.id)?.color ?? null;
+      addOptimistic({ ids: load.ids, changes: status ? { status } : {}, to: { id: b.id, name: b.name, color }, from: load.batch });
+      const r = await moveToFabBatch(b.id, load.ids, load.batch, status);
+      if (r.error) setError(r.error);
+    });
+  };
   const batchCard = (b: Batch & { members: CardPart[] }) => (
     <BatchCard
       key={b.id}
@@ -355,7 +372,7 @@ export function FabView({
       draggable={!fab && work}
       memberNames={memberNames}
       me={me}
-      onDropParts={fab || !work ? undefined : (load) => run(() => moveToFabBatch(b.id, load.ids, load.batch, batchStatus(b.members)))}
+      onDropParts={fab || !work ? undefined : (load) => moveInto(b, load)}
       arrival={b.members.some(arrived)}
     />
   );
@@ -368,8 +385,17 @@ export function FabView({
     if (stage === "ready") {
       // Released takes loose parts only: a part dragged out of a batch leaves it.
       if (load.whole) return;
-      if (load.batch) run(async () => (await removeFromGroup(load.batch!, load.ids[0]), {}));
-      if (load.from !== "ready" || load.batch) save(load.ids, { status });
+      if (load.batch) {
+        // Out of its batch and back to Released, both on screen at once.
+        const from = load.batch;
+        setError(null);
+        startTransition(async () => {
+          addOptimistic({ ids: load.ids, changes: { status }, from });
+          await removeFromGroup(from, load.ids[0]);
+          const r = load.ids.length === 1 ? await updatePart(load.ids[0], { status }) : await updateParts(load.ids, { status });
+          if (r.error) setError(r.error);
+        });
+      } else if (load.from !== "ready") save(load.ids, { status });
       return;
     }
     // A loose part moved out of Released, or onto Ready to Fab, gets a new batch of its own.

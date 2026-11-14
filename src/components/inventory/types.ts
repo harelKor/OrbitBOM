@@ -22,7 +22,6 @@ export type Item = {
   note: string | null;
   seasonTag: "2026" | "2027"; // red 2026: last season's list; green 2027: checked for this season
   price: number | null;
-  imagePath: string | null;
   usage: ItemUsage | null;
   openOrder: OpenOrder | null;
   sheet: boolean;

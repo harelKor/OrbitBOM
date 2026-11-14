@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { InventoryView } from "@/components/inventory/InventoryView";
 import { requireMember } from "@/lib/auth";
-import { listInventory } from "@/lib/data/inventory";
+import { listInventory, shelfForPage } from "@/lib/data/inventory";
 
 // The item cards in one condition (a card's condition tag opens it).
 export default async function InventoryConditionPage({ params }: { params: Promise<{ conditionId: string }> }) {
@@ -19,7 +19,7 @@ export default async function InventoryConditionPage({ params }: { params: Promi
         </Link>
         <h1 className="display text-3xl text-accent">{c.label}</h1>
       </div>
-      <InventoryView {...inventory} scope={{ kind: "condition", id: c.id }} />
+      <InventoryView {...shelfForPage(inventory)} scope={{ kind: "condition", id: c.id }} />
     </div>
   );
 }
