@@ -66,7 +66,7 @@ export function SandboxMap() {
         ))}
         <span className="self-center">Picked: {picked ?? "–"}</span>
       </div>
-      <ShopMap places={places} stats={stats} mode={mode} find={find} findKey={key} selectedId={picked} onPick={setPicked} onFilter={(id) => setPicked(`filter ${id}`)} className="h-[70vh] w-full" />
+      <ShopMap places={places} stats={stats} mode={mode} find={find} findKey={key} selectedId={picked} onPick={setPicked} onFilter={(id) => setPicked(`filter ${id}`)} onTapEmpty={() => setPicked("tapped the floor")} className="h-[70vh] w-full" />
       <h2 className="pt-6 text-lg font-semibold">Picker</h2>
       <LocationPicker locations={places} value={picked} onChange={setPicked} stats={stats}>
         <PlaceTag place={places.find((p) => p.id === picked)} places={places} />

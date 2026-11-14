@@ -71,7 +71,7 @@ export function MapSettings({ places, systems }: { places: Place[]; systems: Dra
       <p className="max-w-3xl text-sm text-muted">
         Draw each zone on the floor plan, add a picture of it from where a person stands, and tap the picture to pin its drawers and shelves. Items are linked to a zone or a drawer; the map never shows the names below, Claude&apos;s tools and search use them.
       </p>
-      {error && <p className="rounded-md bg-rose-500/10 p-2 text-sm text-rose-600">{error}</p>}
+      {error && <p className="rounded-xl bg-rose-500/10 p-2 text-sm text-rose-600">{error}</p>}
       <div className="grid gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <ZoneEditor zones={zones} selId={selId} onSelect={setSelId} run={run} pending={pending} />
         <div className="space-y-3">
@@ -213,7 +213,7 @@ function ZoneEditor({ zones, selId, onSelect, run, pending }: { zones: Place[]; 
           </>
         )}
       </div>
-      <div className="overflow-hidden rounded-xl border border-white/10 bg-[#070B14]">
+      <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#070B14]">
         <svg
           ref={svg}
           viewBox={`${view.x} ${view.y} ${view.w} ${view.w * ASPECT}`}
@@ -225,7 +225,7 @@ function ZoneEditor({ zones, selId, onSelect, run, pending }: { zones: Place[]; 
         >
           {WORKSHOP_ROOMS.map((r) => (
             <g key={r.id}>
-              <polygon points={r.points} fill="#1B2536" stroke="rgba(226,232,240,0.5)" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+              <polygon points={r.points} fill="#1B2536" stroke="rgba(226,232,240,0.5)" strokeWidth={2} vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
               <text x={r.labelPos[0]} y={r.labelPos[1]} fontSize={r.labelSize} textAnchor="middle" dominantBaseline="middle" fill="#CBD5E1" opacity={0.35} style={{ direction: "rtl" }}>
                 {r.label}
               </text>
@@ -428,7 +428,7 @@ function ZonePanel({ zone, places, run, onDeleted }: { zone: Place; places: Plac
             ))}
             <span className="text-muted">· drag a dot to move it</span>
           </div>
-          <div ref={picture} className="relative inline-block max-w-full touch-none overflow-hidden rounded-lg align-top select-none" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp}>
+          <div ref={picture} className="relative inline-block max-w-full touch-none overflow-hidden rounded-2xl align-top select-none" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp}>
             {/* eslint-disable-next-line @next/next/no-img-element -- a signed R2 link or a local preview */}
             <img src={image} alt="" className="block max-h-[55vh] w-auto max-w-full" draggable={false} />
             {spots.map((s) => {
@@ -448,7 +448,7 @@ function ZonePanel({ zone, places, run, onDeleted }: { zone: Place; places: Plac
             })}
           </div>
           {picked && (
-            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-line p-2 text-xs">
+            <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-line p-2 text-xs">
               <span className="font-semibold">{picked.name}</span>
               <span className="flex-1" />
               {SPOT_KINDS.map((s) => (
@@ -478,7 +478,7 @@ function SystemDrawers({ places, systems, run }: { places: Place[]; systems: Dra
     <div className="min-w-0 space-y-2">
       <h2 className="text-lg font-semibold">System drawers</h2>
       <p className="max-w-3xl text-sm text-muted">Where each system&apos;s made parts wait, by status. A part in that status shows the map icon that flies to its drawer.</p>
-      <div className="overflow-x-auto rounded-xl border border-line">
+      <div className="overflow-x-auto rounded-2xl border border-line">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs text-muted">
@@ -506,7 +506,7 @@ function SystemDrawers({ places, systems, run }: { places: Place[]; systems: Dra
                         locations={places}
                         value={place ? placeId : null}
                         onChange={(id) => run(() => setSystemDrawer(s.id, status, id))}
-                        className="press flex min-h-9 items-center gap-1 rounded-lg border border-line px-2 text-xs whitespace-nowrap hover:border-accent active:scale-[0.98]"
+                        className="press flex min-h-9 items-center gap-1 rounded-full border border-line px-3 text-xs whitespace-nowrap hover:border-accent active:scale-[0.98]"
                       >
                         {place ? <PlaceTag place={place} places={places} /> : <span className="text-subtle">—</span>}
                       </LocationPicker>

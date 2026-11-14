@@ -15,7 +15,7 @@ export function FindButton({
   onFilter,
   footer,
   title = "Where is it?",
-  className = "press flex h-7 w-7 items-center justify-center rounded-md text-accent hover:bg-accent/10 active:scale-[0.98] pointer-coarse:h-9 pointer-coarse:w-9",
+  className = "press flex h-7 w-7 items-center justify-center rounded-full text-accent hover:bg-accent/10 active:scale-[0.98] pointer-coarse:h-9 pointer-coarse:w-9",
 }: {
   // Left out, they're fetched when the window opens (pages that don't carry them).
   places?: Place[];
@@ -52,7 +52,7 @@ export function FindButton({
         <Icon name="map" className="h-4 w-4" />
       </button>
       <Dialog open={open} onClose={() => setOpen(false)} width="w-[min(60rem,calc(100vw-1rem))]" title={title}>
-        {open && !shown && <div className="h-[min(68dvh,36rem,130vw)] w-full animate-pulse rounded-xl bg-[#070B14]" />}
+        {open && !shown && <div className="h-[min(68dvh,36rem,130vw)] w-full animate-pulse rounded-2xl bg-[#070B14]" />}
         {open && shown && (
           <div className="space-y-3">
             <ShopMap

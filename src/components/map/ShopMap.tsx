@@ -400,15 +400,15 @@ export function ShopMap({
   // How far each zone's category pictures have faded in (the same rule as where they're drawn).
   const picturesShown = (z: Place) => {
     const b = bounds(z.outline!);
-    return smoothstep(26, 52, Math.min(b.w, b.h) / k) * smoothstep(60, 110, Math.max(b.w, b.h) / k);
+    return smoothstep(14, 34, Math.min(b.w, b.h) / k) * smoothstep(36, 76, Math.max(b.w, b.h) / k);
   };
   const pictured = drawn.filter((z) => stats?.get(z.id)?.categories.length).map((z) => ({ outline: z.outline!, show: picturesShown(z) }));
 
   return (
     <div
       ref={boxRef}
-      className={`relative touch-none overflow-hidden rounded-2xl border border-white/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] select-none ${className}`}
-      style={{ background: BG, perspective: "1100px" }}
+      className={`stage-frame relative touch-none overflow-hidden select-none ${onTapEmpty ? "stage-glow cursor-pointer" : ""} ${className}`}
+      style={{ background: BG }}
       onPointerDown={onDown}
       onPointerMove={onMove}
       onPointerUp={onUp}
@@ -416,6 +416,9 @@ export function ShopMap({
       role="application"
       aria-label="Shop map"
     >
+      {/* The 3D layers, clipped to the rounded frame (overflow alone lets tilted layers poke out at
+          the corners) inside it, so the frame's hover glow stays outside the clip. */}
+      <div className="absolute inset-0" style={{ perspective: "1100px", clipPath: "inset(0 round 0.875rem)" }}>
       {/* The floor plan: tilts back and fades as the picture stands up. */}
       <div
         className="absolute inset-0"
@@ -475,24 +478,24 @@ export function ShopMap({
                 neighbours merge into one rounded lot. */}
             <g pointerEvents="none">
               {WORKSHOP_ROOMS.map((room) => (
-                <polygon key={`lot-${room.id}`} points={room.points} strokeLinejoin="round" strokeWidth={34} style={{ fill: tint(5, "#151922"), stroke: tint(5, "#151922") }} />
+                <polygon key={`lot-${room.id}`} points={room.points} strokeLinejoin="round" strokeWidth={40} style={{ fill: tint(5, "#151922"), stroke: tint(5, "#151922") }} />
               ))}
               {WORKSHOP_ROOMS.map((room) => (
-                <polygon key={`lot2-${room.id}`} points={room.points} strokeLinejoin="round" strokeWidth={22} style={{ fill: tint(6, "#1b2029"), stroke: tint(6, "#1b2029") }} />
+                <polygon key={`lot2-${room.id}`} points={room.points} strokeLinejoin="round" strokeWidth={28} style={{ fill: tint(6, "#1b2029"), stroke: tint(6, "#1b2029") }} />
               ))}
             </g>
 
             {/* Buildings as rounded blocks: a soft shadow, the wall below, the roof on top. */}
             <g pointerEvents="none">
               {WORKSHOP_ROOMS.map((room) => (
-                <polygon key={`sh-${room.id}`} points={room.points} transform="translate(5 9)" fill="#000" opacity={0.5} strokeLinejoin="round" strokeWidth={6} stroke="#000" filter="url(#sm-shadow)" />
+                <polygon key={`sh-${room.id}`} points={room.points} transform="translate(5 9)" fill="#000" opacity={0.5} strokeLinejoin="round" strokeWidth={12} stroke="#000" filter="url(#sm-shadow)" />
               ))}
               {WORKSHOP_ROOMS.map((room) => (
-                <polygon key={`wall-${room.id}`} points={room.points} transform="translate(0 4)" strokeLinejoin="round" strokeWidth={7} style={{ fill: tint(6, "#0c0f15"), stroke: tint(6, "#0c0f15") }} />
+                <polygon key={`wall-${room.id}`} points={room.points} transform="translate(0 4)" strokeLinejoin="round" strokeWidth={12} style={{ fill: tint(6, "#0c0f15"), stroke: tint(6, "#0c0f15") }} />
               ))}
               {WORKSHOP_ROOMS.map((room) => (
                 <g key={`roof-${room.id}`}>
-                  <polygon points={room.points} strokeLinejoin="round" strokeWidth={7} fill={room.main ? "url(#sm-roof)" : "url(#sm-roof-out)"} stroke={room.main ? "url(#sm-roof)" : "url(#sm-roof-out)"} />
+                  <polygon points={room.points} strokeLinejoin="round" strokeWidth={12} fill={room.main ? "url(#sm-roof)" : "url(#sm-roof-out)"} stroke={room.main ? "url(#sm-roof)" : "url(#sm-roof-out)"} />
                   <polygon points={room.points} fill="none" strokeLinejoin="round" strokeWidth={1.2} vectorEffect="non-scaling-stroke" style={{ stroke: tint(15, "#ffffff"), strokeOpacity: 0.22 }} />
                 </g>
               ))}
@@ -546,7 +549,7 @@ export function ShopMap({
                   }}
                 >
                   {/* Rounded lots in the one Orbit tint: a filled pad and a bright rim. */}
-                  <polygon points={pts} strokeLinejoin="round" strokeWidth={5} style={{ fill: ACCENT, stroke: ACCENT, fillOpacity: on ? 0.4 : 0.3, strokeOpacity: on ? 0.4 : 0.3 }} />
+                  <polygon points={pts} strokeLinejoin="round" strokeWidth={9} style={{ fill: ACCENT, stroke: ACCENT, fillOpacity: on ? 0.4 : 0.3, strokeOpacity: on ? 0.4 : 0.3 }} />
                   <polygon points={pts} fill="none" strokeLinejoin="round" strokeWidth={on ? 2.6 : 1.5} vectorEffect="non-scaling-stroke" style={{ stroke: tint(45, "#ffffff"), strokeOpacity: on ? 1 : 0.8 }} />
                   {on && (
                     <polygon points={pts} fill="none" strokeLinejoin="round" strokeWidth={2} vectorEffect="non-scaling-stroke" style={{ stroke: tint(40, "#ffffff") }}>
@@ -570,7 +573,7 @@ export function ShopMap({
               const n0 = st.categories.length;
               // As big as the zone allows for its categories: 22–120 px on screen.
               const fitTile = Math.sqrt((b.w * b.h * 0.55) / Math.max(n0, 1)) / k;
-              const tilePx = clamp(Math.min(fitTile, px * 0.85), 22, 120);
+              const tilePx = clamp(Math.min(fitTile, px * 0.85), 16, 120);
               const tile = tilePx * k;
               const gap = tilePx * 0.12 * k;
               const cols = Math.max(1, Math.floor((b.w * 0.9 + gap) / (tile + gap)));
@@ -585,7 +588,7 @@ export function ShopMap({
               const x0 = cx - (usedCols * tile + (usedCols - 1) * gap) / 2;
               const y0 = cy - (usedRows * tile + (usedRows - 1) * gap) / 2;
               const at = (i: number) => [x0 + (i % cols) * (tile + gap), y0 + Math.floor(i / cols) * (tile + gap)];
-              const badge = clamp(tilePx * 0.22, 11, 18) * k;
+              const badge = clamp(tilePx * 0.22, 9, 18) * k;
               const named = smoothstep(64, 90, tilePx);
               return (
                 <g key={`cats-${z.id}`} opacity={show} pointerEvents="none" transform={facing ? `rotate(${facing} ${cx} ${cy})` : undefined}>
@@ -601,12 +604,13 @@ export function ShopMap({
                             {c.label.slice(0, 2)}
                           </text>
                         )}
-                        <g transform={`translate(${x + tile * 0.86} ${y + tile * 0.16})`}>
+                        {/* Counts once the pictures are big enough to carry them. */}
+                        {tilePx >= 30 && <g transform={`translate(${x + tile * 0.86} ${y + tile * 0.16})`}>
                           <rect x={-badge * 0.95} y={-badge / 2} width={badge * 1.9} height={badge} rx={badge / 2} style={{ fill: ACCENT }} stroke="#fff" strokeOpacity={0.85} strokeWidth={badge * 0.08} />
                           <text fontSize={badge * 0.62} fontWeight={700} textAnchor="middle" dominantBaseline="central" fill="#fff" className="tabular-nums">
                             {c.count > 99 ? "99+" : c.count}
                           </text>
-                        </g>
+                        </g>}
                         {named > 0.01 && (
                           <text
                             x={x + tile / 2}
@@ -676,7 +680,7 @@ export function ShopMap({
             }}
           >
             {/* eslint-disable-next-line @next/next/no-img-element -- as above */}
-            <img src={zone.imageUrl} alt="The zone from where you'd stand" className="h-full w-full rounded-sm" draggable={false} />
+            <img src={zone.imageUrl} alt="The zone from where you'd stand" className="h-full w-full rounded-2xl" draggable={false} />
             {/* The found (or picked) drawer in a spotlight: the rest of the picture dims. */}
             {(() => {
               const lit = byId.get(flash ?? (sel?.kind === "spot" ? sel.id : "") ?? "");
@@ -727,6 +731,8 @@ export function ShopMap({
           </div>
         </div>
       )}
+
+      </div>
 
       {/* Corner buttons */}
       <div data-ui className="absolute top-2 right-2 flex flex-col gap-1">
@@ -846,7 +852,7 @@ function Bar({
       {sel.kind === "spot" && !!stat?.items.length && (
         <ul className="mt-1.5 flex max-h-24 flex-wrap gap-1 overflow-y-auto">
           {stat.items.slice(0, 24).map((i) => (
-            <li key={i.id} className="rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[0.6875rem] text-slate-200">
+            <li key={i.id} className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[0.6875rem] text-slate-200">
               {i.name}
             </li>
           ))}

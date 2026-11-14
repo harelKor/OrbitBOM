@@ -475,7 +475,7 @@ export function BatchLayoutDialog({ groupId, name, machine = null, open, onClose
 
 function Advisor({ data, advice }: { data: BatchLayout; advice: ReturnType<typeof advisePlate>["advice"] }) {
   // The shelf's map icon flies to the plate on the shop map.
-  const where = data.stock?.locationId ? <FindButton placeId={data.stock.locationId} title="Where the stock is" className="press inline-flex h-6 w-6 translate-y-1 items-center justify-center rounded-md text-accent hover:bg-accent/10 active:scale-[0.98] pointer-coarse:h-9 pointer-coarse:w-9" /> : null;
+  const where = data.stock?.locationId ? <FindButton placeId={data.stock.locationId} title="Where the stock is" className="press inline-flex h-6 w-6 translate-y-1 items-center justify-center rounded-full text-accent hover:bg-accent/10 active:scale-[0.98] pointer-coarse:h-9 pointer-coarse:w-9" /> : null;
   if (!data.stock) {
     return (
       <div className="rounded-lg border border-line bg-surface p-3 text-sm text-muted">
