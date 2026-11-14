@@ -41,9 +41,11 @@ export type PlaceStats = Map<string, PlaceStat>;
 
 type Sel = { id: string; kind: "zone" | "spot" } | null;
 
-const BG = "#070B14";
-// Rooms are tinted apart, quietly, so the bright zones stand out on top of them.
-const ROOM_TINTS = ["#1E3A5F", "#3B2F5C", "#1F4B43", "#4A3524", "#2E3F63", "#3F2A44", "#26443A", "#4A2F35", "#2A3A52", "#3D3B24"];
+// One tint for the whole map (Harel, 2026-11-14): the site's Orbit accent mixed into dark navy,
+// read from the theme, so the colour slider turns the map too.
+const ACCENT = "var(--color-accent)";
+const tint = (pct: number, base: string) => `color-mix(in oklab, var(--color-accent) ${pct}%, ${base})`;
+const BG = tint(3, "#06080c");
 
 function useBoxSize() {
   const ref = useRef<HTMLDivElement>(null);
@@ -73,6 +75,7 @@ export function ShopMap({
   onFilter,
   className = "aspect-[16/10] w-full",
   toolbar,
+  onTapEmpty,
 }: {
   places: Place[];
   stats?: PlaceStats;
@@ -86,8 +89,10 @@ export function ShopMap({
   // Browse: "Show these items" on a zone or a drawer.
   onFilter?: (id: string) => void;
   className?: string;
-  // Extra buttons in the top-left corner (expand, close).
+  // Extra buttons in the top-left corner.
   toolbar?: React.ReactNode;
+  // A tap on the floor away from any zone (the docked map opens its window, like BOM 3D previews).
+  onTapEmpty?: () => void;
 }) {
   const { ref: boxRef, w: boxW, h: boxH } = useBoxSize();
   const box = { w: boxW, h: boxH };
@@ -328,6 +333,7 @@ export function ShopMap({
     const g = gesture.current;
     if (g.travel >= 5) return settleDive();
     if (g.target) tap(g.target);
+    else if (onTapEmpty) onTapEmpty();
     else setSel(null);
   };
 
@@ -391,11 +397,17 @@ export function ShopMap({
   const lit = new Set([selectedZone?.id, sel?.kind === "zone" ? sel.id : undefined, flash && byId.get(flash)?.parentId == null ? flash : undefined].filter(Boolean) as string[]);
   const facing = (zone?.facing ?? 0) * settle;
   const [rx, ry] = zone?.outline ? centroid(zone.outline) : [MAP_W / 2, MAP_H / 2];
+  // How far each zone's category pictures have faded in (the same rule as where they're drawn).
+  const picturesShown = (z: Place) => {
+    const b = bounds(z.outline!);
+    return smoothstep(26, 52, Math.min(b.w, b.h) / k) * smoothstep(60, 110, Math.max(b.w, b.h) / k);
+  };
+  const pictured = drawn.filter((z) => stats?.get(z.id)?.categories.length).map((z) => ({ outline: z.outline!, show: picturesShown(z) }));
 
   return (
     <div
       ref={boxRef}
-      className={`relative touch-none overflow-hidden rounded-xl border border-white/[0.08] select-none ${className}`}
+      className={`relative touch-none overflow-hidden rounded-2xl border border-white/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] select-none ${className}`}
       style={{ background: BG, perspective: "1100px" }}
       onPointerDown={onDown}
       onPointerMove={onMove}
@@ -416,52 +428,106 @@ export function ShopMap({
       >
         <svg viewBox={`${plan.x} ${plan.y} ${plan.w} ${plan.w * aspect}`} className="block h-full w-full" aria-hidden>
           <defs>
-            <radialGradient id="sm-floor" cx="50%" cy="45%" r="75%">
-              <stop offset="0%" stopColor="#10203A" />
-              <stop offset="100%" stopColor={BG} />
+            <radialGradient id="sm-ground" cx="50%" cy="42%" r="70%">
+              <stop offset="0%" style={{ stopColor: tint(7, "#11161f") }} />
+              <stop offset="100%" style={{ stopColor: tint(3, "#06080c") }} />
             </radialGradient>
-            <pattern id="sm-grid" width="20" height="20" patternUnits="userSpaceOnUse">
-              <path d="M20 0H0V20" fill="none" stroke="rgba(56,189,248,0.07)" strokeWidth="0.6" />
-            </pattern>
-            <pattern id="sm-tiles" width="12" height="12" patternUnits="userSpaceOnUse">
-              <path d="M12 0H0V12" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="0.5" />
-            </pattern>
-            <filter id="sm-glow" x="-50%" y="-50%" width="200%" height="200%">
-              <feGaussianBlur stdDeviation="10" />
+            <linearGradient id="sm-roof" x1="0" y1="0" x2="0.3" y2="1">
+              <stop offset="0%" style={{ stopColor: tint(12, "#2b3242") }} />
+              <stop offset="100%" style={{ stopColor: tint(9, "#1a1f2b") }} />
+            </linearGradient>
+            <linearGradient id="sm-roof-out" x1="0" y1="0" x2="0.3" y2="1">
+              <stop offset="0%" style={{ stopColor: tint(9, "#252b38") }} />
+              <stop offset="100%" style={{ stopColor: tint(7, "#171b25") }} />
+            </linearGradient>
+            {/* Fine grain, so the ground and roofs read as surfaces, not flat fills. */}
+            <filter id="sm-grain" x="0" y="0" width="100%" height="100%">
+              <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="7" result="n" />
+              <feColorMatrix in="n" type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.07 0" />
             </filter>
-            {drawn.map((z) => (
-              <clipPath key={z.id} id={`sm-clip-${z.id}`}>
-                <polygon points={z.outline!.map((p) => p.join(",")).join(" ")} />
-              </clipPath>
-            ))}
+            <filter id="sm-shadow" x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="6" />
+            </filter>
+            <filter id="sm-glow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="9" />
+            </filter>
+            <filter id="sm-drop" x="-30%" y="-30%" width="160%" height="170%">
+              <feDropShadow dx="0" dy="1.5" stdDeviation="1.6" floodColor="#000" floodOpacity="0.55" />
+            </filter>
+            {/* Category pictures soften at their edges, like decals on the floor. */}
+            <radialGradient id="sm-fade-grad" cx="50%" cy="50%" r="50%">
+              <stop offset="62%" stopColor="#fff" />
+              <stop offset="100%" stopColor="#000" />
+            </radialGradient>
+            <mask id="sm-fade" maskContentUnits="objectBoundingBox">
+              <rect width="1" height="1" fill="url(#sm-fade-grad)" />
+            </mask>
+            <radialGradient id="sm-pad" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" style={{ stopColor: tint(70, "#ffffff"), stopOpacity: 0.32 }} />
+              <stop offset="100%" style={{ stopColor: tint(70, "#ffffff"), stopOpacity: 0 }} />
+            </radialGradient>
           </defs>
           <g transform={facing ? `rotate(${-facing} ${rx} ${ry})` : undefined}>
-            <rect x={-MAP_W} y={-MAP_H} width={MAP_W * 3} height={MAP_H * 3} fill="url(#sm-floor)" />
-            <rect x={-MAP_W} y={-MAP_H} width={MAP_W * 3} height={MAP_H * 3} fill="url(#sm-grid)" />
+            <rect x={-MAP_W} y={-MAP_H} width={MAP_W * 3} height={MAP_H * 3} fill="url(#sm-ground)" />
+            <rect x={-MAP_W} y={-MAP_H} width={MAP_W * 3} height={MAP_H * 3} filter="url(#sm-grain)" opacity={0.6} />
 
-            {WORKSHOP_ROOMS.map((room, i) => (
-              <g key={room.id}>
-                <polygon points={room.points} fill={ROOM_TINTS[i % ROOM_TINTS.length]} fillOpacity={room.main ? 0.75 : 0.6} />
-                <polygon points={room.points} fill="url(#sm-tiles)" />
-                <polygon points={room.points} fill="none" stroke="rgba(226,232,240,0.55)" strokeWidth={2.6} vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
-                <polygon points={room.points} fill="none" stroke="#0B1220" strokeWidth={0.9} vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
-              </g>
-            ))}
-            <g pointerEvents="none" fill="#E2E8F0" style={{ direction: "rtl" }}>
+            {/* The paved yard around the buildings: each outline drawn wide with round corners, so
+                neighbours merge into one rounded lot. */}
+            <g pointerEvents="none">
               {WORKSHOP_ROOMS.map((room) => (
-                <text key={room.id} x={room.labelPos[0]} y={room.labelPos[1]} fontSize={room.labelSize} fontWeight={700} textAnchor="middle" dominantBaseline="middle" opacity={0.28}>
+                <polygon key={`lot-${room.id}`} points={room.points} strokeLinejoin="round" strokeWidth={34} style={{ fill: tint(5, "#151922"), stroke: tint(5, "#151922") }} />
+              ))}
+              {WORKSHOP_ROOMS.map((room) => (
+                <polygon key={`lot2-${room.id}`} points={room.points} strokeLinejoin="round" strokeWidth={22} style={{ fill: tint(6, "#1b2029"), stroke: tint(6, "#1b2029") }} />
+              ))}
+            </g>
+
+            {/* Buildings as rounded blocks: a soft shadow, the wall below, the roof on top. */}
+            <g pointerEvents="none">
+              {WORKSHOP_ROOMS.map((room) => (
+                <polygon key={`sh-${room.id}`} points={room.points} transform="translate(5 9)" fill="#000" opacity={0.5} strokeLinejoin="round" strokeWidth={6} stroke="#000" filter="url(#sm-shadow)" />
+              ))}
+              {WORKSHOP_ROOMS.map((room) => (
+                <polygon key={`wall-${room.id}`} points={room.points} transform="translate(0 4)" strokeLinejoin="round" strokeWidth={7} style={{ fill: tint(6, "#0c0f15"), stroke: tint(6, "#0c0f15") }} />
+              ))}
+              {WORKSHOP_ROOMS.map((room) => (
+                <g key={`roof-${room.id}`}>
+                  <polygon points={room.points} strokeLinejoin="round" strokeWidth={7} fill={room.main ? "url(#sm-roof)" : "url(#sm-roof-out)"} stroke={room.main ? "url(#sm-roof)" : "url(#sm-roof-out)"} />
+                  <polygon points={room.points} fill="none" strokeLinejoin="round" strokeWidth={1.2} vectorEffect="non-scaling-stroke" style={{ stroke: tint(15, "#ffffff"), strokeOpacity: 0.22 }} />
+                </g>
+              ))}
+            </g>
+            <g pointerEvents="none" style={{ direction: "rtl" }}>
+              {WORKSHOP_ROOMS.map((room) => (
+                <text
+                  key={room.id}
+                  x={room.labelPos[0]}
+                  y={room.labelPos[1]}
+                  fontSize={Math.max(room.labelSize * 0.8, 11 * k)}
+                  fontWeight={600}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fill="#E8ECF8"
+                  // A zone showing its category pictures over the name takes the room's place.
+                  fillOpacity={0.62 * (1 - 0.85 * (pictured.find((p) => pointInPolygon(room.labelPos[0], room.labelPos[1], p.outline))?.show ?? 0))}
+                  stroke="#070a12"
+                  strokeOpacity={0.7 * (1 - 0.85 * (pictured.find((p) => pointInPolygon(room.labelPos[0], room.labelPos[1], p.outline))?.show ?? 0))}
+                  strokeWidth={Math.max(2.5, 3 * k)}
+                  paintOrder="stroke"
+                  strokeLinejoin="round"
+                  letterSpacing="0.06em"
+                >
                   {room.label}
                 </text>
               ))}
             </g>
 
-            {/* A soft light behind the lit zone. */}
+            {/* A soft light under the lit zone. */}
             {drawn.filter((z) => lit.has(z.id)).map((z) => (
-              <polygon key={`glow-${z.id}`} points={z.outline!.map((p) => p.join(",")).join(" ")} fill={zoneColor(z)} opacity={0.55} filter="url(#sm-glow)" pointerEvents="none" />
+              <polygon key={`glow-${z.id}`} points={z.outline!.map((p) => p.join(",")).join(" ")} strokeLinejoin="round" strokeWidth={10} opacity={0.32} filter="url(#sm-glow)" pointerEvents="none" style={{ fill: ACCENT, stroke: ACCENT }} />
             ))}
 
-            {drawn.map((z, i) => {
-              const color = zoneColor(z, i);
+            {drawn.map((z) => {
               const on = lit.has(z.id);
               const pts = z.outline!.map((p) => p.join(",")).join(" ");
               return (
@@ -479,38 +545,39 @@ export function ShopMap({
                     }
                   }}
                 >
-                  <polygon points={pts} fill={color} fillOpacity={on ? 0.32 : 0.16} />
-                  <polygon
-                    points={pts}
-                    fill="none"
-                    stroke={color}
-                    strokeWidth={on ? 3 : 1.8}
-                    vectorEffect="non-scaling-stroke"
-                    strokeLinejoin="round"
-                    strokeDasharray={on ? "7 5" : undefined}
-                  >
-                    {on && <animate attributeName="stroke-dashoffset" values="0;-24" dur="1.2s" repeatCount="indefinite" />}
-                  </polygon>
+                  {/* Rounded lots in the one Orbit tint: a filled pad and a bright rim. */}
+                  <polygon points={pts} strokeLinejoin="round" strokeWidth={5} style={{ fill: ACCENT, stroke: ACCENT, fillOpacity: on ? 0.4 : 0.3, strokeOpacity: on ? 0.4 : 0.3 }} />
+                  <polygon points={pts} fill="none" strokeLinejoin="round" strokeWidth={on ? 2.6 : 1.5} vectorEffect="non-scaling-stroke" style={{ stroke: tint(45, "#ffffff"), strokeOpacity: on ? 1 : 0.8 }} />
+                  {on && (
+                    <polygon points={pts} fill="none" strokeLinejoin="round" strokeWidth={2} vectorEffect="non-scaling-stroke" style={{ stroke: tint(40, "#ffffff") }}>
+                      <animate attributeName="stroke-opacity" values="0.9;0;0.9" dur="1.8s" repeatCount="indefinite" />
+                      <animate attributeName="stroke-width" values="2;9;2" dur="1.8s" repeatCount="indefinite" />
+                    </polygon>
+                  )}
                 </g>
               );
             })}
 
-            {/* Zoomed in, each zone shows the categories stored in it. */}
+            {/* Zoomed in, each zone shows the categories stored in it: their pictures lie on the
+                floor on a soft pad, growing as you zoom, with a count and (closer) a name. */}
             {drawn.map((z) => {
               const st = stats?.get(z.id);
               if (!st?.categories.length) return null;
               const b = bounds(z.outline!);
-              // Tiles fit thin zones too (a shelf along a wall): 18–34 px, by the zone's short side.
               const px = Math.min(b.w, b.h) / k;
-              const show = smoothstep(26, 48, px) * smoothstep(60, 100, Math.max(b.w, b.h) / k);
+              const show = picturesShown(z);
               if (show <= 0.01) return null;
-              const tile = clamp(px * 0.72, 18, 34) * k;
-              const gap = (tile / k > 24 ? 5 : 3) * k;
-              const cols = Math.max(1, Math.floor((b.w * 0.86 + gap) / (tile + gap)));
-              const rows = Math.max(1, Math.floor((b.h * 0.86 + gap) / (tile + gap)));
+              const n0 = st.categories.length;
+              // As big as the zone allows for its categories: 22–120 px on screen.
+              const fitTile = Math.sqrt((b.w * b.h * 0.55) / Math.max(n0, 1)) / k;
+              const tilePx = clamp(Math.min(fitTile, px * 0.85), 22, 120);
+              const tile = tilePx * k;
+              const gap = tilePx * 0.12 * k;
+              const cols = Math.max(1, Math.floor((b.w * 0.9 + gap) / (tile + gap)));
+              const rows = Math.max(1, Math.floor((b.h * 0.9 + gap) / (tile + gap)));
               const room = cols * rows;
-              const cats = st.categories.length > room ? st.categories.slice(0, room - 1) : st.categories;
-              const extra = st.categories.length - cats.length;
+              const cats = n0 > room ? st.categories.slice(0, room - 1) : st.categories;
+              const extra = n0 - cats.length;
               const n = cats.length + (extra ? 1 : 0);
               const usedCols = Math.min(cols, n);
               const usedRows = Math.ceil(n / cols);
@@ -518,43 +585,65 @@ export function ShopMap({
               const x0 = cx - (usedCols * tile + (usedCols - 1) * gap) / 2;
               const y0 = cy - (usedRows * tile + (usedRows - 1) * gap) / 2;
               const at = (i: number) => [x0 + (i % cols) * (tile + gap), y0 + Math.floor(i / cols) * (tile + gap)];
+              const badge = clamp(tilePx * 0.22, 11, 18) * k;
+              const named = smoothstep(64, 90, tilePx);
               return (
                 <g key={`cats-${z.id}`} opacity={show} pointerEvents="none" transform={facing ? `rotate(${facing} ${cx} ${cy})` : undefined}>
                   {cats.map((c, i) => {
                     const [x, y] = at(i);
                     return (
                       <g key={c.id}>
-                        <rect x={x} y={y} width={tile} height={tile} rx={tile * 0.22} fill="rgba(248,250,252,0.94)" stroke={zoneColor(z)} strokeWidth={1.4 * k} />
+                        <ellipse cx={x + tile / 2} cy={y + tile * 0.62} rx={tile * 0.55} ry={tile * 0.42} fill="url(#sm-pad)" />
                         {c.imageUrl ? (
-                          <image href={c.imageUrl} x={x + 3 * k} y={y + 3 * k} width={tile - 6 * k} height={tile - 6 * k} preserveAspectRatio="xMidYMid meet" />
+                          <image href={c.imageUrl} x={x} y={y} width={tile} height={tile} preserveAspectRatio="xMidYMid meet" mask="url(#sm-fade)" filter="url(#sm-drop)" opacity={0.95} />
                         ) : (
-                          <text x={x + tile / 2} y={y + tile / 2} fontSize={13 * k} fontWeight={700} textAnchor="middle" dominantBaseline="central" fill="#0F172A">
+                          <text x={x + tile / 2} y={y + tile / 2} fontSize={tile * 0.32} fontWeight={700} textAnchor="middle" dominantBaseline="central" fill="#E8ECF8" stroke="#070a12" strokeWidth={tile * 0.04} paintOrder="stroke">
                             {c.label.slice(0, 2)}
                           </text>
                         )}
-                        <g transform={`translate(${x + tile} ${y})`}>
-                          <rect x={-9 * k} y={-6 * k} width={18 * k} height={12 * k} rx={6 * k} fill="#0F172A" stroke={zoneColor(z)} strokeWidth={0.8 * k} />
-                          <text fontSize={8 * k} fontWeight={700} textAnchor="middle" dominantBaseline="central" fill="#F8FAFC" className="tabular-nums">
+                        <g transform={`translate(${x + tile * 0.86} ${y + tile * 0.16})`}>
+                          <rect x={-badge * 0.95} y={-badge / 2} width={badge * 1.9} height={badge} rx={badge / 2} style={{ fill: ACCENT }} stroke="#fff" strokeOpacity={0.85} strokeWidth={badge * 0.08} />
+                          <text fontSize={badge * 0.62} fontWeight={700} textAnchor="middle" dominantBaseline="central" fill="#fff" className="tabular-nums">
                             {c.count > 99 ? "99+" : c.count}
                           </text>
                         </g>
+                        {named > 0.01 && (
+                          <text
+                            x={x + tile / 2}
+                            y={y + tile * 1.02}
+                            fontSize={clamp(tilePx * 0.12, 10, 14) * k}
+                            fontWeight={600}
+                            textAnchor="middle"
+                            dominantBaseline="hanging"
+                            fill="#F1F4FB"
+                            stroke="#070a12"
+                            strokeOpacity={0.75}
+                            strokeWidth={3 * k}
+                            paintOrder="stroke"
+                            strokeLinejoin="round"
+                            opacity={named}
+                          >
+                            {c.label}
+                          </text>
+                        )}
                         <title>{c.label}</title>
                       </g>
                     );
                   })}
-                  {extra > 0 && (() => {
-                    const [x, y] = at(cats.length);
-                    return (
-                      <g>
-                        <rect x={x} y={y} width={tile} height={tile} rx={7 * k} fill="#0F172A" stroke={zoneColor(z)} strokeWidth={1.4 * k} />
-                        <text x={x + tile / 2} y={y + tile / 2} fontSize={11 * k} fontWeight={700} textAnchor="middle" dominantBaseline="central" fill="#F8FAFC">
-                          +{extra}
-                        </text>
-                      </g>
-                    );
-                  })()}
+                  {extra > 0 &&
+                    (() => {
+                      const [x, y] = at(cats.length);
+                      return (
+                        <g>
+                          <circle cx={x + tile / 2} cy={y + tile / 2} r={tile * 0.3} style={{ fill: tint(30, "#0b0f1b") }} stroke="#fff" strokeOpacity={0.5} strokeWidth={1.2 * k} />
+                          <text x={x + tile / 2} y={y + tile / 2} fontSize={tile * 0.2} fontWeight={700} textAnchor="middle" dominantBaseline="central" fill="#F8FAFC">
+                            +{extra}
+                          </text>
+                        </g>
+                      );
+                    })()}
                   {st.short > 0 && (
-                    <circle cx={x0 - 4 * k} cy={y0 - 4 * k} r={4 * k} fill="#F43F5E" stroke={BG} strokeWidth={1 * k}>
+                    <circle cx={x0} cy={y0} r={4 * k} fill="#F43F5E" stroke="#fff" strokeWidth={1 * k}>
                       <animate attributeName="opacity" values="1;0.35;1" dur="1.6s" repeatCount="indefinite" />
                     </circle>
                   )}
@@ -681,9 +770,10 @@ export function ShopMap({
   );
 }
 
+// Round, glassy controls like a phone map app.
 const CTRL =
-  "press flex h-9 w-9 items-center justify-center rounded-lg border border-white/15 bg-[#0D111A]/85 text-sm font-semibold text-slate-100 backdrop-blur-md transition-colors duration-150 hover:border-sky-400/50 hover:text-sky-300 active:scale-[0.98]";
-const BAR_BTN = "press min-h-9 rounded-lg px-3 text-xs font-semibold active:scale-[0.98]";
+  "press flex h-9 w-9 items-center justify-center rounded-full border border-white/12 bg-[#0b0e18]/75 text-sm font-semibold text-slate-100 shadow-[0_4px_14px_rgba(0,0,0,0.45)] backdrop-blur-md transition-colors duration-150 hover:border-accent hover:text-white active:scale-[0.98]";
+const BAR_BTN = "press min-h-9 rounded-full px-3.5 text-xs font-semibold active:scale-[0.98]";
 
 function Bar({
   mode,
@@ -714,9 +804,9 @@ function Bar({
   if (!sel || !place) {
     if (mode === "pick" && inScene && zoneInScene)
       return (
-        <div data-ui className="absolute inset-x-2 bottom-2 flex items-center gap-2 rounded-xl border border-white/10 bg-[#0D111A]/90 p-2 text-xs text-slate-200 backdrop-blur-md">
+        <div data-ui className="absolute inset-x-2 bottom-2 flex items-center gap-2 rounded-2xl border border-white/10 bg-[#0b0e18]/80 p-2 pl-3 text-xs text-slate-200 shadow-[0_8px_24px_rgba(0,0,0,0.5)] backdrop-blur-xl">
           <span className="flex-1">Tap a drawer or shelf to choose it.</span>
-          <button type="button" className={`${BAR_BTN} border border-white/15 text-slate-100`} onClick={() => onPick?.(zoneInScene.id)}>
+          <button type="button" className={`${BAR_BTN} border border-white/15 bg-white/5 text-slate-100`} onClick={() => onPick?.(zoneInScene.id)}>
             Anywhere in this zone
           </button>
         </div>
@@ -726,7 +816,7 @@ function Bar({
   const what = sel.kind === "spot" ? kindLabel(place.kind) : "Zone";
   const count = stat?.count ?? 0;
   return (
-    <div data-ui className="absolute inset-x-2 bottom-2 animate-[modal-fade_140ms_ease-out] rounded-xl border border-white/10 bg-[#0D111A]/92 p-2 text-xs text-slate-200 shadow-lg backdrop-blur-md">
+    <div data-ui className="absolute inset-x-2 bottom-2 animate-[modal-fade_140ms_ease-out] rounded-2xl border border-white/10 bg-[#0b0e18]/80 p-2 pl-3 text-xs text-slate-200 shadow-[0_8px_24px_rgba(0,0,0,0.5)] backdrop-blur-xl">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-semibold text-white">{what}</span>
         <span className="tabular-nums text-slate-400">
@@ -735,17 +825,17 @@ function Bar({
         </span>
         <span className="flex-1" />
         {mode === "pick" && (
-          <button type="button" className={`${BAR_BTN} bg-sky-600 text-white`} onClick={() => onPick?.(place.id)}>
+          <button type="button" className={`${BAR_BTN} bg-accent text-white hover:bg-accent-hover`} onClick={() => onPick?.(place.id)}>
             {sel.kind === "zone" ? "Anywhere in this zone" : `Choose this ${what.toLowerCase()}`}
           </button>
         )}
         {mode === "browse" && onFilter && count > 0 && (
-          <button type="button" className={`${BAR_BTN} bg-sky-600 text-white`} onClick={() => onFilter(place.id)}>
+          <button type="button" className={`${BAR_BTN} bg-accent text-white hover:bg-accent-hover`} onClick={() => onFilter(place.id)}>
             Show these items
           </button>
         )}
         {sel.kind === "zone" && hasInside && !inScene && (
-          <button type="button" className={`${BAR_BTN} border border-white/15 text-slate-100`} onClick={onInside}>
+          <button type="button" className={`${BAR_BTN} border border-white/15 bg-white/5 text-slate-100`} onClick={onInside}>
             Look inside →
           </button>
         )}

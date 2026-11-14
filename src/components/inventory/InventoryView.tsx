@@ -214,8 +214,8 @@ export function InventoryView({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- locationOf follows the groups
     [optimistic, lookups.groups, locations, categories],
   );
-  // On a computer the map sits docked above the page and expands into a window; on phones and
-  // tablets the Map button opens the window. A place picked there filters the page (?loc=) and
+  // On a computer the map sits docked above the page and a tap on its empty floor opens it as a
+  // window (like BOM 3D previews); on phones and tablets the Map button opens the window. A place picked there filters the page (?loc=) and
   // shows as a ✕ chip.
   const desktop = useDesktop();
   const pickPlace = (id: string | null) => setLocationId(!id || locationId === id ? "" : id);
@@ -642,16 +642,7 @@ export function InventoryView({
           selectedId={locationId || null}
           onFilter={pickPlace}
           className="h-[clamp(11rem,26vh,17rem)] w-full"
-          toolbar={
-            <button
-              type="button"
-              onClick={() => setMapOpen(true)}
-              className="press flex h-9 items-center gap-1.5 rounded-lg border border-white/15 bg-[#0D111A]/85 px-2.5 text-xs font-semibold text-slate-100 backdrop-blur-md hover:border-sky-400/50 hover:text-sky-300 active:scale-[0.98]"
-              title="Open the shop map in a window"
-            >
-              <Icon name="expand" className="h-4 w-4" /> Expand
-            </button>
-          }
+          onTapEmpty={() => setMapOpen(true)}
         />
       )}
 
@@ -687,7 +678,7 @@ export function InventoryView({
         <div className="ml-auto self-center">{layoutSwitch}</div>
       </div>
 
-      {/* The shop map as a window: the Map button on phones, ⤢ on the docked map on a computer.
+      {/* The shop map as a window: the Map button on phones, a tap on the docked map on a computer.
           "Show these items" filters the page and closes it. */}
       <Dialog
         open={mapOpen}

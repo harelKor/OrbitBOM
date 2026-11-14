@@ -17,7 +17,7 @@ import {
 import { LocationPicker, PlaceTag } from "@/components/inventory/LocationPicker";
 import { MAP_H, MAP_W, WORKSHOP_ROOMS } from "@/config/workshopMap";
 import { STATUSES } from "@/config/statuses";
-import { SPOT_KINDS, ZONE_COLORS, bounds, centroid, kindLabel, spotsOf, zoneColor, type MapPoint, type Place, type SpotKind } from "@/lib/inventory/places";
+import { SPOT_KINDS, bounds, centroid, kindLabel, spotsOf, zoneColor, type MapPoint, type Place, type SpotKind } from "@/lib/inventory/places";
 
 // Settings → Map (Harel, 2026-11-14): draw the zones on the floor plan, give each its
 // first-person picture and pin its drawers / shelves on it, and choose each system's drawer for
@@ -242,7 +242,7 @@ function ZoneEditor({ zones, selId, onSelect, run, pending }: { zones: Place[]; 
             const rad = ((z.facing ?? 0) * Math.PI) / 180;
             return (
               <g key={z.id} data-zone={z.id} className={on ? "cursor-move" : "cursor-pointer"}>
-                <polygon points={pts.map((p) => p.join(",")).join(" ")} fill={color} fillOpacity={on ? 0.35 : 0.18} stroke={color} strokeWidth={on ? 3 : 1.6} vectorEffect="non-scaling-stroke" />
+                <polygon points={pts.map((p) => p.join(",")).join(" ")} strokeWidth={on ? 3 : 1.6} vectorEffect="non-scaling-stroke" strokeLinejoin="round" style={{ fill: color, stroke: color, fillOpacity: on ? 0.4 : 0.18 }} />
                 <text x={cx} y={cy} fontSize={11 * k} textAnchor="middle" dominantBaseline="middle" fill="#F8FAFC" pointerEvents="none">
                   {z.name}
                 </text>
@@ -252,7 +252,7 @@ function ZoneEditor({ zones, selId, onSelect, run, pending }: { zones: Place[]; 
                 )}
                 {on &&
                   pts.map(([x, y], j) => (
-                    <circle key={j} data-corner={`${z.id}:${j}`} cx={x} cy={y} r={6 * k} fill="#fff" stroke={color} strokeWidth={2} vectorEffect="non-scaling-stroke" className="cursor-pointer" />
+                    <circle key={j} data-corner={`${z.id}:${j}`} cx={x} cy={y} r={6 * k} fill="#fff" strokeWidth={2} vectorEffect="non-scaling-stroke" className="cursor-pointer" style={{ stroke: color }} />
                   ))}
               </g>
             );
@@ -374,20 +374,6 @@ function ZonePanel({ zone, places, run, onDeleted }: { zone: Place; places: Plac
           aria-label="Zone name (hidden on the map)"
           className="input min-h-9 w-48 text-sm"
         />
-        <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="Colour">
-          {ZONE_COLORS.map((c) => (
-            <button
-              key={c}
-              type="button"
-              role="radio"
-              aria-checked={zone.color === c}
-              aria-label={c}
-              onClick={() => run(() => updateZone(zone.id, { color: c }))}
-              className={`h-6 w-6 rounded-full border-2 active:scale-[0.95] ${zone.color === c ? "border-fg" : "border-transparent"}`}
-              style={{ background: c }}
-            />
-          ))}
-        </div>
         <span className="flex-1" />
         <button
           type="button"

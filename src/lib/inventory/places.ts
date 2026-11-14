@@ -32,7 +32,10 @@ export const SPOT_KINDS: { id: SpotKind; label: string }[] = [
 export const ZONE_COLORS = ["#38BDF8", "#F472B6", "#A3E635", "#FBBF24", "#A78BFA", "#34D399", "#FB7185", "#60A5FA", "#F97316", "#2DD4BF", "#E879F9", "#FACC15"];
 
 export const isZone = (p: Place) => !p.parentId;
-export const zoneColor = (zone: Place | undefined, i = 0) => zone?.color || ZONE_COLORS[i % ZONE_COLORS.length];
+// Every zone wears the one Orbit tint (Harel, 2026-11-14: no rainbow), so this is the accent in
+// CSS (style props, not SVG attributes). The stored colour is kept but not shown.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- same call shape as before
+export const zoneColor = (_zone?: Place, _i = 0) => "var(--color-accent)";
 
 export function placeIndex(places: Place[]) {
   return new Map(places.map((p) => [p.id, p]));
