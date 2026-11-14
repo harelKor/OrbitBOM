@@ -43,8 +43,8 @@ describe("MCP tool list", async () => {
     const { callTool } = await import("./registry");
     const member = { ...none, id: "00000000-0000-0000-0000-000000000001" } as never;
     const args = { part_ids: ["00000000-0000-0000-0000-000000000002"], changes: { status: "Released" }, ai_name: "Test" };
-    await expect(callTool("update_parts", args, { member })).rejects.toThrow("Pick a team");
-    await expect(callTool("adjust_stock", { item_id: "00000000-0000-0000-0000-000000000002", delta: 5, ai_name: "Test" }, { member })).rejects.toThrow("Pick a team");
+    await expect(callTool("update_parts", args, { member })).rejects.toThrow("Ask an admin");
+    await expect(callTool("adjust_stock", { item_id: "00000000-0000-0000-0000-000000000002", delta: 5, ai_name: "Test" }, { member })).rejects.toThrow("Ask an admin");
   });
 
   it("asks the same capability as the app's buttons", () => {
