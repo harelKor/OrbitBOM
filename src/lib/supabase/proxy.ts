@@ -3,8 +3,9 @@ import { NextResponse, type NextRequest } from "next/server";
 import { PANEL_COOKIE, readPanelSession } from "@/lib/panelSession";
 
 // Paths reachable without signing in.
-// /api/mcp checks its own personal token; the Onshape panel shows its own sign-in.
-const PUBLIC_PATHS = ["/login", "/auth/", "/invite/", "/api/cron/", "/api/mcp", "/onshape/panel", "/api/panel/"];
+// /api/mcp checks its own personal token; the Onshape panel shows its own sign-in; /api/ready is
+// the deploy's and monitors' check and says only whether the site works.
+const PUBLIC_PATHS = ["/login", "/auth/", "/invite/", "/api/cron/", "/api/ready", "/api/mcp", "/onshape/panel", "/api/panel/"];
 
 // Refreshes the Supabase session cookie on every request and sends signed-out visitors to /login.
 // Membership (member, pending, admin) is checked by the pages themselves, against the database.

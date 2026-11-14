@@ -5,8 +5,8 @@
 # the Ampere A1 one: GitHub Actions builds, the server only runs the standalone bundle.
 #
 # Run from a PC that can SSH in as the image's default user (ubuntu), from the repo root:
-#   ssh ubuntu@<ip> "sudo SET_ENV_SCRIPT=$(base64 -w0 deploy/set-env.sh) bash -s <site-host> '<deploy public key>'" < deploy/setup.sh
-# It is safe to run again (to change the host name or the deploy key).
+#   ssh ubuntu@<ip> "sudo SET_ENV_SCRIPT=$(base64 -w0 deploy/set-env.sh) BACKUP_SCRIPT=$(base64 -w0 deploy/backup.sh) bash -s <site-host> '<deploy public key>'" < deploy/setup.sh
+# It is safe to run again (to change the host name or the deploy key, or to add what's new here).
 #
 # What it sets up:
 #   - Node 22 and Caddy (HTTPS from Let's Encrypt, reverse proxy to Next on 127.0.0.1:3000)
@@ -15,6 +15,8 @@
 #   - 2 GB swap (the micro VM has 1 GB of memory)
 #   - orbitparts.service (Next's standalone server.js) reading secrets from /opt/orbitparts/shared/.env
 #   - orbitparts-keep-alive.timer: the daily /api/cron/keep-alive Vercel Cron used to call
+#   - orbitparts-backup.timer: the nightly pg_dump of the database to R2 (deploy/backup.sh), with
+#     pg_dump 17 from apt.postgresql.org (Ubuntu 24.04 has 16, which can't dump Postgres 17) and rclone
 #   - ports 80 and 443 open in the VM's own firewall (Oracle's Ubuntu image rejects them)
 set -euo pipefail
 
@@ -25,6 +27,15 @@ export DEBIAN_FRONTEND=noninteractive
 
 apt-get update -y
 apt-get install -y curl ca-certificates gnupg debian-keyring debian-archive-keyring apt-transport-https iptables-persistent
+
+# pg_dump 17 for the nightly backup (Supabase runs Postgres 17 and pg_dump must be at least that),
+# from the PostgreSQL project's own apt repository, and rclone to upload to R2.
+if [ ! -x /usr/lib/postgresql/17/bin/pg_dump ]; then
+  apt-get install -y postgresql-common
+  /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+  apt-get install -y postgresql-client-17
+fi
+command -v rclone >/dev/null || apt-get install -y rclone
 
 # Node 22, the version CI builds with.
 if ! node --version 2>/dev/null | grep -q '^v22\.'; then
@@ -65,6 +76,8 @@ install -d -o orbit -g orbit "$ROOT" "$ROOT/releases" "$ROOT/incoming"
 install -d -o root -g root "$ROOT/bin"
 # deploy/set-env.sh, sent along by whoever runs this setup (see the usage line at the top).
 if [ -n "${SET_ENV_SCRIPT:-}" ]; then printf '%s' "$SET_ENV_SCRIPT" | base64 -d > "$ROOT/bin/set-env"; chmod 755 "$ROOT/bin/set-env"; fi
+# deploy/backup.sh, the same way.
+if [ -n "${BACKUP_SCRIPT:-}" ]; then printf '%s' "$BACKUP_SCRIPT" | base64 -d > "$ROOT/bin/backup"; chmod 755 "$ROOT/bin/backup"; fi
 install -d -m 700 -o orbit -g orbit "$ROOT/shared"
 if [ ! -f "$ROOT/shared/.env" ]; then
   install -m 600 -o orbit -g orbit /dev/null "$ROOT/shared/.env"
@@ -114,9 +127,38 @@ Persistent=true
 WantedBy=timers.target
 EOF
 
+# Nightly database backup to R2 (deploy/backup.sh), well before the shop's day in Israel.
+cat > /etc/systemd/system/orbitparts-backup.service <<EOF
+[Unit]
+Description=OrbitParts nightly database backup to R2
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=$ROOT/bin/backup
+
+[Service]
+Type=oneshot
+User=orbit
+EnvironmentFile=$ROOT/shared/.env
+ExecStart=$ROOT/bin/backup
+PrivateTmp=yes
+Nice=10
+TimeoutStartSec=30min
+EOF
+cat > /etc/systemd/system/orbitparts-backup.timer <<'EOF'
+[Unit]
+Description=Run the OrbitParts database backup nightly
+
+[Timer]
+OnCalendar=*-*-* 01:30:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
 systemctl daemon-reload
-systemctl enable orbitparts.service orbitparts-keep-alive.timer
-systemctl start orbitparts-keep-alive.timer
+systemctl enable orbitparts.service orbitparts-keep-alive.timer orbitparts-backup.timer
+systemctl start orbitparts-keep-alive.timer orbitparts-backup.timer
 
 # HTTPS in front of Next. Caddy passes X-Forwarded-Proto/Host on, so Next sees the https origin.
 cat > /etc/caddy/Caddyfile <<EOF

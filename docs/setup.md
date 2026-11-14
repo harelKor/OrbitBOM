@@ -12,8 +12,9 @@ graduation. Steps marked **(Harel)** need the Onshape Enterprise admin.
    session pooler string (port 5432) into `DIRECT_URL`.
 4. Create the tables: in GitHub → the repo → **Settings → Secrets and variables → Actions**, add
    the secret `PRODUCTION_DIRECT_URL` with the session pooler string (port 5432, password filled
-   in). Then **Actions → Migrate database → Run workflow**. It also runs on its own whenever a new
-   migration reaches `main`. (Or run `npm run db:migrate` locally with the values in `.env.local`.)
+   in). Then **Actions → Deploy → Run workflow**: after its checks it applies every migration
+   production doesn't have, as it does on each push to `main`. (Or run `npm run db:migrate`
+   locally with the values in `.env.local`.)
 
 ## 2. Google sign-in
 
@@ -38,30 +39,28 @@ visible delay to each click). Full steps and day-to-day commands: `docs/runbook.
    `VM.Standard.E2.1.Micro`), public subnet with TCP 80/443 open, a quota policy capping compute at
    the free shapes, a $1 budget alert. Stay on the free account (the Pay As You Go upgrade puts a
    ~€93 hold on the card).
-2. `deploy/setup.sh` over SSH (Node 22, Caddy, the `orbitparts` service, the daily keep-alive
-   timer, 2 GB swap, user `orbit` for deploys).
+2. `deploy/setup.sh` over SSH (Node 22, Caddy, the `orbitparts` service, the daily keep-alive and
+   nightly database backup timers, 2 GB swap, user `orbit` for deploys).
 3. A DuckDNS name pointing at the VM's IP (Caddy gets the HTTPS certificate itself).
 4. `bash deploy/enter-secrets.sh <ip>` from Git Bash: GitHub deploy secrets plus each service's key
    (typed hidden, straight to the server). `CRON_SECRET`, `MCP_SECRET`, `ONSHAPE_TOKEN_KEY` are
    generated on the server; Actions → "Server env" adds the database URL; Actions → "Deploy".
 5. **Background refresh** (off: `REFRESH.scheduled` in `src/config/refresh.ts` is false to save
-   Onshape's yearly API allowance, so the route below answers `{ disabled: true }`): a free outside
-   scheduler checks Onshape every 10 minutes (or add a systemd timer like the keep-alive one). At cron-job.org (free account) →
-   **Create cronjob**: URL `https://orbitparts.duckdns.org/api/cron/refresh`, every 10 minutes, and under
-   **Advanced → Headers** add `Authorization` = `Bearer <your CRON_SECRET>`. Each system is checked
+   Onshape's yearly API allowance, so `/api/cron/refresh` answers `{ disabled: true }` and nothing
+   calls it). To turn it on: set it true and add a 10-minute systemd timer in `deploy/setup.sh`
+   like the keep-alive one (it sends `Authorization: Bearer $CRON_SECRET`). Each system is checked
    every 10 minutes during meeting hours (14:00–23:00 Israel time) and hourly otherwise, on the
    Onshape account of whoever last clicked Update BOM on it; a check costs one Onshape call and
    pulls the BOM only when the document changed. Hours live in `src/config/refresh.ts`.
    An open system page's check every few minutes is off too (`REFRESH.openPages`), so Onshape is
    only checked when a member clicks Update BOM.
 
-## 4. Nightly backup
+## 4. Nightly backup and alerts
 
-1. Create a **private** GitHub repo, e.g. `OrbitBOM-backups`.
-2. Create a fine-grained token with *Contents: read and write* on that repo only.
-3. In this repo's **Settings → Secrets and variables → Actions**, add `BACKUP_DATABASE_URL`
-   (the session pooler string), `BACKUP_REPO` (`owner/OrbitBOM-backups`) and `BACKUP_REPO_TOKEN`.
-4. Run the "Nightly backup" workflow once by hand to check it.
+Nothing to create for the backup: `deploy/setup.sh` installs the server's nightly `pg_dump` to R2
+(`backups/sql/`), using the `DIRECT_URL` and `R2_*` values already in the server's `.env`. Check it
+once with `sudo systemctl start orbitparts-backup && journalctl -u orbitparts-backup -n 20`. The
+uptime monitors and the restore drill: `docs/runbook.md` → "Alerts" and "Restore the database".
 
 ## 5. Onshape
 

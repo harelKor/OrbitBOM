@@ -1,4 +1,4 @@
-# The database tests' Postgres, the same image CI uses (.github/workflows/ci.yml). Started by
+# The database tests' Postgres, the same image CI uses (.github/workflows/deploy.yml). Started by
 # `npm run test:db`; port 54329 so it doesn't clash with a Postgres already on 5432. Its data
 # lives in memory (tmpfs): every start is a fresh, empty database.
 services:

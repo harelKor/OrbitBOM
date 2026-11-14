@@ -20,11 +20,16 @@ export type InvCategory = {
 
 export const getCategory = (cats: InvCategory[], id: string | null | undefined) => (id ? cats.find((c) => c.id === id) : undefined);
 
-// An item's category: the one set on it, else a guess from its name, else Other (or the last one).
+// An item's category: the one set on it, else a guess from its name, else Other (or the last
+// category that isn't a sheet one). Never a sheet category by default: a plain item read as a
+// sheet needs nothing and has its stock snapped to pieces (with Other deleted in Settings, every
+// uncategorised item fell into the last category, which can be a plates one).
 export function categoryOf(item: { category: string | null; name: string }, cats: InvCategory[]): string {
   if (item.category && getCategory(cats, item.category)) return item.category;
-  const ids = cats.map((c) => c.id);
-  return guessCategory(item.name, ids) ?? (ids.includes("other") ? "other" : (ids.at(-1) ?? "other"));
+  const guess = guessCategory(item.name, cats.map((c) => c.id));
+  if (guess) return guess;
+  if (cats.some((c) => c.id === "other")) return "other";
+  return cats.filter((c) => !c.sheet).at(-1)?.id ?? "other";
 }
 
 // The choices a field offers: its options, or for a material field the base materials filled in

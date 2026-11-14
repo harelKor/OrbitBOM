@@ -12,10 +12,12 @@ server (`/api/mcp/<token>`).
 
 ## Working with Harel
 
-- Ship straight to `main`: commit, push. The "Deploy" workflow builds it on GitHub and switches
-  the server over (~3 min; check with `gh run list --workflow deploy.yml`). No branches or PRs
-  unless he asks. `.github/workflows/migrate.yml` applies new migrations on the same push; when
-  deployed code needs a new table on every request, wait for that run before calling it done.
+- Ship straight to `main`: commit, push. The "Deploy" workflow (`deploy.yml`, the only one on
+  push) runs lint, typecheck and every test, builds once, applies new migrations, then switches the
+  server over (~5 min; check with `gh run list --workflow deploy.yml`). A red check deploys
+  nothing, so a push isn't done until that run is green. No branches or PRs unless he asks.
+  Pushes touching only `plan/`, `docs/`, `*.md` don't run it; a newer push cancels an older run's
+  checks. Actions minutes are tight (private repo, 2,000/month): batch pushes.
 - Everything must cost nothing. Before any new cloud resource or plan change, check it's inside
   the free tier and say so; he asked to be sure he pays nothing.
 - Build what he asks for (or what blocks real use), nothing optional. Big features: post the plan,
@@ -28,11 +30,14 @@ server (`/api/mcp/<token>`).
 - `npm run dev` · `npm run lint` · `npm run typecheck` · `npm test` (unit only)
 - `npm run test:db`: every test, database ones included, against CI's Postgres 17 in Docker (port
   54329); `-- <path>` for some files, `-- --down` to stop it. Run before pushing anything that
-  touches the database. As of 2026-11-13, 4 tests fail on `main` already (inventory.db ×3,
-  cotsSync.db ×1): compare against those.
+  touches the database. Every test passes on `main` (since 2026-11-14); a failing one blocks the
+  deploy. A fresh test database holds only the inventory categories migrations add (one is a
+  sheet one), not `DEFAULT_CATEGORIES`: a test needing a category creates it.
 - Schema: edit `src/db/schema.ts`, `npm run db:generate`, rename the file to a readable name
   (and its `tag` in `drizzle/meta/_journal.json`), add `ALTER TABLE "x" ENABLE ROW LEVEL SECURITY;`
-  for a new table, commit. Next migration: 0095.
+  for a new table, commit. Next migration: 0095. Migrations reach production before the code and
+  a rollback runs old code on the new schema, so expand → contract: add columns/tables in one
+  push; drop or rename one only in a later push, once no deployed code reads it.
 - Local site: README "Local development" (local Supabase in Docker, "Dev sign-in" button; Onshape
   and R2 deliberately unset). Never point local dev at production.
 - On Harel's Windows PC, Docker and `gh` aren't on the Bash PATH: run them from PowerShell, or
@@ -52,8 +57,10 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
   first home, same setup, app still running but its daily timer disabled. To fall back, point
   DuckDNS and the `DEPLOY_HOST` / `DEPLOY_KNOWN_HOSTS` secrets at it and enable the timer.
 - Deploy: `.github/workflows/deploy.yml` runs `next build` on GitHub (the VM is too small), uploads
-  the bundle, `deploy/release.sh` swaps `/opt/orbitparts/current`, restarts, and rolls back if
-  `/login` doesn't answer. `next.config.ts` has `output: "standalone"` and unoptimized images.
+  the bundle, `deploy/release.sh` extracts it to its own `releases/<sha>.<time>`, swaps
+  `/opt/orbitparts/current`, restarts, and rolls back to the release that was live if `/api/ready`
+  (database answers, the bundle's migrations applied) doesn't answer 200 in 90 s.
+  `next.config.ts` has `output: "standalone"` and unoptimized images.
 - Env vars live in `/opt/orbitparts/shared/.env` (systemd EnvironmentFile), not Vercel. A new one:
   `printf '%s' "$V" | ssh … "sudo -u orbit /opt/orbitparts/bin/set-env KEY"` (or `--generate`),
   then `sudo systemctl restart orbitparts`; Harel enters real secrets with
@@ -61,10 +68,16 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
   build time, so they are also GitHub secrets. Writing GitHub secrets is blocked for Claude: hand
   Harel the `gh secret set` command. The DB URL comes from `PRODUCTION_DIRECT_URL` via Actions →
   "Server env".
-- Scheduled work: systemd timers on the VM, not `vercel.json` crons. The old Vercel project still
-  exists, paused until 2026-12-06; Harel left it for now, and it should be disconnected before
-  then or it deploys and runs its cron again next to the server. Daily `orbitparts-keep-alive.timer` (06:00 UTC) calls
-  `/api/cron/keep-alive`. A new cron = a new timer in `deploy/setup.sh` (and on the VM).
+- Scheduled work: systemd timers on the VM (`vercel.json` is deleted). The old Vercel project still
+  exists, paused until 2026-12-06; it should be disconnected before then or it deploys and runs
+  keep-alive again next to the server. Daily `orbitparts-keep-alive.timer` (06:00 UTC) calls
+  `/api/cron/keep-alive` (JSON backup, storage recount, prunes; 500 when a step failed);
+  `orbitparts-backup.timer` (01:30 UTC) runs `deploy/backup.sh`: `pg_dump` 17 of the whole
+  database → R2 `backups/sql/` (14 daily + 8 weekly). A new cron = a new timer in
+  `deploy/setup.sh` (and on the VM); its route checks `cronAllowed(request)` (`src/lib/cron.ts`).
+- Alerts: `/api/cron/health` answers 503 (database down or > 80%, migrations out of step, a
+  backup > 26 h old) for an UptimeRobot monitor; `docs/runbook.md` → "Alerts", restore drill in
+  "Restore the database".
 - No serverless limits: `maxDuration` is ignored and requests can run long, but it's one small
   shared machine: keep heavy CPU/memory work (big meshes, layouts) in the browser or chunked.
 - R2's CORS policy must list the site's origin (browsers load 3D files and upload straight to

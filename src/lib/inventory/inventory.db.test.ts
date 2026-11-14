@@ -16,6 +16,13 @@ else
     const { moveStock } = await import("./moves");
     const { robotInventory, shelfOfParts, usageOf } = await import("@/lib/data/inventory");
 
+    // A fresh test database holds only the categories migrations add (one of them a sheet one),
+    // not the plates category the sheet item below needs.
+    const plates = await db
+      .insert(schema.inventoryCategories)
+      .values({ id: "aluminum-plates", label: "Aluminum plates", group: "consumables", sheet: true })
+      .onConflictDoNothing()
+      .returning();
     const userId = randomUUID();
     const [member] = await db.insert(schema.members).values({ userId, email: `${userId}@t.org`, name: "Stocker" }).returning();
     const [r1, r2] = await db.insert(schema.robots).values([{ name: "Comp bot", year: 2027 }, { name: "Practice bot", year: 2027 }]).returning();
@@ -39,6 +46,7 @@ else
       await db.delete(schema.inventoryItems).where(eq(schema.inventoryItems.id, item.id));
       await db.delete(schema.inventoryItems).where(eq(schema.inventoryItems.id, sheet.id));
       await db.delete(schema.members).where(eq(schema.members.id, member.id));
+      if (plates.length) await db.delete(schema.inventoryCategories).where(eq(schema.inventoryCategories.id, "aluminum-plates"));
     });
 
     it("shares the shelf between the robots", async () => {
@@ -52,18 +60,11 @@ else
     });
 
     it("leaves Raw Stock out of the robot's items (the Raw stock planner shows it)", async () => {
-      // A fresh test database holds only the categories migrations add, not the plates one.
-      const added = await db
-        .insert(schema.inventoryCategories)
-        .values({ id: "aluminum-plates", label: "Aluminum plates", group: "consumables", sheet: true })
-        .onConflictDoNothing()
-        .returning();
       const [plate] = await db.insert(schema.parts).values({ systemId: s2.id, onshapeName: "Side plate", classification: "inhouse" as const, inventoryItemId: sheet.id }).returning();
       try {
         expect((await robotInventory(r2.id)).map((i) => i.name)).not.toContain(sheet.name);
       } finally {
         await db.delete(schema.parts).where(eq(schema.parts.id, plate.id));
-        if (added.length) await db.delete(schema.inventoryCategories).where(eq(schema.inventoryCategories.id, "aluminum-plates"));
       }
     });
 

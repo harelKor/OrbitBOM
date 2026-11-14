@@ -5,6 +5,7 @@ import { CATEGORY_GROUPS } from "@/config/inventory";
 import { BACKUP_DAYS, DATABASE_LIMIT, STORAGE_LIMIT } from "@/config/storage";
 import journal from "../../../drizzle/meta/_journal.json";
 import { listObjects, storageConfigured } from "@/lib/storage/r2";
+import { migrationState } from "./status";
 
 // A read-only health check of the live database and R2 (season readiness, 2026-10-28): broken
 // references, missing indexes, migrations, sizes and what the nightly jobs left behind. It only
@@ -71,16 +72,8 @@ export async function healthCheck() {
     present: indexDefs.some((d) => d.table === table && cols.every((c, i) => d.columns[i] === c)),
   }));
 
-  const applied = await one<{ count: number; last: string | null }>(
-    sql`select count(*)::int as count, max(created_at)::text as last from drizzle.__drizzle_migrations`,
-  );
-  const last = journal.entries[journal.entries.length - 1];
-  const migrations = {
-    inRepo: journal.entries.length,
-    applied: applied.count,
-    latestInRepo: last.tag,
-    inSync: applied.count === journal.entries.length && Number(applied.last) === last.when,
-  };
+  const state = await migrationState();
+  const migrations = { inRepo: state.expected, applied: state.applied, latestInRepo: journal.entries[journal.entries.length - 1].tag, missing: state.missing, ahead: state.ahead, inSync: state.inSync };
 
   const tableRows = await rows<{ table: string; rows: number; bytes: number }>(sql`
     select c.relname as "table", c.reltuples::bigint::int as rows, pg_total_relation_size(c.oid)::bigint::int as bytes

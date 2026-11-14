@@ -1,72 +1,98 @@
-# Deploys main to the team's own server (Oracle Cloud Always Free VM, Mumbai), which replaced
-# Vercel after Hobby's CPU allowance paused the site (Harel, 2026-11-06). Builds Next's
-# standalone bundle here (the free VM is too small to build), uploads it and switches over
-# (deploy/release.sh). Server setup: deploy/setup.sh.
+# The one pipeline for main (replaced ci.yml, migrate.yml and the deploy that went live with CI
+# red, 2026-11-14): lint, typecheck and tests → build once → upload the bundle → apply new
+# migrations to production → switch the server (deploy/release.sh). Nothing goes live unless every
+# check passed, and the database is always migrated before the code that needs it starts.
+# Pull requests run the checks and the build only.
 #
-# Repository secrets (without DEPLOY_HOST the job does nothing):
+# Migrations go out before the code, so they must suit both the old and the new code (expand →
+# contract): add columns/tables in one push, drop or rename them a push later, once no live code
+# reads them (CLAUDE.md, Commands).
+#
+# The server: an Oracle Cloud Always Free VM in Mumbai, which replaced Vercel after Hobby's CPU
+# allowance paused the site (Harel, 2026-11-06). The VM is too small to build, so GitHub builds
+# Next's standalone bundle. Setup: deploy/setup.sh.
+#
+# Repository secrets (without DEPLOY_HOST nothing is uploaded or switched):
 #   DEPLOY_HOST         the server's public IP or host name
 #   DEPLOY_SSH_KEY      private key whose public half is in /home/orbit/.ssh/authorized_keys
 #   DEPLOY_KNOWN_HOSTS  the server's line(s) from `ssh-keyscan <host>`
 #   NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY  baked into the browser bundle
+#   PRODUCTION_DIRECT_URL  Supabase session pooler string (port 5432), for migrations
+#
+# GitHub Free gives a private repo 2,000 minutes a month, so: docs-only pushes don't run, a newer
+# push cancels an older run's checks, and the bundle goes straight to the server (no artifact
+# storage).
 name: Deploy
 
 on:
   push:
     branches: [main]
+    paths-ignore: ["plan/**", "docs/**", "**/*.md"]
+  pull_request:
+    paths-ignore: ["plan/**", "docs/**", "**/*.md"]
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# One deploy at a time; a newer push waits and then deploys the newest commit.
-concurrency:
-  group: deploy
-  cancel-in-progress: false
-
 jobs:
-  deploy:
+  build:
+    name: Test, build, migrate
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    # A newer push makes this run's checks pointless; the switch below is never cancelled.
+    concurrency:
+      group: build-${{ github.ref }}
+      cancel-in-progress: true
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+    outputs:
+      deploy: ${{ steps.check.outputs.deploy }}
     steps:
-      - name: Check secrets
+      - name: Deploying?
         id: check
         env:
           HOST: ${{ secrets.DEPLOY_HOST }}
         run: |
-          if [ -z "$HOST" ]; then
-            echo "Deploy secrets are not set yet; skipping."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" != "pull_request" ] && [ -n "$HOST" ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Checks only (pull request, or the deploy secrets aren't set)."
           fi
 
       - uses: actions/checkout@v4
-        if: steps.check.outputs.skip != 'true'
-
       - uses: actions/setup-node@v4
-        if: steps.check.outputs.skip != 'true'
         with:
           node-version: 22
           cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+      - run: npm run typecheck
+      - name: Migrate the test database
+        run: npm run db:migrate
+        env:
+          DIRECT_URL: ${{ env.TEST_DATABASE_URL }}
+      - run: npm test
 
       - name: Build
-        if: steps.check.outputs.skip != 'true'
         env:
           # Public values (they reach every browser); the server's secrets stay on the server.
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          # Pull requests build with placeholders.
+          NEXT_PUBLIC_SUPABASE_URL: ${{ steps.check.outputs.deploy && secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://example.supabase.co' }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ steps.check.outputs.deploy && secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || 'placeholder' }}
           DATABASE_URL: postgres://user:pass@localhost:5432/db
           NEXT_TELEMETRY_DISABLED: 1
-        run: |
-          npm ci --no-audit --no-fund
-          npm run build
-          # Next's standalone server needs the static assets and public/ next to it.
-          mkdir -p bundle
-          cp -a .next/standalone/. bundle/
-          cp -a .next/static bundle/.next/static
-          cp -a public bundle/public
-          tar -czf bundle.tar.gz -C bundle .
+        run: npm run build
 
       - name: Set up SSH
-        if: steps.check.outputs.skip != 'true'
+        if: steps.check.outputs.deploy
         env:
           KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           KNOWN: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
@@ -76,16 +102,65 @@ jobs:
           chmod 600 ~/.ssh/deploy
           printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
 
-      - name: Upload commit
-        if: steps.check.outputs.skip != 'true'
+      - name: Upload the bundle
+        if: steps.check.outputs.deploy
         env:
           HOST: ${{ secrets.DEPLOY_HOST }}
         run: |
+          # Next's standalone server needs the static assets and public/ next to it.
+          mkdir -p bundle
+          cp -a .next/standalone/. bundle/
+          cp -a .next/static bundle/.next/static
+          cp -a public bundle/public
+          tar -czf bundle.tar.gz -C bundle .
           ssh -i ~/.ssh/deploy "orbit@$HOST" < bundle.tar.gz \
-            "mkdir -p /opt/orbitparts/incoming && cat > /opt/orbitparts/incoming/$GITHUB_SHA.tar.gz"
+            "mkdir -p /opt/orbitparts/incoming && cat > /opt/orbitparts/incoming/$GITHUB_SHA.tar.gz.part && mv /opt/orbitparts/incoming/$GITHUB_SHA.tar.gz.part /opt/orbitparts/incoming/$GITHUB_SHA.tar.gz"
 
+      # Only when production is behind drizzle/ (normally: this push added a migration). Checked
+      # against the database rather than this push's diff, so a migration whose run was cancelled
+      # by a newer push still goes out with that newer one.
+      - name: Migrate production
+        if: steps.check.outputs.deploy
+        env:
+          DIRECT_URL: ${{ secrets.PRODUCTION_DIRECT_URL }}
+        run: |
+          if [ -z "$DIRECT_URL" ]; then echo "PRODUCTION_DIRECT_URL is not set; skipping."; exit 0; fi
+          PENDING="$(node scripts/pending-migrations.mjs)"
+          if [ -z "$PENDING" ]; then echo "No new migrations."; exit 0; fi
+          echo "Applying: $PENDING"
+          npm run db:migrate
+          # drizzle applies only migrations whose journal `when` is newer than the newest applied
+          # one, and skips older ones without a word (two sessions adding migrations at once).
+          LEFT="$(node scripts/pending-migrations.mjs)"
+          if [ -n "$LEFT" ]; then
+            echo "::error::drizzle skipped $LEFT: its \"when\" in drizzle/meta/_journal.json is older than a migration already applied. Give it a newer \"when\" (and a later number), push again."
+            exit 1
+          fi
+
+  deploy:
+    name: Switch the server
+    needs: build
+    if: needs.build.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # One switch at a time, never cancelled half-way; a newer one waits, then switches.
+    concurrency:
+      group: deploy
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: deploy
+      - name: Set up SSH
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy
+          chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
       - name: Switch
-        if: steps.check.outputs.skip != 'true'
         env:
           HOST: ${{ secrets.DEPLOY_HOST }}
         run: ssh -i ~/.ssh/deploy "orbit@$HOST" "bash -s $GITHUB_SHA" < deploy/release.sh

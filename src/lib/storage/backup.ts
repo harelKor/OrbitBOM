@@ -41,8 +41,15 @@ export const BACKUP_TABLES = {
 // restore saves first.
 export async function saveNightlyBackup(label?: string) {
   if (!storageConfigured()) return { skipped: "R2 isn't configured" };
-  const tables = Object.fromEntries(
-    await Promise.all(Object.entries(BACKUP_TABLES).map(async ([name, table]) => [name, await db.select().from(table)] as const)),
+  // One snapshot: every table as it was at the same moment, so a part and its stock moves never
+  // disagree (20 separate reads could straddle a save). Read only, so it can't block writers.
+  const tables = await db.transaction(
+    async (tx) => {
+      const out: Record<string, unknown[]> = {};
+      for (const [name, table] of Object.entries(BACKUP_TABLES)) out[name] = await tx.select().from(table);
+      return out;
+    },
+    { isolationLevel: "repeatable read", accessMode: "read only" },
   );
   const at = new Date();
   const json = JSON.stringify({ app: "OrbitParts", version: 1, at: at.toISOString(), tables });
@@ -62,12 +69,14 @@ export async function saveNightlyBackup(label?: string) {
 export type BackupFile = { key: string; name: string; bytes: number; at: string };
 export type BackupInfo = { latest: BackupFile | null; count: number; all: BackupFile[] };
 
-// The storage window's Backups row, from the ledger (no R2 calls).
+// The storage window's Backups row, from the ledger (no R2 calls). Only the app's own JSON
+// backups: the server's nightly pg_dump files (backups/sql/, deploy/backup.sh) are restored by
+// hand (docs/runbook.md), not from Settings.
 export async function backupInfo(): Promise<BackupInfo> {
   const rows = await db
     .select({ key: storedFiles.key, bytes: storedFiles.bytes, at: storedFiles.createdAt })
     .from(storedFiles)
-    .where(like(storedFiles.key, `${BACKUP_PREFIX}%`))
+    .where(like(storedFiles.key, `${BACKUP_PREFIX}orbitparts-%`))
     .orderBy(desc(storedFiles.key));
   // Newest first by when it was saved (a restore's safety copy sorts after that day's nightly one by name).
   const all = rows

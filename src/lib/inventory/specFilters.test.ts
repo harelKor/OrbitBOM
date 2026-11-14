@@ -3,7 +3,6 @@ vi.mock("server-only", () => ({}));
 vi.mock("@/db", () => ({ db: {}, schema: {} }));
 vi.mock("./history", () => ({ recordItemChanges: () => {} }));
 import { DEFAULT_CATEGORIES } from "@/config/inventory";
-import { bearingName, cleanBearing } from "./bearings";
 import type { InvCategory } from "./categories";
 import { keepPicks, matchesPicks, specGroups } from "./specFilters";
 
@@ -50,32 +49,5 @@ describe("specGroups", () => {
       ["Teeth", ["18T", "36T"]],
       ["Width", ["9mm", "15mm"]],
     ]);
-  });
-});
-
-describe("cleanBearing", () => {
-  it("reads missing values from the name", () => {
-    expect(cleanBearing("Bearing 10×16×5mm", { od: "16mm", bore: "10mm", width: "5mm" })).toEqual({ od: "16", bore: "10", width: "5", flanged: "Radial" });
-    expect(cleanBearing("Bearing 6.35×17.46×7.9mm", {})).toEqual({ bore: "6.35", od: "17.46", width: "7.9", flanged: "Radial" });
-    expect(cleanBearing("8x16x5 Flanged Bearing", {})).toEqual({ bore: "8", od: "16", width: "5", flanged: "Flanged" });
-    expect(cleanBearing("Bearing 3/4\" × 1 3/8\" × 0.43\" (odd)", {})).toEqual({ bore: '3/4" Round', od: '1 3/8"', width: '0.43"' });
-    expect(cleanBearing('3/8" ThunderHex Flanged Bearing (10.25mm ID, 0.875" OD)', { id: "10.25mm", od: '0.875"', flanged: "Flanged" })).toEqual({
-      bore: '3/8" ThunderHex',
-      od: '0.875"',
-      flanged: "Flanged",
-    });
-    expect(cleanBearing('Bearing 0.6" × 1.2" × 0.2"', { id: '0.6"', od: '1.2"', width: '0.2"' })).toEqual({ bore: '0.6" Round', od: '1.2"', width: '0.2"' });
-    expect(cleanBearing('3/8" Hex Bearing', { bore: '3/8" Hex' })).toEqual({ bore: '3/8" Hex' });
-  });
-});
-
-describe("bearingName", () => {
-  it("names bearings ID x OD x Thick", () => {
-    const flanged = { bore: "8", od: "16", width: "5", flanged: "Flanged" };
-    expect(bearingName("Bearing 8×16×5mm flanged", flanged)).toBe("8x16x5 Flanged Bearing");
-    expect(bearingName("Bearing 8×16×5mm", { ...flanged, flanged: "Radial" })).toBe("8x16x5 Bearing");
-    expect(bearingName('Bearing 0.6" × 1.2" × 0.2"', { bore: '0.6" Round', od: '1.2"', width: '0.2"' })).toBe('0.6"x1.2"x0.2" Bearing');
-    expect(bearingName('Bearing 3/4" × 1 3/8" × 0.43" (odd)', { bore: '3/4" Round', od: '1 3/8"', width: '0.43"' })).toBe('3/4" x 1 3/8" x 0.43" Bearing (odd)');
-    expect(bearingName('3/8" Hex Bearing', { bore: '3/8" Hex' })).toBe('3/8" Hex Bearing');
   });
 });

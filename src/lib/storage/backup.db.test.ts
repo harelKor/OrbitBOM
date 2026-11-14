@@ -57,7 +57,10 @@ else
     });
 
     it("shows in the storage window and can be downloaded", async () => {
+      // The server's pg_dump files (counted by the nightly recount) aren't offered for restore.
+      await db.insert(schema.storedFiles).values({ key: "backups/sql/daily/orbitparts-2099-01-01.sql.gz", bytes: 5, kind: "backup", createdAt: new Date("2099-01-01") });
       const info = await backupInfo();
+      expect(info.all.some((b) => b.key.startsWith("backups/sql/"))).toBe(false);
       expect(info.latest?.key).toMatch(/^backups\/orbitparts-\d{4}-\d{2}-\d{2}\.json\.gz$/);
       expect(await latestBackupUrl()).toBe(`https://r2.test/${info.latest!.key}`);
     });
