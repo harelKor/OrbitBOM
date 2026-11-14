@@ -18,8 +18,10 @@ type Plan = Awaited<ReturnType<typeof planUndo>>;
 
 // What an undo did, for the toast: "Status and Material on 3 parts", and what it left alone.
 function describe(plan: NonNullable<Plan>) {
-  const fields = [...new Set(plan.reverts.map((r) => fieldName(r.field)))];
-  const partCount = new Set(plan.reverts.map((r) => r.partId)).size;
+  // overriddenFields goes back with the edit that set it; it isn't a field anyone typed.
+  const shown = plan.reverts.filter((r) => r.field !== "overriddenFields");
+  const fields = [...new Set(shown.map((r) => fieldName(r.field)))];
+  const partCount = new Set(shown.map((r) => r.partId)).size;
   const what = fields.length
     ? `${fields.slice(0, 3).join(", ")}${fields.length > 3 ? "…" : ""} on ${partCount} ${partCount === 1 ? "part" : "parts"}`
     : "nothing";
@@ -38,7 +40,7 @@ async function apply(plan: Plan, memberId: string, verb: string): Promise<Revert
       batchId: null,
       skipped: plan.skipped.length,
     };
-  const batchId = await applyUndo(plan.reverts, memberId, "ui");
+  const batchId = await applyUndo(plan.reverts, memberId, "ui", plan.batches);
   return {
     message: `${verb} ${what}.${left}`,
     batchId,
@@ -112,7 +114,14 @@ export async function undoLatest(memberId: string, exclude: string[]) {
   return { ...r, undone: latest.batchId };
 }
 
-// Redo: undoes an undo batch.
+// Redo: undoes an undo batch, only one of this member's own (a batch id from another tab or
+// member isn't theirs to redo).
 export async function redoBatch(batchId: string, memberId: string) {
+  const [own] = await db
+    .select({ batchId: partHistory.batchId })
+    .from(partHistory)
+    .where(and(eq(partHistory.batchId, batchId), eq(partHistory.memberId, memberId)))
+    .limit(1);
+  if (!own) return { message: "Nothing to redo.", batchId: null, skipped: 0 };
   return apply(await planUndo(batchId), memberId, "Redid");
 }

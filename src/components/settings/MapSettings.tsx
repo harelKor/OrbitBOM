@@ -381,7 +381,7 @@ function ZonePanel({ zone, places, run, onDeleted }: { zone: Place; places: Plac
           type="button"
           className="btn min-h-9 text-xs text-rose-600"
           onClick={async () => {
-            if (await askConfirm({ title: `Delete ${zone.name} and its ${spots.length} drawers?`, body: "Their items stay, without a place.", confirm: "Delete", danger: true })) run(() => deleteZone(zone.id), onDeleted);
+            if (await askConfirm({ title: `Delete ${zone.name} and its ${spots.length} drawers?`, confirm: "Delete", danger: true })) run(() => deleteZone(zone.id), onDeleted);
           }}
         >
           Delete zone

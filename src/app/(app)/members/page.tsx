@@ -15,6 +15,7 @@ import { listTeamSystems } from "@/lib/teams";
 import { CopyLink } from "./CopyLink";
 import { MemberSearch } from "./MemberSearch";
 import { MemberTeam } from "./MemberTeam";
+import { RemoveMember } from "./RemoveMember";
 
 export default async function MembersPage() {
   const me = await requireMember();
@@ -104,9 +105,7 @@ export default async function MembersPage() {
                   <form action={setAdmin.bind(null, m.id, !m.isAdmin)}>
                     <button className="btn">{m.isAdmin ? "Remove admin" : "Make admin"}</button>
                   </form>
-                  <form action={removeMember.bind(null, m.id)}>
-                    <button className="btn-danger">Remove</button>
-                  </form>
+                  <RemoveMember name={m.name} action={removeMember.bind(null, m.id)} />
                 </>
               )}
             </li>

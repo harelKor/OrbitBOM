@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db, schema } from "@/db";
 import { getMember } from "@/lib/auth";
@@ -29,7 +29,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ gro
     .from(schema.groupMembers)
     .innerJoin(schema.parts, eq(schema.parts.id, schema.groupMembers.partId))
     .innerJoin(schema.systems, eq(schema.systems.id, schema.parts.systemId))
-    .where(eq(schema.groupMembers.groupId, groupId));
+    // Like the zip: a part removed from CAD isn't cut.
+    .where(and(eq(schema.groupMembers.groupId, groupId), isNull(schema.parts.removedFromCadAt)));
   if (!rows.length) return new NextResponse("This batch has no parts.", { status: 400 });
 
   const files: [string, string][] = [];

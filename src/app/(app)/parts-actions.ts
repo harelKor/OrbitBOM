@@ -18,6 +18,9 @@ import { refreshSystem } from "@/lib/sync/refresh";
 import { updateBomFromOnshape } from "@/lib/sync/updateBom";
 import { fileKeysFor } from "@/lib/storage/cleanup";
 import { deleteToTrash } from "@/lib/trash";
+import { CREATED } from "@/lib/parts/undo";
+import { currentVisit } from "@/lib/visits";
+import { randomUUID } from "node:crypto";
 import { isUuid } from "@/lib/uuid";
 import { getPart } from "@/lib/data/parts";
 
@@ -77,6 +80,7 @@ export async function addManualPart(
   formData: FormData,
 ): Promise<ActionResult> {
   const member = await requireCapability("shape");
+  if (!isUuid(systemId)) return { error: "Unknown system." };
   const parsed = manualPart.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const d = parsed.data;
@@ -85,7 +89,10 @@ export async function addManualPart(
   const [item] = d.inventoryItemId
     ? await db.select({ id: schema.inventoryItems.id, name: schema.inventoryItems.name }).from(schema.inventoryItems).where(eq(schema.inventoryItems.id, d.inventoryItemId))
     : [];
-  await db.insert(schema.parts).values({
+  // Recorded like an edit, so it shows in Recent actions and Undo moves it to Recently deleted.
+  const visit = await currentVisit();
+  await db.transaction(async (tx) => {
+  const [part] = await tx.insert(schema.parts).values({
     systemId,
     isManual: true,
     displayName: d.name,
@@ -98,6 +105,8 @@ export async function addManualPart(
     process2: orNull(d.process2),
     drawingUrl: orNull(d.drawingUrl),
     lastModifiedBy: member.id,
+  }).returning({ id: schema.parts.id });
+    await tx.insert(schema.partHistory).values({ partId: part.id, field: CREATED, oldValue: null, newValue: d.name, memberId: member.id, via: "ui", batchId: randomUUID(), visitId: visit?.id, page: visit?.page });
   });
   revalidatePath("/robots", "layout");
   return {};

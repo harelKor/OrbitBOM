@@ -1,13 +1,19 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { SQL, asc, eq, getTableColumns, inArray } from "drizzle-orm";
+import { SQL, and, asc, eq, getTableColumns, inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { currentVisit } from "@/lib/visits";
-import { recordOrderHistory } from "./orderHistory";
+import { undoMoves } from "@/lib/inventory/moves";
+import { fileKeysFor } from "@/lib/storage/cleanup";
+import { deleteToTrash } from "@/lib/trash";
+import { applyEachPartChanges } from "./apply";
+import type { Plan } from "./changes";
 
 const { parts, partHistory } = schema;
 
 type Revert = { partId: string; field: string; to: unknown; from: unknown };
+
+// The history row a manual part is added with (addManualPart): not a column.
+export const CREATED = "created";
 
 // undo_batch (plan §6): put every field a batch changed back to its old value. A field that
 // was changed again after the batch is left alone and reported, so an undo never overwrites
@@ -39,12 +45,17 @@ async function planUndoRows(rows: (typeof partHistory.$inferSelect)[]) {
   const skipped: Revert[] = [];
   for (const { first, last } of span.values()) {
     const part = current.find((p) => p.id === first.partId) as Record<string, unknown> | undefined;
+    // A part added by hand in the batch: undoing it moves it to Recently deleted.
+    if (first.field === CREATED) {
+      if (part?.isManual) reverts.push({ partId: first.partId, field: CREATED, to: null, from: null });
+      continue;
+    }
     if (!part || !(first.field in part)) continue;
     if (same(first.oldValue, last.newValue)) continue;
     const entry = { partId: first.partId, field: first.field, to: first.oldValue, from: part[first.field] };
     (same(part[first.field], last.newValue) ? reverts : skipped).push(entry);
   }
-  return { reverts, skipped };
+  return { reverts, skipped, batches: [...new Set(rows.map((r) => r.batchId))] };
 }
 
 // The value an undo writes back: a field recorded as empty that can't be empty gets its default
@@ -58,39 +69,59 @@ export function restorable(field: string, to: unknown) {
 }
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
-type Visit = { id: string; page: string } | null;
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
-export async function applyUndo(reverts: Revert[], memberId: string, via: "ui" | "mcp") {
+// `batches`: the batches being undone. Their stock moves (an order arriving on the shelf) go back
+// with the status that made them, in the same transaction.
+export async function applyUndo(reverts: Revert[], memberId: string, via: "ui" | "mcp", batches: string[] = []) {
   const batchId = randomUUID();
-  const visit = via === "ui" ? await currentVisit() : null;
-  await db.transaction((tx) => applyUndoIn(tx, reverts, { memberId, via, batchId, visit }));
+  await db.transaction(async (tx) => {
+    const { applied } = await applyUndoIn(tx, reverts, { memberId, via, batchId });
+    // Only for parts whose status went back: a status changed again since keeps its stock too.
+    const back = new Set(applied.filter((r) => r.field === "designState").map((r) => r.partId));
+    if (back.size && batches.length) await undoMoves(tx, batches, { memberId, via, batchId }, (m) => !!m.partId && back.has(m.partId));
+  });
   return batchId;
 }
 
-// The undo inside a caller's transaction. Each part is locked first and a field is put back only
-// if it still holds the value the plan saw: an edit that landed after planning is kept (returned
-// as `kept`), never overwritten.
-export async function applyUndoIn(tx: Tx, reverts: Revert[], { memberId, via, batchId, visit }: { memberId: string; via: "ui" | "mcp"; batchId: string; visit: Visit }) {
+// The undo inside a caller's transaction, through applyEachPartChanges so it keeps what a normal
+// edit keeps up (a release lock, finished / arrived dates, the arrival glow, the linked item's
+// links and price, the COTS Order History card). Each part is locked first and a field is put back
+// only if it still holds the value the plan saw: an edit that landed after planning is kept
+// (counted in `kept`), never overwritten. Stock isn't moved here (receive: false): the caller
+// reverses the undone batch's moves.
+export async function applyUndoIn(tx: Tx, reverts: Revert[], { memberId, via, batchId }: { memberId: string; via: "ui" | "mcp"; batchId: string }) {
   let kept = 0;
-  const ids = [...new Set(reverts.map((r) => r.partId))].sort();
-  for (const partId of ids) {
-    const [before] = await tx.select().from(parts).where(eq(parts.id, partId)).for("update");
-    if (!before) continue;
-    const now = before as unknown as Record<string, unknown>;
-    const mine = reverts.filter((r) => r.partId === partId && same(now[r.field], r.from));
-    kept += reverts.filter((r) => r.partId === partId).length - mine.length;
-    if (!mine.length) continue;
-    const [after] = await tx
-      .update(parts)
-      .set({ ...Object.fromEntries(mine.map((r) => [r.field, restorable(r.field, r.to)])), lastModifiedAt: new Date(), lastModifiedBy: memberId })
-      .where(eq(parts.id, partId))
-      .returning();
-    // An undone status move takes its COTS Order History card along (24h rule in orderHistory.ts).
-    if (after && mine.some((r) => r.field === "designState")) await recordOrderHistory(tx, before, after);
-    await tx.insert(partHistory).values(
-      mine.map((r) => ({ partId, field: r.field, oldValue: r.from, newValue: restorable(r.field, r.to), memberId, via, batchId, visitId: visit?.id, page: visit?.page })),
-    );
+  const applied: Revert[] = [];
+  const byPart = new Map<string, Revert[]>();
+  const created = new Set(reverts.filter((r) => r.field === CREATED).map((r) => r.partId));
+  for (const r of reverts) if (!created.has(r.partId)) byPart.set(r.partId, [...(byPart.get(r.partId) ?? []), r]);
+  // Parts the batch added go to Recently deleted (30 days), whatever was edited on them since.
+  for (const partId of created) {
+    const where = and(eq(parts.id, partId), eq(parts.isManual, true))!;
+    const [part] = await tx.select({ name: parts.displayName, onshapeName: parts.onshapeName }).from(parts).where(where).for("update");
+    if (!part) continue;
+    const fileKeys = await fileKeysFor({ partId });
+    if (await deleteToTrash(tx, { kind: "part", label: part.name ?? part.onshapeName ?? "Manual part", root: parts, where, memberId, fileKeys })) applied.push(...reverts.filter((r) => r.partId === partId));
   }
-  return { kept };
+  await applyEachPartChanges(
+    [...byPart.keys()].map((id) => ({ id, changes: {} })),
+    {
+      memberId,
+      via,
+      batchId,
+      tx,
+      receive: false,
+      plan: (row) => {
+        const now = row as unknown as Record<string, unknown>;
+        const all = byPart.get(row.id) ?? [];
+        const mine = all.filter((r) => same(now[r.field], r.from));
+        kept += all.length - mine.length;
+        applied.push(...mine);
+        const set = Object.fromEntries(mine.map((r) => [r.field, restorable(r.field, r.to)]));
+        return { set: set as Plan["set"], history: mine.map((r) => ({ field: r.field, oldValue: now[r.field] ?? null, newValue: set[r.field] ?? null })) };
+      },
+    },
+  );
+  return { kept, applied };
 }

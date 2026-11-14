@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { OnshapeLayoutRef } from "@/db/schema";
 import { batchFlatParts } from "@/lib/fab/batchLayout";
@@ -82,7 +82,7 @@ export async function pushOnshapeLayout(
     .from(schema.groupMembers)
     .innerJoin(schema.parts, eq(schema.parts.id, schema.groupMembers.partId))
     .leftJoin(schema.systems, eq(schema.systems.id, schema.parts.systemId))
-    .where(eq(schema.groupMembers.groupId, groupId));
+    .where(and(eq(schema.groupMembers.groupId, groupId), isNull(schema.parts.removedFromCadAt))); // not cut once removed from CAD
   const { parts: flats } = await batchFlatParts(groupId);
   const flatOf = new Map<string, FlatPart>(flats.map((f) => [f.partId, f]));
   const rowOf = new Map(rows.map((r) => [r.part.id, r]));

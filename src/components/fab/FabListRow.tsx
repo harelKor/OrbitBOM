@@ -62,10 +62,9 @@ export function FabPartListRow({
   const work = useCan("work");
   const open = usePartDetails(part, save);
   const { inventory } = useBom();
-  const { machines, current, counted, finished, takeBack, addOne } = fabSteps(part, save);
+  const { machines, current, counted, finished, made, takeBack, addOne } = fabSteps(part, save);
   const at = current ?? machines.at(-1);
   const machine = at ? (getMachine(part[at.key]!)?.name ?? part[at.key]) : null;
-  const made = current ? part[current.done] : part.quantity;
   const linked = part.inventoryItemId ? inventory.find((i) => i.id === part.inventoryItemId) : undefined;
   const material = linked?.name ?? part.material;
   const counter = work && part.classification !== "cots" && machines.length > 0 && !post;

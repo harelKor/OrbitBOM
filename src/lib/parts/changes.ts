@@ -179,7 +179,11 @@ export function planPartUpdate(
 
   if (via !== "sync") {
     const overridden = ONSHAPE_FIELDS.filter((f) => f in set && !part.overriddenFields.includes(f));
-    if (overridden.length) set.overriddenFields = [...part.overriddenFields, ...overridden];
+    if (overridden.length) {
+      // Recorded like any field, so undoing the edit hands the field back to Onshape's sync.
+      set.overriddenFields = [...part.overriddenFields, ...overridden];
+      history.push({ field: "overriddenFields", oldValue: part.overriddenFields, newValue: set.overriddenFields });
+    }
   }
   return { set, history };
 }

@@ -10,6 +10,7 @@ import type { CardPart } from "@/components/bom/types";
 import { Icon } from "@/components/ui/Icon";
 import type { PartChanges } from "@/lib/parts/changes";
 import { Notice } from "@/components/ui/Notice";
+import { safeAction } from "@/lib/safeAction";
 
 export type QaSystem = { id: string; name: string; count: number };
 
@@ -46,11 +47,14 @@ export function QaBox({
   const own = parts.filter((p) => p.systemId === systemId && !checked.has(p.id));
   const shown = [...own, ...[...checked.values()].filter((p) => p.systemId === systemId)];
 
-  const save = (id: string, changes: PartChanges) => {
+  const save = (id: string, changes: PartChanges, onFail?: () => void) => {
     setError(null);
     startTransition(async () => {
-      const r = await updatePart(id, changes);
-      if (r.error) setError(r.error);
+      const r = await safeAction(() => updatePart(id, changes));
+      if (r.error) {
+        setError(r.error);
+        onFail?.();
+      }
     });
   };
   const toggle = (part: CardPart) => {
@@ -61,7 +65,15 @@ export function QaBox({
       else next.set(part.id, part);
       return next;
     });
-    save(part.id, { status: undo ? "Ready for QA" : "In Stock" });
+    // A failed save (or an offline tap) unticks the part again, so the tick never lies.
+    const back = () =>
+      setChecked((c) => {
+        const next = new Map(c);
+        if (undo) next.set(part.id, part);
+        else next.delete(part.id);
+        return next;
+      });
+    save(part.id, { status: undo ? "Ready for QA" : "In Stock" }, back);
   };
   const closeSystem = () => {
     setSystem(null);

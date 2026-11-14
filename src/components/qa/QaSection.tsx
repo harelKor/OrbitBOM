@@ -5,6 +5,7 @@ import { updatePart } from "@/app/(app)/parts-actions";
 import { BomProvider, type InventoryName } from "@/components/bom/BomContext";
 import { PartCard } from "@/components/bom/PartCard";
 import type { PartChanges } from "@/lib/parts/changes";
+import { safeAction } from "@/lib/safeAction";
 import type { CardPart } from "@/components/bom/types";
 import { Notice } from "@/components/ui/Notice";
 
@@ -28,11 +29,14 @@ export function QaSection({ parts, inventory, isAdmin, robotId }: { parts: CardP
   }, []);
   const shown = [...parts.filter((p) => !checked.has(p.id)), ...checked.values()];
 
-  function save(id: string, changes: PartChanges) {
+  function save(id: string, changes: PartChanges, onFail?: () => void) {
     setError(null);
     startTransition(async () => {
-      const result = await updatePart(id, changes);
-      if (result.error) setError(result.error);
+      const result = await safeAction(() => updatePart(id, changes));
+      if (result.error) {
+        setError(result.error);
+        onFail?.();
+      }
     });
   }
   function toggle(part: CardPart) {
@@ -43,7 +47,15 @@ export function QaSection({ parts, inventory, isAdmin, robotId }: { parts: CardP
       else next.set(part.id, part);
       return next;
     });
-    save(part.id, { status: undo ? "Ready for QA" : "In Stock" });
+    // A failed save (or an offline tap) unticks the part again, so the tick never lies.
+    const back = () =>
+      setChecked((c) => {
+        const next = new Map(c);
+        if (undo) next.set(part.id, part);
+        else next.delete(part.id);
+        return next;
+      });
+    save(part.id, { status: undo ? "Ready for QA" : "In Stock" }, back);
   }
 
   if (shown.length === 0 && !error) return null;

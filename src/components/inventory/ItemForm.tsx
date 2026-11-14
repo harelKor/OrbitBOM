@@ -21,6 +21,7 @@ export type Draft = {
   nameTouched: boolean; // the name box wins over the name the specs build
   nameTyped?: boolean; // typed in the name box during this edit
   inStock: string;
+  inStockLoaded?: string; // the count the edit started from: left as it is, the save doesn't count it again
   locationId: string | null;
   locationTouched: boolean;
   conditionId: string | null;
@@ -51,6 +52,7 @@ export const draftOf = (item: Item): Draft => ({
   name: item.name,
   nameTouched: true,
   inStock: formatStock(item.inStock, item.sheet),
+  inStockLoaded: formatStock(item.inStock, item.sheet),
   locationId: item.locationId,
   locationTouched: true,
   conditionId: item.conditionId,
@@ -139,7 +141,9 @@ export function ItemForm({
       name: name.trim(),
       category: d.category,
       specs: d.specs,
-      inStock: d.inStock,
+      // An untouched count box sends nothing, so − / + taps made meanwhile (here or on another
+      // phone) aren't overwritten by the count this form loaded.
+      inStock: itemId && d.inStockLoaded !== undefined && d.inStock.trim() === d.inStockLoaded ? undefined : d.inStock,
       conditionId: d.conditionId,
       locationId: d.locationId,
       links: d.links,

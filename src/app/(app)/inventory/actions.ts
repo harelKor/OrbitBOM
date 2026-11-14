@@ -66,7 +66,7 @@ const itemInput = z.object({
   name: z.string().trim().min(1, "Part name is required.").max(200),
   category: z.string().nullable(),
   specs: z.record(z.string(), z.string()).default({}),
-  inStock: z.string().default("0"),
+  inStock: z.string().optional(), // left out on an edit: the stock stays as it is
   conditionId: z.string().nullable().refine((v) => v === null || isUuid(v), "Unknown condition."),
   locationId: z.string().nullable().refine((v) => v === null || isUuid(v), "Unknown location."),
   links: z.array(linkSchema).max(10).default([]),
@@ -91,7 +91,7 @@ export async function saveItem(itemId: string | null, input: ItemInput): Promise
   const ids = new Set(cat?.fields.map((f) => f.id) ?? []);
   const specs = Object.fromEntries(Object.entries(d.specs).flatMap(([k, v]) => (ids.has(k) && v.trim() ? [[k, v.trim()]] : [])));
   const sheet = !!getCategory(cats, categoryOf({ category: d.category, name: d.name }, cats))?.sheet;
-  const inStock = parseStock(d.inStock, sheet);
+  const inStock = d.inStock === undefined ? undefined : parseStock(d.inStock, sheet);
   if (inStock === null) return { error: sheet ? 'In stock is sheets, like "2" or "1 3/4".' : "In stock is a whole number." };
   const cotsLinks = d.links.map((l) => ({ url: l.url, site: l.site || vendorOfUrl(l.url) }));
   const values = {
@@ -118,9 +118,9 @@ export async function saveItem(itemId: string | null, input: ItemInput): Promise
         ...(JSON.stringify(before.cotsLinks) !== JSON.stringify(values.cotsLinks) && { cotsLinks: values.cotsLinks }),
         ...(before.price !== values.price && { price: values.price }),
       });
-      await setStock(tx, id, inStock, ctx);
+      if (inStock !== undefined) await setStock(tx, id, inStock, ctx);
     } else {
-      id = await createItem(tx, values, inStock, ctx);
+      id = await createItem(tx, values, inStock ?? 0, ctx);
     }
     return id!;
   });

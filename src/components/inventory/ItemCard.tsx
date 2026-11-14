@@ -12,6 +12,8 @@ import { Popover } from "@/components/bom/Popover";
 import { pushQuery } from "@/components/ui/CategoryBoxes";
 import { CheckBadge } from "@/components/ui/CheckBadge";
 import { Icon } from "@/components/ui/Icon";
+import { toast } from "@/components/ui/Toaster";
+import { safeAction } from "@/lib/safeAction";
 import { softStatusTint } from "@/components/ui/statusTint";
 import { getCategory } from "@/lib/inventory/categories";
 import { hasSeasonNeed, missing, neededFor, orderHref, standing, type NeedView, type Standing } from "@/lib/inventory/season";
@@ -214,7 +216,8 @@ export function ItemCard({
                     onChange={(id) => {
                       close();
                       startLocation(async () => {
-                        await setItemLocation(item.id, id);
+                        const r = await safeAction(() => setItemLocation(item.id, id));
+                        if (r.error) toast(r.error, true);
                       });
                     }}
                     disabled={movingLocation}

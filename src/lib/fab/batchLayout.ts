@@ -1,6 +1,6 @@
 import "server-only";
 import { gunzipSync } from "node:zlib";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { LayoutData } from "@/db/schema";
 import { partKey } from "@/lib/model/assembly";
@@ -56,7 +56,8 @@ export async function batchFlatParts(
     .from(groupMembers)
     .innerJoin(parts, eq(parts.id, groupMembers.partId))
     .leftJoin(systems, eq(systems.id, parts.systemId))
-    .where(eq(groupMembers.groupId, groupId));
+    // A part removed from CAD stays in its batch but isn't cut (Auto Layout, Layout DXF, Onshape Layout).
+    .where(and(eq(groupMembers.groupId, groupId), isNull(parts.removedFromCadAt)));
   const missing: MissingPart[] = [];
   const out: (FlatPart & { meshFile: string; onshapePartId: string; chosen: boolean })[] = [];
   if (!storageConfigured()) {

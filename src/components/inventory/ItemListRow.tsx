@@ -2,6 +2,8 @@
 
 import { StepButton } from "@/components/ui/Stepper";
 import { useTransition } from "react";
+import { toast } from "@/components/ui/Toaster";
+import { safeAction } from "@/lib/safeAction";
 import { setItemCondition, setItemLocation } from "@/app/(app)/inventory/actions";
 import { textOn } from "@/components/bom/options";
 import { useCan } from "@/components/shell/ModeContext";
@@ -129,7 +131,8 @@ export function ItemListRow({
                 value={item.locationId ?? location?.id ?? null}
                 onChange={(id) =>
                   startSaving(async () => {
-                    await setItemLocation(item.id, id);
+                    const r = await safeAction(() => setItemLocation(item.id, id));
+                    if (r.error) toast(r.error, true);
                   })
                 }
                 disabled={saving}
@@ -148,7 +151,8 @@ export function ItemListRow({
                 disabled={saving}
                 onChange={(conditionId) =>
                   startSaving(async () => {
-                    await setItemCondition(item.id, conditionId);
+                    const r = await safeAction(() => setItemCondition(item.id, conditionId));
+                    if (r.error) toast(r.error, true);
                   })
                 }
                 emptyLabel="+ Condition"

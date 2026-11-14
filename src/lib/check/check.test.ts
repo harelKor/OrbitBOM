@@ -128,6 +128,16 @@ describe("frame perimeter", () => {
   });
 });
 
+describe("weighing a part with no known material", () => {
+  it("counts a printed one as printed plastic, anything else as aluminium", async () => {
+    const { weighOne } = await import("./weight");
+    const printed = weighOne(100, { material: null, onshapeMaterial: null, printed: true, setG: null });
+    expect(printed.source).toBe("guess");
+    expect(printed.g).toBeCloseTo(100 * 1.24 * 0.6);
+    expect(weighOne(100, { material: null, onshapeMaterial: null, printed: false, setG: null }).g).toBeCloseTo(270);
+  });
+});
+
 describe("reweigh", () => {
   it("puts a set weight in and takes it out again", async () => {
     const { reweigh } = await import("./weight");

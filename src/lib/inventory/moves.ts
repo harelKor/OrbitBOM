@@ -1,5 +1,5 @@
 import "server-only";
-import { eq } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { categoryOf, getCategory, type InvCategory } from "./categories";
 import { listCategories } from "@/lib/data/categories";
@@ -75,9 +75,12 @@ export async function setStock(tx: Tx, itemId: string, amount: number, ctx: Move
   return changeStock(tx, itemId, (item) => countPieces(item, amount), "counted", null, ctx);
 }
 
-// Reverse a batch's stock changes (undo_batch), as new moves in a new batch.
-export async function undoMoves(tx: Tx, batchId: string, ctx: MoveCtx) {
-  const rows = await tx.select().from(inventoryMoves).where(eq(inventoryMoves.batchId, batchId));
+// Reverse a batch's stock changes (undo_batch, Undo, Revert), as new moves in a new batch.
+// `only` picks some of them (the parts whose status an undo put back).
+export async function undoMoves(tx: Tx, batchId: string | string[], ctx: MoveCtx, only?: (move: typeof inventoryMoves.$inferSelect) => boolean) {
+  const ids = typeof batchId === "string" ? [batchId] : batchId;
+  if (!ids.length) return 0;
+  const rows = (await tx.select().from(inventoryMoves).where(inArray(inventoryMoves.batchId, ids)).orderBy(asc(inventoryMoves.at))).filter((r) => !only || only(r));
   for (const r of rows) await moveStock(tx, { itemId: r.itemId, delta: -r.delta, reason: "counted", partId: r.partId }, ctx);
   return rows.length;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { aiReviewCheck, aiSuggestLoads, saveCheckLimits, saveDesignCheck, savePartWeight, setFindingIgnored, setOverlapIgnored } from "@/app/(app)/design-check-actions";
 import { plateOf, type Plate } from "@/lib/check/plates";
 import { DEFAULT_MATERIAL, materialOf } from "@/lib/check/stress";
@@ -87,8 +87,14 @@ export function DesignCheck({
   const ignored = useMemo(() => new Set(data?.ignored ?? []), [data]);
   const sysName = useMemo(() => new Map(systems.map((s) => [s.id, s.name])), [systems]);
 
+  // Exploded or moved parts would be measured where they are now and saved for the team and MCP:
+  // the check runs on the CAD places only.
+  const onMotion = useCallback((cb: () => void) => (tools ? tools.onMotion(cb) : () => {}), [tools]);
+  const moved = useSyncExternalStore(onMotion, () => tools?.motionNow().moved ?? false, () => false);
+
   const run = async () => {
     if (!tools || !model || !data || running) return;
+    if (tools.motionNow().moved) return toast("Put the parts back first (Exploded view → Reset): the check measures the CAD places.", true);
     setRunning({ step: "Waiting for the 3D model", done: 0, total: 1 });
     try {
       await tools.whenLoaded();
@@ -187,10 +193,11 @@ Likely fix: ${ai.fixes[id]}` : text);
             <>
               <div className="flex flex-wrap items-center gap-2">
                 {canCheck && (
-                  <button className="btn-primary h-9 px-3 active:scale-[0.98] pointer-coarse:min-h-10" disabled={!tools || !model || !!running} onClick={run}>
+                  <button className="btn-primary h-9 px-3 active:scale-[0.98] pointer-coarse:min-h-10" disabled={!tools || !model || !!running || moved} onClick={run} title={moved ? "Parts are exploded or moved: reset them to run the check" : undefined}>
                     {running ? "Checking…" : results ? "Run again" : "Run the check"}
                   </button>
                 )}
+                {canCheck && moved && !running && <span className="text-xs text-amber-600 dark:text-amber-400">Parts are exploded or moved: reset them to run the check.</span>}
                 {canManage && (
                   <button className="btn h-9 px-3 active:scale-[0.98] pointer-coarse:min-h-10" onClick={() => setLimitsOpen(true)}>
                     Limits

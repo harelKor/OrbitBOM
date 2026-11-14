@@ -14,7 +14,7 @@ import {
   neededFor,
   type NeedView,
 } from "@/lib/inventory/season";
-import { formatStock } from "@/lib/inventory/stock";
+import { formatStock, formatStockExact } from "@/lib/inventory/stock";
 import {
   CartButton,
   CountBox,
@@ -272,8 +272,9 @@ function LocationCell({
 // Needed for Season, typed in the row. Blank or 0 clears it; saves on Enter or leaving the box.
 function SeasonCell({ item }: { item: Item }) {
   const work = useCan("work");
+  // The exact amount ("2 ¾"), which the box can read back; "~3" would fail to save.
   const current = hasSeasonNeed(item)
-    ? formatStock(item.seasonNeed!, item.sheet)
+    ? formatStockExact(item.seasonNeed!, item.sheet)
     : "";
   const [text, setText] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);

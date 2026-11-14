@@ -122,6 +122,8 @@ export function ModelCanvas({
     locatedRef.current = onLocated;
   }, [onLocated]);
   const [error, setError] = useState<string | null>(null);
+  // Some files didn't load: "N failed · Retry" over the view, the rest of the model shown.
+  const [partial, setPartial] = useState<{ failed: number; retry: () => void } | null>(null);
   const [cube, setCube] = useState<SceneTools | null>(null); // the view cube's tools, once loaded
   const [isolatedKeys, setIsolatedKeys] = useState<string[] | null>(null); // for the ghost slider
   // The section lives in the viewer (its 3D handle, Shift+X and the menus change it); its panel
@@ -153,6 +155,7 @@ export function ModelCanvas({
       },
       located: (found) => locatedRef.current(found),
       failed: () => setError("The 3D model couldn't load. Try reloading the page."),
+      partial: (failed, retry) => setPartial(failed ? { failed, retry } : null),
       menu: (at) => setMenuAt({ at, tools: viewer.tools, hideCopy: viewer.hideCopy }),
       isolated: (keys) => {
         setIsolatedKeys(keys);
@@ -225,6 +228,25 @@ export function ModelCanvas({
       )}
       {cube && motion && (motion.panel || motion.moving || motion.moved) && <MotionPanel view={motion} tools={cube} />}
       {error && <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">{error}</div>}
+      {partial && !error && !progress && (
+        <div className="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border border-line bg-surface/95 px-3 py-1 text-xs shadow-sm backdrop-blur" role="status">
+          <span className="text-fg-2 tabular-nums">
+            {partial.failed} {partial.failed === 1 ? "file" : "files"} failed
+          </span>
+          <span className="text-faint">·</span>
+          <button
+            type="button"
+            onClick={() => {
+              const { retry } = partial;
+              setPartial(null);
+              retry();
+            }}
+            className="press font-semibold text-accent hover:underline active:scale-[0.98] pointer-coarse:min-h-9"
+          >
+            Retry
+          </button>
+        </div>
+      )}
       {gone.length > 0 && !onHidden && (
         <div
           onClick={(e) => e.stopPropagation()}

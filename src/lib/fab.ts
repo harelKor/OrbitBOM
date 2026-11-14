@@ -2,7 +2,7 @@
 // being made.
 // "In Process" covers every status between Released and the done statuses (plan conflict 5).
 
-import { areaOf, factoryOf, printerOf, type FabArea } from "@/config/machines";
+import { areaOf, areaOfMachine, factoryOf, printerOf, type FabArea } from "@/config/machines";
 import type { StatusName } from "@/config/statuses";
 import { computeStatus, isDone, type StatusInput } from "@/lib/status";
 
@@ -62,4 +62,48 @@ export const FACTORY_IN_STOCK_DAYS = 30;
 export function fabBatchName(machineName: string, date = new Date()) {
   const day = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "numeric", timeZone: "Asia/Jerusalem" }).format(date);
   return `${machineName} ${day}`;
+}
+
+const DONE_KEYS = [
+  { key: "preProcess", done: "donePreprocess" },
+  { key: "process1", done: "doneProcess1" },
+  { key: "process2", done: "doneProcess2" },
+] as const;
+type DoneKey = (typeof DONE_KEYS)[number]["done"];
+
+// To Fab's − / + on a made part (pure, for PartCard and FabListRow). + counts one more at the
+// machine being worked on (the first whose counter hasn't reached the quantity); − takes back the
+// last one counted, and when that would leave nothing counted the part goes back to In process if
+// it was finished, else to Released. A part set to a done status from a menu has its counters at 0
+// (applyStatus): it counts as fully made, so + does nothing and − leaves one fewer at the last
+// machine, instead of + starting it over at In Process 1 (audit 2026-11-14).
+export function fabCounts(part: StatusInput) {
+  const slots = DONE_KEYS.filter((s) => part[s.key]);
+  const finished = isFabFinished(part);
+  const full = Math.max(part.quantity, 1);
+  const progress = part.donePreprocess + part.doneProcess1 + part.doneProcess2;
+  const allMade = finished && progress === 0;
+  const done = (s: (typeof DONE_KEYS)[number]) => (allMade ? full : part[s.done]);
+  const current = slots.find((s) => done(s) < full);
+  const counted = slots.slice(0, current ? slots.indexOf(current) + 1 : slots.length).reverse().find((s) => done(s) > 0);
+  const made = current ? done(current) : part.quantity;
+  let takeBack: { add: Partial<Record<DoneKey, number>> } | { counters: Partial<Record<DoneKey, number>> } | { status: StatusName };
+  const left = slots.reduce((n, s) => n + done(s), 0) - 1;
+  if (!counted || left <= 0) takeBack = { status: finished ? IN_PROCESS_STATUS : READY_STATUS };
+  else if (allMade) takeBack = { counters: Object.fromEntries(slots.map((s) => [s.done, s === counted ? full - 1 : full])) };
+  else takeBack = { add: { [counted.done]: -1 } };
+  const addOne = current ? { add: { [current.done]: 1 } } : null;
+  return { slots, current, counted, finished, made, takeBack, addOne };
+}
+
+// Why these parts can't make one fab batch on this machine (Fab and moving parts into a batch
+// share it): every part goes through the machine, and a Shop Fab batch is one material. A Factory
+// Fab or 3D Printing pack goes whole, whatever its parts are made of.
+export function fabBatchRefusal(
+  machine: { id: string; name: string },
+  parts: (Pick<StatusInput, "preProcess" | "process1" | "process2"> & { material: string | null })[],
+): string | null {
+  if (parts.some((p) => !machinesOf(p).includes(machine.id))) return `Every part in the fab must go through ${machine.name}.`;
+  if (!areaOfMachine(machine.id) && new Set(parts.map((p) => p.material ?? "")).size > 1) return "A fab can only hold parts of one material.";
+  return null;
 }

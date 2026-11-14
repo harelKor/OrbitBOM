@@ -9,7 +9,7 @@ import { STATUSES } from "@/config/statuses";
 import { MAP_H, MAP_W } from "@/config/workshopMap";
 import { requireCapability } from "@/lib/mode";
 import { isUuid } from "@/lib/uuid";
-import { ZONE_COLORS, nextSpotName, nextZoneName, type MapPoint, type SpotKind } from "@/lib/inventory/places";
+import { ZONE_COLORS, nextSpotName, nextZoneName, placeInUseMessage, type MapPoint, type SpotKind } from "@/lib/inventory/places";
 import { StorageNotConfiguredError, deleteObject, objectExists, presignUpload } from "@/lib/storage/r2";
 
 const { inventoryLocations, inventoryItems, inventoryGroups, inventoryCategories, systems } = schema;
@@ -129,11 +129,23 @@ async function release(ids: string[], to: string | null) {
   });
 }
 
+// A place that still holds items (or item groups) isn't deleted: its items would lose their place
+// with no history and no undo (like deleteCategory, the member moves them first).
+async function stillHolds(ids: string[], what: string): Promise<string | null> {
+  const [[items], [groups]] = await Promise.all([
+    db.select({ n: sql<number>`count(*)::int` }).from(inventoryItems).where(inArray(inventoryItems.locationId, ids)),
+    db.select({ n: sql<number>`count(*)::int` }).from(inventoryGroups).where(inArray(inventoryGroups.locationId, ids)),
+  ]);
+  return placeInUseMessage(what, items.n, groups.n);
+}
+
 export async function deleteZone(id: string): Promise<MapResult> {
   await requireCapability("manage");
   const z0 = await zone(id);
   if (!z0) return {};
   const spots = await db.select({ id: inventoryLocations.id }).from(inventoryLocations).where(eq(inventoryLocations.parentId, id));
+  const held = await stillHolds([id, ...spots.map((s) => s.id)], "This zone");
+  if (held) return { error: held };
   await release([id, ...spots.map((s) => s.id)], null);
   if (z0.imageKey && !z0.imageKey.startsWith("/")) await deleteObject(z0.imageKey).catch(() => {});
   refresh();
@@ -168,12 +180,15 @@ export async function updateSpot(id: string, patch: { x?: number; y?: number; ki
   return {};
 }
 
-// A deleted drawer's items stay in its zone.
+// Only an empty drawer is deleted; what else points at it (category defaults, system drawers)
+// moves up to its zone.
 export async function deleteSpot(id: string): Promise<MapResult> {
   await requireCapability("manage");
   if (!isUuid(id)) return {};
   const [row] = await db.select().from(inventoryLocations).where(eq(inventoryLocations.id, id));
   if (!row?.parentId) return {};
+  const held = await stillHolds([id], "This spot");
+  if (held) return { error: held };
   await release([id], row.parentId);
   refresh();
   return {};

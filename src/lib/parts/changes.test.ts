@@ -52,6 +52,8 @@ describe("planPartUpdate", () => {
     expect(plan.history).toEqual([
       { field: "material", oldValue: "3mm 6061-T6", newValue: "2mm 6061-T6" },
       { field: "note", oldValue: null, newValue: "deburr" },
+      // Recorded too, so undoing the edit gives the field back to Onshape's sync.
+      { field: "overriddenFields", oldValue: [], newValue: ["material"] },
     ]);
   });
 

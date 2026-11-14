@@ -1,7 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { gunzipSync } from "node:zlib";
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { partKey } from "@/lib/model/assembly";
 import { builtStudios } from "@/lib/model/build";
@@ -456,7 +456,8 @@ export async function listAiLogs(limit = 100): Promise<AiLog[]> {
         .innerJoin(parts, eq(parts.id, partHistory.partId))
         .innerJoin(systems, eq(systems.id, parts.systemId))
         .innerJoin(schema.robots, eq(schema.robots.id, systems.robotId))
-        .where(inArray(partHistory.batchId, batchIds))
+        // overriddenFields is recorded with the edit that set it (undo needs it), not shown as a change.
+        .where(and(inArray(partHistory.batchId, batchIds), ne(partHistory.field, "overriddenFields")))
         .orderBy(asc(partHistory.at))
     : [];
   const { inventoryItemHistory, inventoryMoves, inventoryItems, inventoryReviews } = schema;
@@ -669,12 +670,11 @@ export async function revertAiBatch(batchId: string, memberId: string, via: "ui"
   const plan = await planUndo(batchId);
   const reverts = plan?.reverts ?? [];
   const undoBatch = randomUUID();
-  const visit = via === "ui" ? await currentVisit() : null;
   const ctx = { memberId, via, batchId: undoBatch } as const;
   const result = await db.transaction(async (tx) => {
     const logs = await tx.select({ revertedAt: aiLogs.revertedAt }).from(aiLogs).where(eq(aiLogs.batchId, batchId)).for("update");
     if (logs.some((l) => l.revertedAt)) return null;
-    const { kept: late } = await applyUndoIn(tx, reverts, { memberId, via, batchId: undoBatch, visit });
+    const { kept: late } = await applyUndoIn(tx, reverts, { memberId, via, batchId: undoBatch });
     // Deleting the items it created takes their stock moves with them, so they're not reversed twice.
     const inventory = await revertInventoryBatch(tx, batchId, ctx);
     const stock = await undoMoves(tx, batchId, ctx);

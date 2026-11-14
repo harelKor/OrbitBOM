@@ -1,4 +1,4 @@
-import { densityOf, GUESS_DENSITY, PRINTED_SHARE } from "./density";
+import { densityOf, GUESS_DENSITY, PRINTED_GUESS_DENSITY, PRINTED_SHARE } from "./density";
 import type { WeightPart, WeightResult, WeightSource } from "./types";
 
 // A closed mesh's volume (the sum of the signed tetrahedra from the origin), in the mesh's units
@@ -29,7 +29,7 @@ export function weighOne(volumeCm3: number, facts: PartFacts | undefined): { g: 
   if (facts?.setG != null) return { g: facts.setG, source: "set", material: facts.material ?? facts.onshapeMaterial };
   const material = facts?.onshapeMaterial ?? facts?.material ?? null;
   const d = densityOf(facts?.onshapeMaterial, facts?.material);
-  if (d == null) return { g: volumeCm3 * GUESS_DENSITY, source: "guess", material };
+  if (d == null) return { g: volumeCm3 * (facts?.printed ? PRINTED_GUESS_DENSITY * PRINTED_SHARE : GUESS_DENSITY), source: "guess", material };
   if (facts?.printed) return { g: volumeCm3 * d * PRINTED_SHARE, source: "printed", material };
   return { g: volumeCm3 * d, source: "material", material };
 }

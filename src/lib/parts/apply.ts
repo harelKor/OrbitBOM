@@ -33,6 +33,9 @@ type Ctx = {
   onlyIf?: (row: typeof parts.$inferSelect) => boolean;
   // The caller's transaction, so its own writes and these changes save or fail together.
   tx?: Tx;
+  // Plans each locked row instead of planPartUpdate (undo writes stored values back as they were,
+  // without the status rules), so the side effects below still follow the change.
+  plan?: (row: typeof parts.$inferSelect) => Plan;
 };
 
 // Applies the same changes to each part in one transaction and records every field change in
@@ -82,7 +85,7 @@ export async function applyEachPartChanges(
       const own = byId.get(row.id)!;
       // Linking an item sets the part's type from the item's group; what the edit says itself wins.
       const extra = own.inventoryItemId && row.classification !== "external" ? fromItem.get(own.inventoryItemId) : undefined;
-      const plan = planPartUpdate(row, extra ? { ...extra, ...own } : own, ctx.via);
+      const plan = ctx.plan ? ctx.plan(row) : planPartUpdate(row, extra ? { ...extra, ...own } : own, ctx.via);
       const { set, history } = plan;
       if (!history.length) continue;
       changed++;

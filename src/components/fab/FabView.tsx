@@ -101,7 +101,8 @@ export function FabView({
     const undo = postChecked.has(p.id);
     const need = Math.max(p.quantity, 1);
     markPost(p.id, !undo);
-    save([p.id], undo ? { status: POST_PROCESSING, postDone: Math.min(p.postDone, need - 1) } : { status: FINISHED_STATUS, postDone: need });
+    // Steps from the saved count (clamped to the amount there), never this page's copy of it.
+    save([p.id], undo ? { status: POST_PROCESSING, add: { postDone: -1 } } : { status: FINISHED_STATUS, add: { postDone: Math.min(need, 1000) } });
   };
   // − / + count the pieces post-processed; the part leaves Post Processing only once all are done.
   const countPost = (p: CardPart, n: number) => {

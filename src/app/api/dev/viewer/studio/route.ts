@@ -5,8 +5,16 @@ import { sandboxStudio } from "@/lib/model/sandbox";
 
 // The local 3D sandbox's one Part Studio file, gzipped like the real ones in R2 (the viewer
 // unzips it itself, so no Content-Encoding). Development only.
-export function GET() {
+// ?fail=<id>: that file fails the first time it's asked for (the sandbox's ?fail=1, to check a
+// failed file is skipped, counted and loaded again by Retry).
+const failedOnce = new Set<string>();
+export function GET(request: Request) {
   if (process.env.NODE_ENV === "production") return new NextResponse(null, { status: 404 });
+  const fail = new URL(request.url).searchParams.get("fail");
+  if (fail && !failedOnce.has(fail)) {
+    failedOnce.add(fail);
+    return new NextResponse("Pretend download failure.", { status: 503 });
+  }
   const body = new Uint8Array(gzipSync(encodeMeshes(sandboxStudio())));
   return new NextResponse(body, { headers: { "Content-Type": "application/octet-stream", "Cache-Control": "no-store" } });
 }

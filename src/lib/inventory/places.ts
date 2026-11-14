@@ -106,6 +106,14 @@ export function pointInPolygon(x: number, y: number, pts: MapPoint[]) {
   return inside;
 }
 
+// Why a zone or spot can't be deleted yet, or null when nothing is in it.
+export function placeInUseMessage(what: string, items: number, groups: number): string | null {
+  const parts = [items && `${items} item${items === 1 ? "" : "s"}`, groups && `${groups} item group${groups === 1 ? "" : "s"}`].filter(Boolean);
+  if (!parts.length) return null;
+  const them = items + groups === 1 ? "it" : "them";
+  return `${what} still holds ${parts.join(" and ")}. Move ${them} to another place first.`;
+}
+
 // A new spot's hidden name: "<zone> · Drawer 3", the first number not taken.
 export function nextSpotName(zone: Place, kind: SpotKind, places: Place[]) {
   const taken = new Set(places.map((p) => p.name.toLowerCase()));

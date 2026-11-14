@@ -4,7 +4,7 @@ import { toast } from "@/components/ui/Toaster";
 import { askConfirm } from "@/components/ui/useConfirm";
 import { useState, useTransition } from "react";
 import { getMachine } from "@/config/machines";
-import { IN_PROCESS_STATUS, READY_STATUS, fabStage, isFabFinished } from "@/lib/fab";
+import { fabCounts, fabStage } from "@/lib/fab";
 import { deleteManualPart, unmergeParts } from "@/app/(app)/parts-actions";
 import { useCan, usePermissions } from "@/components/shell/ModeContext";
 import { computeStatus, partStatusLabel } from "@/lib/status";
@@ -95,7 +95,7 @@ function MadePartCard({
   // Edit: name, type and the manual part menu. Work (any team): status, amount, material, counters.
   const { canManage: edit, canWork: work, canClassify } = usePermissions();
   const { versions } = useBom();
-  const { machines, current, counted, finished, takeBack, addOne } = fabSteps(part, save);
+  const { machines, current, counted, finished, made, takeBack, addOne } = fabSteps(part, save);
   const showCounter = !!current && part.classification !== "cots" && fabStage(part) !== null;
   const fabControls = fabCounter && work && part.classification !== "cots" && machines.length > 0;
   const format = cadFormat(part);
@@ -263,7 +263,7 @@ function MadePartCard({
         )}
       </div>
       {fabCounter ? (
-        <FabFooter part={part} save={save} current={current ?? machines.at(-1)} editStatus={fabStatusEditable && work} />
+        <FabFooter part={part} save={save} current={current ?? machines.at(-1)} made={made} editStatus={fabStatusEditable && work} />
       ) : (
         <div className="flex min-w-0 flex-col gap-1.5 px-2.5 py-2">
           <div className="flex min-w-0 items-center gap-1">
@@ -295,28 +295,23 @@ function MadePartCard({
 // To Fab's − / + on a made part: + counts one more at the machine being worked on (the first slot
 // whose done counter hasn't reached the quantity) and − takes back the last one counted. When −
 // would leave nothing counted, the part goes back to In process if it was finished, else to Released.
+// The rules live in fabCounts (src/lib/fab.ts); a finished part with nothing counted is fully made.
 export function fabSteps(part: CardPart, save: SaveFn) {
+  const c = fabCounts(part);
+  const slot = (k: { key: string } | undefined) => SLOTS.find((s) => s.key === k?.key);
   const machines = SLOTS.filter((s) => part[s.key]);
-  const current = machines.find((s) => part[s.done] < Math.max(part.quantity, 1));
-  const counted = machines.slice(0, current ? machines.indexOf(current) + 1 : machines.length).reverse().find((s) => part[s.done] > 0);
-  const finished = isFabFinished(part);
-  const takeBack = () => {
-    const left = part.donePreprocess + part.doneProcess1 + part.doneProcess2 - 1;
-    if (counted && left > 0) save({ add: { [counted.done]: -1 } });
-    else save({ status: finished ? IN_PROCESS_STATUS : READY_STATUS });
-  };
-  const addOne = () => current && save({ add: { [current.done]: 1 } });
-  return { machines, current, counted, finished, takeBack, addOne };
+  const takeBack = () => save("counters" in c.takeBack ? c.takeBack.counters : c.takeBack);
+  const addOne = () => c.addOne && save(c.addOne);
+  return { machines, current: slot(c.current), counted: slot(c.counted), finished: c.finished, made: c.made, takeBack, addOne };
 }
 
 // To Fab's rows: the status (its own menu inside a batch, else read-only) and how many are made of
 // the amount, then the material and the machine it's at.
-function FabFooter({ part, save, current, editStatus }: { part: CardPart; save: SaveFn; current: (typeof SLOTS)[number] | undefined; editStatus: boolean }) {
+function FabFooter({ part, save, current, made, editStatus }: { part: CardPart; save: SaveFn; current: (typeof SLOTS)[number] | undefined; made: number; editStatus: boolean }) {
   const { inventory } = useBom();
   const linked = part.inventoryItemId ? inventory.find((i) => i.id === part.inventoryItemId) : undefined;
   const material = linked?.name ?? part.material;
   const machine = current ? (getMachine(part[current.key]!)?.name ?? part[current.key]) : null;
-  const made = current ? part[current.done] : part.quantity;
   return (
     <div className="flex min-w-0 flex-col gap-1.5 px-2.5 py-2">
       {/* The part's name always shows: a pale plate on the pale well can look like an empty card. */}

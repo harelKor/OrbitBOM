@@ -34,7 +34,7 @@ export function Sandbox() {
   useEffect(() => {
     // ?big=1: the big robot for the loading check (plan/cad-3d-viewer.md S2).
     const sp = new URLSearchParams(window.location.search);
-    const q = new URLSearchParams({ ...(sp.get("big") === "1" ? { big: "1" } : {}), ...(sp.get("sketches") === "1" ? { sketches: "1" } : {}) }).toString();
+    const q = new URLSearchParams({ ...(sp.get("big") === "1" ? { big: "1" } : {}), ...(sp.get("sketches") === "1" ? { sketches: "1" } : {}), ...(sp.get("fail") === "1" ? { fail: "1" } : {}) }).toString();
     fetch(`/api/dev/viewer${q ? `?${q}` : ""}`)
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then(setData)

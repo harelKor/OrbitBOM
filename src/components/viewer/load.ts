@@ -59,8 +59,10 @@ function workerCount(files: number) {
 }
 const newWorker = () => new Worker(new URL("./meshWorker.ts", import.meta.url), { type: "module" });
 
+// Every file came in or failed (`failed`: their studio indexes), or the load was cancelled.
+export type Loaded = { cancelled: boolean; failed: number[] };
 export type Loading = {
-  done: Promise<boolean>; // every file drawn (false: cancelled); rejects when a file fails
+  done: Promise<Loaded>; // never rejects: a failed file is listed in `failed`
   dispose: () => void; // stops the workers
 };
 
@@ -147,15 +149,19 @@ export function loadModel(
   };
 
   const workers: Worker[] = [];
-  const done$ = new Promise<boolean>((resolve, reject) => {
-    if (!jobs.length) return resolve(true);
+  // A file that fails (a flaky download on shop Wi-Fi, a worker that dies) is counted and skipped:
+  // the rest of the model still loads, and the page offers Retry for the failed ones.
+  const failed: number[] = [];
+  const done$ = new Promise<Loaded>((resolve) => {
+    if (!jobs.length) return resolve({ cancelled: false, failed });
     const queue = [...jobs];
     const ownerOf = new Map<number, Worker>();
+    const working = new Map<Worker, number>(); // the studio each worker is on
     let finished = false;
     const finish = (ok: boolean) => {
       if (finished) return;
       finished = true;
-      resolve(ok);
+      resolve({ cancelled: !ok, failed });
       // Then, quietly: topology for measuring, and the cache clean-up; each worker stops once
       // it has answered all of it.
       if (!ok) return;
@@ -164,27 +170,43 @@ export function loadModel(
         pending.set(w, (pending.get(w) ?? 0) + 1);
       }
       const keys = jobs.flatMap((j) => (j.key ? [j.key] : []));
-      if (keys.length) {
-        workers[0].postMessage({ kind: "sweep", keys } satisfies WorkerJob);
-        pending.set(workers[0], (pending.get(workers[0]) ?? 0) + 1);
+      const sweeper = workers.find((w) => !dead.has(w));
+      if (keys.length && sweeper) {
+        sweeper.postMessage({ kind: "sweep", keys } satisfies WorkerJob);
+        pending.set(sweeper, (pending.get(sweeper) ?? 0) + 1);
       }
       workers.forEach(settle);
     };
     const pending = new Map<Worker, number>();
+    const dead = new Set<Worker>();
     const settle = (w: Worker) => !pending.get(w) && w.terminate();
     const next = (w: Worker) => {
       const job = queue.shift();
       if (!job) return;
-      ownerOf.set(job.s, w);
+      working.set(w, job.s);
       w.postMessage({ kind: "studio", id: job.s, url: job.url, key: job.key } satisfies WorkerJob);
     };
-    for (let i = 0; i < workerCount(jobs.length); i++) {
+    const counted = () => {
+      on.progress(++done, total);
+      if (done === total) finish(true);
+    };
+    const fail = (s: number) => {
+      failed.push(s);
+      counted();
+    };
+    const spawn = () => {
       const w = newWorker();
       workers.push(w);
-      w.onerror = () => {
+      w.onerror = (e) => {
+        e.preventDefault?.();
+        dead.add(w);
+        w.terminate();
         if (finished) return;
-        finished = true;
-        reject(new Error("mesh worker failed"));
+        // Its file counts as failed; a fresh worker carries on with the queue.
+        const s = working.get(w);
+        working.delete(w);
+        if (s !== undefined) fail(s);
+        if (!finished && queue.length) next(spawn());
       };
       w.onmessage = (e: MessageEvent<WorkerReply>) => {
         const msg = e.data;
@@ -195,17 +217,18 @@ export function loadModel(
         }
         if (finished) return;
         if (cancelled()) return finish(false);
-        if (msg.kind === "failed") {
-          finished = true;
-          return reject(new Error(msg.error));
+        working.delete(w);
+        if (msg.kind === "failed") fail(msg.id);
+        else {
+          ownerOf.set(msg.id, w);
+          draw(msg.id, msg.shapes);
+          counted();
         }
-        draw(msg.id, msg.shapes);
-        on.progress(++done, total);
-        if (done === total) finish(true);
-        else next(w);
+        if (!finished) next(w);
       };
-      next(w);
-    }
+      return w;
+    };
+    for (let i = 0; i < workerCount(jobs.length); i++) next(spawn());
   });
   return {
     done: done$,

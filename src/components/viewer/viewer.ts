@@ -29,6 +29,8 @@ export type ViewerHost = {
   ready: (tools: SceneTools) => void; // the first parts are drawn (the rest follow as they arrive)
   located?: (found: boolean) => void; // Locate's answer changed once the later parts arrived
   failed: () => void;
+  // Some mesh files didn't load (the rest did): how many, and a Retry for just those. 0 once a retry got them all.
+  partial?: (failed: number, retry: () => void) => void;
   menu: (m: MenuTarget) => void; // right-click / long press: the context menu
   isolated: (keys: string[] | null) => void;
   hover?: (key: string | null) => void; // the part under the mouse (mouse only)
@@ -179,30 +181,29 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
     if (!framed) camera.fit((framed = visibility.shownBox()));
     host.ready(tools);
   };
-  const loader = loadModel(
-    stage,
-    model,
-    looks,
-    { meshes, geometries },
-    {
-      progress: host.progress,
-      added: () =>
-        stage.batch(() => {
-          visibility.hideGroups(groupsHidden); // also redraws the selection
-          if (painted) {
-            const was = located;
-            quietFit = was;
-            located = painter.paint(...painted);
-            visibility.repaint();
-            quietFit = false;
-            if (located && !was) host.located?.(true);
-          }
-          if (!shown) firstDraw();
-          stage.render();
-        }),
-    },
-    () => disposed,
-  );
+  const loaders: { dispose: () => void }[] = [];
+  const load = (only?: number[]) => {
+    // A retry asks again only for the files that failed; the others are already drawn.
+    const part = only ? { ...model, studios: model.studios.map((u, i) => (only.includes(i) ? u : null)) } : model;
+    const loader = loadModel(stage, part, looks, { meshes, geometries }, { progress: host.progress, added }, () => disposed);
+    loaders.push(loader);
+    return loader.done;
+  };
+  const added = () =>
+    stage.batch(() => {
+      visibility.hideGroups(groupsHidden); // also redraws the selection
+      if (painted) {
+        const was = located;
+        quietFit = was;
+        located = painter.paint(...painted);
+        visibility.repaint();
+        quietFit = false;
+        if (located && !was) host.located?.(true);
+      }
+      if (!shown) firstDraw();
+      stage.render();
+    });
+  const first = load();
   // Geometry sketches (sketches.ts): small files, drawn when they arrive; off at first on the
   // Final model, where Shift+H shows them (Harel, 2026-11-12).
   if (model.sketchesHidden) visibility.tools.showSketches(false);
@@ -225,16 +226,30 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
     visibility.tools.showSketches(!visibility.tools.sketchesShown());
     return true;
   });
-  Promise.all([loader.done, sketchLoad.done])
-    .then(([ok]) => {
-      if (!ok) return;
+  // Settles once every file came in or failed, so the Design check and saved views never wait
+  // forever on one bad download (audit 2026-11-14).
+  const settled = (failed: number[]) => {
+    if (disposed) return;
+    if (failed.length) host.partial?.(failed.length, () => void load(failed).then((r) => !r.cancelled && settled(r.failed)));
+    else host.partial?.(0, () => {});
+  };
+  Promise.all([first, sketchLoad.done.catch(() => true)])
+    .then(([{ cancelled, failed }]) => {
+      if (cancelled || disposed) return;
       loading = false;
       loadedAll();
+      // Nothing at all came in: the whole model failed.
+      if (failed.length && failed.length === model.studios.filter(Boolean).length) return host.failed();
       if (!shown) firstDraw();
       else if (!touched && framed && refitNeeded(framed, visibility.shownBox())) camera.fit(visibility.shownBox());
       if (painted?.[2] && !located) host.located?.(false);
+      settled(failed);
     })
-    .catch(() => !disposed && host.failed());
+    .catch(() => {
+      if (disposed) return;
+      loadedAll();
+      host.failed();
+    });
 
   // Phones draw at a lower pixel ratio while the view moves, sharp again when it stops.
   const sharp = stage.renderer.getPixelRatio();
@@ -260,7 +275,7 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
     tools,
     dispose: () => {
       disposed = true;
-      loader.dispose();
+      loaders.forEach((l) => l.dispose());
       sketchLoad.dispose();
       offSketchKeys();
       camera.dispose();

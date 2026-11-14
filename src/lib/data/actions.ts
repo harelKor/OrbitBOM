@@ -48,6 +48,7 @@ const FIELD_NAMES: Record<string, string> = {
   description: "Description",
   estMinutes: "Time",
   actualMinutes: "Time",
+  created: "Added",
 };
 export const fieldName = (f: string) => FIELD_NAMES[f] ?? f.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase());
 

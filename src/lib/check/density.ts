@@ -45,3 +45,6 @@ export function densityOf(...names: (string | null | undefined)[]): number | nul
 // number on purpose; a part whose weight matters gets its weight set by hand.
 export const PRINTED_SHARE = 0.6;
 export const GUESS_DENSITY = 2.7; // no material known: counted as aluminium, and listed to check
+// A printed part with no known material: printed in plastic (PLA's density), not aluminium,
+// which weighed it about 3.6 times too heavy (audit 2026-11-14). Still listed to check.
+export const PRINTED_GUESS_DENSITY = 1.24;

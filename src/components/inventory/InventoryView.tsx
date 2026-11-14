@@ -45,6 +45,7 @@ import {
 import { matchesSearch } from "@/lib/inventory/searchWords";
 import { keepPicks, matchesPicks, specGroups, type SpecGroup, type SpecPicks } from "@/lib/inventory/specFilters";
 import { countPieces, stepStock } from "@/lib/inventory/stock";
+import { safeAction } from "@/lib/safeAction";
 import { AddBox, haloItem, type AddBoxHandle } from "./AddBox";
 import { ImportDialog } from "./ImportDialog";
 import { RecentActions } from "@/components/actions/RecentActions";
@@ -186,7 +187,8 @@ export function InventoryView({
     startTransition(async () => {
       setError(null);
       addOptimistic({ id, delta, size });
-      const result = await adjustStock(id, delta, size);
+      // A failed save or an offline tap says so; the optimistic step drops with the transition.
+      const result = await safeAction(() => adjustStock(id, delta, size));
       if (result.error) setError(result.error);
     });
 
@@ -194,7 +196,7 @@ export function InventoryView({
     startTransition(async () => {
       setError(null);
       addOptimistic({ id, count: amount });
-      const result = await countStock(id, amount);
+      const result = await safeAction(() => countStock(id, amount));
       if (result.error) setError(result.error);
     });
 
@@ -475,7 +477,7 @@ export function InventoryView({
     };
     startTransition(async () => {
       setError(null);
-      done(await bulkMoveItems(ids, target));
+      done(await safeAction(() => bulkMoveItems(ids, target)));
     });
   };
   const confirmDelete = async () => {
@@ -497,7 +499,7 @@ export function InventoryView({
       return;
     startTransition(async () => {
       setError(null);
-      done(await bulkDeleteItems(ids));
+      done(await safeAction(() => bulkDeleteItems(ids)));
     });
   };
 

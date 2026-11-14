@@ -80,6 +80,10 @@ export function ReviewScreen({
 }) {
   const kind: ModelKind = models?.kind ?? "final";
   const [model, setModel] = useState<ViewerModel | null | undefined>(builtAt ? undefined : null);
+  // The model file couldn't be fetched (offline, a server error): not the same as "not exported
+  // yet", which would send the CAD Team to spend Onshape calls on a model that exists.
+  const [fetchFailed, setFetchFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [colors, setColors] = useState<Colors>("cad");
   const [selected, setSelected] = useState<string | null>(null);
   const [focus, setFocus] = useState<string | null>(null);
@@ -147,13 +151,17 @@ export function ReviewScreen({
     if (!builtAt) return;
     let cancelled = false;
     fetch(modelUrl)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d: { model: ViewerModel | null } | null) => !cancelled && setModel(d?.model ?? null))
-      .catch(() => !cancelled && setModel(null));
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((d: { model: ViewerModel | null }) => {
+        if (cancelled) return;
+        setModel(d?.model ?? null);
+        setFetchFailed(false);
+      })
+      .catch(() => !cancelled && setFetchFailed(true));
     return () => {
       cancelled = true;
     };
-  }, [modelUrl, builtAt]);
+  }, [modelUrl, builtAt, attempt]);
 
   const partByKey = useMemo(() => new Map(parts.map((p) => [p.key, p])), [parts]);
   const checkParts = check?.parts ?? parts;
@@ -478,7 +486,21 @@ export function ReviewScreen({
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">
-            {model === undefined
+            {fetchFailed ? (
+              <span className="flex flex-col items-center gap-2">
+                The 3D model couldn&apos;t load.
+                <button
+                  type="button"
+                  className="btn min-h-9 active:scale-[0.98]"
+                  onClick={() => {
+                    setFetchFailed(false);
+                    setAttempt((n) => n + 1);
+                  }}
+                >
+                  Retry
+                </button>
+              </span>
+            ) : model === undefined
               ? "Loading the 3D view…"
               : kind === "basepart"
                 ? "The Basepart shows here once it's exported (Update 3D view in the Onshape panel, or Update 3D model on the robot page)."

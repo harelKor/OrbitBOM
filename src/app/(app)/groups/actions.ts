@@ -8,7 +8,7 @@ import { PRIORITIES } from "@/config/priorities";
 import { STATUSES, type StatusName } from "@/config/statuses";
 import { db, schema } from "@/db";
 import { requireCapability, statusChangeDenied } from "@/lib/mode";
-import { READY_STATUS, READY_STATUSES, fabBatchName, machinesOf } from "@/lib/fab";
+import { READY_STATUS, READY_STATUSES, fabBatchName, fabBatchRefusal } from "@/lib/fab";
 import { analyseMissing } from "@/lib/groups/missing";
 import { applyPartChanges } from "@/lib/parts/apply";
 import { computeStatus } from "@/lib/status";
@@ -267,9 +267,8 @@ export async function createFabBatch(
     .innerJoin(systems, eq(systems.id, parts.systemId))
     .where(and(inArray(parts.id, partIds), eq(systems.robotId, robotId)));
   if (!rows.length) return { error: "Pick parts to batch." };
-  if (rows.some(({ part }) => !machinesOf(part).includes(machine.id))) return { error: `Every part in the fab must go through ${machine.name}.` };
-  // A Factory Fab or 3D Printing pack goes to its factory or printer whole, whatever its parts are made of.
-  if (!areaOfMachine(machine.id) && new Set(rows.map(({ part }) => part.material ?? "")).size > 1) return { error: "A fab can only hold parts of one material." };
+  const refused = fabBatchRefusal(machine, rows.map(({ part }) => part));
+  if (refused) return { error: refused };
 
   const move = status ? rows : rows.filter(({ part }) => !(READY_STATUSES as string[]).includes(computeStatus(part)));
   const denied = move.length ? await statusChangeDenied(move.map(({ part }) => part.id), { status: status ?? READY_STATUS }) : null;
@@ -317,14 +316,40 @@ export async function moveToFabBatch(groupId: string, partIds: string[], fromGro
   if (status && !statusNames.includes(status)) return { error: "Unknown status." };
   const [group] = await db.select().from(partGroups).where(eq(partGroups.id, groupId));
   if (!group) return { error: "Unknown fab." };
+  const machine = group.machine ? getMachine(group.machine) : null;
+  if (!machine) return { error: "That isn't a fab batch." };
   const rows = await robotParts(group.robotId, partIds);
   if (!rows.length) return { error: "Choose parts from this robot." };
   const ids = rows.map((p) => p.id);
+  // The same checks as Fab (createFabBatch): the batch's machine, one material with the parts
+  // already in it, and no part in two fab batches.
+  const already = await db
+    .select({ part: parts })
+    .from(groupMembers)
+    .innerJoin(parts, eq(parts.id, groupMembers.partId))
+    .where(and(eq(groupMembers.groupId, groupId), isNull(parts.removedFromCadAt)));
+  const joining = await db.select().from(parts).where(inArray(parts.id, ids));
+  const refused = fabBatchRefusal(machine, [...joining, ...already.map((r) => r.part).filter((p) => !ids.includes(p.id))]);
+  if (refused) return { error: refused };
   const denied = status ? await statusChangeDenied(ids, { status }) : null;
   if (denied) return { error: denied };
   // The move and the status change save together, so a failure never leaves parts in the new
-  // batch with their old status.
-  await db.transaction(async (tx) => {
+  // batch with their old status. The robot is locked like Fab's, so a part can't land in two batches.
+  const result = await db.transaction(async (tx) => {
+    await tx.select({ id: robots.id }).from(robots).where(eq(robots.id, group.robotId)).for("update");
+    const taken = await tx
+      .select({ partId: groupMembers.partId, name: partGroups.name })
+      .from(groupMembers)
+      .innerJoin(partGroups, eq(partGroups.id, groupMembers.groupId))
+      .where(
+        and(
+          inArray(groupMembers.partId, ids),
+          isNotNull(partGroups.machine),
+          sql`${partGroups.id} not in (${sql.join([groupId, ...(fromGroupId ? [fromGroupId] : [])].map((g) => sql`${g}::uuid`), sql`, `)})`,
+        ),
+      )
+      .limit(1);
+    if (taken.length) return { error: `A part you picked is already in ${taken[0].name}. Refresh and pick again.` };
     if (fromGroupId && fromGroupId !== groupId) {
       await tx.delete(groupMembers).where(and(eq(groupMembers.groupId, fromGroupId), inArray(groupMembers.partId, ids)));
     }
@@ -333,7 +358,9 @@ export async function moveToFabBatch(groupId: string, partIds: string[], fromGro
       .values(rows.map((p) => ({ groupId, partId: p.id, keySnapshot: snapshot(p) })))
       .onConflictDoNothing();
     if (status) await applyPartChanges(ids, { status }, { memberId: member.id, via: "ui", tx });
+    return null;
   });
+  if (result) return result;
   refresh();
   return { message: `Added ${rows.length} part${rows.length === 1 ? "" : "s"} to ${group.name}.` };
 }

@@ -15,6 +15,8 @@ import { useCan, useMode } from "@/components/shell/ModeContext";
 import { pickableStatuses } from "@/components/shell/mode";
 import { Chevron } from "@/components/ui/Chevron";
 import { Icon } from "@/components/ui/Icon";
+import { toast } from "@/components/ui/Toaster";
+import { safeAction } from "@/lib/safeAction";
 import { LocalTime } from "@/components/ui/LocalTime";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { askConfirm } from "@/components/ui/useConfirm";
@@ -136,11 +138,27 @@ export function BatchCard({
   const [layoutOpen, setLayoutOpen] = useState(false);
   const [over, setOver] = useState(false);
   const [madeBy, setMadeBy] = useState(batch.madeBy ?? "");
+  const [priority, setPriority] = useState(batch.priority);
+  // Follow the saved maker and priority when they change from elsewhere (another phone, a refresh).
+  const [saved, setSaved] = useState({ madeBy: batch.madeBy, priority: batch.priority });
+  if (saved.madeBy !== batch.madeBy || saved.priority !== batch.priority) {
+    setSaved({ madeBy: batch.madeBy, priority: batch.priority });
+    setMadeBy(batch.madeBy ?? "");
+    setPriority(batch.priority);
+  }
   const [, startTransition] = useTransition();
+  // A batch detail saved behind the change shown: a failed save puts the saved value back and says why.
+  const saveDetail = (details: Parameters<typeof updateGroup>[1], undo: () => void) =>
+    startTransition(async () => {
+      const r = await safeAction(() => updateGroup(batch.id, details));
+      if (r.error) {
+        undo();
+        toast(r.error, true);
+      }
+    });
   const statuses = [...new Set(members.map((p) => computeStatus(p)))];
   const shared = statuses.length === 1 ? statuses[0] : null;
   const lowest = members.reduce((a, p) => (rank(p) < rank(a) ? p : a), members[0]);
-  const [priority, setPriority] = useState(batch.priority);
   const stage = batchStage(members);
   // A finished batch drops its priority colour.
   const textColor = stage === "finished" ? undefined : priorityColor(priority);
@@ -156,6 +174,9 @@ export function BatchCard({
   // A laser batch (or one whose parts all cut from flat DXFs) downloads them as one zip.
   const dxfZip = batch.machine === "laser" || (members.length > 0 && members.every((p) => ["DXF", "DXF_FLAT"].includes(cadFormat(p) ?? "")));
   const notDone = members.filter((p) => !isDone(p));
+  // "Set status for all" leaves finished parts alone (it would send them back to the machine);
+  // a batch that is all finished takes it on every part.
+  const statusTargets = (notDone.length ? notDone : members).map((p) => p.id);
   // The batch's status as its machine names it; a batch waiting to start is Ready to Fab.
   const label = (status: string) => (stage === "readyToFab" && status === READY_STATUS ? "Ready to Fab" : statusLabel(status, batch.machine));
   const statusOptions = STATUSES.filter((s) => !pickable || pickable.includes(s.name)).map((s) => ({ value: s.name, label: s.name === READY_STATUS ? "Ready to Fab" : statusLabel(s.name, batch.machine), color: s.color }));
@@ -257,7 +278,7 @@ export function BatchCard({
       onClick={(e) => e.stopPropagation()}
       onChange={(e) => {
         setMadeBy(e.target.value);
-        startTransition(() => void updateGroup(batch.id, { madeBy: e.target.value || null }));
+        saveDetail({ madeBy: e.target.value || null }, () => setMadeBy(batch.madeBy ?? ""));
       }}
       aria-label={`Who makes ${what}`}
       title={mine ? "You make this batch" : undefined}
@@ -309,7 +330,7 @@ export function BatchCard({
       area={areaOfMachine(batch.machine) ?? "factory"}
       machine={batch.machine ?? ""}
       count={members.length}
-      onPick={(v) => save(members.map((p) => p.id), { status: v as StatusName })}
+      onPick={(v) => save(statusTargets, { status: v as StatusName })}
     />
   ) : (
     <Popover locked={!edit || mode === "cad"} trigger={<StatusPill status={shared ?? "Mixed"} label={shared ? label(shared) : undefined} size={list ? "sm" : "md"} />}>
@@ -319,7 +340,7 @@ export function BatchCard({
           value={shared}
           placeholder="Set status for all…"
           onPick={(v) => {
-            if (v) save(members.map((p) => p.id), { status: v as StatusName });
+            if (v) save(statusTargets, { status: v as StatusName });
             close();
           }}
         />
@@ -333,7 +354,7 @@ export function BatchCard({
       onChange={(e) => {
         const next = e.target.value as Priority;
         setPriority(next);
-        startTransition(() => void updateGroup(batch.id, { priority: next }));
+        saveDetail({ priority: next }, () => setPriority(batch.priority));
       }}
       aria-label={`Priority of ${what}`}
       className="cursor-pointer rounded-full border border-line-strong bg-surface px-2 py-1 text-xs font-bold pointer-coarse:min-h-9"

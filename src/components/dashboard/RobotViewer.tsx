@@ -66,6 +66,10 @@ export function RobotViewer({
   const [version, setVersion] = useState(builtAt);
   // undefined while loading, null when there is no model to show.
   const [model, setModel] = useState<ViewerModel | null | undefined>(version ? undefined : null);
+  // The model file couldn't be fetched: Retry, not "press Update 3D model" (that spends Onshape
+  // calls on a model that exists).
+  const [fetchFailed, setFetchFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [building, setBuilding] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
   const colorMap = useMemo(() => new Map(parts.map((p) => [p.key, p.color])), [parts]);
@@ -159,17 +163,17 @@ export function RobotViewer({
     if (!version) return;
     let cancelled = false;
     fetch(`/api/robots/${robotId}/model${systemId ? `?system=${systemId}` : ""}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d: { model: ViewerModel | null } | null) => !cancelled && setModel(d?.model ?? null))
-      .catch(() => {
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((d: { model: ViewerModel | null }) => {
         if (cancelled) return;
-        setModel(null);
-        setMessage({ text: "The 3D model couldn't load. Try reloading the page.", error: true });
-      });
+        setModel(d?.model ?? null);
+        setFetchFailed(false);
+      })
+      .catch(() => !cancelled && setFetchFailed(true));
     return () => {
       cancelled = true;
     };
-  }, [robotId, systemId, version]);
+  }, [robotId, systemId, version, attempt]);
 
   const buildRef = useRef(build);
   useEffect(() => {
@@ -308,7 +312,21 @@ export function RobotViewer({
               />
               <div className="absolute inset-0 flex items-center justify-center p-6 text-center">
                 <p className="max-w-72 text-sm text-muted">
-                  {model === undefined
+                  {fetchFailed ? (
+                    <span className="flex flex-col items-center gap-2">
+                      The 3D model couldn&apos;t load.
+                      <button
+                        type="button"
+                        className="btn min-h-9 active:scale-[0.98]"
+                        onClick={() => {
+                          setFetchFailed(false);
+                          setAttempt((n) => n + 1);
+                        }}
+                      >
+                        Retry
+                      </button>
+                    </span>
+                  ) : model === undefined
                     ? "Loading the robot…"
                     : !hasAssembly
                       ? edit

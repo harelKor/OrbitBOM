@@ -22,6 +22,7 @@ import {
   unlinkItemProduct,
 } from "@/app/(app)/inventory/actions";
 import { read } from "@/lib/reads";
+import { safeAction } from "@/lib/safeAction";
 import { textOn } from "@/components/bom/options";
 import { Dialog } from "@/components/Dialog";
 import { Popover } from "@/components/bom/Popover";
@@ -174,7 +175,8 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
     setError(null);
     patchItem(itemId, change);
     startTransition(async () => {
-      const r = await run();
+      // A failed save or an offline tap shows "Not saved" and reloads, dropping the patch.
+      const r = await safeAction(run);
       if (r.error) after(r);
     });
   };
@@ -352,7 +354,7 @@ function SeasonBox({ item, onChange, onError }: { item: Item; onChange: ChangeIt
 // Spread: the item's piece sizes, biggest first. Each row is the real size and its share, − count +
 // (tap the count to type it), ✏ to change the size and ✕ to remove it. A new length or plate size
 // goes in at the bottom.
-function SpreadPanel({ item, onOp }: { item: Item; onOp: (op: PieceOp) => void }) {
+function SpreadPanel({ item, onOp, onStep }: { item: Item; onOp: (op: PieceOp) => void; onStep: (size: string, delta: 1 | -1) => void }) {
   const work = useCan("work");
   const [editing, setEditing] = useState<string | null>(null);
   const base = pieceBase(item.specs, item.name);
@@ -384,11 +386,11 @@ function SpreadPanel({ item, onOp }: { item: Item; onOp: (op: PieceOp) => void }
                 </span>
               )}
               {work && editing !== row.size && (
-                <StepButton step={-1} onClick={() => onOp({ kind: "count", size: row.size, count: row.count - 1 })} disabled={row.count <= 0} label={`One less ${label.primary}`} />
+                <StepButton step={-1} onClick={() => onStep(row.size, -1)} disabled={row.count <= 0} label={`One less ${label.primary}`} />
               )}
               {editing !== row.size && <PieceCount count={row.count} onCount={(c) => onOp({ kind: "count", size: row.size, count: c })} />}
               {work && editing !== row.size && (
-                <StepButton step={1} onClick={() => onOp({ kind: "count", size: row.size, count: row.count + 1 })} label={`One more ${label.primary}`} />
+                <StepButton step={1} onClick={() => onStep(row.size, 1)} label={`One more ${label.primary}`} />
               )}
               {work && base.kind !== "none" && (
                 <button type="button" onClick={() => setEditing(editing === row.size ? null : row.size)} className={icon} aria-label={`Change size ${label.primary}`} title="Change the size">
@@ -681,7 +683,12 @@ function ItemBody({
           </div>
           {item.sheet && spreadOpen && (
             <div className={wide}>
-              <SpreadPanel item={item} onOp={(op) => onChange((i) => applyPieceOp(i, op), () => editItemPieces(item.id, op))} />
+              <SpreadPanel
+                item={item}
+                onOp={(op) => onChange((i) => applyPieceOp(i, op), () => editItemPieces(item.id, op))}
+                // − / + send a step, not the new total, so two phones tapping at once both count.
+                onStep={(size, delta) => onChange((i) => stepStock(i, delta, size), () => adjustStock(item.id, delta, size))}
+              />
             </div>
           )}
           {order && showsOrder(order.info.status) && (

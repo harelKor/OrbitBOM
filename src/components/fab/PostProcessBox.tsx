@@ -51,7 +51,8 @@ export function PostProcessBox({ robotId, parts, inventory, isAdmin, glow = fals
     const undo = kept.has(p.id);
     const need = Math.max(p.quantity, 1);
     keep(p, !undo);
-    save(p.id, undo ? { status: POST_PROCESSING, postDone: Math.min(p.postDone, need - 1) } : { status: FINISHED_STATUS, postDone: need });
+    // Steps from the saved count (clamped to the amount there), never this page's copy of it.
+    save(p.id, undo ? { status: POST_PROCESSING, add: { postDone: -1 } } : { status: FINISHED_STATUS, add: { postDone: Math.min(need, 1000) } });
   };
   const countPost = (p: CardPart, n: number) => {
     const need = Math.max(p.quantity, 1);
