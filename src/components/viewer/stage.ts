@@ -11,6 +11,9 @@ export type Stage = {
   camera: ViewCamera; // one object for both projections, so every module can keep its reference
   studio: THREE.Texture; // CAD mode's environment (paint.ts turns it on)
   render: () => void;
+  // Runs `fn` drawing once at its end instead of at every render() inside it: a part file
+  // arriving repaints, re-hides and re-selects, each of which draws the whole scene.
+  batch: (fn: () => void) => void;
   beforeRender: (() => void)[]; // run before each frame (camera.ts sets the near / far planes there)
   dispose: () => void;
 };
@@ -83,9 +86,27 @@ export function createStage(el: HTMLElement): Stage {
   world.add(root);
 
   const beforeRender: (() => void)[] = [];
+  let held = 0;
+  let wanted = false;
   const render = () => {
+    if (held) {
+      wanted = true;
+      return;
+    }
     for (const f of beforeRender) f();
     renderer.render(world, camera);
+  };
+  const batch = (fn: () => void) => {
+    held++;
+    try {
+      fn();
+    } finally {
+      held--;
+      if (!held && wanted) {
+        wanted = false;
+        render();
+      }
+    }
   };
   const resize = () => {
     const { clientWidth: w, clientHeight: h } = el;
@@ -106,6 +127,7 @@ export function createStage(el: HTMLElement): Stage {
     camera,
     studio,
     render,
+    batch,
     beforeRender,
     dispose: () => {
       observer.disconnect();

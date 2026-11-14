@@ -186,19 +186,20 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
     { meshes, geometries },
     {
       progress: host.progress,
-      added: () => {
-        visibility.hideGroups(groupsHidden); // also redraws the selection
-        if (painted) {
-          const was = located;
-          quietFit = was;
-          located = painter.paint(...painted);
-          visibility.repaint();
-          quietFit = false;
-          if (located && !was) host.located?.(true);
-        }
-        if (!shown) firstDraw();
-        stage.render();
-      },
+      added: () =>
+        stage.batch(() => {
+          visibility.hideGroups(groupsHidden); // also redraws the selection
+          if (painted) {
+            const was = located;
+            quietFit = was;
+            located = painter.paint(...painted);
+            visibility.repaint();
+            quietFit = false;
+            if (located && !was) host.located?.(true);
+          }
+          if (!shown) firstDraw();
+          stage.render();
+        }),
     },
     () => disposed,
   );
@@ -210,11 +211,12 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
     model,
     { meshes, geometries },
     {
-      added: () => {
-        visibility.hideGroups(groupsHidden);
-        if (!shown) firstDraw();
-        stage.render();
-      },
+      added: () =>
+        stage.batch(() => {
+          visibility.hideGroups(groupsHidden);
+          if (!shown) firstDraw();
+          stage.render();
+        }),
     },
     () => disposed,
   );
