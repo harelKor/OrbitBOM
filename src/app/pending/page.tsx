@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { SignOutButton } from "@/components/SignOutButton";
 import { db, schema } from "@/db";
 import { getMember, getUser } from "@/lib/auth";
+import { Notice } from "@/components/ui/Notice";
 
 export default async function PendingPage({
   searchParams,
@@ -28,9 +29,9 @@ export default async function PendingPage({
           {denied ? "Request declined" : "Waiting for approval"}
         </h1>
         {invite === "invalid" && (
-          <p className="mt-3 rounded-md bg-amber-50 p-3 text-sm text-amber-700">
+          <Notice tone="warning" className="mt-3">
             That invite link has expired or was already used.
-          </p>
+          </Notice>
         )}
         <p className="mt-3 text-sm text-fg-2">
           {denied

@@ -34,6 +34,7 @@ import { PartList, PartListRow } from "@/components/bom/PartListRow";
 import { useStoredChoice } from "@/components/ui/useStoredChoice";
 import { formatPrice, useCurrency } from "./currency";
 import { SheetViewport } from "@/components/ui/SheetViewport";
+import { Notice } from "@/components/ui/Notice";
 
 // robotId null: the General section (a card added on the COTS page for no robot).
 export type CotsViewPart = CardPart & { robotId: string | null; robotName: string | null; cotsInStockAt: Date | null; cotsClearedAt: Date | null; category: string };
@@ -565,14 +566,14 @@ export function CotsView({
         )}
       </div>
 
-      {error && <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">Couldn&apos;t save: {error}</p>}
+      {error && <Notice tone="error">Couldn&apos;t save: {error}</Notice>}
       {notice && !error && (
-        <p className="flex items-center gap-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
+        <Notice tone="success" className="flex items-center gap-2">
           <span className="flex-1">{notice}</span>
           <button type="button" className="press" aria-label="Dismiss" onClick={() => setNotice(null)}>
             <Icon name="close" className="h-4 w-4" />
           </button>
-        </p>
+        </Notice>
       )}
 
       {byVendor && vendors.length > 0 && (

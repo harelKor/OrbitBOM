@@ -11,6 +11,7 @@ import { Icon } from "@/components/ui/Icon";
 import { FINISHED_STATUS } from "@/lib/fab";
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { POST_PROCESSING, fabState } from "./fabModel";
+import { Notice } from "@/components/ui/Notice";
 
 // The robot dashboard's Post Process box. A click opens every part in Post Processing in a window,
 // with To Fab's − / + and check, and a To Fab button (Harel, 2026-11-07). `glow`: Build Team,
@@ -94,7 +95,7 @@ export function PostProcessBox({ robotId, parts, inventory, isAdmin, glow = fals
           </Link>
         }
       >
-        {error && <p className="mb-3 rounded-md bg-rose-50 p-3 text-sm text-rose-700">Couldn&apos;t save: {error}</p>}
+        {error && <Notice tone="error" className="mb-3">Couldn&apos;t save: {error}</Notice>}
         {optimistic.length === 0 ? (
           <p className="text-sm text-muted">No parts are waiting for post-processing.</p>
         ) : (

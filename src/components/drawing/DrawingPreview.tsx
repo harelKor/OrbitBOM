@@ -13,6 +13,7 @@ import { drawingSvg } from "@/lib/drawing/svg";
 import { linkTargets, useFitItems, useOpenFitLink } from "./fit";
 import { syncOnshapeDrawings } from "./syncOnshape";
 import { ZoomStage } from "./ZoomStage";
+import { askConfirm } from "@/components/ui/useConfirm";
 
 export type DrawingFile = { id: string; filename: string; onshape?: boolean };
 type Source = "file" | "app";
@@ -95,8 +96,8 @@ export function DrawingPreview({
       setData(null);
       setLoads((n) => n + 1);
     });
-  const deleteApp = () => {
-    if (!confirm("Delete the app's drawing and its notes?")) return;
+  const deleteApp = async () => {
+    if (!(await askConfirm({ title: "Delete the app's drawing and its notes?", confirm: "Delete", danger: true }))) return;
     run("Deleting…", async () => {
       const res = await fetch(`/api/parts/${partId}/drawing`, { method: "DELETE" });
       if (!res.ok) return (await res.json().catch(() => ({}))).error ?? "Couldn't delete the drawing.";
@@ -109,8 +110,8 @@ export function DrawingPreview({
       const r = await syncOnshapeDrawings(systemId, [partId]);
       if (!r.linked.length && !r.unchanged.length) return "No Onshape drawing tab has this part's name any more.";
     });
-  const deleteFile = () => {
-    if (!confirm(`Delete the drawing file ${file?.filename ?? ""}?`)) return;
+  const deleteFile = async () => {
+    if (!(await askConfirm({ title: `Delete the drawing file ${file?.filename ?? ""}?`, confirm: "Delete", danger: true }))) return;
     run("Deleting…", async () => {
       const r = await removePartDrawingFile(partId);
       setPicked("app");

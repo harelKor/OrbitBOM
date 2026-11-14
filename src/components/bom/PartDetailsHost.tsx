@@ -8,6 +8,7 @@ import { BomProvider, useBom } from "./BomContext";
 import type { SaveFn } from "./fields";
 import { PartDetails } from "./PartDetails";
 import { partIds, type CardPart } from "./types";
+import { toast } from "@/components/ui/Toaster";
 
 type Bom = ReturnType<typeof useBom>;
 type Open = { part: CardPart; save: SaveFn; bom: Bom };
@@ -86,7 +87,7 @@ export function PartDetailsProvider({ children }: { children: React.ReactNode })
       const bom: Bom = { inventory: [], isAdmin: first.isAdmin, robotId: first.robotId ?? undefined };
       const save: SaveFn = async (changes) => {
         const r = await updatePart(partId, changes).catch(() => ({ error: "Couldn't save. Try again." }));
-        if (r.error) alert(r.error);
+        if (r.error) toast(r.error, true);
         const next = await read("loadPartWindow", partId).catch(() => null);
         if (next) sync({ part: next.part, save, bom });
       };

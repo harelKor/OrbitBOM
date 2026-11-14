@@ -23,6 +23,9 @@ export function Shortcuts({ robots, lastRobotId }: { robots: ShellRobot[]; lastR
     };
     const onKey = (e: KeyboardEvent) => {
       if (!e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+      // Not while a window is open (its own keys, or a half-filled form, would be lost), nor when
+      // something on the page already used the key (the 3D view's Shift+letter tools).
+      if (e.defaultPrevented || document.querySelector("dialog[open]")) return;
       const href = pages[e.key.toUpperCase()];
       if (!href) return;
       const t = e.target as HTMLElement | null;

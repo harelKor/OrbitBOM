@@ -10,6 +10,8 @@ import { RecentlyDeleted, type DeletedEntry } from "@/components/settings/Recent
 import { LayoutsDocumentSettings, type RobotLayoutsDoc } from "@/components/settings/LayoutsDocumentSettings";
 import type { Condition, InvCategory, Location } from "@/components/inventory/types";
 import { pushQuery } from "@/components/ui/CategoryBoxes";
+import { Notice } from "@/components/ui/Notice";
+import { askConfirm } from "@/components/ui/useConfirm";
 import type { BackupFile } from "@/lib/storage/backup";
 import { addBaseMaterial, addBore, deleteBaseMaterial, deleteBore, renameBaseMaterial, renameBore, updateCondition, type ActionResult } from "./actions";
 
@@ -100,9 +102,9 @@ function useRun() {
       if (!r.error) then?.();
     });
   const banner = result.error ? (
-    <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">{result.error}</p>
+    <Notice tone="error">{result.error}</Notice>
   ) : result.message ? (
-    <p className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">{result.message}</p>
+    <Notice tone="success">{result.message}</Notice>
   ) : null;
   return { run, pending, banner };
 }
@@ -140,8 +142,8 @@ function MaterialsSettings({ materials }: { materials: BaseMaterial[] }) {
             <SmallButton
               label={`Remove ${m.name}`}
               danger
-              onClick={() => {
-                if (confirm(`Remove "${m.name}" from the list? Items that have it keep it.`)) run(() => deleteBaseMaterial(m.id));
+              onClick={async () => {
+                if (await askConfirm({ title: `Remove "${m.name}" from the list?`, body: "Items that have it keep it.", confirm: "Remove", danger: true })) run(() => deleteBaseMaterial(m.id));
               }}
             >
               ✕
@@ -184,8 +186,8 @@ function BoresSettings({ bores }: { bores: BaseMaterial[] }) {
             <SmallButton
               label={`Remove ${b.name}`}
               danger
-              onClick={() => {
-                if (confirm(`Remove "${b.name}" from the list? Items that have it keep it.`)) run(() => deleteBore(b.id));
+              onClick={async () => {
+                if (await askConfirm({ title: `Remove "${b.name}" from the list?`, body: "Items that have it keep it.", confirm: "Remove", danger: true })) run(() => deleteBore(b.id));
               }}
             >
               ✕
@@ -228,8 +230,8 @@ function ConditionsSettings({ conditions }: { conditions: Condition[] }) {
             <SmallButton
               label={`Delete ${c.label}`}
               danger
-              onClick={() => {
-                if (confirm(`Delete the condition "${c.label}"? Items keep their stock, without a condition.`)) run(() => deleteCondition(c.id));
+              onClick={async () => {
+                if (await askConfirm({ title: `Delete the condition "${c.label}"?`, body: "Items keep their stock, without a condition.", confirm: "Delete", danger: true })) run(() => deleteCondition(c.id));
               }}
             >
               ✕

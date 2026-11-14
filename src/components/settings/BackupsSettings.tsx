@@ -7,6 +7,7 @@ import { Dialog } from "@/components/Dialog";
 import { LocalTime } from "@/components/ui/LocalTime";
 import { BACKUP_DAYS } from "@/config/storage";
 import type { BackupFile } from "@/lib/storage/backup";
+import { Notice } from "@/components/ui/Notice";
 
 export type ScopeInfo = { id: string; label: string; text: string };
 
@@ -37,9 +38,9 @@ export function BackupsSettings({ backups, scopes, isAdmin }: { backups: BackupF
         Every night the whole BOM and inventory is saved to file storage; the last {BACKUP_DAYS} days are kept. Download one to keep your own copy, or
         restore one to put things back the way they were that night.
       </p>
-      {result.error && <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">{result.error}</p>}
+      {result.error && <Notice tone="error">{result.error}</Notice>}
       {result.message && (
-        <p className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">{result.message}</p>
+        <Notice tone="success">{result.message}</Notice>
       )}
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" className="btn min-h-11 active:scale-[0.98]" disabled={pending} onClick={() => run(backUpNow)}>

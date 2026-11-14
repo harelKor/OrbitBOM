@@ -16,6 +16,7 @@ import { Thumb } from "./PartSearch";
 import { Progress } from "./Progress";
 import { StepCanvas } from "./StepCanvas";
 import { StepEditor, type EditorTarget } from "./StepEditor";
+import { askConfirm } from "@/components/ui/useConfirm";
 
 // A system's or sub-assembly's steps as slides down the page (Harel, 2026-11-10). Each has a done
 // box; steps already done when the page opened sit in a folded Finished section on top, ones ticked
@@ -76,7 +77,7 @@ export function StepSlides({
     if (r.error) toast(r.error, true);
   };
   const remove = async (s: AssemblyStep) => {
-    if (!confirm(`Delete step "${s.title || "Sub-assembly"}"? This can't be undone.`)) return;
+    if (!(await askConfirm({ title: `Delete step "${s.title || "Sub-assembly"}"?`, body: "This can't be undone.", confirm: "Delete", danger: true }))) return;
     const r = await deleteAssemblyStep(robotId, s.id);
     // The action's reply already carries the page drawn again (it revalidates).
     if (r.error) toast(r.error, true);

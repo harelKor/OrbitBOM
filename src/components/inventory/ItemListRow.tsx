@@ -1,5 +1,6 @@
 "use client";
 
+import { StepButton } from "@/components/ui/Stepper";
 import { useTransition } from "react";
 import { setItemCondition, setItemLocation } from "@/app/(app)/inventory/actions";
 import { textOn } from "@/components/bom/options";
@@ -76,7 +77,6 @@ export function ItemListRow({
   const sheetWord = item.sheet && isSheetGoods(category?.label ?? item.name);
   // Raw stock rows go without the picture and the 📍 pill (Harel, 2026-11-02).
   const rawStock = item.sheet || category?.group === "consumables";
-  const stepBtn = "press flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-lg font-bold text-white shadow-sm active:scale-[0.98] disabled:opacity-30";
   return (
     <ListRow
       data-item={item.id}
@@ -107,15 +107,12 @@ export function ItemListRow({
           <span className="contents" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
             {stepper && (
               <span className="inline-flex items-center gap-1">
-                <button
-                  type="button"
+                <StepButton
+                  step={-1}
                   onClick={() => onStep(-1)}
                   disabled={item.sheet ? item.inStock <= 0 : item.inStock < 1}
-                  className={`${stepBtn} bg-rose-500 hover:bg-rose-400`}
-                  aria-label={sheetWord ? "One sheet less" : "One less"}
-                >
-                  −
-                </button>
+                  label={sheetWord ? "One sheet less" : "One less"}
+                />
                 <span className="flex items-center gap-1 rounded-full bg-[#111318]/80 px-2.5 py-1 font-mono text-xs font-semibold whitespace-nowrap text-white tabular-nums">
                   <span className={gap > 0 ? "text-rose-300" : undefined}>
                     <CountBox item={item} onCount={onCount} />
@@ -123,9 +120,7 @@ export function ItemListRow({
                   {needed != null && <span className="text-white/70">/ {formatStock(needed, item.sheet)}</span>}
                   {item.sheet && <PieceStepper item={item} onStep={onStep} />}
                 </span>
-                <button type="button" onClick={() => onStep(1)} className={`${stepBtn} bg-emerald-500 hover:bg-emerald-400`} aria-label={sheetWord ? "One sheet more" : "One more"}>
-                  +
-                </button>
+                <StepButton step={1} onClick={() => onStep(1)} label={sheetWord ? "One sheet more" : "One more"} />
               </span>
             )}
             {locations && !rawStock && (

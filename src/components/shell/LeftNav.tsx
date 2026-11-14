@@ -70,17 +70,17 @@ export function LeftNav({
           </Item>
           <div>
             <div className="relative flex items-center">
-              <Item href={base && `${base}/fab`} icon="fab" active={onFab && !machine} glow={!!robot && arrivals.page(`fab:${robot.id}`)} className="flex-1 pr-14">
+              <Item href={base && `${base}/fab`} icon="fab" active={onFab && !machine} glow={!!robot && arrivals.page(`fab:${robot.id}`)} className="flex-1 pr-14 pointer-coarse:pr-[4.5rem]">
                 Shop Fab
               </Item>
               {base && (
                 <>
-                  {robot!.fab.total > 0 && <Count n={robot!.fab.total} className="pointer-events-none absolute right-9 @max-[10rem]:hidden" />}
+                  {robot!.fab.total > 0 && <Count n={robot!.fab.total} className="pointer-events-none absolute right-9 @max-[10rem]:hidden pointer-coarse:right-11" />}
                   <button
                     onClick={() => setToggled(!fabOpen)}
                     aria-expanded={fabOpen}
                     aria-label={fabOpen ? "Hide processes" : "Show processes"}
-                    className="press absolute right-0 flex h-8 w-8 items-center justify-center rounded-md text-subtle hover:bg-line hover:text-fg @max-[10rem]:hidden"
+                    className={CHEVRON}
                   >
                     <Icon name="chevron" className={`h-4.5 w-4.5 transition-transform duration-150 ${fabOpen ? "rotate-90" : ""}`} />
                   </button>
@@ -98,7 +98,7 @@ export function LeftNav({
                       key={m.id}
                       href={`${base}/fab?machine=${m.id}`}
                       className={`press flex items-center gap-2 rounded-md px-2 py-1 text-xs pointer-coarse:min-h-9 ${
-                        active ? "bg-accent/15 text-white" : n ? "text-fg-2 hover:bg-raised hover:text-fg" : "text-subtle hover:bg-raised hover:text-fg-2"
+                        active ? SUB_ACTIVE : n ? "text-fg-2 hover:bg-raised hover:text-fg" : "text-subtle hover:bg-raised hover:text-fg-2"
                       }`}
                     >
                       <span className={`truncate ${arrivals.tab(`fab:${robot!.id}`, m.id) ? "arrival-text" : ""}`}>{m.name}</span>
@@ -133,14 +133,14 @@ export function LeftNav({
           />
           <div>
             <div className="relative flex items-center">
-              <Item href="/cots" icon="cart" active={pathname === "/cots"} glow={arrivals.page("cots:released") || arrivals.page("cots:order")} className="flex-1 pr-8">
+              <Item href="/cots" icon="cart" active={pathname === "/cots"} glow={arrivals.page("cots:released") || arrivals.page("cots:order")} className="flex-1 pr-8 pointer-coarse:pr-11">
                 Orders
               </Item>
               <button
                 onClick={() => setCotsToggled(!cotsOpen)}
                 aria-expanded={cotsOpen}
                 aria-label={cotsOpen ? "Hide Orders lists" : "Show Orders lists"}
-                className="press absolute right-0 flex h-8 w-8 items-center justify-center rounded-md text-subtle hover:bg-line hover:text-fg @max-[10rem]:hidden"
+                className={CHEVRON}
               >
                 <Icon name="chevron" className={`h-4.5 w-4.5 transition-transform duration-150 ${cotsOpen ? "rotate-90" : ""}`} />
               </button>
@@ -156,7 +156,7 @@ export function LeftNav({
                     key={l.href}
                     href={l.href}
                     className={`press flex items-center gap-2 rounded-md px-2 py-1 text-xs pointer-coarse:min-h-9 ${
-                      pathname === l.href ? "bg-accent/15 text-white" : "text-fg-2 hover:bg-raised hover:text-fg"
+                      pathname === l.href ? SUB_ACTIVE : "text-fg-2 hover:bg-raised hover:text-fg"
                     }`}
                   >
                     <span className={l.page && arrivals.page(l.page) ? "arrival-text" : undefined}>{l.name}</span>
@@ -167,14 +167,14 @@ export function LeftNav({
           </div>
           <div>
             <div className="relative flex items-center">
-              <Item href="/inventory" icon="box" active={pathname === "/inventory"} className="flex-1 pr-8">
+              <Item href="/inventory" icon="box" active={pathname === "/inventory"} className="flex-1 pr-8 pointer-coarse:pr-11">
                 Inventory
               </Item>
               <button
                 onClick={() => setInventoryToggled(!inventoryOpen)}
                 aria-expanded={inventoryOpen}
                 aria-label={inventoryOpen ? "Hide inventory categories" : "Show inventory categories"}
-                className="press absolute right-0 flex h-8 w-8 items-center justify-center rounded-md text-subtle hover:bg-line hover:text-fg @max-[10rem]:hidden"
+                className={CHEVRON}
               >
                 <Icon name="chevron" className={`h-4.5 w-4.5 transition-transform duration-150 ${inventoryOpen ? "rotate-90" : ""}`} />
               </button>
@@ -190,8 +190,8 @@ export function LeftNav({
                       <div className="relative flex items-center">
                         <ShallowLink
                           href={`/inventory?group=${g.id}`}
-                          className={`press flex flex-1 items-center gap-2 rounded-md py-1 pr-7 pl-2 text-xs ${
-                            active ? "bg-accent/15 text-white" : "text-fg-2 hover:bg-raised hover:text-fg"
+                          className={`press flex flex-1 items-center gap-2 rounded-md py-1 pr-7 pl-2 text-xs pointer-coarse:min-h-9 pointer-coarse:pr-10 ${
+                            active ? SUB_ACTIVE : "text-fg-2 hover:bg-raised hover:text-fg"
                           }`}
                         >
                           <span className="truncate">{g.label}</span>
@@ -206,7 +206,7 @@ export function LeftNav({
                             }}
                             aria-expanded={open}
                             aria-label={`${open ? "Hide" : "Show"} ${g.label} categories`}
-                            className="press absolute right-0 flex h-6 w-6 items-center justify-center rounded-md text-subtle hover:bg-line hover:text-fg"
+                            className="press absolute right-0 flex h-6 w-6 items-center justify-center rounded-md text-subtle hover:bg-line hover:text-fg pointer-coarse:h-9 pointer-coarse:w-9"
                           >
                             <Icon name="chevron" className={`h-3.5 w-3.5 transition-transform duration-150 ${open ? "rotate-90" : ""}`} />
                           </button>
@@ -219,8 +219,8 @@ export function LeftNav({
                               key={c.id}
                               href={`/inventory/c/${c.id}`}
                               aria-current={shownCategory?.id === c.id ? "page" : undefined}
-                              className={`press block truncate rounded-md px-2 py-0.5 text-[0.6875rem] ${
-                                shownCategory?.id === c.id ? "bg-accent/15 text-white" : "text-muted hover:bg-raised hover:text-fg"
+                              className={`press block truncate rounded-md px-2 py-0.5 text-[0.6875rem] pointer-coarse:py-2.5 pointer-coarse:text-xs ${
+                                shownCategory?.id === c.id ? SUB_ACTIVE : "text-muted hover:bg-raised hover:text-fg"
                               }`}
                             >
                               {c.label}
@@ -242,7 +242,7 @@ export function LeftNav({
           </Item>
           {/* Was To Review, near the top (Harel, 2026-11-11). */}
           <div className="relative flex items-center">
-            <Item href={base && `${base}/review`} icon="review" active={!!base && pathname.startsWith(`${base}/review`)} className="flex-1 pr-14">
+            <Item href={base && `${base}/review`} icon="review" active={!!base && pathname.startsWith(`${base}/review`)} className="flex-1 pr-14 pointer-coarse:pr-[4.5rem]">
               AI review
             </Item>
             {base && robot!.review > 0 && <Count n={robot!.review} className="pointer-events-none absolute right-8 @max-[10rem]:hidden" />}
@@ -278,6 +278,11 @@ export function LeftNav({
   );
 }
 
+// A picked sub-link: the accent on the light column (white text vanished on white), white on dark.
+const SUB_ACTIVE = "bg-accent/15 font-semibold text-accent dark:text-white";
+// The open / close arrows beside Shop Fab, 3D Printing, Factory Fab, Orders and Inventory.
+const CHEVRON = "press absolute right-0 flex h-8 w-8 items-center justify-center rounded-md text-subtle hover:bg-line hover:text-fg @max-[10rem]:hidden pointer-coarse:h-10 pointer-coarse:w-10";
+
 function Count({ n, className = "" }: { n: number; className?: string }) {
   return (
     <span className={`rounded-full bg-raised px-1.5 text-[0.625rem] leading-4 font-semibold text-fg-2 tabular-nums ${className}`}>{n}</span>
@@ -299,7 +304,7 @@ function Item({
   className?: string;
   children: React.ReactNode;
 }) {
-  const cls = `press relative flex items-center gap-2.5 rounded-md px-3 py-1.5 ${className}`;
+  const cls = `press relative flex items-center gap-2.5 rounded-md px-3 py-1.5 pointer-coarse:min-h-10 ${className}`;
   // Cut short with an ellipsis in a narrowed column; screen readers only once just icons show.
   const name = <span className={`truncate @max-[10rem]:sr-only ${glow ? "arrival-text" : ""}`}>{children}</span>;
   if (!href)
@@ -352,17 +357,17 @@ function AreaNav({
   return (
     <div>
       <div className="relative flex items-center">
-        <Item href={base} icon={icon} active={!!base && pathname === base} glow={machines.some((m) => glowOf(m.id))} className="flex-1 pr-14">
+        <Item href={base} icon={icon} active={!!base && pathname === base} glow={machines.some((m) => glowOf(m.id))} className="flex-1 pr-14 pointer-coarse:pr-[4.5rem]">
           {label}
         </Item>
         {base && (
           <>
-            {total > 0 && <Count n={total} className="pointer-events-none absolute right-9 @max-[10rem]:hidden" />}
+            {total > 0 && <Count n={total} className="pointer-events-none absolute right-9 @max-[10rem]:hidden pointer-coarse:right-11" />}
             <button
               onClick={() => setToggled(!open)}
               aria-expanded={open}
               aria-label={open ? `Hide ${what}` : `Show ${what}`}
-              className="press absolute right-0 flex h-8 w-8 items-center justify-center rounded-md text-subtle hover:bg-line hover:text-fg @max-[10rem]:hidden"
+              className={CHEVRON}
             >
               <Icon name="chevron" className={`h-4.5 w-4.5 transition-transform duration-150 ${open ? "rotate-90" : ""}`} />
             </button>
@@ -379,7 +384,7 @@ function AreaNav({
                 key={m.id}
                 href={href}
                 className={`press flex items-center gap-2 rounded-md px-2 py-1 text-xs pointer-coarse:min-h-9 ${
-                  pathname === href ? "bg-accent/15 text-white" : n ? "text-fg-2 hover:bg-raised hover:text-fg" : "text-subtle hover:bg-raised hover:text-fg-2"
+                  pathname === href ? SUB_ACTIVE : n ? "text-fg-2 hover:bg-raised hover:text-fg" : "text-subtle hover:bg-raised hover:text-fg-2"
                 }`}
               >
                 <span className={`truncate ${glowOf(m.id) ? "arrival-text" : ""}`}>{m.name}</span>

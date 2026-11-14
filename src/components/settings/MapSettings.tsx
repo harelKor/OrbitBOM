@@ -18,6 +18,8 @@ import { LocationPicker, PlaceTag } from "@/components/inventory/LocationPicker"
 import { MAP_H, MAP_W, WORKSHOP_ROOMS } from "@/config/workshopMap";
 import { STATUSES } from "@/config/statuses";
 import { SPOT_KINDS, bounds, centroid, kindLabel, spotsOf, zoneColor, type MapPoint, type Place, type SpotKind } from "@/lib/inventory/places";
+import { Notice } from "@/components/ui/Notice";
+import { askConfirm } from "@/components/ui/useConfirm";
 
 // Settings → Map (Harel, 2026-11-14): draw the zones on the floor plan, give each its
 // first-person picture and pin its drawers / shelves on it, and choose each system's drawer for
@@ -71,7 +73,7 @@ export function MapSettings({ places, systems }: { places: Place[]; systems: Dra
       <p className="max-w-3xl text-sm text-muted">
         Draw each zone on the floor plan, add a picture of it from where a person stands, and tap the picture to pin its drawers and shelves. Items are linked to a zone or a drawer; the map never shows the names below, Claude&apos;s tools and search use them.
       </p>
-      {error && <p className="rounded-xl bg-rose-500/10 p-2 text-sm text-rose-600">{error}</p>}
+      {error && <Notice tone="error">{error}</Notice>}
       <div className="grid gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <ZoneEditor zones={zones} selId={selId} onSelect={setSelId} run={run} pending={pending} />
         <div className="space-y-3">
@@ -378,8 +380,8 @@ function ZonePanel({ zone, places, run, onDeleted }: { zone: Place; places: Plac
         <button
           type="button"
           className="btn min-h-9 text-xs text-rose-600"
-          onClick={() => {
-            if (confirm(`Delete ${zone.name} and its ${spots.length} drawers? Their items stay, without a place.`)) run(() => deleteZone(zone.id), onDeleted);
+          onClick={async () => {
+            if (await askConfirm({ title: `Delete ${zone.name} and its ${spots.length} drawers?`, body: "Their items stay, without a place.", confirm: "Delete", danger: true })) run(() => deleteZone(zone.id), onDeleted);
           }}
         >
           Delete zone
@@ -392,7 +394,7 @@ function ZonePanel({ zone, places, run, onDeleted }: { zone: Place; places: Plac
           {uploading ? "Uploading…" : image ? "Replace picture" : "Add picture"}
         </button>
         {image && (
-          <button type="button" className="btn min-h-9 text-xs" onClick={() => { if (confirm("Remove this zone's picture? Its drawers stay pinned for the next one.")) { setPreview(null); run(() => setZoneImage(zone.id, null)); } }}>
+          <button type="button" className="btn min-h-9 text-xs" onClick={async () => { if (await askConfirm({ title: "Remove this zone's picture?", body: "Its drawers stay pinned for the next one.", confirm: "Remove", danger: true })) { setPreview(null); run(() => setZoneImage(zone.id, null)); } }}>
             Remove picture
           </button>
         )}

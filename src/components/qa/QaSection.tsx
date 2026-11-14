@@ -6,6 +6,7 @@ import { BomProvider, type InventoryName } from "@/components/bom/BomContext";
 import { PartCard } from "@/components/bom/PartCard";
 import type { PartChanges } from "@/lib/parts/changes";
 import type { CardPart } from "@/components/bom/types";
+import { Notice } from "@/components/ui/Notice";
 
 // The top of a system page: the parts waiting for QA, each with a big check mark. Checking a
 // part off moves it to In Stock and strikes it through; it stays here until the member leaves
@@ -61,7 +62,7 @@ export function QaSection({ parts, inventory, isAdmin, robotId }: { parts: CardP
         <span className="hidden text-xs text-subtle sm:inline">Check a part off to move it to In Stock.</span>
       </summary>
       <div className="space-y-3 px-4 pb-4">
-        {error && <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">Couldn&apos;t save: {error}</p>}
+        {error && <Notice tone="error">Couldn&apos;t save: {error}</Notice>}
         {open && (
           <BomProvider value={{ inventory, isAdmin, robotId }}>
             <div className="card-grid">

@@ -20,9 +20,21 @@ export function TopBar({ onMenu, onRobots, navHidden, robotsHidden }: { onMenu: 
   const search = useRef<HTMLInputElement>(null);
   const header = useRef<HTMLElement>(null);
   // On the robot pages the search also filters the page's parts. On a PC it's on every page and
-  // opens a dropdown of matching parts and inventory items (Harel, 2026-11-04); phones keep it on
-  // the robot pages only, with a short dropdown (SearchDropdown).
+  // opens a dropdown of matching parts and inventory items (Harel, 2026-11-04); phones show it on
+  // the robot pages, and elsewhere behind a search button that opens it (a short dropdown,
+  // SearchDropdown), so Home, Inventory and Orders can search too.
   const partPages = pathname.startsWith("/robots/") && pathname !== "/robots/new";
+  const [phoneOpen, setPhoneOpen] = useState(false);
+  const shown = partPages || phoneOpen;
+  // A new page puts the button back.
+  const [lastPath, setLastPath] = useState(pathname);
+  if (lastPath !== pathname) {
+    setLastPath(pathname);
+    if (phoneOpen && !filters.q) setPhoneOpen(false);
+  }
+  useEffect(() => {
+    if (phoneOpen) search.current?.focus();
+  }, [phoneOpen]);
   const [dropdown, setDropdown] = useState(false);
   const closeDropdown = useCallback(() => setDropdown(false), []);
 
@@ -56,7 +68,7 @@ export function TopBar({ onMenu, onRobots, navHidden, robotsHidden }: { onMenu: 
         <Brand compact />
       </div>
           {/* On phones the search takes its own row under the buttons, so the buttons fit one row. */}
-          <div className={`relative min-w-40 flex-1 max-sm:order-last max-sm:basis-full md:max-w-sm ${navHidden ? "" : "lg:ml-24"} ${partPages ? "" : "max-md:hidden"}`}>
+          <div className={`relative min-w-40 flex-1 max-sm:order-last max-sm:basis-full md:max-w-sm ${navHidden ? "" : "lg:ml-24"} ${shown ? "" : "max-md:hidden"}`}>
             <input
               ref={search}
               value={filters.q}
@@ -65,6 +77,9 @@ export function TopBar({ onMenu, onRobots, navHidden, robotsHidden }: { onMenu: 
                 setDropdown(true);
               }}
               onFocus={() => setDropdown(true)}
+              onBlur={() => {
+                if (!partPages && !filters.q) setPhoneOpen(false);
+              }}
               placeholder="Search parts and inventory"
               className={`input border-white bg-white text-[#111318] ${filters.q ? "pr-9 sm:pr-[5.5rem]" : "sm:pr-16"}`}
             />
@@ -90,6 +105,11 @@ export function TopBar({ onMenu, onRobots, navHidden, robotsHidden }: { onMenu: 
             <SearchDropdown q={filters.q} open={dropdown} onClose={closeDropdown} input={search} />
           </div>
       <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+        {!shown && (
+          <button onClick={() => setPhoneOpen(true)} className={`${square} flex md:hidden`} aria-label="Search parts and inventory" title="Search">
+            <Icon name="search" className="h-5 w-5" />
+          </button>
+        )}
         <UndoRedo />
         <ModeToggle />
         {/* Not a second ☰: this one opens the robots and systems, the left one the pages. */}

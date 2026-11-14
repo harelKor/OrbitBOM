@@ -63,7 +63,8 @@ export function RobotSettings({
           {isAdmin && (
             <ConfirmButton
               action={deleteRobot.bind(null, robot.id)}
-              message={`Delete the robot "${robot.name}", all its systems and parts? This can't be undone.`}
+              message={`Delete the robot "${robot.name}", all its systems and parts?`}
+              body="It stays in Settings → Recently deleted for 30 days."
               className="btn-danger w-full justify-center"
             >
               Delete robot

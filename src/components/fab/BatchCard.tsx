@@ -17,6 +17,7 @@ import { Chevron } from "@/components/ui/Chevron";
 import { Icon } from "@/components/ui/Icon";
 import { LocalTime } from "@/components/ui/LocalTime";
 import { StatusPill } from "@/components/ui/StatusPill";
+import { askConfirm } from "@/components/ui/useConfirm";
 import { READY_STATUS, isFabFinished } from "@/lib/fab";
 import { type PartChanges } from "@/lib/parts/changes";
 import { computeStatus, isDone } from "@/lib/status";
@@ -260,7 +261,7 @@ export function BatchCard({
       }}
       aria-label={`Who makes ${what}`}
       title={mine ? "You make this batch" : undefined}
-      className={`press max-w-full min-w-0 cursor-pointer truncate rounded-full border bg-surface/90 px-2 py-0.5 text-[0.6875rem] font-bold shadow-sm backdrop-blur-md transition-shadow hover:border-accent focus:outline-none ${
+      className={`press max-w-full min-w-0 cursor-pointer truncate rounded-full border bg-surface/90 px-2 py-0.5 text-[0.6875rem] font-bold shadow-sm backdrop-blur-md transition-shadow hover:border-accent focus:outline-none pointer-coarse:min-h-9 pointer-coarse:text-xs ${
         mine ? "border-sky-400 text-sky-600 shadow-[0_0_10px_2px_rgba(56,189,248,0.55)] dark:text-sky-300" : "border-line-strong text-fg"
       }`}
     >
@@ -335,7 +336,7 @@ export function BatchCard({
         startTransition(() => void updateGroup(batch.id, { priority: next }));
       }}
       aria-label={`Priority of ${what}`}
-      className="cursor-pointer rounded-full border border-line-strong bg-surface px-2 py-1 text-xs font-bold"
+      className="cursor-pointer rounded-full border border-line-strong bg-surface px-2 py-1 text-xs font-bold pointer-coarse:min-h-9"
       style={textColor ? { color: textColor } : undefined}
     >
       <option value="normal">No priority</option>
@@ -348,7 +349,7 @@ export function BatchCard({
   );
   const autoLayoutButton = (
     <button
-      className="press flex items-center gap-1 rounded-full border border-line-strong bg-surface px-2.5 py-1 text-xs font-bold text-fg-2 transition-colors duration-150 hover:border-sky-400/40 hover:text-sky-500 active:scale-[0.98]"
+      className="press flex items-center gap-1 rounded-full border border-line-strong bg-surface px-2.5 py-1 text-xs font-bold text-fg-2 transition-colors duration-150 hover:border-sky-400/40 hover:text-sky-500 active:scale-[0.98] pointer-coarse:min-h-9 pointer-coarse:px-3"
       onClick={() => setLayoutOpen(true)}
       title="Lay the parts flat and nest them on the smallest plate on the shelf"
     >
@@ -425,11 +426,12 @@ export function BatchCard({
   );
   const deleteButton = (
     <button
-      className="press shrink-0 text-xs text-subtle hover:text-rose-700"
-      onClick={() => {
-        if (cart) {
-          if (confirm(`Delete ${what}? Its parts stay on the Order List.`)) cart.onDelete();
-        } else if (confirm(`Delete ${what}? Its parts stay on the BOM with their status.`)) startTransition(() => void deleteGroup(batch.id));
+      className={`press shrink-0 ${TEXT_BTN}`}
+      onClick={async () => {
+        const yes = await askConfirm({ title: `Delete ${what}?`, body: cart ? "Its parts stay on the Order List." : "Its parts stay on the BOM with their status.", confirm: "Delete", danger: true });
+        if (!yes) return;
+        if (cart) cart.onDelete();
+        else startTransition(() => void deleteGroup(batch.id));
       }}
     >
       {cart ? "Delete cart" : pack ? "Delete pack" : "Delete fab"}
@@ -437,7 +439,7 @@ export function BatchCard({
   );
   const removeButton = (p: CardPart) =>
     edit && (
-      <button className="self-start text-xs text-subtle hover:text-rose-700" onClick={() => (cart ? cart.onRemove(p.id) : startTransition(() => void removeFromGroup(batch.id, p.id)))}>
+      <button className={`press self-start ${TEXT_BTN}`} onClick={() => (cart ? cart.onRemove(p.id) : startTransition(() => void removeFromGroup(batch.id, p.id)))}>
         {cart ? "Remove from cart" : pack ? "Remove from pack" : "Remove from batch"}
       </button>
     );
@@ -684,7 +686,7 @@ export function BatchCard({
               <span key={p.id} className="flex min-h-0 items-center justify-center bg-well">
                 {p.thumbUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links
-                  <img src={p.thumbUrl} alt="" loading="lazy" className={`h-full w-full object-contain ${thumbs.length === 1 ? "p-3" : "p-1.5"}`} />
+                  <img src={p.thumbUrl} alt="" loading="lazy" className={`thumb-edge h-full w-full object-contain ${thumbs.length === 1 ? "p-3" : "p-1.5"}`} />
                 ) : (
                   <span className="px-1 text-center text-[0.625rem] text-subtle">{partTitle(p)}</span>
                 )}
@@ -717,6 +719,12 @@ export function BatchCard({
               {!pack && machineName && ` · ${machineName}`}
             </div>
           )}
+          {/* Which parts, always in words: a pale plate's picture on the pale well can look blank. */}
+          {members.length > 0 && (
+            <div className="-mt-1.5 min-w-0 truncate text-xs text-fg-2" title={members.map(partTitle).join(", ")}>
+              {partNames(members)}
+            </div>
+          )}
           {/* Only the controls keep their clicks: the rest of the card opens the batch. */}
           <div className="flex flex-wrap items-center gap-2">
             <span onClick={stop} className={pack ? "min-w-0 flex-1" : undefined}>{statusMenu}</span>
@@ -747,7 +755,7 @@ export function GcodeRow({ batch }: { batch: Batch }) {
     setError(await task());
     setBusy(false);
   };
-  const btn = "press rounded-md border border-line-strong px-2 py-1 text-xs font-semibold text-fg-2 hover:border-accent hover:text-accent disabled:opacity-50";
+  const btn = "press rounded-md border border-line-strong px-2 py-1 text-xs font-semibold text-fg-2 hover:border-accent hover:text-accent disabled:opacity-50 pointer-coarse:min-h-10 pointer-coarse:px-3";
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs" onClick={(e) => e.stopPropagation()}>
       <input
@@ -762,7 +770,7 @@ export function GcodeRow({ batch }: { batch: Batch }) {
       />
       {batch.gcode ? (
         <>
-          <a href={`/api/files/${batch.gcode.id}?download=1`} className="flex min-w-0 items-center gap-1 font-medium text-fg hover:text-accent" title={batch.gcode.filename}>
+          <a href={`/api/files/${batch.gcode.id}?download=1`} className="flex min-w-0 items-center gap-1 font-medium text-fg hover:text-accent pointer-coarse:min-h-10" title={batch.gcode.filename}>
             <Icon name="gcode" className="h-4 w-4 shrink-0" />
             <span className="truncate">{batch.gcode.filename}</span>
           </a>
@@ -770,10 +778,10 @@ export function GcodeRow({ batch }: { batch: Batch }) {
             {busy ? "Uploading…" : "Replace"}
           </button>
           <button
-            className={`${btn} hover:border-rose-500 hover:text-rose-700`}
+            className={`${btn} hover:border-rose-500 hover:text-rose-700 dark:hover:text-rose-300`}
             disabled={busy}
-            onClick={() => {
-              if (confirm("Remove the G-code from this batch?")) void run(async () => (await removeBatchGcode(batch.id)).error ?? null);
+            onClick={async () => {
+              if (await askConfirm({ title: "Remove the G-code from this batch?", confirm: "Remove", danger: true })) void run(async () => (await removeBatchGcode(batch.id)).error ?? null);
             }}
           >
             Remove
@@ -785,7 +793,7 @@ export function GcodeRow({ batch }: { batch: Batch }) {
           {busy ? "Uploading…" : "Upload G-code"}
         </button>
       )}
-      {error && <span className="text-rose-700">{error}</span>}
+      {error && <span className="text-rose-700 dark:text-rose-300">{error}</span>}
     </div>
   );
 }
@@ -825,4 +833,14 @@ export async function downloadAll(urls: string[]) {
     document.body.appendChild(frame);
     setTimeout(() => frame.remove(), 120_000);
   }
+}
+
+// Delete fab / Remove from batch: quiet words in the strip, but a full finger's height on a phone.
+const TEXT_BTN = "inline-flex items-center rounded-md text-xs text-subtle hover:text-rose-700 dark:hover:text-rose-300 pointer-coarse:min-h-10 pointer-coarse:px-2";
+
+// A batch's parts in one line: "A", "A, B", or "A, B +3 more".
+function partNames(parts: CardPart[]): string {
+  const names = parts.map(partTitle);
+  if (names.length <= 2) return names.join(", ");
+  return `${names.slice(0, 2).join(", ")} +${names.length - 2} more`;
 }

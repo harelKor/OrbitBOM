@@ -6,6 +6,7 @@ import type { SectionView } from "./section";
 import { DISPLAY_MODES, type DisplayMode } from "./paint";
 import { UnitsSwitch } from "./units";
 import type { SceneTools } from "./types";
+import { askConfirm } from "@/components/ui/useConfirm";
 
 type V = [number, number, number];
 // The cube's faces in the scene's frame: outward normal, the face's right and up on screen, and
@@ -286,7 +287,9 @@ function NamedViewsBlock({ views, close, item, line }: { views: NamedViews; clos
               className="press shrink-0 rounded px-1.5 text-subtle opacity-0 group-hover:opacity-100 hover:text-rose-500 focus:opacity-100 pointer-coarse:min-h-9 pointer-coarse:min-w-9 pointer-coarse:opacity-100"
               aria-label={`Delete ${v.name}`}
               title="Delete this view"
-              onClick={() => confirm(`Delete the view "${v.name}"?`) && views.remove(v.id)}
+              onClick={async () => {
+                if (await askConfirm({ title: `Delete the view "${v.name}"?`, confirm: "Delete", danger: true })) views.remove(v.id);
+              }}
             >
               ✕
             </button>

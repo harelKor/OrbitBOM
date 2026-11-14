@@ -12,6 +12,8 @@ import type { Drawing, Pt } from "@/lib/drawing/types";
 import { Icon } from "@/components/ui/Icon";
 import { ZoomStage } from "./ZoomStage";
 import { FitPicker, linkTargets, useFitItems, useOpenFitLink, type FitTarget } from "./fit";
+import { Notice } from "@/components/ui/Notice";
+import { askConfirm } from "@/components/ui/useConfirm";
 
 type Hole = Drawing["holes"][number];
 // Adding a note takes two clicks: where its arrow points, then where its text goes. Moving one
@@ -221,7 +223,7 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
 
   // Make the drawing again from Onshape. Saved edits are kept; unsaved ones are lost.
   async function regenerate() {
-    if (dirty && !confirm("Regenerate without saving your changes?")) return;
+    if (dirty && !(await askConfirm({ title: "Regenerate without saving your changes?", body: "Your unsaved edits are lost.", confirm: "Regenerate", danger: true }))) return;
     setBusy("regenerate");
     setError(null);
     const res = await fetch(`/api/parts/${partId}/drawing`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ force: true }) });
@@ -232,7 +234,7 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
   }
 
   async function remove() {
-    if (!confirm("Delete this drawing and its notes?")) return;
+    if (!(await askConfirm({ title: "Delete this drawing and its notes?", confirm: "Delete", danger: true }))) return;
     setBusy("delete");
     setError(null);
     const res = await fetch(`/api/parts/${partId}/drawing`, { method: "DELETE" });
@@ -242,8 +244,8 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
     onClose();
   }
 
-  const close = () => {
-    if (!dirty || confirm("Close without saving your changes?")) onClose();
+  const close = async () => {
+    if (!dirty || (await askConfirm({ title: "Close without saving your changes?", body: "Your unsaved edits are lost.", confirm: "Discard", danger: true }))) onClose();
   };
   const hint = HINTS[mode.kind];
   const activeNote = active && drawing?.notes.find((n) => n.id === active.id);
@@ -294,8 +296,8 @@ export function DrawingEditor({ partId, onClose }: { partId: string; onClose: ()
           <Icon name="close" />
         </button>
       </div>
-      {error && <p className="mb-2 rounded-md bg-rose-50 p-2 text-sm text-rose-700">{error}</p>}
-      {data?.outdated && <p className="mb-2 rounded-md bg-amber-50 p-2 text-sm text-amber-800">The part changed in Onshape since this drawing was made. Regenerate it to update.</p>}
+      {error && <Notice tone="error" className="mb-2">{error}</Notice>}
+      {data?.outdated && <Notice tone="warning" className="mb-2">The part changed in Onshape since this drawing was made. Regenerate it to update.</Notice>}
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
         {drawing ? (

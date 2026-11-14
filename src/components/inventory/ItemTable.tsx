@@ -1,5 +1,6 @@
 "use client";
 
+import { StepButton } from "@/components/ui/Stepper";
 import { useState, useTransition } from "react";
 import { Popover } from "@/components/bom/Popover";
 import { Icon } from "@/components/ui/Icon";
@@ -157,15 +158,12 @@ export function ItemTable({
                 )}
                 <td onClick={stop}>
                   <span className="flex items-center justify-center gap-1.5">
-                    {work && (<button
-                      type="button"
+                    {work && (<StepButton
+                      step={-1}
                       onClick={() => onStep(item.id, -1)}
                       disabled={item.sheet ? item.inStock <= 0 : item.inStock < 1}
-                      className="press flex h-8 w-8 items-center justify-center rounded-md bg-rose-500 font-bold text-white hover:bg-rose-400 active:scale-[0.98] disabled:opacity-30"
-                      aria-label={`One less ${item.name}`}
-                    >
-                      −
-                    </button>)}
+                      label={`One less ${item.name}`}
+                    />)}
                     <span
                       className={`min-w-10 text-center font-mono font-semibold tabular-nums ${gap > 0 ? "text-rose-500" : ""}`}
                     >
@@ -186,14 +184,11 @@ export function ItemTable({
                         onStep={(d, b) => onStep(item.id, d, b)}
                       />
                     )}
-                    {work && (<button
-                      type="button"
+                    {work && (<StepButton
+                      step={1}
                       onClick={() => onStep(item.id, 1)}
-                      className="press flex h-8 w-8 items-center justify-center rounded-md bg-emerald-500 font-bold text-white hover:bg-emerald-400 active:scale-[0.98]"
-                      aria-label={`One more ${item.name}`}
-                    >
-                      +
-                    </button>)}
+                      label={`One more ${item.name}`}
+                    />)}
                   </span>
                 </td>
                 <td>

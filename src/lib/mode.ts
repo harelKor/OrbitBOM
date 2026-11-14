@@ -33,7 +33,7 @@ export async function requireCapability(cap: Capability): Promise<Member> {
 }
 
 export const DENIED: Record<Capability, string> = {
-  work: "Pick a team on your profile (Build or CAD) to make changes.",
+  work: "Ask an admin to put you on a team (Build or CAD) to make changes.",
   draw: "Only the CAD Team can make drawings.",
   review: "Only the CAD Team can review parts.",
   sync: "Only the CAD Team can sync from Onshape.",

@@ -92,7 +92,8 @@ export function UndoRedo() {
   }, []);
 
   if (!edit) return null;
-  const btn = "press flex h-8 w-8 items-center justify-center rounded-md border border-white/30 hover:bg-white/10 disabled:opacity-40";
+  // 36px on touch screens, like the top bar's panel buttons beside them.
+  const btn = "press flex h-8 w-8 items-center justify-center rounded-md border border-white/30 hover:bg-white/10 disabled:opacity-40 pointer-coarse:h-9 pointer-coarse:w-9";
   return (
     <div className="flex items-center gap-1">
       <button type="button" className={btn} disabled={busy} onClick={() => run("undo")} aria-label="Undo" title="Undo my last change (Ctrl+Z)">

@@ -18,7 +18,7 @@ async function run(robotId: string, fn: () => Promise<{ id?: string } | void>): 
   } catch (err) {
     if (err instanceof StepError) return { error: err.message };
     if (err instanceof Error && err.message.startsWith("Only ")) return { error: err.message };
-    if (err instanceof Error && err.message.startsWith("Pick a team")) return { error: err.message };
+    if (err instanceof Error && err.message.startsWith("Ask an admin")) return { error: err.message };
     throw err;
   }
 }

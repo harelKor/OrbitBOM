@@ -81,3 +81,15 @@ export function ModeToggle() {
     />
   );
 }
+
+// A member on no team sees a read-only app: say so once, at the top of every page, instead of
+// leaving them to find out from greyed controls.
+export function ReadOnlyNote() {
+  const { mode } = useMode();
+  if (mode !== "none") return null;
+  return (
+    <p role="status" className="mb-4 rounded-md border border-line bg-raised px-3 py-2 text-sm text-fg-2">
+      You can look but not change anything yet: ask an admin to put you on a team (Build or CAD).
+    </p>
+  );
+}

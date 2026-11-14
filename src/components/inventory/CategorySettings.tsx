@@ -7,6 +7,7 @@ import { Chevron } from "@/components/ui/Chevron";
 import { DEFAULT_NAME, withBoreList, type CategoryField } from "@/lib/inventory/categories";
 import type { InvCategory, Item, Location } from "./types";
 import { LocationPicker, PlaceTag } from "./LocationPicker";
+import { askConfirm } from "@/components/ui/useConfirm";
 
 const KINDS: { id: CategoryField["kind"]; label: string }[] = [
   { id: "number", label: "Number" },
@@ -324,8 +325,8 @@ export function CategorySettings({
                 <button
                   type="button"
                   className="btn ml-auto min-h-10 text-rose-700"
-                  onClick={() => {
-                    if (!confirm(`Delete the category "${cat.label}"?`)) return;
+                  onClick={async () => {
+                    if (!(await askConfirm({ title: `Delete the category "${cat.label}"?`, confirm: "Delete", danger: true }))) return;
                     run(() => deleteCategory(cat.id), () => setSelected(categories.find((c) => c.id !== cat.id)?.id ?? null));
                   }}
                 >

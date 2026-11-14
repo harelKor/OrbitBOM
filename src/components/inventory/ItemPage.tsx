@@ -1,5 +1,6 @@
 "use client";
 
+import { StepButton } from "@/components/ui/Stepper";
 import { FindButton } from "@/components/map/FindButton";
 
 import { useRouter } from "next/navigation";
@@ -18,6 +19,7 @@ import { ItemHistory } from "./ItemHistory";
 import { ToBomDialog } from "./ToBomDialog";
 import { UsedIn } from "./UsedIn";
 import type { BomTarget, Condition, Group, InvCategory, Item, Location } from "./types";
+import { askConfirm } from "@/components/ui/useConfirm";
 
 type Match = { partId: string; name: string; quantity: number; robotName: string; systemName: string; reason: "onshape" | "link" | "name" };
 
@@ -105,15 +107,7 @@ export function ItemPage({
             {spec && <div className="font-mono text-sm text-muted tabular-nums">{spec}</div>}
           </div>
           <div className="flex items-center gap-3">
-            {work && (<button
-              type="button"
-              onClick={() => onStep(-1)}
-              disabled={item.inStock < 1}
-              className="press flex h-12 w-12 items-center justify-center rounded-lg bg-rose-500 text-2xl font-bold text-white hover:bg-rose-400 disabled:opacity-30"
-              aria-label="One less"
-            >
-              −
-            </button>)}
+            {work && <StepButton step={-1} size="xl" onClick={() => onStep(-1)} disabled={item.inStock < 1} />}
             <div className="min-w-0 flex-1 text-center">
               <div className="display font-mono text-5xl text-fg tabular-nums">{formatStock(item.inStock, item.sheet)}</div>
               <div className="text-xs text-muted">
@@ -121,14 +115,7 @@ export function ItemPage({
                 {!!usage?.short && <span className="font-semibold text-amber-600"> · {usage.short} short</span>}
               </div>
             </div>
-            {work && (<button
-              type="button"
-              onClick={() => onStep(1)}
-              className="press flex h-12 w-12 items-center justify-center rounded-lg bg-emerald-500 text-2xl font-bold text-white hover:bg-emerald-400"
-              aria-label="One more"
-            >
-              +
-            </button>)}
+            {work && <StepButton step={1} size="xl" onClick={() => onStep(1)} />}
           </div>
           {item.sheet && (
             <div className="flex justify-center">
@@ -181,9 +168,9 @@ export function ItemPage({
               </button>
               <button
                 className="btn ml-auto text-rose-700"
-                onClick={() => {
-                  const warn = usage?.parts.length ? ` ${usage.parts.length} BOM parts will no longer draw from it.` : "";
-                  if (!confirm(`Delete "${item.name}" from the inventory?${warn}`)) return;
+                onClick={async () => {
+                  const warn = usage?.parts.length ? `${usage.parts.length} BOM parts will no longer draw from it. ` : "";
+                  if (!(await askConfirm({ title: `Delete "${item.name}" from the inventory?`, body: `${warn}It stays in Settings → Recently deleted for 30 days.`, confirm: "Delete", danger: true }))) return;
                   startTransition(async () => {
                     await deleteItem(item.id);
                     router.push("/inventory");

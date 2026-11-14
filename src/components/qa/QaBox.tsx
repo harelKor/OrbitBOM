@@ -9,6 +9,7 @@ import { PartCard } from "@/components/bom/PartCard";
 import type { CardPart } from "@/components/bom/types";
 import { Icon } from "@/components/ui/Icon";
 import type { PartChanges } from "@/lib/parts/changes";
+import { Notice } from "@/components/ui/Notice";
 
 export type QaSystem = { id: string; name: string; count: number };
 
@@ -124,7 +125,7 @@ export function QaBox({
           )
         }
       >
-        {error && <p className="mb-3 rounded-md bg-rose-50 p-3 text-sm text-rose-700">Couldn&apos;t save: {error}</p>}
+        {error && <Notice tone="error" className="mb-3">Couldn&apos;t save: {error}</Notice>}
         {shown.length === 0 ? (
           <p className="text-sm text-muted">No parts in this system are waiting for QA.</p>
         ) : (

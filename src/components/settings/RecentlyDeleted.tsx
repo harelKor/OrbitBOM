@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { restoreDeleted } from "@/app/(app)/storage-actions";
 import { LocalTime } from "@/components/ui/LocalTime";
+import { Notice } from "@/components/ui/Notice";
 
 export type DeletedEntry = { id: string; kind: "robot" | "system" | "part" | "item"; label: string; deletedAt: string; by: string | null; rows: number };
 
@@ -29,9 +30,9 @@ export function RecentlyDeleted({ entries, isAdmin, keepDays }: { entries: Delet
         What was deleted in the last {keepDays} days, with everything that went with it: a robot&apos;s systems and parts, their history, versions and files, an
         item&apos;s stock moves and the parts that were linked to it. After {keepDays} days it&apos;s gone for good.
       </p>
-      {result.error && <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">{result.error}</p>}
+      {result.error && <Notice tone="error">{result.error}</Notice>}
       {result.message && (
-        <p className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">{result.message}</p>
+        <Notice tone="success">{result.message}</Notice>
       )}
       <ul className="divide-y divide-line rounded-xl border border-line bg-surface">
         {entries.map((e) => (

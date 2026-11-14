@@ -10,6 +10,7 @@ import { listTeamSystems } from "@/lib/teams";
 import { disconnectOnshape, setOwnTeam } from "./actions";
 import { McpTokens } from "./McpTokens";
 import { NameForm } from "./NameForm";
+import { Notice } from "@/components/ui/Notice";
 
 const MESSAGES: Record<string, string> = {
   connected: "Onshape is connected.",
@@ -67,9 +68,7 @@ export default async function ProfilePage({
       )}
 
       {onshape && MESSAGES[onshape] && (
-        <p className={`rounded-md p-3 text-sm ${onshape === "connected" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
-          {MESSAGES[onshape]}
-        </p>
+        <Notice tone={onshape === "connected" ? "success" : "error"}>{MESSAGES[onshape]}</Notice>
       )}
 
       <section className="panel space-y-3 p-5">

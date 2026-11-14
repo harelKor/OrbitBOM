@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "@/components/ui/Toaster";
+import { TopLayer } from "@/components/ui/TopLayer";
 
 // Starts the service worker (public/sw.js: the app's code kept on the device, a saved copy of each
 // page for offline) and shows a bar while the app is offline or showing a saved copy (Harel,
@@ -45,7 +46,7 @@ export function OfflineSupport() {
   const at = savedAt ? new Date(savedAt) : null;
   const when = at ? (at.toDateString() === new Date().toDateString() ? at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : at.toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })) : null;
   return (
-    <div role="status" className="fixed inset-x-0 bottom-0 z-[60] flex items-center justify-center gap-3 bg-amber-500 px-4 py-1.5 text-center text-sm font-medium text-black pb-[max(0.375rem,env(safe-area-inset-bottom))]">
+    <TopLayer role="status" className="inset-x-0 bottom-0 z-[60] flex w-auto items-center justify-center gap-3 bg-amber-500 px-4 py-1.5 text-center text-sm font-medium text-black pb-[max(0.375rem,env(safe-area-inset-bottom))]">
       <span>
         {!online ? "Offline" : "Back online"}
         {when ? ` · showing this page as it was at ${when}` : " · changes won't save"}
@@ -55,6 +56,6 @@ export function OfflineSupport() {
           Reload
         </button>
       )}
-    </div>
+    </TopLayer>
   );
 }

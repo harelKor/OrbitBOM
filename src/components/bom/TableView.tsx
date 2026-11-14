@@ -67,7 +67,7 @@ export function TableView({
             const save = saveFor(p.id);
             const done = isDone(p);
             return (
-              <tr key={p.id} id={`part-${p.id}`} data-part={partIds(p)} className={`scroll-mt-20 target:bg-accent/10 ${done ? "bg-emerald-50" : ""}`}>
+              <tr key={p.id} id={`part-${p.id}`} data-part={partIds(p)} className={`scroll-mt-20 target:bg-accent/10 ${done ? "bg-emerald-50 dark:bg-emerald-500/10" : ""}`}>
                 {selection && (
                   <td>
                     <Checkbox

@@ -6,13 +6,14 @@ import type { ShellCategory, ShellRobot } from "@/lib/data/shell";
 import { InventoryPopupProvider } from "@/components/inventory/InventoryPopup";
 import { PartDetailsProvider } from "@/components/bom/PartDetailsHost";
 import { Toaster } from "@/components/ui/Toaster";
+import { ConfirmHost } from "@/components/ui/useConfirm";
 import { useEscape } from "@/components/ui/useEscape";
 import { ArrivalsProvider } from "./Arrivals";
 import { uiScale } from "./boot-scripts";
 import { FilterProvider } from "./FilterContext";
 import { LeftNav } from "./LeftNav";
 import { MaterialColorsProvider } from "./MaterialColors";
-import { ModeProvider } from "./ModeContext";
+import { ModeProvider, ReadOnlyNote } from "./ModeContext";
 import type { Mode } from "./mode";
 import { RobotSwitcher } from "./RobotSwitcher";
 import { SidePanelsContext } from "./SidePanels";
@@ -226,14 +227,17 @@ export function Shell({
       localStorage.setItem(ROBOTS_KEY, JSON.stringify(next));
     } catch {}
   };
-  const toggle = (side: "left" | "right") => {
+  // remember: false for Esc's collapse, which lasts this visit only (a stray Esc shouldn't hide the
+  // columns for good).
+  const toggle = (side: "left" | "right", remember = true) => {
     if (window.matchMedia(WIDE[side]).matches) {
       // From the latest state, so two quick presses each count.
       setCollapsed((prev) => {
         const next = { ...prev, [side]: !prev[side] };
-        try {
-          localStorage.setItem(COLLAPSE_KEY, JSON.stringify(next));
-        } catch {}
+        if (remember)
+          try {
+            localStorage.setItem(COLLAPSE_KEY, JSON.stringify(next));
+          } catch {}
         return next;
       });
       return;
@@ -246,7 +250,7 @@ export function Shell({
   const escCollapse = useEffectEvent((e: KeyboardEvent) => {
     if (e.defaultPrevented || open) return;
     const side = wide.right && !collapsed.right ? "right" : wide.left && !collapsed.left ? "left" : null;
-    if (side) toggle(side);
+    if (side) toggle(side, false);
   });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -285,6 +289,7 @@ export function Shell({
                 <div className="flex min-w-0 flex-1 flex-col">
                   <TopBar onMenu={() => toggle("left")} onRobots={() => toggle("right")} navHidden={collapsed.left} robotsHidden={collapsed.right} />
                 <main className="min-w-0 flex-1 p-4 md:p-6">
+                  <ReadOnlyNote />
                   <SidePanelsContext.Provider value={{ left: wide.left && !collapsed.left, right: wide.right && !collapsed.right }}>{children}</SidePanelsContext.Provider>
                 </main>
                   <Suspense>
@@ -329,6 +334,7 @@ export function Shell({
               </div>
             </PartDetailsProvider>
             <Toaster />
+            <ConfirmHost />
           </InventoryPopupProvider>
         </MaterialColorsProvider>
       </FilterProvider>

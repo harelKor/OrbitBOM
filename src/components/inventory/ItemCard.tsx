@@ -1,5 +1,6 @@
 "use client";
 
+import { StepButton } from "@/components/ui/Stepper";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -245,15 +246,14 @@ export function ItemCard({
 
       {/* As tall as the − / + buttons even without them (no team), or the name slides up under the picture. */}
       <div className="card-overlay -mt-12 flex min-h-13 items-center justify-between gap-2 px-2 pb-2" onClick={stop}>
-        {work && (<button
-          type="button"
+        {work && (<StepButton
+          step={-1}
+          size="lg"
           onClick={() => onStep(-1)}
           disabled={item.sheet ? item.inStock <= 0 : item.inStock < 1}
-          className="press z-10 flex h-11 w-11 items-center justify-center rounded-md bg-rose-500 text-xl font-bold text-white shadow-sm hover:bg-rose-400 disabled:opacity-30"
-          aria-label={item.sheet && isSheetGoods(category?.label ?? item.name) ? "One sheet less" : "One less"}
-        >
-          −
-        </button>)}
+          className="z-10"
+          label={item.sheet && isSheetGoods(category?.label ?? item.name) ? "One sheet less" : "One less"}
+        />)}
         <span className="z-10 flex items-center gap-1 rounded-full bg-[#111318]/80 px-2.5 py-1 font-mono text-xs font-semibold whitespace-nowrap text-white tabular-nums">
           <span className={gap > 0 ? "text-rose-300" : undefined}>
             <CountBox item={item} onCount={onCount} />
@@ -261,14 +261,13 @@ export function ItemCard({
           {needed != null && <span className="text-white/70">/ {formatStock(needed, item.sheet)}</span>}
           {item.sheet && <PieceStepper item={item} onStep={onStep} />}
         </span>
-        {work && (<button
-          type="button"
+        {work && (<StepButton
+          step={1}
+          size="lg"
           onClick={() => onStep(1)}
-          className="press z-10 flex h-11 w-11 items-center justify-center rounded-md bg-emerald-500 text-xl font-bold text-white shadow-sm hover:bg-emerald-400"
-          aria-label={item.sheet && isSheetGoods(category?.label ?? item.name) ? "One sheet more" : "One more"}
-        >
-          +
-        </button>)}
+          className="z-10"
+          label={item.sheet && isSheetGoods(category?.label ?? item.name) ? "One sheet more" : "One more"}
+        />)}
       </div>
 
       <div className="flex min-w-0 flex-col gap-1.5 p-3 pt-2">
@@ -422,29 +421,25 @@ export function PieceStepper({ item, onStep }: { item: Pick<Item, "inStock" | "p
                     {label.sub && <span className="ml-1.5 text-xs text-muted">{label.sub}</span>}
                   </span>
                   <span className={`font-mono text-xs font-semibold tabular-nums ${row.count ? "text-accent" : "text-subtle"}`}>×{row.count}</span>
-                  <button
-                    type="button"
+                  <StepButton
+                    step={-1}
+                    size="md"
                     disabled={!canTakePiece(stocked, row.size)}
                     onClick={() => {
                       onStep(-ratio, row.size);
                       close();
                     }}
-                    aria-label={`Take ${label.primary}`}
-                    className="press flex h-9 w-10 shrink-0 items-center justify-center rounded-md bg-rose-500 text-lg font-bold text-white hover:bg-rose-400 active:scale-[0.98] disabled:opacity-30"
-                  >
-                    −
-                  </button>
-                  <button
-                    type="button"
+                    label={`Take ${label.primary}`}
+                  />
+                  <StepButton
+                    step={1}
+                    size="md"
                     onClick={() => {
                       onStep(ratio, row.size);
                       close();
                     }}
-                    aria-label={`Add ${label.primary}`}
-                    className="press flex h-9 w-10 shrink-0 items-center justify-center rounded-md bg-emerald-500 text-lg font-bold text-white hover:bg-emerald-400 active:scale-[0.98]"
-                  >
-                    +
-                  </button>
+                    label={`Add ${label.primary}`}
+                  />
                 </div>
               );
             })}

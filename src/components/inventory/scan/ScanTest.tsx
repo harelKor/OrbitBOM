@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Recognized } from "@/lib/recognize/answer";
 import { countTeethInRing, type TeethResult } from "@/lib/recognize/teeth";
 import { jpegOf, ringBox, ringCrop, shrink, type Source } from "./frame";
+import { Notice } from "@/components/ui/Notice";
 
 // The scan test page (plan/item-recognition.md, Phase 0): the live camera with the teeth counter
 // drawn over it, Capture sends the photo to Gemini, and everything it answered shows below, with
@@ -161,7 +162,7 @@ export function ScanTest({ configured }: { configured: boolean }) {
             {shot.teeth?.bore ? `, ${shot.teeth.bore} bore` : ""}
             {shot.teeth?.candidates.length ? ` · best counts: ${shot.teeth.candidates.map((c) => `${c.teeth} (${c.score})`).join(", ")}` : ""}
           </p>
-          {error && <p className="rounded-md bg-rose-50 p-2 text-sm text-rose-700">{error}</p>}
+          {error && <Notice tone="error">{error}</Notice>}
           {answer && <AnswerView answer={answer} />}
         </div>
       )}

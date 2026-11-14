@@ -5,6 +5,7 @@ import { fitTargets } from "@/app/(app)/inventory/actions";
 import { openPartWindow } from "@/components/bom/PartDetailsHost";
 import { useInventoryPopup } from "@/components/inventory/InventoryPopup";
 import type { FitPart } from "@/lib/drawing/download";
+import { toast } from "@/components/ui/Toaster";
 
 // What a fit note can fit: a part of the system or any inventory item (Harel, 2026-10-31).
 export type FitTarget = { kind: "part" | "item"; id: string; name: string; thumbUrl: string | null; category?: string };
@@ -46,7 +47,7 @@ export function linkTargets(parts: FitPart[], items: Items | null) {
 export function useOpenFitLink() {
   const { openItem } = useInventoryPopup();
   const open = (link: { partId?: string; itemId?: string }) => {
-    if (link.partId) void openPartWindow(link.partId).then((ok) => !ok && alert("Couldn't open that part."));
+    if (link.partId) void openPartWindow(link.partId).then((ok) => !ok && toast("Couldn't open that part.", true));
     else if (link.itemId) openItem(link.itemId);
   };
   const fromTarget = (target: EventTarget | null) => {

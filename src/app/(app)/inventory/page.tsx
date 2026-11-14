@@ -13,7 +13,7 @@ export default async function InventoryPage() {
     <div className="space-y-4">
       <div>
         <InventoryCrumbs categories={inventory.categories} />
-        <h1 className="display text-3xl text-accent">Inventory</h1>
+        <h1 className="display text-3xl text-accent max-sm:pr-12">Inventory</h1>
       </div>
       <InventoryView {...shelfForPage(inventory)} actions={actions} scope={{ kind: "home" }} />
     </div>

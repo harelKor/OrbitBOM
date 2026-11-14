@@ -27,6 +27,9 @@ import { Icon } from "@/components/ui/Icon";
 import { statusTint } from "@/components/ui/statusTint";
 import { computeStatus } from "@/lib/status";
 import type { InventoryReview } from "@/lib/review/inventory";
+import { Notice } from "@/components/ui/Notice";
+import { askConfirm } from "@/components/ui/useConfirm";
+import { toast } from "@/components/ui/Toaster";
 
 export type ReviewItem = {
   part: CardPart;
@@ -242,9 +245,7 @@ export function ReviewView({
       </div>
 
       {note && (
-        <div role="status" className={`rounded-md border px-3 py-2 text-sm ${note.error ? "border-rose-300 bg-rose-50 text-rose-700" : "border-line bg-raised text-fg-2"}`}>
-          {note.error ?? note.message}
-        </div>
+        <Notice tone={note.error ? "error" : "info"}>{note.error ?? note.message}</Notice>
       )}
 
       {inventoryLeft.length > 0 && <InventorySection reviews={inventoryLeft} onDecide={inv.decide} />}
@@ -323,7 +324,9 @@ function BulkButtons({
         type="button"
         disabled={disabled || !count}
         className="btn-danger"
-        onClick={() => confirm(`Reject ${what}? ${undoes}`) && onDecide(ids, false)}
+        onClick={async () => {
+          if (await askConfirm({ title: `Reject ${what}?`, body: undoes, confirm: "Reject", danger: true })) onDecide(ids, false);
+        }}
       >
         Reject {word} <span className="font-mono tabular-nums">{count}</span>
       </button>
@@ -427,7 +430,7 @@ function ReviewCard({ item, disabled, onDecide }: { item: ReviewItem; disabled: 
   const save = (changes: PartChanges) =>
     startSave(async () => {
       const r = await updatePart(part.id, changes);
-      if (r.error) alert(r.error);
+      if (r.error) toast(r.error, true);
     });
   const showDetails = usePartDetails(part, save);
   return (

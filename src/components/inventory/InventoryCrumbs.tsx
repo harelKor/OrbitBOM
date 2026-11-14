@@ -14,7 +14,9 @@ export function InventoryCrumbs({ categories }: { categories: { id: string; labe
   const ids = group ? (params.get("cat") ?? "").split(",").filter(Boolean) : [];
   const picked = categories.filter((c) => ids.includes(c.id));
   const cat = picked.length ? { label: picked.length > 2 ? `${picked.length} categories` : picked.map((c) => c.label).join(" + ") } : undefined;
-  const crumb = "press rounded px-1 hover:text-accent active:scale-[0.98]";
+  const crumb = "press rounded px-1 hover:text-accent active:scale-[0.98] pointer-coarse:min-h-9";
+  // On the home itself the route is just "Inventory", which the page's heading already says.
+  if (!group) return null;
   return (
     <nav aria-label="Category route" className="flex flex-wrap items-center gap-1 text-xs font-semibold tracking-wide text-subtle uppercase">
       {group ? (

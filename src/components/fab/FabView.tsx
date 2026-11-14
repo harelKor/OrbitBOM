@@ -29,6 +29,7 @@ const LAYOUTS = ["cards", "list"] as const;
 import { type FabLayout, DRAG_TYPE, SECTION_STATUS, partStage, batchStage, POST_PROCESSING, isPostProcessing, fabTint, common, materialKeyOf, inheritFromBatch, fabState, batchStatus, type Batch, type Stage, type DragLoad } from "./fabModel";
 import { MachineBox, MobileMachines, MaterialFilters } from "./MachineFilters";
 import { OpenBatchContext, BatchCard } from "./BatchCard";
+import { Notice } from "@/components/ui/Notice";
 
 // To Fab: machine boxes, then To Post Process (batches with parts in Post Processing), Released
 // (loose parts), Ready to Fab (batches), In process and Finished (batches first, then parts), and
@@ -458,7 +459,7 @@ export function FabView({
           </button>}
         </div>
 
-        {error && <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">Couldn&apos;t save: {error}</p>}
+        {error && <Notice tone="error">Couldn&apos;t save: {error}</Notice>}
 
         {view.post.length > 0 && (
           <div id="post-process" className="scroll-mt-20 rounded-xl border p-3" style={{ borderColor: "color-mix(in srgb, #f302f7 40%, transparent)", backgroundColor: "color-mix(in srgb, #f302f7 4%, transparent)" }}>

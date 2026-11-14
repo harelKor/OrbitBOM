@@ -21,6 +21,7 @@ import { computeStatus } from "@/lib/status";
 import { FactoryStatusButton } from "./FactoryStatusButton";
 import { useArrivalHalo } from "@/components/shell/Arrivals";
 import { arrivalPage } from "@/lib/seen";
+import { Notice } from "@/components/ui/Notice";
 
 const IN_STOCK_MS = FACTORY_IN_STOCK_DAYS * 24 * 60 * 60 * 1000;
 const inStock = (p: CardPart) => computeStatus(p) === "In Stock";
@@ -161,7 +162,7 @@ export function FactoryView({
   return (
     <BomProvider value={{ inventory, isAdmin, robotId }}>
       <div className="space-y-6">
-        {error && <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">Couldn&apos;t save: {error}</p>}
+        {error && <Notice tone="error">Couldn&apos;t save: {error}</Notice>}
 
         {/* Zivudim packs by itself, so Released only shows for the moment before the page reloads. */}
         {(!byMaterial || view.released.length > 0) && <Section

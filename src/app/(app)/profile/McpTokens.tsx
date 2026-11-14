@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { Notice } from "@/components/ui/Notice";
+import { askConfirm } from "@/components/ui/useConfirm";
 import { createMcpTokenAction, revokeMcpToken } from "./actions";
 
 type Token = { id: string; label: string | null; createdAt: Date; lastUsedAt: Date | null };
@@ -15,8 +17,8 @@ export function McpTokens({ tokens, origin }: { tokens: Token[]; origin: string 
   return (
     <div className="space-y-3 text-sm">
       {link ? (
-        <div className="space-y-2 rounded-lg border border-emerald-300 bg-emerald-50 p-3">
-          <p className="text-emerald-700">
+        <Notice tone="success" className="space-y-2">
+          <p>
             Your connector link. Copy it now: it won&apos;t be shown again, and anyone with it can edit the BOM as you.
           </p>
           <div className="flex gap-2">
@@ -36,7 +38,7 @@ export function McpTokens({ tokens, origin }: { tokens: Token[]; origin: string 
             <li>Name it OrbitParts and paste the link as the URL. Leave the OAuth fields empty.</li>
             <li>In a chat, turn on OrbitParts from the tools menu and ask, for example: &ldquo;Which parts in Drivetrain still have no machine?&rdquo;</li>
           </ol>
-        </div>
+        </Notice>
       ) : (
         <form
           className="flex gap-2"
@@ -67,7 +69,9 @@ export function McpTokens({ tokens, origin }: { tokens: Token[]; origin: string 
               </span>
               <button
                 className="text-xs text-rose-700 hover:text-rose-700"
-                onClick={() => confirm("Revoke this link? Claude stops working with it at once.") && startTransition(() => revokeMcpToken(t.id))}
+                onClick={async () => {
+                  if (await askConfirm({ title: "Revoke this link?", body: "Claude stops working with it at once.", confirm: "Revoke", danger: true })) startTransition(() => revokeMcpToken(t.id));
+                }}
               >
                 Revoke
               </button>

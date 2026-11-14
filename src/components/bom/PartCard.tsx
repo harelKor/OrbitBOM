@@ -1,5 +1,7 @@
 "use client";
 
+import { toast } from "@/components/ui/Toaster";
+import { askConfirm } from "@/components/ui/useConfirm";
 import { useState, useTransition } from "react";
 import { getMachine } from "@/config/machines";
 import { IN_PROCESS_STATUS, READY_STATUS, fabStage, isFabFinished } from "@/lib/fab";
@@ -134,7 +136,7 @@ function MadePartCard({
           <span className="text-xs text-muted">Manual part</span>
         ) : part.thumbUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
-          <img src={part.thumbUrl} alt="" loading="lazy" className="h-full w-full object-contain p-3" />
+          <img src={part.thumbUrl} alt="" loading="lazy" className="thumb-edge h-full w-full object-contain p-3" />
         ) : (
           <span className="text-xs text-muted">No thumbnail yet</span>
         )}
@@ -317,6 +319,10 @@ function FabFooter({ part, save, current, editStatus }: { part: CardPart; save: 
   const made = current ? part[current.done] : part.quantity;
   return (
     <div className="flex min-w-0 flex-col gap-1.5 px-2.5 py-2">
+      {/* The part's name always shows: a pale plate on the pale well can look like an empty card. */}
+      <div className="min-w-0 truncate text-[0.8125rem] font-semibold text-fg" title={partTitle(part)}>
+        {partTitle(part)}
+      </div>
       <div className="flex min-w-0 items-center gap-1.5">
         {editStatus ? <StatusField part={part} save={save} size="sm" /> : <StatusPill status={computeStatus(part)} label={partStatusLabel(part)} />}
         <span className="ml-auto font-mono text-xs font-semibold text-fg tabular-nums" title={machine ? `Made at ${machine} of the amount` : "Amount"}>
@@ -389,7 +395,7 @@ export function DownloadMenu({ part, format }: { part: CardPart; format: ExportF
                 type="button"
                 onClick={() => {
                   close();
-                  downloadDrawing(ownerPartId(part), f).catch((err: Error) => alert(err.message));
+                  downloadDrawing(ownerPartId(part), f).catch((err: Error) => toast(err.message, true));
                 }}
                 className={`${item} w-full text-left`}
               >
@@ -418,19 +424,22 @@ export function DoneCounter({ part, save, slot }: { part: CardPart; save: SaveFn
   // One more (or one less) from the saved count, so two phones counting the same part both count.
   const step = (d: number) => save({ add: { [slot.done]: d } });
   return (
-    <span className="ml-auto inline-flex shrink-0 items-center rounded-full border border-line-strong bg-ink text-[0.6875rem] tabular-nums">
-      {work && <button onClick={() => step(-1)} disabled={done === 0} className="press px-1.5 text-muted hover:text-fg disabled:opacity-30" aria-label="One less done">
+    // The shop's most-tapped control: 24px with a mouse, 36px under a finger (it was ~20×16).
+    <span className="ml-auto inline-flex shrink-0 items-center rounded-full border border-line-strong bg-ink text-xs tabular-nums pointer-coarse:text-sm">
+      {work && <button type="button" onClick={() => step(-1)} disabled={done === 0} className={COUNT_BTN} aria-label="One less done">
         −
       </button>}
-      <span className={`font-semibold text-fg ${work ? "" : "px-1.5"}`} title={`Done at ${getMachine(part[slot.key]!)?.name}`}>
+      <span className={`font-semibold text-fg ${work ? "px-0.5" : "px-2 py-0.5"}`} title={`Done at ${getMachine(part[slot.key]!)?.name}`}>
         {done}/{part.quantity}
       </span>
-      {work && <button onClick={() => step(1)} className="press px-1.5 text-muted hover:text-fg" aria-label="One more done">
+      {work && <button type="button" onClick={() => step(1)} className={COUNT_BTN} aria-label="One more done">
         +
       </button>}
     </span>
   );
 }
+
+const COUNT_BTN = "press flex h-6 w-6 items-center justify-center rounded-full text-sm font-bold text-muted hover:bg-raised hover:text-fg active:scale-[0.9] disabled:opacity-30 pointer-coarse:h-9 pointer-coarse:w-9 pointer-coarse:text-base";
 
 // The Merged tag: how many BOM rows the card stands for; a click offers Unmerge.
 export function MergedBadge({ part }: { part: CardPart }) {
@@ -479,10 +488,10 @@ export function EditMenu({ part }: { part: CardPart }) {
       {(close) => (
         <div className="space-y-0.5 text-sm">
           <button
-            className="block w-full rounded px-2 py-1.5 text-left text-rose-700 hover:bg-raised"
-            onClick={() => {
+            className="block w-full rounded px-2 py-1.5 text-left text-rose-700 hover:bg-raised dark:text-rose-300 pointer-coarse:py-2.5"
+            onClick={async () => {
               close();
-              if (confirm(`Delete "${partTitle(part)}"?`)) startTransition(() => void deleteManualPart(part.id));
+              if (await askConfirm({ title: `Delete "${partTitle(part)}"?`, body: "It stays in Settings → Recently deleted for 30 days.", confirm: "Delete", danger: true })) startTransition(() => void deleteManualPart(part.id));
             }}
           >
             Delete part

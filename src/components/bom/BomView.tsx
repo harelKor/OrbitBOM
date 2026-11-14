@@ -31,7 +31,8 @@ import { ViewPicker } from "@/components/ui/ViewPicker";
 
 const VIEW_LABELS = { card: "Cards", list: "List", table: "Table", kanban: "Kanban" } as const;
 import { TableView } from "./TableView";
-import { type CardPart } from "./types";
+import { partTitle, type CardPart } from "./types";
+import { toast } from "@/components/ui/Toaster";
 import { Icon } from "@/components/ui/Icon";
 import { SuggestIcon } from "@/components/ui/SuggestIcon";
 
@@ -138,14 +139,17 @@ export function BomView({
     return out;
   }, [optimisticParts, merges]);
   const [, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
 
+  // A failed save says which part, in a toast that stays until tapped: the old box at the top of
+  // the page was off screen while you counted parts further down.
   function save(ids: string[], changes: PartChanges) {
-    setError(null);
     startTransition(async () => {
       addOptimistic({ ids, changes });
       const result = ids.length === 1 ? await updatePart(ids[0], changes) : await updateParts(ids, changes);
-      if (result.error) setError(result.error);
+      if (result.error) {
+        const part = ids.length === 1 ? parts.find((p) => p.id === ids[0]) : undefined;
+        toast(`Couldn't save ${part ? partTitle(part) : `${ids.length} parts`}: ${result.error}`, true);
+      }
     });
   }
   const saveFor = (id: string) => (changes: PartChanges) => save([id], changes);
@@ -345,7 +349,6 @@ export function BomView({
           </div>
       </div>
 
-      {error && <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">Couldn&apos;t save: {error}</p>}
 
       <div className="text-xs text-subtle tabular-nums">
         {shown.length === optimistic.length ? `${optimistic.length} parts` : `${shown.length} of ${optimistic.length} parts`}

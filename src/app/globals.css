@@ -1,5 +1,18 @@
 @import "tailwindcss";
 
+/* dark: follows the app's own theme, not just the device's: dark when the greyscale slider set
+   data-theme="dark", or when the device is dark and the slider didn't force the light theme. */
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme="light"]), :root:not([data-theme="light"]) *) {
+      @slot;
+    }
+  }
+}
+
 @theme inline {
   --font-sans: var(--font-jost);
   --font-display: var(--font-jost);
@@ -218,7 +231,8 @@ body {
 
 @utility skeleton {
   border-radius: var(--radius-lg);
-  background: rgb(17 19 24 / 0.06);
+  /* From the text colour, so it shows on both themes (6% black vanished on dark). */
+  background: color-mix(in oklab, var(--color-fg) 9%, transparent);
   animation: var(--animate-pulse);
 }
 
@@ -314,6 +328,12 @@ body {
   from {
     opacity: 0;
   }
+}
+
+/* A part's picture on the pale well: a hairline shadow round its outline, so a white or pale grey
+   plate doesn't vanish into the background (Shop Fab cards looked blank). */
+@utility thumb-edge {
+  filter: drop-shadow(0 0 0.6px rgb(17 19 24 / 0.6)) drop-shadow(0 1px 2px rgb(17 19 24 / 0.12));
 }
 
 /* The display face for big numbers and headings, like the site's "1690". */
@@ -599,16 +619,16 @@ body {
     @apply rounded-lg border border-line bg-surface;
   }
   .btn {
-    @apply inline-flex items-center gap-1.5 rounded-md border border-line-strong bg-surface px-3 py-1.5 text-sm font-medium text-fg press hover:border-accent/50 hover:bg-raised disabled:opacity-50;
+    @apply inline-flex items-center gap-1.5 rounded-md border border-line-strong bg-surface px-3 py-1.5 text-sm font-medium text-fg press hover:border-accent/50 hover:bg-raised disabled:opacity-50 pointer-coarse:min-h-10;
   }
   .btn-primary {
-    @apply inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-white press hover:bg-accent-hover disabled:opacity-50;
+    @apply inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-white press hover:bg-accent-hover disabled:opacity-50 pointer-coarse:min-h-10;
   }
   .btn-danger {
-    @apply inline-flex items-center gap-1.5 rounded-md border border-rose-300 bg-rose-50 px-3 py-1.5 text-sm font-medium text-rose-700 press hover:bg-rose-100 disabled:opacity-50;
+    @apply inline-flex items-center gap-1.5 rounded-md border border-rose-300 bg-rose-50 px-3 py-1.5 text-sm font-medium text-rose-700 press hover:bg-rose-100 disabled:opacity-50 pointer-coarse:min-h-10 dark:border-rose-500/50 dark:bg-rose-500/15 dark:text-rose-300 dark:hover:bg-rose-500/25;
   }
   .input {
-    @apply w-full rounded-md border border-line-strong bg-surface px-3 py-1.5 text-sm text-fg placeholder:text-subtle focus:border-accent focus:outline-none;
+    @apply w-full rounded-md border border-line-strong bg-surface px-3 py-1.5 text-sm text-fg placeholder:text-subtle focus:border-accent focus:outline-none pointer-coarse:min-h-10;
   }
   .label {
     @apply mb-1 block text-xs font-medium text-muted;
@@ -619,8 +639,19 @@ body {
    the page the cards that arrived since your last visit (until the first tap). A soft gold, the same
    as the Added halo, breathing slowly. */
 .arrival-text {
+  /* A deep amber on the light theme: the dark theme's pale yellow read at ~1.4:1 on white. */
+  color: rgb(180 83 9);
+  text-shadow: 0 0 8px rgba(250, 204, 21, 0.45);
+}
+:root[data-theme="dark"] .arrival-text {
   color: rgb(253 224 71);
   text-shadow: 0 0 8px rgba(250, 204, 21, 0.7);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .arrival-text {
+    color: rgb(253 224 71);
+    text-shadow: 0 0 8px rgba(250, 204, 21, 0.7);
+  }
 }
 .arrival-halo,
 [data-arrival] > .card-interactive,

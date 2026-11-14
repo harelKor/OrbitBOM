@@ -159,8 +159,9 @@ export default async function RobotPage({ params }: { params: Promise<{ robotId:
             glow={myBatches > 0}
           />
         </ArrivalMark>
-        {/* 3D Printing next to Shop Fab takes two thirds, Factory Fab on the right a third (Harel, 2026-11-07). */}
-        <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-3">
+        {/* 3D Printing next to Shop Fab takes two thirds, Factory Fab on the right a third (Harel, 2026-11-07).
+            On a phone a third was too narrow for "Factory Fab" and "1 released": halves there. */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
           <ArrivalMark prefix={`print:${robot.id}:`}>
             <AreaCard href={`/robots/${robot.id}/printing`} icon="printer" title="3D Printing" count={print.count} released={print.released} glow={cad && print.count > 0} />
           </ArrivalMark>
@@ -270,12 +271,12 @@ function AreaCard({ href, icon, title, count, released, glow }: { href: string; 
         <Icon name={icon} className="h-8 w-8" />
       </span>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-base font-medium text-muted @min-[14rem]:text-lg">{title}</div>
+        <div className="text-base leading-tight font-medium text-muted @min-[14rem]:truncate @min-[14rem]:text-lg">{title}</div>
         <div className="display text-5xl text-accent tabular-nums @min-[14rem]:text-6xl">
           {count}
           <span className="hidden text-xl font-medium text-muted @min-[14rem]:inline @min-[20rem]:text-2xl"> {count === 1 ? "part" : "parts"}</span>
         </div>
-        <div className="truncate text-sm text-subtle tabular-nums">{released} released</div>
+        <div className="text-sm leading-tight text-subtle tabular-nums @min-[14rem]:truncate">{released} released</div>
       </div>
       <Icon name="arrow" className="hidden h-7 w-7 shrink-0 text-subtle transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-fg @min-[24rem]:block" />
     </Link>

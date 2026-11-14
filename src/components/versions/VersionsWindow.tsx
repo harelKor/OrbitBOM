@@ -10,6 +10,7 @@ import type { VersionEntry, VersionList } from "@/lib/versions/history";
 import { afterPartsUpdate } from "./afterUpdate";
 import { ChangeBox } from "./CommitWindow";
 import { CHECK_SYSTEM_EVENT, OPEN_VERSIONS_EVENT } from "./events";
+import { askConfirm } from "@/components/ui/useConfirm";
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—");
 
@@ -42,8 +43,8 @@ export function VersionsWindow({ systemId, list, thumbs }: { systemId: string; l
     setOpen(true);
   }, [params, router, pathname]);
 
-  const revert = (v: VersionEntry) => {
-    if (!confirm(`Revert this system to ${v.label}? Its parts go back to how they were in that version; Onshape isn't changed.`)) return;
+  const revert = async (v: VersionEntry) => {
+    if (!(await askConfirm({ title: `Revert this system to ${v.label}?`, body: "Its parts go back to how they were in that version; Onshape isn't changed.", confirm: "Revert", danger: true }))) return;
     start(async () => {
       setMessage(null);
       const r = await revertToVersion(systemId, v.id);

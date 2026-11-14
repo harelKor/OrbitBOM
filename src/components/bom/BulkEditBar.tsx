@@ -9,6 +9,7 @@ import { STATUSES } from "@/config/statuses";
 import type { PartChanges } from "@/lib/parts/changes";
 import { RESET_SPECS } from "@/components/shell/mode";
 import { useCan } from "@/components/shell/ModeContext";
+import { askConfirm } from "@/components/ui/useConfirm";
 
 // FRCBOM's Bulk edit bar (ref §3): N selected · Field · Value · Apply · Select all · Done.
 const FIELDS = [
@@ -113,8 +114,8 @@ export function BulkEditBar({
           <button
             className="btn"
             disabled={!count}
-            onClick={() => {
-              if (confirm(`Reset ${count} part${count === 1 ? "" : "s"}? Their type, status, material, machines, inventory link and counts go back to blank.`)) onApply({ ...RESET_SPECS });
+            onClick={async () => {
+              if (await askConfirm({ title: `Reset ${count} part${count === 1 ? "" : "s"}?`, body: "Their type, status, material, machines, inventory link and counts go back to blank.", confirm: "Reset", danger: true })) onApply({ ...RESET_SPECS });
             }}
           >
             Reset specs

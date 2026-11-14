@@ -28,7 +28,7 @@ export default async function InventoryCategoryPage({ params }: { params: Promis
           <span>/</span>
           <span className="px-1 text-fg">{c.label}</span>
         </nav>
-        <h1 className="display text-3xl text-accent">{c.label}</h1>
+        <h1 className="display text-3xl text-accent max-sm:pr-12">{c.label}</h1>
       </div>
       <InventoryView {...shelfForPage(inventory)} scope={{ kind: "category", id: c.id }} />
     </div>

@@ -17,7 +17,7 @@ export default async function InventoryConditionPage({ params }: { params: Promi
         <Link href="/inventory" className="text-xs font-semibold tracking-wide text-subtle uppercase hover:text-fg">
           Inventory
         </Link>
-        <h1 className="display text-3xl text-accent">{c.label}</h1>
+        <h1 className="display text-3xl text-accent max-sm:pr-12">{c.label}</h1>
       </div>
       <InventoryView {...shelfForPage(inventory)} scope={{ kind: "condition", id: c.id }} />
     </div>

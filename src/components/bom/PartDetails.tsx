@@ -33,6 +33,8 @@ import { MachineField, MaterialField, NameField, QuantityField, StatusField, Typ
 import { DownloadMenu, MergedBadge, cadFormat } from "./PartCard";
 import { ownerPartId, partTitle, type CardPart } from "./types";
 import { GoToButton } from "@/components/ui/GoToButton";
+import { askConfirm } from "@/components/ui/useConfirm";
+import { toast } from "@/components/ui/Toaster";
 
 type Stage = StageView | "thumb";
 
@@ -164,8 +166,8 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
                 <button
                   type="button"
                   className="btn-danger ml-auto"
-                  onClick={() => {
-                    if (!confirm(`Delete "${title}"?`)) return;
+                  onClick={async () => {
+                    if (!(await askConfirm({ title: `Delete "${title}"?`, body: "It stays in Settings → Recently deleted for 30 days.", confirm: "Delete", danger: true }))) return;
                     onClose();
                     startTransition(() => void deleteManualPart(part.id));
                   }}
@@ -189,8 +191,8 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
                     // tap meant to close the window can't wipe the part's setup.
                     <button
                       type="button"
-                      onClick={() => {
-                        if (confirm(`Reset "${title}"? Its type, status, material, machines, inventory link and counts go back to blank.`)) save(RESET_SPECS);
+                      onClick={async () => {
+                        if (await askConfirm({ title: `Reset "${title}"?`, body: "Its type, status, material, machines, inventory link and counts go back to blank.", confirm: "Reset", danger: true })) save(RESET_SPECS);
                       }}
                       title="Reset part configuration to defaults"
                       aria-label="Reset part configuration to defaults"
@@ -349,7 +351,7 @@ export function DrawingAction({ partId, hasDrawing, compact = false }: { partId:
     setMaking(true);
     const res = await fetch(`/api/parts/${partId}/drawing`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
     setMaking(false);
-    if (!res.ok) return alert((await res.json().catch(() => ({}))).error ?? "Couldn't make the drawing.");
+    if (!res.ok) return toast((await res.json().catch(() => ({}))).error ?? "Couldn't make the drawing.", true);
     router.refresh();
     setOpen(true);
   }
@@ -501,7 +503,7 @@ export function DrawingFileButton({ part, compact = false }: { part: CardPart; c
           setBusy(true);
           const error = await upload({ kind: "part", id: ownerPartId(part) }, "drawing", f);
           setBusy(false);
-          if (error) alert(error);
+          if (error) toast(error, true);
           else router.refresh();
         }}
       />
@@ -648,7 +650,7 @@ function useSuggest(part: CardPart, enabled: boolean): {
     setNote(null);
     const r = kind === "suggest" ? await suggestPart(part.id) : kind === "approve" ? await approveParts([part.id]) : await rejectParts([part.id]);
     setBusy(null);
-    if (r.error) return alert(r.error);
+    if (r.error) return toast(r.error, true);
     setNote(r.message ?? null);
     setTick((t) => t + 1);
   };

@@ -14,6 +14,7 @@ import { Chevron } from "@/components/ui/Chevron";
 import { Icon } from "@/components/ui/Icon";
 import type { RecentAction } from "@/lib/data/actions";
 import { focusPart } from "./focusPart";
+import { askConfirm } from "@/components/ui/useConfirm";
 
 const TILE_REM = 6; // one thumbnail on a dashboard action box
 
@@ -156,7 +157,7 @@ export function RecentActions({
               <li key={a.visitId} className="relative">
                 <Link
                   {...linkProps(a)}
-                  className={`card-interactive flex items-center gap-2 p-2 ${onOpen ? "pr-8" : "pr-16"} ${a.kind === "system" ? SYSTEM_BOX : ""}`}
+                  className={`card-interactive flex items-center gap-2 p-2 ${onOpen ? "pr-8 pointer-coarse:pr-12" : "pr-16 pointer-coarse:pr-24"} ${a.kind === "system" ? SYSTEM_BOX : ""}`}
                 >
                   <span className="flex shrink-0 -space-x-3">
                     {a.thumbs.slice(0, 3).map((t) => (
@@ -185,7 +186,7 @@ export function RecentActions({
                   </span>
                   <TimePill at={a.at} now={now} />
                 </Link>
-                {!onOpen && <RevertButton a={a} className="top-1/2 right-8 -translate-y-1/2" />}
+                {!onOpen && <RevertButton a={a} className="top-1/2 right-8 -translate-y-1/2 pointer-coarse:right-12" />}
                 <CloseButton onClick={() => close(a.visitId)} className="top-1/2 right-1.5 -translate-y-1/2" />
               </li>
             ))}
@@ -271,7 +272,7 @@ export function RecentActions({
                     </div>
                   </div>
                 </Box>
-                {!onOpen && <RevertButton a={a} className="top-2 right-9" />}
+                {!onOpen && <RevertButton a={a} className="top-2 right-9 pointer-coarse:right-[3.25rem]" />}
                 <CloseButton onClick={() => close(a.visitId)} className="top-2 right-2" />
               </li>
             );
@@ -298,12 +299,12 @@ function RevertButton({ a, className }: { a: RecentAction; className: string }) 
     setReverted(next);
     if (r.systemId) afterPartsUpdate(r.systemId, router);
   };
-  const revert = () => {
+  const revert = async () => {
     const what =
       a.kind === "system"
         ? `System update ${a.label} in ${a.pageName}: the system goes back to the version before it`
         : `${a.memberName ?? "This"} change in ${a.pageName}: ${a.fields.join(", ")} on ${a.partCount} ${a.partCount === 1 ? "part" : "parts"}`;
-    if (!confirm(`Revert ${what}?`)) return;
+    if (!(await askConfirm({ title: "Revert this change?", body: `${what}.`, confirm: "Revert", danger: true }))) return;
     start(async () => {
       const r = await revertAction(a.kind ?? "edit", a.visitId);
       // A revert that changed nothing (everything edited again since) leaves nothing to redo.
@@ -321,7 +322,8 @@ function RevertButton({ a, className }: { a: RecentAction; className: string }) 
       disabled={pending}
       aria-label={reverted ? "Re-apply this action" : "Revert this action"}
       title={reverted ? "Reverted. Click to re-apply" : "Revert this action"}
-      className={`press absolute flex h-6 w-6 items-center justify-center rounded-full border shadow-sm disabled:opacity-40 ${
+      // Side by side with ✕: 24px with a mouse, 36px under a finger.
+      className={`press absolute flex h-6 w-6 items-center justify-center rounded-full border shadow-sm disabled:opacity-40 pointer-coarse:h-9 pointer-coarse:w-9 ${
         reverted ? "border-accent bg-accent text-white hover:bg-accent-hover" : "border-line bg-surface/90 text-subtle hover:border-accent hover:text-fg"
       } ${className}`}
     >
@@ -391,7 +393,7 @@ function CloseButton({ onClick, className }: { onClick: () => void; className: s
       onClick={onClick}
       aria-label="Clear this action"
       title="Clear"
-      className={`press absolute flex h-6 w-6 items-center justify-center rounded-full border border-line bg-surface/90 text-subtle shadow-sm hover:border-accent hover:text-fg ${className}`}
+      className={`press absolute flex h-6 w-6 items-center justify-center rounded-full border border-line bg-surface/90 text-subtle shadow-sm hover:border-accent hover:text-fg pointer-coarse:h-9 pointer-coarse:w-9 ${className}`}
     >
       <Icon name="close" className="h-3 w-3" />
     </button>

@@ -7,6 +7,7 @@ import { useBom } from "./BomContext";
 import { useManage } from "@/components/shell/ModeContext";
 import { Popover } from "./Popover";
 import { ownerPartId, type CardPart } from "./types";
+import { askConfirm } from "@/components/ui/useConfirm";
 
 const COLORS: Record<string, string> = {
   drawing: "text-accent border-accent/40",
@@ -137,9 +138,9 @@ function FileRow({
           <button
             type="button"
             disabled={busy}
-            onClick={() =>
-              confirm(`Delete ${file.filename}?`) && run(async () => (await deleteFile(owner.kind, file.id)).error ?? null)
-            }
+            onClick={async () => {
+              if (await askConfirm({ title: `Delete ${file.filename}?`, confirm: "Delete", danger: true })) run(async () => (await deleteFile(owner.kind, file.id)).error ?? null);
+            }}
             className="text-rose-700 hover:text-rose-700"
             aria-label={`Delete ${type.label}`}
           >

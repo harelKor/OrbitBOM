@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getUser } from "@/lib/auth";
 import { safeNext } from "@/lib/safeNext";
 import { SignInButton } from "./SignInButton";
+import { Notice } from "@/components/ui/Notice";
 
 export default async function LoginPage({
   searchParams,
@@ -17,9 +18,9 @@ export default async function LoginPage({
         <h1 className="text-2xl font-semibold text-fg">OrbitParts</h1>
         <p className="mt-1 text-sm text-muted">Team 1690 bill of materials and inventory</p>
         {error && (
-          <p className="mt-4 rounded-md bg-rose-50 p-3 text-sm text-rose-700">
+          <Notice tone="error" className="mt-4">
             Sign-in failed. Please try again.
-          </p>
+          </Notice>
         )}
         <div className="mt-6">
           <SignInButton next={safeNext(next)} />

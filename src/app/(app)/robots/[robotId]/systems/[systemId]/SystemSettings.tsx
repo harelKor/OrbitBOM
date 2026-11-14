@@ -57,7 +57,8 @@ export function SystemSettings({
           {isAdmin && (
             <ConfirmButton
               action={deleteSystem.bind(null, robotId, system.id)}
-              message={`Delete the system "${system.name}" and all its parts? This can't be undone.`}
+              message={`Delete the system "${system.name}" and all its parts?`}
+              body="It stays in Settings → Recently deleted for 30 days."
               className="btn-danger w-full justify-center"
             >
               Delete system

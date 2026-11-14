@@ -11,6 +11,11 @@ import { getMode } from "@/lib/mode";
 // When this render happened: a new value on every server render of the layout.
 const renderStamp = () => Date.now();
 
+function noGlow(err: unknown): Record<string, string> {
+  console.error("arrivals read failed", err);
+  return {};
+}
+
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   // Everything starts together: only the arrivals wait for the member row, the rest is read while
   // the sign-in is checked (a signed-out visitor is still sent away before anything renders).
@@ -22,9 +27,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     cookies(),
     listMaterialColors(),
     listCategories(),
-    // The new parts glow: the newest arrival per page and when this member last opened each.
-    signedIn.then((m) => listNewest(m.id)),
-    signedIn.then((m) => listSeen(m.id)),
+    // The new parts glow: the newest arrival per page and when this member last opened each. Only
+    // a glow: if these reads fail the app still opens, without it (the sign-in above still counts).
+    signedIn.then((m) => listNewest(m.id).catch(noGlow)),
+    signedIn.then((m) => listSeen(m.id).catch(noGlow)),
   ]);
 
   return (

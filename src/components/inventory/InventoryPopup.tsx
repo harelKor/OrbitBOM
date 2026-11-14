@@ -1,5 +1,7 @@
 "use client";
 
+import { askConfirm } from "@/components/ui/useConfirm";
+import { StepButton } from "@/components/ui/Stepper";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useRef, useState, useTransition } from "react";
@@ -251,18 +253,13 @@ function Stepper({
   children?: React.ReactNode;
 }) {
   const work = useCan("work");
-  const size = big ? "h-11 w-11 text-xl" : "h-10 w-10 text-xl";
   return (
     <div className="flex items-center gap-2">
-      {work && (<button type="button" onClick={() => onStep(-1)} disabled={item.sheet ? item.inStock <= 0 : item.inStock < 1} className={`press flex ${size} items-center justify-center rounded-lg bg-rose-500 font-bold text-white hover:bg-rose-400 disabled:opacity-30`} aria-label="One less">
-        −
-      </button>)}
+      {work && <StepButton step={-1} size="lg" onClick={() => onStep(-1)} disabled={item.sheet ? item.inStock <= 0 : item.inStock < 1} />}
       <span className={`text-center font-mono font-semibold tabular-nums ${big ? "display min-w-10 text-3xl sm:text-4xl" : "min-w-14 text-xl"}`}>
         {onCount ? <CountBox item={item} onCount={onCount} big={big} /> : formatStock(item.inStock, item.sheet)}
       </span>
-      {work && (<button type="button" onClick={() => onStep(1)} className={`press flex ${size} items-center justify-center rounded-lg bg-emerald-500 font-bold text-white hover:bg-emerald-400`} aria-label="One more">
-        +
-      </button>)}
+      {work && <StepButton step={1} size="lg" onClick={() => onStep(1)} />}
       {item.sheet && pieces && (
         <span className="rounded-full bg-[#111318]/80 px-2 py-1 text-xs text-white">
           <PieceStepper item={item} onStep={onStep} />
@@ -365,7 +362,7 @@ function SpreadPanel({ item, onOp }: { item: Item; onOp: (op: PieceOp) => void }
       <ul className="divide-y divide-line">
         {rows.map((row) => {
           const label = pieceLabel(row.size, base);
-          const icon = "press flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-subtle hover:bg-surface hover:text-accent active:scale-[0.98]";
+          const icon = "press flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-subtle hover:bg-surface hover:text-accent active:scale-[0.98] pointer-coarse:h-10 pointer-coarse:w-10";
           return (
             <li key={row.size} className="flex items-center gap-2 py-1.5">
               {editing === row.size ? (
@@ -387,15 +384,11 @@ function SpreadPanel({ item, onOp }: { item: Item; onOp: (op: PieceOp) => void }
                 </span>
               )}
               {work && editing !== row.size && (
-                <button type="button" onClick={() => onOp({ kind: "count", size: row.size, count: row.count - 1 })} disabled={row.count <= 0} className="press flex h-7 w-7 items-center justify-center rounded-md bg-rose-500 font-bold text-white hover:bg-rose-400 active:scale-[0.98] disabled:opacity-30" aria-label={`One less ${label.primary}`}>
-                  −
-                </button>
+                <StepButton step={-1} onClick={() => onOp({ kind: "count", size: row.size, count: row.count - 1 })} disabled={row.count <= 0} label={`One less ${label.primary}`} />
               )}
               {editing !== row.size && <PieceCount count={row.count} onCount={(c) => onOp({ kind: "count", size: row.size, count: c })} />}
               {work && editing !== row.size && (
-                <button type="button" onClick={() => onOp({ kind: "count", size: row.size, count: row.count + 1 })} className="press flex h-7 w-7 items-center justify-center rounded-md bg-emerald-500 font-bold text-white hover:bg-emerald-400 active:scale-[0.98]" aria-label={`One more ${label.primary}`}>
-                  +
-                </button>
+                <StepButton step={1} onClick={() => onOp({ kind: "count", size: row.size, count: row.count + 1 })} label={`One more ${label.primary}`} />
               )}
               {work && base.kind !== "none" && (
                 <button type="button" onClick={() => setEditing(editing === row.size ? null : row.size)} className={icon} aria-label={`Change size ${label.primary}`} title="Change the size">
@@ -405,7 +398,7 @@ function SpreadPanel({ item, onOp }: { item: Item; onOp: (op: PieceOp) => void }
               {work && editing !== row.size && (
                 <button
                   type="button"
-                  onClick={() => (row.count === 0 || confirm(`Remove ${label.primary}? Its ${row.count} on the shelf come off the count.`)) && onOp({ kind: "remove", size: row.size })}
+                  onClick={async () => (row.count === 0 || (await askConfirm({ title: `Remove ${label.primary}?`, body: `Its ${row.count} on the shelf come off the count.`, confirm: "Remove", danger: true }))) && onOp({ kind: "remove", size: row.size })}
                   className={icon}
                   aria-label={`Remove size ${label.primary}`}
                   title="Remove this size"
@@ -520,8 +513,8 @@ function ItemBody({
       else onSaved();
     });
   const picker = usePhotoPicker(onPhoto);
-  const deletePhoto = () => {
-    if (!confirm(`Delete the photo of "${item.name}"?`)) return;
+  const deletePhoto = async () => {
+    if (!(await askConfirm({ title: `Delete the photo of "${item.name}"?`, confirm: "Delete", danger: true }))) return;
     startPhoto(async () => {
       const r = await removeItemPhoto(item.id);
       setMessage(r.error ?? r.message ?? null);
@@ -532,9 +525,9 @@ function ItemBody({
       }
     });
   };
-  const unlink = (l: Item["cotsLinks"][number]) => {
+  const unlink = async (l: Item["cotsLinks"][number]) => {
     const last = item.cotsLinks.length === 1 && item.price != null;
-    if (!confirm(`Remove the ${l.site || hostOf(l.url)} link from this item?${last ? " It's the last link, so the price goes too." : ""}`)) return;
+    if (!(await askConfirm({ title: `Remove the ${l.site || hostOf(l.url)} link from this item?`, body: last ? "It's the last link, so the price goes too." : undefined, confirm: "Remove", danger: true }))) return;
     save(() => unlinkItemProduct(item.id, l.url));
   };
   const gap = missing(item, "any");
@@ -556,9 +549,9 @@ function ItemBody({
           setMessage(m ?? "Saved.");
           onSaved();
         }}
-        onDelete={() => {
-          const warn = usage?.parts.length ? ` ${usage.parts.length} BOM parts will no longer draw from it.` : "";
-          if (!confirm(`Delete "${item.name}" from the inventory?${warn}`)) return;
+        onDelete={async () => {
+          const warn = usage?.parts.length ? `${usage.parts.length} BOM parts will no longer draw from it. ` : "";
+          if (!(await askConfirm({ title: `Delete "${item.name}" from the inventory?`, body: `${warn}It stays in Settings → Recently deleted for 30 days.`, confirm: "Delete", danger: true }))) return;
           return deleteItem(item.id).then(onClose);
         }}
       />

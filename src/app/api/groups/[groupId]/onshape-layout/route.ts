@@ -31,7 +31,7 @@ const body = z.object({
 // copy flat at its nested place. Without placements, the batch's automatic layout is used.
 export async function POST(request: Request, { params }: { params: Promise<{ groupId: string }> }) {
   const member = await requireCapability("work").catch(() => null);
-  if (!member) return new NextResponse("Pick a team on your profile (Build or CAD) to make changes.", { status: 403 });
+  if (!member) return new NextResponse("Ask an admin to put you on a team (Build or CAD) to make changes.", { status: 403 });
   if (!member.onshapeConnected) return new NextResponse("Connect your Onshape account first (Profile → Connect Onshape).", { status: 403 });
   const { groupId } = await params;
   if (!isUuid(groupId)) return new NextResponse("Unknown batch.", { status: 400 });

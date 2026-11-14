@@ -9,6 +9,7 @@ import { LocalTime } from "@/components/ui/LocalTime";
 import type { CommentReply, ReviewComment } from "@/lib/data/cadReview";
 import { allowedStatuses, isActive, needsNote, statusOf, type CommentStatus } from "@/lib/reviews/status";
 import { CommentSnip, SnipPicture, uploadSnip, type SnipDraft } from "./Snip";
+import { askConfirm } from "@/components/ui/useConfirm";
 
 // Who is looking, for the status pills, and the comment window the version tree opens (Harel,
 // 2026-11-13). Set by the CAD page and the Onshape panel.
@@ -276,7 +277,7 @@ function ReplyItem({ r }: { r: CommentReply }) {
   const mine = !!ctx && r.authorId === ctx.me.id;
   const items = [
     ...(mine ? [{ label: "Edit", run: () => setEditing(true) }] : []),
-    ...(mine || ctx?.me.isAdmin ? [{ label: "Delete", danger: true, run: () => confirm("Delete this reply?") && run(() => deleteReviewReply(r.id)) }] : []),
+    ...(mine || ctx?.me.isAdmin ? [{ label: "Delete", danger: true, run: async () => (await askConfirm({ title: "Delete this reply?", confirm: "Delete", danger: true })) && run(() => deleteReviewReply(r.id)) }] : []),
   ];
   return (
     <li className={`flex gap-2 ${pending ? "opacity-60" : ""}`}>
@@ -379,7 +380,7 @@ export function CommentRow({
   const mine = !!ctx && c.authorId === ctx.me.id;
   const items = [
     ...(mine ? [{ label: "Edit", run: () => setEditing(true) }] : []),
-    ...(ctx && (ctx.me.isAdmin || (mine && c.state === "open")) ? [{ label: "Delete", danger: true, run: () => confirm("Delete this comment and its replies?") && run(() => deleteReviewComment(c.id)) }] : []),
+    ...(ctx && (ctx.me.isAdmin || (mine && c.state === "open")) ? [{ label: "Delete", danger: true, run: async () => (await askConfirm({ title: "Delete this comment and its replies?", confirm: "Delete", danger: true })) && run(() => deleteReviewComment(c.id)) }] : []),
   ];
   const pin = n && c.pin ? statusOf(c.state).color : null;
   const tappable = !full && !!ctx?.open;

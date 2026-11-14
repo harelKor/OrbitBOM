@@ -18,6 +18,7 @@ import {
 } from "@/app/(app)/inventory/actions";
 import { Dialog } from "@/components/Dialog";
 import { EditOnly, useManage, usePermissions } from "@/components/shell/ModeContext";
+import { IconButton } from "@/components/ui/IconButton";
 import { useEscape } from "@/components/ui/useEscape";
 import { holdTarget, useLongPress } from "@/components/ui/longPress";
 import {
@@ -59,6 +60,8 @@ import { ShopMap } from "@/components/map/ShopMap";
 import { placeStats } from "@/components/map/stats";
 import { inPlace, placeIndex, placeWord, zoneColor, zoneOf } from "@/lib/inventory/places";
 import type { Condition, Item, Lookups } from "./types";
+import { Notice } from "@/components/ui/Notice";
+import { askConfirm } from "@/components/ui/useConfirm";
 
 export type InventoryScope =
   | { kind: "home" }
@@ -160,6 +163,7 @@ export function InventoryView({
   // The Build Team has no Export spreadsheet button (Harel, 2026-11-02).
   const hideExport = usePermissions().mode === "build";
   const [picking, setPicking] = useState<"select" | "move" | "delete" | null>(null);
+  const [toolsOpen, setToolsOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [moveCat, setMoveCat] = useState("");
   const [moveLoc, setMoveLoc] = useState(""); // "" keep, "none" clear, else a location id
@@ -474,18 +478,21 @@ export function InventoryView({
       done(await bulkMoveItems(ids, target));
     });
   };
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     const ids = [...selected];
     const used = optimistic.filter(
       (i) => selected.has(i.id) && i.usage?.parts.length,
     ).length;
     const warn = used
-      ? ` ${used} of them ${used === 1 ? "is" : "are"} linked to BOM parts.`
+      ? `${used} of them ${used === 1 ? "is" : "are"} linked to BOM parts. `
       : "";
     if (
-      !confirm(
-        `Delete ${ids.length} item${ids.length === 1 ? "" : "s"} from the inventory?${warn}`,
-      )
+      !(await askConfirm({
+        title: `Delete ${ids.length} item${ids.length === 1 ? "" : "s"} from the inventory?`,
+        body: `${warn}${ids.length === 1 ? "It stays" : "They stay"} in Settings → Recently deleted for 30 days.`,
+        confirm: "Delete",
+        danger: true,
+      }))
     )
       return;
     startTransition(async () => {
@@ -612,7 +619,17 @@ export function InventoryView({
   return (
     <div className={`space-y-4 ${selecting ? "pb-20" : ""}`} {...hold}>
       <EditOnly>
-        <div className="panel flex flex-wrap items-center gap-2 p-3">
+        {/* Phones open on the search and the shelf: the spreadsheet, Move and Delete wait behind
+            ⋮ (they're shown while Move or Delete is picking, to end it). */}
+        {!toolsOpen && !picking && (
+          // Pulled up beside the page's heading, so it takes no row of its own.
+          <div className="-mt-[3.25rem] flex justify-end sm:hidden">
+            <IconButton label="Spreadsheet, move and delete" tone="outline" onClick={() => setToolsOpen(true)}>
+              <Icon name="more" className="h-5 w-5" />
+            </IconButton>
+          </div>
+        )}
+        <div className={`panel flex-wrap items-center gap-2 p-3 ${toolsOpen || picking ? "flex" : "hidden sm:flex"}`}>
           <button
             className="btn min-h-11"
             onClick={() => setOpen({ kind: "import" })}
@@ -707,12 +724,12 @@ export function InventoryView({
       </Dialog>
 
       {error && (
-        <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">
+        <Notice tone="error">
           Couldn&apos;t save: {error}
-        </p>
+        </Notice>
       )}
       {notice && !error && (
-        <p className="flex items-center gap-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
+        <Notice tone="success" className="flex items-center gap-2">
           <span className="flex-1">{notice}</span>
           <button
             type="button"
@@ -722,7 +739,7 @@ export function InventoryView({
           >
             <Icon name="close" className="h-4 w-4" />
           </button>
-        </p>
+        </Notice>
       )}
 
       {home && (

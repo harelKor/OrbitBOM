@@ -134,7 +134,7 @@ export function statusDenied(mode: Mode, status: string | undefined, opts: { cot
   if (status && opts.print && !opts.cots) {
     if (!isPrintStatus(status)) return "3D printed parts take Not Started, Released, Sliced, Printing, Ready for QA, In Stock or Reproduction.";
     if (mode === "edit") return null;
-    if (mode !== "build" && mode !== "cad") return "Pick a team on your profile (Build or CAD) to make changes.";
+    if (mode !== "build" && mode !== "cad") return "Ask an admin to put you on a team (Build or CAD) to make changes.";
     if (!PRINT_WORK_STATUSES.includes(status)) return "Only an admin sets a 3D printed part back to Not Started.";
     if (mode === "cad" && NOTE_STATUSES.includes(status) && !opts.note?.trim()) return "Write why the part needs Reproduction.";
     return null;
@@ -157,5 +157,5 @@ export function statusDenied(mode: Mode, status: string | undefined, opts: { cot
     if (opts.cots || opts.factory || BUILD_STATUSES.includes(status)) return null;
     return "The Build Team can set Released, In Process, Post Processing or Ready for QA.";
   }
-  return "Pick a team on your profile (Build or CAD) to make changes.";
+  return "Ask an admin to put you on a team (Build or CAD) to make changes.";
 }

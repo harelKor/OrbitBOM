@@ -19,6 +19,7 @@ import { applyView, captureView, cleanView, hashWithView, viewFromHash, type Vie
 import { Segmented } from "@/components/ui/Segmented";
 import { ModelToggle, type ModelKind } from "@/components/dashboard/ModelToggle";
 import type { ReviewComment } from "@/lib/data/cadReview";
+import { toast } from "@/components/ui/Toaster";
 
 const ModelCanvas = dynamic(() => import("@/components/dashboard/ModelCanvas").then((m) => m.ModelCanvas), { ssr: false });
 
@@ -116,7 +117,10 @@ export function ReviewScreen({
   const [hidden, setHidden] = useState<HiddenParts | null>(null);
   // null: as the screen suits (folded on a phone, open on wider screens) until toggled.
   // Wide screens: the comments column folds sideways to a thin strip (Harel, 2026-11-11).
-  const [side, setSide] = useState(true);
+  // On a phone the open column covered half the 3D view at load: there it starts folded (CSS, so
+  // the server's first render already matches).
+  const [sideChoice, setSide] = useState<boolean | null>(null);
+  const side = sideChoice ?? true;
   const onRobot = "systems" in target;
   // The screen fills what's left under the top bar, which is two rows on a phone (taller than
   // --topbar-h): measured, and kept on resize. --review-top places the phone's Versions panel.
@@ -299,7 +303,7 @@ export function ReviewScreen({
           loadNamed();
           return null;
         },
-        remove: (id) => void deleteReviewView(id).then((r) => (r.error ? alert(r.error) : loadNamed())),
+        remove: (id) => void deleteReviewView(id).then((r) => (r.error ? toast(r.error, true) : loadNamed())),
         copyLink: async () => {
           const url = location.origin + location.pathname + location.search + hashWithView(captureView(tools, changes ? colors : undefined));
           history.replaceState(history.state, "", url);
@@ -556,11 +560,11 @@ export function ReviewScreen({
       {/* Open comments, and below them those waiting for approval. Wide screens: a column of
         its own right of the 3D view, so the view (its Fit, its view cube) isn't under it.
         Narrower: over the view's right side, under the view cube (7 rem, 6.5 on touch). */}
-      {!side && (
+      {(!side || sideChoice === null) && (
         <button
           onClick={() => setSide(true)}
           title="Show comments"
-          className="press absolute top-[8rem] right-3 z-10 flex w-9 flex-col items-center gap-2 rounded-md border border-line bg-surface/95 py-3 text-xs font-semibold text-fg-2 shadow-md hover:bg-raised pointer-coarse:top-[7.5rem] xl:static xl:shrink-0 xl:rounded-none xl:border-y-0 xl:border-r-0 xl:shadow-none"
+          className={`${sideChoice === null ? "sm:hidden" : ""} press absolute top-[8rem] right-3 z-10 flex w-9 flex-col items-center gap-2 rounded-md border border-line bg-surface/95 py-3 text-xs font-semibold text-fg-2 shadow-md hover:bg-raised pointer-coarse:top-[7.5rem] xl:static xl:shrink-0 xl:rounded-none xl:border-y-0 xl:border-r-0 xl:shadow-none`}
         >
           <span aria-hidden>‹</span>
           <span className="rounded-full bg-amber-500/15 px-1.5 text-amber-600 tabular-nums">{open.length}</span>
@@ -568,7 +572,7 @@ export function ReviewScreen({
         </button>
       )}
       {side && <PanelResizer root={root} side="right" />}
-      <div data-comments className={`absolute top-[8rem] right-3 z-10 flex max-h-[calc(100%-12.5rem)] w-[min(20rem,calc(100%-1.5rem))] flex-col gap-2 pointer-coarse:top-[7.5rem] max-sm:w-48 xl:static xl:max-h-none xl:w-[var(--cad-comments-w,18rem)] xl:shrink-0 xl:overflow-y-auto xl:border-l xl:border-line xl:bg-surface xl:p-3 ${side ? "" : "hidden"}`}>
+      <div data-comments className={`absolute top-[8rem] right-3 z-10 flex max-h-[calc(100%-12.5rem)] w-[min(20rem,calc(100%-1.5rem))] flex-col gap-2 pointer-coarse:top-[7.5rem] max-sm:w-48 xl:static xl:max-h-none xl:w-[var(--cad-comments-w,18rem)] xl:shrink-0 xl:overflow-y-auto xl:border-l xl:border-line xl:bg-surface xl:p-3 ${sideChoice === null ? "max-sm:hidden" : side ? "" : "hidden"}`}>
 
         <Popup title="Comments" count={open.length} onHide={() => setSide(false)} tone="amber">
           {openRows.length ? (
