@@ -36,6 +36,8 @@ export type PlaceStat = {
   short: number;
   categories: { id: string; label: string; imageUrl: string | null; count: number }[];
   items: { id: string; name: string }[];
+  // A picture of something in it: an item's own photo, else its category's.
+  picture?: string | null;
 };
 export type PlaceStats = Map<string, PlaceStat>;
 
@@ -636,13 +638,38 @@ export function ShopMap({
                   })}
                   {extra > 0 &&
                     (() => {
+                      // The categories that don't fit share the last tile as a small grid of their
+                      // pictures (Harel, 2026-11-16: pictures, not "+2"); past four, the fourth
+                      // corner counts the rest.
                       const [x, y] = at(cats.length);
+                      const rest = st.categories.slice(cats.length);
+                      const shown = rest.length > 4 ? rest.slice(0, 3) : rest;
+                      const more = rest.length - shown.length;
+                      const rowsN = shown.length + (more ? 1 : 0) <= 2 ? 1 : 2;
+                      const cell = tile / 2;
+                      const top = y + (tile - cell * rowsN) / 2;
                       return (
                         <g>
-                          <circle cx={x + tile / 2} cy={y + tile / 2} r={tile * 0.3} style={{ fill: tint(30, "#0b0f1b") }} stroke="#fff" strokeOpacity={0.5} strokeWidth={1.2 * k} />
-                          <text x={x + tile / 2} y={y + tile / 2} fontSize={tile * 0.2} fontWeight={700} textAnchor="middle" dominantBaseline="central" fill="#F8FAFC">
-                            +{extra}
-                          </text>
+                          <ellipse cx={x + tile / 2} cy={y + tile * 0.62} rx={tile * 0.55} ry={tile * 0.42} fill="url(#sm-pad)" />
+                          {shown.map((c, j) => {
+                            const cx0 = x + (j % 2) * cell;
+                            const cy0 = top + Math.floor(j / 2) * cell;
+                            return c.imageUrl ? (
+                              <image key={c.id} href={c.imageUrl} x={cx0 + cell * 0.04} y={cy0 + cell * 0.04} width={cell * 0.92} height={cell * 0.92} preserveAspectRatio="xMidYMid meet" mask="url(#sm-fade)" filter="url(#sm-drop)" opacity={0.95}>
+                                <title>{c.label}</title>
+                              </image>
+                            ) : (
+                              <text key={c.id} x={cx0 + cell / 2} y={cy0 + cell / 2} fontSize={cell * 0.34} fontWeight={700} textAnchor="middle" dominantBaseline="central" fill="#E8ECF8" stroke="#070a12" strokeWidth={cell * 0.05} paintOrder="stroke">
+                                {c.label.slice(0, 2)}
+                                <title>{c.label}</title>
+                              </text>
+                            );
+                          })}
+                          {more > 0 && (
+                            <text x={x + cell * 1.5} y={top + cell * 1.5} fontSize={cell * 0.36} fontWeight={700} textAnchor="middle" dominantBaseline="central" fill="#F8FAFC" stroke="#070a12" strokeWidth={cell * 0.05} paintOrder="stroke">
+                              +{more}
+                            </text>
+                          )}
                         </g>
                       );
                     })()}
@@ -706,7 +733,7 @@ export function ShopMap({
                   data-spot={s.id}
                   aria-label={`${kindLabel(s.kind)}${st ? `, ${st.count} items` : ""}`}
                   aria-pressed={isSel}
-                  className="absolute flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center"
+                  className="absolute flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center"
                   style={{ left: `${s.spotX * 100}%`, top: `${s.spotY * 100}%`, opacity: smoothstep(0.8, 1, cam.dive) }}
                   onClick={(ev) => {
                     // Taps arrive through the pointer handlers; this is for keyboards.
@@ -719,12 +746,29 @@ export function ShopMap({
                       <span className="absolute inset-[-8px] rounded-full border-[3px] border-white shadow-[0_0_18px_4px_rgba(255,255,255,0.7)]" />
                     </>
                   )}
-                  <span
-                    className={`relative flex items-center justify-center rounded-full border-[3px] font-bold tabular-nums shadow-[0_2px_10px_rgba(0,0,0,0.6)] transition-transform duration-150 ${isFlash || isSel ? "h-8 w-8 scale-110 text-xs text-white" : "h-6 w-6 bg-white text-[0.625rem] text-slate-900"}`}
-                    style={{ borderColor: color, background: isFlash || isSel ? color : undefined }}
-                  >
-                    {st?.count ? (st.count > 99 ? "99+" : st.count) : ""}
-                  </span>
+                  {st?.picture ? (
+                    // Something that's in the drawer, so it's recognised at a glance (Harel,
+                    // 2026-11-16); the count rides on its corner.
+                    <span
+                      className={`relative flex items-center justify-center rounded-full border-[3px] bg-white shadow-[0_3px_12px_rgba(0,0,0,0.6)] transition-transform duration-150 ${isFlash || isSel ? "h-14 w-14 scale-110" : "h-11 w-11"}`}
+                      style={{ borderColor: color }}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element -- a signed R2 link or a public picture */}
+                      <img src={st.picture} alt="" className="h-[78%] w-[78%] object-contain" draggable={false} />
+                      {st.count > 1 && (
+                        <span className="absolute -top-1.5 -right-1.5 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white px-1 text-[0.625rem] font-bold text-white tabular-nums" style={{ background: color }}>
+                          {st.count > 99 ? "99+" : st.count}
+                        </span>
+                      )}
+                    </span>
+                  ) : (
+                    <span
+                      className={`relative flex items-center justify-center rounded-full border-[3px] font-bold tabular-nums shadow-[0_2px_10px_rgba(0,0,0,0.6)] transition-transform duration-150 ${isFlash || isSel ? "h-8 w-8 scale-110 text-xs text-white" : "h-6 w-6 bg-white text-[0.625rem] text-slate-900"}`}
+                      style={{ borderColor: color, background: isFlash || isSel ? color : undefined }}
+                    >
+                      {st?.count ? (st.count > 99 ? "99+" : st.count) : ""}
+                    </span>
+                  )}
                 </button>
               );
             })}
