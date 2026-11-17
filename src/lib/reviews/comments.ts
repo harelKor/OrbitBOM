@@ -51,14 +51,7 @@ export async function addComment(
     const [robot] = robotId ? await db.select({ id: schema.robots.id }).from(schema.robots).where(eq(schema.robots.id, robotId)) : [];
     if (!robot) throw new CommentError("That robot is gone.");
   }
-  let snip = null;
-  if (input.snip) {
-    const { path, strokes } = input.snip;
-    const w = Math.round(Number(input.snip.w));
-    const h = Math.round(Number(input.snip.h));
-    if (!SNIP_PATH.test(path) || !(w > 0 && w <= 8000 && h > 0 && h <= 8000)) throw new CommentError("That snip didn't upload. Take it again.");
-    snip = { path, w, h, strokes: cleanStrokes(strokes, w, h).map((s) => ({ ...s, by: member.id })), changed: [] };
-  }
+  const snip = cleanSnip(member, input.snip);
   const [row] = await db
     .insert(reviewComments)
     .values({
@@ -77,6 +70,16 @@ export async function addComment(
     })
     .returning();
   return row;
+}
+
+// A snip as sent (its picture already uploaded), checked, with its lines marked as the sender's.
+function cleanSnip(member: Member, input: SnipInput | null | undefined) {
+  if (!input) return null;
+  const { path, strokes } = input;
+  const w = Math.round(Number(input.w));
+  const h = Math.round(Number(input.h));
+  if (typeof path !== "string" || !SNIP_PATH.test(path) || !(w > 0 && w <= 8000 && h > 0 && h <= 8000)) throw new CommentError("That snip didn't upload. Take it again.");
+  return { path, w, h, strokes: cleanStrokes(strokes, w, h).map((s) => ({ ...s, by: member.id })), changed: [] };
 }
 
 // A pin: three finite numbers, assembly mm, within 100 m of the origin.
@@ -167,11 +170,17 @@ export async function editComment(member: Member, id: string, text: string) {
   return c;
 }
 
-// A reply in a comment's thread: anyone signed in, like the comment itself.
-export async function addReply(member: Member, commentId: string, text: string) {
+// A reply in a comment's thread: anyone signed in, like the comment itself. It may carry a snip
+// and a linked part, like a comment (Harel, 2026-11-17).
+export async function addReply(member: Member, commentId: string, text: string, extra: { snip?: SnipInput | null; partKey?: string | null; partName?: string | null } = {}) {
   const body = cleanBody(text, "reply");
   await commentOf(commentId);
-  const [row] = await db.insert(reviewCommentReplies).values({ commentId, authorId: member.id, body }).returning();
+  const snip = cleanSnip(member, extra.snip);
+  const partKey = extra.partKey?.slice(0, 300) || null;
+  const [row] = await db
+    .insert(reviewCommentReplies)
+    .values({ commentId, authorId: member.id, body, snip, partKey, partName: partKey ? extra.partName?.slice(0, 200) || null : null })
+    .returning();
   return row;
 }
 
@@ -194,6 +203,7 @@ export async function deleteReply(member: Member, id: string) {
   const r = await replyOf(id);
   if (!member.isAdmin && r.authorId !== member.id) throw new CommentError("Only its author deletes a reply.");
   await db.delete(reviewCommentReplies).where(eq(reviewCommentReplies.id, id));
+  if (r.snip) await deleteObject(r.snip.path).catch(() => {});
   return r;
 }
 
@@ -201,8 +211,10 @@ export async function deleteReply(member: Member, id: string) {
 export async function deleteComment(member: Member, id: string) {
   const c = await commentOf(id);
   if (!member.isAdmin && (c.authorId !== member.id || c.state !== "open")) throw new CommentError("Only its author deletes an Open comment.");
+  // Its replies go with it (cascade): their snips' pictures too.
+  const replySnips = await db.select({ snip: reviewCommentReplies.snip }).from(reviewCommentReplies).where(eq(reviewCommentReplies.commentId, id));
   await db.delete(reviewComments).where(eq(reviewComments.id, id));
-  if (c.snip) await deleteObject(c.snip.path).catch(() => {});
+  for (const p of [c.snip?.path, ...replySnips.map((r) => r.snip?.path)]) if (p) await deleteObject(p).catch(() => {});
   return c;
 }
 

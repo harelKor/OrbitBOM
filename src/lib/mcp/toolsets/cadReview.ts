@@ -97,16 +97,16 @@ write(
 write(
   "reply_to_review_comment",
   { cap: "member", destructive: false },
-  "Reply in a CAD Review comment's thread (comment_id from list_review_comments). Anyone on the team may.",
-  z.object({ comment_id: uuid, text: z.string().trim().min(1).max(2000) }),
-  async ({ comment_id, text }, { member }) => {
+  "Reply in a CAD Review comment's thread (comment_id from list_review_comments). Anyone on the team may. part_key / part_name link a part (keys as list_review_comments gives them).",
+  z.object({ comment_id: uuid, text: z.string().trim().min(1).max(2000), part_key: z.string().max(300).optional(), part_name: z.string().max(200).optional() }),
+  async ({ comment_id, text, part_key, part_name }, { member }) => {
     const [c] = await db.select({ body: reviewComments.body }).from(reviewComments).where(eq(reviewComments.id, comment_id));
     if (!c) throw new ToolError("Unknown comment.");
     return {
       count: 1,
       summary: "Replied to a CAD Review comment",
-      preview: { comment: c.body, reply: text },
-      apply: () => asTool(async () => ({ id: (await addReply(member, comment_id, text)).id })),
+      preview: { comment: c.body, reply: text, ...(part_key ? { part: part_name ?? part_key } : {}) },
+      apply: () => asTool(async () => ({ id: (await addReply(member, comment_id, text, { partKey: part_key ?? null, partName: part_name ?? null })).id })),
     };
   },
 );

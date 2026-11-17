@@ -11,6 +11,7 @@ import { contextKey, studioRevisions, studioState, type StudioContext } from "@/
 import { apiPath, onshapeUrl, parseOnshapeUrl, type OnshapeRef } from "@/lib/onshape/url";
 import { imageUrl, objectExists, putObject, StorageNotConfiguredError, storageConfigured } from "@/lib/storage/r2";
 import { flattenAssembly, partKey, type AssemblyDefinition, type StudioRef } from "./assembly";
+import { saveSnapshot } from "./snapshotStore";
 import { encodeMeshes, lookOf, meshesFromTessellation, type Appearance, type Mesh, type Tessellation } from "./mesh";
 
 const { robots, systems, systemVersions, onshapeCache } = schema;
@@ -50,13 +51,13 @@ const SKETCH_VERSION = "1"; // bump to fetch every sketch file again after chang
 const PLAN_VERSION = "g2"; // bump when the plan's shape changes, so the next Update replans
 // One group's plan (a linked assembly or Part Studio), kept so a rebuild reads only the groups
 // that moved. `sketch`: its Geometry sketches' file (job j) and where they sit.
-type GroupPlan = { rev: string; jobs: Job[]; placements: { j: number; k: string; t: number[] }[]; names: Record<string, string>; sketch?: { j: number; t: number[]; owner: string } };
+export type GroupPlan = { rev: string; jobs: Job[]; placements: { j: number; k: string; t: number[] }[]; names: Record<string, string>; sketch?: { j: number; t: number[]; owner: string } };
 type State = { built?: Built; draft?: Draft; plans?: Record<string, GroupPlan> };
 
 // The Final model keeps the key it always had; the Basepart model is new (Harel, 2026-11-12).
 const cacheKey = (robotId: string, kind: ModelKind = "final") => (kind === "final" ? `robot-model:${robotId}` : `robot-model:${robotId}:${kind}`);
 
-async function loadState(robotId: string, kind: ModelKind = "final"): Promise<State> {
+export async function loadState(robotId: string, kind: ModelKind = "final"): Promise<State> {
   const [row] = await db.select({ payload: onshapeCache.payload }).from(onshapeCache).where(eq(onshapeCache.key, cacheKey(robotId, kind)));
   return (row?.payload as State) ?? {};
 }
@@ -242,7 +243,7 @@ function sketchOf(studioUrl: string | null, chosen: GeometrySketch[], owner: str
 // falls back to its main (Final) assembly. Basepart (Harel, 2026-11-12): every system's Basepart,
 // Part Studio or assembly, read on its workspace; the robot's own Basepart when no system has one,
 // else just its Geometry sketches.
-async function modelSources(robotId: string, kind: ModelKind = "final"): Promise<ModelSource[]> {
+export async function modelSources(robotId: string, kind: ModelKind = "final"): Promise<ModelSource[]> {
   if (kind === "basepart") return basepartSources(robotId);
   const rows = await db
     .select({ id: systems.id, name: systems.name, url: systems.assemblyUrl, follow: systems.followVersions, seen: systems.followedVersionId, pinned: systems.modelRef, ref: systemVersions.onshapeRef })
@@ -304,9 +305,9 @@ async function basepartSources(robotId: string): Promise<ModelSource[]> {
 // One group's revision: where its assembly is read, and the workspace's microversion. A version
 // or microversion never changes, so a pinned group's plan is read from Onshape once. The chosen
 // sketches are part of it, so choosing others plans again.
-const groupRev = (ref: ModelSource, mv: string | undefined) =>
+export const groupRev = (ref: ModelSource, mv: string | undefined) =>
   `${PLAN_VERSION}|${TESS_VERSION}|${ref.kind}|${ref.wvm}:${ref.wvmid}:${ref.eid}:${mv ?? ""}${ref.sketch ? `|${SKETCH_VERSION}:${ref.sketch.studio.eid}:${ref.sketch.chosen.map((s) => s.id).join(",")}` : ""}`;
-const groupKey = (ref: { did: string; eid?: string; kind?: ModelSource["kind"] }) => `${ref.kind === "sketches" ? "sketches:" : ""}${ref.did}:${ref.eid}`;
+export const groupKey = (ref: { did: string; eid?: string; kind?: ModelSource["kind"] }) => `${ref.kind === "sketches" ? "sketches:" : ""}${ref.did}:${ref.eid}`;
 
 export async function buildRobotModel(robotId: string, memberId: string, deadline: number, kind: ModelKind = "final"): Promise<BuildStep> {
   if (!storageConfigured()) throw new StorageNotConfiguredError();
@@ -351,6 +352,9 @@ async function buildStep(robotId: string, client: OnshapeClient, sources: ModelS
     const stale = sources.flatMap((ref, g) => (plans[groupKey(ref)] ? [] : [g]));
     const fresh = await Promise.all(stale.map((g) => planGroup(client, sources[g], revs[g])));
     stale.forEach((g, i) => (plans[groupKey(sources[g])] = fresh[i]));
+    // A group read at a fixed version or microversion is that version's model: kept for the
+    // version tree (snapshotStore.ts).
+    for (const [i, g] of stale.entries()) await saveSnapshot(robotId, kind, sources[g], fresh[i]);
     draft = mergePlans(sources, plans, rev);
     await save({ ...state, draft, plans });
   }
@@ -429,7 +433,7 @@ export function studioContext(s: StudioRef, ref: OnshapeRef): StudioContext | nu
 // with the BOM's part data); a sketches-only source has no parts. Chosen Geometry sketches add one
 // sketch file job, placed where the assembly puts that Part Studio (where it was drawn, when the
 // assembly doesn't place any of its parts).
-async function planGroup(client: OnshapeClient, ref: ModelSource, rev: string): Promise<GroupPlan> {
+export async function planGroup(client: OnshapeClient, ref: ModelSource, rev: string): Promise<GroupPlan> {
   const jobs: Job[] = [];
   const jobIndex = new Map<string, number>();
   const placements: GroupPlan["placements"] = [];
@@ -558,7 +562,7 @@ export function mergePlans(sources: { did: string; eid?: string; kind?: ModelSou
 // so what the member reviews is exactly what gets committed.
 
 export type ModelOwner = { systemId: string } | { robotId: string };
-const ownsSource = (owner: ModelOwner) => (s: ModelSource) =>
+export const ownsSource = (owner: ModelOwner) => (s: ModelSource) =>
   s.kind !== "sketches" && ("systemId" in owner ? s.group.systemIds.includes(owner.systemId) : s.group.systemIds.length === 0);
 
 export type GroupNow = { now: ModelSource; plan: GroupPlan; old: GroupPlan | null; microversion: string; workspace: OnshapeRef };
@@ -589,4 +593,3 @@ export async function adoptGroupPlan(robotId: string, kind: ModelKind, owner: Mo
   await saveState(robotId, { ...state, plans: { ...state.plans, [groupKey(source)]: { ...plan, rev: groupRev(source, undefined) } } }, kind);
 }
 
-export type { GroupPlan };

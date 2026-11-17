@@ -188,6 +188,58 @@ export const cadUpdates = pgTable(
   (t) => [index("cad_updates_system_idx").on(t.systemId, t.createdAt), index("cad_updates_robot_idx").on(t.robotId, t.createdAt)],
 );
 
+// Every version's 3D model (plan/cad-versions.md, Harel 2026-11-17): one group's plan (its Part
+// Studio files in R2 and where each part sits) at a fixed Onshape state, so an old version is
+// drawn, compared and its Commit window shown without Onshape. `key`: model kind, document,
+// element and the version or microversion (snapshots.ts). `complete`: every file is in R2.
+export const modelSnapshots = pgTable(
+  "model_snapshots",
+  {
+    key: text("key").primaryKey(),
+    robotId: uuid("robot_id")
+      .notNull()
+      .references(() => robots.id, { onDelete: "cascade" }),
+    plan: jsonb("plan").notNull(),
+    complete: boolean("complete").notNull().default(false),
+    createdAt: createdAt(),
+  },
+  (t) => [index("model_snapshots_robot_idx").on(t.robotId)],
+);
+
+// Onshape versions deleted from OrbitParts (Onshape can't delete versions; Harel, 2026-11-17): left
+// out of every version tree of that document.
+export const deletedVersions = pgTable(
+  "deleted_versions",
+  {
+    id: id(),
+    did: text("did").notNull(),
+    versionId: text("version_id").notNull(),
+    memberId: uuid("member_id").references(() => members.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("deleted_versions_uq").on(t.did, t.versionId)],
+);
+
+// The whole robot's own versions (Create version, Harel 2026-11-17): "R3" records which version
+// each system was on at that moment, so the robot is drawn as it was then.
+export type RobotVersionSystem = { systemId: string; name: string; kind: ModelKind; ref: { wvm: "v" | "m"; wvmid: string } | null; label: string | null };
+export const robotVersions = pgTable(
+  "robot_versions",
+  {
+    id: id(),
+    robotId: uuid("robot_id")
+      .notNull()
+      .references(() => robots.id, { onDelete: "cascade" }),
+    seq: integer("seq").notNull(),
+    name: text("name").notNull(),
+    note: text("note"),
+    systems: jsonb("systems").$type<RobotVersionSystem[]>().notNull().default([]),
+    memberId: uuid("member_id").references(() => members.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("robot_versions_seq_uq").on(t.robotId, t.seq)],
+);
+
 // ---------- Parts (one BOM row) ----------
 
 export const classification = pgEnum("classification", ["inhouse", "cots", "external", "undefined"]);
@@ -786,6 +838,10 @@ export const reviewCommentReplies = pgTable(
       .references(() => reviewComments.id, { onDelete: "cascade" }),
     authorId: uuid("author_id").references(() => members.id, { onDelete: "set null" }),
     body: text("body").notNull(),
+    // A snip and a linked part, like a comment's (Harel, 2026-11-17).
+    snip: jsonb("snip").$type<Snip>(),
+    partKey: text("part_key"),
+    partName: text("part_name"),
     createdAt: createdAt(),
     editedAt: timestamp("edited_at", { withTimezone: true }),
   },

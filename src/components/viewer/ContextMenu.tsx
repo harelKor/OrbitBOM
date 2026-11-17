@@ -14,9 +14,8 @@ const sceneDir = ([x, y, z]: [number, number, number]): [number, number, number]
 export type PageMenu = (keys: string[]) => MenuItem[];
 
 // The 3D view's right-click / long-press menu, like Onshape's: on the part under the pointer (or
-// every picked part when it's one of them), else on the view. Select other lists every part along
-// the ray when there's more than one (Harel approved the R3 gap list, 2026-11-11). Closes on any choice, a press
-// outside, Esc, the wheel or a resize.
+// every picked part when it's one of them), else on the view. No Select other (Harel, 2026-11-17).
+// Closes on any choice, a press outside, Esc, the wheel or a resize.
 export function ContextMenu({
   at,
   tools,
@@ -38,10 +37,6 @@ export function ContextMenu({
   const one = keys.length === 1 ? keys[0] : null;
   const name = (k: string) => names?.get(k) ?? "Placed in CAD, not on the BOM";
   const clear = keys.length > 0 && keys.every((k) => tools.isClear(k));
-  // Select other's list, opened in place (a flyout would leave a phone's screen).
-  const [others, setOthers] = useState(false);
-  const light = at.light;
-  useEffect(() => () => light(null), [light]);
 
   // Kept inside the window (a long press near an edge on a phone).
   useLayoutEffect(() => {
@@ -54,7 +49,7 @@ export function ContextMenu({
     setPos({ left: Math.max(8, Math.min(at.x, window.innerWidth - width - 12)), top: Math.max(8, Math.min(at.y, window.innerHeight - height - 12)) });
     // No item is focused on open (that drew the focus outline round the first item, Harel
     // 2026-11-11); the arrow keys start from the top.
-  }, [at, others]);
+  }, [at]);
 
   useEffect(() => {
     const outside = (e: PointerEvent) => !box.current?.contains(e.target as Node) && onClose();
@@ -149,39 +144,6 @@ export function ContextMenu({
       className="fixed z-50 w-56 animate-pop overflow-hidden rounded-md border border-line bg-surface/95 py-1 text-sm shadow-lg backdrop-blur"
     >
       {keys.length > 0 && <p className="truncate border-b border-line px-3 pt-1 pb-1.5 text-xs font-semibold text-muted">{one ? name(one) : `${keys.length} picked parts`}</p>}
-      {at.layers.length > 1 && (
-        <div className="border-b border-line pb-1">
-          <button
-            role="menuitem"
-            aria-expanded={others}
-            onClick={() => setOthers(!others)}
-            className="press flex w-full items-center px-3 py-1.5 text-left text-fg-2 outline-none hover:bg-raised hover:text-fg focus-visible:bg-raised active:scale-[0.98] pointer-coarse:min-h-11"
-          >
-            Select other <span className="ml-auto text-xs text-subtle">{others ? "▴" : "▾"}</span>
-          </button>
-          {others && (
-            <ul className="max-h-56 overflow-y-auto" onPointerLeave={() => light(null)}>
-              {at.layers.map((l, k) => (
-                <li key={`${l.m}:${l.i}`}>
-                  <button
-                    role="menuitem"
-                    onPointerEnter={(e) => e.pointerType === "mouse" && light(k)}
-                    onFocus={() => light(k)}
-                    onClick={() => {
-                      onClose();
-                      at.choose(k);
-                    }}
-                    className="press flex w-full items-center gap-2 py-1.5 pr-3 pl-5 text-left text-xs text-fg-2 outline-none hover:bg-raised hover:text-fg focus-visible:bg-raised active:scale-[0.98] pointer-coarse:min-h-10"
-                  >
-                    <span className="w-4 shrink-0 text-right text-subtle tabular-nums">{k + 1}</span>
-                    <span className="truncate">{name(l.key)}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
       {groups.map((items, g) => (
         <div key={g} className={g ? "mt-1 border-t border-line pt-1" : undefined}>
           {items.map((item) => (

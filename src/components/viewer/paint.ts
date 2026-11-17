@@ -27,7 +27,13 @@ export const DISPLAY_MODES: { v: DisplayMode; label: string }[] = [
   { v: "hiddenVisible", label: "Hidden edges visible" },
   { v: "translucent", label: "Translucent" },
 ];
-export type DisplayTools = { display: () => DisplayMode; setDisplay: (m: DisplayMode) => void };
+export type DisplayTools = {
+  display: () => DisplayMode;
+  setDisplay: (m: DisplayMode) => void;
+  // Version compare (Harel, 2026-11-17): each listed subsystem group drawn at that opacity (0–1)
+  // over its colours; null ends it.
+  fadeGroups: (opacity: Map<number, number> | null) => void;
+};
 const LINE_FACE = "#ffffff"; // the faces in the hidden-line modes: plain white, like Onshape's
 const TRANSLUCENT = 0.3;
 
@@ -196,6 +202,7 @@ export type Painter = {
   display: () => DisplayMode;
   setDisplay: (m: DisplayMode) => void; // paints again in the new mode (the caller repaints see-through parts)
   outlines: (on: boolean) => void; // phones drop the silhouettes while the view moves
+  fade: (opacity: Map<number, number> | null) => void;
   dispose: () => void;
 };
 
@@ -207,6 +214,15 @@ export function createPaint(stage: Stage, meshes: PartMesh[], looks: Looks, fit:
   let display: DisplayMode = "shadedEdges";
   let outlinesOn = true;
   let last: Parameters<Paint> | null = null;
+  // Version compare's fade: a see-through copy of the status material per faded group.
+  const fades = new Map<number, THREE.MeshStandardMaterial>();
+  const setFade = (m: THREE.MeshStandardMaterial, op: number) => {
+    const clear = op < 0.995;
+    if (m.transparent !== clear) m.needsUpdate = true;
+    m.transparent = clear;
+    m.opacity = op;
+    m.depthWrite = !clear;
+  };
 
   // Each part's silhouette and hidden-edge lines, made the first time it is painted: children of
   // its mesh (hidden with it) on its own geometry and instance matrices, never picked. Added
@@ -264,12 +280,16 @@ export function createPaint(stage: Stage, meshes: PartMesh[], looks: Looks, fit:
     const white = new THREE.Color(LINE_FACE);
     const box = new THREE.Box3();
     const piece = new THREE.Box3();
-    for (const { mesh, keys, look, sketch } of meshes) {
+    for (const { mesh, keys, look, sketch, g } of meshes) {
       if (sketch) continue; // Geometry sketches keep their own lines (sketches.ts)
       extras(mesh);
       const own = cadLike && look;
       const base = locateKey ? ghost : own && look.opacity < 1 ? seeThrough(look.opacity) : cadLike ? cad : material;
-      mesh.material = locateKey ? base : lines ? lineFace : display === "translucent" ? translucent(base) : base;
+      const faded = fades.get(g);
+      mesh.material = faded && !locateKey ? faded : locateKey ? base : lines ? lineFace : display === "translucent" ? translucent(base) : base;
+      // A faded copy's face borders go once it's mostly see-through.
+      const borders = mesh.children[0];
+      if (borders) borders.visible = !faded || faded.opacity >= 0.5;
       const onshape = own ? srgb(look.color) : plain;
       keys.forEach((k, i) => {
         mesh.setColorAt(i, locateKey ? plain : lines ? white : mode === "status" ? new THREE.Color(colors.get(k) ?? UNKNOWN) : mode === "tint" ? tinted(onshape, colors.get(k)) : onshape);
@@ -306,7 +326,38 @@ export function createPaint(stage: Stage, meshes: PartMesh[], looks: Looks, fit:
       outlinesOn = on;
       render();
     },
+    fade: (opacity) => {
+      const same = !!opacity && opacity.size === fades.size && [...opacity.keys()].every((g) => fades.has(g));
+      if (!opacity) {
+        fades.forEach((m) => m.dispose());
+        fades.clear();
+      } else {
+        for (const [g, m] of fades)
+          if (!opacity.has(g)) {
+            m.dispose();
+            fades.delete(g);
+          }
+        for (const [g, op] of opacity) {
+          let m = fades.get(g);
+          if (!m) {
+            m = material.clone();
+            fades.set(g, m);
+          }
+          setFade(m, Math.max(0, Math.min(1, op)));
+        }
+      }
+      // Only the opacities moved (the slider): the materials are already on; else paint again.
+      if (same) {
+        for (const { mesh, g } of meshes) {
+          const f = fades.get(g);
+          if (f && mesh.children[0]) mesh.children[0].visible = f.opacity >= 0.5;
+        }
+        render();
+      } else if (last) paintNow(...last, false);
+      else render();
+    },
     dispose: () => {
+      fades.forEach((m) => m.dispose());
       highlights.clear();
       for (const h of hulls) h.geometry.dispose();
     },

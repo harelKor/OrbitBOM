@@ -59,6 +59,7 @@ export function CommitWindow({
   error,
   onCommit,
   comments = [],
+  title = "Changes in Onshape",
 }: {
   open: boolean;
   onClose: () => void;
@@ -71,6 +72,7 @@ export function CommitWindow({
   // `update3d`: the 3D views and pictures move to this version too (Harel, 2026-11-11).
   onCommit: (name: string, only?: string, tick?: string[], update3d?: boolean) => void;
   comments?: CommitComment[];
+  title?: string; // a committed version's window shown again from the CAD tree (Harel, 2026-11-17)
 }) {
   const [tick, setTick] = useState<Set<string>>(() => new Set());
   const ticked = [...tick].filter((id) => comments.some((c) => c.id === id));
@@ -87,7 +89,7 @@ export function CommitWindow({
     .filter((c) => c.n > 0);
 
   return (
-    <Dialog open={open} onClose={onClose} title="Changes in Onshape" width={side ? "w-[min(68rem,calc(100vw-2rem))]" : "w-[min(46rem,calc(100vw-2rem))]"}>
+    <Dialog open={open} onClose={onClose} title={title} width={side ? "w-[min(68rem,calc(100vw-2rem))]" : "w-[min(46rem,calc(100vw-2rem))]"}>
       <div className={side ? "grid gap-4 md:grid-cols-[minmax(0,1fr)_18rem]" : ""}>
       <div className="min-w-0 space-y-4">
         <div className="flex flex-wrap items-center gap-2 text-sm text-muted">

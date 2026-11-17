@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { openPartWindow } from "@/components/bom/PartDetailsHost";
 import { deleteReviewView, saveReviewView } from "@/app/(app)/review-comments-actions";
 import type { HiddenParts, MeasureInfo, NamedViews, PageMenu, SceneTools, ViewerModel, ViewerMode } from "@/components/dashboard/ModelCanvas";
-import { AddCommentDialog, CommentContext, CommentRow, CommentWindow, useStickyList, type CommentTarget } from "@/components/review/Comments";
+import { AddCommentDialog, CommentContext, CommentRow, CommentWindow, useStickyList, type CommentTarget, type ReplyAttach } from "@/components/review/Comments";
 import { isActive, statusOf } from "@/lib/reviews/status";
 import { SnipEditor, SnipMe, SnipOverlay, type SnipDraft } from "@/components/review/Snip";
 import { ViewerToolbar } from "@/components/review/ViewerToolbar";
@@ -20,6 +20,9 @@ import { Segmented } from "@/components/ui/Segmented";
 import { ModelToggle, type ModelKind } from "@/components/dashboard/ModelToggle";
 import type { ReviewComment } from "@/lib/data/cadReview";
 import { toast } from "@/components/ui/Toaster";
+import { CadCommitWindow } from "@/components/versions/CadCommitWindow";
+import { diffVersions, isOld, OLD, plainKey, type VersionChange } from "@/lib/versions/versionDiff";
+import { buildVersion, useVersionModel, VersionContext, type VersionTarget } from "./versionView";
 
 const ModelCanvas = dynamic(() => import("@/components/dashboard/ModelCanvas").then((m) => m.ModelCanvas), { ssr: false });
 
@@ -28,6 +31,9 @@ type Colors = "cad" | "compare";
 
 // Compare: what the BOM's current version changed (free: the version's own change list).
 const COMPARE = { shape: "#f59e0b", props: "#38bdf8", added: "#22c55e", same: "#d5d9e1" };
+// Version compare (Harel, 2026-11-17): the newer version's changed parts green, the older's yellow,
+// the rest grey in both.
+const VCOMP = { newer: "#22c55e", older: "#eab308" };
 export type Changes = { label: string | null; list: { partId: string | null; change: string; geometry: boolean; name: string }[] };
 
 // CAD's review screen for a system or the whole robot (Harel, 2026-11-08 and 2026-11-09). Wide
@@ -54,6 +60,8 @@ export function ReviewScreen({
   panel,
   models,
   check,
+  canBuild = false,
+  compareLast,
 }: {
   robotId: string;
   title: string;
@@ -77,6 +85,10 @@ export function ReviewScreen({
   // The Design check (plan/design-check.md): the robot's systems, and who may run it and set its limits.
   // `parts`: the whole robot's, also when one system is isolated (a run covers the robot).
   check?: { systems: { id: string; name: string }[]; parts: ReviewPart[]; canCheck: boolean; canManage: boolean };
+  canBuild?: boolean; // may build an old version's 3D model from Onshape (CAD Team, Onshape linked)
+  // The Changes tab's Compare to last version (Harel, 2026-11-17): the version the model is on now
+  // and the one before it, when both can be drawn.
+  compareLast?: Pick<Extract<VersionTarget, { mode: "compare" }>, "a" | "b"> | null;
 }) {
   const kind: ModelKind = models?.kind ?? "final";
   const [model, setModel] = useState<ViewerModel | null | undefined>(builtAt ? undefined : null);
@@ -85,6 +97,14 @@ export function ReviewScreen({
   const [fetchFailed, setFetchFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [colors, setColors] = useState<Colors>("cad");
+  // A version being visited or compared (plan/cad-versions.md): drawn from its kept snapshot.
+  const [vt, setVt] = useState<VersionTarget | null>(null);
+  const [vAttempt, setVAttempt] = useState(0);
+  const vload = useVersionModel(robotId, kind, vt, vAttempt);
+  const vReady = vload?.state === "ready" ? vload : null;
+  const [vdiff, setVdiff] = useState<{ of: unknown; list: VersionChange[] } | null>(null);
+  const [fade, setFade] = useState(0.5);
+  const [building, setBuilding] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [focus, setFocus] = useState<string | null>(null);
   const [tools, setTools] = useState<SceneTools | null>(null);
@@ -97,12 +117,20 @@ export function ReviewScreen({
   // back with it.
   const [snipStep, setSnipStep] = useState<"drag" | "draw" | null>(null);
   const [snipDraft, setSnipDraft] = useState<SnipDraft | null>(null);
+  // A reply's snip and linked part (Harel, 2026-11-17): the comment window steps aside the same
+  // way while the snip is taken or the part is picked in 3D.
+  const [snipFor, setSnipFor] = useState<"comment" | "reply">("comment");
+  const [replySnip, setReplySnip] = useState<SnipDraft | null>(null);
+  const [replyPart, setReplyPart] = useState<{ key: string; name: string | null } | null>(null);
+  const [pickingPart, setPickingPart] = useState(false);
+  const draftNow = snipFor === "reply" ? replySnip : snipDraft;
+  const setDraftNow = snipFor === "reply" ? setReplySnip : setSnipDraft;
   const section = useRef<HTMLElement>(null);
   const takeSnip = (r: { x: number; y: number; w: number; h: number }) => {
     const bg = section.current ? getComputedStyle(section.current).backgroundColor : "#151925";
     const shot = tools?.snapshot(r, bg);
     if (!shot) return setSnipStep(null);
-    setSnipDraft({ dataUrl: shot.dataUrl, w: shot.w, h: shot.h, strokes: [] });
+    setDraftNow({ dataUrl: shot.dataUrl, w: shot.w, h: shot.h, strokes: [] });
     setSnipStep("draw");
   };
   const closeAdding = () => {
@@ -227,7 +255,52 @@ export function ReviewScreen({
     return m;
   }, [parts, changes]);
   const removed = changes?.list.filter((c) => c.change === "removed") ?? [];
-  const mode: ViewerMode = changes && colors === "compare" ? "status" : "cad";
+  const mode: ViewerMode = vt ? "status" : changes && colors === "compare" ? "status" : "cad";
+  const showVersion = (t: VersionTarget | null) => {
+    setVt(t);
+    setVdiff(null);
+    setFade(0.5);
+    setSelected(null);
+    setFocus(null);
+    setIsolated(null);
+    setBuilding(null);
+  };
+  const diffNow = vdiff && vdiff.of === vReady ? vdiff.list : null;
+  // What changed between the two versions, once every file is in (the shapes are compared).
+  useEffect(() => {
+    if (!tools || !vReady) return;
+    let live = true;
+    void tools.whenLoaded().then(() => {
+      if (!live) return;
+      setVdiff({ of: vReady, list: diffVersions(vReady.model, vReady.names, tools.shapeSig) });
+      if (vt?.mode === "compare" && vt.only?.length) tools.isolate([...vt.only, ...vt.only.map((k) => OLD + k)]);
+    });
+    return () => {
+      live = false;
+    };
+  }, [tools, vReady, vt]);
+  const versionColors = useMemo(() => {
+    if (!vt || !vReady) return null;
+    const changed = new Map((diffNow ?? []).map((c) => [c.key, c]));
+    const m = new Map<string, string>();
+    for (const p of vReady.model.placements) {
+      const c = changed.get(plainKey(p.k));
+      if (vt.mode === "visit") m.set(p.k, !c ? COMPARE.same : c.change === "added" ? COMPARE.added : c.geometry ? COMPARE.shape : COMPARE.props);
+      else m.set(p.k, !c ? COMPARE.same : isOld(p.k) ? VCOMP.older : VCOMP.newer);
+    }
+    return m;
+  }, [vt, vReady, diffNow]);
+  // Compare's slider: 0 the older solid and the newer clear, 1 the other way round.
+  useEffect(() => {
+    if (!tools || !vReady || vt?.mode !== "compare") return;
+    tools.fadeGroups(new Map([...vReady.newer.map((g) => [g, fade] as const), ...vReady.older.map((g) => [g, 1 - fade] as const)]));
+  }, [tools, vReady, vt, fade]);
+  const vNames = useMemo(() => {
+    if (!vReady) return null;
+    const m = new Map<string, string>();
+    for (const [k, n] of Object.entries(vReady.names)) m.set(k, n).set(OLD + k, `${n} (older)`);
+    return m;
+  }, [vReady]);
   // Isolate on the robot's page (Harel, 2026-11-10): the other systems' groups aren't drawn, and
   // the view frames what's left.
   const hiddenGroups = useMemo(() => {
@@ -237,6 +310,8 @@ export function ReviewScreen({
   useEffect(() => {
     tools?.view("fit");
   }, [tools, hiddenGroups]);
+  const shownHidden = useMemo(() => (vt ? (vt.mode === "visit" && vReady ? new Set(vReady.older) : NO_GROUPS) : hiddenGroups), [vt, vReady, hiddenGroups]);
+  const shownModel = vt ? (vReady?.model ?? null) : model;
 
   // The view in the URL hash (S6): put back on load (after the Fit above), then kept up to date,
   // so a reload keeps it and the link shares it. Written only once every part is in, so a view
@@ -373,9 +448,33 @@ export function ReviewScreen({
   };
   const pickedPart = selected ? partByKey.get(selected) : undefined;
   const picked = selected ? { key: selected, name: pickedPart?.name ?? null, systemId: pickedPart?.systemId ?? null } : null;
+  const replyAttach: ReplyAttach = {
+    part: replyPart,
+    snip: replySnip,
+    takeSnip: () => {
+      setSnipFor("reply");
+      setSnipStep("drag");
+    },
+    editSnip: () => {
+      setSnipFor("reply");
+      setSnipStep("draw");
+    },
+    removeSnip: () => setReplySnip(null),
+    pickPart: () => setPickingPart(true),
+    clearPart: () => setReplyPart(null),
+    reset: () => {
+      setReplySnip(null);
+      setReplyPart(null);
+    },
+  };
+  const closeWindow = () => {
+    setWindowed(null);
+    replyAttach.reset();
+  };
   // The 3D view's right-click / long-press menu: Open part, Open system (robot page), Add comment.
   const router = useRouter();
-  const pageMenu: PageMenu = (keys) => {
+  const pageMenu: PageMenu = (picks) => {
+    const keys = [...new Set(picks.map(plainKey))];
     const one = keys.length === 1 ? partByKey.get(keys[0]) : undefined;
     const systems = new Set(keys.map((k) => partByKey.get(k)?.systemId ?? null));
     const system = onRobot && systems.size === 1 ? [...systems][0] : null;
@@ -386,6 +485,8 @@ export function ReviewScreen({
       // The robot's page scoped to that system (?system=), as its Isolate does.
       ...(system ? [{ label: "Open system", run: () => (onIsolate ? onIsolate(system) : router.push(`/robots/${robotId}/cad-review?system=${system}`)) }] : []),
       ...(keys.length === 1 ? [{ label: "Add comment here", run: () => startAdding({ key: keys[0], name: one?.name ?? null, systemId: one?.systemId ?? null }) }] : []),
+      // In the Changes tab: these parts over their copies in the version before (Harel, 2026-11-17).
+      ...(!vt && compareLast && changes && colors === "compare" ? [{ label: "Compare to last version", run: () => showVersion({ mode: "compare", ...compareLast, only: keys }) }] : []),
     ];
   };
   const focusName = focus ? (nameByKey.get(focus) ?? comments.find((c) => c.partKey === focus)?.partName ?? "The part") : null;
@@ -415,7 +516,14 @@ export function ReviewScreen({
 
   return (
     <SnipMe.Provider value={me.id}>
-    <CommentContext.Provider value={{ me, canTick, canApprove, open: (c) => setWindowed(c.id) }}>
+    <VersionContext.Provider value={{ target: vt, show: showVersion, kind, robotId, canDelete: me.isAdmin }}>
+    <CommentContext.Provider value={{ me, canTick, canApprove, reply: replyAttach, open: (c) => {
+      // No View button any more (Harel, 2026-11-17): opening a comment turns the 3D view to where
+      // it was written, else shows its part.
+      setWindowed(c.id);
+      if (c.view) viewComment(c);
+      else if (c.partKey) showPart(c.partKey);
+    } }}>
     <div ref={root} className="relative -m-4 flex h-[calc(100dvh-var(--topbar-h,2.75rem))] md:-m-6">
       {drawer && <button aria-label="Close versions" onClick={() => setDrawer(false)} className="fixed inset-0 z-30 modal-backdrop lg:hidden" />}
       <aside
@@ -467,23 +575,56 @@ export function ReviewScreen({
             <ModelToggle value={models.kind} onChange={models.onKind} />
           </div>
         )}
-        {model ? (
+        {shownModel ? (
           <ModelCanvas
-            model={model}
-            colors={compareColors}
+            key={vt ? `v:${vt.mode}:${vt.a.key}:${vt.b?.key ?? ""}` : "live"}
+            model={shownModel}
+            colors={versionColors ?? compareColors}
             mode={mode}
             locateKey={focus}
             onLocated={onLocated}
             onPick={onPick}
-            names={nameByKey}
+            names={vNames ?? nameByKey}
             onTools={setTools}
             onMeasure={setMeasured}
             onHidden={setHidden}
-            hidden={hiddenGroups}
+            hidden={shownHidden}
             menu={pageMenu}
             onIsolated={onIsolatedChange}
             views={views}
           />
+        ) : vt ? (
+          <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">
+            {vload?.state === "error" ? (
+              vload.error
+            ) : vload?.state === "missing" ? (
+              <span className="flex max-w-sm flex-col items-center gap-2">
+                <span>
+                  {vload.pick.label}&rsquo;s 3D model wasn&rsquo;t kept: it was made before versions were saved.
+                  {canBuild ? " Build it once from Onshape (a few calls, plus one per Part Studio file not stored yet); it's kept after that." : " Someone on the CAD Team with Onshape linked can build it."}
+                </span>
+                {canBuild && (
+                  <button
+                    type="button"
+                    className="btn-primary min-h-9 active:scale-[0.98]"
+                    disabled={!!building}
+                    onClick={async () => {
+                      setBuilding("Reading Onshape…");
+                      const r = await buildVersion(robotId, kind, vload.entry, setBuilding);
+                      setBuilding(null);
+                      if (!r.ok) return toast(r.error, true);
+                      toast(`Built (${r.calls} Onshape calls)`);
+                      setVAttempt((n) => n + 1);
+                    }}
+                  >
+                    {building ?? "Build this version"}
+                  </button>
+                )}
+              </span>
+            ) : (
+              `Loading ${vt.a.label}…`
+            )}
+          </div>
         ) : (
           <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">
             {fetchFailed ? (
@@ -505,6 +646,50 @@ export function ReviewScreen({
               : kind === "basepart"
                 ? "The Basepart shows here once it's exported (Update 3D view in the Onshape panel, or Update 3D model on the robot page)."
                 : "The 3D view shows here once the robot's 3D model is exported (Update 3D model on the robot page)."}
+          </div>
+        )}
+
+        {vt && (
+          <div className="absolute top-3 left-1/2 z-20 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 animate-pop flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-lg border border-accent/50 bg-surface/95 px-3 py-1.5 text-xs shadow-md backdrop-blur max-lg:top-28">
+            {vt.mode === "visit" ? (
+              <>
+                <span className="font-semibold text-fg">Viewing {vt.a.label}</span>
+                {vt.b ? (
+                  <span className="flex flex-wrap gap-x-2 text-fg-2">
+                    <Dot c={COMPARE.shape}>Shape</Dot>
+                    <Dot c={COMPARE.props}>Moved</Dot>
+                    <Dot c={COMPARE.added}>Added</Dot>
+                    <span className="text-subtle">since {vt.b.label}</span>
+                  </span>
+                ) : (
+                  <span className="text-subtle">the first version</span>
+                )}
+              </>
+            ) : (
+              <span className="flex flex-wrap items-center gap-x-2 font-semibold text-fg">
+                <Dot c={VCOMP.older}>{vt.b.label}</Dot>
+                <span className="text-subtle">vs</span>
+                <Dot c={VCOMP.newer}>{vt.a.label}</Dot>
+              </span>
+            )}
+            {diffNow && (vt.mode === "compare" || vt.b) && <span className="text-subtle tabular-nums">{diffNow.length ? `${diffNow.length} changed` : "No changes"}</span>}
+            {vt.mode === "visit" && diffNow && diffNow.some((c) => c.change === "removed") && (
+              <span className="text-subtle">Removed: {diffNow.filter((c) => c.change === "removed").map((c) => c.name).join(", ")}</span>
+            )}
+            <button onClick={() => showVersion(null)} className="press font-semibold text-accent-hover hover:underline pointer-coarse:min-h-9">
+              {vt.mode === "visit" ? "Back to current" : "Close compare"}
+            </button>
+          </div>
+        )}
+        {vt?.mode === "compare" && vReady && (
+          <div className="absolute bottom-4 left-1/2 z-20 flex w-[min(26rem,calc(100%-1.5rem))] -translate-x-1/2 items-center gap-3 rounded-lg border border-line bg-surface/95 px-3 py-2 text-xs shadow-md backdrop-blur max-lg:bottom-20">
+            <span className="max-w-[7rem] shrink-0 truncate font-semibold" style={{ color: VCOMP.older }}>
+              {vt.b.label}
+            </span>
+            <input type="range" min={0} max={1} step={0.01} value={fade} onChange={(e) => setFade(Number(e.target.value))} className="min-w-0 flex-1 accent-[var(--color-accent)] pointer-coarse:h-9" aria-label="Fade between the two versions" />
+            <span className="max-w-[7rem] shrink-0 truncate font-semibold" style={{ color: VCOMP.newer }}>
+              {vt.a.label}
+            </span>
           </div>
         )}
 
@@ -553,7 +738,7 @@ export function ReviewScreen({
         <MeasureBox measured={measured} className="max-lg:bottom-20 lg:bottom-3" />
 
         <ViewerToolbar tools={tools} hidden={hidden}>
-          {changes && (
+          {changes && !vt && (
             <>
               <Segmented
                 label="Part colours"
@@ -561,7 +746,7 @@ export function ReviewScreen({
                 onChange={setColors}
                 options={[
                   { value: "cad", label: "CAD" },
-                  { value: "compare", label: changes.label ? `Changes in ${changes.label}` : "Changes" },
+                  { value: "compare", label: "Changes in last version" },
                 ]}
               />
               {colors === "compare" && (
@@ -626,7 +811,35 @@ export function ReviewScreen({
         )}
       </div>
 
-      {windowComment && <CommentWindow c={windowComment} onClose={() => setWindowed(null)} onFocus={showPart} onView={viewComment} />}
+      {vt?.mode === "visit" && vt.commit && diffNow && (
+        <CadCommitWindow
+          open
+          onClose={() => setVt({ ...vt, commit: false })}
+          robotId={robotId}
+          what={kind === "basepart" ? "Basepart" : "CAD"}
+          title={`Commit window · ${vt.a.label}`}
+          changes={diffNow.map((c) => ({ ...c, ...(c.before ? { before: { ...c.before, k: plainKey(c.before.k) } } : {}) }))}
+        />
+      )}
+      {windowComment && <CommentWindow c={windowComment} open={!snipStep && !pickingPart} onClose={() => !snipStep && !pickingPart && closeWindow()} onFocus={showPart} onView={viewComment} />}
+      {pickingPart && (
+        <div className="fixed top-[calc(var(--review-top,2.75rem)+0.75rem)] left-1/2 z-40 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-2 rounded-lg border border-line bg-surface/95 px-3 py-2 text-sm shadow-lg backdrop-blur">
+          <span className="min-w-0 truncate text-fg-2">{picked ? (picked.name ?? "A part placed in CAD") : "Pick the part in the 3D view"}</span>
+          <button
+            className="btn-primary h-8 shrink-0 px-3 text-xs active:scale-[0.98] pointer-coarse:h-9"
+            disabled={!picked}
+            onClick={() => {
+              if (picked) setReplyPart({ key: picked.key, name: picked.name });
+              setPickingPart(false);
+            }}
+          >
+            Link it
+          </button>
+          <button className="btn h-8 shrink-0 px-3 text-xs active:scale-[0.98] pointer-coarse:h-9" onClick={() => setPickingPart(false)}>
+            Cancel
+          </button>
+        </div>
+      )}
       {adding !== false && (
         <AddCommentDialog
           // Stays mounted (the text is kept) while the snip is taken and drawn on.
@@ -637,32 +850,39 @@ export function ReviewScreen({
           part={adding}
           onClearPart={() => setAdding(null)}
           snip={snipDraft}
-          onSnip={() => setSnipStep("drag")}
-          onEditSnip={() => setSnipStep("draw")}
+          onSnip={() => {
+            setSnipFor("comment");
+            setSnipStep("drag");
+          }}
+          onEditSnip={() => {
+            setSnipFor("comment");
+            setSnipStep("draw");
+          }}
           onRemoveSnip={() => setSnipDraft(null)}
           at={addingAt}
           model={kind}
           initialBody={addingBody}
         />
       )}
-      {snipStep === "draw" && snipDraft && (
+      {snipStep === "draw" && draftNow && (
         <SnipEditor
           title="Snip"
-          src={snipDraft.dataUrl}
-          w={snipDraft.w}
-          h={snipDraft.h}
-          initial={snipDraft.strokes.map((l) => ({ ...l, by: me.id }))}
+          src={draftNow.dataUrl}
+          w={draftNow.w}
+          h={draftNow.h}
+          initial={draftNow.strokes.map((l) => ({ ...l, by: me.id }))}
           me={me.id}
           isAuthor
           onClose={() => setSnipStep(null)}
           onConfirm={(lines) => {
-            setSnipDraft({ ...snipDraft, strokes: lines.map(({ c, s, p }) => ({ c, s, p })) });
+            setDraftNow({ ...draftNow, strokes: lines.map(({ c, s, p }) => ({ c, s, p })) });
             setSnipStep(null);
           }}
         />
       )}
     </div>
     </CommentContext.Provider>
+    </VersionContext.Provider>
     </SnipMe.Provider>
   );
 }

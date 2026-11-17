@@ -2,7 +2,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { and, count, eq, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
-import type { ModelKind } from "@/db/schema";
+import type { ModelKind, VersionRef } from "@/db/schema";
 import { adoptGroupPlan, planGroupNow, runJobs, type GroupPlan, type ModelOwner } from "@/lib/model/build";
 import { logCalls, onshapeClient, OnshapeError } from "@/lib/onshape/client";
 import { cachedPayloads, keepPayload } from "@/lib/onshape/studioRevs";
@@ -10,6 +10,7 @@ import { parseOnshapeUrl, type OnshapeRef } from "@/lib/onshape/url";
 import { comparePlans, settleCandidates, sortChanges, type CadChange } from "./cadDiff";
 import { addKeptVersion, keptDocVersions, nextVersionName, readDocVersions } from "./docVersions";
 import { shapeFingerprints, shapeKey, sigsKey } from "./shape";
+import { saveSnapshot } from "@/lib/model/snapshotStore";
 
 const { cadUpdates, onshapeCache, robots, systems, systemVersions } = schema;
 
@@ -28,7 +29,7 @@ export type CadDraft = {
   kind: ModelKind;
   owner: ModelOwner;
   robotId: string;
-  workspace: { did: string; wvmid: string; baseUrl: string };
+  workspace: { did: string; eid?: string; wvmid: string; baseUrl: string };
   microversion: string;
   plan: GroupPlan;
   changes: CadChange[];
@@ -96,7 +97,7 @@ export async function checkModelUpdate(kind: ModelKind, owner: ModelOwner, membe
       kind,
       owner,
       robotId,
-      workspace: { did: link.did, wvmid: link.wvmid, baseUrl: link.baseUrl },
+      workspace: { did: link.did, eid: link.eid, wvmid: link.wvmid, baseUrl: link.baseUrl },
       microversion,
       plan,
       changes: all,
@@ -151,6 +152,12 @@ export async function commitModelUpdate(kind: ModelKind, owner: ModelOwner, draf
     }
     await pinModel(kind, owner, pin);
     await adoptGroupPlan(draft.robotId, kind, owner, draft.plan);
+    // This state's model, for the version tree: under its microversion and its new version.
+    if (draft.workspace.eid) {
+      const src = { did, eid: draft.workspace.eid, wvm: "m", wvmid: draft.microversion };
+      await saveSnapshot(draft.robotId, kind, src, draft.plan);
+      if (pin.wvm === "v") await saveSnapshot(draft.robotId, kind, src, draft.plan, pin);
+    }
     await db.delete(onshapeCache).where(eq(onshapeCache.key, key));
     return { label, robotId: draft.robotId, calls: client.calls };
   } finally {
@@ -180,23 +187,29 @@ export async function pinModelToVersion(systemId: string, versionId: string): Pr
     .where(eq(systemVersions.id, versionId));
   const asm = row?.url ? parseOnshapeUrl(row.url) : null;
   if (!row || !asm || !row.ref) return row?.robotId ?? null;
-  // The assembly document's own version (a BOM release or a followed version), else the
-  // microversion the check read.
-  const own = row.ref.sources?.[asm.did]?.versionId ?? (row.ref.did === asm.did ? row.ref.vid : undefined);
-  const modelRef = own ? { wvm: "v" as const, wvmid: own } : row.ref.mv && row.ref.did === asm.did ? { wvm: "m" as const, wvmid: row.ref.mv } : null;
+  const modelRef = bomModelRef(row.ref, asm.did);
   if (modelRef) await pinModel("final", { systemId }, modelRef);
   return row.robotId;
+}
+
+// Where a BOM version's 3D model is read: the assembly document's own version (a BOM release or a
+// followed version), else the microversion the check read. Null: another document's state.
+export function bomModelRef(ref: VersionRef | null | undefined, asmDid: string): { wvm: "v" | "m"; wvmid: string } | null {
+  if (!ref) return null;
+  const own = ref.sources?.[asmDid]?.versionId ?? (ref.did === asmDid ? ref.vid : undefined);
+  return own ? { wvm: "v", wvmid: own } : ref.mv && ref.did === asmDid ? { wvm: "m", wvmid: ref.mv } : null;
 }
 
 // A model's updates for its version tree: sub-versions (no Onshape version of their own) and when
 // the first update was made (the Basepart tree starts there).
 export async function listCadUpdates(owner: ModelOwner, kind: ModelKind) {
   const rows = await db
-    .select({ id: cadUpdates.id, parentVid: cadUpdates.parentVersionId, version: cadUpdates.onshapeVersionId, label: cadUpdates.label, at: cadUpdates.createdAt, by: schema.members.name })
+    .select({ id: cadUpdates.id, did: cadUpdates.did, mv: cadUpdates.microversion, parentVid: cadUpdates.parentVersionId, version: cadUpdates.onshapeVersionId, label: cadUpdates.label, at: cadUpdates.createdAt, by: schema.members.name })
     .from(cadUpdates)
     .leftJoin(schema.members, eq(schema.members.id, cadUpdates.memberId))
     .where(and(ownerWhere(owner), eq(cadUpdates.model, kind)));
-  const subs = rows.filter((r) => !r.version).map(({ id, parentVid, label, at, by }) => ({ id, parentVid, label, at: at.toISOString(), by }));
+  // A sub-version is drawn at its microversion, in its document (`did`: the caller checks it's the model's).
+  const subs = rows.filter((r) => !r.version).map(({ id, did, mv, parentVid, label, at, by }) => ({ id, did, parentVid, label, at: at.toISOString(), by, ref: { wvm: "m" as const, wvmid: mv } }));
   const first = rows.reduce<Date | null>((a, r) => (!a || r.at < a ? r.at : a), null);
   return { subs, first: first?.toISOString() ?? null };
 }

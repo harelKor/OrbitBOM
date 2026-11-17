@@ -150,6 +150,10 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
       visibility.repaint();
       stage.render();
     },
+    fadeGroups: (m) => {
+      painter.fade(m);
+      stage.render();
+    },
   };
 
   // Drawn as the files arrive: the first Fit comes from where the parts sit (a subsystem page

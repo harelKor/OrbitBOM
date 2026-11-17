@@ -38,7 +38,7 @@ last full audit and what's still open: `plan/audit-2026-11-14.md` §0.
   sheet one), not `DEFAULT_CATEGORIES`: a test needing a category creates it.
 - Schema: edit `src/db/schema.ts`, `npm run db:generate`, rename the file to a readable name
   (and its `tag` in `drizzle/meta/_journal.json`), add `ALTER TABLE "x" ENABLE ROW LEVEL SECURITY;`
-  for a new table, commit. Next migration: 0096. Migrations reach production before the code and
+  for a new table, commit. Next migration: 0097. Migrations reach production before the code and
   a rollback runs old code on the new schema, so expand → contract: add columns/tables in one
   push; drop or rename one only in a later push, once no deployed code reads it.
 - Local site: README "Local development" (local Supabase in Docker, "Dev sign-in" button; Onshape
@@ -156,6 +156,12 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
   `/systems/<id>/cad-review` URLs redirect there. Comments with no system are on the whole robot. Comments: `src/lib/reviews/comments.ts` (anyone adds,
   CAD ticks, `members.isMentor` approves/rejects); version tree `src/lib/reviews/tree.ts` from the
   kept Onshape version list (`src/lib/versions/docVersions.ts`) and the BOM versions. No calls.
+  Versions (plan/cad-versions.md, 2026-11-17): a tap on a tree version draws it from its kept
+  snapshot (`model_snapshots`, `src/lib/model/snapshotStore.ts` / `snapshots.ts`, old ones built
+  once on request), coloured by what changed since the version before (`versionDiff.ts`, in the
+  browser); ⋮ = Compare (both drawn, slider fades them), Commit window, Delete version
+  (`deleteVersion.ts`: OrbitParts only, a BOM version's part states fold into the next one). The
+  whole robot's own versions: `robot_versions` (Create version).
   The whole 3D view as data (camera, hidden / isolated, section, render mode, colours):
   `src/components/viewer/viewState.ts`, in the URL hash (`#v=`), on each comment with its pin
   (`pins.ts`, assembly mm), and as Onshape's Named views per robot (`src/lib/reviews/namedViews.ts`).

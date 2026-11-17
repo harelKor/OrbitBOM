@@ -73,10 +73,11 @@ export async function editReviewComment(id: string, body: string): Promise<Comme
   return run(() => editComment(member, id, body));
 }
 
-export async function replyToReviewComment(commentId: string, body: string): Promise<CommentResult> {
+export async function replyToReviewComment(commentId: string, body: string, part: { key: string; name: string | null } | null = null, snip: SnipInput | null = null): Promise<CommentResult> {
   const member = await requireMember();
   if (!isUuid(commentId) || typeof body !== "string") return { error: "Unknown comment." };
-  return run(() => addReply(member, commentId, body));
+  if (part && (typeof part.key !== "string" || (part.name !== null && typeof part.name !== "string"))) return { error: "Unknown part." };
+  return run(() => addReply(member, commentId, body, { snip, partKey: part?.key ?? null, partName: part?.name ?? null }));
 }
 
 export async function editReviewReply(id: string, body: string): Promise<CommentResult> {

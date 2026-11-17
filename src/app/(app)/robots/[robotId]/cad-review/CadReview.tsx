@@ -3,9 +3,14 @@
 import { isActive } from "@/lib/reviews/status";
 import { usePathname, useRouter } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
-import { TreeComment } from "@/components/review/Comments";
 import { ReviewScreen, type ReviewPart } from "@/components/review/ReviewScreen";
 import { VersionTree } from "@/components/review/VersionTree";
+import type { Entry, VersionPick } from "@/components/review/versionView";
+import { Dialog } from "@/components/Dialog";
+import { toast } from "@/components/ui/Toaster";
+import type { FrozenRef } from "@/lib/reviews/tree";
+import { flatVersions, previousOf, sameRef } from "@/lib/reviews/versionList";
+import { makeRobotVersion } from "./versionActions";
 import { UpdateSystem } from "@/components/versions/UpdateSystem";
 import type { RobotReview } from "@/lib/data/cadReview";
 import type { Draft } from "@/lib/versions/detect";
@@ -20,8 +25,8 @@ export type IsolatedExtras = {
   partThumbs: Record<string, string | null>;
 };
 
-// CAD's page (Harel, 2026-11-09 and 2026-11-10): the whole robot. Its panel: the robot's own
-// comments, then a section per system (its picture, Isolate, and its version tree when unfolded).
+// CAD's page (Harel, 2026-11-09 and 2026-11-10): the whole robot. Its panel: a section per system
+// (no Robot comments section since 2026-11-17: they're in the comments column) (its picture, Isolate, and its version tree when unfolded).
 // Isolate scopes the page to that system the way its own page did: only its parts in 3D, its
 // comments, Update system, its version tree and the Changes colours, with Whole robot to go back.
 // The page shows it at once and the address (?system=) follows, so a reload or a shared link keeps it.
@@ -91,12 +96,31 @@ export function CadReview({
   const systems = useMemo(() => review.systems.map((s) => ({ id: s.id, name: s.name })), [review.systems]);
   const sys = iso ? review.systems.find((s) => s.id === iso) : undefined;
   const sysParts = useMemo(() => (sys ? parts.filter((p) => p.systemId === sys.id) : parts), [parts, sys]);
-  const own = review.comments.filter((c) => !c.systemId).reverse();
   const extra = sys && extras?.systemId === sys.id ? extras : null;
   const check = useMemo(() => ({ systems, parts, canCheck, canManage }), [systems, parts, canCheck, canManage]);
+  const canBuild = canSync && me.onshape;
+  // What each model is on now: Compare's other side (Harel, 2026-11-17).
+  const now = (owner: string, ref: FrozenRef | null | undefined): VersionPick | null => (ref ? { key: "current", label: "Current", at: null, entries: [{ owner, ref }] } : null);
+  // The whole robot's own versions: each one every system at that moment.
+  const robotEntries = useMemo(
+    () => new Map(review.robotVersions.map((v) => [`rv:${v.id}`, v.systems.flatMap((x): Entry[] => (x.ref ? [{ owner: x.systemId, ref: x.ref }] : []))])),
+    [review.robotVersions],
+  );
+  const robotNow = useMemo((): VersionPick | null => {
+    const entries = review.systems.flatMap((x): Entry[] => (x.final && x.modelRef ? [{ owner: x.id, ref: x.modelRef }] : []));
+    return entries.length ? { key: "current", label: "Current", at: null, entries } : null;
+  }, [review.systems]);
 
   if (sys) {
     const comments = review.comments.filter((c) => c.systemId === sys.id);
+    // Compare to last version (the Changes tab): the version the Final is on now and the one before.
+    const list = flatVersions(sys.tree);
+    const at = list.find((x) => sameRef(x.ref, sys.modelRef));
+    const before = at ? previousOf(list, at.key) : null;
+    const compareLast =
+      kind === "final" && at?.ref && before?.ref
+        ? { a: { key: at.key, label: at.label, at: at.at, entries: [{ owner: sys.id, ref: at.ref }] }, b: { key: before.key, label: before.label, at: before.at, entries: [{ owner: sys.id, ref: before.ref }] } }
+        : null;
     return (
       <ReviewScreen
         key={kind}
@@ -115,6 +139,8 @@ export function CadReview({
         canTick={canTick}
         canApprove={canApprove}
         changes={kind === "final" ? { label: sys.current?.label ?? null, list: sys.changes } : undefined}
+        canBuild={canBuild}
+        compareLast={compareLast}
         panel={(onFocus, open) => (
           <>
             {extra?.assemblyUrl && (canSync || extra.draft) && (
@@ -132,9 +158,25 @@ export function CadReview({
             )}
             {/* The Basepart and the Final each have their own tree (Harel, 2026-11-13). */}
             {kind === "basepart" ? (
-              <VersionTree tree={sys.basepart?.tree ?? []} comments={byId} onFocus={onFocus} empty="No Basepart updates yet. Update Basepart in the Onshape panel brings the first one." />
+              <VersionTree
+                tree={sys.basepart?.tree ?? []}
+                comments={byId}
+                onFocus={onFocus}
+                empty="No Basepart updates yet. Update Basepart in the Onshape panel brings the first one."
+                owner={{ systemId: sys.id }}
+                did={sys.basepart?.treeDid ?? null}
+                current={now(sys.id, sys.basepart?.modelRef)}
+              />
             ) : (
-              <VersionTree tree={sys.tree} comments={byId} onFocus={onFocus} refresh={canSync && me.onshape && sys.treeDid ? { systemId: sys.id, readAt: sys.treeReadAt } : null} />
+              <VersionTree
+                tree={sys.tree}
+                comments={byId}
+                onFocus={onFocus}
+                refresh={canSync && me.onshape && sys.treeDid ? { systemId: sys.id, readAt: sys.treeReadAt } : null}
+                owner={{ systemId: sys.id }}
+                did={sys.treeDid}
+                current={now(sys.id, sys.modelRef)}
+              />
             )}
           </>
         )}
@@ -159,22 +201,34 @@ export function CadReview({
       me={me}
       canTick={canTick}
       canApprove={canApprove}
+      canBuild={canBuild}
       panel={(onFocus) => (
         <div className="space-y-2">
-          <Fold title="Robot comments" count={own.length} initial>
-            {own.length ? (
-              <ul>
-                {own.map((c) => (
-                  <TreeComment key={c.id} c={c} onFocus={onFocus} />
-                ))}
-              </ul>
-            ) : (
-              <p className="px-1.5 text-xs text-muted">No comments on the whole robot yet.</p>
-            )}
-          </Fold>
+          {/* The whole robot's own versions (Harel, 2026-11-17), its comments under them. */}
+          {kind === "final" && (
+            <Fold title="Whole robot" count={review.comments.filter((c) => !c.systemId && isActive(c.state)).length} initial>
+              {canSync && <CreateRobotVersion robotId={robotId} next={(review.robotVersions[0]?.seq ?? 0) + 1} />}
+              <VersionTree
+                tree={review.robotTree}
+                comments={byId}
+                onFocus={onFocus}
+                empty="No robot versions yet. Create version keeps every system as it is now."
+                owner={{ robot: robotEntries }}
+                current={robotNow}
+              />
+            </Fold>
+          )}
           {kind === "basepart" && review.robotBasepart && (
             <Fold title="Robot Basepart" count={0}>
-              <VersionTree tree={review.robotBasepart.tree} comments={byId} onFocus={onFocus} empty="No Basepart updates yet. Update Basepart in the Onshape panel brings the first one." />
+              <VersionTree
+                tree={review.robotBasepart.tree}
+                comments={byId}
+                onFocus={onFocus}
+                empty="No Basepart updates yet. Update Basepart in the Onshape panel brings the first one."
+                owner={{ robotBasepart: true }}
+                did={review.robotBasepart.treeDid}
+                current={now("robot", review.robotBasepart.modelRef)}
+              />
             </Fold>
           )}
           {review.systems
@@ -184,9 +238,17 @@ export function CadReview({
               return (
                 <Fold key={s.id} title={s.name} count={open} thumb={thumbs[s.id] ?? null} onIsolate={() => isolate(s.id)}>
                   {kind === "basepart" ? (
-                    <VersionTree tree={s.basepart?.tree ?? []} comments={byId} onFocus={onFocus} empty="No Basepart updates yet. Update Basepart in the Onshape panel brings the first one." />
+                    <VersionTree
+                      tree={s.basepart?.tree ?? []}
+                      comments={byId}
+                      onFocus={onFocus}
+                      empty="No Basepart updates yet. Update Basepart in the Onshape panel brings the first one."
+                      owner={{ systemId: s.id }}
+                      did={s.basepart?.treeDid ?? null}
+                      current={now(s.id, s.basepart?.modelRef)}
+                    />
                   ) : (
-                    <VersionTree tree={s.tree} comments={byId} onFocus={onFocus} />
+                    <VersionTree tree={s.tree} comments={byId} onFocus={onFocus} owner={{ systemId: s.id }} did={s.treeDid} current={now(s.id, s.modelRef)} />
                   )}
                 </Fold>
               );
@@ -226,5 +288,52 @@ function Fold({ title, count, thumb, onIsolate, initial = false, children }: { t
       </div>
       {open && <div className="border-t border-line p-2">{children}</div>}
     </section>
+  );
+}
+
+// Create version on the whole robot (Harel, 2026-11-17): keeps every system's 3D model as it is now
+// as "R<n>", with a name and a note. No Onshape calls.
+function CreateRobotVersion({ robotId, next }: { robotId: string; next: number }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  return (
+    <>
+      <button className="btn mb-2 h-9 w-full justify-center text-sm active:scale-[0.98]" onClick={() => setOpen(true)}>
+        + Create version
+      </button>
+      <Dialog open={open} onClose={() => !busy && setOpen(false)} title="Create a robot version">
+        <form
+          className="space-y-3 p-5"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setBusy(true);
+            const r = await makeRobotVersion(robotId, name, note);
+            setBusy(false);
+            if (r.error) return toast(r.error, true);
+            toast(`${r.label} created`);
+            setOpen(false);
+            setName("");
+            setNote("");
+            router.refresh();
+          }}
+        >
+          <p className="text-sm text-muted">Keeps every system&rsquo;s 3D model and BOM version as they are now, so the whole robot can be viewed and compared as it was.</p>
+          <label className="block">
+            <span className="label">Name</span>
+            <input className="input" value={name} maxLength={120} placeholder={`R${next}`} onChange={(e) => setName(e.target.value)} />
+          </label>
+          <label className="block">
+            <span className="label">Note (optional)</span>
+            <textarea className="input min-h-20 w-full" value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} placeholder="What this version is: a competition, a design review…" />
+          </label>
+          <button className="btn-primary h-11 w-full justify-center" disabled={busy}>
+            {busy ? "Creating…" : "Create version"}
+          </button>
+        </form>
+      </Dialog>
+    </>
   );
 }

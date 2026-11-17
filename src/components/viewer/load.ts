@@ -236,7 +236,12 @@ export function loadModel(
   };
 }
 
-export type PartTools = { partSize: (key: string) => [number, number, number] | null };
+export type PartTools = {
+  partSize: (key: string) => [number, number, number] | null;
+  // The part's shape as a short fingerprint (its mesh's points), so two versions' copies can be
+  // told apart without Onshape (version compare, Harel 2026-11-17). Null: not in the model.
+  shapeSig: (key: string) => string | null;
+};
 
 // The part's size along the model's axes, in mm (its first copy's box).
 export function partTools(meshes: PartMesh[]): PartTools {
@@ -252,5 +257,27 @@ export function partTools(meshes: PartMesh[]): PartTools {
     }
     return null;
   };
-  return { partSize };
+  const sigs = new WeakMap<THREE.BufferGeometry, string>();
+  const shapeSig = (key: string): string | null => {
+    for (const { mesh, keys, sketch } of meshes) {
+      if (sketch || !keys.includes(key)) continue;
+      const geo = mesh.geometry;
+      let sig = sigs.get(geo);
+      if (!sig) {
+        // FNV-1a over the points' bits, and the index: the same export of the same shape is the
+        // same arrays.
+        const pos = geo.getAttribute("position").array as Float32Array;
+        const bits = new Uint32Array(pos.buffer, pos.byteOffset, pos.length);
+        let h = 0x811c9dc5;
+        for (let i = 0; i < bits.length; i++) h = Math.imul(h ^ bits[i], 0x01000193);
+        const index = geo.getIndex()?.array;
+        if (index) for (let i = 0; i < index.length; i++) h = Math.imul(h ^ index[i], 0x01000193);
+        sig = `${bits.length}:${(h >>> 0).toString(36)}`;
+        sigs.set(geo, sig);
+      }
+      return sig;
+    }
+    return null;
+  };
+  return { partSize, shapeSig };
 }

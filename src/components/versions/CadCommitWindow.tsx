@@ -29,18 +29,21 @@ export function CadCommitWindow({
   robotId,
   what,
   changes,
-  committing,
-  error,
+  committing = false,
+  error = null,
   onCommit,
+  title,
 }: {
   open: boolean;
   onClose: () => void;
   robotId: string;
   what: "CAD" | "Basepart";
   changes: CadChange[];
-  committing: boolean;
-  error: string | null;
-  onCommit: (makeVersion: boolean, name: string) => void;
+  committing?: boolean;
+  error?: string | null;
+  // Absent: a version's Commit window shown again from the version tree (read-only, Harel 2026-11-17).
+  onCommit?: (makeVersion: boolean, name: string) => void;
+  title?: string;
 }) {
   const [makeVersion, setMakeVersion] = useState(false);
   const [name, setName] = useState("");
@@ -49,7 +52,7 @@ export function CadCommitWindow({
     .map((k) => ({ k, n: changes.filter((c) => chipOf(c) === CHIP[k]).length }))
     .filter((c) => c.n > 0);
   return (
-    <Dialog open={open} onClose={onClose} title={`Update ${what}: changes in Onshape`} width="w-[min(46rem,calc(100vw-2rem))]">
+    <Dialog open={open} onClose={onClose} title={title ?? `Update ${what}: changes in Onshape`} width="w-[min(46rem,calc(100vw-2rem))]">
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
           {counts.length ? (
@@ -59,10 +62,11 @@ export function CadCommitWindow({
               </span>
             ))
           ) : (
-            <span>No part changed since the last update.</span>
+            <span>{onCommit ? "No part changed since the last update." : "No part changed in this version."}</span>
           )}
         </div>
 
+        {onCommit && (
         <form
           className="space-y-3"
           onSubmit={(e) => {
@@ -90,6 +94,7 @@ export function CadCommitWindow({
           </button>
           {error && <p className="text-sm text-rose-600">{error}</p>}
         </form>
+        )}
 
         {changes.length > 0 && (
           <ul className="max-h-[50dvh] space-y-2 overflow-y-auto pr-1">

@@ -18,6 +18,20 @@ export type CommentCtx = {
   canTick: boolean; // CAD Team or mentor
   canApprove: boolean; // mentor, or an admin in Edit mode
   open?: (c: ReviewComment) => void; // the comment window
+  reply?: ReplyAttach; // a snip and a linked part for the comment window's Reply box
+};
+
+// What the comment window's Reply box carries (Harel, 2026-11-17): a snip and a part picked in the
+// 3D view. Both need the window out of the way, so the CAD page keeps them.
+export type ReplyAttach = {
+  part: { key: string; name: string | null } | null;
+  snip: SnipDraft | null;
+  takeSnip: () => void; // the window steps aside while it's taken
+  editSnip: () => void;
+  removeSnip: () => void;
+  pickPart: () => void; // the window steps aside until a part is picked in 3D
+  clearPart: () => void;
+  reset: () => void; // after the reply is saved
 };
 export const CommentContext = createContext<CommentCtx | null>(null);
 
@@ -187,10 +201,6 @@ function PartChip({ c, onFocus }: { c: ReviewComment; onFocus?: (key: string) =>
   );
 }
 
-// A tap on "View" turns the 3D view back to the one it was written in (`onView`, S6), else shows
-// its part.
-const tapView = (c: ReviewComment, onFocus?: (key: string) => void, onView?: (c: ReviewComment) => void) => () => (c.view && onView ? onView(c) : c.partKey && onFocus?.(c.partKey));
-
 // ⋯ beside the status: Edit and Delete, for whoever may.
 function MoreMenu({ items }: { items: { label: string; danger?: boolean; run: () => void }[] }) {
   if (!items.length) return null;
@@ -270,7 +280,7 @@ function TextBox({ initial = "", placeholder, action, pending, onSave, onCancel,
   );
 }
 
-function ReplyItem({ r }: { r: CommentReply }) {
+function ReplyItem({ r, onFocus }: { r: CommentReply; onFocus?: (key: string) => void }) {
   const ctx = useContext(CommentContext);
   const { pending, error, run } = useCommentAction();
   const [editing, setEditing] = useState(false);
@@ -295,36 +305,108 @@ function ReplyItem({ r }: { r: CommentReply }) {
         ) : (
           <p className="text-sm whitespace-pre-wrap break-words text-fg-2">{r.body}</p>
         )}
+        {r.partKey && (
+          <button
+            onClick={() => onFocus?.(r.partKey!)}
+            className="press mt-1 inline-flex max-w-full items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-[0.6875rem] font-semibold text-accent-hover hover:bg-accent/20 pointer-coarse:min-h-8"
+            title="Show the part"
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+            <span className="truncate">{r.partName ?? "A part"}</span>
+          </button>
+        )}
+        {r.snip && <ReplySnip snip={r.snip} />}
         {error && <p className="text-xs text-rose-600">{error}</p>}
       </div>
     </li>
   );
 }
 
-// The thread: the newest 2 replies with the earlier ones folded (all of them with `full`), and
-// the Reply box (open in the comment window, a "Reply" link in lists).
-function Thread({ c, full }: { c: ReviewComment; full: boolean }) {
+// A reply's snip: its picture with its lines; a tap shows it big.
+function ReplySnip({ snip }: { snip: NonNullable<CommentReply["snip"]> }) {
+  const [big, setBig] = useState(false);
+  return (
+    <>
+      <button onClick={() => setBig(true)} className="press mt-1 block w-32 overflow-hidden rounded border border-line hover:border-accent/60 active:scale-[0.98]" title="Open the snip">
+        <SnipPicture src={snip.url} w={snip.w} h={snip.h} strokes={snip.strokes} />
+      </button>
+      {big && (
+        <Dialog open onClose={() => setBig(false)} title="Snip" width="w-[min(60rem,calc(100vw-2rem))]">
+          <div className="p-3">
+            <SnipPicture src={snip.url} w={snip.w} h={snip.h} strokes={snip.strokes} />
+          </div>
+        </Dialog>
+      )}
+    </>
+  );
+}
+
+// The Reply box's snip and part (comment window only): buttons to add them, and what's added.
+function ReplyExtras({ a }: { a: ReplyAttach }) {
+  return (
+    <div className="mt-2 space-y-1.5">
+      <div className="flex flex-wrap gap-1.5">
+        <button type="button" className="btn h-8 gap-1 px-2.5 text-xs active:scale-[0.98] pointer-coarse:h-9" onClick={a.takeSnip} title="Cut a picture out of the 3D view and draw on it">
+          📷 {a.snip ? "New snip" : "Snip"}
+        </button>
+        <button type="button" className="btn h-8 gap-1 px-2.5 text-xs active:scale-[0.98] pointer-coarse:h-9" onClick={a.pickPart} title="Pick the part in the 3D view">
+          🔗 {a.part ? "Other part" : "Link part"}
+        </button>
+      </div>
+      {a.part && (
+        <div className="flex items-center gap-2 rounded-md border border-accent/40 bg-accent/5 px-2.5 py-1.5 text-xs">
+          <span className="h-2 w-2 rounded-full bg-accent" />
+          <span className="min-w-0 flex-1 truncate font-semibold text-fg">{a.part.name ?? "A part placed in CAD"}</span>
+          <button type="button" onClick={a.clearPart} className="press text-muted hover:text-fg pointer-coarse:min-h-9" aria-label="Remove the part">
+            ✕
+          </button>
+        </div>
+      )}
+      {a.snip && (
+        <div className="flex items-start gap-2">
+          <button type="button" onClick={a.editSnip} className="press w-28 shrink-0 overflow-hidden rounded border border-line hover:border-accent/60 active:scale-[0.98]" title="Draw on it">
+            <SnipPicture src={a.snip.dataUrl} w={a.snip.w} h={a.snip.h} strokes={a.snip.strokes} />
+          </button>
+          <div className="flex flex-col gap-1 text-xs">
+            <button type="button" onClick={a.editSnip} className="press text-left font-semibold text-accent-hover hover:underline pointer-coarse:min-h-9">
+              Draw on it
+            </button>
+            <button type="button" onClick={a.removeSnip} className="press text-left text-muted hover:text-rose-500 pointer-coarse:min-h-9">
+              Remove snip
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// The thread: folds away behind its "▸ 3 replies" line (Harel, 2026-11-17), folded in lists and
+// open in the comment window; the Reply box (open in the comment window, a "Reply" link in lists).
+function Thread({ c, full, onFocus }: { c: ReviewComment; full: boolean; onFocus?: (key: string) => void }) {
+  const ctx = useContext(CommentContext);
+  const attach = full ? ctx?.reply : undefined;
   const { pending, error, run } = useCommentAction();
-  const [all, setAll] = useState(full);
+  const [open, setOpen] = useState(full);
   const [replying, setReplying] = useState(false);
   const [box, setBox] = useState(0); // a fresh box after each reply
-  const hidden = all ? 0 : Math.max(0, c.replies.length - 2);
+  const n = c.replies.length;
   return (
     <div className="mt-2">
-      {c.replies.length > 0 && (
-        <ul className="space-y-2 border-l-2 border-line pl-2.5">
-          {hidden > 0 && (
-            <li>
-              <button className="press text-xs font-semibold text-accent-hover hover:underline pointer-coarse:min-h-8" onClick={() => setAll(true)}>
-                Show {hidden} earlier {hidden === 1 ? "reply" : "replies"}
-              </button>
-            </li>
-          )}
-          {c.replies.slice(hidden).map((r) => (
-            <ReplyItem key={r.id} r={r} />
+      {n > 0 && (
+        <button className="press flex items-center gap-1 text-xs font-semibold text-fg-2 hover:text-fg pointer-coarse:min-h-8" onClick={() => setOpen(!open)} aria-expanded={open}>
+          <span aria-hidden className={`inline-block text-subtle transition-transform ${open ? "rotate-90" : ""}`}>▸</span>
+          {n} {n === 1 ? "reply" : "replies"}
+        </button>
+      )}
+      {n > 0 && open && (
+        <ul className="mt-1.5 space-y-2 border-l-2 border-line pl-2.5">
+          {c.replies.map((r) => (
+            <ReplyItem key={r.id} r={r} onFocus={onFocus} />
           ))}
         </ul>
       )}
+      {attach && <ReplyExtras a={attach} />}
       {full || replying ? (
         <TextBox
           key={box}
@@ -335,17 +417,27 @@ function Thread({ c, full }: { c: ReviewComment; full: boolean }) {
           onCancel={full ? undefined : () => setReplying(false)}
           onSave={(t) =>
             run(
-              () => replyToReviewComment(c.id, t),
+              async () => {
+                let shot = null;
+                if (attach?.snip) {
+                  const up = await uploadSnip(attach.snip);
+                  if ("error" in up) return up;
+                  shot = up.snip;
+                }
+                return replyToReviewComment(c.id, t, attach?.part ?? null, shot);
+              },
               () => {
-                setBox((n) => n + 1);
+                attach?.reset();
+                setBox((k) => k + 1);
                 setReplying(false);
+                setOpen(true);
               },
             )
           }
         />
       ) : (
         <button className="press mt-1 text-xs font-semibold text-accent-hover hover:underline pointer-coarse:min-h-8" onClick={() => setReplying(true)}>
-          Reply{c.replies.length ? ` · ${c.replies.length}` : ""}
+          Reply
         </button>
       )}
       {error && <p className="mt-1 text-xs text-rose-600">{error}</p>}
@@ -386,7 +478,7 @@ export function CommentRow({
   const tappable = !full && !!ctx?.open;
   const bodyClass = `mt-1.5 block w-full text-left whitespace-pre-wrap break-words ${gone ? "text-muted line-through" : "text-fg"}`;
   return (
-    <li className={`${full ? "" : "mb-2 rounded-lg border border-line/70 bg-surface p-2.5 shadow-sm last:mb-0"} list-none ${pending ? "opacity-60" : ""}`}>
+    <li className={`${full ? "" : "mb-2.5 rounded-lg border border-line-strong bg-surface p-2.5 shadow-[0_1px_3px_rgb(0_0_0/0.12)] last:mb-0"} list-none ${pending ? "opacity-60" : ""}`}>
       <div className="flex gap-2.5">
         <div className="relative h-8 shrink-0">
           <Avatar name={c.author} src={c.authorAvatar} id={c.authorId} />
@@ -434,11 +526,6 @@ export function CommentRow({
           )}
           <CommentSnip c={c} />
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.6875rem] text-subtle">
-            {(c.view || c.partKey) && (onView || onFocus) && (
-              <button className="press font-semibold text-accent-hover hover:underline pointer-coarse:min-h-8" onClick={tapView(c, onFocus, onView)} title="Turn the 3D view to where it was written">
-                ◎ View
-              </button>
-            )}
             {c.state === "on_it" && c.onItBy && <span className="font-semibold text-blue-600 dark:text-blue-400">{c.onItBy} is on it</span>}
             {c.state === "to_check" && c.doneAt && (
               <span>
@@ -457,7 +544,7 @@ export function CommentRow({
             )}
           </div>
           {error && <p className="mt-1 text-xs text-rose-600">{error}</p>}
-          <Thread c={c} full={full} />
+          <Thread c={c} full={full} onFocus={onFocus} />
         </div>
       </div>
     </li>
@@ -489,7 +576,7 @@ export function TreeComment({ c, onFocus }: { c: ReviewComment; onFocus?: (key: 
 
 // The comment window (Harel, 2026-11-13): the comment's card with its whole thread and the Reply
 // box, and what happened to it.
-export function CommentWindow({ c, onClose, onFocus, onView }: { c: ReviewComment; onClose: () => void; onFocus?: (key: string) => void; onView?: (c: ReviewComment) => void }) {
+export function CommentWindow({ c, onClose, onFocus, onView, open = true }: { c: ReviewComment; onClose: () => void; onFocus?: (key: string) => void; onView?: (c: ReviewComment) => void; open?: boolean }) {
   const steps = [
     { label: "On it", by: c.onItBy, at: c.onItAt },
     { label: "To check", by: c.doneBy, at: c.doneAt },
@@ -497,7 +584,7 @@ export function CommentWindow({ c, onClose, onFocus, onView }: { c: ReviewCommen
   ].filter((x): x is { label: string; by: string | null; at: string } => !!x.at);
 
   return (
-    <Dialog open onClose={onClose} title={c.systemName ? `Comment · ${c.systemName}` : "Comment · whole robot"} sheet>
+    <Dialog open={open} onClose={onClose} title={c.systemName ? `Comment · ${c.systemName}` : "Comment · whole robot"} sheet>
       <div className="space-y-3 p-4 text-sm">
         <ul>
           <CommentRow

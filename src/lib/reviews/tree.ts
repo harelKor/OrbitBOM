@@ -4,14 +4,17 @@
 // Without a kept list of Onshape versions, the BOM's own versions make the tree.
 
 export type OnshapeVersion = { id: string; name: string; createdAt: string; creator?: string | null; description?: string | null };
-export type BomVersion = { id: string; label: string; at: string | null; by: string | null; vid: string | null; current: boolean };
+export type BomVersion = { id: string; label: string; at: string | null; by: string | null; vid: string | null; current: boolean; ref?: FrozenRef | null };
+// Where a version's 3D model is read (plan/cad-versions.md, Harel 2026-11-17): the model's own
+// document at that Onshape version or microversion. Null: it can't be drawn (another document).
+export type FrozenRef = { wvm: "v" | "m"; wvmid: string };
 // `onshapeVersionId`: written in the Onshape panel on that version, so it sits there whatever its
 // date (Harel, 2026-11-09).
 export type TreeComment = { id: string; createdAt: string; doneAt: string | null; doneVersionId: string | null; state: "open" | "on_it" | "to_check" | "done"; onshapeVersionId?: string | null; onshapeVersionName?: string | null };
 
 // An Update CAD without a new Onshape version (Harel, 2026-11-11): a sub-version "V12 v1" of the
 // Onshape version it was made on, drawn as a small branch off it.
-export type CadSub = { id: string; parentVid: string | null; label: string; at: string; by: string | null };
+export type CadSub = { id: string; parentVid: string | null; label: string; at: string; by: string | null; ref?: FrozenRef | null };
 
 export type TreeNode = {
   key: string;
@@ -25,6 +28,7 @@ export type TreeNode = {
   // Newer in Onshape than the version the BOM is on: nobody updated the system to it yet.
   ahead: boolean;
   subs: Omit<CadSub, "parentVid">[]; // oldest first
+  ref: FrozenRef | null; // where its 3D model is read
 };
 
 // `since`: the system's first sync. The tree starts there (Harel, 2026-11-11): Onshape versions
@@ -34,16 +38,27 @@ export function buildTree(
   onshape: OnshapeVersion[] | null,
   bom: BomVersion[],
   comments: TreeComment[],
-  { since = null, cad = [] }: { since?: string | null; cad?: CadSub[] } = {},
+  {
+    since = null,
+    cad = [],
+    ownDoc = false,
+    deleted,
+  }: {
+    since?: string | null;
+    cad?: CadSub[];
+    // The Onshape versions are the 3D model's own document's, so each is drawn at itself.
+    ownDoc?: boolean;
+    deleted?: Set<string>; // Onshape versions deleted from OrbitParts (Harel, 2026-11-17)
+  } = {},
 ): TreeNode[] {
   const nodes: TreeNode[] = [];
   const byVid = new Map<string, TreeNode>();
   const used = new Set(bom.flatMap((b) => (b.vid ? [b.vid] : [])));
   const before = since ? (onshape ?? []).filter((v) => v.createdAt < since).sort((a, b) => a.createdAt.localeCompare(b.createdAt)) : [];
   const root = before.at(-1)?.id ?? null;
-  const shown = (onshape ?? []).filter((v) => !since || v.createdAt >= since || v.id === root || used.has(v.id));
+  const shown = (onshape ?? []).filter((v) => (!since || v.createdAt >= since || v.id === root || used.has(v.id)) && (!deleted?.has(v.id) || used.has(v.id)));
   for (const v of [...shown].sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
-    const node: TreeNode = { key: v.id, name: v.name, at: v.createdAt, by: v.creator ?? null, description: v.description || null, bom: [], added: [], done: [], ahead: false, subs: [] };
+    const node: TreeNode = { key: v.id, name: v.name, at: v.createdAt, by: v.creator ?? null, description: v.description || null, bom: [], added: [], done: [], ahead: false, subs: [], ref: ownDoc ? { wvm: "v", wvmid: v.id } : null };
     nodes.push(node);
     byVid.set(v.id, node);
   }
@@ -52,18 +67,19 @@ export function buildTree(
   for (const b of [...bom].sort((a, b) => (a.at ?? "").localeCompare(b.at ?? ""))) {
     let node = b.vid ? byVid.get(b.vid) : undefined;
     if (!node) {
-      node = { key: `bom:${b.id}`, name: b.label, at: b.at, by: b.by, description: null, bom: [], added: [], done: [], ahead: false, subs: [] };
+      node = { key: `bom:${b.id}`, name: b.label, at: b.at, by: b.by, description: null, bom: [], added: [], done: [], ahead: false, subs: [], ref: null };
       nodes.push(node);
     }
     node.bom.push({ id: b.id, label: b.label, current: b.current });
+    node.ref ??= b.ref ?? null;
     nodeOfBom.set(b.id, node);
   }
   // A comment's Onshape version the kept list doesn't have yet (made after it was last read) is a
   // node of its own, dated by its first comment.
   const sorted = [...comments].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   for (const c of sorted) {
-    if (!c.onshapeVersionId || byVid.has(c.onshapeVersionId)) continue;
-    const node: TreeNode = { key: c.onshapeVersionId, name: c.onshapeVersionName ?? "", at: c.createdAt, by: null, description: null, bom: [], added: [], done: [], ahead: false, subs: [] };
+    if (!c.onshapeVersionId || byVid.has(c.onshapeVersionId) || deleted?.has(c.onshapeVersionId)) continue;
+    const node: TreeNode = { key: c.onshapeVersionId, name: c.onshapeVersionName ?? "", at: c.createdAt, by: null, description: null, bom: [], added: [], done: [], ahead: false, subs: [], ref: ownDoc ? { wvm: "v", wvmid: c.onshapeVersionId } : null };
     nodes.push(node);
     byVid.set(c.onshapeVersionId, node);
   }
