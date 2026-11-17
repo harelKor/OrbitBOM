@@ -51,6 +51,7 @@ export function ModelCanvas({
   onHover,
   cube: cubeProp,
   views,
+  statusOpacity = null,
 }: {
   model: ViewerModel;
   colors: Map<string, string>; // part key → status colour
@@ -73,6 +74,7 @@ export function ModelCanvas({
   // windows and the robot page ask for it (Harel, 2026-11-11). False: small views, the slides.
   cube?: boolean;
   views?: NamedViews; // Onshape's Named views in the cube's menu (S6: the CAD pages)
+  statusOpacity?: number | null; // "status" mode drawn see-through at about this opacity (the BOM pages' Status view)
 }) {
   const withCube = cubeProp ?? !!onTools;
   const host = useRef<HTMLDivElement>(null);
@@ -197,6 +199,9 @@ export function ModelCanvas({
   useEffect(() => {
     if (loaded) onLocated(scene.current?.paint(colors, mode, locateKey) ?? false);
   }, [loaded, colors, mode, locateKey, onLocated]);
+  useEffect(() => {
+    if (loaded) scene.current?.tools.statusOpacity(statusOpacity);
+  }, [loaded, statusOpacity]);
   const selectedKeyRef = useRef(selectedKey);
   useEffect(() => {
     if (!loaded) return;

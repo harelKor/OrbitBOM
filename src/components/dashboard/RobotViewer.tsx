@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StatusCount } from "@/lib/stats";
 import { Icon } from "@/components/ui/Icon";
+import { Segmented } from "@/components/ui/Segmented";
 import { buildModel } from "@/components/viewer/buildModel";
 import { drawPictures } from "@/components/viewer/pictures";
 import type { ViewerMode, ViewerModel } from "./ModelCanvas";
@@ -55,9 +56,15 @@ export function RobotViewer({
   edit: boolean;
 }) {
   // The BOM pages show the Final model only: the Basepart is the CAD page's (Harel, 2026-11-13).
-  // Parts look as Onshape draws them, with a light wash of their BOM status colour; no Status / CAD
-  // switch any more (Harel, 2026-11-13).
-  const colors: ViewerMode = "tint";
+  // CAD: parts look as Onshape draws them, with a light wash of their BOM status colour (Harel,
+  // 2026-11-13). Status: every part see-through in its status colour, the slider setting how much;
+  // parts with a status a little clearer than the rest (Harel, 2026-11-17). Both kept per device.
+  const [view, setView] = useStored<"cad" | "status">(VIEW_KEY, "cad", (v) => (v === "status" ? "status" : v === "cad" ? "cad" : null));
+  const [opacity, setOpacity] = useStored(OPACITY_KEY, 0.5, (v) => {
+    const n = Number(v);
+    return v !== null && Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : null;
+  });
+  const colors: ViewerMode = view === "status" ? "status" : "tint";
   const router = useRouter();
   const [large, setLarge] = useState(false);
   const [bar, setBar] = useState(false);
@@ -262,6 +269,32 @@ export function RobotViewer({
                 {building ?? "Update 3D model"}
               </button>
             )}
+            {model && (
+              <Segmented
+                label="Part colours"
+                value={view}
+                onChange={setView}
+                options={[
+                  { value: "cad", label: "CAD" },
+                  { value: "status", label: "Status" },
+                ]}
+              />
+            )}
+            {model && view === "status" && (
+              <label className="flex items-center gap-2 text-xs font-semibold text-muted pointer-coarse:min-h-9" title="How see-through the parts are">
+                Opacity
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={Math.round(opacity * 100)}
+                  onChange={(e) => setOpacity(Number(e.target.value) / 100)}
+                  className="h-1 w-24 cursor-pointer accent-accent pointer-coarse:h-6 sm:w-32"
+                  aria-label="Part opacity"
+                />
+                <span className="w-8 text-right tabular-nums">{Math.round(opacity * 100)}%</span>
+              </label>
+            )}
             {!systemId && groups.length > 1 && (
               <button className="btn h-8 text-xs" aria-pressed={bar} onClick={() => setBar(!bar)}>
                 Subsystems{hiddenGroups.size ? ` ${groups.length - hiddenGroups.size}/${groups.length}` : ""}
@@ -296,6 +329,7 @@ export function RobotViewer({
               names={nameByKey}
               panelLeft={bar && !systemId && groups.length > 0 ? 244 : undefined}
               cube // the view cube and its menu, as on CAD's pages (Harel, 2026-11-11)
+              statusOpacity={view === "status" ? opacity : null}
             />
           ) : (
             <>
@@ -417,4 +451,30 @@ export function RobotViewer({
       </section>
     </>
   );
+}
+
+const VIEW_KEY = "orbit-bom-3d-view";
+const OPACITY_KEY = "orbit-bom-3d-opacity";
+
+// A setting remembered in this browser: the default until it's read after the first render (the
+// server can't see it), then the stored one.
+function useStored<T>(key: string, initial: T, parse: (v: string | null) => T | null) {
+  const [value, set] = useState(initial);
+  const parseRef = useRef(parse);
+  useEffect(() => {
+    try {
+      const v = parseRef.current(localStorage.getItem(key));
+      if (v !== null) set(v);
+    } catch {}
+  }, [key]);
+  const save = useCallback(
+    (v: T) => {
+      set(v);
+      try {
+        localStorage.setItem(key, String(v));
+      } catch {}
+    },
+    [key],
+  );
+  return [value, save] as const;
 }

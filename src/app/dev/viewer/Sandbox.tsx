@@ -13,7 +13,7 @@ import { Segmented } from "@/components/ui/Segmented";
 const ModelCanvas = dynamic(() => import("@/components/dashboard/ModelCanvas").then((m) => m.ModelCanvas), { ssr: false });
 
 // Stand-ins for status colours, one per part in turn, so Status mode shows something.
-const FAKE_STATUS = ["#22c55e", "#f59e0b", "#38bdf8", "#ef4444", "#a78bfa"];
+const FAKE_STATUS = ["#22c55e", "#f59e0b", "#38bdf8", "#ef4444", "#a78bfa", "#cbd5e1"]; // the last is Not Started
 
 // The CAD screen's 3D view, cut down: ModelCanvas and ViewerToolbar on the sandbox robot, with the
 // CAD page's measure box (no pick pop-up: the right-click menu does it, as on CAD since R2),
@@ -25,7 +25,8 @@ export function Sandbox() {
   const [tools, setTools] = useState<SceneTools | null>(null);
   const [measured, setMeasured] = useState<MeasureInfo>({ picks: [], rows: [], parts: [] });
   const [hidden, setHidden] = useState<HiddenParts | null>(null);
-  const [mode, setMode] = useState<ViewerMode>("cad");
+  const [mode, setMode] = useState<ViewerMode | "bom">("cad");
+  const [see, setSee] = useState(0.5); // the BOM pages' Status view (RobotViewer)
   const [groupsOff, setGroupsOff] = useState<Set<number>>(() => new Set());
   const [locate, setLocate] = useState<string | null>(null);
   const [located, setLocated] = useState<boolean | null>(null);
@@ -115,7 +116,8 @@ export function Sandbox() {
         <ModelCanvas
           model={data.model}
           colors={colors}
-          mode={mode}
+          mode={mode === "bom" ? "status" : mode}
+          statusOpacity={mode === "bom" ? see : null}
           locateKey={locate}
           onLocated={onLocated}
           hidden={groupsOff}
@@ -172,8 +174,15 @@ export function Sandbox() {
             { value: "cad", label: "CAD" },
             { value: "status", label: "Status" },
             { value: "tint", label: "Tint" },
+            { value: "bom", label: "BOM Status" },
           ]}
         />
+        {mode === "bom" && (
+          <label className="flex items-center gap-2 rounded-md border border-line bg-surface/95 px-2 py-1 text-xs font-semibold text-muted shadow-sm pointer-coarse:min-h-9">
+            Opacity
+            <input type="range" min={0} max={100} value={Math.round(see * 100)} onChange={(e) => setSee(Number(e.target.value) / 100)} className="h-1 w-24 accent-accent pointer-coarse:h-6" aria-label="Part opacity" />
+          </label>
+        )}
         {data?.model.groups && (
           <div className="flex flex-wrap gap-1 rounded-md border border-line bg-surface/95 p-1 text-xs shadow-sm">
             {data.model.groups.map((g, i) => (

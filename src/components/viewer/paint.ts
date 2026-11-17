@@ -33,7 +33,17 @@ export type DisplayTools = {
   // Version compare (Harel, 2026-11-17): each listed subsystem group drawn at that opacity (0–1)
   // over its colours; null ends it.
   fadeGroups: (opacity: Map<number, number> | null) => void;
+  // The BOM pages' Status view (Harel, 2026-11-17): in "status" mode every part see-through at
+  // about this opacity (0–1), parts with a status a little clearer and the rest a little fainter
+  // (statusOpacities); null draws them solid (the CAD page's status colours).
+  statusOpacity: (opacity: number | null) => void;
 };
+// How far a part with a status sits above the Status view's slider, and one without below it.
+export const STATUS_SPREAD = 0.15;
+const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+export const statusOpacities = (opacity: number) => ({ more: clamp01(opacity + STATUS_SPREAD), less: clamp01(opacity - STATUS_SPREAD) });
+// A part "has a status" once it's past Not Started (and is on the BOM at all).
+export const hasStatus = (color: string | undefined) => !!color && !new THREE.Color(color).equals(NOT_STARTED);
 const LINE_FACE = "#ffffff"; // the faces in the hidden-line modes: plain white, like Onshape's
 const TRANSLUCENT = 0.3;
 
@@ -201,6 +211,7 @@ export type Painter = {
   paint: Paint;
   display: () => DisplayMode;
   setDisplay: (m: DisplayMode) => void; // paints again in the new mode (the caller repaints see-through parts)
+  statusOpacity: (opacity: number | null) => void; // DisplayTools'; the caller repaints see-through parts
   outlines: (on: boolean) => void; // phones drop the silhouettes while the view moves
   fade: (opacity: Map<number, number> | null) => void;
   dispose: () => void;
@@ -222,6 +233,16 @@ export function createPaint(stage: Stage, meshes: PartMesh[], looks: Looks, fit:
     m.transparent = clear;
     m.opacity = op;
     m.depthWrite = !clear;
+  };
+  // The Status view's two see-through copies of the status material (statusOpacity).
+  let see: number | null = null;
+  const seeMore = material.clone();
+  const seeLess = material.clone();
+  const setSee = () => {
+    if (see === null) return;
+    const { more, less } = statusOpacities(see);
+    setFade(seeMore, more);
+    setFade(seeLess, less);
   };
 
   // Each part's silhouette and hidden-edge lines, made the first time it is painted: children of
@@ -286,7 +307,10 @@ export function createPaint(stage: Stage, meshes: PartMesh[], looks: Looks, fit:
       const own = cadLike && look;
       const base = locateKey ? ghost : own && look.opacity < 1 ? seeThrough(look.opacity) : cadLike ? cad : material;
       const faded = fades.get(g);
-      mesh.material = faded && !locateKey ? faded : locateKey ? base : lines ? lineFace : display === "translucent" ? translucent(base) : base;
+      // The Status view: one material per mesh, so a part drawn in several copies is clearer when
+      // any of them has a status.
+      const seen = see !== null && mode === "status" && !lines ? (keys.some((k) => hasStatus(colors.get(k))) ? seeMore : seeLess) : null;
+      mesh.material = faded && !locateKey ? faded : locateKey ? base : lines ? lineFace : seen ?? (display === "translucent" ? translucent(base) : base);
       // A faded copy's face borders go once it's mostly see-through.
       const borders = mesh.children[0];
       if (borders) borders.visible = !faded || faded.opacity >= 0.5;
@@ -320,6 +344,15 @@ export function createPaint(stage: Stage, meshes: PartMesh[], looks: Looks, fit:
     setDisplay: (m) => {
       display = m;
       if (last) paintNow(...last, false);
+      else render();
+    },
+    statusOpacity: (opacity) => {
+      const was = see;
+      see = opacity === null ? null : clamp01(opacity);
+      setSee();
+      // Only the slider moved: the materials are already on; else paint again.
+      if (was !== null && see !== null) render();
+      else if (last) paintNow(...last, false);
       else render();
     },
     outlines: (on) => {
@@ -358,6 +391,8 @@ export function createPaint(stage: Stage, meshes: PartMesh[], looks: Looks, fit:
     },
     dispose: () => {
       fades.forEach((m) => m.dispose());
+      seeMore.dispose();
+      seeLess.dispose();
       highlights.clear();
       for (const h of hulls) h.geometry.dispose();
     },

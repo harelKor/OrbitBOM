@@ -150,6 +150,11 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
       visibility.repaint();
       stage.render();
     },
+    statusOpacity: (o) => {
+      painter.statusOpacity(o);
+      visibility.repaint();
+      stage.render();
+    },
     fadeGroups: (m) => {
       painter.fade(m);
       stage.render();
