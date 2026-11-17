@@ -8,7 +8,8 @@ Harel. Live: https://orbitparts.duckdns.org. Next.js 16 (App Router, Cache Compo
 (Postgres + Google sign-in, Mumbai), Cloudflare R2 for files, hosted on the team's own Oracle Cloud
 Always Free VM in Mumbai (see Hosting below; not Vercel any more), vitest.
 Everything must stay on free tiers. Members also drive it from their own Claude through the MCP
-server (`/api/mcp/<token>`).
+server (`/api/mcp/<token>`). New to the code: `docs/overview.md` (glossary, roles, page map);
+last full audit and what's still open: `plan/audit-2026-11-14.md` §0.
 
 ## Working with Harel
 
@@ -17,7 +18,9 @@ server (`/api/mcp/<token>`).
   server over (~5 min; check with `gh run list --workflow deploy.yml`). A red check deploys
   nothing, so a push isn't done until that run is green. No branches or PRs unless he asks.
   Pushes touching only `plan/`, `docs/`, `*.md` don't run it; a newer push cancels an older run's
-  checks. Actions minutes are tight (private repo, 2,000/month): batch pushes.
+  checks. Actions minutes are tight (private repo, 2,000/month): batch pushes. They ran out on
+  2026-11-16 (runs fail to start: "spending limit"); until they reset at the start of the month,
+  deploy from Harel's PC: `docs/runbook.md` → "Deploy from a PC".
 - Everything must cost nothing. Before any new cloud resource or plan change, check it's inside
   the free tier and say so; he asked to be sure he pays nothing.
 - Build what he asks for (or what blocks real use), nothing optional. Big features: post the plan,

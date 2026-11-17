@@ -1,3 +1,20 @@
+# OrbitParts (repo: OrbitBOM): notes for every agent
+
+FRC team 1690's BOM, To Fab, ordering, inventory, CAD-review and assembly app, linked to Onshape.
+Live at https://orbitparts.duckdns.org (Google sign-in, admin-approved members).
+
+Read in this order:
+1. `docs/overview.md`: what the app is, the words it uses, roles, every page, where the code lives.
+2. `CLAUDE.md`: the detailed engineering rules, shared helpers, gotchas and hosting. It is named
+   for Claude but applies to every agent and contributor; skip its first line (it includes this file).
+3. `plan/audit-2026-11-14.md` §0: what the last full audit found, what's fixed and what's open.
+4. `docs/runbook.md` for operations; `plan/<feature>.md` for design notes (historical: the code wins).
+
+Hard rules, in short: everything stays on free tiers; never change production data or settings
+without the owner's (Harel's) OK; never repeat secrets; part edits, stock moves, deletes and
+Onshape calls go through the shared helpers listed in `CLAUDE.md`; the BOM, inventory and Onshape
+behaviour copies FRCBOM and isn't to be redesigned.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 ## This is NOT the Next.js you know

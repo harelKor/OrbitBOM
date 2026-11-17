@@ -22,6 +22,27 @@ Migrations go out before the code that needs them, and a rollback puts old code 
 schema, so each migration must work with the code before it (expand → contract): add a column or
 table in one push; drop or rename one only a push after no deployed code reads it.
 
+### Deploy from a PC
+
+When Actions can't run (the private repo's 2,000 free minutes ran out on 2026-11-16; they reset at
+the start of the month), deploy main from Harel's Windows PC. It worked on 2026-11-17 for `a8e239a`.
+
+1. Run `npm run lint`, `npm run typecheck` and `npm run test:db` locally, since the workflow's checks
+   won't run. If `drizzle/` changed since the live release (`readlink /opt/orbitparts/current` on
+   the server gives its sha), apply the new migrations to production first.
+2. Copy only `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` from
+   `/opt/orbitparts/shared/.env` over admin SSH into a temporary `build.env` outside the repo.
+   Never print it, and delete it afterwards.
+3. `git archive HEAD` → `src.tar`, then build on Linux in Docker (from PowerShell):
+   `docker run --rm -v <dir>:/work node:22 bash /work/build.sh`. The script extracts the source,
+   sources `build.env`, sets a dummy `DATABASE_URL=postgres://user:pass@localhost:5432/db`, runs
+   `npm ci` and `npm run build`, and tars `.next/standalone` + `.next/static` + `public` into a
+   `.tar.gz`. Don't build on Windows.
+4. `scp` the bundle to `ubuntu@80.225.254.7:/tmp`, then
+   `sudo install -o orbit -g orbit` it as `/opt/orbitparts/incoming/<full sha>.tar.gz`, then
+   `ssh … "sudo -u orbit -H bash -s <sha>" < deploy/release.sh`. It rolls back by itself if
+   `/api/ready` doesn't answer.
+
 ## Bring something back
 
 - **One robot, system, manual part or inventory item deleted in the last 30 days:** Settings →
