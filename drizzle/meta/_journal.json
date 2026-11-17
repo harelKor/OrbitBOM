@@ -666,6 +666,13 @@
       "when": 1794675889035,
       "tag": "0094_api_usage",
       "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1794676000000,
+      "tag": "0095_spot_size",
+      "breakpoints": true
     }
   ]
 }
