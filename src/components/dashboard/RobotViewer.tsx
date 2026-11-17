@@ -9,8 +9,9 @@ import { Icon } from "@/components/ui/Icon";
 import { Segmented } from "@/components/ui/Segmented";
 import { buildModel } from "@/components/viewer/buildModel";
 import { drawPictures } from "@/components/viewer/pictures";
-import type { ViewerMode, ViewerModel } from "./ModelCanvas";
-import { PickedPart } from "./PickedPart";
+import { MeasureBox } from "@/components/viewer/MeasureBox";
+import type { PageMenu, ViewerMode, ViewerModel } from "./ModelCanvas";
+import { useMeasurePicks } from "./useMeasurePicks";
 import {
   BULK_ASK_EVENT,
   BULK_SELECTION_EVENT,
@@ -85,7 +86,6 @@ export function RobotViewer({
   const onLocated = useCallback(() => {}, []);
   const partByKey = useMemo(() => new Map(parts.map((p) => [p.key, p])), [parts]);
   const nameByKey = useMemo(() => new Map(parts.map((p) => [p.key, p.name])), [parts]);
-  const picked = selected ? partByKey.get(selected) : undefined;
   // The page's Bulk edit selection (part ids), while it's on: drawn in green, and a click on a
   // part adds it or takes it out instead of picking it (Harel, 2026-11-10).
   const [bulk, setBulk] = useState<string[] | null>(null);
@@ -104,13 +104,16 @@ export function RobotViewer({
     const keyOf = new Map(parts.map((p) => [p.id, p.key]));
     return bulk.flatMap((id) => keyOf.get(id) ?? []);
   }, [bulk, parts]);
+  // Points, edges and faces pick and measure as on the CAD page; Bulk edit takes whole parts.
+  const picks = useMeasurePicks(!bulk);
+  const lastTap = useRef(0); // a left click on the canvas, to tell it from a pick cleared by code
   const openLarge = () => {
     setBar(true);
     setLarge(true);
   };
-  // A click on a part picks it, and one more click on it opens it. With a part picked, a click
-  // anywhere else only clears it; with none, a click beside the small model opens it large
-  // (Harel, 2026-11-07).
+  // A click picks a point, edge or face (its part is `selected`: the newest pick's); Open part and
+  // Open system are in the right-click / long-press menu, as on CAD (Harel, 2026-11-17). With
+  // nothing picked, a click beside the small model opens it large (Harel, 2026-11-07).
   const onPick = (key: string | null) => {
     if (bulk) {
       const part = key ? partByKey.get(key) : undefined;
@@ -118,12 +121,31 @@ export function RobotViewer({
       else if (!key && !large) openLarge();
       return;
     }
-    if (key && key === selected) onOpen(key);
-    else if (key || selected) setSelected(key);
-    else if (!large) openLarge();
+    if (!key && !selected && !large && performance.now() - lastTap.current < 500) openLarge();
+    setSelected(key);
+  };
+  const pageMenu: PageMenu = (keys) => {
+    const found = [...new Set(keys)].flatMap((k) => partByKey.get(k) ?? []);
+    const one = found.length === 1 ? found[0] : undefined;
+    const systems = new Set(found.map((p) => p.systemId));
+    const system = systems.size === 1 ? [...systems][0] : null;
+    return [
+      ...(one ? [{ label: "Open part", run: () => onOpen(one.key) }] : []),
+      // Not on the system's own page: it's already there.
+      ...(system && system !== systemId
+        ? [
+            {
+              label: "Open system",
+              run: () => {
+                setLarge(false);
+                router.push(`/robots/${robotId}/systems/${system}`);
+              },
+            },
+          ]
+        : []),
+    ];
   };
   const onOpen = (key: string) => {
-    setSelected(key);
     const part = partByKey.get(key);
     if (!part) return; // placed in CAD but not on the BOM
     const detail: OpenPartDetail = { partId: part.id, taken: false };
@@ -153,19 +175,20 @@ export function RobotViewer({
       return next;
     });
 
-  // Esc first clears the picked part, then closes the large view (Harel, 2026-11-07). Not while a
+  // Esc first drops the picks, then closes the large view (Harel, 2026-11-07). Not while a
   // window is open over it: that Esc is the window's.
+  const { picked, clear: clearPicks } = picks;
   useEffect(() => {
-    if (!large && !selected) return;
+    if (!large && !picked) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented || document.querySelector("dialog[open]")) return;
       e.preventDefault(); // used here, so the shell doesn't also collapse a side column
-      if (selected) setSelected(null);
+      if (picked) clearPicks();
       else setLarge(false);
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [large, selected]);
+  }, [large, picked, clearPicks]);
 
   useEffect(() => {
     if (!version) return;
@@ -241,12 +264,15 @@ export function RobotViewer({
         tabIndex={large ? undefined : 0}
         aria-label={large ? undefined : "3D view: open large"}
         title={large ? undefined : "Open large"}
+        onPointerUpCapture={(e) => {
+          if (e.button === 0 && (e.target as HTMLElement).tagName === "CANVAS") lastTap.current = performance.now();
+        }}
         onClick={(e) => {
           // The canvas reports its own clicks (onPick) so a drag can turn the model; the controls
           // keep theirs.
           const target = e.target as HTMLElement;
           if (large || target.tagName === "CANVAS" || target.closest("button, a, input, label, [role=radiogroup], [role=status]")) return;
-          if (selected) setSelected(null);
+          if (picked) clearPicks();
           else openLarge();
         }}
         onKeyDown={(e) => {
@@ -325,8 +351,11 @@ export function RobotViewer({
               locateKey={null}
               onLocated={onLocated}
               hidden={hidden}
-              selectedKey={bulkKeys ?? selected}
+              selectedKey={bulkKeys}
               onPick={onPick}
+              onTools={picks.setTools}
+              onMeasure={picks.setMeasured}
+              menu={pageMenu}
               names={nameByKey}
               panelLeft={bar && !systemId && groups.length > 0 ? 244 : undefined}
               cube // the view cube and its menu, as on CAD's pages (Harel, 2026-11-11)
@@ -378,16 +407,11 @@ export function RobotViewer({
             <div className="pointer-events-none absolute top-3 left-1/2 -translate-x-1/2 animate-pop rounded-md border border-accent/40 bg-surface/95 px-3 py-1.5 text-xs font-medium whitespace-nowrap text-fg-2 shadow-sm backdrop-blur">
               Bulk edit: tap parts to select them
             </div>
-          ) : picked || selected ? (
-            <PickedPart
-              name={picked?.name ?? null}
-              onOpen={picked && (() => onOpen(picked.key))}
-              // Not on the part's own system page: it's already there.
-              systemHref={picked && picked.systemId !== systemId ? `/robots/${robotId}/systems/${picked.systemId}` : undefined}
-              onSystem={() => setLarge(false)}
-              onClear={() => setSelected(null)}
-            />
           ) : null}
+          {/* Over the colour legend, which stays readable beside it on a wide view. */}
+          <div onClick={(e) => e.stopPropagation()} className="cursor-auto">
+            <MeasureBox measured={picks.measured} className="bottom-9" />
+          </div>
           {bar && !systemId && groups.length > 0 && (
             <div className="absolute top-3 bottom-3 left-3 flex w-56 flex-col overflow-hidden rounded-md border border-line bg-surface/95 text-sm shadow-sm backdrop-blur">
               <div className="flex items-center justify-between border-b border-line px-3 py-2 text-xs font-semibold text-muted">

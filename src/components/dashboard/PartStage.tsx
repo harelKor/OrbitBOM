@@ -1,11 +1,13 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import type { ModelPart } from "@/lib/data/parts";
-import type { ViewerModel } from "./ModelCanvas";
-import { PickedPart } from "./PickedPart";
+import { MeasureBox } from "@/components/viewer/MeasureBox";
+import type { PageMenu, ViewerModel } from "./ModelCanvas";
+import { useMeasurePicks } from "./useMeasurePicks";
 
 const ModelCanvas = dynamic(() => import("./ModelCanvas").then((m) => m.ModelCanvas), { ssr: false });
 const NO_COLORS = new Map<string, string>();
@@ -59,9 +61,9 @@ type ModelProps = {
 };
 
 // The live 3D stage itself, in a window (PartStage) or inline (the part details window, which
-// draws its own Locate button: `locateButton={false}`). In the robot (Locate), parts pick as in
-// the robot's own 3D view: a click names a part, one more click opens its window on top, Open
-// system goes to its system page, and a click elsewhere or Esc clears it (Harel, 2026-11-07).
+// draws its own Locate button: `locateButton={false}`). Points, edges and faces pick and measure as
+// on the CAD page, and in the robot (Locate) the right-click / long-press menu has Open part (its
+// window on top) and Open system (Harel, 2026-11-17). Esc drops the picks before it closes the window.
 export function PartModel({
   partId,
   robotId,
@@ -85,33 +87,50 @@ export function PartModel({
   const model = models[view];
   const error = errors[view];
   const [robotParts, setRobotParts] = useState<Map<string, ModelPart>>(() => new Map());
-  const [selected, setSelected] = useState<string | null>(null);
-  const picked = selected ? robotParts.get(selected) : undefined;
-  // Its window opens on top; the pick clears so Esc there closes that window, not the pick here.
+  const router = useRouter();
+  // A small preview (onExpand: the part window's) opens big with a click; the big ones pick.
+  const picks = useMeasurePicks(!onExpand);
+  const { picked, clear: clearPicks } = picks;
+  // Its window opens on top; the picks clear so Esc there closes that window, not the picks here.
   const openPicked = (p: ModelPart) => {
-    setSelected(null);
+    clearPicks();
     void import("@/components/bom/PartDetailsHost").then((m) => m.openPartWindow(p.id));
   };
-  // A small preview (onExpand: the part window's) opens big with a click on the part, or in the
-  // robot with a click beside the parts when none is picked (Harel, 2026-11-07).
-  const onPick = (key: string | null) => {
-    const part = key ? robotParts.get(key) : undefined;
-    if (onExpand && (view === "part" || (!key && !selected))) onExpand();
-    else if (key && key === selected && part) openPicked(part);
-    else setSelected(key);
+  const onPick = () => onExpand?.();
+  const pageMenu: PageMenu = (keys) => {
+    if (view !== "locate") return [];
+    const found = [...new Set(keys)].flatMap((k) => robotParts.get(k) ?? []);
+    const one = found.length === 1 ? found[0] : undefined;
+    const systems = new Set(found.map((p) => p.systemId));
+    const system = systems.size === 1 && robotId ? [...systems][0] : null;
+    return [
+      ...(one ? [{ label: "Open part", run: () => openPicked(one) }] : []),
+      ...(system
+        ? [
+            {
+              label: "Open system",
+              run: () => {
+                // Leaving for the system page closes the windows over this one.
+                document.querySelectorAll("dialog[open]").forEach((d) => (d as HTMLDialogElement).close());
+                router.push(`/robots/${robotId}/systems/${system}`);
+              },
+            },
+          ]
+        : []),
+    ];
   };
-  // Esc clears the pick before it closes the window (capture: ahead of the window's own Esc).
+  // Esc drops the picks before it closes the window (capture: ahead of the window's own Esc).
   useEffect(() => {
-    if (!selected) return;
+    if (!picked) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       e.preventDefault();
       e.stopPropagation();
-      setSelected(null);
+      clearPicks();
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [selected]);
+  }, [picked, clearPicks]);
 
   useEffect(() => {
     if (models[view] || errors[view]) return;
@@ -153,23 +172,14 @@ export function PartModel({
           locateKey={view === "locate" ? modelKey : null}
           onLocated={onLocated}
           onPick={onPick}
+          {...(!onExpand && { onTools: picks.setTools, onMeasure: picks.setMeasured, menu: pageMenu })}
           // The view cube, as on CAD's pages (Harel, 2026-11-11); not on the small preview in the
           // part details window, which opens big with a click.
           cube={!onExpand}
-          {...(view === "locate" && { selectedKey: selected, names: new Map([...robotParts].map(([k, p]) => [k, p.name])) })}
+          {...(view === "locate" && { names: new Map([...robotParts].map(([k, p]) => [k, p.name])) })}
         />
       )}
-      {view === "locate" && selected && (
-        <PickedPart
-          bottom
-          name={picked?.name ?? null}
-          onOpen={picked && (() => openPicked(picked))}
-          systemHref={picked && robotId ? `/robots/${robotId}/systems/${picked.systemId}` : undefined}
-          // Leaving for the system page closes the windows over this one.
-          onSystem={() => document.querySelectorAll("dialog[open]").forEach((d) => (d as HTMLDialogElement).close())}
-          onClear={() => setSelected(null)}
-        />
-      )}
+      {!onExpand && <MeasureBox measured={picks.measured} />}
       {(error || !model || missing) && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">
           {error ?? (missing ? "This part isn't in the robot's linked Onshape assemblies." : view === "part" ? "Loading the part…" : "Loading the robot…")}
