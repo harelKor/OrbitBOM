@@ -29,7 +29,7 @@ import {
 // the categories stored in each zone appear inside it as their pictures. Closer still the floor
 // plan tilts away and the zone's first-person picture stands up in front (the dive); zooming out
 // plays it back. In the picture every drawer and shelf is a dot. `find` flies from the whole map
-// to a place in 2 seconds. "pick" mode chooses a zone or a drawer instead of filtering.
+// to a place in about 2.5 seconds. "pick" mode chooses a zone or a drawer instead of filtering.
 
 export type PlaceStat = {
   count: number;

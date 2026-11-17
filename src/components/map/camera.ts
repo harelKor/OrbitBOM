@@ -16,7 +16,7 @@ export const MIN_W = 70;
 export const SCENE_MAX = 5;
 // How much zooming (as a factor) a whole dive takes.
 export const DIVE_SPAN = 3.2;
-export const FIND_MS = 2000;
+export const FIND_MS = 2500;
 
 export const FULL_SCENE: Scene = { s: 1, cx: 0.5, cy: 0.5 };
 export const fullPlan = (aspect: number): Plan => {
@@ -50,23 +50,35 @@ export function zoneFit(zone: Place, aspect: number): Plan | null {
   return centeredPlan(b.cx, b.cy, w, aspect);
 }
 
-// The flight to a place, as the camera at time t (0..FIND_MS): the whole map, glide to the zone
-// (0–0.55 s), tilt down and fade into its picture (0.55–1.5 s), zoom to the drawer (1.5–2 s). A zone with no
-// picture glides the whole time.
+// The flight to a place, as the camera at time t (0..FIND_MS). Harel (2026-11-17) wanted time to
+// trace the place on the top view first: a slower glide (0–0.9 s) to the zone with its
+// surroundings in view, a short pause on the lit zone drifting in (0.9–1.15 s), then the camera
+// tilts down to the zone and its picture fades in (1.15–2.05 s), then the zoom to the drawer
+// (2.05–2.5 s). A zone with no picture glides on in to its own view instead.
+const GLIDE = 900;
+const HOLD = 1150;
+const DIVE_END = 2050;
 export function findCam(t: number, zone: Place, spot: Place | null, aspect: number): Cam {
   const start = fullPlan(aspect);
   const fit = zoneFit(zone, aspect) ?? start;
   const hasScene = !!zone.imageUrl;
-  const glideEnd = hasScene ? 550 : FIND_MS * 0.8;
-  const g = easeInOut(clamp(t / glideEnd, 0, 1));
-  // Glide in a gentle zoom-out-zoom-in arc: the width moves on a log scale, so the zoom reads even.
-  const w = Math.exp(lerp(Math.log(start.w), Math.log(fit.w), g));
+  // The zone with its room and neighbours around it, never wider than the whole map.
+  const overview = Math.min(start.w, fit.w * 2.6);
+  const g = easeInOut(clamp(t / GLIDE, 0, 1));
+  // The width moves on a log scale, so the zoom reads even.
+  let w = Math.exp(lerp(Math.log(start.w), Math.log(overview), g));
+  w *= lerp(1, 0.9, smooth(clamp((t - GLIDE) / (HOLD - GLIDE), 0, 1)));
   const [sx, sy] = planCenter(start, aspect);
   const [fx, fy] = planCenter(fit, aspect);
+  if (!hasScene) {
+    const inward = easeInOut(clamp((t - HOLD) / (FIND_MS - HOLD - 100), 0, 1));
+    w = Math.exp(lerp(Math.log(w), Math.log(fit.w), inward));
+    return { plan: centeredPlan(lerp(sx, fx, g), lerp(sy, fy, g), w, aspect), zone: zone.id, dive: 0, scene: FULL_SCENE };
+  }
+  // During the dive the map settles from this view onto the zone by itself (ShopMap's `settle`).
   const plan = centeredPlan(lerp(sx, fx, g), lerp(sy, fy, g), w, aspect);
-  if (!hasScene) return { plan, zone: zone.id, dive: 0, scene: FULL_SCENE };
-  const dive = easeInOut(clamp((t - 550) / 950, 0, 1));
-  const z = easeInOut(clamp((t - 1500) / 500, 0, 1));
+  const dive = easeInOut(clamp((t - HOLD) / (DIVE_END - HOLD), 0, 1));
+  const z = easeInOut(clamp((t - DIVE_END) / (FIND_MS - DIVE_END), 0, 1));
   const scene: Scene =
     spot && spot.spotX != null && spot.spotY != null
       ? { s: lerp(1, 2.2, z), cx: lerp(0.5, spot.spotX, z), cy: lerp(0.5, spot.spotY, z) }

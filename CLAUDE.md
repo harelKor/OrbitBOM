@@ -190,7 +190,7 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
   `config/workshopMap.ts`, colour, first-person picture in R2 `map/zones/`, `facing`) or a spot
   (`parent_id` = zone, `spot_x/y` 0..1 of the picture, drawer / shelf / bin). Names stay for AI,
   search, history; the map never shows them. `src/components/map/` (`ShopMap` zoom → category icons
-  → dive into the picture, `camera.ts` maths and the 2 s `findCam` flight, `FindButton` map icon,
+  → dive into the picture, `camera.ts` maths and the 2.5 s `findCam` flight, `FindButton` map icon,
   `SystemDrawerButton`), helpers `src/lib/inventory/places.ts`, edits `settings/mapActions.ts` +
   `components/settings/MapSettings.tsx` (Settings → Map), `systems.drawers` = a system's drawer
   per status. Sandbox `/dev/shop-map`. `GET /api/places` for pages without them.

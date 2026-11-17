@@ -7,7 +7,7 @@ import type { Place } from "@/lib/inventory/places";
 import { ShopMap, type PlaceStats } from "./ShopMap";
 
 // The small map icon (no text) on an item or a part (Harel, 2026-11-14): opens the shop map and
-// flies from the whole floor plan to the zone, into its picture, to the drawer, in 2 seconds.
+// flies from the whole floor plan to the zone, into its picture, to the drawer, in about 2.5 seconds (FIND_MS).
 export function FindButton({
   places,
   placeId,
