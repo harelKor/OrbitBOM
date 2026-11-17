@@ -61,6 +61,8 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
   const placeRobot = robotId ?? (part as CardPart & { robotId?: string | null }).robotId ?? null;
   const place = placeRobot && part.systemId ? `/robots/${placeRobot}/systems/${part.systemId}` : null;
   const canLocate = !part.isManual && !!robotId && !!part.modelKey;
+  // Open flatten on the 3D preview: parts bent on a Bending machine (Harel, 2026-11-17).
+  const bent = !part.isManual && !cots && [part.preProcess, part.process1, part.process2].some((id) => !!id && getMachine(id)?.kind === "bending");
   const overlay = "btn h-7 gap-1.5 bg-surface/95 px-2 text-xs shadow-sm sm:h-8 sm:px-3 pointer-coarse:h-9";
   const phone = usePhone();
   const suggest = useSuggest(part, !part.memberIds);
@@ -108,6 +110,7 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
             name={title}
             view={stage}
             onView={setStage}
+            flat={bent}
             onClose={() => setBig(false)}
           />
         )}
@@ -131,6 +134,7 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
                   view={stage}
                   onView={setStage}
                   locateButton={false}
+                  flat={bent}
                   onExpand={() => setBig(true)}
                   className="h-full w-full"
                 />

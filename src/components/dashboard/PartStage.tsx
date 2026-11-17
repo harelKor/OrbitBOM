@@ -6,13 +6,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import type { ModelPart } from "@/lib/data/parts";
 import { MeasureBox } from "@/components/viewer/MeasureBox";
+import { costHint, openFlatCost } from "@/config/callCosts";
 import type { PageMenu, ViewerModel } from "./ModelCanvas";
 import { useMeasurePicks } from "./useMeasurePicks";
 
 const ModelCanvas = dynamic(() => import("./ModelCanvas").then((m) => m.ModelCanvas), { ssr: false });
 const NO_COLORS = new Map<string, string>();
 
-export type StageView = "part" | "locate";
+// "flat": a sheet metal part's flat pattern from Onshape (Open flatten, Harel 2026-11-17).
+export type StageView = "part" | "locate" | "flat";
 
 // A part's 3D window in the middle of the screen, opened from its card without leaving the
 // page: the part on its own ("part"), or where it sits in the see-through robot ("locate").
@@ -24,6 +26,8 @@ export function PartStage({
   name,
   view,
   onView,
+  flat,
+  sources,
   onClose,
 }: ModelProps & { name: string; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -40,13 +44,13 @@ export function PartStage({
     >
       <div className="flex h-full flex-col">
         <div className="flex items-center gap-3 border-b border-line px-4 py-2.5">
-          <Icon name={view === "part" ? "cube" : "locate"} className="h-4 w-4 text-accent-hover" />
+          <Icon name={view === "locate" ? "locate" : view === "flat" ? "layers" : "cube"} className="h-4 w-4 text-accent-hover" />
           <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">{name}</h2>
           <button onClick={() => dialog.current?.close()} className="press rounded p-1 text-muted hover:text-fg" aria-label="Close">
             <Icon name="close" />
           </button>
         </div>
-        <PartModel partId={partId} robotId={robotId} modelKey={modelKey} view={view} onView={onView} className="flex-1" />
+        <PartModel partId={partId} robotId={robotId} modelKey={modelKey} view={view} onView={onView} flat={flat} sources={sources} className="flex-1" />
       </div>
     </dialog>
   );
@@ -58,6 +62,10 @@ type ModelProps = {
   modelKey: string | null;
   view: StageView;
   onView: (view: StageView) => void;
+  // Shows Open flatten: a part bent on a Bending machine (its flat pattern, if it's sheet metal).
+  flat?: boolean;
+  // The /dev/viewer sandbox's stand-in files, by view (no database or Onshape there).
+  sources?: Partial<Record<StageView, string>>;
 };
 
 // The live 3D stage itself, in a window (PartStage) or inline (the part details window, which
@@ -73,6 +81,8 @@ export function PartModel({
   className = "",
   locateButton = true,
   onExpand,
+  flat = false,
+  sources,
 }: ModelProps & { className?: string; locateButton?: boolean; onExpand?: () => void }) {
   const [models, setModels] = useState<Partial<Record<StageView, ViewerModel>>>({});
   const [errors, setErrors] = useState<Partial<Record<StageView, string>>>({});
@@ -132,32 +142,57 @@ export function PartModel({
     return () => window.removeEventListener("keydown", onKey, true);
   }, [picked, clearPicks]);
 
+  // Open flatten's cost hint: free once the flat pattern is kept (one R2 check, no Onshape calls).
+  const [flatKept, setFlatKept] = useState(false);
+  useEffect(() => {
+    if (!flat || sources) return;
+    let cancelled = false;
+    fetch(`/api/parts/${partId}/flat`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body: { cached?: boolean } | null) => !cancelled && body?.cached && setFlatKept(true))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [flat, partId, sources]);
+
   useEffect(() => {
     if (models[view] || errors[view]) return;
     let cancelled = false;
-    const load =
-      view === "part"
+    const source = sources?.[view];
+    const load = source
+      ? fetch(source)
+      : view === "part"
         ? fetch(`/api/parts/${partId}/model`, { method: "POST" })
-        : fetch(`/api/robots/${robotId}/model?parts=1`);
+        : view === "flat"
+          ? fetch(`/api/parts/${partId}/flat`, { method: "POST" })
+          : fetch(`/api/robots/${robotId}/model?parts=1`);
     load
       .then(async (res) => {
         const body = (await res.json().catch(() => ({}))) as { model?: ViewerModel | null; parts?: ModelPart[]; error?: string };
         if (cancelled) return;
         if (body.parts) setRobotParts(new Map(body.parts.map((p) => [p.key, p])));
-        if (body.model) setModels((m) => ({ ...m, [view]: body.model! }));
+        if (body.model) {
+          setModels((m) => ({ ...m, [view]: body.model! }));
+          if (view === "flat") setFlatKept(true);
+        }
         else
           setErrors((e) => ({
             ...e,
             [view]:
               body.error ??
-              (view === "locate" ? "The robot's 3D model isn't exported yet. Press Update 3D model on the robot page (CAD Team)." : `The 3D preview failed (${res.status}).`),
+              (view === "locate"
+                ? "The robot's 3D model isn't exported yet. Press Update 3D model on the robot page (CAD Team)."
+                : view === "flat"
+                  ? `The flat pattern failed (${res.status}).`
+                  : `The 3D preview failed (${res.status}).`),
           }));
       })
       .catch(() => !cancelled && setErrors((e) => ({ ...e, [view]: "The 3D preview couldn't load. Try again." })));
     return () => {
       cancelled = true;
     };
-  }, [view, partId, robotId, models, errors]);
+  }, [view, partId, robotId, models, errors, sources]);
 
   const missing = view === "locate" && model && found === false;
 
@@ -182,14 +217,41 @@ export function PartModel({
       {!onExpand && <MeasureBox measured={picks.measured} />}
       {(error || !model || missing) && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">
-          {error ?? (missing ? "This part isn't in the robot's linked Onshape assemblies." : view === "part" ? "Loading the part…" : "Loading the robot…")}
+          {error ??
+            (missing
+              ? "This part isn't in the robot's linked Onshape assemblies."
+              : view === "part"
+                ? "Loading the part…"
+                : view === "flat"
+                  ? "Loading the flat pattern…"
+                  : "Loading the robot…")}
         </div>
       )}
-      {locateButton && robotId && modelKey && (
-        <button onClick={() => onView(view === "part" ? "locate" : "part")} className="btn absolute top-3 left-3 z-10 h-8 gap-1.5 bg-surface/95 text-xs shadow-sm">
-          <Icon name={view === "part" ? "locate" : "cube"} className="h-3.5 w-3.5" />
-          {view === "part" ? "Locate in robot" : "Part only"}
-        </button>
+      {((locateButton && robotId && modelKey) || flat) && (
+        <div className={`absolute z-10 flex flex-wrap gap-1.5 ${onExpand ? "top-2 left-2 sm:top-3 sm:left-3" : "top-3 left-3"}`}>
+          {flat && view !== "locate" && (
+            // Top left of the preview (Harel, 2026-11-17): the flat pattern, then back to the part.
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onView(view === "flat" ? "part" : "flat");
+              }}
+              aria-pressed={view === "flat"}
+              className="btn h-7 gap-1.5 bg-surface/95 px-2 text-xs shadow-sm sm:h-8 sm:px-3 pointer-coarse:h-9"
+              {...(view !== "flat" && costHint(openFlatCost(flatKept)))}
+            >
+              <Icon name={view === "flat" ? "cube" : "layers"} className="h-3.5 w-3.5" />
+              {view === "flat" ? "Show folded" : "Open flatten"}
+            </button>
+          )}
+          {locateButton && robotId && modelKey && view !== "flat" && (
+            <button onClick={() => onView(view === "part" ? "locate" : "part")} className="btn h-8 gap-1.5 bg-surface/95 text-xs shadow-sm">
+              <Icon name={view === "part" ? "locate" : "cube"} className="h-3.5 w-3.5" />
+              {view === "part" ? "Locate in robot" : "Part only"}
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

@@ -106,3 +106,8 @@ export const exportCost = (format: string): CallCost =>
 
 // A batch's files at once: up to a translation per part, nothing for parts already exported.
 export const exportManyCost = (parts: number): CallCost => cost("onshape", 0, 4 * parts, `free for parts already exported (${parts} ${parts === 1 ? "part" : "parts"})`);
+
+// The part window's Open flatten on a sheet metal part: the flat body's tessellation (+1 parts
+// list when it comes without a colour). Free once fetched: kept in R2 per Part Studio revision,
+// shared with its flat DXF and Auto Layout.
+export const openFlatCost = (cached: boolean): CallCost => (cached ? cost("onshape", 0, undefined, "already fetched") : cost("onshape", 1, 2, "free once fetched"));

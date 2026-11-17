@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { onshapeClient, OnshapeError } from "@/lib/onshape/client";
+import { logCalls, onshapeClient, OnshapeError } from "@/lib/onshape/client";
 import { studioPath } from "@/lib/onshape/parts";
 import { parseOnshapeUrl } from "@/lib/onshape/url";
 import { getObject, imageUrl, objectExists, putObject, StorageNotConfiguredError, storageConfigured } from "@/lib/storage/r2";
@@ -95,10 +95,47 @@ export async function flatMesh(
   const ref = row.assemblyUrl ? parseOnshapeUrl(row.assemblyUrl) : null;
   if (!ref) return null;
   if (!member?.onshapeConnected) throw new NeedsOnshapeError("Connect your Onshape account first (Profile → Connect Onshape).");
-  const meshes = (await studioMeshes(onshapeClient(member.id, ref.baseUrl), src.studio, `&partId=${encodeURIComponent(src.flatPartId)}`)).filter((m) => m.partId === src.flatPartId);
+  const client = onshapeClient(member.id, ref.baseUrl);
+  const meshes = (await studioMeshes(client, src.studio, `&partId=${encodeURIComponent(src.flatPartId)}`).finally(() => logCalls("flat-pattern", client))).filter(
+    (m) => m.partId === src.flatPartId,
+  );
   if (!meshes.length) throw new OnshapeError("Onshape sent no flat pattern for this part.");
   await putObject(file, gzipSync(encodeMeshes(meshes)), "application/gzip");
   return { mesh: meshes[0], file, flatPartId: src.flatPartId };
+}
+
+const partRow = async (partId: string) => {
+  const [row] = await db
+    .select({ part: schema.parts, robotId: schema.systems.robotId, assemblyUrl: schema.systems.assemblyUrl })
+    .from(schema.parts)
+    .innerJoin(schema.systems, eq(schema.systems.id, schema.parts.systemId))
+    .where(eq(schema.parts.id, partId));
+  return row ?? null;
+};
+
+// Whether a sheet metal part's flat pattern is already kept in R2, so opening it costs no Onshape
+// calls (the part window's Open flatten shows that in its cost hint). Never calls Onshape.
+export async function flatCached(partId: string): Promise<boolean> {
+  if (!storageConfigured()) return false;
+  const row = await partRow(partId);
+  const src = row && flatSource(row.part, false);
+  return !!src && (await objectExists(flatModelFile(row.part, src)));
+}
+
+// A sheet metal part's flat pattern as a one-placement viewer model, for the part window's Open
+// flatten (Harel, 2026-11-17). The same R2 file as its flat DXF and Auto Layout (flatMesh), so
+// whichever comes first pays the one Onshape call and the others read it. null: not sheet metal.
+export async function flatModel(partId: string, member: { id: string; onshapeConnected: boolean }) {
+  if (!storageConfigured()) throw new StorageNotConfiguredError();
+  const row = await partRow(partId);
+  const src = row && flatSource(row.part, false);
+  if (!row || !src) return null;
+  const file = flatModelFile(row.part, src);
+  if (!(await objectExists(file)) && !(await flatMesh(row, member, { fab: false }))) return null;
+  // The viewer finds the mesh by the key's last part (the flat body's id).
+  const key = partKey(row.part.sourceDid!, row.part.sourceEid!, src.flatPartId);
+  // Kept by the browser only when the file names one revision (src.rev); "none" files can change.
+  return { studios: [await imageUrl(file)], keys: [src.rev ? file : null], placements: [{ s: 0, k: key, t: IDENTITY }] };
 }
 
 // One part's mesh (Part Studio coordinates, metres) for flat layouts and DXFs. It reads the robot

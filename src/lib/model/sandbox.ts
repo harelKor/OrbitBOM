@@ -239,3 +239,18 @@ export function sandboxRobot(studioUrl: string, opts: { key?: string; big?: bool
     names,
   };
 }
+
+// A sheet metal U-bracket for the part window's Open flatten (/dev/viewer?flat=1): 150 mm long,
+// a 50 mm base and two 25 mm flanges, 1.5 mm thick, 5 mm holes on 25 mm centres. "folded" is the
+// part, "flat" its flat pattern lying on z = 0 like Onshape's (bend allowance ignored).
+const SHEET = { len: 0.15, base: 0.05, flange: 0.025, t: 0.0015, cell: 0.025, r: 0.0025 };
+export function sandboxSheetMetal(shape: "folded" | "flat"): Mesh {
+  const { len, base, flange, t, cell, r } = SHEET;
+  const nx = Math.round(len / cell);
+  if (shape === "flat") return meshOf("SHEET_FLAT", holePlate(nx, Math.round((base + 2 * flange) / cell), cell, r, t), ALUMINIUM);
+  const move = (faces: V3[][][], f: (p: V3) => V3) => faces.map((face) => face.map((tri) => tri.map(f)));
+  // Flanges stand up from the base's long edges (proper rotations, so faces keep facing out).
+  const front = move(holePlate(nx, 1, cell, r, t), ([x, y, z]) => [x, -z + t, y]);
+  const back = move(holePlate(nx, 1, cell, r, t), ([x, y, z]) => [len - x, base - t + z, y]);
+  return meshOf("SHEET", [...holePlate(nx, Math.round(base / cell), cell, r, t), ...front, ...back], ALUMINIUM);
+}
