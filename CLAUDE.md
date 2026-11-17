@@ -191,7 +191,8 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
   window. Raw answers and what the counter saw on `/inventory/scan-test`.
 - Shop map (2026-11-14): places are `inventory_locations` rows: a zone (outline on the floor plan
   `config/workshopMap.ts`, colour, first-person picture in R2 `map/zones/`, `facing`) or a spot
-  (`parent_id` = zone, `spot_x/y` 0..1 of the picture, drawer / shelf / bin). Names stay for AI,
+  (`parent_id` = zone, `spot_x/y` its centre, `spot_w/h` its size, 0..1 of the picture, drawer / shelf /
+  bin; its tag is the picture of the category most of its items are, 2026-11-17). Names stay for AI,
   search, history; the map never shows them. `src/components/map/` (`ShopMap` zoom → category icons
   → dive into the picture, `camera.ts` maths and the 2.5 s `findCam` flight, `FindButton` map icon,
   `SystemDrawerButton`), helpers `src/lib/inventory/places.ts`, edits `settings/mapActions.ts` +
