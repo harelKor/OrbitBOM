@@ -892,7 +892,7 @@ export const storedFiles = pgTable(
 
 // The shop map's places (Harel, 2026-11-14): a zone (parent_id null) is an outline on the floor
 // plan (config/workshopMap.ts units) with an optional first-person picture; a spot (parent_id =
-// its zone) is one drawer / shelf / bin pinned on that picture (spot_x / spot_y, 0..1 of it).
+// its zone) is one drawer / shelf / bin pinned on that picture (spot_x / spot_y its centre, spot_w / spot_h its size, 0..1 of it).
 // Items, groups, categories and system drawers point at either. The map never shows `name`; it
 // stays for the AI tools, search, history and backups. No foreign key on parent_id, so a restore
 // can insert the rows in any order; deleting a zone moves its spots' items to nothing in code.
@@ -912,6 +912,10 @@ export const inventoryLocations = pgTable("inventory_locations", {
   facing: real("facing").notNull().default(0),
   spotX: real("spot_x"),
   spotY: real("spot_y"),
+  // The spot's tag is a rectangle over the drawer in the picture (Harel, 2026-11-17): its width and
+  // height as fractions of the picture, so it stays on the drawer at any zoom. Null = a default.
+  spotW: real("spot_w"),
+  spotH: real("spot_h"),
   kind: text("kind").$type<SpotKind>(),
   position: integer("position").notNull().default(0),
 });

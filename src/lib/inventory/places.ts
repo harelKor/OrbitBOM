@@ -18,6 +18,8 @@ export type Place = {
   facing?: number | null;
   spotX?: number | null;
   spotY?: number | null;
+  spotW?: number | null;
+  spotH?: number | null;
   kind?: SpotKind | null;
   position?: number | null;
 };
@@ -57,6 +59,17 @@ export function inPlace(itemPlace: string | null | undefined, filter: string, by
 
 export const spotsOf = <T extends Place>(zoneId: string, places: T[]) =>
   places.filter((p) => p.parentId === zoneId).sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || a.name.localeCompare(b.name));
+
+// A spot's tag on its zone's picture, all 0..1 of the picture: centre and size. A spot pinned
+// before tags had sizes gets a square about a twelfth of the picture wide.
+export const DEFAULT_SPOT_W = 0.08;
+export const MIN_SPOT = 0.015;
+export function spotRect(spot: Place, zone?: Place | null) {
+  const aspect = zone?.imageW && zone.imageH ? zone.imageW / zone.imageH : 16 / 10;
+  const w = spot.spotW ?? (spot.spotH != null ? spot.spotH / aspect : DEFAULT_SPOT_W);
+  const h = spot.spotH ?? w * aspect;
+  return { x: spot.spotX ?? 0.5, y: spot.spotY ?? 0.5, w, h };
+}
 
 export const kindLabel = (k: SpotKind | null | undefined) => SPOT_KINDS.find((s) => s.id === k)?.label ?? "Spot";
 

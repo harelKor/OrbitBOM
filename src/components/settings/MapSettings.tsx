@@ -17,7 +17,7 @@ import {
 import { LocationPicker, PlaceTag } from "@/components/inventory/LocationPicker";
 import { MAP_H, MAP_W, WORKSHOP_ROOMS } from "@/config/workshopMap";
 import { STATUSES } from "@/config/statuses";
-import { SPOT_KINDS, bounds, centroid, kindLabel, spotsOf, zoneColor, type MapPoint, type Place, type SpotKind } from "@/lib/inventory/places";
+import { MIN_SPOT, SPOT_KINDS, bounds, centroid, kindLabel, spotRect, spotsOf, zoneColor, type MapPoint, type Place, type SpotKind } from "@/lib/inventory/places";
 import { Notice } from "@/components/ui/Notice";
 import { askConfirm } from "@/components/ui/useConfirm";
 
@@ -31,6 +31,11 @@ export type DrawerSystem = { id: string; name: string; robot: string; drawers: R
 const DRAWER_STATUSES = STATUSES.slice(STATUSES.findIndex((s) => s.name === "Ready for QA")).map((s) => s.name);
 
 type View = { x: number; y: number; w: number };
+// A spot's tag on the picture: centre and size, fractions of the picture.
+type Rect = { x: number; y: number; w: number; h: number };
+type Corner = "nw" | "ne" | "sw" | "se";
+const CORNERS: Corner[] = ["nw", "ne", "sw", "se"];
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 const ASPECT = MAP_H / MAP_W;
 
 function useRun() {
@@ -307,11 +312,14 @@ function ZonePanel({ zone, places, run, onDeleted }: { zone: Place; places: Plac
   const [facing, setFacing] = useState(zone.facing ?? 0);
   const file = useRef<HTMLInputElement>(null);
   const picture = useRef<HTMLDivElement>(null);
-  // Dragged dots, kept until the saved places arrive.
-  const [moving, setMovingState] = useState<{ from: Place[]; at: Record<string, { x: number; y: number }> }>({ from: places, at: {} });
+  // Moved or resized tags, kept until the saved places arrive.
+  const [moving, setMovingState] = useState<{ from: Place[]; at: Record<string, Rect> }>({ from: places, at: {} });
   const movingAt = moving.from === places ? moving.at : {};
-  const setMoving = (f: (m: Record<string, { x: number; y: number }>) => Record<string, { x: number; y: number }>) => setMovingState({ from: places, at: f(movingAt) });
-  const drag = useRef<{ id: string | null; travel: number; sx: number; sy: number } | null>(null);
+  const setMoving = (f: (m: Record<string, Rect>) => Record<string, Rect>) => setMovingState({ from: places, at: f(movingAt) });
+  // A drag moves a tag (by where it was grabbed) or, from a corner handle, resizes it with the
+  // opposite corner held still.
+  const drag = useRef<{ id: string | null; corner: Corner | null; start: Rect | null; grab: { x: number; y: number }; travel: number; sx: number; sy: number } | null>(null);
+  const rectOf = (s: Place) => movingAt[s.id] ?? spotRect(s, zone);
 
   const upload = async (f: File | undefined) => {
     if (!f) return;
@@ -336,21 +344,39 @@ function ZonePanel({ zone, places, run, onDeleted }: { zone: Place; places: Plac
     return { x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) };
   };
   const onDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    const id = (e.target as Element).closest("[data-spot]")?.getAttribute("data-spot") ?? null;
-    drag.current = { id, travel: 0, sx: e.clientX, sy: e.clientY };
+    const t = e.target as Element;
+    const id = t.closest("[data-spot]")?.getAttribute("data-spot") ?? null;
+    const corner = (t.closest("[data-corner]")?.getAttribute("data-corner") as Corner | null) ?? null;
+    const s = id ? spots.find((x) => x.id === id) : undefined;
+    const start = s ? rectOf(s) : null;
+    const p = at(e);
+    drag.current = { id, corner, start, grab: start ? { x: p.x - start.x, y: p.y - start.y } : { x: 0, y: 0 }, travel: 0, sx: e.clientX, sy: e.clientY };
     e.currentTarget.setPointerCapture(e.pointerId);
   };
   const onMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const d = drag.current;
-    if (!d) return;
+    if (!d?.id || !d.start) return;
     d.travel = Math.hypot(e.clientX - d.sx, e.clientY - d.sy);
-    if (d.travel >= 4 && d.id) setMoving((m) => ({ ...m, [d.id!]: at(e) }));
+    if (d.travel < 4) return;
+    const p = at(e);
+    const r = d.start;
+    let next: Rect;
+    if (d.corner) {
+      // The fixed corner is the one across from the handle.
+      const fx = d.corner.includes("w") ? r.x + r.w / 2 : r.x - r.w / 2;
+      const fy = d.corner.includes("n") ? r.y + r.h / 2 : r.y - r.h / 2;
+      const w = Math.max(MIN_SPOT, Math.abs(p.x - fx));
+      const h = Math.max(MIN_SPOT, Math.abs(p.y - fy));
+      next = { x: fx + (d.corner.includes("w") ? -w / 2 : w / 2), y: fy + (d.corner.includes("n") ? -h / 2 : h / 2), w, h };
+    } else next = { ...r, x: clamp01(p.x - d.grab.x), y: clamp01(p.y - d.grab.y) };
+    setMoving((m) => ({ ...m, [d.id!]: next }));
   };
   const onUp = (e: React.PointerEvent<HTMLDivElement>) => {
     const d = drag.current;
     drag.current = null;
     if (!d) return;
     if (d.travel < 4) {
+      if (d.corner) return;
       if (d.id) setSpotSel(d.id === spotSel ? null : d.id);
       else {
         const p = at(e);
@@ -359,8 +385,9 @@ function ZonePanel({ zone, places, run, onDeleted }: { zone: Place; places: Plac
       return;
     }
     if (d.id && movingAt[d.id]) {
-      const p = movingAt[d.id];
-      run(() => updateSpot(d.id!, p));
+      const r = movingAt[d.id];
+      const round = (v: number) => Math.round(v * 10000) / 10000;
+      run(() => updateSpot(d.id!, d.corner ? { x: round(clamp01(r.x)), y: round(clamp01(r.y)), w: round(Math.min(1, r.w)), h: round(Math.min(1, r.h)) } : { x: round(r.x), y: round(r.y) }));
     }
   };
   const image = preview ?? zone.imageUrl;
@@ -428,23 +455,44 @@ function ZonePanel({ zone, places, run, onDeleted }: { zone: Place; places: Plac
                 {s.label}
               </button>
             ))}
-            <span className="text-muted">· drag a dot to move it</span>
+            <span className="text-muted">· drag a tag to move it; tap it, then drag its corners to fit the drawer</span>
           </div>
           <div ref={picture} className="relative inline-block max-w-full touch-none overflow-hidden rounded-2xl align-top select-none" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp}>
             {/* eslint-disable-next-line @next/next/no-img-element -- a signed R2 link or a local preview */}
             <img src={image} alt="" className="block max-h-[55vh] w-auto max-w-full" draggable={false} />
             {spots.map((s) => {
-              const p = movingAt[s.id] ?? { x: s.spotX ?? 0.5, y: s.spotY ?? 0.5 };
+              const r = rectOf(s);
               const on = s.id === spotSel;
+              const color = zoneColor(zone);
               return (
                 <span
                   key={s.id}
                   data-spot={s.id}
                   title={s.name}
-                  className={`absolute flex -translate-x-1/2 -translate-y-1/2 cursor-move items-center justify-center rounded-full border-[3px] text-[0.625rem] font-bold shadow-[0_2px_8px_rgba(0,0,0,0.5)] ${on ? "h-8 w-8 border-white text-white" : "h-6 w-6 bg-white text-slate-900"}`}
-                  style={{ left: `${p.x * 100}%`, top: `${p.y * 100}%`, borderColor: on ? "#fff" : zoneColor(zone), background: on ? zoneColor(zone) : undefined }}
+                  className="absolute -translate-x-1/2 -translate-y-1/2 cursor-move rounded-[5px]"
+                  style={{
+                    left: `${r.x * 100}%`,
+                    top: `${r.y * 100}%`,
+                    width: `${r.w * 100}%`,
+                    height: `${r.h * 100}%`,
+                    background: `color-mix(in oklab, ${color} ${on ? 38 : 22}%, transparent)`,
+                    boxShadow: on ? `0 0 0 2px #fff, 0 0 0 4px ${color}` : `0 0 0 1.5px ${color}, 0 1px 6px rgba(0,0,0,0.45)`,
+                  }}
                 >
-                  {kindLabel(s.kind)[0]}
+                  <span className="pointer-events-none absolute top-0.5 left-1 text-[0.625rem] font-bold text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.8)]">{kindLabel(s.kind)[0]}</span>
+                  {on &&
+                    CORNERS.map((c) => (
+                      // A 24 px grab area (36 px on touch screens) around a small white square.
+                      <span
+                        key={c}
+                        data-corner={c}
+                        aria-label={`Resize from the ${c} corner`}
+                        className={`absolute z-10 flex h-6 w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center pointer-coarse:h-9 pointer-coarse:w-9 ${c === "nw" || c === "se" ? "cursor-nwse-resize" : "cursor-nesw-resize"}`}
+                        style={{ left: c.includes("w") ? "0%" : "100%", top: c.includes("n") ? "0%" : "100%" }}
+                      >
+                        <span className="h-3 w-3 rounded-[3px] border-2 bg-white shadow-[0_1px_4px_rgba(0,0,0,0.6)]" style={{ borderColor: color }} />
+                      </span>
+                    ))}
                 </span>
               );
             })}

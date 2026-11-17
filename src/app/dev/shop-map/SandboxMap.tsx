@@ -28,7 +28,7 @@ function shelves(): string {
 const url = (svg: string) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 
 const zone = (id: string, outline: [number, number][], color: string, extra: Partial<Place> = {}): Place => ({ id, name: `Zone ${id}`, outline, color, facing: 0, ...extra });
-const spot = (id: string, parentId: string, x: number, y: number, kind: Place["kind"] = "drawer"): Place => ({ id, name: `${parentId} · ${kind} ${id}`, parentId, spotX: x, spotY: y, kind });
+const spot = (id: string, parentId: string, x: number, y: number, kind: Place["kind"] = "drawer", size?: [number, number]): Place => ({ id, name: `${parentId} · ${kind} ${id}`, parentId, spotX: x, spotY: y, spotW: size?.[0], spotH: size?.[1], kind });
 
 export function SandboxMap() {
   const places = useMemo<Place[]>(() => {
@@ -40,7 +40,7 @@ export function SandboxMap() {
       zone("C", [[210, 175], [255, 195], [245, 230], [205, 212]], "#A3E635"),
       zone("D", [[640, 420], [720, 380], [770, 460], [690, 505]], "#FBBF24", { imageUrl: shelf, imageW: 1200, imageH: 750, facing: 30 }),
     ];
-    for (let c = 0; c < 4; c++) for (let r = 0; r < 5; r++) ps.push(spot(`A${c}${r}`, "A", (250 + c * 175) / 1200, (190 + r * 92) / 750));
+    for (let c = 0; c < 4; c++) for (let r = 0; r < 5; r++) ps.push(spot(`A${c}${r}`, "A", (250 + c * 175) / 1200, (190 + r * 92) / 750, "drawer", [150 / 1200, 72 / 750]));
     for (let r = 0; r < 4; r++) for (let c = 0; c < 6; c += 2) ps.push(spot(`B${r}${c}`, "B", (175 + c * 170) / 1200, (165 + r * 140) / 750, "shelf"));
     ps.push(spot("D1", "D", 0.3, 0.3, "bin"), spot("D2", "D", 0.7, 0.5, "bin"));
     return ps;

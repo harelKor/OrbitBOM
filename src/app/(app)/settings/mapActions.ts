@@ -9,7 +9,7 @@ import { STATUSES } from "@/config/statuses";
 import { MAP_H, MAP_W } from "@/config/workshopMap";
 import { requireCapability } from "@/lib/mode";
 import { isUuid } from "@/lib/uuid";
-import { ZONE_COLORS, nextSpotName, nextZoneName, placeInUseMessage, type MapPoint, type SpotKind } from "@/lib/inventory/places";
+import { MIN_SPOT, ZONE_COLORS, nextSpotName, nextZoneName, placeInUseMessage, type MapPoint, type SpotKind } from "@/lib/inventory/places";
 import { StorageNotConfiguredError, deleteObject, objectExists, presignUpload } from "@/lib/storage/r2";
 
 const { inventoryLocations, inventoryItems, inventoryGroups, inventoryCategories, systems } = schema;
@@ -26,6 +26,7 @@ const outlineSchema = z
   .max(64);
 const kindSchema = z.enum(["drawer", "shelf", "bin"]);
 const unit = z.number().min(0).max(1);
+const size = z.number().min(MIN_SPOT).max(1);
 const IMAGE_KEY = /^map\/zones\/[0-9a-f-]{36}\.(webp|jpg)$/;
 
 const round = (pts: MapPoint[]) => pts.map(([x, y]) => [Math.round(x * 10) / 10, Math.round(y * 10) / 10] as MapPoint);
@@ -167,14 +168,24 @@ export async function addSpot(zoneId: string, at: { x: number; y: number }, kind
   return { id: row.id };
 }
 
-export async function updateSpot(id: string, patch: { x?: number; y?: number; kind?: SpotKind }): Promise<MapResult> {
+// x / y are the tag's centre, w / h its size (Harel, 2026-11-17: tags are rectangles sized to
+// the drawer), all fractions of the zone picture.
+export async function updateSpot(id: string, patch: { x?: number; y?: number; w?: number; h?: number; kind?: SpotKind }): Promise<MapResult> {
   await requireCapability("manage");
   if (!isUuid(id)) return { error: "Unknown spot." };
-  if ((patch.x !== undefined && !unit.safeParse(patch.x).success) || (patch.y !== undefined && !unit.safeParse(patch.y).success)) return { error: "That spot is off the picture." };
+  const off = (["x", "y"] as const).some((k) => patch[k] !== undefined && !unit.safeParse(patch[k]).success);
+  const badSize = (["w", "h"] as const).some((k) => patch[k] !== undefined && !size.safeParse(patch[k]).success);
+  if (off || badSize) return { error: "That spot is off the picture." };
   if (patch.kind !== undefined && !kindSchema.safeParse(patch.kind).success) return { error: "Unknown kind." };
   await db
     .update(inventoryLocations)
-    .set({ ...(patch.x !== undefined && { spotX: patch.x }), ...(patch.y !== undefined && { spotY: patch.y }), ...(patch.kind && { kind: patch.kind }) })
+    .set({
+      ...(patch.x !== undefined && { spotX: patch.x }),
+      ...(patch.y !== undefined && { spotY: patch.y }),
+      ...(patch.w !== undefined && { spotW: patch.w }),
+      ...(patch.h !== undefined && { spotH: patch.h }),
+      ...(patch.kind && { kind: patch.kind }),
+    })
     .where(eq(inventoryLocations.id, id));
   refresh();
   return {};

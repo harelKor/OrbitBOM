@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { MAP_H, MAP_W, WORKSHOP_ROOMS } from "@/config/workshopMap";
-import { bounds, centroid, kindLabel, placeIndex, pointInPolygon, spotsOf, zoneColor, type Place } from "@/lib/inventory/places";
+import { bounds, centroid, kindLabel, placeIndex, pointInPolygon, spotRect, spotsOf, zoneColor, type Place } from "@/lib/inventory/places";
 import {
   DIVE_SPAN,
   FIND_MS,
@@ -28,7 +28,7 @@ import {
 // The shop map (Harel, 2026-11-14). Zoomed out: the floor plan with each zone's outline. Closer:
 // the categories stored in each zone appear inside it as their pictures. Closer still the floor
 // plan tilts away and the zone's first-person picture stands up in front (the dive); zooming out
-// plays it back. In the picture every drawer and shelf is a dot. `find` flies from the whole map
+// plays it back. In the picture every drawer and shelf is a rectangle showing its main category. `find` flies from the whole map
 // to a place in about 2.5 seconds. "pick" mode chooses a zone or a drawer instead of filtering.
 
 export type PlaceStat = {
@@ -36,7 +36,7 @@ export type PlaceStat = {
   short: number;
   categories: { id: string; label: string; imageUrl: string | null; count: number }[];
   items: { id: string; name: string }[];
-  // A picture of something in it: an item's own photo, else its category's.
+  // The picture of the category most of its items are (null when none has one).
   picture?: string | null;
 };
 export type PlaceStats = Map<string, PlaceStat>;
@@ -714,11 +714,13 @@ export function ShopMap({
             {(() => {
               const lit = byId.get(flash ?? (sel?.kind === "spot" ? sel.id : "") ?? "");
               if (!lit || lit.parentId !== zone.id || lit.spotX == null || lit.spotY == null) return null;
+              const r = spotRect(lit, zone);
+              const reach = Math.max(r.w * dw, r.h * dh) * cam.scene.s * 0.6 + 30;
               return (
                 <div
                   key={lit.id}
                   className="pointer-events-none absolute inset-0 animate-[modal-fade_400ms_ease-out]"
-                  style={{ background: `radial-gradient(circle at ${lit.spotX * 100}% ${lit.spotY * 100}%, transparent 0, transparent 70px, rgba(2,6,23,0.6) 150px)` }}
+                  style={{ background: `radial-gradient(circle at ${r.x * 100}% ${r.y * 100}%, transparent 0, transparent ${reach}px, rgba(2,6,23,0.6) ${reach + 80}px)` }}
                 />
               );
             })()}
@@ -727,7 +729,13 @@ export function ShopMap({
               const st = stats?.get(s.id);
               const isFlash = flash === s.id;
               const isSel = selectedId === s.id || (sel?.kind === "spot" && sel.id === s.id);
+              const on = isFlash || isSel;
               const color = zoneColor(zone);
+              // The tag is a rectangle over the drawer, sized as a share of the picture, so it grows
+              // and shrinks with the zoom (Harel, 2026-11-17). Its tap target never drops below 36 px.
+              const r = spotRect(s, zone);
+              const rw = r.w * dw * cam.scene.s;
+              const rh = r.h * dh * cam.scene.s;
               return (
                 <button
                   key={s.id}
@@ -735,42 +743,40 @@ export function ShopMap({
                   data-spot={s.id}
                   aria-label={`${kindLabel(s.kind)}${st ? `, ${st.count} items` : ""}`}
                   aria-pressed={isSel}
-                  className="absolute flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center"
-                  style={{ left: `${s.spotX * 100}%`, top: `${s.spotY * 100}%`, opacity: smoothstep(0.8, 1, cam.dive) }}
+                  className="absolute flex -translate-x-1/2 -translate-y-1/2 items-center justify-center"
+                  style={{ left: `${r.x * 100}%`, top: `${r.y * 100}%`, width: Math.max(rw, 36), height: Math.max(rh, 36), opacity: smoothstep(0.8, 1, cam.dive) }}
                   onClick={(ev) => {
                     // Taps arrive through the pointer handlers; this is for keyboards.
                     if (ev.detail === 0) tap({ id: s.id, kind: "spot" });
                   }}
                 >
-                  {(isFlash || isSel) && (
-                    <>
-                      <span className="absolute inset-[-14px] animate-ping rounded-full border-4" style={{ borderColor: color }} />
-                      <span className="absolute inset-[-8px] rounded-full border-[3px] border-white shadow-[0_0_18px_4px_rgba(255,255,255,0.7)]" />
-                    </>
-                  )}
-                  {st?.picture ? (
-                    // Something that's in the drawer, so it's recognised at a glance (Harel,
-                    // 2026-11-16); the count rides on its corner.
-                    <span
-                      className={`relative flex items-center justify-center rounded-full border-[3px] bg-white shadow-[0_3px_12px_rgba(0,0,0,0.6)] transition-transform duration-150 ${isFlash || isSel ? "h-14 w-14 scale-110" : "h-11 w-11"}`}
-                      style={{ borderColor: color }}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element -- a signed R2 link or a public picture */}
-                      <img src={st.picture} alt="" className="h-[78%] w-[78%] object-contain" draggable={false} />
-                      {st.count > 1 && (
-                        <span className="absolute -top-1.5 -right-1.5 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white px-1 text-[0.625rem] font-bold text-white tabular-nums" style={{ background: color }}>
-                          {st.count > 99 ? "99+" : st.count}
-                        </span>
-                      )}
-                    </span>
-                  ) : (
-                    <span
-                      className={`relative flex items-center justify-center rounded-full border-[3px] font-bold tabular-nums shadow-[0_2px_10px_rgba(0,0,0,0.6)] transition-transform duration-150 ${isFlash || isSel ? "h-8 w-8 scale-110 text-xs text-white" : "h-6 w-6 bg-white text-[0.625rem] text-slate-900"}`}
-                      style={{ borderColor: color, background: isFlash || isSel ? color : undefined }}
-                    >
-                      {st?.count ? (st.count > 99 ? "99+" : st.count) : ""}
-                    </span>
-                  )}
+                  <span
+                    className={`relative block shrink-0 rounded-[6px] transition-shadow duration-150 ${st?.picture ? "bg-white" : "bg-white/10 backdrop-blur-[1px]"}`}
+                    style={{
+                      width: rw,
+                      height: rh,
+                      // Rings drawn outside the box (shadows, not a border), so the picture fills it all.
+                      boxShadow: on
+                        ? `0 0 0 2px #fff, 0 0 0 5px ${color}, 0 0 22px 6px rgba(255,255,255,0.6)`
+                        : `0 0 0 1.5px ${st?.picture ? color : "rgba(255,255,255,0.7)"}, 0 3px 12px rgba(0,0,0,0.55)`,
+                    }}
+                  >
+                    {st?.picture && (
+                      // The category most of the drawer's items are (Harel, 2026-11-17), filling the tag.
+                      // eslint-disable-next-line @next/next/no-img-element -- a public picture or a signed link
+                      <img src={st.picture} alt="" className="absolute inset-0 h-full w-full rounded-[6px] object-cover" draggable={false} />
+                    )}
+                    {on && <span className="absolute -inset-[6px] animate-ping rounded-[10px] border-4" style={{ borderColor: color }} />}
+                    {/* The count once the tag is big enough not to be hidden by it (zoom in on a phone). */}
+                    {!!st?.count && rw >= 52 && rh >= 30 && (
+                      <span
+                        className="absolute -top-2 -right-2 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white px-1 text-[0.625rem] font-bold text-white tabular-nums shadow-[0_1px_4px_rgba(0,0,0,0.5)]"
+                        style={{ background: color }}
+                      >
+                        {st.count > 99 ? "99+" : st.count}
+                      </span>
+                    )}
+                  </span>
                 </button>
               );
             })}

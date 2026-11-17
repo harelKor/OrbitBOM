@@ -213,7 +213,7 @@ export function InventoryView({
   const mapStats = useMemo(
     () =>
       placeStats(
-        optimistic.map((i) => ({ id: i.id, name: i.name, category: i.category, place: locationOf(i), short: standing(i, "any") === "short", thumbUrl: i.thumbUrl })),
+        optimistic.map((i) => ({ id: i.id, name: i.name, category: i.category, place: locationOf(i), short: standing(i, "any") === "short" })),
         locations,
         categories,
       ),

@@ -22,6 +22,8 @@ export async function listPlaces(): Promise<Place[]> {
       facing: r.facing,
       spotX: r.spotX,
       spotY: r.spotY,
+      spotW: r.spotW,
+      spotH: r.spotH,
       kind: r.kind,
       position: r.position,
     })),

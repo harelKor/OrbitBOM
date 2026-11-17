@@ -1,7 +1,7 @@
 import type { Place } from "@/lib/inventory/places";
 import type { PlaceStat, PlaceStats } from "./ShopMap";
 
-type StatItem = { id: string; name: string; category: string; place: string | null; short: boolean; thumbUrl?: string | null };
+type StatItem = { id: string; name: string; category: string; place: string | null; short: boolean };
 type StatCategory = { id: string; label: string; imageUrl?: string | null };
 
 // What the map shows for each place: item counts, the short ones, and the categories (by how
@@ -9,7 +9,7 @@ type StatCategory = { id: string; label: string; imageUrl?: string | null };
 export function placeStats(items: StatItem[], places: Place[], categories: StatCategory[]): PlaceStats {
   const byId = new Map(places.map((p) => [p.id, p]));
   const cat = new Map(categories.map((c) => [c.id, c]));
-  const out = new Map<string, PlaceStat & { ownPicture?: boolean }>();
+  const out = new Map<string, PlaceStat>();
   const cats = new Map<string, Map<string, number>>();
   const add = (placeId: string, i: StatItem) => {
     let st = out.get(placeId);
@@ -17,11 +17,6 @@ export function placeStats(items: StatItem[], places: Place[], categories: StatC
     st.count++;
     if (i.short) st.short++;
     st.items.push({ id: i.id, name: i.name });
-    // An item's own photo wins over a category drawing from an earlier item.
-    if (i.thumbUrl && !st.ownPicture) {
-      st.picture = i.thumbUrl;
-      st.ownPicture = true;
-    } else if (!st.picture) st.picture = cat.get(i.category)?.imageUrl ?? null;
     let c = cats.get(placeId);
     if (!c) cats.set(placeId, (c = new Map()));
     c.set(i.category, (c.get(i.category) ?? 0) + 1);
@@ -34,10 +29,13 @@ export function placeStats(items: StatItem[], places: Place[], categories: StatC
   }
   for (const [id, st] of out) {
     st.categories = [...(cats.get(id) ?? [])]
-      .sort((a, b) => b[1] - a[1])
+      .sort((a, b) => b[1] - a[1] || (cat.get(a[0])?.label ?? a[0]).localeCompare(cat.get(b[0])?.label ?? b[0]))
       .map(([cid, count]) => ({ id: cid, label: cat.get(cid)?.label ?? cid, imageUrl: cat.get(cid)?.imageUrl ?? null, count }));
+    // A drawer's tag is its category's picture, not one part's photo (Harel, 2026-11-17). A drawer
+    // holding several shows the one most of its items are (ties by name, so it doesn't flicker);
+    // past a pictureless top category, the next one with a picture.
+    st.picture = st.categories.find((c) => c.imageUrl)?.imageUrl ?? null;
     st.items.sort((a, b) => a.name.localeCompare(b.name));
-    delete st.ownPicture;
   }
-  return out as PlaceStats;
+  return out;
 }
