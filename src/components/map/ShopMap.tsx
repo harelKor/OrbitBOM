@@ -202,7 +202,8 @@ export function ShopMap({
         return centeredPlan(lerp(ax, bx, settle), lerp(ay, by, settle), Math.exp(lerp(Math.log(cam.plan.w), Math.log(fit.w), settle)), aspect);
       })()
     : cam.plan;
-  const e = smooth(cam.dive);
+  // The camera move takes most of the dive; the picture fades in over its end.
+  const tilt = smooth(smoothstep(0, 0.8, cam.dive));
   const inScene = cam.dive >= 0.999 && !!zone?.imageUrl;
   const k = plan.w / Math.max(box.w, 1); // map units per screen pixel
 
@@ -426,8 +427,10 @@ export function ShopMap({
         className="absolute inset-0"
         style={{
           transformOrigin: "50% 55%",
-          transform: cam.dive > 0 ? `translateY(${e * 12}%) rotateX(${e * 62}deg) scale(${1 + e * 0.55})` : undefined,
-          opacity: 1 - smoothstep(0.5, 0.92, cam.dive),
+          // The camera lowers toward the floor until it looks almost along it, moving forward as it
+          // goes; the picture then fades in over it (Harel, 2026-11-17: no folding image).
+          transform: cam.dive > 0 ? `translateY(${tilt * 18}%) rotateX(${tilt * 78}deg) scale(${1 + tilt * 1.1})` : undefined,
+          opacity: 1 - smoothstep(0.72, 1, cam.dive),
           visibility: inScene ? "hidden" : undefined,
         }}
       >
@@ -690,9 +693,8 @@ export function ShopMap({
         <div
           className="absolute inset-0 overflow-hidden"
           style={{
-            transformOrigin: "50% 100%",
-            transform: inScene ? undefined : `rotateX(${(1 - e) * 82}deg) scale(${lerp(0.6, 1, e)})`,
-            opacity: smoothstep(0.04, 0.45, cam.dive),
+            transform: inScene ? undefined : `scale(${lerp(1.04, 1, smoothstep(0.6, 1, cam.dive))})`,
+            opacity: smoothstep(0.6, 0.97, cam.dive),
           }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element -- a signed R2 link, drawn as is */}

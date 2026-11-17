@@ -15,7 +15,7 @@ export type Cam = { plan: Plan; zone: string | null; dive: number; scene: Scene 
 export const MIN_W = 70;
 export const SCENE_MAX = 5;
 // How much zooming (as a factor) a whole dive takes.
-export const DIVE_SPAN = 2.4;
+export const DIVE_SPAN = 3.2;
 export const FIND_MS = 2000;
 
 export const FULL_SCENE: Scene = { s: 1, cx: 0.5, cy: 0.5 };
@@ -51,13 +51,13 @@ export function zoneFit(zone: Place, aspect: number): Plan | null {
 }
 
 // The flight to a place, as the camera at time t (0..FIND_MS): the whole map, glide to the zone
-// (0–0.7 s), dive into its picture (0.7–1.4 s), zoom to the drawer (1.4–2 s). A zone with no
+// (0–0.55 s), tilt down and fade into its picture (0.55–1.5 s), zoom to the drawer (1.5–2 s). A zone with no
 // picture glides the whole time.
 export function findCam(t: number, zone: Place, spot: Place | null, aspect: number): Cam {
   const start = fullPlan(aspect);
   const fit = zoneFit(zone, aspect) ?? start;
   const hasScene = !!zone.imageUrl;
-  const glideEnd = hasScene ? 700 : FIND_MS * 0.8;
+  const glideEnd = hasScene ? 550 : FIND_MS * 0.8;
   const g = easeInOut(clamp(t / glideEnd, 0, 1));
   // Glide in a gentle zoom-out-zoom-in arc: the width moves on a log scale, so the zoom reads even.
   const w = Math.exp(lerp(Math.log(start.w), Math.log(fit.w), g));
@@ -65,8 +65,8 @@ export function findCam(t: number, zone: Place, spot: Place | null, aspect: numb
   const [fx, fy] = planCenter(fit, aspect);
   const plan = centeredPlan(lerp(sx, fx, g), lerp(sy, fy, g), w, aspect);
   if (!hasScene) return { plan, zone: zone.id, dive: 0, scene: FULL_SCENE };
-  const dive = easeInOut(clamp((t - 700) / 700, 0, 1));
-  const z = easeInOut(clamp((t - 1400) / 600, 0, 1));
+  const dive = easeInOut(clamp((t - 550) / 950, 0, 1));
+  const z = easeInOut(clamp((t - 1500) / 500, 0, 1));
   const scene: Scene =
     spot && spot.spotX != null && spot.spotY != null
       ? { s: lerp(1, 2.2, z), cx: lerp(0.5, spot.spotX, z), cy: lerp(0.5, spot.spotY, z) }
