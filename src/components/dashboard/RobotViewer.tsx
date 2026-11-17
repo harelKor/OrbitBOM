@@ -1,5 +1,6 @@
 "use client";
 
+import { CALL_COSTS, costHint } from "@/config/callCosts";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -265,7 +266,7 @@ export function RobotViewer({
           <h2 className="text-sm font-semibold">{systemId ? "3D View" : "3D Assembly Status View"}</h2>
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             {edit && hasAssembly && (
-              <button className="btn h-8 text-xs" onClick={build} disabled={!!building}>
+              <button className="btn h-8 text-xs" onClick={build} disabled={!!building} {...costHint(CALL_COSTS.update3d)}>
                 {building ?? "Update 3D model"}
               </button>
             )}

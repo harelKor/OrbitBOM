@@ -1,5 +1,6 @@
 "use client";
 
+import { costHint, exportManyCost } from "@/config/callCosts";
 import { createContext, useContext, useEffect, useEffectEvent, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { areaOfMachine, getMachine } from "@/config/machines";
@@ -393,7 +394,7 @@ export function BatchCard({
     cart.button
   ) : pack && areaOfMachine(batch.machine) === "print" ? (
     downloads.length > 0 && (
-      <button className="overlay-btn" onClick={() => void downloadAll(downloads)} aria-label={`Download ${what}'s ${downloads.length} files`} title={`Download ${downloads.length} files`}>
+      <button className="overlay-btn" onClick={() => void downloadAll(downloads)} {...costHint(exportManyCost(downloads.length))} aria-label={`Download ${what}'s ${downloads.length} files`} title={`Download ${downloads.length} files`}>
         <Icon name="download" />
       </button>
     )
@@ -402,6 +403,7 @@ export function BatchCard({
       <button
         className="overlay-btn"
         onClick={() => void downloadExport(`/api/groups/${batch.id}/zip`)}
+        {...costHint(exportManyCost(members.length))}
         aria-label={`Download ${what}'s ${members.length} parts as a zip`}
         title={`All ${members.length} parts in one zip, named with each part's quantity`}
       >
@@ -411,7 +413,7 @@ export function BatchCard({
   ) : (
     <>
       {downloads.length > 0 && !(batch.gcode && !open) && (
-        <button className="overlay-btn" onClick={() => void downloadAll(downloads)} aria-label={`Download ${downloads.length} files`} title={`Download ${downloads.length} files`}>
+        <button className="overlay-btn" onClick={() => void downloadAll(downloads)} {...costHint(exportManyCost(downloads.length))} aria-label={`Download ${downloads.length} files`} title={`Download ${downloads.length} files`}>
           <Icon name="download" />
         </button>
       )}

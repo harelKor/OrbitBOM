@@ -1,5 +1,6 @@
 "use client";
 
+import { CALL_COSTS, costHint } from "@/config/callCosts";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { commitChanges, updateToLatest } from "@/app/(app)/versions-actions";
@@ -121,7 +122,7 @@ function OutdatedTag({ partId, tag, tags, outdated }: { partId: string; tag: Par
           </div>
           {error && <p className="text-rose-600">{error}</p>}
           {edit ? (
-            <button type="button" className="btn-primary w-full justify-center" disabled={pending} onClick={update}>
+            <button type="button" className="btn-primary w-full justify-center" disabled={pending} onClick={update} {...(outdated.key ? costHint(CALL_COSTS.commitOnePart) : {})}>
               {pending ? "Updating…" : "Update"}
             </button>
           ) : (

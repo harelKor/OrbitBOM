@@ -1,5 +1,6 @@
 "use client";
 
+import { commitCadCost, costHint } from "@/config/callCosts";
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { Dialog } from "@/components/Dialog";
@@ -89,7 +90,7 @@ export function CadCommitWindow({
               <input className="input" value={name} maxLength={120} placeholder="The next V number" onChange={(e) => setName(e.target.value)} />
             </label>
           )}
-          <button type="submit" className="btn-primary h-11 w-full justify-center text-base" disabled={committing || (!changes.length && !makeVersion)}>
+          <button type="submit" className="btn-primary h-11 w-full justify-center text-base" disabled={committing || (!changes.length && !makeVersion)} {...costHint(commitCadCost(changes.length, makeVersion))}>
             {committing ? "Committing…" : `Commit ${what === "CAD" ? "CAD" : "Basepart"}`}
           </button>
           {error && <p className="text-sm text-rose-600">{error}</p>}

@@ -1,5 +1,6 @@
 "use client";
 
+import { costHint, exportCost } from "@/config/callCosts";
 import { toast } from "@/components/ui/Toaster";
 import { askConfirm } from "@/components/ui/useConfirm";
 import { useState, useTransition } from "react";
@@ -377,6 +378,7 @@ export function DownloadMenu({ part, format }: { part: CardPart; format: ExportF
                 void downloadExport(e.currentTarget.href);
               }}
               className={item}
+              {...costHint(exportCost(f))}
             >
               <span className="font-medium text-fg">{label(f)}</span>
               {i === 0 && <span className="text-[0.6875rem] text-subtle">for its machine</span>}

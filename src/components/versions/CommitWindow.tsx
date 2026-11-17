@@ -1,5 +1,6 @@
 "use client";
 
+import { CALL_COSTS, commitBomCost, costHint } from "@/config/callCosts";
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { Dialog } from "@/components/Dialog";
@@ -130,7 +131,7 @@ export function CommitWindow({
                 <span className="block text-xs text-subtle">Off: only the BOM and the export files the Build team downloads move. Saves Onshape calls.</span>
               </span>
             </label>
-            <button type="submit" className="btn-primary" disabled={committing}>
+            <button type="submit" className="btn-primary" disabled={committing} {...costHint(commitBomCost(draft.changes.length, update3d))}>
               {committing ? "Committing…" : ticked.length ? `Commit · ${ticked.length} to check` : "Commit changes"}
             </button>
           </form>
@@ -258,7 +259,7 @@ export function ChangeBox({
           <Previews systemId={systemId} before={before} after={after} change={c} />
           {onCommit && (
             <div className="flex justify-end">
-              <button type="button" className="btn" disabled={committing} onClick={onCommit}>
+              <button type="button" className="btn" disabled={committing} onClick={onCommit} {...costHint(CALL_COSTS.commitOnePart)}>
                 Commit this part
               </button>
             </div>

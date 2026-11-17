@@ -1,5 +1,6 @@
 "use client";
 
+import { CALL_COSTS, costHint } from "@/config/callCosts";
 import { useEffect, useRef, useState } from "react";
 import { Dialog } from "@/components/Dialog";
 import { useCan } from "@/components/shell/ModeContext";
@@ -358,7 +359,7 @@ function Scanner({
                 {locked.teeth}T{locked.bore ? ` · ${locked.bore === "hex" ? "hex" : "round"} bore` : ""}
               </span>
               {canAdd && (
-                <button type="button" className="rounded-full bg-emerald-500 px-3 py-1.5 text-white active:scale-[0.96]" onClick={useLock}>
+                <button type="button" className="rounded-full bg-emerald-500 px-3 py-1.5 text-white active:scale-[0.96]" onClick={useLock} {...costHint(CALL_COSTS.lens)}>
                   Use →
                 </button>
               )}
@@ -384,7 +385,7 @@ function Scanner({
         />
       ) : (
         canAdd && (
-          <button type="button" className="btn-primary min-h-12 w-full text-lg active:scale-[0.98]" disabled={!!camError} onClick={() => void capture()}>
+          <button type="button" className="btn-primary min-h-12 w-full text-lg active:scale-[0.98]" disabled={!!camError} onClick={() => void capture()} {...costHint(CALL_COSTS.gemini, CALL_COSTS.lens)}>
             📷 Capture
           </button>
         )

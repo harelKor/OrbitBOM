@@ -1,5 +1,6 @@
 "use client";
 
+import { CALL_COSTS, costHint, makeDrawingsCost } from "@/config/callCosts";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { syncOnshapeDrawings } from "@/components/drawing/syncOnshape";
@@ -94,13 +95,14 @@ export function DrawingsBar({
         <button className="btn" onClick={onSelectAll} disabled={!!busy || selected.length === total}>
           Select all
         </button>
-        <button className="btn-primary" onClick={make} disabled={!!busy || ids.length === 0}>
+        <button className="btn-primary" onClick={make} disabled={!!busy || ids.length === 0} {...costHint(makeDrawingsCost(ids.length))}>
           {busy === "make" ? "Making drawings…" : "Make drawings"}
         </button>
         <button
           className="btn"
           onClick={sync}
           disabled={!!busy}
+          {...costHint(CALL_COSTS.fetchDrawings)}
           title={`Fetch the Onshape drawing tabs named like ${ids.length ? "the picked parts" : "this system's parts"} as their drawing files`}
         >
           {busy === "sync" ? "Syncing Onshape drawings…" : "Sync Onshape drawings"}

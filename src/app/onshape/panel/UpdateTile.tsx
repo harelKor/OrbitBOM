@@ -1,5 +1,6 @@
 "use client";
 
+import { CALL_COSTS, costHint } from "@/config/callCosts";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { commitChanges } from "@/app/(app)/versions-actions";
@@ -98,12 +99,13 @@ export function UpdateTile({ systemId, robotId }: { systemId: string; robotId: s
 
       <Dialog open={choose} onClose={() => setChoose(false)} title="Update system" width="w-[min(34rem,calc(100vw-2rem))]">
         <div className="grid gap-3 min-[420px]:grid-cols-2">
-          <button type="button" className={tileClass("accent")} onClick={checkBom}>
+          <button type="button" className={tileClass("accent")} onClick={checkBom} {...costHint(CALL_COSTS.checkBom)}>
             <TileBody icon="☰" title="Update BOM" sub="Check Onshape and commit the BOM's next version" />
           </button>
           <button
             type="button"
             className={tileClass("violet")}
+            {...costHint(CALL_COSTS.checkCad)}
             onClick={() => {
               setChoose(false);
               cad.check();

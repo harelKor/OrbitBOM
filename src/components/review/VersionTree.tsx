@@ -1,5 +1,6 @@
 "use client";
 
+import { CALL_COSTS, costHint } from "@/config/callCosts";
 import { useRouter } from "next/navigation";
 import { useContext, useState } from "react";
 import { deleteTreeVersion, removeRobotVersion, versionDraft } from "@/app/(app)/robots/[robotId]/cad-review/versionActions";
@@ -362,7 +363,8 @@ function RefreshVersions({ systemId, readAt }: { systemId: string; readAt: strin
       <button
         className="press text-xs font-semibold text-accent-hover hover:underline disabled:opacity-60 pointer-coarse:min-h-9"
         disabled={state.busy}
-        title="Read this design's Onshape versions (1 Onshape call)"
+        title="Read this design's Onshape versions"
+        {...costHint(CALL_COSTS.refreshVersions)}
         onClick={async () => {
           setState({ busy: true });
           const res = await fetch(`/api/systems/${systemId}/onshape-versions`, { method: "POST" });

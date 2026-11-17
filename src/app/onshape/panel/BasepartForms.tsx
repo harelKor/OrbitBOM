@@ -1,5 +1,6 @@
 "use client";
 
+import { CALL_COSTS, costHint } from "@/config/callCosts";
 import { useActionState } from "react";
 import { replaceBasepart, saveGeometry, syncBasepart } from "./actions";
 import { GeometryPicker } from "./GeometryPicker";
@@ -36,7 +37,7 @@ export function SyncBasepartForm({
         <SystemChoice robots={robots} systems={systems} idPrefix="basepart" />
         <GeometryPicker studioUrl={studioUrl} />
         {state?.error && <p className="text-rose-700">{state.error}</p>}
-        <button className="btn-primary w-full active:scale-[0.98]" disabled={pending}>
+        <button className="btn-primary w-full active:scale-[0.98]" disabled={pending} {...costHint(CALL_COSTS.basepart)}>
           {pending ? "Syncing…" : "Sync as system Basepart"}
         </button>
       </form>
@@ -52,7 +53,7 @@ export function SyncBasepartForm({
           </select>
           <GeometryPicker studioUrl={studioUrl} />
           {robotState?.error && <p className="text-rose-700">{robotState.error}</p>}
-          <button className="btn w-full active:scale-[0.98]" disabled={robotPending}>
+          <button className="btn w-full active:scale-[0.98]" disabled={robotPending} {...costHint(CALL_COSTS.basepart)}>
             {robotPending ? "Syncing…" : "Sync as robot Basepart"}
           </button>
         </form>
@@ -99,7 +100,7 @@ export function ReplaceBasepartForm({
             </>
           )}
           {state?.error && <p className="text-rose-700">{state.error}</p>}
-          <button className="btn-primary w-full active:scale-[0.98]" disabled={pending}>
+          <button className="btn-primary w-full active:scale-[0.98]" disabled={pending} {...costHint(CALL_COSTS.basepart)}>
             {pending ? "Replacing…" : "Replace as system Basepart"}
           </button>
         </form>
@@ -120,7 +121,7 @@ export function ReplaceBasepartForm({
             <input type="hidden" name="id" value={robots[0].id} />
           )}
           {robotState?.error && <p className="text-rose-700">{robotState.error}</p>}
-          <button className="btn w-full active:scale-[0.98]" disabled={robotPending}>
+          <button className="btn w-full active:scale-[0.98]" disabled={robotPending} {...costHint(CALL_COSTS.basepart)}>
             {robotPending ? "Replacing…" : robots.length === 1 ? `Replace as ${robots[0].name}'s Basepart` : "Replace as robot Basepart"}
           </button>
         </form>
@@ -136,7 +137,7 @@ export function GeometryForm({ target, id, query, studioUrl, initial }: { target
     <form action={action} className="space-y-3">
       <GeometryPicker studioUrl={studioUrl} initial={initial} />
       {state?.error && <p className="text-rose-700">{state.error}</p>}
-      <button className="btn-primary w-full active:scale-[0.98]" disabled={pending}>
+      <button className="btn-primary w-full active:scale-[0.98]" disabled={pending} {...costHint(CALL_COSTS.basepart)}>
         {pending ? "Saving…" : "Save Geometry"}
       </button>
     </form>

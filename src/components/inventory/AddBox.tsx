@@ -1,5 +1,6 @@
 "use client";
 
+import { CALL_COSTS, costHint } from "@/config/callCosts";
 import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { readProductLink, saveItem, type ItemInput } from "@/app/(app)/inventory/actions";
@@ -365,6 +366,7 @@ export function AddBox({
             <button
               type="button"
               onClick={searchWeb}
+              {...costHint(CALL_COSTS.webSearch)}
               disabled={searching}
               className="press mx-2 mt-1 min-h-9 rounded-full border border-line-strong px-3 text-xs font-semibold text-fg-2 hover:border-accent hover:text-accent active:scale-[0.98] disabled:opacity-60"
             >

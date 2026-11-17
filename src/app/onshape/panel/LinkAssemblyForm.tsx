@@ -1,5 +1,6 @@
 "use client";
 
+import { CALL_COSTS, costHint } from "@/config/callCosts";
 import { useActionState } from "react";
 import { linkAssembly, linkMainAssembly, setBatchLayoutsDocument } from "./actions";
 import { SystemChoice, type ChoiceSystem } from "./SystemChoice";
@@ -62,7 +63,7 @@ export function LinkAssemblyForm({
         <SystemChoice robots={robots} systems={systems} idPrefix="final" />
         {!onshapeConnected && <p className="text-amber-700">Connect Onshape on your OrbitParts profile page to pull the parts.</p>}
         {state?.error && <p className="text-rose-700">{state.error}</p>}
-        <button className="btn-primary w-full active:scale-[0.98]" disabled={pending}>
+        <button className="btn-primary w-full active:scale-[0.98]" disabled={pending} {...costHint(CALL_COSTS.linkAssembly)}>
           {pending ? "Linking and syncing…" : "Sync as system Final"}
         </button>
       </form>

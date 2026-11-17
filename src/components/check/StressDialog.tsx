@@ -1,5 +1,6 @@
 "use client";
 
+import { CALL_COSTS, costHint } from "@/config/callCosts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog } from "@/components/Dialog";
 import type { Plate } from "@/lib/check/plates";
@@ -196,7 +197,7 @@ export function StressDialog({
             {running ? "Working…" : "Run"}
           </button>
           {suggest && (
-            <button className="btn h-9 px-3 active:scale-[0.98]" disabled={asking} onClick={ask} title="Ask the AI which holes hold the plate and what pushes on it">
+            <button className="btn h-9 px-3 active:scale-[0.98]" disabled={asking} onClick={ask} {...costHint(CALL_COSTS.gemini)} title="Ask the AI which holes hold the plate and what pushes on it">
               {asking ? "Asking…" : "Suggest with AI"}
             </button>
           )}

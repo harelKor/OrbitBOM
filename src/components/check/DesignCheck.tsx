@@ -1,5 +1,6 @@
 "use client";
 
+import { CALL_COSTS, costHint } from "@/config/callCosts";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { aiReviewCheck, aiSuggestLoads, saveCheckLimits, saveDesignCheck, savePartWeight, setFindingIgnored, setOverlapIgnored } from "@/app/(app)/design-check-actions";
 import { plateOf, type Plate } from "@/lib/check/plates";
@@ -239,7 +240,7 @@ Likely fix: ${ai.fixes[id]}` : text);
                   )}
                   {canCheck && !sandbox && (
                     <div>
-                      <button className="btn h-8 px-3 text-xs active:scale-[0.98]" disabled={writing || stale} onClick={writeUp}>
+                      <button className="btn h-8 px-3 text-xs active:scale-[0.98]" disabled={writing || stale} onClick={writeUp} {...costHint(CALL_COSTS.gemini)}>
                         {writing ? "Writing…" : ai ? "Write it up again with AI" : "Write it up with AI"}
                       </button>
                       <p className="mt-1 text-[0.6875rem] text-muted">Sends the findings&apos; names and numbers (no pictures) to Google&apos;s free Gemini, which may use them to improve its products.</p>

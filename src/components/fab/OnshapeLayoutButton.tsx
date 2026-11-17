@@ -1,5 +1,6 @@
 "use client";
 
+import { CALL_COSTS, costHint } from "@/config/callCosts";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { downloadExport } from "@/components/bom/downloadExport";
@@ -103,6 +104,7 @@ export function OnshapeLayoutButton({
           className={`${btn} border-accent text-accent`}
           disabled={busy || (placements !== undefined && placements.length === 0)}
           onClick={() => void push()}
+          {...costHint(CALL_COSTS.onshapeLayout)}
           title={url ? "Move the parts in the Onshape assembly to this layout" : "Make a Batch assembly in Onshape with every part flat, pockets up"}
         >
           <Icon name="cube" className="h-3.5 w-3.5" />
@@ -115,7 +117,7 @@ export function OnshapeLayoutButton({
             <Icon name="link" className="h-3.5 w-3.5" />
             Open Layout
           </a>
-          <button className={btn} disabled={stepBusy || busy} onClick={() => void step()} title="Download the batch's Onshape assembly as one STEP file">
+          <button className={btn} disabled={stepBusy || busy} onClick={() => void step()} {...costHint(CALL_COSTS.layoutStep)} title="Download the batch's Onshape assembly as one STEP file">
             <Icon name="download" className="h-3.5 w-3.5" />
             {stepBusy ? "Preparing STEP…" : "Export STEP"}
           </button>

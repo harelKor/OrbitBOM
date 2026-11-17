@@ -1,5 +1,6 @@
 "use client";
 
+import { CALL_COSTS, costHint } from "@/config/callCosts";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { checkForChanges, commitChanges, revertToVersion } from "@/app/(app)/versions-actions";
@@ -147,6 +148,7 @@ export function UpdateSystem({
           disabled={checking || committing}
           title="Check the Onshape assembly for changed, added and removed parts. Nothing reaches the BOM until you commit."
           onClick={() => check(false)}
+          {...costHint(CALL_COSTS.checkBom)}
         >
           {checking ? "Checking Onshape…" : "Update System"}
         </button>

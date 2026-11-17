@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Jost } from "next/font/google";
 import { OfflineSupport } from "@/components/shell/OfflineSupport";
+import { CallCostHints } from "@/components/ui/CallCost";
 import { APPEARANCE_SCRIPT, SHADE_SCRIPT, UI_SCALE_SCRIPT } from "@/components/shell/boot-scripts";
 import "./globals.css";
 
@@ -47,6 +48,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="flex min-h-dvh flex-col">
         {children}
         <OfflineSupport />
+        <CallCostHints />
       </body>
     </html>
   );

@@ -1,5 +1,6 @@
 "use client";
 
+import { CALL_COSTS, costHint } from "@/config/callCosts";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -608,6 +609,7 @@ export function ReviewScreen({
                     type="button"
                     className="btn-primary min-h-9 active:scale-[0.98]"
                     disabled={!!building}
+                    {...costHint(CALL_COSTS.buildVersion)}
                     onClick={async () => {
                       setBuilding("Reading Onshape…");
                       const r = await buildVersion(robotId, kind, vload.entry, setBuilding);

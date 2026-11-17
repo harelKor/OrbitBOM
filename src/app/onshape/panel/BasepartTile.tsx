@@ -1,5 +1,6 @@
 "use client";
 
+import { CALL_COSTS, costHint } from "@/config/callCosts";
 import { tileClass, TileBody } from "./tiles";
 import { useModelUpdate } from "./useModelUpdate";
 
@@ -12,7 +13,7 @@ export function BasepartTile({ robotId, systemId }: { robotId: string; systemId:
   const u = useModelUpdate("basepart", systemId ? { systemId } : { robotId }, robotId);
   return (
     <>
-      <button type="button" onClick={() => (u.reopen ? u.reopen() : u.check())} disabled={u.busy} aria-busy={u.busy} className={tileClass("accent")}>
+      <button type="button" onClick={() => (u.reopen ? u.reopen() : u.check())} disabled={u.busy} aria-busy={u.busy} className={tileClass("accent")} {...(u.reopen ? {} : costHint(CALL_COSTS.checkCad))}>
         <TileBody icon={u.busy ? "" : "⟳"} title={u.busy ? "Loading…" : "Update Basepart"} sub={u.status ?? u.note?.text ?? "See what changed, then update the Basepart's 3D and version tree"} subClass={u.note?.bad && !u.busy ? "!text-rose-100" : ""} />
         {u.busy && <span className="absolute top-1/2 left-9 h-8 w-8 -translate-y-1/2 animate-spin rounded-full border-4 border-white/30 border-t-white" aria-hidden />}
       </button>
