@@ -32,7 +32,12 @@ export function drawingSummary(part: Part, edits: DrawingEdits, title: TitleBloc
     })),
     notes: [
       ...base.notes.map((n) => ({ id: n.id, text: edits.text?.[n.id] ?? n.text, hidden: hidden.has(n.id) })),
-      ...(edits.added ?? []).map((a) => ({ id: a.id, text: a.text, added: true })),
+      ...(edits.added ?? []).map((a) => ({ id: a.id, text: shown.notes.find((n) => n.id === a.id)?.text ?? a.text, added: true })),
+    ],
+    // Sizes drawn as dimensions; any can be retyped or hidden like a note (edit_drawing).
+    dimensions: [
+      ...base.dims.map((d) => ({ id: d.id, text: edits.text?.[d.id] ?? d.text, hidden: hidden.has(d.id) })),
+      ...(edits.dims ?? []).map((d) => ({ id: d.id, text: shown.dims.find((x) => x.id === d.id)?.text ?? d.text ?? "", added: true })),
     ],
     shown_notes: shown.notes.length,
   };

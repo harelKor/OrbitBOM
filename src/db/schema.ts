@@ -400,13 +400,37 @@ export type ReleasedSnapshot = {
 // A part's fabrication drawing (plan/auto-drawings.md): the views and sizes read from Onshape's
 // exact geometry, and the member's edits to its notes. Laid out with the current BOM row when
 // shown, so the BOM block is never stale.
+// A point on a drawing's view (src/lib/drawing/types.ts Ref): view key, view mm, and optionally
+// the hole whose edge it sits on, so it follows the part when the drawing is made again.
+export type DrawingRef = { v: string; p: [number, number]; hole?: string; ang?: number };
 export type DrawingEdits = {
-  hidden?: string[]; // note ids
-  text?: Record<string, string>;
-  moved?: Record<string, [number, number]>; // where a note's text moved to
-  arrows?: Record<string, [number, number]>; // where a note's arrow points instead
+  hidden?: string[]; // note and dimension ids
+  text?: Record<string, string>; // note and dimension ids → the words shown instead
+  // Older saves: where a note's text moved to and where its arrow pointed, on the sheet. New
+  // edits use `shift` and `tips`, which survive the drawing being laid out at another scale.
+  moved?: Record<string, [number, number]>;
+  arrows?: Record<string, [number, number]>;
+  shift?: Record<string, [number, number]>; // sheet mm an automatic note's text, or a dimension's line, moved by
+  tips?: Record<string, DrawingRef>; // where an automatic note's arrow points instead
   // A fit note can name the BOM part or inventory item it fits, so the drawing opens its window.
-  added?: { id: string; text: string; at: [number, number]; leader?: [number, number]; fitPartId?: string; fitInventoryItemId?: string; fitTargetName?: string }[];
+  // `ref` + `off`: the arrow's tip on the part and the text's place from it (`at` and `leader`
+  // stay as they were drawn, for when the view is gone). `dia`: a diameter dimension, reading
+  // the hole's Ø unless `text` says otherwise.
+  added?: {
+    id: string;
+    text: string;
+    at: [number, number];
+    leader?: [number, number];
+    ref?: DrawingRef;
+    off?: [number, number];
+    dia?: boolean;
+    fitPartId?: string;
+    fitInventoryItemId?: string;
+    fitTargetName?: string;
+  }[];
+  // Dimensions placed with the editor's Dimension tool: between two points of one view, its line
+  // `off` sheet mm beyond the outer one, reading the measured length unless `text` is set.
+  dims?: { id: string; a: DrawingRef; b: DrawingRef; dir: "h" | "v"; off: number; text?: string }[];
 };
 
 export const partDrawings = pgTable("part_drawings", {

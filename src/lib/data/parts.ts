@@ -44,6 +44,7 @@ export type BomPart = Omit<typeof parts.$inferSelect, "systemId" | ServerOnly> &
   modelKey: string | null; // the part's key in the robot's 3D model
   groups: { id: string; name: string; color: string | null }[];
   hasDrawing: boolean;
+  drawingOutdated: boolean; // the part changed in Onshape since its drawing was made
   shelf: Shelf | null;
   shelfSuggestion: ShelfSuggestion | null;
   review: boolean; // a suggestion waits in To Review: the card shows ✓ / ✕
@@ -65,7 +66,7 @@ export type FabLock = {
 };
 
 async function load(where: ReturnType<typeof and>, { anySystem = false } = {}): Promise<BomPart[]> {
-  const base = db.select({ part: parts, systemName: systems.name, lastModifiedByName: members.name, drawingOf: partDrawings.partId, reviewOf: partReviews.partId }).from(parts);
+  const base = db.select({ part: parts, systemName: systems.name, lastModifiedByName: members.name, drawingOf: partDrawings.partId, drawingRev: partDrawings.rev, reviewOf: partReviews.partId }).from(parts);
   // Kept in memory until one of these tables changes (cache.ts): a BOM page is opened far more
   // often than its parts change.
   const rows = await cachedQuery(
@@ -116,6 +117,7 @@ async function load(where: ReturnType<typeof and>, { anySystem = false } = {}): 
     systemName: r.systemName ?? "",
     lastModifiedByName: r.lastModifiedByName,
     hasDrawing: r.drawingOf !== null,
+    drawingOutdated: r.drawingOf !== null && !!r.part.thumbnailRev && r.drawingRev !== r.part.thumbnailRev,
     review: r.reviewOf !== null,
     files: filesOf.get(r.part.id) ?? [],
     shelf: shelf.shelf.get(r.part.id) ?? null,

@@ -45,7 +45,7 @@ function text(at: Pt, value: string, opts: { size?: number; anchor?: string; bol
 
 // Extension lines, the dimension line, and arrows outside when the gap is too small for them.
 // Worked out along the dimension, then mapped back for vertical ones.
-function dimension(dim: Dim): string {
+export function dimension(dim: Dim): string {
   const v = dim.dir === "v";
   const P = (along: number, off: number): Pt => (v ? [off, along] : [along, off]);
   const [a, b] = v ? [dim.a[1], dim.b[1]] : [dim.a[0], dim.b[0]];
@@ -67,7 +67,7 @@ const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
 // In the app, a note linked to a part or inventory item is one clickable group: its name lights
 // up on hover and a click opens that part's or item's window (DrawingEditor, DrawingPreview).
-function note(nt: Note, live: boolean): string {
+export function note(nt: Note, live: boolean): string {
   const link = live ? nt.link : undefined;
   const nameLine = link ? nt.text.split("\n").findIndex((l) => norm(l) === norm(link.name)) : undefined;
   const opts = { ...(nt.kind === "tool" ? { size: 5, bold: true } : {}), ...(link ? { nameLine } : {}) };

@@ -12,10 +12,17 @@ import { linkNotes } from "@/lib/drawing/layout";
 import { drawingSvg } from "@/lib/drawing/svg";
 import { linkTargets, useFitItems, useOpenFitLink } from "./fit";
 import { syncOnshapeDrawings } from "./syncOnshape";
+import { DrawingEditor } from "./DrawingEditor";
+import { Notice } from "@/components/ui/Notice";
 import { ZoomStage } from "./ZoomStage";
 import { askConfirm } from "@/components/ui/useConfirm";
 
 export type DrawingFile = { id: string; filename: string; onshape?: boolean };
+
+// The amber dot on a drawing button whose drawing is older than the part in Onshape.
+export function OutdatedDot() {
+  return <span aria-hidden className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border border-white bg-amber-500" />;
+}
 type Source = "file" | "app";
 
 const IMAGE = /\.(png|jpe?g|webp|gif|svg)$/i;
@@ -49,6 +56,7 @@ export function DrawingPreview({
   // What it has now: after a Delete the page refreshes and the other one shows, or the window closes.
   const source: Source | null = picked === "file" ? (file ? "file" : hasDrawing ? "app" : null) : hasDrawing ? "app" : file ? "file" : null;
   const [busy, setBusy] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const replace = useRef<HTMLInputElement>(null);
 
@@ -125,7 +133,10 @@ export function DrawingPreview({
         {busy && <span className="text-xs text-fg-2">{busy}</span>}
         {source === "app" ? (
           <>
-            <button className="btn h-8 text-xs" onClick={regenerate} disabled={!!busy} title="Make it again from Onshape (keeps saved notes)">
+            <button className="btn h-8 text-xs" onClick={() => setEditing(true)} disabled={!!busy || !data} title="Move, retype or hide its notes and dimensions, add new ones">
+              Edit
+            </button>
+            <button className="btn h-8 text-xs" onClick={regenerate} disabled={!!busy} title="Make it again from Onshape (keeps saved notes and dimensions)">
               Regenerate
             </button>
             <button className="btn h-8 text-xs text-rose-600" onClick={deleteApp} disabled={!!busy}>
@@ -181,6 +192,12 @@ export function DrawingPreview({
           </div>
         )}
         {error && <p className="mb-2 text-sm text-rose-700">{error}</p>}
+        {source === "app" && data?.outdated && (
+          // At the machine this matters most: the part was changed after this drawing was made.
+          <Notice tone="warning" className="mb-2">
+            The part changed in Onshape since this drawing was made, so it may be out of date.{canDraw ? " Regenerate it to update." : " Ask the CAD team to regenerate it."}
+          </Notice>
+        )}
         {source === "file" && file ? (
           <FileView key={file.id} file={file} title={title} />
         ) : source === "app" && svg && drawing ? (
@@ -198,6 +215,16 @@ export function DrawingPreview({
           !error && <div className="skeleton aspect-[297/210] w-full rounded-md" />
         )}
       </Dialog>
+      {editing && (
+        <DrawingEditor
+          partId={partId}
+          onClose={() => {
+            setEditing(false);
+            setData(null);
+            setLoads((n) => n + 1);
+          }}
+        />
+      )}
     </div>,
     document.body,
   );
@@ -229,7 +256,25 @@ function FileView({ file, title }: { file: DrawingFile; title: string }) {
     );
   }
   if (PDF.test(file.filename)) {
-    return <iframe src={`${src}#view=Fit`} title={`Drawing of ${title}`} className="h-[calc(100dvh-9rem)] w-full rounded-md border border-line bg-white" />;
+    // Android's Chrome can't show a PDF inside the page: open it in the phone's own viewer.
+    if (/Android/i.test(navigator.userAgent)) {
+      return (
+        <div className="flex flex-col items-center gap-3 rounded-md border border-line p-6 text-center text-sm text-fg-2">
+          <p>{file.filename}</p>
+          <a className="btn-primary" href={src} target="_blank" rel="noopener">
+            Open the PDF
+          </a>
+        </div>
+      );
+    }
+    return (
+      <div className="space-y-1">
+        <iframe src={`${src}#view=Fit`} title={`Drawing of ${title}`} className="h-[calc(100dvh-11rem)] w-full rounded-md border border-line bg-white" />
+        <a className="text-xs text-accent underline" href={src} target="_blank" rel="noopener">
+          Open in a new tab
+        </a>
+      </div>
+    );
   }
   return (
     <p className="text-sm text-fg-2">

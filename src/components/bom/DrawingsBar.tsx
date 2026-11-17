@@ -15,12 +15,14 @@ import { partTitle, type CardPart } from "./types";
 export function DrawingsBar({
   systemId,
   selected,
+  outdated,
   total,
   onSelectAll,
   onDone,
 }: {
   systemId: string;
   selected: CardPart[];
+  outdated: CardPart[]; // parts whose drawing is older than the part in Onshape
   total: number;
   onSelectAll: () => void;
   onDone: () => void;
@@ -30,7 +32,8 @@ export function DrawingsBar({
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // A merged row stands for its members; each gets its own drawing.
-  const ids = [...new Set(selected.flatMap((p) => p.memberIds ?? [p.id]))];
+  const idsOf = (list: CardPart[]) => [...new Set(list.flatMap((p) => p.memberIds ?? [p.id]))];
+  const ids = idsOf(selected);
 
   async function sync() {
     setBusy("sync");
@@ -54,7 +57,8 @@ export function DrawingsBar({
     }
   }
 
-  async function make() {
+  // Only drawings older than their part are made again (make.ts skips current ones), edits kept.
+  async function make(ids: string[], list: CardPart[]) {
     setBusy("make");
     setError(null);
     setResult(null);
@@ -75,7 +79,7 @@ export function DrawingsBar({
         if (body.left.length >= left.length) break; // no progress: stop rather than loop
         left = body.left;
       }
-      const names = (id: string) => partTitle(selected.find((p) => (p.memberIds ?? [p.id]).includes(id)) ?? { displayName: null, onshapeName: null });
+      const names = (id: string) => partTitle(list.find((p) => (p.memberIds ?? [p.id]).includes(id)) ?? { displayName: null, onshapeName: null });
       setResult(
         `${made.size} drawing${made.size === 1 ? "" : "s"} ready` +
           (skipped.size ? ` · skipped ${[...skipped].map(([id, why]) => `${names(id)} (${why})`).join(", ")}` : ""),
@@ -95,9 +99,20 @@ export function DrawingsBar({
         <button className="btn" onClick={onSelectAll} disabled={!!busy || selected.length === total}>
           Select all
         </button>
-        <button className="btn-primary" onClick={make} disabled={!!busy || ids.length === 0} {...costHint(makeDrawingsCost(ids.length))}>
+        <button className="btn-primary" onClick={() => make(ids, selected)} disabled={!!busy || ids.length === 0} {...costHint(makeDrawingsCost(ids.length))}>
           {busy === "make" ? "Making drawings…" : "Make drawings"}
         </button>
+        {outdated.length > 0 && (
+          <button
+            className="btn"
+            onClick={() => make(idsOf(outdated), outdated)}
+            disabled={!!busy}
+            {...costHint(makeDrawingsCost(idsOf(outdated).length))}
+            title="Make again the drawings of parts changed in Onshape since; their notes and dimensions are kept"
+          >
+            Update out-of-date ({outdated.length})
+          </button>
+        )}
         <button
           className="btn"
           onClick={sync}

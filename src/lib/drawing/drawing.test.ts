@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { expect, it } from "vitest";
 import { type Body, type Face, readBodies, type V3 } from "./brep";
-import { applyEdits, dimRect, linkNotes, maxToolText, noteBox, partDrawing } from "./layout";
+import { applyEdits, dimAt, dimOff, dimRect, linkNotes, maxToolText, measure, noteBox, partDrawing, refToSheet, sheetToRef } from "./layout";
 import { readPart } from "./read";
 import { drawingSvg } from "./svg";
 import { drawingSummary } from "./summary";
@@ -148,4 +148,68 @@ it("links a note added with the Fit picker to its part", () => {
   const d = applyEdits(base, { added: [{ id: "note:1", text: "slip fit for\nShaft A", at: [50, 50], fitPartId: "p-1", fitTargetName: "Shaft A" }] });
   expect(d.notes.at(-1)?.link).toEqual({ name: "Shaft A", partId: "p-1" });
   expect(drawingSvg(d, { live: true })).toContain('data-fit-part="p-1"');
+});
+
+it("names every view and dimension, and offers snap points and edges", () => {
+  const d = partDrawing(part("plate")!, { name: "Plate" });
+  expect(d.views.map((v) => v.key)).toEqual(["front", "side"]);
+  expect(d.dims.map((x) => x.id)).toEqual(["dim:thickness"]);
+  expect(d.holes.every((h) => h.view === "front")).toBe(true);
+  expect(d.snaps.filter((s) => s.kind === "center")).toHaveLength(2);
+  expect(d.edges.length).toBeGreaterThan(4);
+  const tube = partDrawing(part("square-tube")!, { name: "Tube" });
+  expect(tube.dims.map((x) => x.id).sort()).toEqual(["dim:height", "dim:length", "dim:wall", "dim:width"]);
+});
+
+it("retypes, hides and moves automatic dimensions", () => {
+  const base = partDrawing(part("square-tube")!, { name: "Tube" });
+  const len = base.dims.find((x) => x.id === "dim:length")!;
+  const d = applyEdits(base, { text: { "dim:length": "100 ±0.2" }, hidden: ["dim:wall"], shift: { "dim:length": [0, -5] } });
+  const shown = d.dims.find((x) => x.id === "dim:length")!;
+  expect(shown.text).toBe("100 ±0.2");
+  expect(shown.at).toBeCloseTo(len.at - 5);
+  expect(d.dims.some((x) => x.id === "dim:wall")).toBe(false);
+});
+
+it("measures an added dimension in the part's millimetres, at any scale", () => {
+  const base = partDrawing(part("plate")!, { name: "Plate" });
+  const front = base.views.find((v) => v.key === "front")!;
+  // The front view's full width, corner to corner.
+  const [a, b] = [refToSheet(base, { v: "front", p: [0, 0] })!, refToSheet(base, { v: "front", p: [front.w, 0] })!];
+  expect(measure(base, "front", a, b, "h")).toBeCloseTo(154.05, 1);
+  const off = dimOff(a, b, "h", a[1] + 10);
+  expect(dimAt(a, b, "h", off)).toBeCloseTo(a[1] + 10);
+  const d = applyEdits(base, { dims: [{ id: "dim:1", a: sheetToRef(base, a, { view: "front" })!, b: sheetToRef(base, b, { view: "front" })!, dir: "h", off }] });
+  expect(d.dims.at(-1)).toMatchObject({ id: "dim:1", text: "154.05", added: true });
+  expect(applyEdits(base, { dims: [{ id: "dim:1", a: { v: "front", p: [0, 0] }, b: { v: "front", p: [10, 0] }, dir: "h", off: 8, text: "10 H7" }] }).dims.at(-1)?.text).toBe("10 H7");
+});
+
+it("keeps an added note's arrow on its hole when the drawing is laid out again", () => {
+  const base = partDrawing(part("plate")!, { name: "Plate" });
+  const hole = base.holes.find((h) => Math.abs(h.d - 28.7) < 0.1)!;
+  const tip: [number, number] = [hole.at[0] + hole.r, hole.at[1]];
+  const ref = sheetToRef(base, tip, { hole: hole.id })!;
+  expect(ref).toMatchObject({ v: "front", hole: hole.id });
+  // The same part drawn at another scale and place: the tip follows the hole's edge.
+  const moved = { ...base, holes: base.holes.map((h) => (h.id === hole.id ? { ...h, at: [h.at[0] + 20, h.at[1] + 5] as [number, number], r: h.r * 2 } : h)) };
+  const d = applyEdits(moved, { added: [{ id: "n1", text: "Deburr", at: [0, 0], leader: tip, ref, off: [10, -10] }] });
+  const n = d.notes.at(-1)!;
+  expect(n.leader![0]).toBeCloseTo(hole.at[0] + 20 + hole.r * 2);
+  expect(n.at[0]).toBeCloseTo(n.leader![0] + 10);
+});
+
+it("reads a hole's diameter on a diameter dimension unless retyped", () => {
+  const base = partDrawing(part("plate")!, { name: "Plate" });
+  const hole = base.holes.find((h) => Math.abs(h.d - 4.2) < 0.1)!;
+  const ref = sheetToRef(base, [hole.at[0], hole.at[1] - hole.r], { hole: hole.id })!;
+  const d = applyEdits(base, { added: [{ id: "d1", text: "", dia: true, at: [0, 0], ref, off: [5, -8] }] });
+  expect(d.notes.at(-1)).toMatchObject({ kind: "dia", text: "Ø4.2" });
+  expect(applyEdits(base, { added: [{ id: "d1", text: "2× Ø4.2", dia: true, at: [0, 0], ref, off: [5, -8] }] }).notes.at(-1)?.text).toBe("2× Ø4.2");
+});
+
+it("still reads older saves' sheet positions", () => {
+  const base = partDrawing(part("plate")!, { name: "Plate" });
+  const d = applyEdits(base, { moved: { tool: [40, 40] }, arrows: {}, added: [{ id: "a", text: "x", at: [50, 60], leader: [70, 80] }] });
+  expect(d.notes.find((n) => n.id === "tool")?.at).toEqual([40, 40]);
+  expect(d.notes.at(-1)).toMatchObject({ at: [50, 60], leader: [70, 80] });
 });

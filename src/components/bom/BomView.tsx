@@ -434,6 +434,7 @@ export function BomView({
         <DrawingsBar
           systemId={mergeSystemId}
           selected={shown.filter((p) => selected.has(p.id))}
+          outdated={shown.filter((p) => p.drawingOutdated)}
           total={shown.length}
           onSelectAll={() => setSelected(new Set(shown.map((p) => p.id)))}
           onDone={() => {

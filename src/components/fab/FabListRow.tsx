@@ -7,7 +7,7 @@ import { fabSteps } from "@/components/bom/PartCard";
 import { StatusField, type SaveFn } from "@/components/bom/fields";
 import { usePartDetails } from "@/components/bom/PartDetailsHost";
 import { ownerPartId, partIds, partTitle, type CardPart } from "@/components/bom/types";
-import { DrawingPreview } from "@/components/drawing/DrawingPreview";
+import { DrawingPreview, OutdatedDot } from "@/components/drawing/DrawingPreview";
 import { useCan } from "@/components/shell/ModeContext";
 import { CheckIcon } from "@/components/ui/CheckBadge";
 import { Icon } from "@/components/ui/Icon";
@@ -95,8 +95,15 @@ export function FabPartListRow({
               </span>
             )}
             {(part.hasDrawing || drawingFile) && (
-              <button type="button" onClick={() => setDrawing(true)} className="overlay-btn h-6 w-6" aria-label="View drawing" title="View drawing">
+              <button
+                type="button"
+                onClick={() => setDrawing(true)}
+                className="overlay-btn relative h-6 w-6"
+                aria-label={part.drawingOutdated ? "View drawing (out of date)" : "View drawing"}
+                title={part.drawingOutdated ? "View drawing: the part changed in Onshape since it was made" : "View drawing"}
+              >
                 <Icon name="drawing" className="h-3.5 w-3.5" />
+                {part.drawingOutdated && <OutdatedDot />}
               </button>
             )}
           </span>

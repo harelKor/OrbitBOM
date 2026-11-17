@@ -26,11 +26,18 @@ export async function GET(_: Request, { params }: { params: Promise<{ partId: st
 }
 
 const Pt = z.tuple([z.number(), z.number()]);
+const Ref = z.object({ v: z.string().max(20), p: Pt, hole: z.string().max(100).optional(), ang: z.number().optional() });
 const Edits = z.object({
-  hidden: z.array(z.string().max(100)).max(200).optional(),
+  hidden: z.array(z.string().max(100)).max(300).optional(),
   text: z.record(z.string().max(100), z.string().max(300)).optional(),
   moved: z.record(z.string().max(100), Pt).optional(),
   arrows: z.record(z.string().max(100), Pt).optional(),
+  shift: z.record(z.string().max(100), Pt).optional(),
+  tips: z.record(z.string().max(100), Ref).optional(),
+  dims: z
+    .array(z.object({ id: z.string().max(100), a: Ref, b: Ref, dir: z.enum(["h", "v"]), off: z.number(), text: z.string().max(100).optional() }))
+    .max(100)
+    .optional(),
   added: z
     .array(
       z.object({
@@ -38,6 +45,9 @@ const Edits = z.object({
         text: z.string().max(300),
         at: Pt,
         leader: Pt.optional(),
+        ref: Ref.optional(),
+        off: Pt.optional(),
+        dia: z.boolean().optional(),
         fitPartId: z.string().uuid().optional(),
         fitInventoryItemId: z.string().uuid().optional(),
         fitTargetName: z.string().max(200).optional(),

@@ -43,6 +43,7 @@ export type CardPart = PartRow & {
   fabFinishedAt?: Date | null; // first made (To Fab's Finished section)
   stageAt?: Date | string | null; // when it last arrived in a page's list (src/lib/seen.ts)
   hasDrawing?: boolean; // a fabrication drawing was made for it (system page → Drawings)
+  drawingOutdated?: boolean; // the part changed in Onshape since that drawing was made
   shelf?: Shelf | null;
   shelfSuggestion?: ShelfSuggestion | null;
   review?: boolean; // a suggestion (Suggest, auto-link, a member's Claude) waits in To Review

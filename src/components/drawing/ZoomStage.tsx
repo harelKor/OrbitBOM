@@ -3,12 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 
 const MIN = 0.5;
-const MAX = 4;
+const MAX = 6;
 type View = { z: number; x: number; y: number }; // zoom, then pan in px from the fitted place
 
 // The drawing sheet fitted whole inside its box (no scrollbars), with Ctrl + wheel zoom toward the
 // cursor (0.5× to 4×) and drag to pan: middle mouse or Space + drag always, a plain left drag
-// when zoomed in and `leftPan` allows it. A drag that pans doesn't count as a click on the sheet.
+// when zoomed in and `leftPan` allows it. On a phone, two fingers pinch to zoom and move to pan
+// (the shop reads drawings on phones). A drag that pans doesn't count as a click on the sheet.
 // A child that handles its own press (a note being dragged) stops the pointerdown from reaching here.
 export function ZoomStage({ aspect, leftPan = true, className = "", children }: { aspect: number; leftPan?: boolean; className?: string; children: React.ReactNode }) {
   const box = useRef<HTMLDivElement>(null);
@@ -18,6 +19,10 @@ export function ZoomStage({ aspect, leftPan = true, className = "", children }: 
   const swallowClick = useRef(false);
   const space = useRef(false);
   const [grab, setGrab] = useState(false);
+  // Touches on the stage (they reach here in the capture phase, before a note grabs one), and the
+  // pinch they make: the view and the two fingers' gap and midpoint when it started.
+  const touches = useRef(new Map<number, { x: number; y: number }>());
+  const pinch = useRef<{ view: View; gap: number; mx: number; my: number } | null>(null);
 
   // The biggest sheet that fits the box.
   useEffect(() => {
@@ -82,6 +87,44 @@ export function ZoomStage({ aspect, leftPan = true, className = "", children }: 
 
   const zoomed = view.z !== 1 || view.x !== 0 || view.y !== 0;
 
+  const pair = () => {
+    const [a, b] = [...touches.current.values()];
+    return { gap: Math.hypot(b.x - a.x, b.y - a.y) || 1, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
+  };
+  function onTouchDown(e: React.PointerEvent) {
+    if (e.pointerType !== "touch") return;
+    touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (touches.current.size !== 2) return;
+    // A second finger: whatever the first one started (a pan, a note being dragged) gives way.
+    pan.current = null;
+    pinch.current = { view, ...pair() };
+    swallowClick.current = true;
+    box.current?.setPointerCapture(e.pointerId);
+    e.stopPropagation();
+  }
+  function onTouchMove(e: React.PointerEvent) {
+    if (e.pointerType !== "touch" || !touches.current.has(e.pointerId)) return;
+    touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const start = pinch.current;
+    const el = box.current;
+    if (!start || touches.current.size < 2 || !el || !fit) return;
+    e.stopPropagation();
+    const now = pair();
+    const r = el.getBoundingClientRect();
+    const toBox = (x: number, y: number): [number, number] => [x - r.left - (r.width - fit.w) / 2, y - r.top - (r.height - fit.h) / 2];
+    const [sx, sy] = toBox(start.mx, start.my);
+    const [nx, ny] = toBox(now.mx, now.my);
+    const z = Math.min(MAX, Math.max(MIN, (start.view.z * now.gap) / start.gap));
+    const k = z / start.view.z;
+    // The sheet point under the fingers' first midpoint stays under their midpoint now.
+    setView({ z, x: nx - (sx - start.view.x) * k, y: ny - (sy - start.view.y) * k });
+  }
+  function onTouchUp(e: React.PointerEvent) {
+    if (e.pointerType !== "touch") return;
+    touches.current.delete(e.pointerId);
+    if (touches.current.size < 2) pinch.current = null;
+  }
+
   function onPointerDown(e: React.PointerEvent) {
     const left = e.button === 0 && (space.current || (leftPan && view.z > 1));
     if (e.button !== 1 && !left) return;
@@ -111,7 +154,11 @@ export function ZoomStage({ aspect, leftPan = true, className = "", children }: 
   return (
     <div
       ref={box}
-      className={`relative flex items-center justify-center overflow-hidden ${grab ? "cursor-grabbing [&_*]:!cursor-grabbing" : ""} ${className}`}
+      className={`relative flex touch-none items-center justify-center overflow-hidden ${grab ? "cursor-grabbing [&_*]:!cursor-grabbing" : ""} ${className}`}
+      onPointerDownCapture={onTouchDown}
+      onPointerMoveCapture={onTouchMove}
+      onPointerUpCapture={onTouchUp}
+      onPointerCancelCapture={onTouchUp}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}

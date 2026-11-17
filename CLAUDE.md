@@ -220,6 +220,11 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
   `api_usage` table) against `src/config/apiLimits.ts`. Web search runs only on "Search the web".
 - Pages from links (product pages, pictures): `get()` in `src/lib/inventory/product.ts` (HTTPS only,
   private addresses refused after DNS, `src/lib/net/address.ts`). Don't `fetch` a user's URL directly.
+- Drawings (plan/auto-drawings.md): engine `src/lib/drawing/` (`read.ts` geometry, `layout.ts` sheet,
+  `svg.ts`), editor `src/components/drawing/DrawingEditor.tsx` (Onshape-style Dimension tool, hole
+  menu, undo; every auto note and dimension retyped / hidden / moved). Edits live in
+  `part_drawings.edits`, kept against the part (`Ref`: view key + view mm + hole) so they survive
+  Regenerate. No hole positions on drawings (Harel, 2026-11-17). Sandbox `/dev/drawing`.
 - To Fab: `src/components/fab/` (`fabModel.ts` rules, `BatchCard`, `MachineFilters`, Auto Layout in
   `BatchLayoutDialog` + `src/lib/fab/layout.ts`, `batchLayout.ts`).
 - Data loaders for pages: `src/lib/data/`. The `(app)` layout must stay light: it runs on every

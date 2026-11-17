@@ -5,7 +5,7 @@ import { db, schema } from "@/db";
 import { OnshapeError } from "@/lib/onshape/client";
 import type { DrawingEdits } from "@/db/schema";
 import { loadDrawing, makeDrawings } from "@/lib/drawing/make";
-import { MARGIN, partDrawing } from "@/lib/drawing/layout";
+import { MARGIN, partDrawing, sheetToRef } from "@/lib/drawing/layout";
 import { drawingSummary } from "@/lib/drawing/summary";
 import { uuid, read, write, ToolError, nameOf } from "../registry";
 
@@ -16,7 +16,7 @@ const { parts } = schema;
 read(
   "get_drawing",
   "member",
-  "A part's fabrication drawing: the stock it's read as (plate, square tube, hex shaft or round tube), its exact sizes, every hole with any tap or bearing it matches, and the drawing's notes. Drawings only note taps (Ø4.2 = M5 tapped) and fits; other holes get no note.",
+  "A part's fabrication drawing: the stock it's read as (plate, square tube, hex shaft or round tube), its exact sizes, every hole with any tap or bearing it matches, and the drawing's notes and dimensions. Drawings only note taps (Ø4.2 = M5 tapped) and fits; other holes get no note.",
   z.object({ part_id: uuid }),
   async ({ part_id }) => {
     const d = await loadDrawing(part_id);
@@ -56,7 +56,7 @@ write(
 write(
   "edit_drawing",
   { cap: "draw", destructive: true },
-  "Change a part's drawing notes: add notes (attached to the first hole of hole_diameter_mm, or free), retype or hide existing ones (ids from get_drawing). Fit notes have three lines, like 'light press fit for' / '1/2IN HEX Bearing' / 'Ø28.7', joined by newlines; fits are light press, heavy press, slip, precise slip.",
+  "Change a part's drawing: add notes (attached to the first hole of hole_diameter_mm, or free), retype or hide existing notes and dimensions (ids from get_drawing; a dimension's text can carry a tolerance, e.g. '50 ±0.1'). Fit notes have three lines, like 'light press fit for' / '1/2IN HEX Bearing' / 'Ø28.7', joined by newlines; fits are light press, heavy press, slip, precise slip.",
   z.object({
     part_id: uuid,
     add: z.array(z.object({ text: z.string().min(1).max(300), hole_diameter_mm: z.number().positive().optional() })).max(20).optional(),
@@ -75,7 +75,9 @@ write(
     edits.hidden = [...hidden];
     for (const [id, text] of Object.entries(set_text ?? {})) {
       const added = edits.added?.find((a) => a.id === id);
+      const dim = edits.dims?.find((a) => a.id === id);
       if (added) added.text = text;
+      else if (dim) dim.text = text;
       else edits.text = { ...edits.text, [id]: text };
     }
     let n = 0;
@@ -86,7 +88,10 @@ write(
       const at: [number, number] = hole
         ? [Math.min(hole.at[0] + hole.r + 14, layout.sheet.w - 60), Math.max(hole.at[1] - hole.r - 14, 16)]
         : [MARGIN + 5, MARGIN + 10 + 8 * n];
-      edits.added = [...(edits.added ?? []), { id, text: a.text, at, ...(hole ? { leader: [hole.at[0] + hole.r * 0.7, hole.at[1] - hole.r * 0.7] as [number, number] } : {}) }];
+      const leader: [number, number] | undefined = hole ? [hole.at[0] + hole.r * 0.7, hole.at[1] - hole.r * 0.7] : undefined;
+      // Kept against the hole, as the editor does, so it follows the part when the drawing is made again.
+      const ref = leader && hole ? sheetToRef(layout, leader, { hole: hole.id }) : null;
+      edits.added = [...(edits.added ?? []), { id, text: a.text, at, ...(leader ? { leader } : {}), ...(ref && leader ? { ref, off: [at[0] - leader[0], at[1] - leader[1]] as [number, number] } : {}) }];
     }
     const changes = (add?.length ?? 0) + Object.keys(set_text ?? {}).length + (hide?.length ?? 0) + (show?.length ?? 0);
     return {

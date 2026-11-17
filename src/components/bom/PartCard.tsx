@@ -20,7 +20,7 @@ import { MachineField, MaterialField, NameField, QuantityField, SLOTS, StatusFie
 import { Popover } from "./Popover";
 import { ownerPartId, partIds, partTitle, type CardPart } from "./types";
 import { downloadDrawing } from "@/lib/drawing/download";
-import { DrawingPreview } from "@/components/drawing/DrawingPreview";
+import { DrawingPreview, OutdatedDot } from "@/components/drawing/DrawingPreview";
 import { usePartDetails } from "./PartDetailsHost";
 import { CotsCard } from "@/components/cots/CotsCard";
 import { NoteCloud } from "./NoteCloud";
@@ -149,15 +149,16 @@ function MadePartCard({
         )}
         <div className="absolute top-2 left-2 flex items-center gap-1">
           {thumbBadge}
-          {(fabCounter || post || qa) && (part.hasDrawing || drawingFile) && (
+          {(((fabCounter || post || qa) && (part.hasDrawing || drawingFile)) || part.drawingOutdated) && (
             <button
               type="button"
               onClick={() => setDrawing(true)}
-              className="overlay-btn"
-              aria-label="View drawing"
-              title="View drawing"
+              className="overlay-btn relative"
+              aria-label={part.drawingOutdated ? "View drawing (out of date)" : "View drawing"}
+              title={part.drawingOutdated ? "View drawing: the part changed in Onshape since it was made" : "View drawing"}
             >
               <Icon name="drawing" />
+              {part.drawingOutdated && <OutdatedDot />}
             </button>
           )}
           {!fabCounter && !post && (
