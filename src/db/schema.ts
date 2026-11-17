@@ -429,8 +429,9 @@ export type DrawingEdits = {
     fitTargetName?: string;
   }[];
   // Dimensions placed with the editor's Dimension tool: between two points of one view, its line
-  // `off` sheet mm beyond the outer one, reading the measured length unless `text` is set.
-  dims?: { id: string; a: DrawingRef; b: DrawingRef; dir: "h" | "v"; off: number; text?: string }[];
+  // `off` sheet mm beyond the outer one (aligned, "a": `off` mm beside the a→b line), its text
+  // slid `tx` mm along the line, reading the measured length unless `text` is set.
+  dims?: { id: string; a: DrawingRef; b: DrawingRef; dir: "h" | "v" | "a"; off: number; tx?: number; text?: string }[];
 };
 
 export const partDrawings = pgTable("part_drawings", {

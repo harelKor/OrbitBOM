@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { expect, it } from "vitest";
 import { type Body, type Face, readBodies, type V3 } from "./brep";
-import { applyEdits, dimAt, dimOff, dimRect, linkNotes, maxToolText, measure, noteBox, partDrawing, refToSheet, sheetToRef } from "./layout";
+import { applyEdits, dimAt, dimFrame, dimHit, dimOff, dimRect, dimSpan, linkNotes, maxToolText, measure, noteBox, partDrawing, refToSheet, sheetToRef } from "./layout";
 import { readPart } from "./read";
 import { drawingSvg } from "./svg";
 import { drawingSummary } from "./summary";
@@ -212,4 +212,40 @@ it("still reads older saves' sheet positions", () => {
   const d = applyEdits(base, { moved: { tool: [40, 40] }, arrows: {}, added: [{ id: "a", text: "x", at: [50, 60], leader: [70, 80] }] });
   expect(d.notes.find((n) => n.id === "tool")?.at).toEqual([40, 40]);
   expect(d.notes.at(-1)).toMatchObject({ at: [50, 60], leader: [70, 80] });
+});
+
+it("slides a dimension's text along its line and runs the line on under it", () => {
+  const d = { id: "x", a: [20, 50] as [number, number], b: [80, 50] as [number, number], at: 40, dir: "h" as const, text: "60" };
+  expect(dimFrame(d).tc).toBe(50);
+  const slid = { ...d, tx: 45 };
+  expect(dimFrame(slid).tc).toBe(95);
+  const [, end] = dimSpan(slid);
+  expect(end).toBeGreaterThan(95); // the line reaches past the text
+  expect(dimHit(slid, [95, 37])).toBe(true); // on the text, 3 mm above the line
+  expect(dimHit(slid, [50, 37])).toBe(false); // where the text was
+  expect(dimHit(slid, [50, 40])).toBe(true); // still on the line
+});
+
+it("moves an automatic dimension's text sideways from its shift", () => {
+  const base = partDrawing(part("square-tube")!, { name: "Tube" });
+  const d = applyEdits(base, { shift: { "dim:length": [30, -4] } });
+  const len = d.dims.find((x) => x.id === "dim:length")!;
+  expect(len.tx).toBe(30);
+  expect(len.at).toBeCloseTo(base.dims.find((x) => x.id === "dim:length")!.at - 4);
+});
+
+it("draws an aligned dimension between slanted parallel lines, text along them", () => {
+  const base = partDrawing(part("plate")!, { name: "Plate" });
+  // Two points 10 mm apart across a 45° slant on the front view.
+  const a = refToSheet(base, { v: "front", p: [40, 40] })!;
+  const b = refToSheet(base, { v: "front", p: [40 + 10 / Math.SQRT2, 40 + 10 / Math.SQRT2] })!;
+  const d = applyEdits(base, { dims: [{ id: "al", a: sheetToRef(base, a, { view: "front" })!, b: sheetToRef(base, b, { view: "front" })!, dir: "a", off: 6 }] });
+  const dim = d.dims.at(-1)!;
+  expect(dim).toMatchObject({ dir: "a", text: "10", at: 6 });
+  const f = dimFrame(dim);
+  expect(Math.abs(f.angle)).toBeCloseTo(45, 0);
+  expect(drawingSvg(d)).toContain("rotate(");
+  // The line sits 6 mm beside a→b; a point there is on it.
+  expect(dimHit(dim, f.P((f.lo + f.hi) / 2, 6))).toBe(true);
+  expect(dimHit(dim, f.P((f.lo + f.hi) / 2, 20))).toBe(false);
 });

@@ -6,9 +6,12 @@ import type { Part } from "./read";
 export type Pt = [number, number];
 export type Stroke = "visible" | "thin" | "center";
 export type Line = { pts: Pt[]; stroke: Stroke };
-// A dimension between a and b, its line drawn at y = at (horizontal) or x = at (vertical).
+// A dimension between a and b, its line drawn at y = at (horizontal), x = at (vertical), or `at`
+// mm to the side of the a→b line (aligned: a slanted edge, or two slanted parallel lines). `tx`
+// slides its text along the line from where it would sit (dragged aside, as in Onshape).
 // `added`: placed by a member with the editor's Dimension tool (not made by the drawing).
-export type Dim = { id: string; a: Pt; b: Pt; at: number; dir: "h" | "v"; text: string; added?: boolean };
+export type DimDir = "h" | "v" | "a";
+export type Dim = { id: string; a: Pt; b: Pt; at: number; dir: DimDir; text: string; tx?: number; added?: boolean };
 // "dia": a hole's diameter dimension, a leader to its edge reading Ø<d> (Onshape draws them so).
 export type NoteKind = "tap" | "fit" | "bore" | "tool" | "size" | "dia" | "custom";
 // What a fit note fits: a BOM part or an inventory item, shown by name on the note's line.

@@ -35,7 +35,7 @@ const Edits = z.object({
   shift: z.record(z.string().max(100), Pt).optional(),
   tips: z.record(z.string().max(100), Ref).optional(),
   dims: z
-    .array(z.object({ id: z.string().max(100), a: Ref, b: Ref, dir: z.enum(["h", "v"]), off: z.number(), text: z.string().max(100).optional() }))
+    .array(z.object({ id: z.string().max(100), a: Ref, b: Ref, dir: z.enum(["h", "v", "a"]), off: z.number(), tx: z.number().optional(), text: z.string().max(100).optional() }))
     .max(100)
     .optional(),
   added: z

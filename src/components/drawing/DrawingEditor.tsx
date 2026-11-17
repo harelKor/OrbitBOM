@@ -6,9 +6,9 @@ import { createPortal } from "react-dom";
 import { DEFAULT_FIT, FITS, SCREWS, type Fit } from "@/config/drawings";
 import type { DrawingEdits, DrawingRef } from "@/db/schema";
 import { downloadDrawing, fetchDrawing, type DrawingResponse, type FitPart } from "@/lib/drawing/download";
-import { applyEdits, dimLine, dimOff, dimRect, fmt, linkNotes, measure, noteBox, partDrawing, sheetToRef } from "@/lib/drawing/layout";
+import { applyEdits, dimFrame, dimHit, dimLine, dimOff, dimRect, fmt, linkNotes, measure, noteBox, partDrawing, sheetToRef } from "@/lib/drawing/layout";
 import { dimension, drawingSvg, note as noteSvg } from "@/lib/drawing/svg";
-import type { Dim, Drawing, Note, Pt } from "@/lib/drawing/types";
+import type { Dim, DimDir, Drawing, Note, Pt } from "@/lib/drawing/types";
 import { Icon } from "@/components/ui/Icon";
 import { ZoomStage } from "./ZoomStage";
 import { FitPicker, linkTargets, useFitItems, useOpenFitLink, type FitTarget } from "./fit";
@@ -17,18 +17,22 @@ import { askConfirm } from "@/components/ui/useConfirm";
 
 type Hole = Drawing["holes"][number];
 type Snap = { at: Pt; view: string };
+type Edge = Drawing["edges"][number];
 type Item = { id: string; type: "note" | "dim" };
 // What a click on the sheet does next. Notes: where the arrow points, then where the text goes
 // (`preset`: a tap or a diameter picked from a hole's menu instead of the side form). Dimensions,
-// like Onshape's: two points (corners, line ends, hole centres) or one straight edge, then where
-// the dimension line goes, which also picks horizontal or vertical; a hole's edge gives its Ø.
+// like Onshape's: two points (corners, line ends, hole centres), or a straight edge and then a
+// parallel edge (the distance between them), a point (its distance to the edge) or nothing (the
+// edge's length); then where the dimension line goes, which also picks horizontal or vertical.
+// Slanted ones are aligned. A hole's edge gives its Ø.
 type Mode =
   | { kind: "idle" }
   | { kind: "arrow" }
   | { kind: "text"; leader?: Pt; hole?: Hole; preset?: { text?: string; dia?: boolean } }
   | { kind: "dim1" }
   | { kind: "dim2"; a: Snap }
-  | { kind: "dimPlace"; a: Snap; b: Snap };
+  | { kind: "dimEdge"; edge: Edge }
+  | { kind: "dimPlace"; a: Snap; b: Snap; dir?: DimDir };
 // A note or dimension being dragged: a note's text, its arrow tip, or a dimension's line. `off`
 // is where it was grabbed, from its anchor. `before`: the edits when the press started (one undo step).
 type Drag = { item: Item; part: "text" | "arrow" | "line"; off: Pt; pointer: number; moved: boolean; before: DrawingEdits };
@@ -60,6 +64,29 @@ function segDist(p: Pt, a: Pt, b: Pt) {
   return dist(p, [a[0] + t * dx, a[1] + t * dy]);
 }
 
+const axisAligned = (a: Pt, b: Pt) => Math.abs(b[0] - a[0]) < 0.05 || Math.abs(b[1] - a[1]) < 0.05;
+// The point of the line through a and b nearest p, and whether it lies between a and b.
+function project(p: Pt, a: Pt, b: Pt): { at: Pt; inside: boolean } {
+  const [dx, dy] = minus(b, a);
+  const t = ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / (dx * dx + dy * dy || 1);
+  return { at: [a[0] + t * dx, a[1] + t * dy], inside: t >= 0 && t <= 1 };
+}
+const sameEdge = (e: Edge, f: Edge) => dist(e.a, f.a) + dist(e.b, f.b) < 0.01 || dist(e.a, f.b) + dist(e.b, f.a) < 0.01;
+// Parallel and apart (not two pieces of one straight line).
+function parallelEdges(e: Edge, f: Edge) {
+  const [u, v] = [minus(e.b, e.a), minus(f.b, f.a)];
+  const cross = (u[0] * v[1] - u[1] * v[0]) / ((Math.hypot(...u) || 1) * (Math.hypot(...v) || 1));
+  return Math.abs(cross) < 0.01 && dist(project(f.a, e.a, e.b).at, f.a) > 0.05;
+}
+// The two points a distance between parallel edges runs between: across from the middle of
+// the second edge, moved onto the middle of the first when that falls outside it.
+function acrossEdges(e: Edge, f: Edge): [Pt, Pt] {
+  const mid: Pt = [(f.a[0] + f.b[0]) / 2, (f.a[1] + f.b[1]) / 2];
+  const onE = project(mid, e.a, e.b);
+  const a: Pt = onE.inside ? onE.at : [(e.a[0] + e.b[0]) / 2, (e.a[1] + e.b[1]) / 2];
+  return [a, project(a, f.a, f.b).at];
+}
+
 // Horizontal or vertical, from where the pointer is, as Onshape does: above or below the two
 // points → horizontal; left or right of them → vertical. Points in line allow only one.
 function chooseDir(a: Pt, b: Pt, p: Pt): "h" | "v" {
@@ -76,6 +103,7 @@ const HINTS: Record<Mode["kind"], string | null> = {
   text: "Click where the text goes",
   dim1: "Click a corner, a line end, a hole centre, a straight edge, or a hole's edge for its Ø",
   dim2: "Click the second point",
+  dimEdge: "Click a parallel line (distance between them), a point (distance to the line), or where the line's length goes",
   dimPlace: "Click where the dimension goes (above / below: horizontal, beside: vertical)",
 };
 
@@ -246,7 +274,7 @@ export function DrawingEditor({
     if (tip) return { id: tip.id, type: "note", part: "arrow" };
     const box = [...drawing.notes].reverse().find((n) => inside(p, textRect(n)));
     if (box) return { id: box.id, type: "note", part: "text" };
-    const dim = [...drawing.dims].reverse().find((d) => inside(p, dimBox(d), 1.2));
+    const dim = [...drawing.dims].reverse().find((d) => dimHit(d, p));
     return dim ? { id: dim.id, type: "dim", part: "line" } : null;
   }
 
@@ -314,24 +342,46 @@ export function DrawingEditor({
       const rim = holeEdgeAt(at);
       if (rim) return setMode({ kind: "text", hole: rim, preset: { dia: true } });
       const edge = edgeAt(at);
-      if (edge) return setMode({ kind: "dimPlace", a: { at: edge.a, view: edge.view }, b: { at: edge.b, view: edge.view } });
+      if (edge) return setMode({ kind: "dimEdge", edge });
       return;
+    }
+    if (mode.kind === "dimEdge") {
+      const e = mode.edge;
+      const view = e.view;
+      const other = drawing.edges.find((f) => f.view === view && !sameEdge(e, f) && segDist(at, f.a, f.b) < 1.2 && parallelEdges(e, f));
+      const snap = other ? null : snapAt(at, view);
+      let pair: [Pt, Pt] | null = null;
+      if (other) pair = acrossEdges(e, other);
+      else if (snap && segDist(snap.at, e.a, e.b) > 0.05) pair = [snap.at, project(snap.at, e.a, e.b).at];
+      if (pair) {
+        const dir: DimDir | undefined = axisAligned(pair[0], pair[1]) ? undefined : "a";
+        return setMode({ kind: "dimPlace", a: { at: pair[0], view }, b: { at: pair[1], view }, ...(dir ? { dir } : {}) });
+      }
+      // Nothing to measure to: the edge's own length, placed here.
+      return createDim({ at: e.a, view }, { at: e.b, view }, axisAligned(e.a, e.b) ? chooseDir(e.a, e.b, at) : "a", at);
     }
     if (mode.kind === "dim2") {
       const snap = snapAt(at, mode.a.view);
       if (snap && dist(snap.at, mode.a.at) > 0.05) setMode({ kind: "dimPlace", a: mode.a, b: snap });
       return;
     }
-    if (mode.kind === "dimPlace") {
-      const dir = chooseDir(mode.a.at, mode.b.at, at);
-      const [ra, rb] = [sheetToRef(drawing, mode.a.at, { view: mode.a.view }), sheetToRef(drawing, mode.b.at, { view: mode.a.view })];
-      if (!ra || !rb) return;
-      const id = `dim:${Date.now()}`;
-      const lineAt = dir === "h" ? at[1] : at[0];
-      change({ ...edits, dims: [...addedDims, { id, a: ra, b: rb, dir, off: dimOff(mode.a.at, mode.b.at, dir, lineAt) }] });
-      setSelected({ id, type: "dim" });
-      setMode({ kind: "dim1" }); // keep dimensioning, as Onshape does, until Esc
-    }
+    if (mode.kind === "dimPlace") createDim(mode.a, mode.b, mode.dir ?? chooseDir(mode.a.at, mode.b.at, at), at);
+  }
+
+  // Where a dimension's line goes for the pointer at p: y or x for horizontal / vertical, the
+  // distance beside the a-b line for aligned (in dimFrame's own sense of beside).
+  const lineAtFor = (a: Pt, b: Pt, dir: DimDir, p: Pt) => (dir === "h" ? p[1] : dir === "v" ? p[0] : dimFrame({ id: "", a, b, dir, at: 0, text: "" }).local(p)[1]);
+
+  function createDim(a: Snap, b: Snap, dir: DimDir, p: Pt) {
+    if (!drawing) return;
+    const [ra, rb] = [sheetToRef(drawing, a.at, { view: a.view }), sheetToRef(drawing, b.at, { view: a.view })];
+    if (!ra || !rb) return;
+    const id = `dim:${Date.now()}`;
+    const lineAt = lineAtFor(a.at, b.at, dir, p);
+    const off = dir === "a" ? lineAt : dimOff(a.at, b.at, dir, lineAt);
+    change({ ...edits, dims: [...addedDims, { id, a: ra, b: rb, dir, off }] });
+    setSelected({ id, type: "dim" });
+    setMode({ kind: "dim1" }); // keep dimensioning, as Onshape does, until Esc
   }
 
   // Dragging writes the move as a shift from where the drawing put the item, or for added items
@@ -343,14 +393,20 @@ export function DrawingEditor({
     if (d.item.type === "dim") {
       const shown = drawing.dims.find((x) => x.id === id);
       if (!shown) return;
-      const lineAt = shown.dir === "h" ? p[1] - d.off[1] : p[0] - d.off[0];
+      // Across the line moves the line; along it slides the text (back home within 2 mm).
+      const f = dimFrame(shown);
+      const [along, across] = f.local(p);
+      const lineAt = across - d.off[1];
+      let tx = along - d.off[0] - f.home;
+      if (Math.abs(tx) < 2) tx = 0;
       if (isAddedDim(id)) {
-        return change({ ...edits, dims: addedDims.map((x) => (x.id === id ? { ...x, off: dimOff(shown.a, shown.b, shown.dir, lineAt) } : x)) }, opts);
+        const off = shown.dir === "a" ? lineAt : dimOff(shown.a, shown.b, shown.dir, lineAt);
+        return change({ ...edits, dims: addedDims.map((x) => (x.id === id ? { ...x, off, tx } : x)) }, opts);
       }
       const auto = base.dims.find((x) => x.id === id);
       if (!auto) return;
       const delta = lineAt - auto.at;
-      return change({ ...edits, shift: { ...edits.shift, [id]: shown.dir === "h" ? [0, delta] : [delta, 0] } }, opts);
+      return change({ ...edits, shift: { ...edits.shift, [id]: shown.dir === "h" ? [tx, delta] : [delta, tx] } }, opts);
     }
     if (d.part === "text") {
       const at: Pt = [p[0] - d.off[0], p[1] - d.off[1]];
@@ -388,8 +444,10 @@ export function DrawingEditor({
     let off: Pt = [0, 0];
     if (hit.part === "text") off = minus(p, drawing.notes.find((x) => x.id === hit.id)!.at);
     if (hit.part === "line") {
-      const d = drawing.dims.find((x) => x.id === hit.id)!;
-      off = d.dir === "h" ? [0, p[1] - d.at] : [p[0] - d.at, 0];
+      // Where it was grabbed, in the dimension's own frame: along from its text, across from its line.
+      const f = dimFrame(drawing.dims.find((x) => x.id === hit.id)!);
+      const [along, across] = f.local(p);
+      off = [along - f.tc, across - f.at];
     }
     drag.current = { item: { id: hit.id, type: hit.type }, part: hit.part, off, pointer: e.pointerId, moved: false, before: edits };
     setHover(hit);
@@ -534,10 +592,16 @@ export function DrawingEditor({
   // What follows the pointer while placing: the dimension being made, or the note's arrow and text.
   function preview(): string {
     if (!pointer || !drawing) return "";
-    if (mode.kind === "dimPlace") {
-      const dir = chooseDir(mode.a.at, mode.b.at, pointer);
-      const text = fmt(measure(drawing, mode.a.view, mode.a.at, mode.b.at, dir));
-      return dimension({ id: "preview", a: mode.a.at, b: mode.b.at, dir, at: dir === "h" ? pointer[1] : pointer[0], text });
+    // A first edge alone previews its own length, until the pointer is over something to measure to.
+    const fromEdge =
+      mode.kind === "dimEdge" && !hoverTarget
+        ? { a: { at: mode.edge.a, view: mode.edge.view }, b: { at: mode.edge.b, view: mode.edge.view }, dir: axisAligned(mode.edge.a, mode.edge.b) ? undefined : ("a" as const) }
+        : null;
+    const placing = mode.kind === "dimPlace" ? mode : fromEdge;
+    if (placing) {
+      const dir = placing.dir ?? chooseDir(placing.a.at, placing.b.at, pointer);
+      const text = fmt(measure(drawing, placing.a.view, placing.a.at, placing.b.at, dir));
+      return dimension({ id: "preview", a: placing.a.at, b: placing.b.at, dir, at: lineAtFor(placing.a.at, placing.b.at, dir, pointer), text });
     }
     if (mode.kind === "text") {
       const leader = mode.hole ? onEdge(mode.hole, pointer) : mode.leader;
@@ -546,8 +610,16 @@ export function DrawingEditor({
     }
     return "";
   }
-  const snapShown = pointer && (mode.kind === "dim1" || mode.kind === "dim2") ? snapAt(pointer, mode.kind === "dim2" ? mode.a.view : undefined) : null;
-  const edgeShown = pointer && mode.kind === "dim1" && !snapShown ? (holeEdgeAt(pointer) ? null : edgeAt(pointer)) : null;
+  // After a first edge: the parallel edge or the point under the pointer that the next click takes.
+  const parallelShown =
+    pointer && mode.kind === "dimEdge" ? drawing?.edges.find((f) => f.view === mode.edge.view && !sameEdge(mode.edge, f) && segDist(pointer, f.a, f.b) < 1.2 && parallelEdges(mode.edge, f)) : undefined;
+  const snapShown =
+    pointer && (mode.kind === "dim1" || mode.kind === "dim2" || (mode.kind === "dimEdge" && !parallelShown))
+      ? snapAt(pointer, mode.kind === "dim2" ? mode.a.view : mode.kind === "dimEdge" ? mode.edge.view : undefined)
+      : null;
+  const pointShown = mode.kind === "dimEdge" && snapShown && segDist(snapShown.at, mode.edge.a, mode.edge.b) > 0.05 ? snapShown : null;
+  const hoverTarget = parallelShown ?? pointShown;
+  const edgeShown = pointer && mode.kind === "dim1" && !snapShown ? (holeEdgeAt(pointer) ? null : edgeAt(pointer)) : (parallelShown ?? null);
   const rimShown = pointer && mode.kind === "dim1" && !snapShown ? holeEdgeAt(pointer) : null;
 
   const outline = (it: Item | null, strong: boolean) => {
@@ -677,6 +749,7 @@ export function DrawingEditor({
                 {outline(selected, true)}
                 {/* The Dimension tool: what it would pick, the points picked, the dimension being placed. */}
                 {mode.kind === "dim2" && <circle cx={mode.a.at[0]} cy={mode.a.at[1]} r={1.2} fill="#F97316" />}
+                {mode.kind === "dimEdge" && <line x1={mode.edge.a[0]} y1={mode.edge.a[1]} x2={mode.edge.b[0]} y2={mode.edge.b[1]} stroke="#F97316" strokeWidth={0.8} strokeLinecap="round" />}
                 {mode.kind === "dimPlace" && (
                   <>
                     <circle cx={mode.a.at[0]} cy={mode.a.at[1]} r={1.2} fill="#F97316" />

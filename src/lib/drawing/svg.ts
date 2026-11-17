@@ -2,7 +2,7 @@
 // leader lines, thin chain centre lines, 3.5 mm lettering, BOM block bottom right.
 
 import { INK } from "@/config/drawings";
-import { MARGIN, noteBox, TITLE } from "./layout";
+import { dimFrame, dimSpan, MARGIN, noteBox, TITLE } from "./layout";
 import type { Dim, Drawing, Note, Pt, Stroke } from "./types";
 
 const STROKES: Record<Stroke, string> = {
@@ -44,22 +44,21 @@ function text(at: Pt, value: string, opts: { size?: number; anchor?: string; bol
 }
 
 // Extension lines, the dimension line, and arrows outside when the gap is too small for them.
-// Worked out along the dimension, then mapped back for vertical ones.
+// Worked out along the dimension (layout.ts dimFrame), then mapped back onto the sheet. Text
+// slid past the arrows gets the line run on under it.
 export function dimension(dim: Dim): string {
-  const v = dim.dir === "v";
-  const P = (along: number, off: number): Pt => (v ? [off, along] : [along, off]);
-  const [a, b] = v ? [dim.a[1], dim.b[1]] : [dim.a[0], dim.b[0]];
-  const [ea, eb] = v ? [dim.a[0], dim.b[0]] : [dim.a[1], dim.b[1]];
-  const side = Math.sign(dim.at - ea) || -1;
-  const out = [thin([P(a, ea + side), P(a, dim.at + side * 2)]), thin([P(b, eb + side), P(b, dim.at + side * 2)])];
-  const [lo, hi] = a < b ? [a, b] : [b, a];
-  if (hi - lo < 10) {
-    out.push(thin([P(lo - 10, dim.at), P(hi + 10, dim.at)]), arrow(P(lo, dim.at), P(lo - 5, dim.at)), arrow(P(hi, dim.at), P(hi + 5, dim.at)));
-    out.push(v ? text(P(lo - 12, dim.at - 1), dim.text, { rotate: true, anchor: "end" }) : text(P(hi + 12, dim.at + 1.2), dim.text));
-  } else {
-    out.push(thin([P(lo, dim.at), P(hi, dim.at)]), arrow(P(lo, dim.at), P(hi, dim.at)), arrow(P(hi, dim.at), P(lo, dim.at)));
-    out.push(text(P((lo + hi) / 2, dim.at - 1), dim.text, { anchor: "middle", rotate: v }));
-  }
+  const f = dimFrame(dim);
+  const { P, at } = f;
+  const side = (e: number) => Math.sign(at - e) || -1;
+  const out = [thin([P(f.pa, f.ea + side(f.ea)), P(f.pa, at + side(f.ea) * 2)]), thin([P(f.pb, f.eb + side(f.eb)), P(f.pb, at + side(f.eb) * 2)])];
+  const [s0, s1] = dimSpan(dim);
+  out.push(thin([P(s0, at), P(s1, at)]));
+  if (f.short) out.push(arrow(P(f.lo, at), P(f.lo - 5, at)), arrow(P(f.hi, at), P(f.hi + 5, at)));
+  else out.push(arrow(P(f.lo, at), P(f.hi, at)), arrow(P(f.hi, at), P(f.lo, at)));
+  const [x, y] = P(f.tc, at - 1);
+  out.push(
+    `<text x="${n(x)}" y="${n(y)}" font-size="3.5" text-anchor="middle"${f.angle ? ` transform="rotate(${n(f.angle)} ${n(x)} ${n(y)})"` : ""}>${esc(dim.text)}</text>`,
+  );
   return out.join("");
 }
 

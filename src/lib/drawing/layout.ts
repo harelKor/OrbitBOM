@@ -4,7 +4,7 @@
 import { BEARINGS, DEFAULT_FIT, HOLE_MATCH_MM, TAPS, TOOLS } from "@/config/drawings";
 import type { DrawingEdits } from "@/db/schema";
 import type { Hole, Part, View } from "./read";
-import type { Dim, Drawing, Line, Note, PlacedView, Pt, Ref, TitleBlock } from "./types";
+import type { Dim, DimDir, Drawing, Line, Note, PlacedView, Pt, Ref, TitleBlock } from "./types";
 
 export const SHEET = { w: 297, h: 210 }; // A4 landscape
 export const MARGIN = 10;
@@ -87,22 +87,79 @@ export function noteBox(text: string, at: Pt, leader?: Pt): { rect: Rect; end?: 
   const below = leader[1] < at[1];
   return { rect, end: [at[0] + width / 2, below ? rect.y0 : rect.y1] };
 }
+// A dimension in its own frame: `along` its line (a and b at `pa`, `pb`; lo..hi between them)
+// and `off` across it, where the line sits at `at`. P maps (along, off) back to the sheet and
+// local does the reverse. Its text is centred at `tc` along, its baseline 1 mm off the line
+// (towards the reader's "up"), turned `angle` degrees. svg.ts draws from this, and the editor
+// picks and drags with it, so all three agree.
+export function dimFrame(d: Dim) {
+  let P: (along: number, off: number) => Pt;
+  let local: (p: Pt) => [number, number];
+  let pa: number, pb: number, ea: number, eb: number, angle: number;
+  if (d.dir === "a") {
+    let [ux, uy] = [d.b[0] - d.a[0], d.b[1] - d.a[1]];
+    const l = Math.hypot(ux, uy) || 1;
+    [ux, uy] = [ux / l, uy / l];
+    // Text reads left to right, or bottom to top.
+    if (ux < -1e-9 || (Math.abs(ux) <= 1e-9 && uy > 0)) [ux, uy] = [-ux, -uy];
+    const [nx, ny] = [-uy, ux];
+    const o = d.a;
+    P = (along, off) => [o[0] + ux * along + nx * off, o[1] + uy * along + ny * off];
+    local = (p) => [(p[0] - o[0]) * ux + (p[1] - o[1]) * uy, (p[0] - o[0]) * nx + (p[1] - o[1]) * ny];
+    [pa, pb] = [0, (d.b[0] - o[0]) * ux + (d.b[1] - o[1]) * uy];
+    [ea, eb] = [0, 0];
+    angle = (Math.atan2(uy, ux) * 180) / Math.PI;
+  } else if (d.dir === "v") {
+    P = (along, off) => [off, along];
+    local = (p) => [p[1], p[0]];
+    [pa, pb, ea, eb, angle] = [d.a[1], d.b[1], d.a[0], d.b[0], -90];
+  } else {
+    P = (along, off) => [along, off];
+    local = (p) => [p[0], p[1]];
+    [pa, pb, ea, eb, angle] = [d.a[0], d.b[0], d.a[1], d.b[1], 0];
+  }
+  const [lo, hi] = pa < pb ? [pa, pb] : [pb, pa];
+  const w = d.text.length * CHAR;
+  const short = hi - lo < 10;
+  // Where the text sits before it's slid: centred, or past the arrows of a short dimension
+  // (after it; before it on a vertical one, which reads upwards).
+  const home = !short ? (lo + hi) / 2 : d.dir === "v" ? lo - 12 - w / 2 : hi + 12 + w / 2;
+  const tc = home + (d.tx ?? 0);
+  return { P, local, pa, pb, ea, eb, lo, hi, w, short, home, tc, angle, at: d.at };
+}
+
+const bboxOf = (pts: Pt[]): Rect => ({
+  x0: Math.min(...pts.map((p) => p[0])),
+  y0: Math.min(...pts.map((p) => p[1])),
+  x1: Math.max(...pts.map((p) => p[0])),
+  y1: Math.max(...pts.map((p) => p[1])),
+});
 // The text of a dimension, as svg.ts draws it.
 export function dimRect(d: Dim): Rect {
-  const v = d.dir === "v";
-  const [a, b] = v ? [d.a[1], d.b[1]] : [d.a[0], d.b[0]];
-  const [lo, hi] = a < b ? [a, b] : [b, a];
-  const w = d.text.length * CHAR;
-  const along = hi - lo < 10 ? (v ? [lo - 12 - w, lo - 12] : [hi + 12, hi + 12 + w]) : [(lo + hi) / 2 - w / 2, (lo + hi) / 2 + w / 2];
-  const off = hi - lo < 10 && !v ? [d.at + 1.2 - 3.5, d.at + 1.2] : [d.at - 4.5, d.at - 1];
-  return v ? { x0: off[0], x1: off[1], y0: along[0], y1: along[1] } : { x0: along[0], x1: along[1], y0: off[0], y1: off[1] };
+  const f = dimFrame(d);
+  return bboxOf([f.P(f.tc - f.w / 2, f.at - 4.5), f.P(f.tc + f.w / 2, f.at - 4.5), f.P(f.tc - f.w / 2, f.at - 1), f.P(f.tc + f.w / 2, f.at - 1)]);
+}
+// How far the dimension line runs along: between its arrows, out past them on a short one, and
+// on under its text when the text was slid beyond them.
+export function dimSpan(d: Dim): [number, number] {
+  const f = dimFrame(d);
+  const [lo, hi] = f.short ? [f.lo - 10, f.hi + 10] : [f.lo, f.hi];
+  return [Math.min(lo, f.tc - f.w / 2 - 1), Math.max(hi, f.tc + f.w / 2 + 1)];
 }
 // The dimension line itself, a thin strip.
 export function dimLine(d: Dim): Rect {
-  const v = d.dir === "v";
-  const [a, b] = v ? [d.a[1], d.b[1]] : [d.a[0], d.b[0]];
-  const [lo, hi] = a < b ? [a, b] : [b, a];
-  return v ? { x0: d.at - 0.5, x1: d.at + 0.5, y0: lo, y1: hi } : { x0: lo, x1: hi, y0: d.at - 0.5, y1: d.at + 0.5 };
+  const f = dimFrame(d);
+  const [s0, s1] = dimSpan(d);
+  return bboxOf([f.P(s0, f.at - 0.5), f.P(s1, f.at + 0.5)]);
+}
+// Whether a sheet point is on a dimension's text or line (the editor picks with it).
+export function dimHit(d: Dim, p: Pt, pad = 1.2): boolean {
+  const f = dimFrame(d);
+  const [al, off] = f.local(p);
+  const [s0, s1] = dimSpan(d);
+  const onText = al >= f.tc - f.w / 2 - pad && al <= f.tc + f.w / 2 + pad && off >= f.at - 4.5 - pad && off <= f.at - 1 + pad;
+  const onLine = al >= s0 - pad && al <= s1 + pad && Math.abs(off - f.at) <= pad;
+  return onText || onLine;
 }
 
 // Notes go above or below their view, nearest the hole, wherever they clear the views, the
@@ -314,10 +371,10 @@ export function sheetToRef(d: Pick<Drawing, "views" | "holes">, at: Pt, opts: { 
 }
 
 // A dimension's length in the part's millimetres: the run between two points of one view along
-// its direction, at that view's scale.
-export function measure(d: Pick<Drawing, "views">, view: string, a: Pt, b: Pt, dir: "h" | "v"): number {
+// its direction (straight between them when aligned), at that view's scale.
+export function measure(d: Pick<Drawing, "views">, view: string, a: Pt, b: Pt, dir: DimDir): number {
   const v = d.views.find((x) => x.key === view);
-  const run = dir === "h" ? Math.abs(b[0] - a[0]) : Math.abs(b[1] - a[1]);
+  const run = dir === "h" ? Math.abs(b[0] - a[0]) : dir === "v" ? Math.abs(b[1] - a[1]) : Math.hypot(b[0] - a[0], b[1] - a[1]);
   return v ? run / v.s : run;
 }
 
@@ -365,15 +422,18 @@ export function applyEdits(d: Drawing, e: DrawingEdits): Drawing {
   const dims: Dim[] = d.dims
     .filter((x) => !hidden.has(x.id))
     .map((x) => {
+      // A shift is sheet mm: across the line moves the line, along it slides the text.
       const shift = e.shift?.[x.id];
-      return { ...x, ...(e.text?.[x.id] != null ? { text: e.text[x.id] } : {}), ...(shift ? { at: x.at + (x.dir === "h" ? shift[1] : shift[0]) } : {}) };
+      const [across, along] = shift ? (x.dir === "h" ? [shift[1], shift[0]] : [shift[0], shift[1]]) : [0, 0];
+      return { ...x, ...(e.text?.[x.id] != null ? { text: e.text[x.id] } : {}), ...(shift ? { at: x.at + across, ...(along ? { tx: along } : {}) } : {}) };
     });
   for (const m of e.dims ?? []) {
     if (hidden.has(m.id)) continue;
     const [a, b] = [refToSheet(d, m.a), refToSheet(d, m.b)];
     if (!a || !b) continue;
     const text = m.text?.trim() ? m.text : fmt(measure(d, m.a.v, a, b, m.dir));
-    dims.push({ id: m.id, a, b, dir: m.dir, at: dimAt(a, b, m.dir, m.off), text, added: true });
+    const at = m.dir === "a" ? m.off : dimAt(a, b, m.dir, m.off);
+    dims.push({ id: m.id, a, b, dir: m.dir, at, text, added: true, ...(m.tx ? { tx: m.tx } : {}) });
   }
   return { ...d, notes, dims };
 }
