@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { MAP_H, MAP_W, WORKSHOP_ROOMS } from "@/config/workshopMap";
+import { useStoredChoice } from "@/components/ui/useStoredChoice";
 import { bounds, centroid, kindLabel, placeIndex, pointInPolygon, spotRect, spotsOf, zoneColor, type Place } from "@/lib/inventory/places";
 import {
   DIVE_SPAN,
@@ -111,6 +112,11 @@ export function ShopMap({
   }, []);
   const [sel, setSel] = useState<Sel>(null);
   const [flash, setFlash] = useState<string | null>(null);
+  // How solid the drawer tags are in a zone's picture: 1 shows the category picture, 0 only the
+  // outline over the real drawer (Harel, 2026-11-17). Kept on this device.
+  const [tagStep, setTagStep] = useStoredChoice("shopMap.tagOpacity", TAG_STEPS, "1");
+  const tagOpacity = Number(tagStep);
+  const setTagOpacity = (v: number) => setTagStep(String(Math.round(v * 20) / 20) as (typeof TAG_STEPS)[number]);
 
   // Animations: one frame function at a time; any touch stops it.
   const anim = useRef(0);
@@ -736,6 +742,9 @@ export function ShopMap({
               const r = spotRect(s, zone);
               const rw = r.w * dw * cam.scene.s;
               const rh = r.h * dh * cam.scene.s;
+              // The drawer a find flight lands on turns see-through, so the real drawer shows inside
+              // its outline (Harel, 2026-11-17); back to the slider's look on the next touch.
+              const solid = isFlash ? 0 : tagOpacity;
               return (
                 <button
                   key={s.id}
@@ -751,10 +760,11 @@ export function ShopMap({
                   }}
                 >
                   <span
-                    className={`relative block shrink-0 rounded-[6px] transition-shadow duration-150 ${st?.picture ? "bg-white" : "bg-white/10 backdrop-blur-[1px]"}`}
+                    className={`relative block shrink-0 rounded-[6px] transition-[box-shadow,background-color] duration-500 ${st?.picture ? "" : "bg-white/10 backdrop-blur-[1px]"}`}
                     style={{
                       width: rw,
                       height: rh,
+                      background: st?.picture ? `rgba(255,255,255,${solid})` : undefined,
                       // Rings drawn outside the box (shadows, not a border), so the picture fills it all.
                       boxShadow: on
                         ? `0 0 0 2px #fff, 0 0 0 5px ${color}, 0 0 22px 6px rgba(255,255,255,0.6)`
@@ -764,7 +774,7 @@ export function ShopMap({
                     {st?.picture && (
                       // The category most of the drawer's items are (Harel, 2026-11-17), filling the tag.
                       // eslint-disable-next-line @next/next/no-img-element -- a public picture or a signed link
-                      <img src={st.picture} alt="" className="absolute inset-0 h-full w-full rounded-[6px] object-cover" draggable={false} />
+                      <img src={st.picture} alt="" className="absolute inset-0 h-full w-full rounded-[6px] object-cover transition-opacity duration-500" style={{ opacity: solid }} draggable={false} />
                     )}
                     {on && <span className="absolute -inset-[6px] animate-ping rounded-[10px] border-4" style={{ borderColor: color }} />}
                     {/* The count once the tag is big enough not to be hidden by it (zoom in on a phone). */}
@@ -798,12 +808,33 @@ export function ShopMap({
           ⟲
         </button>
       </div>
-      <div data-ui className="absolute top-2 left-2 flex gap-1">
-        {toolbar}
-        {cam.dive > 0.5 && (
-          <button type="button" className={`${CTRL} w-auto px-2.5 text-xs`} onClick={stepOut}>
-            ↩ Floor plan
-          </button>
+      <div data-ui className="absolute top-2 left-2 flex flex-col items-start gap-1">
+        <div className="flex gap-1">
+          {toolbar}
+          {cam.dive > 0.5 && (
+            <button type="button" className={`${CTRL} w-auto px-2.5 text-xs`} onClick={stepOut}>
+              ↩ Floor plan
+            </button>
+          )}
+        </div>
+        {inScene && (
+          // Fades every drawer tag toward see-through, to look at the drawers behind them.
+          <label className="flex h-9 items-center gap-2 rounded-full border border-white/12 bg-[#0b0e18]/75 pr-3 pl-2.5 text-xs font-semibold text-slate-100 shadow-[0_4px_14px_rgba(0,0,0,0.45)] backdrop-blur-md" title="How solid the drawer tags are">
+            <span aria-hidden className="relative h-4 w-4 rounded-[4px] border-2 border-slate-100">
+              <span className="absolute inset-0 rounded-[2px] bg-slate-100" style={{ opacity: tagOpacity }} />
+            </span>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={tagOpacity}
+              onChange={(e) => setTagOpacity(Number(e.target.value))}
+              className="h-9 w-24 cursor-pointer"
+              style={{ accentColor: "var(--color-accent)" }}
+              aria-label="Drawer tag opacity"
+            />
+          </label>
         )}
       </div>
 
@@ -827,6 +858,9 @@ export function ShopMap({
     </div>
   );
 }
+
+// The slider's 21 stops, as the stored choice's allowed values.
+const TAG_STEPS = Array.from({ length: 21 }, (_, i) => String(i / 20));
 
 // Round, glassy controls like a phone map app.
 const CTRL =
