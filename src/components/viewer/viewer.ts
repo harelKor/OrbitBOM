@@ -112,7 +112,7 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
     hoverOff: () => picking?.setHover(null),
   });
   const section = createSection(stage, meshes, topo, (dir) => camera.tools.look(dir));
-  const motion = createMotion(stage, meshes, camera.controls, {
+  const motion = createMotion(stage, meshes, model, camera.controls, {
     place: visibility.place,
     setPlace: visibility.setPlace,
     shown: (m, i) => meshes[m].mesh.visible && !visibility.gone().some((g) => g.m === m && g.i === i),
@@ -142,6 +142,8 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
     ...partTools(meshes),
     ...stageTools(stage),
     ...motion.tools,
+    // Select group (plan/cad-mates.md): the copy's whole rigid set picked.
+    selectGroup: (c) => measure?.box(motion.tools.groupOf(c)),
     ...pins.tools,
     ...createAnchors(stage, meshes, topo, () => measure, camera.tools.frameBox),
     ...createCheckTools(meshes, visibility.place),

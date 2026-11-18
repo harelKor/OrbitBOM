@@ -3,6 +3,7 @@
 // The public names are re-exported from ModelCanvas.tsx, where the pages import them.
 import type * as THREE from "three";
 import type { Appearance } from "@/lib/model/mesh";
+import type { Joint, Relation } from "@/lib/model/mates";
 import type { CameraTools } from "./camera";
 import type { CheckTools } from "./checkScene";
 import type { OverlapTools } from "./redOverlap";
@@ -22,7 +23,9 @@ export type ViewerModel = {
   // browser keeps the file under it and skips the download next time (meshCache.ts). Null or
   // missing for a file that can change under its name; that one is always downloaded.
   keys?: (string | null)[];
-  placements: { s: number; k: string; t: number[]; g?: number }[];
+  placements: { s: number; k: string; t: number[]; g?: number; b?: number }[]; // b: rigid body (mates.ts)
+  joints?: (Joint & { g?: number })[]; // moving mates between bodies (plan/cad-mates.md)
+  relations?: Relation[];
   groups?: { systemIds: string[]; name: string }[]; // subsystems, by placement g
   // A Basepart's Geometry sketch files (src/lib/model/sketch.ts), where they sit (row-major, like
   // placements), their subsystem group (none: the robot's own) and whose they are (Harel,
@@ -39,7 +42,8 @@ export type ViewerMode = "status" | "cad" | "tint";
 // its subsystem group, `look` Onshape's appearance from the file.
 // A Geometry sketch is one too (sketches.ts): one copy, no faces, its lines and points as
 // children, `sketch` its name; its points are already where it sits, so its copy is at identity.
-export type PartMesh = { mesh: THREE.InstancedMesh; keys: string[]; g: number; look?: Appearance; sketch?: { name: string } };
+// `bodies[i]`: copy i's rigid body (-1: none), for moving along the mates.
+export type PartMesh = { mesh: THREE.InstancedMesh; keys: string[]; g: number; look?: Appearance; sketch?: { name: string }; bodies?: number[] };
 
 // A part instance hidden with Y: its mesh, its index there, and its BOM key.
 export type Gone = { m: number; i: number; key: string };
@@ -50,4 +54,4 @@ export type HiddenParts = { items: { id: string; name: string }[]; show: (id: st
 
 // CAD Review's viewer tools (plan/design-review.md): standard views, a section plane, measuring
 // between two points on the meshes (≈: the export's chord tolerance), hiding or isolating a part.
-export type SceneTools = CameraTools & SectionTools & MeasureTools & VisibilityTools & PartTools & StageTools & DisplayTools & MotionTools & PinTools & AnchorTools & CheckTools & OverlapTools & { whenLoaded: () => Promise<void> };
+export type SceneTools = CameraTools & SectionTools & MeasureTools & VisibilityTools & PartTools & StageTools & DisplayTools & MotionTools & PinTools & AnchorTools & CheckTools & OverlapTools & { whenLoaded: () => Promise<void>; selectGroup: (c: { m: number; i: number }) => void };

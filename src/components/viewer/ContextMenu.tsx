@@ -97,7 +97,15 @@ export function ContextMenu({
       { label: "Isolate", run: () => tools.isolate(keys) },
       { label: clear ? "Make opaque" : "Make transparent", run: () => tools.setClear(keys, !clear) },
       // Onshape's Move (triad): the copy under the pointer, or every picked part's shown copies (S7).
+      // Move takes what's grouped or fastened with it, like Onshape (plan/cad-mates.md).
       { label: "Move", run: () => tools.moveParts(copy ?? keys) },
+      ...(copy && tools.groupOf(copy).length > 1
+        ? [
+            { label: "Move part only", run: () => tools.moveParts(copy, true) },
+            { label: "Select group", run: () => tools.selectGroup(copy) },
+          ]
+        : []),
+      ...(copy && tools.mateOf(copy) ? [{ label: `Move along ${tools.mateOf(copy)}`, run: () => tools.mateMove(copy) }] : []),
       // View normal to looks straight at the flat face under the pointer (N), like Onshape's menu.
       ...(at.face ? [{ label: "View normal to", run: () => tools.look(sceneDir(at.face!.normal)) }] : []),
       // On a round face: along its axis, as Onshape does.

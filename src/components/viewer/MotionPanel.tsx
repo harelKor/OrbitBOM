@@ -1,6 +1,6 @@
 "use client";
 
-import type { MotionView } from "./motion";
+import type { MateView, MotionView } from "./motion";
 import type { SceneTools } from "./types";
 
 const tool = "press inline-flex h-8 items-center justify-center rounded-md px-2 text-xs font-semibold text-fg-2 hover:bg-raised hover:text-fg active:scale-[0.98] pointer-coarse:h-9 pointer-coarse:min-w-9";
@@ -14,7 +14,7 @@ export function MotionPanel({ view, tools }: { view: MotionView; tools: SceneToo
   const pct = Math.round(view.explode * 100);
   return (
     <div className="pointer-events-none absolute inset-x-3 bottom-3 z-20 flex flex-col items-center gap-2" onClick={(e) => e.stopPropagation()}>
-      {view.moving && (
+      {view.moving && !view.mate && (
         <div className={`${box} flex items-center gap-0.5 p-1`} role="toolbar" aria-label="Move">
           <span className="px-1.5 font-semibold text-fg tabular-nums">Move {view.moving.count > 1 ? `${view.moving.count} parts` : ""}</span>
           <button className={`${tool} ${view.moving.mode === "slide" ? on : ""}`} aria-pressed={view.moving.mode === "slide"} onClick={() => tools.moveMode("slide")} title="Drag an arrow to slide along it">
@@ -28,6 +28,7 @@ export function MotionPanel({ view, tools }: { view: MotionView; tools: SceneToo
           </button>
         </div>
       )}
+      {view.mate && <MateBar mate={view.mate} tools={tools} />}
       {view.panel ? (
         <div className={`${box} flex w-[min(20rem,100%)] flex-col`} role="dialog" aria-label="Exploded view">
           <div className="flex items-center gap-1 border-b border-line py-1 pr-1 pl-2.5">
@@ -65,6 +66,53 @@ export function MotionPanel({ view, tools }: { view: MotionView; tools: SceneToo
           </div>
         )
       )}
+    </div>
+  );
+}
+
+// Moving along a mate (plan/cad-mates.md): its name, Turn / Slide when it has both, the value from
+// the CAD place (° or mm, typed to set it) and Onshape's limits when it has them; ✓ (Esc) puts the
+// handle away, the parts stay.
+function MateBar({ mate, tools }: { mate: MateView; tools: SceneTools }) {
+  const turn = mate.dof === "turn";
+  const scale = turn ? 180 / Math.PI : 1000;
+  const now = Math.round(mate.value[mate.dof] * scale * 10) / 10;
+  const lim = mate.lim?.[mate.dof];
+  return (
+    <div className={`${box} flex max-w-full flex-wrap items-center gap-0.5 p-1`} role="toolbar" aria-label={`Move along ${mate.name}`}>
+      <span className="max-w-40 truncate px-1.5 font-semibold text-fg" title={mate.name}>
+        {mate.name}
+      </span>
+      {mate.dofs.length > 1 &&
+        mate.dofs.map((d) => (
+          <button key={d} className={`${tool} ${mate.dof === d ? on : ""}`} aria-pressed={mate.dof === d} onClick={() => tools.mateDof(d)}>
+            {d === "turn" ? "Turn" : "Slide"}
+          </button>
+        ))}
+      <label className="flex items-center gap-1 px-1">
+        <span className="sr-only">{turn ? "Angle" : "Distance"}</span>
+        <input
+          key={`${mate.name}:${mate.dof}:${now}`}
+          type="number"
+          step={turn ? 5 : 1}
+          defaultValue={now}
+          onKeyDown={(e) => e.key === "Enter" && tools.mateValue(mate.dof, Number((e.target as HTMLInputElement).value) / scale)}
+          onBlur={(e) => Number(e.target.value) !== now && tools.mateValue(mate.dof, Number(e.target.value) / scale)}
+          className="h-8 w-20 rounded-md border border-line bg-surface px-1.5 text-right text-xs text-fg tabular-nums pointer-coarse:h-9"
+        />
+        <span className="text-muted">{turn ? "°" : "mm"}</span>
+      </label>
+      {lim && (
+        <span className="px-1 text-subtle tabular-nums" title="Onshape's limits">
+          {Math.round(lim[0] * scale)}…{Math.round(lim[1] * scale)}
+        </span>
+      )}
+      <button className={tool} onClick={() => tools.mateValue(mate.dof, 0)} disabled={!mate.value[mate.dof]} title="Back to its CAD place">
+        Reset
+      </button>
+      <button className={`${tool} text-base text-accent-hover`} onClick={() => tools.moveDone()} aria-label="Done moving" title="Done (Esc): the parts stay where they are">
+        ✓
+      </button>
     </div>
   );
 }

@@ -161,7 +161,7 @@ const ALONG_Y = { x: X, z: Y };
 const STANDING_XZ = { x: X, z: Y }; // a plate standing up, facing Y (its height goes down from o)
 const STANDING_YZ = { x: Y, z: X }; // a plate standing up, facing X
 
-type Placed = { part: string; name: string; t: number[] };
+type Placed = { part: string; name: string; t: number[]; body?: string }; // body: its rigid set for the sandbox mates
 
 const SYSTEMS: { id: string; name: string; parts: Placed[] }[] = [
   {
@@ -184,19 +184,20 @@ const SYSTEMS: { id: string; name: string; parts: Placed[] }[] = [
     id: "intake",
     name: "Intake",
     parts: [
-      ...[0.15, 0.55].map((y) => ({ part: "PLATE", name: "Intake side plate", t: at([FRAME, y, 0.2], STANDING_XZ.x, STANDING_XZ.z) })),
-      ...[0.76, 0.82, 0.88].map((x) => ({ part: "STANDOFF_L", name: "Intake roller standoff", t: at([x, 0.15 + PLATE.t, 0.155], ALONG_Y.x, ALONG_Y.z) })),
-      { part: "TUBE_S", name: "Intake crossbar", t: at([0.94, 0.08, 0.06], ALONG_Y.x, ALONG_Y.z) },
-      { part: "PC_SHIELD", name: "Intake shield", t: at([FRAME, 0.15 + PLATE.t, 0.2]) },
+      { part: "TUBE_S", name: "Intake crossbar", t: at([0.94, 0.08, 0.06], ALONG_Y.x, ALONG_Y.z), body: "mount" },
+      ...[0.15, 0.55].map((y) => ({ part: "PLATE", name: "Intake side plate", t: at([FRAME, y, 0.2], STANDING_XZ.x, STANDING_XZ.z), body: "pivot" })),
+      ...[0.76, 0.82, 0.88].map((x) => ({ part: "STANDOFF_L", name: "Intake roller standoff", t: at([x, 0.15 + PLATE.t, 0.155], ALONG_Y.x, ALONG_Y.z), body: "pivot" })),
+      { part: "PC_SHIELD", name: "Intake shield", t: at([FRAME, 0.15 + PLATE.t, 0.2]), body: "pivot" },
     ],
   },
   {
     id: "elevator",
     name: "Elevator",
     parts: [
-      ...[0.2, 0.5].map((y) => ({ part: "TUBE_L", name: "Elevator upright", t: at([0.3, y, TUBE.h]) })),
-      ...[0.4, 0.55].map((z) => ({ part: "PLATE", name: "Carriage plate", t: at([0.3 + TUBE.h / 2, 0.23, z], STANDING_YZ.x, STANDING_YZ.z) })),
-      ...[0.26, 0.44].flatMap((y) => [0.43, 0.58].map((z) => ({ part: "STANDOFF", name: "Carriage standoff", t: at([0.3 + TUBE.h / 2 + PLATE.t, y, z], ALONG_X.x, ALONG_X.z) }))),
+      ...[0.2, 0.5].map((y) => ({ part: "TUBE_L", name: "Elevator upright", t: at([0.3, y, TUBE.h]), body: "uprights" })),
+      ...[0.4, 0.55].map((z) => ({ part: "PLATE", name: "Carriage plate", t: at([0.3 + TUBE.h / 2, 0.23, z], STANDING_YZ.x, STANDING_YZ.z), body: "carriage" })),
+      ...[0.26, 0.44].flatMap((y) => [0.43, 0.58].map((z) => ({ part: "STANDOFF", name: "Carriage standoff", t: at([0.3 + TUBE.h / 2 + PLATE.t, y, z], ALONG_X.x, ALONG_X.z), body: "carriage" }))),
+      { part: "PLATE", name: "Arm plate", t: at([0.37, 0.23, 0.5], STANDING_YZ.x, STANDING_YZ.z), body: "arm" },
     ],
   },
 ];
@@ -210,11 +211,21 @@ const SYSTEMS: { id: string; name: string; parts: Placed[] }[] = [
 // content, separate links and keys) so they load and draw one by one like a real robot's Part
 // Studios. Each copy's parts get their own keys.
 export const BIG_FILES = 8;
+
+// The sandbox's mates (plan/cad-mates.md): the intake turns on its mount, the carriage slides up
+// the uprights and the arm turns on the carriage (a chain). Bodies by "system:body".
+const SANDBOX_JOINTS = [
+  { id: "intake-pivot", name: "Intake pivot", type: "revolute" as const, a: "intake:mount", b: "intake:pivot", f: at([FRAME, 0.35, 0.2], X, Y), lim: { turn: [-0.2, 1.6] as [number, number] } },
+  { id: "elevator", name: "Elevator slide", type: "slider" as const, a: "elevator:uprights", b: "elevator:carriage", f: at([0.3, 0.35, 0.4], X, [0, 0, 1]), lim: { slide: [-0.1, 0.5] as [number, number] } },
+  { id: "arm", name: "Arm pivot", type: "revolute" as const, a: "elevator:carriage", b: "elevator:arm", f: at([0.37, 0.35, 0.5], Y, X) },
+];
 const BIG_GRID = 14; // 14 × 13 robots
 export function sandboxRobot(studioUrl: string, opts: { key?: string; big?: boolean } = {}) {
   const names: Record<string, string> = {};
   const robots = opts.big ? BIG_GRID * (BIG_GRID - 1) : 1;
   const files = opts.big ? BIG_FILES : 1;
+  const bodyIds = new Map<string, number>();
+  const bodyOf = (name: string) => bodyIds.get(name) ?? (bodyIds.set(name, bodyIds.size), bodyIds.size - 1);
   const placements = Array.from({ length: robots }, (_, r) => {
     const dx = (r % BIG_GRID) * 1.4, dy = Math.floor(r / BIG_GRID) * 1.4;
     return SYSTEMS.flatMap((sys, g) =>
@@ -224,7 +235,7 @@ export function sandboxRobot(studioUrl: string, opts: { key?: string; big?: bool
         const t = [...p.t];
         t[3] += dx;
         t[7] += dy;
-        return { s: r % files, k, t, g };
+        return { s: r % files, k, t, g, ...(p.body && !opts.big ? { b: bodyOf(`${sys.id}:${p.body}`) } : {}) };
       }),
     );
   }).flat();
@@ -235,6 +246,7 @@ export function sandboxRobot(studioUrl: string, opts: { key?: string; big?: bool
       ...(opts.key && { keys: opts.big ? studios.map((_, i) => `${opts.key}/${i}`) : [opts.key] }),
       placements,
       groups: SYSTEMS.map((s) => ({ systemIds: [s.id], name: s.name })),
+      ...(opts.big ? {} : { joints: SANDBOX_JOINTS.map((j) => ({ ...j, a: bodyOf(j.a), b: bodyOf(j.b), g: SYSTEMS.findIndex((s) => s.id === j.a.split(":")[0]) })) }),
     },
     names,
   };

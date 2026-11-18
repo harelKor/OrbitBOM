@@ -15,6 +15,8 @@ export type ViewState = {
   section?: Section | null;
   display?: DisplayMode;
   colors?: string; // the page's part colours ("cad", "compare"), when it has a choice
+  // Where the mates were moved (plan/cad-mates.md): by joint id, [turn rad, slide m] from the CAD place.
+  mates?: Record<string, [number, number]>;
 };
 
 // A view as one string can carry it: the JSON with numbers rounded to 0.01 mm (positions are in
@@ -78,6 +80,10 @@ export function cleanView(x: unknown): ViewState | null {
   }
   if (DISPLAYS.includes(o.display as DisplayMode)) view.display = o.display as DisplayMode;
   if (typeof o.colors === "string" && o.colors.length <= 40) view.colors = o.colors;
+  if (o.mates && typeof o.mates === "object" && !Array.isArray(o.mates)) {
+    const mates = Object.entries(o.mates as Record<string, unknown>).filter(([k, v]) => k.length <= 300 && Array.isArray(v) && v.length === 2 && v.every(num)).slice(0, 200);
+    if (mates.length) view.mates = Object.fromEntries(mates) as Record<string, [number, number]>;
+  }
   return view;
 }
 
@@ -86,12 +92,14 @@ export function captureView(tools: SceneTools, colors?: string): ViewState {
   const vis = tools.visibilityState();
   const section = tools.sectionNow();
   const busy = vis.hidden.length || vis.isolated || vis.clear.length || vis.sketches !== undefined;
+  const mates = tools.matesNow();
   return {
     pose: tools.pose(),
     vis: busy ? vis : undefined,
     section: section?.planes.length ? { planes: section.planes, open: false } : undefined,
     display: tools.display(),
     colors,
+    ...(Object.keys(mates).length ? { mates } : {}),
   };
 }
 
@@ -103,6 +111,7 @@ export function applyView(tools: SceneTools, v: ViewState, animate: boolean) {
   void tools.whenLoaded().then(() => {
     tools.setVisibilityState(v.vis ?? { hidden: [], isolated: null, ghost: 0, clear: [] });
     tools.section(v.section?.planes.length ? { planes: v.section.planes, open: false } : null);
+    tools.setMates(v.mates ?? {});
   });
 }
 

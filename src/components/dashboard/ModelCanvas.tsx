@@ -238,7 +238,7 @@ export function ModelCanvas({
           <SectionDialog section={section} tools={cube} />
         </div>
       )}
-      {cube && motion && (motion.panel || motion.moving || motion.moved) && <MotionPanel view={motion} tools={cube} />}
+      {cube && motion && (motion.panel || motion.moving || motion.moved || motion.mate) && <MotionPanel view={motion} tools={cube} />}
       {error && <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">{error}</div>}
       {partial && !error && !progress && (
         <div className="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border border-line bg-surface/95 px-3 py-1 text-xs shadow-sm backdrop-blur" role="status">

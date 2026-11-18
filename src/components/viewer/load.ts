@@ -142,7 +142,7 @@ export function loadModel(
         mesh.add(segs);
       }
       root.add(mesh);
-      meshes.push({ mesh, keys: items.map((p) => p.k), g, look });
+      meshes.push({ mesh, keys: items.map((p) => p.k), g, look, ...(items.some((p) => p.b !== undefined) ? { bodies: items.map((p) => p.b ?? -1) } : {}) });
     }
     root.updateMatrixWorld(true);
     if (meshes.length > from) on.added(from);
