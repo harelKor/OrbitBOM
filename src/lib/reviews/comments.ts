@@ -39,7 +39,7 @@ export function canApprove(mode: Mode, member: Pick<Member, "isMentor">) {
 // written in (viewState.ts), `pin`: the newest pick's point there, assembly mm (S6).
 export async function addComment(
   member: Member,
-  input: { robotId?: string; systemId: string | null; body: string; partKey?: string | null; partName?: string | null; onshapeVersion?: { id: string; name: string } | null; snip?: SnipInput | null; view?: unknown; pin?: unknown; anchor?: unknown; model?: ModelKind },
+  input: { robotId?: string; systemId: string | null; body: string; partKey?: string | null; partName?: string | null; onshapeVersion?: { id: string; name: string } | null; snip?: SnipInput | null; view?: unknown; pin?: unknown; anchor?: unknown; anchors?: unknown; model?: ModelKind },
 ) {
   const body = input.body.trim();
   if (!body) throw new CommentError("Write the comment first.");
@@ -72,6 +72,8 @@ export async function addComment(
       pin: cleanPin(input.pin),
       // The face / edge / corner picked, when it's on the comment's part (Harel, 2026-11-18).
       anchor: anchorOf(input.anchor, input.partKey),
+      // Several picks, on any parts: kept when there's more than one (Harel, 2026-11-18).
+      anchors: anchorsOf(input.anchors),
       model: input.model === "basepart" ? "basepart" : "final",
       designReviewId,
     })
@@ -87,6 +89,12 @@ function cleanSnip(member: Member, input: SnipInput | null | undefined) {
   const h = Math.round(Number(input.h));
   if (typeof path !== "string" || !SNIP_PATH.test(path) || !(w > 0 && w <= 8000 && h > 0 && h <= 8000)) throw new CommentError("That snip didn't upload. Take it again.");
   return { path, w, h, strokes: cleanStrokes(strokes, w, h).map((s) => ({ ...s, by: member.id })), changed: [] };
+}
+
+function anchorsOf(x: unknown) {
+  if (!Array.isArray(x)) return null;
+  const list = x.slice(0, 30).flatMap((a) => cleanAnchor(a) ?? []);
+  return list.length > 1 ? list : null;
 }
 
 function anchorOf(x: unknown, partKey: string | null | undefined) {

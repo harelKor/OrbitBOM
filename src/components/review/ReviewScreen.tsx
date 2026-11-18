@@ -153,14 +153,17 @@ export function ReviewScreen({
   const [addingPin, setAddingPin] = useState<[number, number, number] | null>(null);
   // The face / edge / corner picked with it (Harel, 2026-11-18).
   const [addingAnchor, setAddingAnchor] = useState<Anchor | null>(null);
+  // Every pick, of any parts, while the window is open (Harel, 2026-11-18): the comment is about all of them.
+  const [addingAnchors, setAddingAnchors] = useState<Anchor[]>([]);
   const [addingBody, setAddingBody] = useState("");
   const startAdding = (part: { key: string; name: string | null; systemId: string | null } | null, from?: { body: string; pin: [number, number, number] | null }) => {
     setAddingPin(from ? from.pin : (tools?.pickPoint() ?? null));
     setAddingAnchor(from ? null : (tools?.pickAnchor() ?? null));
+    setAddingAnchors(from ? [] : (tools?.pickAnchors() ?? []));
     setAddingBody(from?.body ?? "");
     setAdding(part);
   };
-  const addingAt = () => (tools ? { view: captureView(tools, changes ? colors : undefined), pin: addingPin, anchor: addingAnchor } : null);
+  const addingAt = () => (tools ? { view: captureView(tools, changes ? colors : undefined), pin: addingPin, anchor: addingAnchors[0] ?? addingAnchor, anchors: addingAnchors } : null);
   const [hidden, setHidden] = useState<HiddenParts | null>(null);
   // null: as the screen suits (folded on a phone, open on wider screens) until toggled.
   // Wide screens: the comments column folds sideways to a thin strip (Harel, 2026-11-11).
@@ -455,6 +458,7 @@ export function ReviewScreen({
       if (models && c.model !== models.kind) return models.onKind(c.model);
       setFocus(null);
       setDrawer(false);
+      if (c.anchors?.length && tools?.showAnchors(c.anchors)) return;
       if (c.anchor && tools?.showAnchor(c.anchor)) return;
       if (c.partKey && tools && !tools.showPartAt(c.partKey, c.pin)) toast("That part isn't in this 3D model.", true);
     },
@@ -536,12 +540,15 @@ export function ReviewScreen({
     setSelected(key);
     // + Add comment is open (it doesn't block the view): the comment is about the new pick now.
     if (key && adding !== false && !snipStep) {
-      const p = partByKey.get(key);
-      setAdding({ key, name: p?.name ?? null, systemId: p?.systemId ?? null });
+      // The first pick's part stays the comment's part; later picks join it (Harel, 2026-11-18).
+      const first = tools?.pickAnchors()[0]?.key ?? key;
+      const p = partByKey.get(first);
+      setAdding({ key: first, name: p?.name ?? null, systemId: p?.systemId ?? null });
       // The measure layer takes the pick in the same click: its point is ready on the next frame.
       requestAnimationFrame(() => {
         setAddingPin(tools?.pickPoint() ?? null);
         setAddingAnchor(tools?.pickAnchor() ?? null);
+        setAddingAnchors(tools?.pickAnchors() ?? []);
       });
     }
   };

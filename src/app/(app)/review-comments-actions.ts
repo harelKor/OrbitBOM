@@ -35,14 +35,14 @@ export async function addReviewComment(
   part: { key: string; name: string | null } | null,
   onshapeVersion: { id: string; name: string } | null = null,
   snip: SnipInput | null = null,
-  at: { view: unknown; pin: unknown; anchor?: unknown } | null = null,
+  at: { view: unknown; pin: unknown; anchor?: unknown; anchors?: unknown } | null = null,
   model: ModelKind = "final",
 ): Promise<CommentResult> {
   const member = await requireMember();
   if (!isUuid(robotId) || (systemId !== null && !isUuid(systemId))) return { error: "Unknown system." };
   if (onshapeVersion && (!systemId || !/^[0-9a-f]{24}$/i.test(onshapeVersion.id) || typeof onshapeVersion.name !== "string")) return { error: "Unknown Onshape version." };
   return run(() =>
-    addComment(member, { robotId, systemId, body, partKey: part?.key ?? null, partName: part?.name ?? null, onshapeVersion: onshapeVersion && { id: onshapeVersion.id.toLowerCase(), name: onshapeVersion.name }, snip, view: at?.view, pin: at?.pin, anchor: at?.anchor, model }),
+    addComment(member, { robotId, systemId, body, partKey: part?.key ?? null, partName: part?.name ?? null, onshapeVersion: onshapeVersion && { id: onshapeVersion.id.toLowerCase(), name: onshapeVersion.name }, snip, view: at?.view, pin: at?.pin, anchor: at?.anchor, anchors: at?.anchors, model }),
   );
 }
 

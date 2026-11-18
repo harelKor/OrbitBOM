@@ -15,6 +15,7 @@ export type MeasureLayer = {
   tap: (pk: Pick | null) => void; // a click on a pick (or on empty space)
   cycle: (pk: Pick | null) => void; // Select other: the newest pick swapped for this one (null drops it)
   newest: () => Pick | null;
+  picks: () => Pick[]; // every face / edge / corner picked, oldest first
   box: (parts: { m: number; i: number }[], drop?: boolean) => void; // box select: these part copies added (Ctrl: taken off)
   only: (pk: Pick | { m: number; i: number } | null) => void; // just this pick (or this whole part copy) picked: a comment's tag
   parts: () => string[]; // the picked parts' keys, each once, in pick order
@@ -122,5 +123,5 @@ export function createMeasureLayer(
     const seen = new Set<string>();
     return [...chosen, ...boxed].filter((p) => !meshes[p.m].sketch && !seen.has(`${p.m}:${p.i}`) && !!seen.add(`${p.m}:${p.i}`)).map(({ m, i }) => ({ m, i }));
   };
-  return { filter: () => filter, hover, tap, cycle, newest: () => chosen.at(-1) ?? null, box, only, parts, copies, tools: { measure }, dispose: () => window.removeEventListener("keydown", onSpace) };
+  return { filter: () => filter, hover, tap, cycle, newest: () => chosen.at(-1) ?? null, picks: () => [...chosen], box, only, parts, copies, tools: { measure }, dispose: () => window.removeEventListener("keydown", onSpace) };
 }

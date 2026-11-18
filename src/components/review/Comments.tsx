@@ -216,6 +216,7 @@ function PartChip({ c, onFocus }: { c: ReviewComment; onFocus?: (key: string) =>
     >
       <AnchorGlyph kind={c.anchor?.kind ?? null} />
       <span className="truncate">{c.partName ?? "A part"}</span>
+      {(c.anchors?.length ?? 0) > 1 && <span className="shrink-0 tabular-nums">+{c.anchors!.length - 1}</span>}
     </button>
   );
 }

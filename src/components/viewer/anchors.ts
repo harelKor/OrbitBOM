@@ -13,6 +13,8 @@ import type { PartMesh } from "./types";
 
 export type AnchorTools = {
   pickAnchor: () => Anchor | null; // the newest pick as an anchor
+  pickAnchors: () => Anchor[]; // every pick as an anchor, oldest first (a comment about several)
+  showAnchors: (list: Anchor[]) => boolean; // all of them picked and framed together
   anchorPoint: (a: Anchor) => [number, number, number] | null; // where it is on the model shown, assembly mm
   showAnchor: (a: Anchor) => boolean; // close view and picked; false when it isn't on the model shown
   showPartAt: (key: string, at: [number, number, number] | null) => boolean; // an older comment's part: the copy nearest `at`
@@ -90,7 +92,27 @@ export function createAnchors(stage: Stage, meshes: PartMesh[], topo: Topo, meas
     frameBox(box);
   };
 
+  const anchorOf = (pk: Pick | null | undefined): Anchor | null => {
+    if (!pk || !meshes[pk.m] || meshes[pk.m].sketch) return null;
+    const key = meshes[pk.m].keys[pk.i];
+    const { pos, idx } = arrays(pk.m);
+    const sig = key ? sigOf(topo.topoOf(pk.m), pos, idx, pk.kind, pk.n) : null;
+    if (!key || !sig) return null;
+    return { key, kind: pk.kind, n: pk.n, sig, at: centreMm(sig.c, pk.m, pk.i) };
+  };
+
   return {
+    pickAnchors: () => (measure()?.picks() ?? []).flatMap((pk) => anchorOf(pk) ?? []),
+    showAnchors: (list) => {
+      const hits = list.flatMap((a) => locate(a) ?? []);
+      if (!hits.length) return false;
+      measure()?.only(hits[0].pk);
+      for (const h of hits.slice(1)) measure()?.tap(h.pk);
+      const box = new THREE.Box3();
+      for (const h of hits) box.union(boxOf(h.pk));
+      frame(box);
+      return true;
+    },
     pickAnchor: () => {
       const pk = measure()?.newest();
       if (!pk || !meshes[pk.m] || meshes[pk.m].sketch) return null;

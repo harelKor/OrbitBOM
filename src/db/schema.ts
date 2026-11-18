@@ -874,6 +874,8 @@ export const reviewComments = pgTable(
     editedAt: timestamp("edited_at", { withTimezone: true }),
     // The face, edge or corner it is about (Harel, 2026-11-18): src/lib/reviews/anchor.ts.
     anchor: jsonb("anchor").$type<Anchor>(),
+    // Every face / edge / corner it's about, of any parts (Harel, 2026-11-18); `anchor` is the first.
+    anchors: jsonb("anchors").$type<Anchor[]>(),
     // The Design Review it belongs to (Harel, 2026-11-18).
     designReviewId: uuid("design_review_id").references(() => designReviews.id, { onDelete: "set null" }),
   },

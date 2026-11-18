@@ -47,6 +47,7 @@ export type ReviewComment = {
   view: ViewState | null; // the 3D view it was written in (S6)
   pin: [number, number, number] | null; // its point there, assembly mm
   anchor: Anchor | null; // the face / edge / corner it's about (Harel, 2026-11-18)
+  anchors: Anchor[] | null; // all of them, when it's about several (the first is `anchor`)
   // Its Design Review (Harel, 2026-11-18): its tag "DR · R7" and the State text it opens.
   designReview: { id: string; name: string; version: string | null; state: string; open: boolean } | null;
   model: ModelKind; // written on the Basepart or the Final 3D model (Harel, 2026-11-12)
@@ -140,6 +141,7 @@ export async function listComments(scope: string | { robotId: string }): Promise
     view: r.view ?? null,
     pin: r.pin ?? null,
     anchor: r.anchor ?? null,
+    anchors: r.anchors ?? null,
     designReview: r.dr?.id ? { id: r.dr.id, name: reviewName(r.dr.seq), version: r.dr.version, state: r.dr.state, open: !r.dr.finishedAt } : null,
     model: r.model,
     authorAvatar: avatar(r.authorId),

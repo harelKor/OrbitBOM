@@ -53,6 +53,7 @@ function fake(i: number, k: string | null, name: string | null, systemId: string
     view: null,
     pin: at,
     anchor: null,
+    anchors: null,
     designReview: i % 3 === 0 ? { id: "dr-2", name: "DR 2", version: "R4", state: REVIEWS[0].state, open: true } : i % 3 === 1 ? { id: "dr-1", name: "DR 1", version: null, state: REVIEWS[1].state, open: false } : null,
     model: "final",
     authorAvatar: null,
