@@ -4,7 +4,10 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { addReviewComment } from "@/app/(app)/review-comments-actions";
 import { CommentContext, CommentRow, CommentWindow, TreeComment, useStickyList } from "@/components/review/Comments";
-import { isActive } from "@/lib/reviews/status";
+import { inStateFilter, isActive, type StateFilter } from "@/lib/reviews/status";
+import type { DesignReview } from "@/lib/reviews/designReviews";
+import { StateFilterMenu } from "@/components/review/CommentFilters";
+import { DesignReviewButton, ReviewFilterMenu } from "@/components/review/DesignReviews";
 import { SnipEditor, SnipMe, SnipPicture, uploadSnip, type SnipDraft } from "@/components/review/Snip";
 import type { ReviewComment } from "@/lib/data/cadReview";
 import type { ModelKind } from "@/db/schema";
@@ -27,6 +30,7 @@ export function PanelComments({
   canTick,
   canApprove,
   model = "final",
+  reviews,
 }: {
   robotId: string;
   systemId: string | null; // null: the robot's main assembly, where a system can be picked
@@ -40,6 +44,8 @@ export function PanelComments({
   // A Basepart's comments go on the Basepart model, and on no Onshape version: versions belong
   // to the Final design (Harel, 2026-11-12).
   model?: ModelKind;
+  // The robot's Design Reviews, as on the CAD page (Harel, 2026-11-18): filters, Start / Finish DR.
+  reviews: { list: DesignReview[]; nextVersion: number; systems: { id: string; name: string }[] };
 }) {
   const router = useRouter();
   const [picked, setPicked] = useState(""); // "" = the whole robot
@@ -64,7 +70,13 @@ export function PanelComments({
   const partsHere = parts.filter((p) => p.systemId === systemId);
   const part = partsHere.find((p) => p.key === partKey) ?? null;
   // A section per system, the whole robot's comments first (Harel, 2026-11-11).
-  const sections = sectionsOf(comments);
+  // The State and DR's filters (Harel, 2026-11-18). All states by default: the panel always
+  // listed every comment, by system and status.
+  const [stateFilter, setStateFilter] = useState<StateFilter>("all");
+  const [reviewFilter, setReviewFilter] = useState<string | null>(null);
+  const shown = comments.filter((c) => inStateFilter(c.state, stateFilter) && (!reviewFilter || c.designReview?.id === reviewFilter));
+  const sections = sectionsOf(shown);
+  const openReview = reviews.list.find((d) => d.open) ?? null;
   const [windowed, setWindowed] = useState<string | null>(null);
   const windowComment = windowed ? comments.find((c) => c.id === windowed) : undefined;
 
@@ -95,7 +107,7 @@ export function PanelComments({
 
   return (
     <SnipMe.Provider value={me.id}>
-    <CommentContext.Provider value={{ me, canTick, canApprove, open: (c) => setWindowed(c.id) }}>
+    <CommentContext.Provider value={{ me, canTick, canApprove, reviews: reviews.list, open: (c) => setWindowed(c.id) }}>
     <div className="space-y-5">
       {!adding ? (
         <button type="button" className="btn-primary h-10 w-full justify-center active:scale-[0.98]" onClick={() => setAdding(true)}>
@@ -154,10 +166,24 @@ export function PanelComments({
       </form>
       )}
 
+      <div className="flex items-center gap-1.5">
+        <StateFilterMenu value={stateFilter} onChange={setStateFilter} />
+        <ReviewFilterMenu
+          list={reviews.list}
+          value={reviewFilter}
+          onChange={(id) => {
+            setReviewFilter(id);
+            setStateFilter("all");
+          }}
+        />
+        {openReview && <span className="min-w-0 truncate text-[0.6875rem] font-semibold text-sky-600 dark:text-sky-300">{openReview.name} open</span>}
+        <span className="flex-1" />
+        {me.isAdmin && <DesignReviewButton robotId={robotId} systems={reviews.systems} open={openReview} nextVersion={reviews.nextVersion} compact />}
+      </div>
       {sections.length ? (
         sections.map((s) => <CommentSection key={s.id ?? "robot"} name={s.name} comments={s.comments} />)
       ) : (
-        <p className="text-xs text-muted">No comments yet.</p>
+        <p className="text-xs text-muted">{comments.length ? "No comments match the filters." : "No comments yet."}</p>
       )}
       {drawing && snip && (
         <SnipEditor

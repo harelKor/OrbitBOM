@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { createContext, useContext, useState, useTransition } from "react";
 import { addReviewComment, deleteReviewComment, deleteReviewReply, editReviewComment, editReviewReply, replyToReviewComment, setReviewCommentStatus, type CommentResult } from "@/app/(app)/review-comments-actions";
 import { Popover } from "@/components/bom/Popover";
@@ -499,12 +500,13 @@ export function CommentRow({
   const { pending, error, run } = useCommentAction();
   const [editing, setEditing] = useState(false);
   const [toReview, setToReview] = useState(false);
+  const router = useRouter();
   const mine = !!ctx && c.authorId === ctx.me.id;
   // Its author or an admin moves it into a Design Review or out of one (Harel, 2026-11-18).
   const canReview = !!ctx?.reviews && (mine || ctx.me.isAdmin);
   const items = [
     ...(canReview ? [{ label: c.designReview ? "Move to another DR…" : "Add to DR…", run: () => setToReview(true) }] : []),
-    ...(canReview && c.designReview ? [{ label: "Remove from DR", run: () => void removeFromReview(c) }] : []),
+    ...(canReview && c.designReview ? [{ label: "Remove from DR", run: () => void removeFromReview(c).then(() => router.refresh()) }] : []),
     // The 3D view as its author had it, when they wrote it (Harel, 2026-11-18: no longer on a tap).
     ...(c.view && onView ? [{ label: "Author's view", run: () => onView(c) }] : []),
     ...(mine ? [{ label: "Edit", run: () => setEditing(true) }] : []),

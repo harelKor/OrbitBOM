@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull } from "drizzle-orm";
 import Link from "next/link";
 import { db, schema } from "@/db";
 import { getMember } from "@/lib/auth";
@@ -6,6 +6,7 @@ import { loadRobotReview, loadSystemReview } from "@/lib/data/cadReview";
 import { getMode } from "@/lib/mode";
 import { partKey } from "@/lib/model/assembly";
 import { canApprove, canTick } from "@/lib/reviews/comments";
+import { listDesignReviews } from "@/lib/reviews/designReviews";
 import { isUuid } from "@/lib/uuid";
 import { PanelSignIn } from "../PanelSignIn";
 import { panelPlace } from "../place";
@@ -38,7 +39,7 @@ export default async function PanelCommentsPage({ searchParams }: { searchParams
   const [robot] = robotId ? await db.select({ name: robots.name }).from(robots).where(eq(robots.id, robotId)) : [];
   if (!robotId || !robot) return <p className="p-4 text-sm text-muted">That system is gone. Reopen the panel.</p>;
 
-  const [mode, comments, systemRows, partRows] = await Promise.all([
+  const [mode, comments, systemRows, partRows, designReviews, allSystems, [lastVersion]] = await Promise.all([
     getMode(),
     // Through the version trees (database only), so each comment shows the version it is on;
     // without what each version changed, which only the CAD page shows.
@@ -51,6 +52,10 @@ export default async function PanelCommentsPage({ searchParams }: { searchParams
       .innerJoin(systems, eq(systems.id, parts.systemId))
       .where(and(systemId ? eq(parts.systemId, systemId) : eq(systems.robotId, robotId), isNotNull(parts.onshapePartId)))
       .orderBy(asc(parts.displayName), asc(parts.onshapeName)),
+    // Design Reviews (Harel, 2026-11-18): the filters, and Start DR's systems / Finish's next version.
+    listDesignReviews(robotId),
+    db.select({ id: systems.id, name: systems.name }).from(systems).where(eq(systems.robotId, robotId)).orderBy(asc(systems.name)),
+    db.select({ seq: schema.robotVersions.seq }).from(schema.robotVersions).where(eq(schema.robotVersions.robotId, robotId)).orderBy(desc(schema.robotVersions.seq)).limit(1),
   ]);
   const partList = partRows.flatMap((p) => (p.did && p.eid && p.pid && p.systemId ? [{ key: partKey(p.did, p.eid, p.pid), name: p.name || p.onshapeName || p.number || "Unnamed part", systemId: p.systemId }] : []));
 
@@ -76,6 +81,7 @@ export default async function PanelCommentsPage({ searchParams }: { searchParams
         canTick={canTick(mode, member)}
         canApprove={canApprove(mode, member)}
         model={params.model === "basepart" ? "basepart" : "final"}
+        reviews={{ list: designReviews, nextVersion: (lastVersion?.seq ?? 0) + 1, systems: allSystems }}
       />
     </div>
   );
