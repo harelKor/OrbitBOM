@@ -1,5 +1,6 @@
 import "server-only";
 import type { Anchor } from "@/lib/reviews/anchor";
+import { listDesignReviews, reviewName, type DesignReview } from "@/lib/reviews/designReviews";
 import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
 import type { ViewState } from "@/components/viewer/viewState";
 import { db, schema } from "@/db";
@@ -14,7 +15,7 @@ import { keptDocVersions } from "@/lib/versions/docVersions";
 import type { ModelKind, Snip } from "@/db/schema";
 import { primaryVersion, versionLabel } from "@/lib/versions/label";
 
-const { members, reviewCommentReplies, reviewComments, robots, systems, systemVersions } = schema;
+const { designReviews, members, reviewCommentReplies, reviewComments, robots, systems, systemVersions } = schema;
 
 // CAD Review's pages read the database only (plan/design-review.md): never Onshape.
 
@@ -45,6 +46,8 @@ export type ReviewComment = {
   view: ViewState | null; // the 3D view it was written in (S6)
   pin: [number, number, number] | null; // its point there, assembly mm
   anchor: Anchor | null; // the face / edge / corner it's about (Harel, 2026-11-18)
+  // Its Design Review (Harel, 2026-11-18): its tag "DR · R7" and the State text it opens.
+  designReview: { id: string; name: string; version: string | null; state: string; open: boolean } | null;
   model: ModelKind; // written on the Basepart or the Final 3D model (Harel, 2026-11-12)
   authorAvatar: string | null;
   editedAt: string | null;
@@ -71,12 +74,13 @@ export type CommentReply = {
 // A system's comments, or with `robotId` every comment of the robot (its own and its systems').
 export async function listComments(scope: string | { robotId: string }): Promise<ReviewComment[]> {
   const rows = await db
-    .select({ c: reviewComments, systemName: systems.name })
+    .select({ c: reviewComments, systemName: systems.name, dr: { id: designReviews.id, seq: designReviews.seq, version: designReviews.versionLabel, state: designReviews.state, finishedAt: designReviews.finishedAt } })
     .from(reviewComments)
     .leftJoin(systems, eq(systems.id, reviewComments.systemId))
+    .leftJoin(designReviews, eq(designReviews.id, reviewComments.designReviewId))
     .where(typeof scope === "string" ? eq(reviewComments.systemId, scope) : eq(reviewComments.robotId, scope.robotId))
     .orderBy(asc(reviewComments.createdAt))
-    .then((r) => r.map(({ c, systemName }) => ({ ...c, systemName })));
+    .then((r) => r.map(({ c, systemName, dr }) => ({ ...c, systemName, dr })));
   const replies = rows.length
     ? await db
         .select()
@@ -135,6 +139,7 @@ export async function listComments(scope: string | { robotId: string }): Promise
     view: r.view ?? null,
     pin: r.pin ?? null,
     anchor: r.anchor ?? null,
+    designReview: r.dr?.id ? { id: r.dr.id, name: reviewName(r.dr.seq), version: r.dr.version, state: r.dr.state, open: !r.dr.finishedAt } : null,
     model: r.model,
     authorAvatar: avatar(r.authorId),
     editedAt: iso(r.editedAt),
@@ -314,6 +319,7 @@ export type RobotReview = {
   // with the comments on the whole robot filed under them by date.
   robotVersions: RobotVersionRow[];
   robotTree: TreeNode[];
+  designReviews: DesignReview[]; // newest first (Harel, 2026-11-18)
 };
 
 export async function loadRobotReview(robotId: string, opts: { changes?: boolean } = {}): Promise<RobotReview> {
@@ -326,7 +332,7 @@ export async function loadRobotReview(robotId: string, opts: { changes?: boolean
   // Each system's tree marks its own comments' versions on these same objects (no second read
   // of the comments per system).
   const reviews = await Promise.all(linked.map((r) => loadSystemReview(r.id, { comments: comments.filter((c) => c.systemId === r.id), changes: opts.changes })));
-  const [robotBasepart, robotVersions] = await Promise.all([basepartTree({ robotId }, robot?.basepart ?? null, comments.filter((c) => !c.systemId), robot?.pinned ?? null), listRobotVersions(robotId)]);
+  const [robotBasepart, robotVersions, designReviews] = await Promise.all([basepartTree({ robotId }, robot?.basepart ?? null, comments.filter((c) => !c.systemId), robot?.pinned ?? null), listRobotVersions(robotId), listDesignReviews(robotId)]);
   if (robotBasepart) markVersions(comments, robotBasepart.tree, false);
   const robotTree = buildTree(
     robotVersions.map((v) => ({ id: `rv:${v.id}`, name: v.name, createdAt: v.at, creator: v.by, description: v.note })),
@@ -343,5 +349,6 @@ export async function loadRobotReview(robotId: string, opts: { changes?: boolean
     robotBasepart,
     robotVersions,
     robotTree,
+    designReviews,
   };
 }

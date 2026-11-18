@@ -9,6 +9,8 @@ import { LocalTime } from "@/components/ui/LocalTime";
 import type { CommentReply, ReviewComment } from "@/lib/data/cadReview";
 import { allowedStatuses, isActive, needsNote, statusOf, type CommentStatus } from "@/lib/reviews/status";
 import { anchorKindName } from "@/lib/reviews/anchor";
+import type { DesignReview } from "@/lib/reviews/designReviews";
+import { AddToReviewWindow, removeFromReview, ReviewTag } from "./DesignReviews";
 import { CommentSnip, SnipPicture, uploadSnip, type SnipDraft } from "./Snip";
 import { askConfirm } from "@/components/ui/useConfirm";
 
@@ -23,6 +25,7 @@ export type CommentCtx = {
   focus?: (c: ReviewComment) => void;
   // The comment under the mouse, in the column or as a 3D tag: both light up (Harel, 2026-11-18).
   hover?: { id: string | null; set: (id: string | null) => void };
+  reviews?: DesignReview[]; // the robot's Design Reviews, for its menu's Add to DR… (Harel, 2026-11-18)
   reply?: ReplyAttach; // a snip and a linked part for the comment window's Reply box
 };
 
@@ -495,8 +498,13 @@ export function CommentRow({
   const ctx = useContext(CommentContext);
   const { pending, error, run } = useCommentAction();
   const [editing, setEditing] = useState(false);
+  const [toReview, setToReview] = useState(false);
   const mine = !!ctx && c.authorId === ctx.me.id;
+  // Its author or an admin moves it into a Design Review or out of one (Harel, 2026-11-18).
+  const canReview = !!ctx?.reviews && (mine || ctx.me.isAdmin);
   const items = [
+    ...(canReview ? [{ label: c.designReview ? "Move to another DR…" : "Add to DR…", run: () => setToReview(true) }] : []),
+    ...(canReview && c.designReview ? [{ label: "Remove from DR", run: () => void removeFromReview(c) }] : []),
     // The 3D view as its author had it, when they wrote it (Harel, 2026-11-18: no longer on a tap).
     ...(c.view && onView ? [{ label: "Author's view", run: () => onView(c) }] : []),
     ...(mine ? [{ label: "Edit", run: () => setEditing(true) }] : []),
@@ -535,7 +543,9 @@ export function CommentRow({
               </span>
             )}
             <PartChip c={c} onFocus={onFocus} />
+            <ReviewTag c={c} />
           </div>
+          {toReview && ctx?.reviews && <AddToReviewWindow c={c} list={ctx.reviews} onClose={() => setToReview(false)} />}
           {editing ? (
             <TextBox initial={c.body} action="Save" pending={pending} onCancel={() => setEditing(false)} onSave={(t) => run(() => editReviewComment(c.id, t), () => setEditing(false))} />
           ) : (

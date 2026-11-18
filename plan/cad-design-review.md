@@ -4,7 +4,7 @@ Harel's request (2026-11-18), in short: a non-blocking Add comment window; comme
 edge / face / point, not just a part; a clearer comments panel (bigger section headers, Esc doesn't
 close it, State and DR filters, a "show in 3D" checkbox); comment bubbles with the author's picture
 in the 3D view; and Design Reviews (DRs) that admins start and finish, with every comment written
-meanwhile tagged to the DR. Status: **approved 2026-11-18, being built in three pieces**.
+meanwhile tagged to the DR. Status: **built 2026-11-18** in three pushes (e6dc76a, 96f0586, then Design Reviews).
 
 ## What exists today (why the plan looks like this)
 

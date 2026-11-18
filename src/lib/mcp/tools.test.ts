@@ -10,7 +10,7 @@ describe("MCP tool list", async () => {
   const names = listTools().map((t) => t.name);
 
   it("registers every tool once", () => {
-    expect(names).toHaveLength(41);
+    expect(names).toHaveLength(45);
     expect(new Set(names).size).toBe(names.length);
     for (const n of ["list_statuses", "find_parts", "update_parts", "set_up_parts", "undo_batch", "adjust_stock", "set_inventory_info", "update_bom_from_onshape", "edit_drawing", "set_cots_info"]) {
       expect(names).toContain(n);
@@ -31,7 +31,7 @@ describe("MCP tool list", async () => {
   const tool = (n: string) => tools.find((t) => t.name === n)!;
 
   it("refuses every write to a member without a team, except CAD Review comments", () => {
-    const open = new Set(["add_review_comment", "reply_to_review_comment", "set_review_comment_status"]);
+    const open = new Set(["add_review_comment", "reply_to_review_comment", "set_review_comment_status", "set_comment_design_review"]);
     for (const t of tools.filter((t) => t.write && !open.has(t.name))) {
       const args = t.name === "update_parts" ? { changes: { status: "Released" } } : t.name === "set_up_parts" ? { parts: [{}] } : t.name === "set_cots_info" ? { items: [{ links: [] }] } : {};
       expect(capabilityDenied(t, args, none), t.name).toBeTruthy();

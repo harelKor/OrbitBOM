@@ -13,6 +13,8 @@ import type { HiddenParts, MeasureInfo, NamedViews, PageMenu, SceneTools, Viewer
 import { AddCommentDialog, CommentBubble, CommentContext, CommentRow, CommentWindow, useStickyList, type CommentTarget, type ReplyAttach } from "@/components/review/Comments";
 import { inStateFilter, isActive, statusOf, type StateFilter } from "@/lib/reviews/status";
 import { StateFilterMenu } from "@/components/review/CommentFilters";
+import { DesignReviewButton, ReviewFilterMenu } from "@/components/review/DesignReviews";
+import type { DesignReview } from "@/lib/reviews/designReviews";
 import { SnipEditor, SnipMe, SnipOverlay, type SnipDraft } from "@/components/review/Snip";
 import { ViewerToolbar } from "@/components/review/ViewerToolbar";
 import { DesignCheck, type Finding } from "@/components/check/DesignCheck";
@@ -66,6 +68,7 @@ export function ReviewScreen({
   check,
   canBuild = false,
   compareLast,
+  reviews,
 }: {
   robotId: string;
   title: string;
@@ -93,6 +96,9 @@ export function ReviewScreen({
   // The Changes tab's Compare to last version (Harel, 2026-11-17): the version the model is on now
   // and the one before it, when both can be drawn.
   compareLast?: Pick<Extract<VersionTarget, { mode: "compare" }>, "a" | "b"> | null;
+  // The robot's Design Reviews (Harel, 2026-11-18): newest first; `nextVersion` the number Finish's
+  // robot version would get; `systems` what Start DR offers.
+  reviews?: { list: DesignReview[]; nextVersion: number; systems: { id: string; name: string }[] };
 }) {
   const kind: ModelKind = models?.kind ?? "final";
   const [model, setModel] = useState<ViewerModel | null | undefined>(builtAt ? undefined : null);
@@ -413,8 +419,16 @@ export function ReviewScreen({
   const open = newest.filter((c) => isActive(c.state));
   // The State filter on the column's header (Harel, 2026-11-18); Open + On it as before.
   const [stateFilter, setStateFilter] = useState<StateFilter>("active");
-  const openRows = useStickyList(newest, (c) => inStateFilter(c.state, stateFilter), stateFilter);
-  const listed = useMemo(() => newest.filter((c) => inStateFilter(c.state, stateFilter)), [newest, stateFilter]);
+  // The DR's filter (Harel, 2026-11-18): one Design Review's comments, all of them (any state).
+  const [reviewFilter, setReviewFilterNow] = useState<string | null>(null);
+  const setReviewFilter = (id: string | null) => {
+    setReviewFilterNow(id);
+    setStateFilter(id ? "all" : "active");
+  };
+  const inFilters = useCallback((c: ReviewComment) => inStateFilter(c.state, stateFilter) && (!reviewFilter || c.designReview?.id === reviewFilter), [stateFilter, reviewFilter]);
+  const openRows = useStickyList(newest, inFilters, `${stateFilter}|${reviewFilter ?? ""}`);
+  const listed = useMemo(() => newest.filter(inFilters), [newest, inFilters]);
+  const openReview = reviews?.list.find((d) => d.open) ?? null;
   const waitingRows = useStickyList(comments, (c) => c.state === "to_check");
   const waiting = comments.filter((c) => c.state === "to_check");
   const [windowed, setWindowed] = useState<string | null>(null);
@@ -600,7 +614,7 @@ export function ReviewScreen({
   return (
     <SnipMe.Provider value={me.id}>
     <VersionContext.Provider value={{ target: vt, show: showVersion, kind, robotId, canDelete: me.isAdmin }}>
-    <CommentContext.Provider value={{ me, canTick, canApprove, reply: replyAttach, focus: focusComment, hover: { id: hoverId, set: setHoverId }, open: (c) => {
+    <CommentContext.Provider value={{ me, canTick, canApprove, reply: replyAttach, reviews: reviews?.list, focus: focusComment, hover: { id: hoverId, set: setHoverId }, open: (c) => {
       // Opening a comment shows what it's about close up; the author's own view is in its menu
       // (Harel, 2026-11-18).
       setWindowed(c.id);
@@ -609,6 +623,9 @@ export function ReviewScreen({
     <div ref={root} className="relative -m-4 flex h-[calc(100dvh-var(--topbar-h,2.75rem))] md:-m-6">
       {drawer && <button aria-label="Close versions" onClick={() => setDrawer(false)} className="fixed inset-0 z-30 modal-backdrop lg:hidden" />}
       <aside
+        // While a Design Review is open: a soft Orbit-blue glow from the panel's bottom left corner,
+        // fading into the panel (Harel, 2026-11-18). A background, so it stays put as the panel scrolls.
+        style={openReview ? { backgroundImage: "radial-gradient(circle at 0% 100%, color-mix(in srgb, var(--color-accent) 42%, transparent) 0, color-mix(in srgb, var(--color-accent) 14%, transparent) 7rem, transparent 13rem)" } : undefined}
         className={`flex min-h-0 flex-col gap-4 overflow-y-auto border-line bg-surface p-4 lg:w-[var(--cad-panel-w,20rem)] lg:shrink-0 lg:border-r max-lg:fixed max-lg:top-[var(--review-top,2.75rem)] max-lg:bottom-0 max-lg:left-0 max-lg:z-40 max-lg:w-[min(22rem,88vw)] max-lg:border-r max-lg:shadow-xl ${drawer ? "max-lg:animate-pop" : "max-lg:hidden"}`}
       >
         <div className="max-lg:hidden">
@@ -621,8 +638,18 @@ export function ReviewScreen({
               ← {back.label}
             </button>
           ) : null}
-          <h1 className="display truncate text-3xl text-accent">{title}</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="display min-w-0 flex-1 truncate text-3xl text-accent">{title}</h1>
+            {reviews && me.isAdmin && <DesignReviewButton robotId={robotId} systems={reviews.systems} open={openReview} nextVersion={reviews.nextVersion} />}
+          </div>
         </div>
+        {/* Phones: the panel's title row is hidden, so Start / Finish DR sits on top of it. */}
+        {reviews && me.isAdmin && (
+          <div className="flex items-center justify-between gap-2 lg:hidden">
+            <span className="text-sm font-semibold text-fg-2">{openReview ? `${openReview.name} is open` : "Design Review"}</span>
+            <DesignReviewButton robotId={robotId} systems={reviews.systems} open={openReview} nextVersion={reviews.nextVersion} />
+          </div>
+        )}
         <button className="btn-primary h-12 w-full justify-center text-base shadow-[0_0_18px_-4px_var(--color-accent)] active:scale-[0.98] max-lg:hidden" onClick={() => startAdding(picked)}>
           + Add comment
         </button>
@@ -900,7 +927,12 @@ export function ReviewScreen({
               <input type="checkbox" className="h-4 w-4 accent-[var(--color-accent)]" checked={showTags} onChange={(e) => setShowTags(e.target.checked)} aria-label="Show comment tags in 3D" />
             </label>
           }
-          tools={<StateFilterMenu value={stateFilter} onChange={setStateFilter} />}
+          tools={
+            <>
+              <StateFilterMenu value={stateFilter} onChange={setStateFilter} />
+              {reviews && <ReviewFilterMenu list={reviews.list} value={reviewFilter} onChange={setReviewFilter} />}
+            </>
+          }
         >
           {openRows.length ? (
             onRobot ? (
@@ -1053,7 +1085,7 @@ function Popup({ title, count, onHide, tone, big = false, tools, lead, children 
     <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-line bg-surface/95 shadow-md backdrop-blur">
       {/* No folding up and down: the column folds sideways from the arrow (Harel, 2026-11-11).
         `big`: the Comments header, a bit taller to hold its filters (Harel, 2026-11-18). */}
-      <div className={`flex items-center gap-2 px-3 font-semibold text-fg ${big ? "min-h-12 py-2 text-base" : "py-2 text-sm pointer-coarse:min-h-11"}`}>
+      <div className={`flex items-center px-3 font-semibold text-fg ${big ? "min-h-12 gap-1.5 py-2 text-base" : "gap-2 py-2 text-sm pointer-coarse:min-h-11"}`}>
         {lead}
         <span className={`min-w-0 truncate ${big ? "shrink-0" : ""}`}>{title}</span>
         <span className={`rounded-full px-2 py-0.5 text-xs tabular-nums ${badge}`}>{count}</span>

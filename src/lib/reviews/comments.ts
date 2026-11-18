@@ -7,6 +7,7 @@ import type { Member } from "@/lib/auth";
 import { cleanView, type ViewState } from "@/components/viewer/viewState";
 import { deleteObject } from "@/lib/storage/r2";
 import { cleanAnchor } from "./anchor";
+import { reviewForNewComment } from "./designReviews";
 import { cleanStrokes, mergeStrokes } from "./snipStrokes";
 import { allowedStatuses, COMMENT_STATUSES, needsNote, type CommentStatus } from "./status";
 
@@ -53,6 +54,8 @@ export async function addComment(
     if (!robot) throw new CommentError("That robot is gone.");
   }
   const snip = cleanSnip(member, input.snip);
+  // Written while a Design Review is open on the robot, and in its scope: it's that DR's.
+  const designReviewId = await reviewForNewComment(robotId!, input.systemId);
   const [row] = await db
     .insert(reviewComments)
     .values({
@@ -70,6 +73,7 @@ export async function addComment(
       // The face / edge / corner picked, when it's on the comment's part (Harel, 2026-11-18).
       anchor: anchorOf(input.anchor, input.partKey),
       model: input.model === "basepart" ? "basepart" : "final",
+      designReviewId,
     })
     .returning();
   return row;

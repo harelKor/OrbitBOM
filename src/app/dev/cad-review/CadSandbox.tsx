@@ -5,6 +5,7 @@ import { ReviewScreen, type ReviewPart } from "@/components/review/ReviewScreen"
 import type { ViewerModel } from "@/components/dashboard/ModelCanvas";
 import type { ReviewComment } from "@/lib/data/cadReview";
 import type { Anchor } from "@/lib/reviews/anchor";
+import type { DesignReview } from "@/lib/reviews/designReviews";
 import type { CommentStatus } from "@/lib/reviews/status";
 
 const PEOPLE = ["Noa Levi", "Itay Cohen", "Maya Ben-David"];
@@ -14,6 +15,11 @@ const TEXTS = [
   "Can we pocket this to save weight?",
   "Chain tensioner missing on this side.",
   "Check clearance to the bumper.",
+];
+// Two made-up Design Reviews: DR 2 open (the panel's corner glow), DR 1 finished.
+const REVIEWS: DesignReview[] = [
+  { id: "dr-2", seq: 2, name: "DR 2", wholeRobot: true, systems: [], state: "Whole robot before district 2: shooter hood v3, new intake rollers. Check weight and bumper clearances.", version: "R4", finishVersion: null, startedBy: "Noa Levi", startedAt: new Date(Date.now() - 2 * 3600e3).toISOString(), finishedBy: null, finishedAt: null, open: true },
+  { id: "dr-1", seq: 1, name: "DR 1", wholeRobot: false, systems: [{ id: "drive", name: "Drivetrain" }], state: "Drivetrain at 80%: bellypan and rails done, no electronics yet.", version: null, finishVersion: "R3", startedBy: "Itay Cohen", startedAt: new Date(Date.now() - 5 * 86400e3).toISOString(), finishedBy: "Itay Cohen", finishedAt: new Date(Date.now() - 4 * 86400e3).toISOString(), open: false },
 ];
 const STATES: CommentStatus[] = ["open", "on_it", "open", "to_check", "done"];
 
@@ -47,6 +53,7 @@ function fake(i: number, k: string | null, name: string | null, systemId: string
     view: null,
     pin: at,
     anchor: null,
+    designReview: i % 3 === 0 ? { id: "dr-2", name: "DR 2", version: "R4", state: REVIEWS[0].state, open: true } : i % 3 === 1 ? { id: "dr-1", name: "DR 1", version: null, state: REVIEWS[1].state, open: false } : null,
     model: "final",
     authorAvatar: null,
     editedAt: null,
@@ -82,6 +89,7 @@ export function CadSandbox() {
     (window as unknown as { sandboxAnchor?: (i: number, a: Anchor) => void }).sandboxAnchor = (i, a) => setAnchors((m) => ({ ...m, [i]: a }));
   }, []);
   const shown = useMemo(() => comments.map((c, i) => (anchors[i] ? { ...c, anchor: anchors[i], partKey: anchors[i].key, pin: anchors[i].at } : c)), [comments, anchors]);
+  const [closed] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("closed") === "1");
   if (!data) return <p className="p-6 text-sm text-muted">Loading the sandbox…</p>;
   return (
     <div className="p-4 md:p-6">
@@ -97,6 +105,8 @@ export function CadSandbox() {
         canTick
         canApprove
         onIsolate={() => {}}
+        // ?closed=1: no DR open (Start DR).
+        reviews={{ list: closed ? REVIEWS.map((d) => ({ ...d, open: false })) : REVIEWS, nextVersion: 5, systems }}
         panel={() => <p className="text-xs text-muted">The version tree shows here on the real CAD page.</p>}
       />
     </div>

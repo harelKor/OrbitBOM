@@ -9,6 +9,7 @@ import { cleanView } from "@/components/viewer/viewState";
 import { addComment, addReply, canApprove, canTick, cleanPin, CommentError, setCommentStatus } from "@/lib/reviews/comments";
 import { allowedStatuses, isActive, needsNote } from "@/lib/reviews/status";
 import { anchorKindName } from "@/lib/reviews/anchor";
+import { finishDesignReview, listDesignReviews, openDesignReview, reviewName, setCommentReview, startDesignReview } from "@/lib/reviews/designReviews";
 import { read, uuid, write, ToolError } from "../registry";
 
 const { reviewComments, systems } = schema;
@@ -27,15 +28,15 @@ const asTool = async <T,>(fn: () => Promise<T>) => {
 read(
   "list_review_comments",
   "member",
-  "A system's CAD Review comments (snip: a picture cut from the 3D view with lines drawn on it): status (open; on_it = someone is working on it; to_check = waiting for a mentor to check; done = a mentor approved it), text, the part it's about, who wrote it and when, the version it is on, its replies (a thread like Onshape's; a mentor sending it back writes why there), its pin (x, y, z in assembly mm: the point in the 3D view it was written about), linked_to (the face, edge or point of its part it's about, when one was picked) and view (the 3D view it was written in: camera, hidden / isolated parts, section, render mode), and the version tree (Onshape versions, newest first, which ones the BOM was updated to, and the comment ids added and set To check or Done at each).",
-  z.object({ system_id: uuid, state: z.enum(["open", "on_it", "to_check", "done"]).optional() }),
-  async ({ system_id, state }) => {
+  "A system's CAD Review comments (snip: a picture cut from the 3D view with lines drawn on it): status (open; on_it = someone is working on it; to_check = waiting for a mentor to check; done = a mentor approved it), text, the part it's about, who wrote it and when, the version it is on, its replies (a thread like Onshape's; a mentor sending it back writes why there), its pin (x, y, z in assembly mm: the point in the 3D view it was written about), linked_to (the face, edge or point of its part it's about, when one was picked), design_review (the Design Review it belongs to; design_review_id filters to one) and view (the 3D view it was written in: camera, hidden / isolated parts, section, render mode), and the version tree (Onshape versions, newest first, which ones the BOM was updated to, and the comment ids added and set To check or Done at each).",
+  z.object({ system_id: uuid, state: z.enum(["open", "on_it", "to_check", "done"]).optional(), design_review_id: uuid.optional() }),
+  async ({ system_id, state, design_review_id }) => {
     const review = await loadSystemReview(system_id);
     if (!review) throw new ToolError("Unknown system.");
     return {
       comments: review.comments
-        .filter((c) => !state || c.state === state)
-        .map((c) => ({ id: c.id, state: c.state, text: c.body, part: c.partName, by: c.author, at: c.createdAt, on_it_by: c.onItBy, to_check_by: c.doneBy, done_by: c.approvedBy, version: c.version?.name ?? null, edited: c.editedAt, replies: c.replies.map((r) => ({ text: r.body, by: r.author, at: r.createdAt, edited: r.editedAt })), snip: c.snip ? { picture: c.snip.url, lines: c.snip.strokes.length, changed_by: (c.snip.changed ?? []).map((x) => x.name) } : null, pin: c.pin, linked_to: c.anchor ? { what: anchorKindName(c.anchor).toLowerCase(), part: c.partName, at_mm: c.anchor.at } : null, view: c.view })),
+        .filter((c) => (!state || c.state === state) && (!design_review_id || c.designReview?.id === design_review_id))
+        .map((c) => ({ id: c.id, state: c.state, text: c.body, part: c.partName, by: c.author, at: c.createdAt, on_it_by: c.onItBy, to_check_by: c.doneBy, done_by: c.approvedBy, version: c.version?.name ?? null, edited: c.editedAt, replies: c.replies.map((r) => ({ text: r.body, by: r.author, at: r.createdAt, edited: r.editedAt })), snip: c.snip ? { picture: c.snip.url, lines: c.snip.strokes.length, changed_by: (c.snip.changed ?? []).map((x) => x.name) } : null, pin: c.pin, design_review: c.designReview ? { id: c.designReview.id, name: c.designReview.name, robot_version: c.designReview.version } : null, linked_to: c.anchor ? { what: anchorKindName(c.anchor).toLowerCase(), part: c.partName, at_mm: c.anchor.at } : null, view: c.view })),
       versions: review.tree.map((n) => ({ name: n.name, at: n.at, bom: n.bom.map((b) => b.label), bom_current: n.bom.some((b) => b.current), added: n.added, checked: n.done })),
     };
   },
@@ -140,6 +141,89 @@ read(
       overlaps: r.clashes.filter((c) => !fine.has(pairKey(c.a, c.b))).map((c) => ({ a: c.aName, b: c.bName, depth_mm: c.depthMm, places: c.copies, usual_kind: c.expected, side_by_side: !!c.flush, placed_twice: !!c.same, at_mm: c.at })),
       findings: (r.findings ?? []).filter((f) => !fine.has(f.id)).map((f) => ({ kind: f.kind, level: f.level, text: f.text, parts: f.names, places: f.copies, at_mm: f.at, likely_fix: r.ai?.fixes[f.id] ?? null })),
       ai_summary: r.ai?.summary ?? null,
+    };
+  },
+);
+
+// Design Reviews (plan/cad-design-review.md, Harel 2026-11-18).
+read(
+  "list_design_reviews",
+  "member",
+  "A robot's Design Reviews (DRs), newest first: name (DR 3), whether it's still open, the whole robot or which systems, its State text (what was being reviewed and where it was at), the robot version it started on and the one made when it finished (if any), who started / finished it and when, and its comments (id, system, status, text). Comments written while a DR is open on its systems (or the whole robot) join it. robot_id from list_robots.",
+  z.object({ robot_id: uuid }),
+  async ({ robot_id }) => {
+    const [reviews, comments] = await Promise.all([listDesignReviews(robot_id), listComments({ robotId: robot_id })]);
+    return reviews.map((d) => ({
+      id: d.id,
+      name: d.name,
+      open: d.open,
+      systems: d.wholeRobot ? "whole robot" : d.systems.map((x) => x.name),
+      state: d.state,
+      robot_version: d.version,
+      finish_version: d.finishVersion,
+      started_by: d.startedBy,
+      started_at: d.startedAt,
+      finished_by: d.finishedBy,
+      finished_at: d.finishedAt,
+      comments: comments.filter((c) => c.designReview?.id === d.id).map((c) => ({ id: c.id, system: c.systemName ?? "whole robot", status: c.state, text: c.body, part: c.partName })),
+    }));
+  },
+);
+
+const adminOnly = (member: { isAdmin: boolean }) => {
+  if (!member.isAdmin) throw new ToolError("Only an admin starts or finishes a Design Review.");
+};
+
+write(
+  "start_design_review",
+  { cap: "manage", destructive: false },
+  "Start a Design Review (DR) on a robot (admins only; one open per robot): the whole robot, or system_ids. state: what's being reviewed and where it's at. It's tagged with the robot's newest robot version (none is made). Comments written while it's open on its systems (or the whole robot) join it.",
+  z.object({ robot_id: uuid, state: z.string().trim().min(1).max(2000), system_ids: z.array(uuid).min(1).max(50).optional() }),
+  async ({ robot_id, state, system_ids }, { member }) => {
+    adminOnly(member);
+    const open = await openDesignReview(robot_id);
+    if (open) throw new ToolError(`${reviewName(open.seq)} is already open on this robot: finish it first.`);
+    return {
+      count: 1,
+      summary: "Started a Design Review",
+      preview: { systems: system_ids?.length ? system_ids : "whole robot", state },
+      apply: () => asTool(async () => ({ id: (await startDesignReview(member, robot_id, { wholeRobot: !system_ids?.length, systemIds: system_ids, state })).id })),
+    };
+  },
+);
+
+write(
+  "finish_design_review",
+  { cap: "manage", destructive: false },
+  "Finish the robot's open Design Review (admins only). create_version: also make a robot version for it (named version_name, default R<next>), which keeps every system's 3D model as it is now (no Onshape calls).",
+  z.object({ robot_id: uuid, create_version: z.boolean().optional(), version_name: z.string().trim().max(120).optional() }),
+  async ({ robot_id, create_version, version_name }, { member }) => {
+    adminOnly(member);
+    const open = await openDesignReview(robot_id);
+    if (!open) throw new ToolError("No Design Review is open on this robot.");
+    return {
+      count: 1,
+      summary: `Finished ${reviewName(open.seq)}`,
+      preview: { design_review: reviewName(open.seq), state: open.state, new_robot_version: create_version ? version_name || "R<next>" : null },
+      apply: () => asTool(async () => ({ id: (await finishDesignReview(member, robot_id, { version: create_version ? (version_name ?? "") : null })).id })),
+    };
+  },
+);
+
+write(
+  "set_comment_design_review",
+  { cap: "member", destructive: false },
+  "Put a CAD comment into one of its robot's Design Reviews (design_review_id from list_design_reviews), or take it out (null). Its author or an admin may.",
+  z.object({ comment_id: uuid, design_review_id: uuid.nullable() }),
+  async ({ comment_id, design_review_id }, { member }) => {
+    const [c] = await db.select({ body: reviewComments.body, authorId: reviewComments.authorId }).from(reviewComments).where(eq(reviewComments.id, comment_id));
+    if (!c) throw new ToolError("Unknown comment.");
+    if (!member.isAdmin && c.authorId !== member.id) throw new ToolError("Only its author or an admin moves a comment into a Design Review.");
+    return {
+      count: 1,
+      summary: design_review_id ? "Added a comment to a Design Review" : "Took a comment out of its Design Review",
+      preview: { comment: c.body, design_review_id },
+      apply: () => asTool(async () => ({ id: (await setCommentReview(member, comment_id, design_review_id)).robotId })),
     };
   },
 );

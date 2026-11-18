@@ -166,7 +166,9 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
   over the 3D view (`Dialog` `floating`); a comment's `anchor` is the face / edge / corner picked
   (`src/lib/reviews/anchor.ts` signatures, found again on newer meshes; `viewer/anchors.ts`), its
   part tag frames it close up and picks it; 3D tags are author bubbles (`viewer/pins.ts`, popup
-  `CommentBubble`) shown by the ☐ beside "Comments". Sandbox: `/dev/cad-review`.
+  `CommentBubble`) shown by the ☐ beside "Comments". Design Reviews: `design_reviews`,
+  `src/lib/reviews/designReviews.ts` (admins start / finish, one open per robot, new comments in
+  its scope join it), UI `src/components/review/DesignReviews.tsx`. Sandbox: `/dev/cad-review`.
   The whole 3D view as data (camera, hidden / isolated, section, render mode, colours):
   `src/components/viewer/viewState.ts`, in the URL hash (`#v=`), on each comment with its pin
   (`pins.ts`, assembly mm), and as Onshape's Named views per robot (`src/lib/reviews/namedViews.ts`).

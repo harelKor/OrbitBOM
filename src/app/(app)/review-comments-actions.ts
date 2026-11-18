@@ -6,6 +6,7 @@ import { getMode } from "@/lib/mode";
 import { addComment, addReply, CommentError, deleteComment, deleteReply, editComment, editReply, saveSnipLines, setCommentStatus, type SnipInput } from "@/lib/reviews/comments";
 import type { CommentStatus } from "@/lib/reviews/status";
 import { deleteNamedView, saveNamedView } from "@/lib/reviews/namedViews";
+import { finishDesignReview, setCommentReview, startDesignReview } from "@/lib/reviews/designReviews";
 import { isUuid } from "@/lib/uuid";
 import type { ModelKind } from "@/db/schema";
 
@@ -113,4 +114,25 @@ export async function deleteReviewView(id: string): Promise<CommentResult> {
   const member = await requireMember();
   if (!isUuid(id)) return { error: "Unknown view." };
   return viewAction(() => deleteNamedView(member, id));
+}
+
+// Design Reviews (Harel, 2026-11-18): admins start and finish them (designReviews.ts checks it).
+export async function startReviewAction(robotId: string, input: { wholeRobot: boolean; systemIds: string[]; state: string }): Promise<CommentResult> {
+  const member = await requireMember();
+  if (!isUuid(robotId) || !Array.isArray(input.systemIds) || !input.systemIds.every(isUuid) || typeof input.state !== "string") return { error: "Unknown robot." };
+  return run(() => startDesignReview(member, robotId, { wholeRobot: !!input.wholeRobot, systemIds: input.systemIds, state: input.state }));
+}
+
+// `version`: the name of a robot version to make for it, or null for none.
+export async function finishReviewAction(robotId: string, version: string | null): Promise<CommentResult> {
+  const member = await requireMember();
+  if (!isUuid(robotId) || (version !== null && typeof version !== "string")) return { error: "Unknown robot." };
+  return run(() => finishDesignReview(member, robotId, { version: version === null ? null : version.slice(0, 120) }));
+}
+
+// ⋮ Add to DR… (a DR's id) or Remove from DR (null).
+export async function setCommentReviewAction(commentId: string, reviewId: string | null): Promise<CommentResult> {
+  const member = await requireMember();
+  if (!isUuid(commentId) || (reviewId !== null && !isUuid(reviewId))) return { error: "Unknown comment." };
+  return run(() => setCommentReview(member, commentId, reviewId));
 }

@@ -202,6 +202,7 @@ export function CadReview({
       canTick={canTick}
       canApprove={canApprove}
       canBuild={canBuild}
+      reviews={{ list: review.designReviews, nextVersion: (review.robotVersions[0]?.seq ?? 0) + 1, systems }}
       panel={(onFocus) => (
         <div className="space-y-2">
           {/* The whole robot's own versions (Harel, 2026-11-17), its comments under them. */}

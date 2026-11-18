@@ -18,8 +18,8 @@ export function StateFilterMenu({ value, onChange }: { value: StateFilter; onCha
       trigger={
         <span className="flex items-center gap-1" title="Which comments the list shows" aria-label={`State filter: ${now.label}`}>
           <FunnelIcon />
-          {/* Phones: just the icon, so "Comments" keeps its room. */}
-          <span className="max-sm:hidden">{value === "active" ? "State" : now.label}</span>
+          {/* Just the icon until a state is chosen (and always on phones), so "Comments" keeps its room. */}
+          {value !== "active" && <span className="max-sm:hidden">{now.label}</span>}
           <span aria-hidden className="text-subtle">▾</span>
         </span>
       }
