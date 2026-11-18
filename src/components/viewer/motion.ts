@@ -55,7 +55,7 @@ export type Copy = { m: number; i: number };
 export type MotionTools = {
   explodeShow: (open: boolean) => void; // the Exploded view panel
   explode: (t: number, settled?: boolean) => void; // the slider, 0…1; settled: let go (redo the slow parts)
-  moveParts: (target: Copy | string[], only?: boolean) => void; // the triad on one copy (with its rigid set, unless `only`), or every shown copy of these parts
+  moveParts: (target: Copy | Copy[] | string[], only?: boolean) => void; // the triad on copies (with their rigid sets, unless `only`), or every shown copy of these parts
   moveMode: (mode: MoveMode) => void;
   moveDone: () => void; // the triad away, the parts stay where they are
   resetPositions: () => void; // everything back to its CAD place, explode at 0
@@ -262,10 +262,11 @@ export function createMotion(
     return out.length ? out : [c];
   };
 
-  const moveParts = (target: Copy | string[], only = false) => {
+  const moveParts = (target: Copy | Copy[] | string[], only = false) => {
     moving = [];
-    if (Array.isArray(target)) {
-      const want = new Set(target);
+    if (Array.isArray(target) && target.length && typeof target[0] !== "string") moving = (target as Copy[]).filter((c) => on.shown(c.m, c.i));
+    else if (Array.isArray(target)) {
+      const want = new Set(target as string[]);
       meshes.forEach(({ keys, sketch }, m) => !sketch && keys.forEach((k, i) => want.has(k) && on.shown(m, i) && moving.push({ m, i })));
     } else moving = [target];
     // Onshape moves what's grouped or fastened together: the whole rigid set, unless only the part.

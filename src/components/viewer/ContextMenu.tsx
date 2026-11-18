@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { toast } from "@/components/ui/Toaster";
 import type { MenuTarget } from "./picking";
 import type { Gone, SceneTools } from "./types";
 
@@ -98,13 +97,16 @@ export function ContextMenu({
       { label: clear ? "Make opaque" : "Make transparent", run: () => tools.setClear(keys, !clear) },
       // Onshape's Move (triad): the copy under the pointer, or every picked part's shown copies (S7).
       // Move takes what's grouped or fastened with it, like Onshape (plan/cad-mates.md).
-      { label: "Move", run: () => tools.moveParts(copy ?? keys) },
-      ...(copy && tools.groupOf(copy).length > 1
-        ? [
-            { label: "Move part only", run: () => tools.moveParts(copy, true) },
-            { label: "Select group", run: () => tools.selectGroup(copy) },
-          ]
-        : []),
+      // Move takes the picked part copies (the one under the pointer when it isn't picked) (Harel, 2026-11-18).
+      {
+        label: "Move",
+        run: () => {
+          const picked = tools.pickedCopies();
+          const here = under ? { m: under.m, i: under.i } : null;
+          tools.moveParts(here && !picked.some((p) => p.m === here.m && p.i === here.i) ? [here] : picked.length ? picked : keys, true);
+        },
+      },
+      ...(copy && tools.groupOf(copy).length > 1 ? [{ label: "Select group", run: () => tools.selectGroup(copy) }] : []),
       // View normal to looks straight at the flat face under the pointer (N), like Onshape's menu.
       ...(at.face ? [{ label: "View normal to", run: () => tools.look(sceneDir(at.face!.normal)) }] : []),
       // On a round face: along its axis, as Onshape does.
@@ -112,17 +114,6 @@ export function ContextMenu({
     ]);
     const own = page?.(keys) ?? [];
     if (own.length) groups.push(own);
-    if (one)
-      groups.push([
-        {
-          label: "Copy name",
-          run: () =>
-            void navigator.clipboard.writeText(name(one)).then(
-              () => toast("Name copied"),
-              () => toast("Couldn't copy the name", true),
-            ),
-        },
-      ]);
   }
   const view: MenuItem[] = [];
   if (at.hidden || isolated) view.push({ label: "Show all", run: () => tools.showAll() });

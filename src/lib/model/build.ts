@@ -51,7 +51,7 @@ export type SketchPlacement = { s: number; t: number[]; g?: number; owner: strin
 export type Built = { rev: string; builtAt: string; studios: string[]; placements: ModelPlacement[]; groups?: ModelGroup[]; sketches?: SketchPlacement[]; joints?: ModelJoint[]; relations?: Relation[]; fixed?: number[] };
 export type Draft = { rev: string; jobs: Job[]; placements: ModelPlacement[]; groups?: ModelGroup[]; names?: Record<string, string>; sketches?: SketchPlacement[]; joints?: ModelJoint[]; relations?: Relation[]; fixed?: number[] };
 const SKETCH_VERSION = "1"; // bump to fetch every sketch file again after changing its format
-const PLAN_VERSION = "g4"; // g3: mates, g4: fixed parts (2026-11-18) // bump when the plan's shape changes, so the next Update replans
+const PLAN_VERSION = "g5"; // g3: mates, g4: fixed parts, g5: mates to an assembly origin (2026-11-18) // bump when the plan's shape changes, so the next Update replans
 // One group's plan (a linked assembly or Part Studio), kept so a rebuild reads only the groups
 // that moved. `sketch`: its Geometry sketches' file (job j) and where they sit.
 export type GroupPlan = { rev: string; jobs: Job[]; placements: { j: number; k: string; t: number[] }[]; names: Record<string, string>; sketch?: { j: number; t: number[]; owner: string }; mates?: GroupMates };

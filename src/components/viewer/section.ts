@@ -282,12 +282,24 @@ export function createSection(stage: Stage, meshes: PartMesh[], topo: Topo, look
   const viewNormal = (normal?: V3) => {
     const c = state?.planes[active];
     const d = normal ? vec(normal) : c ? viewDirection(c) : face ? vec(face.normal) : roundAxis ? vec(roundAxis) : null;
-    if (!d || !d.lengthSq()) return;
+    if (!d || !d.lengthSq()) return snapView();
     root.updateMatrixWorld();
     const dir = d.normalize().transformDirection(root.matrixWorld);
     // An axis has two ends: look from the one nearer the camera, so the view doesn't flip over.
     if (!normal && !c && !face && dir.dot(stage.camera.getWorldDirection(new THREE.Vector3())) > 0) dir.negate();
     look(dir.toArray() as [number, number, number]);
+  };
+
+  // N with nothing to look along (Harel, 2026-11-18): the standard view (Front, Top, Right…) closest
+  // to the way the camera looks now.
+  const snapView = () => {
+    root.updateMatrixWorld();
+    const toModel = new THREE.Matrix4().copy(root.matrixWorld).invert();
+    const back = stage.camera.getWorldDirection(new THREE.Vector3()).negate().transformDirection(toModel);
+    const axis = [Math.abs(back.x), Math.abs(back.y), Math.abs(back.z)];
+    const k = axis.indexOf(Math.max(...axis));
+    const snap = new THREE.Vector3().setComponent(k, Math.sign(back.getComponent(k)) || 1).transformDirection(root.matrixWorld);
+    look(snap.toArray() as [number, number, number]);
   };
 
   // Dragging the handle: the arrow moves the plane along its normal (mm), an arc tilts it. A click on the arrow without moving flips the cut, like Onshape's.

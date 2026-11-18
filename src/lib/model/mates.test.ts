@@ -48,7 +48,7 @@ it("reads groups, fastened mates, a sub-assembly's moving mate and its loose par
   expect(l).toBe(p); // unmated in S: goes with S's main piece
   expect(b).toBe(a); // fastened in S
   expect(a).not.toBe(p);
-  expect(m.fixed).toEqual([f]);
+  expect(m.fixed).toContain(f); // with the root origin, which no part is in
   expect(m.joints).toHaveLength(1);
   expect(m.joints[0]).toMatchObject({ id: "S/r1", name: "Arm pivot", type: "revolute", a: p, b: a });
   expect(m.joints[0].f).toEqual(at(0, 0, 0.5));

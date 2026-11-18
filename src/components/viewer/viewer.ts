@@ -144,6 +144,7 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
     ...motion.tools,
     // Select group (plan/cad-mates.md): the copy's whole rigid set picked.
     selectGroup: (c) => measure?.box(motion.tools.groupOf(c)),
+    pickedCopies: () => measure?.copies() ?? [],
     ...pins.tools,
     ...createAnchors(stage, meshes, topo, () => measure, camera.tools.frameBox),
     ...createCheckTools(meshes, visibility.place),

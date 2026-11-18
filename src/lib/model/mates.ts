@@ -71,6 +71,8 @@ export function rigidInverse(m: number[]): number[] {
   return [r[0], r[1], r[2], ti[0], r[3], r[4], r[5], ti[1], r[6], r[7], r[8], ti[2], 0, 0, 0, 1];
 }
 
+const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+
 class Sets {
   parent: number[];
   constructor(n: number) {
@@ -112,7 +114,15 @@ export function readMates(def: AssemblyDefinition, placed: string[][]): ReadMate
   const parts = occs.filter((o) => o.inst.type === "Part");
   const index = new Map(parts.map((o, i) => [pathKey(o.path), i]));
   const transformOf = new Map(occs.map((o) => [pathKey(o.path), o.transform]));
-  const sets = new Sets(parts.length);
+  // Each assembly's origin (the root's and every sub-assembly's) is a node too: a mate to an
+  // assembly's own origin mate connector names no part (Harel, 2026-11-18). The root's never moves;
+  // a sub-assembly's goes with it.
+  const origins = new Map<string, number>([["", parts.length]]);
+  for (const o of occs) if (o.inst.type === "Assembly") origins.set(pathKey(o.path), parts.length + origins.size);
+  const nodes = parts.length + origins.size;
+  const originPath = new Map([...origins].map(([k, i]) => [i, k]));
+  const transformOfNode = (i: number) => (i < parts.length ? transformOf.get(pathKey(parts[i].path))! : originPath.get(i) ? transformOf.get(originPath.get(i)!)! : IDENTITY);
+  const sets = new Sets(nodes);
   const partsUnder = (prefix: string[]) => parts.flatMap((o, i) => (startsWith(o.path, prefix) ? [i] : []));
   // Fixed in Onshape: the part's own occurrence, or a fixed sub-assembly's first part.
   const fixedParts = new Set<number>();
@@ -121,6 +131,7 @@ export function readMates(def: AssemblyDefinition, placed: string[][]): ReadMate
     const i = o.inst.type === "Part" ? index.get(pathKey(o.path)) : partsUnder(o.path)[0];
     if (i !== undefined) fixedParts.add(i);
   }
+  fixedParts.add(origins.get("")!);
 
   type Edge = { prefix: string[]; featureId: string; name: string; type: JointType; a: number; b: number; f: number[]; cad: { turn: number; slide: number }; sub: SubAssembly | null };
   const edges: Edge[] = [];
@@ -140,7 +151,7 @@ export function readMates(def: AssemblyDefinition, placed: string[][]): ReadMate
     if (feature.featureType !== "mate") continue;
     const ents = (data.matedEntities as MatedEntity[] | undefined) ?? [];
     if (ents.length !== 2) continue;
-    const ends = ents.map((e) => (Array.isArray(e.matedOccurrence) && e.matedOccurrence.length ? index.get(pathKey([...prefix, ...e.matedOccurrence])) : undefined));
+    const ends = ents.map((e) => (Array.isArray(e.matedOccurrence) && e.matedOccurrence.length ? index.get(pathKey([...prefix, ...e.matedOccurrence])) : origins.get(pathKey(prefix))));
     if (ends[0] === undefined || ends[1] === undefined) continue; // a hidden-in-Onshape mate connector, a suppressed part, an assembly's own connector
     const type = data.mateType === "FASTENED" ? "fastened" : MOVING[String(data.mateType)];
     if (type === "fastened") {
@@ -149,8 +160,8 @@ export function readMates(def: AssemblyDefinition, placed: string[][]): ReadMate
     }
     if (!type) continue;
     // The connectors where the parts are now: each part's transform × its connector.
-    const ta = transformOf.get(pathKey(parts[ends[0]].path))!;
-    const tb = transformOf.get(pathKey(parts[ends[1]].path))!;
+    const ta = transformOfNode(ends[0]);
+    const tb = transformOfNode(ends[1]);
     const ca = csMatrix(ents[0].matedCS);
     const cb = csMatrix(ents[1].matedCS);
     if (!ca || !cb) continue;
@@ -166,9 +177,10 @@ export function readMates(def: AssemblyDefinition, placed: string[][]): ReadMate
   // main piece (parts fixed in it, unmated ones) goes with that piece. Deepest first.
   const subOccs = occs.filter((o) => o.inst.type === "Assembly").sort((x, y) => y.path.length - x.path.length);
   for (const s of subOccs) {
-    const own = partsUnder(s.path);
+    const own = [...partsUnder(s.path), origins.get(pathKey(s.path))!];
+    const own0 = origins.get(pathKey(s.path))!;
     if (own.length < 2) continue;
-    const local = new Sets(parts.length);
+    const local = new Sets(nodes);
     for (const i of own) local.join(i, sets.find(i));
     for (const e of edges) if (startsWith(e.prefix, s.path) && own.includes(e.a) && own.includes(e.b)) local.join(sets.find(e.a), sets.find(e.b));
     const pieces = new Map<number, number[]>();
@@ -178,7 +190,9 @@ export function readMates(def: AssemblyDefinition, placed: string[][]): ReadMate
     }
     if (pieces.size < 2) continue;
     // Its main piece: the one with a fixed part, else the biggest.
-    const sorted = [...pieces.values()].sort((x, y) => Number(y.some((i) => fixedParts.has(i))) - Number(x.some((i) => fixedParts.has(i))) || y.length - x.length);
+    // (the one on its own origin first)
+    const rank = (p: number[]) => (p.includes(own0) ? 2 : p.some((i) => fixedParts.has(i)) ? 1 : 0);
+    const sorted = [...pieces.values()].sort((x, y) => rank(y) - rank(x) || y.length - x.length);
     const main = sorted[0];
     for (const other of sorted.slice(1)) sets.join(main[0], other[0]);
   }

@@ -754,8 +754,8 @@ export function AddCommentDialog({
           <div className="flex items-center gap-2 rounded-md border border-accent/40 bg-accent/5 px-3 py-2 text-sm">
             <span className="h-2 w-2 rounded-full bg-accent" />
             <span className="min-w-0 flex-1 truncate font-semibold text-fg">{part.name ?? "A part placed in CAD"}</span>
-            <button type="button" onClick={onClearPart} className="press text-xs text-muted hover:text-fg pointer-coarse:min-h-9">
-              Not about a part
+            <button type="button" onClick={onClearPart} aria-label="Not about a part" title="Not about a part" className="press -mr-1 flex h-7 w-7 items-center justify-center rounded text-base text-muted hover:bg-raised hover:text-fg pointer-coarse:h-9 pointer-coarse:w-9">
+              ×
             </button>
           </div>
         ) : (
