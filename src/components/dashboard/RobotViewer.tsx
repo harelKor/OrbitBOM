@@ -187,7 +187,8 @@ export function RobotViewer({
   useEffect(() => {
     if (!version) return;
     let cancelled = false;
-    fetch(`/api/robots/${robotId}/model${systemId ? `?system=${systemId}` : ""}`)
+    // The BOM model: each system as its BOM version has it (Harel, 2026-11-18).
+    fetch(`/api/robots/${robotId}/model?model=bom${systemId ? `&system=${systemId}` : ""}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((d: { model: ViewerModel | null }) => {
         if (cancelled) return;

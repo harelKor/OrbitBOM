@@ -8,6 +8,7 @@ import { onshapeClient, OnshapeError, type OnshapeClient } from "@/lib/onshape/c
 import { studioPath } from "@/lib/onshape/parts";
 import { apiPath, parseOnshapeUrl } from "@/lib/onshape/url";
 import { applyBomRows, sigKey } from "@/lib/sync/applyBom";
+import { commitDraft, VersionError } from "./commit";
 import { planMerge } from "@/lib/sync/merge";
 import { readDocVersions } from "./docVersions";
 import { onshapeName } from "./label";
@@ -30,8 +31,11 @@ export type Draft = {
   changes: VersionChange[];
 };
 
-// A change whose shape had nothing stored to compare with (see checkSystem).
+// A change whose shape had nothing stored to compare with, or whose new shape Onshape didn't send
+// (see checkSystem).
 export const SHAPE_UNKNOWN = "Shape not compared before";
+// A part with the same shape in a newer Onshape reference (a newer version, a new partId).
+export const SAME_SHAPE = "Same shape, newer Onshape version";
 
 export type CheckResult = {
   draft: Draft | null; // null: the system is up to date with Onshape
@@ -55,9 +59,11 @@ export async function loadDraft(systemId: string): Promise<Draft | null> {
 
 // Change detection (plan/system-versioning.md §4). Reads the Manufacture assembly's BOM and
 // compares it to the system's parts, which hold the committed state. Nothing reaches the BOM
-// here: what changed is kept in the system's one draft until a member commits it. Changes
-// that only move a part's Onshape reference (the same shape in a newer subassembly version,
-// or under a new partId) are applied at once, since fab would make exactly the same part.
+// here: what changed is kept in the system's one draft until a member commits it. When the only
+// changes move parts' Onshape references (the same shape in a newer version, or under a new
+// partId), fab would make exactly the same parts: they're committed at once, as a version of
+// their own, so the version tree shows where the BOM is (Harel, 2026-11-18: they used to be taken
+// with no version, and the tree kept "BOM is on this" on the old one).
 // With `force` false (the background refresh and the Onshape panel) it stops after one call
 // when the document's microversion is the one last seen.
 export async function checkSystem(systemId: string, memberId: string, { force = true } = {}): Promise<CheckResult> {
@@ -140,7 +146,8 @@ export async function checkSystem(systemId: string, memberId: string, { force = 
   for (const r of plan.insert) {
     changes.push({ key: partKey(r), partId: null, change: "added", name: r.onshapeName, partNumber: r.partNumber, fields: {}, geometry: false });
   }
-  let moved = false;
+  let moved = false; // only shapes to store: taken as they are
+  const relinked: VersionChange[] = []; // same shapes in a newer reference
   for (const u of plan.update) {
     const part = byId.get(u.id)!;
     if (isHeldAsIs(u.id, rowByKey.get(partKey(u.identity)))) continue;
@@ -154,12 +161,16 @@ export async function checkSystem(systemId: string, memberId: string, { force = 
     // No committed shape (synced before shapes were stored, in a workspace that has moved on): the
     // shape can't be compared, so the member looks at it in the Commit window instead of it being
     // taken silently.
-    const unknown = !!(sig && !before);
+    // Or the part moved to a reference whose shape was asked for but didn't come (its Part Studio's
+    // mass properties failed): it may have changed, so it's never taken unseen (Harel, 2026-11-18).
+    const asked = fresh.has(studioPath(u.identity) ?? "") && studioPath(part) !== studioPath(u.identity);
+    const unknown = !!(sig && !before) || (!sig && asked);
     const geometry = !!(sig && before && sig !== before) || unknown;
     const base = { key: partKey(u.identity), partId: u.id, name: u.identity.onshapeName, partNumber: part.partNumber, fields, geometry };
     if (u.restore) changes.push({ ...base, change: "added", note: "Back in CAD" });
     else if (geometry || Object.keys(fields).length) changes.push({ ...base, change: "modified", ...(unknown ? { note: SHAPE_UNKNOWN } : {}) });
-    else if (u.relinked || studioPath(part) !== studioPath(u.identity) || (sig && sig !== part.shapeSig)) moved = true;
+    else if (u.relinked || studioPath(part) !== studioPath(u.identity)) relinked.push({ ...base, change: "modified", note: SAME_SHAPE });
+    else if (sig && sig !== part.shapeSig) moved = true;
   }
   for (const id of plan.remove) {
     const part = byId.get(id)!;
@@ -167,6 +178,10 @@ export async function checkSystem(systemId: string, memberId: string, { force = 
     changes.push({ key: partKey(part), partId: id, change: "removed", name: part.onshapeName ?? "Part", partNumber: part.partNumber, fields: {}, geometry: false });
   }
 
+  // Only same shapes in newer references: committed below as a version of their own. With other
+  // changes they're taken when the draft is committed, as before.
+  const auto = !changes.length && relinked.length > 0;
+  if (auto) changes.push(...relinked);
   const order = { modified: 0, added: 1, removed: 2 };
   changes.sort((x, y) => order[x.change] - order[y.change] || x.name.localeCompare(y.name, undefined, { numeric: true }));
 
@@ -218,7 +233,8 @@ export async function checkSystem(systemId: string, memberId: string, { force = 
   const name = current?.name ?? null;
   const same = current && stable(current.changes) === stable(changes);
   const values = { name, onshapeRef, changes, rows, ...(same ? {} : { detectedAt: now, detectedBy: memberId }) };
-  return db.transaction(async (tx) => {
+  let wrote: string | null = null; // the draft this check saved (not one another check or commit left)
+  const saved = await db.transaction(async (tx) => {
     const fresh = await stillCurrent(tx);
     if (!fresh.same) return superseded(fresh.draft);
     const [row] = current
@@ -232,8 +248,18 @@ export async function checkSystem(systemId: string, memberId: string, { force = 
       .update(systems)
       .set({ lastCheckedAt: now, ...account, ...(followed ? { followedVersionId: followed.id } : {}) })
       .where(eq(systems.id, systemId));
-    return { draft: draftOf(row), unchanged: false, calls: client.calls };
+    wrote = row.id;
+    return { draft: draftOf(row), unchanged: false, calls: client.calls } as CheckResult;
   });
+  if (!auto || !saved.draft || saved.draft.id !== wrote) return saved;
+  try {
+    await commitDraft(systemId, memberId, { draftId: saved.draft.id, seen: saved.draft.detectedAt.toISOString(), name: SAME_SHAPE });
+  } catch (err) {
+    // Committed or replaced meanwhile: the draft (or what replaced it) waits for a member.
+    if (err instanceof VersionError) return saved;
+    throw err;
+  }
+  return { draft: null, unchanged: false, applied: true, calls: client.calls };
 }
 
 // JSON with sorted keys: Postgres stores jsonb keys in its own order.

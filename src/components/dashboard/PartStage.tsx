@@ -166,7 +166,7 @@ export function PartModel({
         ? fetch(`/api/parts/${partId}/model`, { method: "POST" })
         : view === "flat"
           ? fetch(`/api/parts/${partId}/flat`, { method: "POST" })
-          : fetch(`/api/robots/${robotId}/model?parts=1`);
+          : fetch(`/api/robots/${robotId}/model?parts=1&model=bom`);
     load
       .then(async (res) => {
         const body = (await res.json().catch(() => ({}))) as { model?: ViewerModel | null; parts?: ModelPart[]; error?: string };

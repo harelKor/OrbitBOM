@@ -25,7 +25,7 @@ export function Assembly({
   builtAt,
   canEdit,
   canTick,
-  modelUrl = `/api/robots/${robotId}/model`,
+  modelUrl = `/api/robots/${robotId}/model?model=bom`,
 }: {
   robotId: string;
   robotName: string;

@@ -6,10 +6,14 @@ import { buildRobotModel, robotModel } from "@/lib/model/build";
 import { OnshapeError } from "@/lib/onshape/client";
 import { StorageNotConfiguredError } from "@/lib/storage/r2";
 import { isUuid } from "@/lib/uuid";
-import type { ModelKind } from "@/db/schema";
+import type { BuildKind } from "@/lib/model/build";
 
-// ?model=basepart: the robot's Basepart model (Harel, 2026-11-12); else its Final, as before.
-const kindOf = (url: URL): ModelKind => (url.searchParams.get("model") === "basepart" ? "basepart" : "final");
+// ?model=basepart: the robot's Basepart model (Harel, 2026-11-12); ?model=bom: its BOM model (each
+// system at its BOM version, Harel 2026-11-18; the Final until it's built); else its Final.
+const kindOf = (url: URL): BuildKind => {
+  const m = url.searchParams.get("model");
+  return m === "basepart" || m === "bom" ? m : "final";
+};
 
 // Fluid compute lets a Hobby function run up to 300 s; new Part Studio exports stop starting
 // after 150 s so the slowest one still finishes inside the limit.

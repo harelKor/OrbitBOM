@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { asc, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
-import type { GeometrySketch, ModelKind } from "@/db/schema";
+import type { GeometrySketch, ModelKind, VersionRef } from "@/db/schema";
 import { logCalls, onshapeClient, OnshapeError, type OnshapeClient } from "@/lib/onshape/client";
 import { partsList } from "@/lib/onshape/partsList";
 import { fetchSketches } from "@/lib/onshape/sketches";
@@ -57,10 +57,17 @@ const PLAN_VERSION = "g4"; // g3: mates, g4: fixed parts (2026-11-18) // bump wh
 export type GroupPlan = { rev: string; jobs: Job[]; placements: { j: number; k: string; t: number[] }[]; names: Record<string, string>; sketch?: { j: number; t: number[]; owner: string }; mates?: GroupMates };
 type State = { built?: Built; draft?: Draft; plans?: Record<string, GroupPlan> };
 
-// The Final model keeps the key it always had; the Basepart model is new (Harel, 2026-11-12).
-const cacheKey = (robotId: string, kind: ModelKind = "final") => (kind === "final" ? `robot-model:${robotId}` : `robot-model:${robotId}:${kind}`);
+// The robot's 3D models: the Final (the CAD page, at each system's CAD state: Update CAD moves it),
+// the Basepart, and the BOM model (Harel, 2026-11-18): each system at its current BOM version, for
+// the BOM pages, part pictures and part windows, so Update CAD never shows on the BOM before the BOM
+// is updated. Built with the Final (buildModel), sharing its plans and Part Studio files when a
+// system's BOM and CAD are on the same state, so it costs nothing extra then.
+export type BuildKind = ModelKind | "bom";
 
-export async function loadState(robotId: string, kind: ModelKind = "final"): Promise<State> {
+// The Final model keeps the key it always had; the Basepart model is new (Harel, 2026-11-12).
+const cacheKey = (robotId: string, kind: BuildKind = "final") => (kind === "final" ? `robot-model:${robotId}` : `robot-model:${robotId}:${kind}`);
+
+export async function loadState(robotId: string, kind: BuildKind = "final"): Promise<State> {
   const [row] = await db.select({ payload: onshapeCache.payload }).from(onshapeCache).where(eq(onshapeCache.key, cacheKey(robotId, kind)));
   return (row?.payload as State) ?? {};
 }
@@ -68,7 +75,7 @@ export async function loadState(robotId: string, kind: ModelKind = "final"): Pro
 // Only the built model, for the viewer and the part windows: the draft and the group plans can
 // be far bigger and only the build steps need them (every 3D view sent the whole payload before,
 // 2026-11-14).
-async function loadBuilt(robotId: string, kind: ModelKind = "final"): Promise<Built | undefined> {
+async function loadBuilt(robotId: string, kind: BuildKind = "final"): Promise<Built | undefined> {
   const [row] = await db
     .select({ built: sql<Built | null>`${onshapeCache.payload} -> 'built'` })
     .from(onshapeCache)
@@ -91,7 +98,7 @@ async function loadFinalWithSketches(robotId: string): Promise<{ built?: Built; 
   return { built: of(finalKey), basepart: of(cacheKey(robotId, "basepart")) };
 }
 
-async function saveState(robotId: string, state: State, kind: ModelKind = "final") {
+async function saveState(robotId: string, state: State, kind: BuildKind = "final") {
   const values = { payload: state, microversion: state.built?.rev ?? null, fetchedAt: new Date() };
   await db
     .insert(onshapeCache)
@@ -100,7 +107,7 @@ async function saveState(robotId: string, state: State, kind: ModelKind = "final
 }
 
 export async function deleteRobotModel(robotId: string) {
-  await db.delete(onshapeCache).where(inArray(onshapeCache.key, [cacheKey(robotId, "final"), cacheKey(robotId, "basepart")]));
+  await db.delete(onshapeCache).where(inArray(onshapeCache.key, [cacheKey(robotId, "final"), cacheKey(robotId, "basepart"), cacheKey(robotId, "bom")]));
 }
 
 // When the robot's model was last built, for the dashboard. A database read only.
@@ -133,8 +140,12 @@ export async function robotModelsBuiltAt(robotId: string): Promise<Record<ModelK
 // Basepart's sketches too, hidden until Shift+H (`sketchesHidden`; Harel, 2026-11-12).
 export type ModelSketches = { url: string | null; key: string; t: number[]; g?: number; owner: string };
 export type RobotModel = { builtAt: string; studios: (string | null)[]; keys: string[]; placements: ModelPlacement[]; groups: ModelGroup[]; sketches: ModelSketches[]; sketchesHidden?: boolean; joints?: ModelJoint[]; relations?: Relation[]; fixed?: number[] };
-export async function robotModel(robotId: string, systemId?: string, kind: ModelKind = "final"): Promise<RobotModel | null> {
-  const { built, basepart } = kind === "final" ? await loadFinalWithSketches(robotId) : { built: await loadBuilt(robotId, kind), basepart: undefined };
+// `bom`: the BOM model, or the Final while the BOM model isn't built yet; it shows the Basepart's
+// sketches like the Final.
+export async function robotModel(robotId: string, systemId?: string, kind: BuildKind = "final"): Promise<RobotModel | null> {
+  const bom = kind === "bom" ? await loadBuilt(robotId, "bom") : undefined;
+  if (kind === "bom" && !bom) return robotModel(robotId, systemId, "final");
+  const { built, basepart } = kind === "final" ? await loadFinalWithSketches(robotId) : kind === "bom" ? { built: bom, basepart: (await loadFinalWithSketches(robotId)).basepart } : { built: await loadBuilt(robotId, kind), basepart: undefined };
   if (!built || !storageConfigured()) return null;
   const groups = built.groups ?? [];
   const own = (g: number | undefined) => !systemId || !groups.length || (g !== undefined && !!groups[g]?.systemIds.includes(systemId));
@@ -150,7 +161,7 @@ export async function robotModel(robotId: string, systemId?: string, kind: Model
     placements = kept.map((p) => ({ ...p, s: index.get(p.s)! }));
   }
   let sketches: Omit<ModelSketches, "url">[] = (built.sketches ?? []).filter((s) => own(s.g)).map((s) => ({ key: built.studios[s.s], t: s.t, g: s.g, owner: s.owner }));
-  if (kind === "final") sketches = basepartSketchesFor(basepart, robotId, groups, systemId);
+  if (kind !== "basepart") sketches = basepartSketchesFor(basepart, robotId, groups, systemId);
   // The joints of the groups sent, and the relations between them (renumbered).
   const jointIndex = new Map<number, number>();
   const joints = (built.joints ?? []).filter((j, i) => own(j.g) && jointIndex.set(i, jointIndex.size));
@@ -162,7 +173,7 @@ export async function robotModel(robotId: string, systemId?: string, kind: Model
     placements,
     groups,
     sketches: await Promise.all(sketches.map(async (s) => ({ ...s, url: await imageUrl(s.key) }))),
-    ...(kind === "final" ? { sketchesHidden: true } : {}),
+    ...(kind !== "basepart" ? { sketchesHidden: true } : {}),
     ...(joints.length ? { joints } : {}),
     ...(relations.length ? { relations } : {}),
     ...(joints.length && built.fixed?.length ? { fixed: built.fixed } : {}),
@@ -183,15 +194,16 @@ function basepartSketchesFor(built: Pick<Built, "studios" | "sketches"> | undefi
   });
 }
 
-// Every part key in the built model with the R2 file of the Part Studio that holds it.
+// Every part key in the BOM model (else the Final) with the R2 file of the Part Studio that holds it.
 export async function builtStudios(robotId: string): Promise<Map<string, string>> {
-  const built = await loadBuilt(robotId);
+  const built = (await loadBuilt(robotId, "bom")) ?? (await loadBuilt(robotId));
   return new Map(built?.placements.map((p) => [p.k, built.studios[p.s]]) ?? []);
 }
 
-// The R2 file of the robot model's Part Studio that holds this part, if the model has it.
+// The R2 file of the Part Studio that holds this part in the BOM model (else the Final), if any:
+// a part window shows the part as the BOM has it.
 export async function builtStudioFor(robotId: string, key: string): Promise<string | null> {
-  const built = await loadBuilt(robotId);
+  const built = (await loadBuilt(robotId, "bom")) ?? (await loadBuilt(robotId));
   const placement = built?.placements.find((p) => p.k === key);
   return placement ? built!.studios[placement.s] : null;
 }
@@ -253,7 +265,7 @@ function sketchOf(studioUrl: string | null, chosen: GeometrySketch[], owner: str
 // falls back to its main (Final) assembly. Basepart (Harel, 2026-11-12): every system's Basepart,
 // Part Studio or assembly, read on its workspace; the robot's own Basepart when no system has one,
 // else just its Geometry sketches.
-export async function modelSources(robotId: string, kind: ModelKind = "final"): Promise<ModelSource[]> {
+export async function modelSources(robotId: string, kind: BuildKind = "final"): Promise<ModelSource[]> {
   if (kind === "basepart") return basepartSources(robotId);
   const rows = await db
     .select({ id: systems.id, name: systems.name, url: systems.assemblyUrl, follow: systems.followVersions, seen: systems.followedVersionId, pinned: systems.modelRef, ref: systemVersions.onshapeRef })
@@ -269,7 +281,9 @@ export async function modelSources(robotId: string, kind: ModelKind = "final"): 
     // microversion. Before any, a system that follows Onshape versions is drawn at the version
     // it's on, not the students' workspace; before its first commit, at the newest version seen.
     const vid = r.follow ? (r.ref?.vid ?? r.seen) : null;
-    const ref = r.pinned ? { ...linked, wvm: r.pinned.wvm, wvmid: r.pinned.wvmid } : vid ? { ...linked, wvm: "v" as const, wvmid: vid } : linked;
+    // The BOM model: where the current BOM version was read, when that's the assembly's document.
+    const bom = kind === "bom" ? bomModelRef(r.ref, linked.did) : null;
+    const ref = bom ? { ...linked, ...bom } : r.pinned ? { ...linked, wvm: r.pinned.wvm, wvmid: r.pinned.wvmid } : vid ? { ...linked, wvm: "v" as const, wvmid: vid } : linked;
     const same = sources.find((o) => onshapeUrl(o) === onshapeUrl(ref));
     if (same) {
       same.group.systemIds.push(r.id);
@@ -319,7 +333,7 @@ export const groupRev = (ref: ModelSource, mv: string | undefined) =>
   `${PLAN_VERSION}|${TESS_VERSION}|${ref.kind}|${ref.wvm}:${ref.wvmid}:${ref.eid}:${mv ?? ""}${ref.sketch ? `|${SKETCH_VERSION}:${ref.sketch.studio.eid}:${ref.sketch.chosen.map((s) => s.id).join(",")}` : ""}`;
 export const groupKey = (ref: { did: string; eid?: string; kind?: ModelSource["kind"] }) => `${ref.kind === "sketches" ? "sketches:" : ""}${ref.did}:${ref.eid}`;
 
-export async function buildRobotModel(robotId: string, memberId: string, deadline: number, kind: ModelKind = "final"): Promise<BuildStep> {
+export async function buildRobotModel(robotId: string, memberId: string, deadline: number, kind: BuildKind = "final"): Promise<BuildStep> {
   if (!storageConfigured()) throw new StorageNotConfiguredError();
   const sources = await modelSources(robotId, kind);
   if (!sources.length) throw new OnshapeError(kind === "basepart" ? "Sync a Basepart Part Studio or assembly from the Onshape panel first." : "Link this robot's systems to their Onshape assemblies first.");
@@ -327,11 +341,11 @@ export async function buildRobotModel(robotId: string, memberId: string, deadlin
   try {
     return await buildStep(robotId, client, sources, deadline, kind);
   } finally {
-    logCalls(kind === "basepart" ? "3d-model-basepart" : "3d-model", client);
+    logCalls(kind === "basepart" ? "3d-model-basepart" : kind === "bom" ? "3d-model-bom" : "3d-model", client);
   }
 }
 
-async function buildStep(robotId: string, client: OnshapeClient, sources: ModelSource[], deadline: number, kind: ModelKind): Promise<BuildStep> {
+async function buildStep(robotId: string, client: OnshapeClient, sources: ModelSource[], deadline: number, kind: BuildKind): Promise<BuildStep> {
   const state = await loadState(robotId, kind);
   const save = (s: State) => saveState(robotId, s, kind);
 
@@ -359,12 +373,18 @@ async function buildStep(robotId: string, client: OnshapeClient, sources: ModelS
   const plans: Record<string, GroupPlan> = {};
   for (const [g, ref] of sources.entries()) if (kept[groupKey(ref)]?.rev === revs[g]) plans[groupKey(ref)] = kept[groupKey(ref)];
   if (!draft) {
-    const stale = sources.flatMap((ref, g) => (plans[groupKey(ref)] ? [] : [g]));
+    let stale = sources.flatMap((ref, g) => (plans[groupKey(ref)] ? [] : [g]));
+    // The Final and BOM models read a system at the same state share its plan: no calls.
+    if (stale.length && kind !== "basepart") {
+      const other = (await loadState(robotId, kind === "bom" ? "final" : "bom")).plans ?? {};
+      for (const g of stale) if (other[groupKey(sources[g])]?.rev === revs[g]) plans[groupKey(sources[g])] = other[groupKey(sources[g])];
+      stale = stale.filter((g) => !plans[groupKey(sources[g])]);
+    }
     const fresh = await Promise.all(stale.map((g) => planGroup(client, sources[g], revs[g])));
     stale.forEach((g, i) => (plans[groupKey(sources[g])] = fresh[i]));
     // A group read at a fixed version or microversion is that version's model: kept for the
     // version tree (snapshotStore.ts).
-    for (const [i, g] of stale.entries()) await saveSnapshot(robotId, kind, sources[g], fresh[i]);
+    for (const [i, g] of stale.entries()) await saveSnapshot(robotId, kind === "bom" ? "final" : kind, sources[g], fresh[i]);
     draft = mergePlans(sources, plans, rev);
     await save({ ...state, draft, plans });
   }
@@ -396,10 +416,12 @@ async function buildStep(robotId: string, client: OnshapeClient, sources: ModelS
 
 // The whole model, step after step, on the server (no time limit there since the move off
 // Vercel): for work nobody watches in a browser, like a system linked from the Onshape panel.
-export async function buildRobotModelFully(robotId: string, memberId: string, ms = 10 * 60_000, kind: ModelKind = "final"): Promise<BuildStep> {
+// The Final brings the BOM model with it.
+export async function buildRobotModelFully(robotId: string, memberId: string, ms = 10 * 60_000, kind: BuildKind = "final"): Promise<BuildStep> {
   const until = Date.now() + ms;
   for (;;) {
     const step = await buildRobotModel(robotId, memberId, Math.min(until, Date.now() + 150_000), kind);
+    if (step.state === "done" && kind === "final") return buildRobotModelFully(robotId, memberId, Math.max(0, until - Date.now()), "bom");
     if (step.state === "done" || Date.now() > until) return step;
   }
 }
@@ -638,12 +660,14 @@ export function mergePlans(sources: { did: string; eid?: string; kind?: ModelSou
 export async function forgetSystemPlan(systemId: string): Promise<string | null> {
   const [sys] = await db.select({ robotId: systems.robotId }).from(systems).where(eq(systems.id, systemId));
   if (!sys) return null;
-  const sources = await modelSources(sys.robotId, "final");
-  const source = sources.find(ownsSource({ systemId }));
-  const state = await loadState(sys.robotId, "final");
-  const plans = { ...state.plans };
-  if (source) delete plans[groupKey(source)];
-  await saveState(sys.robotId, { ...(state.built ? { built: { ...state.built, rev: "" } } : {}), plans }, "final");
+  // Both the Final and the BOM model read it again.
+  for (const kind of ["final", "bom"] as const) {
+    const source = (await modelSources(sys.robotId, kind)).find(ownsSource({ systemId }));
+    const state = await loadState(sys.robotId, kind);
+    const plans = { ...state.plans };
+    if (source) delete plans[groupKey(source)];
+    await saveState(sys.robotId, { ...(state.built ? { built: { ...state.built, rev: "" } } : {}), plans }, kind);
+  }
   return sys.robotId;
 }
 
@@ -684,3 +708,11 @@ export async function adoptGroupPlan(robotId: string, kind: ModelKind, owner: Mo
   await saveState(robotId, { ...state, plans: { ...state.plans, [groupKey(source)]: { ...plan, rev: groupRev(source, undefined) } } }, kind);
 }
 
+
+// Where a BOM version's 3D model is read: the assembly document's own version (a BOM release or a
+// followed version), else the microversion the check read. Null: another document's state.
+export function bomModelRef(ref: VersionRef | null | undefined, asmDid: string): { wvm: "v" | "m"; wvmid: string } | null {
+  if (!ref) return null;
+  const own = ref.sources?.[asmDid]?.versionId ?? (ref.did === asmDid ? ref.vid : undefined);
+  return own ? { wvm: "v", wvmid: own } : ref.mv && ref.did === asmDid ? { wvm: "m", wvmid: ref.mv } : null;
+}

@@ -1,8 +1,9 @@
 import "server-only";
+import { bomModelRef } from "@/lib/model/build";
 import { randomUUID } from "node:crypto";
 import { and, count, eq, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
-import type { ModelKind, VersionRef } from "@/db/schema";
+import type { ModelKind } from "@/db/schema";
 import { adoptGroupPlan, planGroupNow, runJobs, type GroupPlan, type ModelOwner } from "@/lib/model/build";
 import { logCalls, onshapeClient, OnshapeError } from "@/lib/onshape/client";
 import { cachedPayloads, keepPayload } from "@/lib/onshape/studioRevs";
@@ -192,13 +193,8 @@ export async function pinModelToVersion(systemId: string, versionId: string): Pr
   return row.robotId;
 }
 
-// Where a BOM version's 3D model is read: the assembly document's own version (a BOM release or a
-// followed version), else the microversion the check read. Null: another document's state.
-export function bomModelRef(ref: VersionRef | null | undefined, asmDid: string): { wvm: "v" | "m"; wvmid: string } | null {
-  if (!ref) return null;
-  const own = ref.sources?.[asmDid]?.versionId ?? (ref.did === asmDid ? ref.vid : undefined);
-  return own ? { wvm: "v", wvmid: own } : ref.mv && ref.did === asmDid ? { wvm: "m", wvmid: ref.mv } : null;
-}
+// Where a BOM version's 3D model is read (build.ts).
+export { bomModelRef };
 
 // A model's updates for its version tree: sub-versions (no Onshape version of their own) and when
 // the first update was made (the Basepart tree starts there).

@@ -27,7 +27,8 @@ const drawnKey = (robotId: string) => `pictures:${robotId}`;
 const pictureRev = (lines: string[]) => createHash("sha1").update(`pic1|${lines.join("\n")}`).digest("hex").slice(0, 16);
 
 async function plan(robotId: string, systemId: string | null) {
-  const model = await robotModel(robotId);
+  // Pictures show the parts as the BOM has them (Harel, 2026-11-18).
+  const model = await robotModel(robotId, undefined, "bom");
   if (!model) return null;
   const [robot] = await db.select({ thumbnailPath: robots.thumbnailPath }).from(robots).where(eq(robots.id, robotId));
   const rows = await db

@@ -132,7 +132,12 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
   a Basepart has Update Basepart. Both: check → Commit window (`cadDiff.ts`, `CadCommitWindow`) →
   commit (`cad.ts`, `cad_updates` with `model`: a new version or a sub-version "V12 v1"; pins
   `systems.model_ref` / `basepart_model_ref`). The CAD page shows the Final's or the Basepart's
-  own tree; BOM pages show the Final model only.
+  own tree. BOM pages (dashboard / system 3D, part pictures, part windows, Assembly) show the **BOM
+  model** (`?model=bom`, `robot-model:<id>:bom`): each system at its current BOM version
+  (`bomModelRef`), built with the Final by `buildModel` and sharing its plans, so Update CAD never
+  shows on the BOM before Update BOM (Harel, 2026-11-18). A check whose only changes are same
+  shapes in newer references commits them as a version of its own (`SAME_SHAPE`); a part whose new
+  shape Onshape didn't send is listed, never taken unseen.
 - Basepart and Final (2026-11-12): `systems.assembly_url` / `robots.main_assembly_url` are the
   **Final** (the only BOM source). The **Basepart** (`basepart_url`, `basepart_kind` partstudio |
   assembly, `basepart_studio_url`, `basepart_sketches`) is 3D and comments only: synced from the

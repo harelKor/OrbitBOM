@@ -18,7 +18,7 @@ else
     const { db, schema } = await import("@/db");
     const { and, eq } = await import("drizzle-orm");
     const { encrypt } = await import("@/lib/crypto");
-    const { checkSystem } = await import("./detect");
+    const { checkSystem, SAME_SHAPE } = await import("./detect");
     const { commitDraft, VersionError } = await import("./commit");
     const { loadVersionTags } = await import("./tags");
     const { listVersions, revertSystem, updatePartToLatest } = await import("./history");
@@ -155,7 +155,8 @@ else
       expect(s.currentVersionId).toBe(draft.id);
     });
 
-    it("takes the same shapes under new partIds in a newer version without a commit", async () => {
+    // Taken at once, as a version of its own (Harel, 2026-11-18), so the tree knows where the BOM is.
+    it("takes the same shapes under new partIds in a newer version as a version of its own", async () => {
       const before = await live();
       source = { wvmType: "v", wvmId: "v3" };
       bomParts = { B9: ["Part B", 6], A9: ["Part A", 2] };
@@ -172,6 +173,10 @@ else
         .from(schema.systemVersions)
         .where(and(eq(schema.systemVersions.systemId, system.id), eq(schema.systemVersions.state, "draft")));
       expect(drafts).toHaveLength(0);
+      const made = (await versions()).find((v) => v.seq === 2)!;
+      expect([made.state, made.name, made.changes.map((c) => c.note)]).toEqual(["committed", SAME_SHAPE, [SAME_SHAPE, SAME_SHAPE]]);
+      const [s] = await db.select().from(schema.systems).where(eq(schema.systems.id, system.id));
+      expect(s.currentVersionId).toBe(made.id);
     });
 
     it("commits one part alone and leaves the rest Outdated until committed", async () => {
@@ -183,32 +188,33 @@ else
       const keyOf = (id: string) => draft!.changes.find((c) => c.partId === id)!.key;
 
       const one = await commitDraft(system.id, member.id, { draftId: draft!.id, only: keyOf(a.id), name: "Arm plate" });
-      expect(one.seq).toBe(2);
+      expect(one.seq).toBe(3);
       const [a2, b2] = await live();
       expect([a2.shapeSig?.slice(0, 7), b2.quantity]).toEqual(["1.70000", 6]);
       let tags = await loadVersionTags(system.id);
-      expect(tags.parts[a.id]).toMatchObject({ seq: 2, name: "Arm plate" });
+      expect(tags.parts[a.id]).toMatchObject({ seq: 3, name: "Arm plate" });
       expect(Object.keys(tags.outdated)).toEqual([b.id]);
-      expect(tags.outdated[b.id].missed).toMatchObject({ seq: 2 });
+      expect(tags.outdated[b.id].missed).toMatchObject({ seq: 3 });
 
       await commitDraft(system.id, member.id, { draftId: draft!.id, only: tags.outdated[b.id].key });
       expect((await live())[1].quantity).toBe(7);
       tags = await loadVersionTags(system.id);
       expect(tags.outdated).toEqual({});
       expect(tags.draft).toBeNull();
-      expect(tags.parts[b.id]).toMatchObject({ seq: 2 });
-      const v2 = (await versions()).find((v) => v.seq === 2)!;
+      expect(tags.parts[b.id]).toMatchObject({ seq: 3 });
+      const v2 = (await versions()).find((v) => v.seq === 3)!;
       expect(v2.changes.map((c) => c.name)).toEqual(["Part A", "Part B"]);
     });
 
     it("reverts to an older version, holds the parts there and brings them back one at a time", async () => {
       const list = await listVersions(system.id);
       expect(list.versions.map((v) => [v.seq, v.label])).toEqual([
-        [2, "V4"],
+        [3, "V4"],
+        [2, "V3"],
         [1, "V2"],
         [0, "V1"],
       ]);
-      const v1 = list.versions[1];
+      const v1 = list.versions[2];
       const r = await revertSystem(system.id, v1.id, member.id);
       expect(r).toEqual({ label: "V2", moved: 2 });
       const [a, b] = await live();
@@ -219,7 +225,7 @@ else
       expect((await listSystemSync()).get(system.id)).toEqual({ outdated: "reverted", waiting: 0 });
       let tags = await loadVersionTags(system.id);
       expect(Object.keys(tags.outdated).sort()).toEqual([a.id, b.id].sort());
-      expect(tags.outdated[a.id].missed).toMatchObject({ seq: 2 });
+      expect(tags.outdated[a.id].missed).toMatchObject({ seq: 3 });
       expect([tags.current?.label, tags.latest?.label]).toEqual(["V2", "V4"]);
 
       // Onshape still has the newest state: a check doesn't list the held parts as changes.
@@ -240,7 +246,7 @@ else
       expect((await listSystemSync()).get(system.id)).toEqual({ outdated: null, waiting: 0 });
 
       // Back to the baseline: its shapes were stored at the first commit, so both parts are held.
-      await revertSystem(system.id, list.versions[2].id, member.id);
+      await revertSystem(system.id, list.versions[3].id, member.id);
       tags = await loadVersionTags(system.id);
       expect(Object.keys(tags.outdated).sort()).toEqual([a.id, b.id].sort());
       await revertSystem(system.id, list.versions[0].id, member.id);
@@ -281,6 +287,7 @@ else
       expect(history.entries.map((e) => [e.label, e.released, e.current])).toEqual([
         ["V6", [], true],
         ["V4", ["Released"], false],
+        ["V3", [], false],
         ["V2", [], false],
         ["V1", [], false],
       ]);
