@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ReviewScreen, type ReviewPart } from "@/components/review/ReviewScreen";
 import type { ViewerModel } from "@/components/dashboard/ModelCanvas";
 import type { ReviewComment } from "@/lib/data/cadReview";
+import type { Anchor } from "@/lib/reviews/anchor";
 import type { CommentStatus } from "@/lib/reviews/status";
 
 const PEOPLE = ["Noa Levi", "Itay Cohen", "Maya Ben-David"];
@@ -45,6 +46,7 @@ function fake(i: number, k: string | null, name: string | null, systemId: string
     snip: null,
     view: null,
     pin: at,
+    anchor: null,
     model: "final",
     authorAvatar: null,
     editedAt: null,
@@ -61,7 +63,7 @@ export function CadSandbox() {
       .then(setData);
   }, []);
   const { parts, systems, comments } = useMemo(() => {
-    if (!data) return { parts: [] as ReviewPart[], systems: [] as { id: string; name: string }[], comments: [] as ReviewComment[] };
+  if (!data) return { parts: [] as ReviewPart[], systems: [] as { id: string; name: string }[], comments: [] as ReviewComment[] };
     const groups = data.model.groups ?? [];
     const systems = groups.map((g) => ({ id: g.systemIds[0], name: g.name }));
     const seen = new Map<string, { k: string; t: number[]; g: number }>();
@@ -74,6 +76,12 @@ export function CadSandbox() {
     });
     return { parts, systems, comments };
   }, [data]);
+  // `window.sandboxAnchor(i, cadTools.pickAnchor())` links fake comment i to the newest pick.
+  const [anchors, setAnchors] = useState<Record<number, Anchor>>({});
+  useEffect(() => {
+    (window as unknown as { sandboxAnchor?: (i: number, a: Anchor) => void }).sandboxAnchor = (i, a) => setAnchors((m) => ({ ...m, [i]: a }));
+  }, []);
+  const shown = useMemo(() => comments.map((c, i) => (anchors[i] ? { ...c, anchor: anchors[i], partKey: anchors[i].key, pin: anchors[i].at } : c)), [comments, anchors]);
   if (!data) return <p className="p-6 text-sm text-muted">Loading the sandbox…</p>;
   return (
     <div className="p-4 md:p-6">
@@ -83,7 +91,7 @@ export function CadSandbox() {
         modelUrl="/api/dev/viewer"
         builtAt="sandbox"
         parts={parts}
-        comments={comments}
+        comments={shown}
         target={{ systems }}
         me={{ id: "author-0", isAdmin: true, isMentor: true }}
         canTick

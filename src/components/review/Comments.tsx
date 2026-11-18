@@ -8,6 +8,7 @@ import { Dialog } from "@/components/Dialog";
 import { LocalTime } from "@/components/ui/LocalTime";
 import type { CommentReply, ReviewComment } from "@/lib/data/cadReview";
 import { allowedStatuses, isActive, needsNote, statusOf, type CommentStatus } from "@/lib/reviews/status";
+import { anchorKindName } from "@/lib/reviews/anchor";
 import { CommentSnip, SnipPicture, uploadSnip, type SnipDraft } from "./Snip";
 import { askConfirm } from "@/components/ui/useConfirm";
 
@@ -18,6 +19,10 @@ export type CommentCtx = {
   canTick: boolean; // CAD Team or mentor
   canApprove: boolean; // mentor, or an admin in Edit mode
   open?: (c: ReviewComment) => void; // the comment window
+  // A tap on its part tag: a close view of its face / edge (or part), picked (Harel, 2026-11-18).
+  focus?: (c: ReviewComment) => void;
+  // The comment under the mouse, in the column or as a 3D tag: both light up (Harel, 2026-11-18).
+  hover?: { id: string | null; set: (id: string | null) => void };
   reply?: ReplyAttach; // a snip and a linked part for the comment window's Reply box
 };
 
@@ -193,17 +198,32 @@ function VersionChip({ c }: { c: ReviewComment }) {
   );
 }
 
+// The part it's about; with a face / edge / corner linked, its glyph too (Harel, 2026-11-18). A tap
+// shows it close up, picked (the page's `focus`), else locates the part as before.
 function PartChip({ c, onFocus }: { c: ReviewComment; onFocus?: (key: string) => void }) {
+  const ctx = useContext(CommentContext);
   if (!c.partKey) return null;
+  const what = c.anchor ? anchorKindName(c.anchor) : null;
   return (
     <button
-      onClick={() => onFocus?.(c.partKey!)}
+      onClick={() => (ctx?.focus ? ctx.focus(c) : onFocus?.(c.partKey!))}
       className="press inline-flex max-w-full items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-[0.6875rem] font-semibold text-accent-hover hover:bg-accent/20 pointer-coarse:min-h-8"
-      title="Show the part"
+      title={what ? `${what} of ${c.partName ?? "the part"}: show it` : "Show the part"}
     >
-      <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+      <AnchorGlyph kind={c.anchor?.kind ?? null} />
       <span className="truncate">{c.partName ?? "A part"}</span>
     </button>
+  );
+}
+
+function AnchorGlyph({ kind }: { kind: "face" | "edge" | "point" | null }) {
+  if (!kind) return <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />;
+  return (
+    <svg viewBox="0 0 12 12" className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden>
+      {kind === "face" && <path d="M2 4.5 6 2l4 2.5v4L6 11 2 8.5z" fill="currentColor" fillOpacity=".35" />}
+      {kind === "edge" && <path d="M2 10 10 2" strokeWidth="2" strokeLinecap="round" />}
+      {kind === "point" && <circle cx="6" cy="6" r="2.4" fill="currentColor" />}
+    </svg>
   );
 }
 
@@ -477,29 +497,25 @@ export function CommentRow({
   const [editing, setEditing] = useState(false);
   const mine = !!ctx && c.authorId === ctx.me.id;
   const items = [
+    // The 3D view as its author had it, when they wrote it (Harel, 2026-11-18: no longer on a tap).
+    ...(c.view && onView ? [{ label: "Author's view", run: () => onView(c) }] : []),
     ...(mine ? [{ label: "Edit", run: () => setEditing(true) }] : []),
     ...(ctx && (ctx.me.isAdmin || (mine && c.state === "open")) ? [{ label: "Delete", danger: true, run: async () => (await askConfirm({ title: "Delete this comment and its replies?", confirm: "Delete", danger: true })) && run(() => deleteReviewComment(c.id)) }] : []),
   ];
-  const pin = n && c.pin ? statusOf(c.state).color : null;
+  void n;
+  const lit = !!ctx?.hover && ctx.hover.id === c.id;
   const tappable = !full && !!ctx?.open;
   const bodyClass = `mt-1.5 block w-full text-left whitespace-pre-wrap break-words ${gone ? "text-muted line-through" : "text-fg"}`;
   return (
     // A light tint under the pointer (Harel, 2026-11-18).
-    <li className={`${full ? "" : "mb-2.5 rounded-lg border border-line-strong bg-surface p-2.5 shadow-[0_1px_3px_rgb(0_0_0/0.12)] transition-colors duration-100 last:mb-0 hover:border-accent/40 hover:bg-accent/5"} list-none ${pending ? "opacity-60" : ""}`}>
+    <li
+      onMouseEnter={full ? undefined : () => ctx?.hover?.set(c.id)}
+      onMouseLeave={full ? undefined : () => ctx?.hover?.set(null)}
+      className={`${full ? "" : `mb-2.5 rounded-lg border bg-surface p-2.5 shadow-[0_1px_3px_rgb(0_0_0/0.12)] transition-colors duration-100 last:mb-0 hover:border-accent/40 hover:bg-accent/5 ${lit ? "border-accent/40 bg-accent/5" : "border-line-strong"}`} list-none ${pending ? "opacity-60" : ""}`}
+    >
       <div className="flex gap-2.5">
         <div className="relative h-8 shrink-0">
           <Avatar name={c.author} src={c.authorAvatar} id={c.authorId} />
-          {pin && (
-            <button
-              onClick={() => onView?.(c)}
-              className="press absolute -right-1.5 -bottom-1.5 flex h-4.5 min-w-4.5 items-center justify-center rounded-full px-1 text-[0.625rem] font-semibold tabular-nums ring-2 ring-surface pointer-coarse:h-6 pointer-coarse:min-w-6"
-              style={{ background: pin, color: textOn(pin) }}
-              title="Its pin in the 3D view: go to the view it was written in"
-              aria-label={`Comment ${n}: go to its view`}
-            >
-              {n}
-            </button>
-          )}
         </div>
         <div className="min-w-0 flex-1 text-sm">
           <div className="flex items-center gap-1.5">
@@ -798,5 +814,37 @@ export function AddCommentDialog({
         </button>
       </form>
     </Dialog>
+  );
+}
+
+// A 3D comment tag's popup, shaped like a comment (Harel, 2026-11-18): its tail points at the face /
+// edge / corner it's about (the tag layer places it, pins.ts, and sets --tail-x and data-below).
+// The view doesn't move; Open shows the whole comment window.
+export function CommentBubble({ c, onClose, onOpen }: { c: ReviewComment; onClose: () => void; onOpen: () => void }) {
+  return (
+    <div className="relative w-[min(18rem,calc(100vw-2rem))] animate-pop rounded-xl border border-line-strong bg-surface p-3 text-sm shadow-xl">
+      <span
+        aria-hidden
+        className="absolute -bottom-1.5 h-3 w-3 rotate-45 border-r border-b border-line-strong bg-surface in-data-[below=1]:-top-1.5 in-data-[below=1]:bottom-auto in-data-[below=1]:rotate-[225deg]"
+        style={{ left: "var(--tail-x, 12px)" }}
+      />
+      <div className="flex items-center gap-2">
+        <Avatar name={c.author} src={c.authorAvatar} id={c.authorId} small />
+        <span className="min-w-0 flex-1 truncate font-semibold text-fg">{c.author ?? "Someone"}</span>
+        <CommentStatusPill status={c.state} />
+        <button type="button" onClick={onClose} aria-label="Close" className="press -mr-1 flex h-7 w-7 items-center justify-center rounded-full text-muted hover:bg-raised hover:text-fg pointer-coarse:h-9 pointer-coarse:w-9">
+          ✕
+        </button>
+      </div>
+      <p className="mt-2 max-h-40 overflow-y-auto break-words whitespace-pre-wrap text-fg">{c.body}</p>
+      <CommentSnip c={c} />
+      <div className="mt-2 flex items-center gap-2 text-[0.6875rem] text-subtle">
+        <When at={c.createdAt} edited={c.editedAt} />
+        {c.replies.length > 0 && <span>· {c.replies.length === 1 ? "1 reply" : `${c.replies.length} replies`}</span>}
+        <button type="button" onClick={onOpen} className="press ml-auto font-semibold text-accent-hover hover:underline pointer-coarse:min-h-8">
+          Open
+        </button>
+      </div>
+    </div>
   );
 }

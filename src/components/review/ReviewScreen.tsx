@@ -5,10 +5,12 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import type { Anchor } from "@/lib/reviews/anchor";
 import { openPartWindow } from "@/components/bom/PartDetailsHost";
 import { deleteReviewView, saveReviewView } from "@/app/(app)/review-comments-actions";
 import type { HiddenParts, MeasureInfo, NamedViews, PageMenu, SceneTools, ViewerModel, ViewerMode } from "@/components/dashboard/ModelCanvas";
-import { AddCommentDialog, CommentContext, CommentRow, CommentWindow, useStickyList, type CommentTarget, type ReplyAttach } from "@/components/review/Comments";
+import { AddCommentDialog, CommentBubble, CommentContext, CommentRow, CommentWindow, useStickyList, type CommentTarget, type ReplyAttach } from "@/components/review/Comments";
 import { inStateFilter, isActive, statusOf, type StateFilter } from "@/lib/reviews/status";
 import { StateFilterMenu } from "@/components/review/CommentFilters";
 import { SnipEditor, SnipMe, SnipOverlay, type SnipDraft } from "@/components/review/Snip";
@@ -143,13 +145,16 @@ export function ReviewScreen({
   // it's open becomes the comment's part and pin (the newest pick's point, S6); the 3D view is
   // kept as it is when the comment is saved.
   const [addingPin, setAddingPin] = useState<[number, number, number] | null>(null);
+  // The face / edge / corner picked with it (Harel, 2026-11-18).
+  const [addingAnchor, setAddingAnchor] = useState<Anchor | null>(null);
   const [addingBody, setAddingBody] = useState("");
   const startAdding = (part: { key: string; name: string | null; systemId: string | null } | null, from?: { body: string; pin: [number, number, number] | null }) => {
     setAddingPin(from ? from.pin : (tools?.pickPoint() ?? null));
+    setAddingAnchor(from ? null : (tools?.pickAnchor() ?? null));
     setAddingBody(from?.body ?? "");
     setAdding(part);
   };
-  const addingAt = () => (tools ? { view: captureView(tools, changes ? colors : undefined), pin: addingPin } : null);
+  const addingAt = () => (tools ? { view: captureView(tools, changes ? colors : undefined), pin: addingPin, anchor: addingAnchor } : null);
   const [hidden, setHidden] = useState<HiddenParts | null>(null);
   // null: as the screen suits (folded on a phone, open on wider screens) until toggled.
   // Wide screens: the comments column folds sideways to a thin strip (Harel, 2026-11-11).
@@ -409,14 +414,13 @@ export function ReviewScreen({
   // The State filter on the column's header (Harel, 2026-11-18); Open + On it as before.
   const [stateFilter, setStateFilter] = useState<StateFilter>("active");
   const openRows = useStickyList(newest, (c) => inStateFilter(c.state, stateFilter), stateFilter);
-  const listed = newest.filter((c) => inStateFilter(c.state, stateFilter));
+  const listed = useMemo(() => newest.filter((c) => inStateFilter(c.state, stateFilter)), [newest, stateFilter]);
   const waitingRows = useStickyList(comments, (c) => c.state === "to_check");
   const waiting = comments.filter((c) => c.state === "to_check");
   const [windowed, setWindowed] = useState<string | null>(null);
   const windowComment = windowed ? comments.find((c) => c.id === windowed) : undefined;
-  // Comment pins (S6): numbered in the order the comments were written; open and waiting ones
-  // drawn in the 3D view. A tap on a pin or a comment turns the view back to the comment's.
   const pinNo = useMemo(() => new Map(comments.map((c, i) => [c.id, i + 1])), [comments]);
+  // The author's whole view, kept on the comment (S6): its menu's Author's view (Harel, 2026-11-18).
   const viewComment = useCallback(
     (c: ReviewComment) => {
       if (models && c.model !== models.kind) {
@@ -426,22 +430,86 @@ export function ReviewScreen({
         return;
       }
       if (c.view) goToView(c.view);
-      tools?.pinHot(c.pin ? c.id : null);
     },
-    [goToView, tools, models],
+    [goToView, models],
   );
+  // A comment's part tag: a close view of its face / edge / corner from where the camera is, picked;
+  // an older comment with no anchor: its part (the copy nearest its pin). No see-through, no
+  // isolate, no turning to the author's view (Harel, 2026-11-18).
+  const focusComment = useCallback(
+    (c: ReviewComment) => {
+      if (models && c.model !== models.kind) return models.onKind(c.model);
+      setFocus(null);
+      setDrawer(false);
+      if (c.anchor && tools?.showAnchor(c.anchor)) return;
+      if (c.partKey && tools && !tools.showPartAt(c.partKey, c.pin)) toast("That part isn't in this 3D model.", true);
+    },
+    [tools, models],
+  );
+  // Comment tags in the 3D view (Harel, 2026-11-18): only while the box beside "Comments" is
+  // ticked (kept in this browser), for the comments the column lists, on the model shown. A tag
+  // sits on its face / edge as found on this model, else where it was written.
+  const [showTags, setShowTagsNow] = useState(false);
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- browser-only preference
+      setShowTagsNow(localStorage.getItem(TAGS_KEY) === "1");
+    } catch {}
+  }, []);
+  const setShowTags = (on: boolean) => {
+    setShowTagsNow(on);
+    try {
+      localStorage.setItem(TAGS_KEY, on ? "1" : "0");
+    } catch {}
+  };
+  const [bubble, setBubble] = useState<string | null>(null);
+  const [hoverId, setHoverId] = useState<string | null>(null);
+  // Local checks (/dev/cad-review): the 3D view's tools in the browser console.
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "production") (window as unknown as { cadTools?: SceneTools | null }).cadTools = tools;
+  }, [tools]);
+  const [allIn, setAllIn] = useState(0); // every part file is in: anchors found again on all of them
+  useEffect(() => {
+    let live = true;
+    tools?.whenLoaded().then(() => live && setAllIn((n) => n + 1));
+    return () => {
+      live = false;
+    };
+  }, [tools]);
+  const tagged = useMemo(() => {
+    if (!tools || !showTags || allIn < 0) return [];
+    return listed.flatMap((c) => {
+      if (c.model !== kind) return [];
+      const at = c.anchor ? (tools.anchorPoint(c.anchor) ?? c.anchor.at) : c.pin;
+      return at ? [{ c, at }] : [];
+    });
+  }, [tools, showTags, listed, kind, allIn]);
   useEffect(() => {
     if (!tools) return;
-    // Pins of the comments written on the model shown (they sit in its coordinates).
-    const shown = comments.filter((c) => c.pin && c.state !== "done" && c.model === kind);
     tools.pins(
-      shown.map((c) => ({ id: c.id, n: pinNo.get(c.id)!, at: c.pin!, color: statusOf(c.state).color })),
-      (id) => {
-        const c = comments.find((x) => x.id === id);
-        if (c) viewComment(c);
-      },
+      tagged.map(({ c, at }) => ({
+        id: c.id,
+        at,
+        color: statusOf(c.state).color,
+        avatar: c.authorAvatar,
+        initials: initialsOf(c.author),
+        title: `${c.author ?? "Someone"}: ${c.body.slice(0, 80)}`,
+      })),
+      (id) => setBubble((b) => (b === id ? null : id)),
+      setHoverId,
     );
-  }, [tools, comments, pinNo, viewComment, kind]);
+  }, [tools, tagged]);
+  const bubbleComment = bubble ? tagged.find((t) => t.c.id === bubble)?.c : undefined;
+  useEffect(() => {
+    tools?.popupFor(bubbleComment ? bubbleComment.id : null);
+  }, [tools, bubbleComment]);
+  // The comment under the mouse: its tag larger, its face / edge in hover blue.
+  useEffect(() => {
+    if (!tools) return;
+    tools.pinHot(hoverId ?? bubble);
+    const hc = hoverId ? comments.find((c) => c.id === hoverId) : undefined;
+    tools.hoverAnchor(hc?.anchor && hc.model === kind ? hc.anchor : null);
+  }, [tools, hoverId, bubble, comments, kind]);
   const onLocated = useCallback(() => {}, []);
   const showPart = useCallback((key: string) => {
     setSelected(null);
@@ -457,7 +525,10 @@ export function ReviewScreen({
       const p = partByKey.get(key);
       setAdding({ key, name: p?.name ?? null, systemId: p?.systemId ?? null });
       // The measure layer takes the pick in the same click: its point is ready on the next frame.
-      requestAnimationFrame(() => setAddingPin(tools?.pickPoint() ?? null));
+      requestAnimationFrame(() => {
+        setAddingPin(tools?.pickPoint() ?? null);
+        setAddingAnchor(tools?.pickAnchor() ?? null);
+      });
     }
   };
   const pickedPart = selected ? partByKey.get(selected) : undefined;
@@ -529,12 +600,11 @@ export function ReviewScreen({
   return (
     <SnipMe.Provider value={me.id}>
     <VersionContext.Provider value={{ target: vt, show: showVersion, kind, robotId, canDelete: me.isAdmin }}>
-    <CommentContext.Provider value={{ me, canTick, canApprove, reply: replyAttach, open: (c) => {
-      // No View button any more (Harel, 2026-11-17): opening a comment turns the 3D view to where
-      // it was written, else shows its part.
+    <CommentContext.Provider value={{ me, canTick, canApprove, reply: replyAttach, focus: focusComment, hover: { id: hoverId, set: setHoverId }, open: (c) => {
+      // Opening a comment shows what it's about close up; the author's own view is in its menu
+      // (Harel, 2026-11-18).
       setWindowed(c.id);
-      if (c.view) viewComment(c);
-      else if (c.partKey) showPart(c.partKey);
+      if (c.partKey) focusComment(c);
     } }}>
     <div ref={root} className="relative -m-4 flex h-[calc(100dvh-var(--topbar-h,2.75rem))] md:-m-6">
       {drawer && <button aria-label="Close versions" onClick={() => setDrawer(false)} className="fixed inset-0 z-30 modal-backdrop lg:hidden" />}
@@ -772,6 +842,7 @@ export function ReviewScreen({
             initialBody={addingBody}
           />
         )}
+        {tools && bubbleComment && createPortal(<CommentBubble c={bubbleComment} onClose={() => setBubble(null)} onOpen={() => setWindowed(bubbleComment.id)} />, tools.popupHost())}
         <MeasureBox measured={measured} className="max-lg:bottom-20 lg:bottom-3" />
 
         <ViewerToolbar tools={tools} hidden={hidden}>
@@ -818,7 +889,19 @@ export function ReviewScreen({
       {side && <PanelResizer root={root} side="right" />}
       <div data-comments className={`absolute top-[8rem] right-3 z-10 flex max-h-[calc(100%-12.5rem)] w-[min(20rem,calc(100%-1.5rem))] flex-col gap-2 pointer-coarse:top-[7.5rem] max-sm:w-56 xl:static xl:max-h-none xl:w-[var(--cad-comments-w,18rem)] xl:shrink-0 xl:overflow-y-auto xl:border-l xl:border-line xl:bg-surface xl:p-3 ${sideChoice === null ? "max-sm:hidden" : side ? "" : "hidden"}`}>
 
-        <Popup title="Comments" count={listed.length} onHide={() => setSide(false)} tone="amber" big tools={<StateFilterMenu value={stateFilter} onChange={setStateFilter} />}>
+        <Popup
+          title="Comments"
+          count={listed.length}
+          onHide={() => setSide(false)}
+          tone="amber"
+          big
+          lead={
+            <label className="-ml-1 flex h-9 w-8 shrink-0 cursor-pointer items-center justify-center" title="Show the comments as tags in the 3D view">
+              <input type="checkbox" className="h-4 w-4 accent-[var(--color-accent)]" checked={showTags} onChange={(e) => setShowTags(e.target.checked)} aria-label="Show comment tags in 3D" />
+            </label>
+          }
+          tools={<StateFilterMenu value={stateFilter} onChange={setStateFilter} />}
+        >
           {openRows.length ? (
             onRobot ? (
               <BySystem rows={openRows} onIsolate={onIsolate}>
@@ -910,6 +993,14 @@ function Dot({ c, children }: { c: string; children: React.ReactNode }) {
 }
 
 const NO_GROUPS = new Set<number>();
+const TAGS_KEY = "orbit-cad-comment-tags";
+const initialsOf = (name: string | null) =>
+  (name ?? "?")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]!.toUpperCase())
+    .join("") || "?";
 
 // The robot's comments in a section per system, the whole robot's first, like CAD's old board
 // (Harel, 2026-11-10): a tap on a name folds its section, Isolate scopes the page to the system.

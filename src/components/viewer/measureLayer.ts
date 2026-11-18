@@ -16,6 +16,7 @@ export type MeasureLayer = {
   cycle: (pk: Pick | null) => void; // Select other: the newest pick swapped for this one (null drops it)
   newest: () => Pick | null;
   box: (parts: { m: number; i: number }[], drop?: boolean) => void; // box select: these part copies added (Ctrl: taken off)
+  only: (pk: Pick | { m: number; i: number } | null) => void; // just this pick (or this whole part copy) picked: a comment's tag
   parts: () => string[]; // the picked parts' keys, each once, in pick order
   tools: MeasureTools;
   dispose: () => void;
@@ -100,6 +101,11 @@ export function createMeasureLayer(
     } else boxed = [...boxed, ...more.filter((p) => !has(boxed, p))];
     report();
   };
+  const only = (pk: Pick | { m: number; i: number } | null) => {
+    if (filter === null) filter = "any";
+    [chosen, boxed] = !pk ? [[], []] : "kind" in pk ? [[pk], []] : [[], [pk]];
+    report();
+  };
   // Space drops the newest pick, one by one back to the first (Esc, on the page, drops them
   // all) (Harel, 2026-11-09). Not while typing or with a window open.
   const onSpace = (e: KeyboardEvent) => {
@@ -111,5 +117,5 @@ export function createMeasureLayer(
     report();
   };
   window.addEventListener("keydown", onSpace);
-  return { filter: () => filter, hover, tap, cycle, newest: () => chosen.at(-1) ?? null, box, parts, tools: { measure }, dispose: () => window.removeEventListener("keydown", onSpace) };
+  return { filter: () => filter, hover, tap, cycle, newest: () => chosen.at(-1) ?? null, box, only, parts, tools: { measure }, dispose: () => window.removeEventListener("keydown", onSpace) };
 }

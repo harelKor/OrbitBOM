@@ -7,6 +7,7 @@ import type { PieceRow } from "../lib/inventory/stock";
 import type { Shape } from "../lib/review/shape";
 import type { ViewState } from "../components/viewer/viewState";
 import type { CheckLimits, CheckResults } from "../lib/check/types";
+import type { Anchor } from "../lib/reviews/anchor";
 import {
   bigint,
   boolean,
@@ -790,6 +791,33 @@ export const partVersions = pgTable(
 // (someone is working on it), To check (waiting for a mentor; the Update system window sets it
 // for the comments it ticks) and Done (a mentor approved it). A mentor sending a To check one
 // back writes why. Rules: src/lib/reviews/status.ts.
+// Design Reviews (plan/cad-design-review.md, Harel 2026-11-18): an admin starts one on a robot (the
+// whole robot or some systems) with a State text; comments written while it's open are tagged to
+// it. `robot_version_id`: the robot's newest version at Start (none made); `finish_version_id`: one
+// made at Finish when asked. Their labels are kept for when a version is deleted. One open per robot.
+export const designReviews = pgTable(
+  "design_reviews",
+  {
+    id: id(),
+    robotId: uuid("robot_id")
+      .notNull()
+      .references(() => robots.id, { onDelete: "cascade" }),
+    seq: integer("seq").notNull(),
+    wholeRobot: boolean("whole_robot").notNull().default(true),
+    systemIds: jsonb("system_ids").$type<string[]>().notNull().default([]),
+    state: text("state").notNull(),
+    robotVersionId: uuid("robot_version_id").references(() => robotVersions.id, { onDelete: "set null" }),
+    versionLabel: text("version_label"),
+    finishVersionId: uuid("finish_version_id").references(() => robotVersions.id, { onDelete: "set null" }),
+    finishVersionLabel: text("finish_version_label"),
+    startedBy: uuid("started_by").references(() => members.id, { onDelete: "set null" }),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    finishedBy: uuid("finished_by").references(() => members.id, { onDelete: "set null" }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("design_reviews_seq_uq").on(t.robotId, t.seq), uniqueIndex("design_reviews_open_uq").on(t.robotId).where(sql`${t.finishedAt} IS NULL`)],
+);
+
 export const reviewCommentState = pgEnum("review_comment_state", ["open", "on_it", "to_check", "done"]);
 // A snip of the 3D view on a comment, with lines drawn on it (Harel, 2026-11-10): the picture in
 // R2, the lines kept apart so they can still be erased (the author any, others their own). `p`:
@@ -844,8 +872,13 @@ export const reviewComments = pgTable(
     rejectedBy: uuid("rejected_by").references(() => members.id, { onDelete: "set null" }),
     // Its author changed the text after posting it (shown as "edited", Harel 2026-11-13).
     editedAt: timestamp("edited_at", { withTimezone: true }),
+    // The face, edge or corner it is about (Harel, 2026-11-18): src/lib/reviews/anchor.ts.
+    anchor: jsonb("anchor").$type<Anchor>(),
+    // The Design Review it belongs to (Harel, 2026-11-18).
+    designReviewId: uuid("design_review_id").references(() => designReviews.id, { onDelete: "set null" }),
   },
   (t) => [
+    index("review_comments_design_review_idx").on(t.designReviewId),
     index("review_comments_system_idx").on(t.systemId, t.createdAt),
     index("review_comments_robot_idx").on(t.robotId, t.createdAt),
     index("review_comments_done_version_idx").on(t.doneVersionId),

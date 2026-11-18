@@ -8,6 +8,7 @@ import { partKey } from "@/lib/model/assembly";
 import { cleanView } from "@/components/viewer/viewState";
 import { addComment, addReply, canApprove, canTick, cleanPin, CommentError, setCommentStatus } from "@/lib/reviews/comments";
 import { allowedStatuses, isActive, needsNote } from "@/lib/reviews/status";
+import { anchorKindName } from "@/lib/reviews/anchor";
 import { read, uuid, write, ToolError } from "../registry";
 
 const { reviewComments, systems } = schema;
@@ -26,7 +27,7 @@ const asTool = async <T,>(fn: () => Promise<T>) => {
 read(
   "list_review_comments",
   "member",
-  "A system's CAD Review comments (snip: a picture cut from the 3D view with lines drawn on it): status (open; on_it = someone is working on it; to_check = waiting for a mentor to check; done = a mentor approved it), text, the part it's about, who wrote it and when, the version it is on, its replies (a thread like Onshape's; a mentor sending it back writes why there), its pin (x, y, z in assembly mm: the point in the 3D view it was written about) and view (the 3D view it was written in: camera, hidden / isolated parts, section, render mode), and the version tree (Onshape versions, newest first, which ones the BOM was updated to, and the comment ids added and set To check or Done at each).",
+  "A system's CAD Review comments (snip: a picture cut from the 3D view with lines drawn on it): status (open; on_it = someone is working on it; to_check = waiting for a mentor to check; done = a mentor approved it), text, the part it's about, who wrote it and when, the version it is on, its replies (a thread like Onshape's; a mentor sending it back writes why there), its pin (x, y, z in assembly mm: the point in the 3D view it was written about), linked_to (the face, edge or point of its part it's about, when one was picked) and view (the 3D view it was written in: camera, hidden / isolated parts, section, render mode), and the version tree (Onshape versions, newest first, which ones the BOM was updated to, and the comment ids added and set To check or Done at each).",
   z.object({ system_id: uuid, state: z.enum(["open", "on_it", "to_check", "done"]).optional() }),
   async ({ system_id, state }) => {
     const review = await loadSystemReview(system_id);
@@ -34,7 +35,7 @@ read(
     return {
       comments: review.comments
         .filter((c) => !state || c.state === state)
-        .map((c) => ({ id: c.id, state: c.state, text: c.body, part: c.partName, by: c.author, at: c.createdAt, on_it_by: c.onItBy, to_check_by: c.doneBy, done_by: c.approvedBy, version: c.version?.name ?? null, edited: c.editedAt, replies: c.replies.map((r) => ({ text: r.body, by: r.author, at: r.createdAt, edited: r.editedAt })), snip: c.snip ? { picture: c.snip.url, lines: c.snip.strokes.length, changed_by: (c.snip.changed ?? []).map((x) => x.name) } : null, pin: c.pin, view: c.view })),
+        .map((c) => ({ id: c.id, state: c.state, text: c.body, part: c.partName, by: c.author, at: c.createdAt, on_it_by: c.onItBy, to_check_by: c.doneBy, done_by: c.approvedBy, version: c.version?.name ?? null, edited: c.editedAt, replies: c.replies.map((r) => ({ text: r.body, by: r.author, at: r.createdAt, edited: r.editedAt })), snip: c.snip ? { picture: c.snip.url, lines: c.snip.strokes.length, changed_by: (c.snip.changed ?? []).map((x) => x.name) } : null, pin: c.pin, linked_to: c.anchor ? { what: anchorKindName(c.anchor).toLowerCase(), part: c.partName, at_mm: c.anchor.at } : null, view: c.view })),
       versions: review.tree.map((n) => ({ name: n.name, at: n.at, bom: n.bom.map((b) => b.label), bom_current: n.bom.some((b) => b.current), added: n.added, checked: n.done })),
     };
   },

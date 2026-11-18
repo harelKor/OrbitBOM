@@ -6,6 +6,7 @@ import type { ModelKind } from "@/db/schema";
 import type { Member } from "@/lib/auth";
 import { cleanView, type ViewState } from "@/components/viewer/viewState";
 import { deleteObject } from "@/lib/storage/r2";
+import { cleanAnchor } from "./anchor";
 import { cleanStrokes, mergeStrokes } from "./snipStrokes";
 import { allowedStatuses, COMMENT_STATUSES, needsNote, type CommentStatus } from "./status";
 
@@ -37,7 +38,7 @@ export function canApprove(mode: Mode, member: Pick<Member, "isMentor">) {
 // written in (viewState.ts), `pin`: the newest pick's point there, assembly mm (S6).
 export async function addComment(
   member: Member,
-  input: { robotId?: string; systemId: string | null; body: string; partKey?: string | null; partName?: string | null; onshapeVersion?: { id: string; name: string } | null; snip?: SnipInput | null; view?: unknown; pin?: unknown; model?: ModelKind },
+  input: { robotId?: string; systemId: string | null; body: string; partKey?: string | null; partName?: string | null; onshapeVersion?: { id: string; name: string } | null; snip?: SnipInput | null; view?: unknown; pin?: unknown; anchor?: unknown; model?: ModelKind },
 ) {
   const body = input.body.trim();
   if (!body) throw new CommentError("Write the comment first.");
@@ -66,6 +67,8 @@ export async function addComment(
       snip,
       view: input.view ? cleanView(input.view) : null,
       pin: cleanPin(input.pin),
+      // The face / edge / corner picked, when it's on the comment's part (Harel, 2026-11-18).
+      anchor: anchorOf(input.anchor, input.partKey),
       model: input.model === "basepart" ? "basepart" : "final",
     })
     .returning();
@@ -80,6 +83,11 @@ function cleanSnip(member: Member, input: SnipInput | null | undefined) {
   const h = Math.round(Number(input.h));
   if (typeof path !== "string" || !SNIP_PATH.test(path) || !(w > 0 && w <= 8000 && h > 0 && h <= 8000)) throw new CommentError("That snip didn't upload. Take it again.");
   return { path, w, h, strokes: cleanStrokes(strokes, w, h).map((s) => ({ ...s, by: member.id })), changed: [] };
+}
+
+function anchorOf(x: unknown, partKey: string | null | undefined) {
+  const a = cleanAnchor(x);
+  return a && partKey && a.key === partKey ? a : null;
 }
 
 // A pin: three finite numbers, assembly mm, within 100 m of the origin.

@@ -1,4 +1,5 @@
 import "server-only";
+import type { Anchor } from "@/lib/reviews/anchor";
 import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
 import type { ViewState } from "@/components/viewer/viewState";
 import { db, schema } from "@/db";
@@ -43,6 +44,7 @@ export type ReviewComment = {
   snip: (Snip & { url: string | null }) | null; // the picture's short-lived link
   view: ViewState | null; // the 3D view it was written in (S6)
   pin: [number, number, number] | null; // its point there, assembly mm
+  anchor: Anchor | null; // the face / edge / corner it's about (Harel, 2026-11-18)
   model: ModelKind; // written on the Basepart or the Final 3D model (Harel, 2026-11-12)
   authorAvatar: string | null;
   editedAt: string | null;
@@ -132,6 +134,7 @@ export async function listComments(scope: string | { robotId: string }): Promise
     snip: r.snip ? { ...r.snip, url: urls.get(r.snip.path) ?? null } : null,
     view: r.view ?? null,
     pin: r.pin ?? null,
+    anchor: r.anchor ?? null,
     model: r.model,
     authorAvatar: avatar(r.authorId),
     editedAt: iso(r.editedAt),

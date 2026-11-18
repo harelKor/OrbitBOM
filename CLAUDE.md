@@ -38,7 +38,7 @@ last full audit and what's still open: `plan/audit-2026-11-14.md` §0.
   sheet one), not `DEFAULT_CATEGORIES`: a test needing a category creates it.
 - Schema: edit `src/db/schema.ts`, `npm run db:generate`, rename the file to a readable name
   (and its `tag` in `drizzle/meta/_journal.json`), add `ALTER TABLE "x" ENABLE ROW LEVEL SECURITY;`
-  for a new table, commit. Next migration: 0097. Migrations reach production before the code and
+  for a new table, commit. Next migration: 0098. Migrations reach production before the code and
   a rollback runs old code on the new schema, so expand → contract: add columns/tables in one
   push; drop or rename one only in a later push, once no deployed code reads it.
 - Local site: README "Local development" (local Supabase in Docker, "Dev sign-in" button; Onshape
@@ -162,6 +162,11 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
   browser); ⋮ = Compare (both drawn, slider fades them), Commit window, Delete version
   (`deleteVersion.ts`: OrbitParts only, a BOM version's part states fold into the next one). The
   whole robot's own versions: `robot_versions` (Create version).
+  Comment rework and Design Reviews (plan/cad-design-review.md, 2026-11-18): Add comment floats
+  over the 3D view (`Dialog` `floating`); a comment's `anchor` is the face / edge / corner picked
+  (`src/lib/reviews/anchor.ts` signatures, found again on newer meshes; `viewer/anchors.ts`), its
+  part tag frames it close up and picks it; 3D tags are author bubbles (`viewer/pins.ts`, popup
+  `CommentBubble`) shown by the ☐ beside "Comments". Sandbox: `/dev/cad-review`.
   The whole 3D view as data (camera, hidden / isolated, section, render mode, colours):
   `src/components/viewer/viewState.ts`, in the URL hash (`#v=`), on each comment with its pin
   (`pins.ts`, assembly mm), and as Onshape's Named views per robot (`src/lib/reviews/namedViews.ts`).

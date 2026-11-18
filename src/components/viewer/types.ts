@@ -11,6 +11,7 @@ import type { MeasureTools } from "./measureLayer";
 import type { MotionTools } from "./motion";
 import type { DisplayTools } from "./paint";
 import type { PinTools } from "./pins";
+import type { AnchorTools } from "./anchors";
 import type { SectionTools } from "./section";
 import type { StageTools } from "./stage";
 import type { VisibilityTools } from "./visibility";
@@ -49,4 +50,4 @@ export type HiddenParts = { items: { id: string; name: string }[]; show: (id: st
 
 // CAD Review's viewer tools (plan/design-review.md): standard views, a section plane, measuring
 // between two points on the meshes (≈: the export's chord tolerance), hiding or isolating a part.
-export type SceneTools = CameraTools & SectionTools & MeasureTools & VisibilityTools & PartTools & StageTools & DisplayTools & MotionTools & PinTools & CheckTools & OverlapTools & { whenLoaded: () => Promise<void> };
+export type SceneTools = CameraTools & SectionTools & MeasureTools & VisibilityTools & PartTools & StageTools & DisplayTools & MotionTools & PinTools & AnchorTools & CheckTools & OverlapTools & { whenLoaded: () => Promise<void> };

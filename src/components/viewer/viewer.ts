@@ -11,6 +11,7 @@ import { createLooks, createPaint, type Paint } from "./paint";
 import { createMarks, createPicking, createSelection, createTopo, type MenuTarget, type Picking } from "./picking";
 import { createMotion } from "./motion";
 import { createPins } from "./pins";
+import { createAnchors } from "./anchors";
 import { createSection } from "./section";
 import { loadSketches, sketchKeys } from "./sketches";
 import { removedBy } from "./sectionMath";
@@ -142,6 +143,7 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
     ...stageTools(stage),
     ...motion.tools,
     ...pins.tools,
+    ...createAnchors(stage, meshes, topo, () => measure, camera.tools.frameBox),
     ...createCheckTools(meshes, visibility.place),
     ...red.tools,
     whenLoaded: () => allIn, // every part file is in (a saved view's hidden parts can be found)
