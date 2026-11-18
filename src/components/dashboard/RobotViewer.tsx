@@ -34,8 +34,7 @@ export type ViewerPart = { key: string; color: string; id: string; systemId: str
 // (Edit mode's Update 3D model) and kept in R2; viewing it costs no Onshape calls. On the page it
 // sits in a thin outline on the page's own background that glows on hover, and a click beside the
 // model (not on a part, which picks it, nor a drag, which turns it) opens it large over the page, leaving the side panels and a
-// margin of background (Harel, 2026-11-07). The
-// Subsystems button shows and hides subsystems (open by default when large). On a system page
+// margin of background (Harel, 2026-11-07). No Subsystems panel (Harel, 2026-11-18). On a system page
 // (systemId) it shows only that subsystem. A click on a part highlights it; a second click on it
 // opens its details window over the viewer, which stays as it is behind it (from a page without the
 // part's card, it goes to the system page and opens it there). (Locate opens a part's own window
@@ -69,9 +68,7 @@ export function RobotViewer({
   const colors: ViewerMode = view === "status" ? "status" : "tint";
   const router = useRouter();
   const [large, setLarge] = useState(false);
-  const [bar, setBar] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
-  const [hiddenGroups, setHiddenGroups] = useState<Set<number>>(() => new Set());
   const [version, setVersion] = useState(builtAt);
   // undefined while loading, null when there is no model to show.
   const [model, setModel] = useState<ViewerModel | null | undefined>(version ? undefined : null);
@@ -107,10 +104,7 @@ export function RobotViewer({
   // Points, edges and faces pick and measure as on the CAD page; Bulk edit takes whole parts.
   const picks = useMeasurePicks(!bulk);
   const lastTap = useRef(0); // a left click on the canvas, to tell it from a pick cleared by code
-  const openLarge = () => {
-    setBar(true);
-    setLarge(true);
-  };
+  const openLarge = () => setLarge(true);
   // A click picks a point, edge or face (its part is `selected`: the newest pick's); Open part and
   // Open system are in the right-click / long-press menu, as on CAD (Harel, 2026-11-17). With
   // nothing picked, a click beside the small model opens it large (Harel, 2026-11-07).
@@ -171,16 +165,9 @@ export function RobotViewer({
     [groups, systemId],
   );
   const hidden = useMemo(
-    () => (ownGroups ? new Set(groups.map((_, i) => i).filter((i) => !ownGroups.includes(i))) : hiddenGroups),
-    [ownGroups, groups, hiddenGroups],
+    () => (ownGroups ? new Set(groups.map((_, i) => i).filter((i) => !ownGroups.includes(i))) : new Set<number>()),
+    [ownGroups, groups],
   );
-  const toggleGroup = (i: number) =>
-    setHiddenGroups((h) => {
-      const next = new Set(h);
-      if (next.has(i)) next.delete(i);
-      else next.add(i);
-      return next;
-    });
 
   // Esc first drops the picks, then closes the large view (Harel, 2026-11-07). Not while a
   // window is open over it: that Esc is the window's.
@@ -329,17 +316,9 @@ export function RobotViewer({
                 <span className="w-8 text-right tabular-nums">{Math.round(opacity * 100)}%</span>
               </label>
             )}
-            {!systemId && groups.length > 1 && (
-              <button className="btn h-8 text-xs" aria-pressed={bar} onClick={() => setBar(!bar)}>
-                Subsystems{hiddenGroups.size ? ` ${groups.length - hiddenGroups.size}/${groups.length}` : ""}
-              </button>
-            )}
             {large && (
               <button
-                onClick={() => {
-                  setBar(false);
-                  setLarge(false);
-                }}
+                onClick={() => setLarge(false)}
                 className="btn h-8 w-8 justify-center px-0"
                 aria-label="Back to the dashboard"
                 title="Back to the dashboard (Esc)"
@@ -365,7 +344,6 @@ export function RobotViewer({
               onMeasure={picks.setMeasured}
               menu={pageMenu}
               names={nameByKey}
-              panelLeft={bar && !systemId && groups.length > 0 ? 244 : undefined}
               cube // the view cube and its menu, as on CAD's pages (Harel, 2026-11-11)
               statusOpacity={view === "status" ? opacity : null}
             />
@@ -420,34 +398,6 @@ export function RobotViewer({
           <div onClick={(e) => e.stopPropagation()} className="cursor-auto">
             <MeasureBox measured={picks.measured} className="bottom-9" />
           </div>
-          {bar && !systemId && groups.length > 0 && (
-            <div className="absolute top-3 bottom-3 left-3 flex w-56 flex-col overflow-hidden rounded-md border border-line bg-surface/95 text-sm shadow-sm backdrop-blur">
-              <div className="flex items-center justify-between border-b border-line px-3 py-2 text-xs font-semibold text-muted">
-                Subsystems
-                <button
-                  onClick={() => setHiddenGroups(hiddenGroups.size ? new Set() : new Set(groups.map((_, i) => i)))}
-                  className="press font-medium text-accent-hover hover:underline"
-                >
-                  {hiddenGroups.size ? "Show all" : "Hide all"}
-                </button>
-              </div>
-              <ul className="flex-1 overflow-y-auto p-1">
-                {groups.map((g, i) => (
-                  <li key={i}>
-                    <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 hover:bg-raised">
-                      <input
-                        type="checkbox"
-                        checked={!hiddenGroups.has(i)}
-                        onChange={() => toggleGroup(i)}
-                        className="accent-[var(--color-accent)]"
-                      />
-                      <span className={`min-w-0 flex-1 truncate ${hiddenGroups.has(i) ? "text-subtle" : "text-fg"}`}>{g.name}</span>
-                    </label>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
           {model && systemId && !ownGroups?.length && (
             <div className="absolute inset-0 flex items-center justify-center p-6 text-center">
               <p className="max-w-72 rounded-md bg-surface/90 p-3 text-sm text-muted">
@@ -470,7 +420,7 @@ export function RobotViewer({
           )}
           {legend.length > 0 && (
             <div
-              className={`pointer-events-none absolute right-3 bottom-3 ${bar && !systemId && groups.length > 0 ? "left-62" : "left-3"} flex flex-wrap gap-x-3 gap-y-1 text-[0.6875rem] text-fg-2`}
+              className={`pointer-events-none absolute right-3 bottom-3 left-3 flex flex-wrap gap-x-3 gap-y-1 text-[0.6875rem] text-fg-2`}
             >
               {legend.map((s) => (
                 <span key={s.name} className="inline-flex items-center gap-1.5">
