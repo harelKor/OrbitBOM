@@ -52,11 +52,17 @@ function useCommentAction() {
 
 // Lists that keep a comment whose status moved it out (struck through, where it was) until the
 // page is left, so a tap doesn't make the list jump (Harel, 2026-11-13). `keep`: what belongs.
-export function useStickyList(comments: ReviewComment[], keep: (c: ReviewComment) => boolean): { c: ReviewComment; gone: boolean }[] {
-  const [seen, setSeen] = useState<Set<string>>(() => new Set(comments.filter(keep).map((c) => c.id)));
-  const fresh = comments.filter((c) => keep(c) && !seen.has(c.id));
-  if (fresh.length) setSeen(new Set([...seen, ...fresh.map((c) => c.id)]));
-  return comments.filter((c) => keep(c) || seen.has(c.id)).map((c) => ({ c, gone: !keep(c) }));
+// `reset`: a new value (another filter chosen) starts over from what `keep` takes now.
+export function useStickyList(comments: ReviewComment[], keep: (c: ReviewComment) => boolean, reset = ""): { c: ReviewComment; gone: boolean }[] {
+  const [seen, setSeen] = useState<{ ids: Set<string>; reset: string }>(() => ({ ids: new Set(comments.filter(keep).map((c) => c.id)), reset }));
+  if (seen.reset !== reset) {
+    const ids = new Set(comments.filter(keep).map((c) => c.id));
+    setSeen({ ids, reset });
+    return comments.filter((c) => ids.has(c.id)).map((c) => ({ c, gone: false }));
+  }
+  const fresh = comments.filter((c) => keep(c) && !seen.ids.has(c.id));
+  if (fresh.length) setSeen({ ids: new Set([...seen.ids, ...fresh.map((c) => c.id)]), reset });
+  return comments.filter((c) => keep(c) || seen.ids.has(c.id)).map((c) => ({ c, gone: !keep(c) }));
 }
 
 // A status as a coloured pill.
@@ -478,7 +484,8 @@ export function CommentRow({
   const tappable = !full && !!ctx?.open;
   const bodyClass = `mt-1.5 block w-full text-left whitespace-pre-wrap break-words ${gone ? "text-muted line-through" : "text-fg"}`;
   return (
-    <li className={`${full ? "" : "mb-2.5 rounded-lg border border-line-strong bg-surface p-2.5 shadow-[0_1px_3px_rgb(0_0_0/0.12)] last:mb-0"} list-none ${pending ? "opacity-60" : ""}`}>
+    // A light tint under the pointer (Harel, 2026-11-18).
+    <li className={`${full ? "" : "mb-2.5 rounded-lg border border-line-strong bg-surface p-2.5 shadow-[0_1px_3px_rgb(0_0_0/0.12)] transition-colors duration-100 last:mb-0 hover:border-accent/40 hover:bg-accent/5"} list-none ${pending ? "opacity-60" : ""}`}>
       <div className="flex gap-2.5">
         <div className="relative h-8 shrink-0">
           <Avatar name={c.author} src={c.authorAvatar} id={c.authorId} />
@@ -625,6 +632,9 @@ export function CommentWindow({ c, onClose, onFocus, onView, open = true }: { c:
 
 // Where a comment goes: one system, or on the robot's page the choice of the whole robot or a
 // system (the picked part's, else one picked from the list) (Harel, 2026-11-09).
+const FLOATING =
+  "absolute top-3 left-3 z-30 m-0 max-h-[calc(100%-1.5rem)]! shadow-xl max-lg:top-16 max-sm:top-auto! max-sm:bottom-0 max-sm:left-0 max-sm:w-full! max-sm:max-h-[55%]! max-sm:rounded-b-none";
+
 export type CommentTarget = { systemId: string } | { systems: { id: string; name: string }[] };
 
 // + Add comment: the text and, picked in the 3D view, the part it's about.
@@ -653,7 +663,7 @@ export function AddCommentDialog({
   onSnip: () => void; // take one (the window steps aside meanwhile)
   onEditSnip: () => void;
   onRemoveSnip: () => void;
-  at?: { view: unknown; pin: [number, number, number] | null } | null; // the 3D view when it opened, and the newest pick's point (S6)
+  at?: () => { view: unknown; pin: [number, number, number] | null } | null; // the 3D view as it is when saved, and the newest pick's point (S6)
   model?: "basepart" | "final"; // the 3D model it's written on (Harel, 2026-11-12)
   initialBody?: string; // a Design check finding's words, to edit before saving
 }) {
@@ -661,6 +671,12 @@ export function AddCommentDialog({
   const { pending, error, run } = useCommentAction();
   const onRobot = "systems" in target;
   const [scope, setScope] = useState<"system" | "robot">(onRobot && !part?.systemId ? "robot" : "system");
+  // A part picked while the window is open (it doesn't block the 3D view): its system takes it.
+  const [scopedFor, setScopedFor] = useState(part?.key ?? null);
+  if ((part?.key ?? null) !== scopedFor) {
+    setScopedFor(part?.key ?? null);
+    if (part?.systemId) setScope("system");
+  }
   const [picked, setPicked] = useState("");
   const systemId = !onRobot ? target.systemId : scope === "robot" ? null : (part?.systemId ?? (picked || null));
   const missing = onRobot && scope === "system" && !systemId;
@@ -669,7 +685,10 @@ export function AddCommentDialog({
       open={open}
       onClose={onClose}
       title="Add a comment"
-      sheet
+      // Top left of the 3D view, no blur: the model can still be turned and picked while writing
+      // (Harel, 2026-11-18). Phones: a low sheet at the bottom, the view above it.
+      floating={FLOATING}
+      width="w-[min(22rem,calc(100%-1.5rem))]"
       actions={
         <button type="button" className="btn h-9 gap-1.5 px-3 text-sm active:scale-[0.98]" onClick={onSnip} title="Cut a picture out of the 3D view and draw on it">
           📷 Snip
@@ -677,7 +696,13 @@ export function AddCommentDialog({
       }
     >
       <form
-        className="space-y-3 p-5"
+        className="-m-5 space-y-3 p-4"
+        // Esc closes it only while nothing is written: a comment isn't lost to a key press.
+        onKeyDown={(e) => {
+          if (e.key !== "Escape") return;
+          e.preventDefault();
+          if (!body.trim() && !snip) onClose();
+        }}
         onSubmit={(e) => {
           e.preventDefault();
           run(
@@ -688,7 +713,7 @@ export function AddCommentDialog({
                 if ("error" in up) return up;
                 shot = up.snip;
               }
-              return addReviewComment(robotId, systemId, body, part && { key: part.key, name: part.name }, null, shot, at ?? null, model);
+              return addReviewComment(robotId, systemId, body, part && { key: part.key, name: part.name }, null, shot, at?.() ?? null, model);
             },
             () => {
               setBody("");
@@ -706,7 +731,7 @@ export function AddCommentDialog({
             </button>
           </div>
         ) : (
-          <p className="text-xs text-muted">Tap a part in the 3D view first to tie the comment to it.</p>
+          <p className="text-xs text-muted">Tap a part in the 3D view to tie the comment to it.</p>
         )}
         {onRobot && (
           <div className="space-y-2">
@@ -755,7 +780,18 @@ export function AddCommentDialog({
             </div>
           </div>
         )}
-        <textarea autoFocus required value={body} onChange={(e) => setBody(e.target.value)} rows={4} maxLength={2000} className="input min-h-28 w-full" placeholder="What should change?" />
+        <textarea
+          autoFocus
+          required
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault();
+              e.currentTarget.form?.requestSubmit();
+            }
+          }}
+          rows={4} maxLength={2000} className="input min-h-28 w-full" placeholder="What should change?" />
         {error && <p className="text-sm text-rose-600">{error}</p>}
         <button className="btn-primary w-full justify-center active:scale-[0.98]" disabled={pending || !body.trim() || missing}>
           {pending ? "Saving…" : "Add comment"}

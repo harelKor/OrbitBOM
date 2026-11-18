@@ -29,3 +29,13 @@ export function allowedStatuses(from: CommentStatus, who: Who): CommentStatus[] 
 
 // A mentor sending a To check comment back writes why (it shows under the comment).
 export const needsNote = (from: CommentStatus, to: CommentStatus, who: { mentor: boolean }) => who.mentor && from === "to_check" && (to === "open" || to === "on_it");
+
+// The CAD page's State filter over the comments column (Harel, 2026-11-18): "active" (Open and On
+// it) is what the column always showed, so it stays the default.
+export type StateFilter = "active" | CommentStatus | "all";
+export const STATE_FILTERS: { key: StateFilter; label: string }[] = [
+  { key: "active", label: "Open + On it" },
+  ...COMMENT_STATUSES.map((s) => ({ key: s.key, label: s.label })),
+  { key: "all", label: "All" },
+];
+export const inStateFilter = (state: string, f: StateFilter) => (f === "all" ? true : f === "active" ? isActive(state) : state === f);

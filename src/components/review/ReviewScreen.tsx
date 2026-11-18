@@ -9,7 +9,8 @@ import { openPartWindow } from "@/components/bom/PartDetailsHost";
 import { deleteReviewView, saveReviewView } from "@/app/(app)/review-comments-actions";
 import type { HiddenParts, MeasureInfo, NamedViews, PageMenu, SceneTools, ViewerModel, ViewerMode } from "@/components/dashboard/ModelCanvas";
 import { AddCommentDialog, CommentContext, CommentRow, CommentWindow, useStickyList, type CommentTarget, type ReplyAttach } from "@/components/review/Comments";
-import { isActive, statusOf } from "@/lib/reviews/status";
+import { inStateFilter, isActive, statusOf, type StateFilter } from "@/lib/reviews/status";
+import { StateFilterMenu } from "@/components/review/CommentFilters";
 import { SnipEditor, SnipMe, SnipOverlay, type SnipDraft } from "@/components/review/Snip";
 import { ViewerToolbar } from "@/components/review/ViewerToolbar";
 import { DesignCheck, type Finding } from "@/components/check/DesignCheck";
@@ -138,15 +139,17 @@ export function ReviewScreen({
     setAdding(false);
     setSnipDraft(null);
   };
-  // + Add comment keeps the 3D view as it is when the window opens, and the newest pick's point
-  // as the comment's pin (S6).
-  const [addingAt, setAddingAt] = useState<{ view: ViewState; pin: [number, number, number] | null } | null>(null);
+  // + Add comment: the window doesn't block the 3D view (Harel, 2026-11-18), so each new pick while
+  // it's open becomes the comment's part and pin (the newest pick's point, S6); the 3D view is
+  // kept as it is when the comment is saved.
+  const [addingPin, setAddingPin] = useState<[number, number, number] | null>(null);
   const [addingBody, setAddingBody] = useState("");
   const startAdding = (part: { key: string; name: string | null; systemId: string | null } | null, from?: { body: string; pin: [number, number, number] | null }) => {
-    setAddingAt(tools ? { view: captureView(tools, changes ? colors : undefined), pin: from ? from.pin : tools.pickPoint() } : null);
+    setAddingPin(from ? from.pin : (tools?.pickPoint() ?? null));
     setAddingBody(from?.body ?? "");
     setAdding(part);
   };
+  const addingAt = () => (tools ? { view: captureView(tools, changes ? colors : undefined), pin: addingPin } : null);
   const [hidden, setHidden] = useState<HiddenParts | null>(null);
   // null: as the screen suits (folded on a phone, open on wider screens) until toggled.
   // Wide screens: the comments column folds sideways to a thin strip (Harel, 2026-11-11).
@@ -403,7 +406,10 @@ export function ReviewScreen({
   // was, struck through, until the page is left (Harel, 2026-11-13).
   const newest = useMemo(() => [...comments].reverse(), [comments]);
   const open = newest.filter((c) => isActive(c.state));
-  const openRows = useStickyList(newest, (c) => isActive(c.state));
+  // The State filter on the column's header (Harel, 2026-11-18); Open + On it as before.
+  const [stateFilter, setStateFilter] = useState<StateFilter>("active");
+  const openRows = useStickyList(newest, (c) => inStateFilter(c.state, stateFilter), stateFilter);
+  const listed = newest.filter((c) => inStateFilter(c.state, stateFilter));
   const waitingRows = useStickyList(comments, (c) => c.state === "to_check");
   const waiting = comments.filter((c) => c.state === "to_check");
   const [windowed, setWindowed] = useState<string | null>(null);
@@ -446,6 +452,13 @@ export function ReviewScreen({
   const onPick = (key: string | null) => {
     if (key) setFocus(null);
     setSelected(key);
+    // + Add comment is open (it doesn't block the view): the comment is about the new pick now.
+    if (key && adding !== false && !snipStep) {
+      const p = partByKey.get(key);
+      setAdding({ key, name: p?.name ?? null, systemId: p?.systemId ?? null });
+      // The measure layer takes the pick in the same click: its point is ready on the next frame.
+      requestAnimationFrame(() => setAddingPin(tools?.pickPoint() ?? null));
+    }
   };
   const pickedPart = selected ? partByKey.get(selected) : undefined;
   const picked = selected ? { key: selected, name: pickedPart?.name ?? null, systemId: pickedPart?.systemId ?? null } : null;
@@ -494,14 +507,12 @@ export function ReviewScreen({
 
   // Esc closes the panel on a phone, then clears the picked or shown part (not under a window).
   useEffect(() => {
-    if (!selected && !focus && !drawer && !isolated && !side) return;
+    if (!selected && !focus && !drawer && !isolated) return;
     // Esc: closes the phone's panel; else drops the picks and ends Isolate (shows all) (Harel,
-    // 2026-11-09).
+    // 2026-11-09). It no longer folds the comments column: only its › does (Harel, 2026-11-18).
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented || document.querySelector("dialog[open]")) return;
       if (drawer) return setDrawer(false);
-      // The first Esc folds the comments column away (Harel, 2026-11-11).
-      if (side) return setSide(false);
       setSelected(null);
       setFocus(null);
       tools?.measure(null);
@@ -513,7 +524,7 @@ export function ReviewScreen({
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [selected, focus, drawer, tools, isolated, side]);
+  }, [selected, focus, drawer, tools, isolated]);
 
   return (
     <SnipMe.Provider value={me.id}>
@@ -737,6 +748,30 @@ export function ReviewScreen({
         {/* What's picked: its size, or between two picks distance and angle (bottom right, like
             Onshape's measure box, a bit bigger since 2026-11-11 (Harel); on a phone above + Add
             comment). */}
+        {adding !== false && (
+          <AddCommentDialog
+            // Stays mounted (the text is kept) while the snip is taken and drawn on.
+            open={!snipStep}
+            onClose={() => !snipStep && closeAdding()}
+            robotId={robotId}
+            target={target}
+            part={adding}
+            onClearPart={() => setAdding(null)}
+            snip={snipDraft}
+            onSnip={() => {
+              setSnipFor("comment");
+              setSnipStep("drag");
+            }}
+            onEditSnip={() => {
+              setSnipFor("comment");
+              setSnipStep("draw");
+            }}
+            onRemoveSnip={() => setSnipDraft(null)}
+            at={addingAt}
+            model={kind}
+            initialBody={addingBody}
+          />
+        )}
         <MeasureBox measured={measured} className="max-lg:bottom-20 lg:bottom-3" />
 
         <ViewerToolbar tools={tools} hidden={hidden}>
@@ -781,9 +816,9 @@ export function ReviewScreen({
         </button>
       )}
       {side && <PanelResizer root={root} side="right" />}
-      <div data-comments className={`absolute top-[8rem] right-3 z-10 flex max-h-[calc(100%-12.5rem)] w-[min(20rem,calc(100%-1.5rem))] flex-col gap-2 pointer-coarse:top-[7.5rem] max-sm:w-48 xl:static xl:max-h-none xl:w-[var(--cad-comments-w,18rem)] xl:shrink-0 xl:overflow-y-auto xl:border-l xl:border-line xl:bg-surface xl:p-3 ${sideChoice === null ? "max-sm:hidden" : side ? "" : "hidden"}`}>
+      <div data-comments className={`absolute top-[8rem] right-3 z-10 flex max-h-[calc(100%-12.5rem)] w-[min(20rem,calc(100%-1.5rem))] flex-col gap-2 pointer-coarse:top-[7.5rem] max-sm:w-56 xl:static xl:max-h-none xl:w-[var(--cad-comments-w,18rem)] xl:shrink-0 xl:overflow-y-auto xl:border-l xl:border-line xl:bg-surface xl:p-3 ${sideChoice === null ? "max-sm:hidden" : side ? "" : "hidden"}`}>
 
-        <Popup title="Comments" count={open.length} onHide={() => setSide(false)} tone="amber">
+        <Popup title="Comments" count={listed.length} onHide={() => setSide(false)} tone="amber" big tools={<StateFilterMenu value={stateFilter} onChange={setStateFilter} />}>
           {openRows.length ? (
             onRobot ? (
               <BySystem rows={openRows} onIsolate={onIsolate}>
@@ -793,7 +828,7 @@ export function ReviewScreen({
               openRows.map(({ c, gone }) => <CommentRow key={c.id} c={c} gone={gone} n={pinNo.get(c.id)} onView={viewComment} onFocus={showPart} />)
             )
           ) : (
-            <li className="p-2 text-xs text-muted">No open comments.</li>
+            <li className="p-2 text-xs text-muted">{stateFilter === "active" ? "No open comments." : "No comments in this state."}</li>
           )}
         </Popup>
         {canApprove && (
@@ -841,30 +876,6 @@ export function ReviewScreen({
             Cancel
           </button>
         </div>
-      )}
-      {adding !== false && (
-        <AddCommentDialog
-          // Stays mounted (the text is kept) while the snip is taken and drawn on.
-          open={!snipStep}
-          onClose={() => !snipStep && closeAdding()}
-          robotId={robotId}
-          target={target}
-          part={adding}
-          onClearPart={() => setAdding(null)}
-          snip={snipDraft}
-          onSnip={() => {
-            setSnipFor("comment");
-            setSnipStep("drag");
-          }}
-          onEditSnip={() => {
-            setSnipFor("comment");
-            setSnipStep("draw");
-          }}
-          onRemoveSnip={() => setSnipDraft(null)}
-          at={addingAt}
-          model={kind}
-          initialBody={addingBody}
-        />
       )}
       {snipStep === "draw" && draftNow && (
         <SnipEditor
@@ -921,36 +932,42 @@ function BySystem({ rows, onIsolate, children }: { rows: Row[]; onIsolate?: (sys
   ));
 }
 
+// A section of the column (Harel, 2026-11-18): a bold name on a tinted band with an accent bar on
+// its left, easy to spot at a glance; the comment cards under it keep their own borders, so the
+// section has no outline of its own, only space before the next one.
 function SystemSection({ name, count, onIsolate, children }: { name: string; count: number; onIsolate?: () => void; children: React.ReactNode }) {
   const [open, setOpen] = useState(true);
   return (
-    <li className="mb-1 rounded-md border border-line last:mb-0">
-      <div className={`flex items-center ${open ? "border-b border-line" : ""}`}>
-        <button onClick={() => setOpen(!open)} aria-expanded={open} className="press flex min-w-0 flex-1 items-center gap-2 px-2.5 py-1.5 text-left text-xs font-semibold text-fg hover:bg-raised pointer-coarse:min-h-10">
-          <span className={`text-subtle transition-transform ${open ? "" : "-rotate-90"}`}>▾</span>
+    <li className="mb-4 list-none last:mb-0">
+      <div className="flex items-center overflow-hidden rounded-md border-l-[3px] border-accent bg-accent/10">
+        <button onClick={() => setOpen(!open)} aria-expanded={open} className="press flex min-h-10 min-w-0 flex-1 items-center gap-2 px-2.5 py-2 text-left text-[0.9375rem] font-bold text-fg hover:bg-accent/10">
+          <span className={`text-xs text-subtle transition-transform ${open ? "" : "-rotate-90"}`}>▾</span>
           <span className="min-w-0 flex-1 truncate">{name}</span>
-          <span className="rounded-full bg-raised px-1.5 text-fg-2 tabular-nums">{count}</span>
+          <span className="rounded-full bg-surface px-2 py-0.5 text-xs font-semibold text-fg-2 tabular-nums">{count}</span>
         </button>
         {onIsolate && (
-          <button onClick={onIsolate} className="press px-2.5 py-1.5 text-[0.6875rem] font-semibold text-accent-hover hover:underline pointer-coarse:min-h-10" title={`Show only ${name}`}>
+          <button onClick={onIsolate} className="press min-h-10 px-2.5 py-1.5 text-xs font-semibold text-accent-hover hover:underline" title={`Show only ${name}`}>
             Isolate
           </button>
         )}
       </div>
-      {open && <ul>{children}</ul>}
+      {open && <ul className="mt-2">{children}</ul>}
     </li>
   );
 }
 
-
-function Popup({ title, count, onHide, tone, children }: { title: string; count: number; onHide?: () => void; tone: "amber" | "violet"; children: React.ReactNode }) {
+function Popup({ title, count, onHide, tone, big = false, tools, lead, children }: { title: string; count: number; onHide?: () => void; tone: "amber" | "violet"; big?: boolean; tools?: React.ReactNode; lead?: React.ReactNode; children: React.ReactNode }) {
   const badge = tone === "amber" ? "bg-amber-500/15 text-amber-600" : "bg-violet-500/15 text-violet-600 dark:text-violet-300";
   return (
     <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-line bg-surface/95 shadow-md backdrop-blur">
-      {/* No folding up and down: the column folds sideways from the arrow (Harel, 2026-11-11). */}
-      <div className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-fg pointer-coarse:min-h-11">
-        <span className="flex-1 truncate">{title}</span>
+      {/* No folding up and down: the column folds sideways from the arrow (Harel, 2026-11-11).
+        `big`: the Comments header, a bit taller to hold its filters (Harel, 2026-11-18). */}
+      <div className={`flex items-center gap-2 px-3 font-semibold text-fg ${big ? "min-h-12 py-2 text-base" : "py-2 text-sm pointer-coarse:min-h-11"}`}>
+        {lead}
+        <span className={`min-w-0 truncate ${big ? "shrink-0" : ""}`}>{title}</span>
         <span className={`rounded-full px-2 py-0.5 text-xs tabular-nums ${badge}`}>{count}</span>
+        <span className="flex-1" />
+        {tools}
         {onHide && (
           <button onClick={onHide} title="Hide comments" className="press -mr-1 rounded px-1.5 text-subtle hover:bg-raised hover:text-fg pointer-coarse:min-h-9 pointer-coarse:min-w-9">
             ›

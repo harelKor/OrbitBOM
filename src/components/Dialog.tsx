@@ -12,6 +12,7 @@ export function Dialog({
   width,
   sheet = false,
   compact = false,
+  floating,
   children,
 }: {
   open: boolean;
@@ -22,20 +23,24 @@ export function Dialog({
   width?: string; // a width class, in place of the two standard widths
   sheet?: boolean; // on phones: a full-width sheet up from the bottom, its title bar kept in view
   compact?: boolean; // on phones: tighter padding and the actions kept in the title row (no second row)
+  // A window that doesn't block the page: no backdrop, no blur, the page under it still used (the
+  // CAD page's Add comment, Harel 2026-11-18). Its placement classes; Esc is left to its content.
+  floating?: string;
   children: React.ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   // The page under an open window doesn't scroll (iOS scrolls it through the backdrop otherwise).
   useEffect(() => {
-    if (!open) return;
+    if (!open || floating) return;
     lockScroll(1);
     return () => lockScroll(-1);
-  }, [open]);
+  }, [open, floating]);
   useEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
-    if (open && !dialog.open) {
+    if (open && !dialog.open && floating) dialog.show();
+    else if (open && !dialog.open) {
       // showModal focuses the first field inside, which pops the keyboard open on a phone. On
       // touch screens the window itself takes the focus instead; a field opens the keyboard
       // only when it's tapped (Harel, 2026-10-29).
@@ -46,7 +51,7 @@ export function Dialog({
       if (touch && document.activeElement !== dialog) dialog.focus({ preventScroll: true });
     }
     if (!open && dialog.open) dialog.close();
-  }, [open]);
+  }, [open, floating]);
 
   return (
     <dialog
@@ -59,7 +64,7 @@ export function Dialog({
       }}
       // Never taller than the visible screen (dvh: a phone's browser bars and keyboard taken off);
       // the window scrolls inside, its title bar staying on top with ✕.
-      className={`m-auto ${width ?? (wide ? "w-[min(40rem,calc(100vw-2rem))]" : "w-[min(28rem,calc(100vw-2rem))]")} max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain modal p-0 outline-none ${sheet ? SHEET : ""}`}
+      className={`${floating ?? "m-auto"} ${width ?? (wide ? "w-[min(40rem,calc(100vw-2rem))]" : "w-[min(28rem,calc(100vw-2rem))]")} max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain modal p-0 outline-none ${sheet && !floating ? SHEET : ""}`}
     >
       <div className={`flex items-center justify-between gap-2 border-b border-line px-5 py-3 ${actions && !compact ? "max-sm:flex-wrap" : ""} ${compact ? "max-sm:px-3 max-sm:py-2" : ""} sticky top-0 z-[2] bg-surface ${sheet ? "max-sm:px-4" : ""}`}>
         <h2 id={titleId} className={`min-w-0 flex-1 font-semibold ${compact ? "max-sm:text-sm max-sm:leading-tight" : ""}`}>{title}</h2>

@@ -49,7 +49,10 @@ export function PanelComments({
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const final = model === "final";
-  const version = useVersion(final ? systemId : null, place);
+  // The writing controls fold under + Add comment, as on the site (Harel, 2026-11-18). The Onshape
+  // version is only asked for once it's open.
+  const [adding, setAdding] = useState(false);
+  const version = useVersion(final && adding ? systemId : null, place);
   // Snip: pasted from the system's snipping tool, then the drawing window (Harel, 2026-11-10).
   const [snip, setSnip] = useState<SnipDraft | null>(null);
   const [drawing, setDrawing] = useState(false);
@@ -65,6 +68,13 @@ export function PanelComments({
   const [windowed, setWindowed] = useState<string | null>(null);
   const windowComment = windowed ? comments.find((c) => c.id === windowed) : undefined;
 
+  const reset = () => {
+    setBody("");
+    setPartKey("");
+    setSnip(null);
+    setError(null);
+    setAdding(false);
+  };
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     start(async () => {
@@ -78,9 +88,7 @@ export function PanelComments({
       }
       const r = await addReviewComment(robotId, systemId, body, part && { key: part.key, name: part.name }, v, shotUp, null, model);
       if (r.error) return setError(r.error);
-      setBody("");
-      setPartKey("");
-      setSnip(null);
+      reset();
       router.refresh();
     });
   };
@@ -89,6 +97,11 @@ export function PanelComments({
     <SnipMe.Provider value={me.id}>
     <CommentContext.Provider value={{ me, canTick, canApprove, open: (c) => setWindowed(c.id) }}>
     <div className="space-y-5">
+      {!adding ? (
+        <button type="button" className="btn-primary h-10 w-full justify-center active:scale-[0.98]" onClick={() => setAdding(true)}>
+          + Add comment
+        </button>
+      ) : (
       <form onSubmit={submit} className="space-y-2.5 rounded-lg border border-line bg-surface p-3">
         {!fixedSystem && (
           <select className="input w-full pointer-coarse:min-h-9" value={picked} onChange={(e) => (setPicked(e.target.value), setPartKey(""))} aria-label="Where the comment goes">
@@ -101,7 +114,7 @@ export function PanelComments({
           </select>
         )}
         {final && systemId && <VersionLine state={version} />}
-        <textarea required value={body} onChange={(e) => setBody(e.target.value)} rows={4} maxLength={2000} className="input min-h-24 w-full" placeholder="What should change?" />
+        <textarea autoFocus required value={body} onChange={(e) => setBody(e.target.value)} rows={4} maxLength={2000} className="input min-h-24 w-full" placeholder="What should change?" />
         {snip ? (
           <div className="flex items-start gap-3">
             <button type="button" onClick={() => setDrawing(true)} className="press w-36 shrink-0 overflow-hidden rounded border border-line hover:border-accent/60 active:scale-[0.98]" title="Draw on it">
@@ -130,10 +143,16 @@ export function PanelComments({
           </select>
         )}
         {error && <p className="text-xs text-rose-600">{error}</p>}
-        <button className="btn-primary h-10 w-full justify-center active:scale-[0.98]" disabled={pending || !body.trim() || (!!systemId && version.loading)}>
-          {pending ? "Saving…" : systemId && version.loading ? "Finding the Onshape version…" : "Add comment"}
-        </button>
+        <div className="flex gap-2">
+          <button type="button" className="btn h-10 justify-center px-4 active:scale-[0.98]" disabled={pending} onClick={reset}>
+            Cancel
+          </button>
+          <button className="btn-primary h-10 flex-1 justify-center active:scale-[0.98]" disabled={pending || !body.trim() || (final && !!systemId && version.loading)}>
+            {pending ? "Saving…" : final && systemId && version.loading ? "Finding the Onshape version…" : "Add comment"}
+          </button>
+        </div>
       </form>
+      )}
 
       {sections.length ? (
         sections.map((s) => <CommentSection key={s.id ?? "robot"} name={s.name} comments={s.comments} />)

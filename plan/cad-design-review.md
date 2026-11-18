@@ -4,7 +4,7 @@ Harel's request (2026-11-18), in short: a non-blocking Add comment window; comme
 edge / face / point, not just a part; a clearer comments panel (bigger section headers, Esc doesn't
 close it, State and DR filters, a "show in 3D" checkbox); comment bubbles with the author's picture
 in the 3D view; and Design Reviews (DRs) that admins start and finish, with every comment written
-meanwhile tagged to the DR. Status: **plan, waiting for Harel's go**.
+meanwhile tagged to the DR. Status: **approved 2026-11-18, being built in three pieces**.
 
 ## What exists today (why the plan looks like this)
 
@@ -169,17 +169,22 @@ Replace the numbered dots (`pins.ts`) with a speech-bubble tag holding the autho
 - One open DR per robot (a partial unique index; Start when one is open says so).
 - A comment written while a DR is open is linked to it **if it's in its scope**: a whole-robot DR
   takes every comment; a systems DR takes comments on those systems and on the whole robot. Done
-  on the server in `addComment` (and the MCP), not trusted from the browser.
+  on the server in `addComment` (and the MCP), not trusted from the browser. Comments on systems
+  outside it stay out; ⋮ Add to DR… links one by hand (Harel, 2026-11-18).
 - ⋮ Add to DR / Remove: the comment's author or an admin. A comment is in at most one DR.
 - Finishing a DR doesn't touch its comments' statuses; they stay tagged and filterable.
 
-### "The robot version at the DR"
+### "The robot version at the DR" (Harel, 2026-11-18)
 
-Start DR **creates a new robot version** (`createRobotVersion`, named `R<n>`, its note = the DR's
-State text), so the DR points at exactly what was on the screen when it began and the tree can
-draw it. Same rule as Create version: no Onshape calls; it fails ("no system's 3D model is on a
-fixed version yet") only when nothing has been committed, and then Start DR says so. If that
-version is later deleted, the DR keeps its label (`version_label`) and the tag still reads `R7`.
+Start DR **uses the robot's newest existing robot version** (`robot_versions`, highest `seq`) and
+creates none. With no robot version yet, the tag reads `DR · no version`. If the version is later
+deleted, the DR keeps its label (`version_label`) and the tag still reads `R7`.
+
+**Finish DR** opens a window: a checkbox "Create a robot version for it", a name field for that
+version (default `R<next>`), Confirm / Cancel. Cancel leaves the DR open. Confirm finishes it and,
+when ticked, creates the robot version with that name (`createRobotVersion`, note = the State
+text), kept on the DR as `finish_version_id` / `finish_version_label`. The DR's ▾ list shows both:
+`DR 3 · R7 → R8`.
 
 ## Data model: migration `0097_design_reviews.sql` (expand only)
 
@@ -193,6 +198,8 @@ CREATE TABLE "design_reviews" (
   "state" text NOT NULL,                                   -- the State text
   "robot_version_id" uuid REFERENCES "robot_versions"("id") ON DELETE SET NULL,
   "version_label" text,                                    -- "R7", kept if the version goes
+  "finish_version_id" uuid REFERENCES "robot_versions"("id") ON DELETE SET NULL, -- made at Finish
+  "finish_version_label" text,
   "started_by" uuid REFERENCES "members"("id") ON DELETE SET NULL,
   "started_at" timestamptz NOT NULL DEFAULT now(),
   "finished_by" uuid REFERENCES "members"("id") ON DELETE SET NULL,
@@ -238,11 +245,14 @@ server actions next to the CAD page's; `loadRobotReview` / `loadSystemReview` re
 Pieces 2 and 3 don't depend on each other's code beyond the migration, so 3 can go before 2 if
 DRs are wanted sooner.
 
-## Open questions for Harel
+Piece 1 also: in the Onshape side panel (`src/app/onshape/panel/`), the comment text, snip and
+general-comment controls fold under an **Add comment** button, as on the site; sending or
+cancelling folds them away again (Harel, 2026-11-18).
 
-1. **Robot version at Start DR**: make a new `R<n>` each time (planned), or tag the DR with the
-   newest existing robot version and only make one when there's none?
-2. **A DR on some systems only**: comments written meanwhile on other systems stay out of it
-   (planned), or does every comment written during an open DR join it?
-3. **Hover**: "highlight it slightly" read as hovering a comment in the panel or its 3D bubble
-   tints the row and lights up its edge / face in the 3D view. Right?
+## Decisions (Harel, 2026-11-18)
+
+1. Start DR takes the newest existing robot version, never makes one ("DR · no version" when
+   there's none); Finish DR may make one (checkbox + name), stored as the DR's finish version.
+2. A DR on some systems only: comments on other systems stay out; ⋮ Add to DR… links them by hand.
+3. Hover: hovering a comment in the panel or its 3D bubble tints the row and lights up its anchored
+   edge / face in the 3D view.
