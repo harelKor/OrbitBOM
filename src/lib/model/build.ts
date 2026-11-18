@@ -628,6 +628,21 @@ export function mergePlans(sources: { did: string; eid?: string; kind?: ModelSou
   return { rev, jobs, placements, groups: sources.map((s) => s.group), names, ...(sketches.length ? { sketches } : {}), ...(joints.length ? { joints } : {}), ...(relations.length ? { relations } : {}) };
 }
 
+// Rebuild model (Harel, 2026-11-18): the next build reads this system's assembly again even when
+// Onshape didn't change (its plan is dropped and the built model marked old; it stays shown until
+// the new one is in). Part Studio files already in R2 aren't exported again. Returns the robot.
+export async function forgetSystemPlan(systemId: string): Promise<string | null> {
+  const [sys] = await db.select({ robotId: systems.robotId }).from(systems).where(eq(systems.id, systemId));
+  if (!sys) return null;
+  const sources = await modelSources(sys.robotId, "final");
+  const source = sources.find(ownsSource({ systemId }));
+  const state = await loadState(sys.robotId, "final");
+  const plans = { ...state.plans };
+  if (source) delete plans[groupKey(source)];
+  await saveState(sys.robotId, { ...(state.built ? { built: { ...state.built, rev: "" } } : {}), plans }, "final");
+  return sys.robotId;
+}
+
 // ---------- Update CAD / Update Basepart (Harel, 2026-11-13) ----------
 // The Commit window compares one system's (or the robot's own Basepart's) model as it is now in
 // Onshape with what the 3D model has. "Now" is the workspace pinned to its current microversion,

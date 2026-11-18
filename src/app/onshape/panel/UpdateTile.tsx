@@ -3,11 +3,12 @@
 import { CALL_COSTS, costHint } from "@/config/callCosts";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { commitChanges } from "@/app/(app)/versions-actions";
+import { commitChanges, rebuildSystemModel } from "@/app/(app)/versions-actions";
 import { Dialog } from "@/components/Dialog";
 import { buildModelAndPictures } from "@/components/viewer/buildModel";
 import { afterPartsUpdate } from "@/components/versions/afterUpdate";
 import { CommitWindow } from "@/components/versions/CommitWindow";
+import { RebuildDialog } from "@/components/versions/RebuildDialog";
 import { panelCheckSystem, type PanelCheck } from "./update-actions";
 import { tileClass, TileBody } from "./tiles";
 import { asError, useModelUpdate } from "./useModelUpdate";
@@ -30,6 +31,7 @@ export function UpdateTile({ systemId, robotId }: { systemId: string; robotId: s
   const [note, setNote] = useState<{ text: string; bad?: boolean } | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
   const [commitError, setCommitError] = useState<string | null>(null);
+  const [upToDate, setUpToDate] = useState(false);
   const draft = found?.draft ?? null;
   const waiting = draft?.changes.length ?? 0;
 
@@ -52,8 +54,18 @@ export function UpdateTile({ systemId, robotId }: { systemId: string; robotId: s
       if (r.draft) {
         setCommitError(null);
         setOpen(true);
-      } else setNote({ text: "BOM is up to date with Onshape" });
+      } else {
+        setNote({ text: "BOM is up to date with Onshape" });
+        setUpToDate(true);
+      }
     });
+
+  // Rebuild 3D model from the Up to date window (Harel, 2026-11-18): read the assembly again.
+  const rebuildAnyway = async () => {
+    const r = await rebuildSystemModel(systemId).catch(asError);
+    if (r.error) return setNote({ text: r.error, bad: true });
+    await rebuild(robotId, "Rebuilt.");
+  };
 
   const commit = (name: string, only?: string, tick?: string[], update3d = false) =>
     startCommit(async () => {
@@ -117,6 +129,8 @@ export function UpdateTile({ systemId, robotId }: { systemId: string; robotId: s
       </Dialog>
 
       {cad.dialog}
+
+      <RebuildDialog open={upToDate} onClose={() => setUpToDate(false)} onRebuild={() => void rebuildAnyway()} text="Nothing changed in Onshape since the BOM's last version." />
 
       {draft && (
         <CommitWindow

@@ -9,6 +9,7 @@ import { isUuid } from "@/lib/uuid";
 import { commitDraft, VersionError } from "@/lib/versions/commit";
 import { checkSystem, type Draft } from "@/lib/versions/detect";
 import { checkModelUpdate, commitModelUpdate, pinModelToVersion } from "@/lib/versions/cad";
+import { forgetSystemPlan } from "@/lib/model/build";
 import type { CadChange } from "@/lib/versions/cadDiff";
 import type { ModelKind } from "@/db/schema";
 import { releaseBomVersion } from "@/lib/versions/onshapeName";
@@ -16,6 +17,16 @@ import { listPartVersions, revertSystem, updatePartToLatest, type PartVersionEnt
 import { relockPart } from "@/lib/versions/release";
 
 export type CheckResult = { draft?: Draft | null; error?: string; calls?: number; applied?: boolean };
+
+// Rebuild model, offered when Update system finds nothing new (Harel, 2026-11-18): the next 3D
+// build reads this system's assembly again (its mates included). The browser runs the build.
+export async function rebuildSystemModel(systemId: string): Promise<{ error?: string; robotId?: string }> {
+  const member = await requireCapability("sync");
+  if (!isUuid(systemId)) return { error: "Unknown system." };
+  if (!member.onshapeConnected) return { error: "Connect your Onshape account first (Profile → Connect Onshape)." };
+  const robotId = await forgetSystemPlan(systemId);
+  return robotId ? { robotId } : { error: "Unknown system." };
+}
 
 // Update System (and the Onshape panel opening a system): checks the Manufacture assembly for
 // changes and returns what is waiting to be committed. `quick` skips the BOM when the document

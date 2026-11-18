@@ -33,6 +33,9 @@ export const CALL_COSTS = {
   // moved, its assembly definitions, element lists and a tessellation per changed Part Studio
   // (+1 parts list when bodies come without a colour).
   update3d: cost("onshape", 1, 20, "+1 per changed Part Studio"),
+  // Rebuild model (Update system found nothing new): the system's assembly read again (microversion,
+  // definition with its mates, element lists, mate limits); files already kept aren't exported.
+  rebuildSystem: cost("onshape", 3, 8, "+1 per Part Studio file not kept yet"),
   // First link of an assembly in the panel: a whole first sync (BOM, version names, then every
   // Part Studio's parts list and file). About 25 for a 15-Part-Studio system.
   linkAssembly: cost("onshape", 5, 40, "5 + 1–2 per Part Studio"),

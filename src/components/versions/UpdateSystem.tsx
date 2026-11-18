@@ -3,11 +3,12 @@
 import { CALL_COSTS, costHint } from "@/config/callCosts";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { checkForChanges, commitChanges, revertToVersion } from "@/app/(app)/versions-actions";
+import { checkForChanges, commitChanges, rebuildSystemModel, revertToVersion } from "@/app/(app)/versions-actions";
 import { useCan } from "@/components/shell/ModeContext";
 import type { Draft } from "@/lib/versions/detect";
 import { PARTS_UPDATING_EVENT, afterPartsUpdate } from "./afterUpdate";
 import { CommitWindow, type CommitComment } from "./CommitWindow";
+import { RebuildDialog } from "./RebuildDialog";
 import { CHECK_SYSTEM_EVENT, OPEN_COMMIT_EVENT } from "./events";
 
 // Update System (plan/system-versioning.md §4, §7): checks the Manufacture assembly for
@@ -44,6 +45,7 @@ export function UpdateSystem({
   const [checking, startCheck] = useTransition();
   const [committing, startCommit] = useTransition();
   const [loading, setLoading] = useState(false);
+  const [upToDate, setUpToDate] = useState<string | null>(null); // the Up to date window's text
 
   useEffect(() => {
     const onUpdating = (e: Event) => setLoading((e as CustomEvent<boolean>).detail);
@@ -80,7 +82,21 @@ export function UpdateSystem({
       if (r.draft) {
         setCommitError(null);
         setOpen(true);
-      } else if (!quick) setMessage(`Up to date with Onshape (${r.calls} Onshape calls).`);
+      } else if (!quick) {
+        setMessage(`Up to date with Onshape (${r.calls} Onshape calls).`);
+        setUpToDate(`Nothing changed in Onshape since the BOM's last version (${r.calls} Onshape calls).`);
+      }
+    });
+
+  // Rebuild 3D model from the Up to date window: the system's assembly is read again, then the
+  // page's viewer (or this) rebuilds the model and pictures.
+  const rebuild = () =>
+    startCheck(async () => {
+      setMessage(null);
+      setError(null);
+      const r = await rebuildSystemModel(systemId);
+      if (r.error || !r.robotId) return setError(r.error ?? "The rebuild failed.");
+      afterPartsUpdate(systemId, router, { rebuild: r.robotId });
     });
 
   // An Outdated tag's missed update opens this window.
@@ -173,6 +189,7 @@ export function UpdateSystem({
       {!message && !error && !draft && lastSyncedAt && (
         <span className="text-xs text-subtle max-sm:hidden">Last committed {lastSyncedAt.toISOString().slice(0, 16).replace("T", " ")} UTC</span>
       )}
+      <RebuildDialog open={!!upToDate} onClose={() => setUpToDate(null)} onRebuild={rebuild} text={upToDate ?? ""} />
       {draft && (
         <CommitWindow
           key={draft.id + String(draft.detectedAt)}
