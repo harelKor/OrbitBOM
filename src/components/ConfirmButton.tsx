@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { startTransition } from "react";
 import { askConfirm } from "@/components/ui/useConfirm";
 
 // A submit button that asks before running a destructive server action.
@@ -19,24 +19,16 @@ export function ConfirmButton({
   className?: string;
   children: React.ReactNode;
 }) {
-  const form = useRef<HTMLFormElement>(null);
-  // The Orbit window answers later than the submit event, so the first submit always stops and a
-  // yes submits the form again; this flag lets that second one through to the server action.
-  const confirmed = useRef(false);
+  // A yes runs the action itself rather than submitting the form again: tapping the Orbit
+  // window's Delete counts as a tap outside the gear popover this button sits in, which closes
+  // the popover and unmounts the form, so a second submit never reached the server (Delete
+  // system and Delete robot did nothing, 2026-11-18).
   return (
     <form
-      ref={form}
-      action={action}
       onSubmit={(e) => {
-        if (confirmed.current) {
-          confirmed.current = false;
-          return;
-        }
         e.preventDefault();
         void askConfirm({ title: message, body, confirm, danger: true }).then((yes) => {
-          if (!yes) return;
-          confirmed.current = true;
-          form.current?.requestSubmit();
+          if (yes) startTransition(() => action());
         });
       }}
     >
