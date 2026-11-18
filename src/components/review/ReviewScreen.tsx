@@ -623,9 +623,6 @@ export function ReviewScreen({
     <div ref={root} className="relative -m-4 flex h-[calc(100dvh-var(--topbar-h,2.75rem))] md:-m-6">
       {drawer && <button aria-label="Close versions" onClick={() => setDrawer(false)} className="fixed inset-0 z-30 modal-backdrop lg:hidden" />}
       <aside
-        // While a Design Review is open: a soft Orbit-blue glow from the panel's bottom left corner,
-        // fading into the panel (Harel, 2026-11-18). A background, so it stays put as the panel scrolls.
-        style={openReview ? { backgroundImage: "radial-gradient(circle at 0% 100%, color-mix(in srgb, var(--color-accent) 42%, transparent) 0, color-mix(in srgb, var(--color-accent) 14%, transparent) 7rem, transparent 13rem)" } : undefined}
         className={`flex min-h-0 flex-col gap-4 overflow-y-auto border-line bg-surface p-4 lg:w-[var(--cad-panel-w,20rem)] lg:shrink-0 lg:border-r max-lg:fixed max-lg:top-[var(--review-top,2.75rem)] max-lg:bottom-0 max-lg:left-0 max-lg:z-40 max-lg:w-[min(22rem,88vw)] max-lg:border-r max-lg:shadow-xl ${drawer ? "max-lg:animate-pop" : "max-lg:hidden"}`}
       >
         <div className="max-lg:hidden">
@@ -678,6 +675,16 @@ export function ReviewScreen({
       <PanelResizer root={root} />
 
       <section ref={section} className="relative min-w-0 flex-1 overflow-hidden bg-surface">
+        {/* While a Design Review is open: a soft Orbit-blue glow from the 3D view's bottom left
+          corner, fading out (Harel, 2026-11-18: moved here from the left panel). Over the canvas,
+          never in the way of a click. */}
+        {openReview && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute bottom-0 left-0 z-[1] h-[16rem] w-[16rem]"
+            style={{ backgroundImage: "radial-gradient(circle at 0% 100%, color-mix(in srgb, var(--color-accent) 42%, transparent) 0, color-mix(in srgb, var(--color-accent) 14%, transparent) 7rem, transparent 13rem)" }}
+          />
+        )}
         {snipStep === "drag" && <SnipOverlay onSnip={takeSnip} onCancel={() => setSnipStep(null)} />}
         {models?.both && (
           <div className="absolute top-3 left-1/2 z-10 -translate-x-1/2 max-lg:top-16">
