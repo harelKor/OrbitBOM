@@ -80,6 +80,16 @@ const gear = (teeth: number, od: number, root: number): P[] =>
     return [r * Math.cos(a), r * Math.sin(a)];
   });
 const hexagon = (flats: number): P[] => Array.from({ length: 6 }, (_, k) => [(flats / Math.sqrt(3)) * Math.cos((Math.PI * k) / 3), (flats / Math.sqrt(3)) * Math.sin((Math.PI * k) / 3)]);
+// A hexagon with `n` points (n/6 along each side), to pair with circle(d, n) as a bore.
+const hexRing = (flats: number, n = 72): P[] => {
+  const c = hexagon(flats);
+  const per = n / 6;
+  return Array.from({ length: n }, (_, k) => {
+    const [a, b] = [c[Math.floor(k / per)], c[(Math.floor(k / per) + 1) % 6]];
+    const f = (k % per) / per;
+    return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+  });
+};
 
 const read = (s: Solid, deg = 37) => {
   const m = s.mesh(deg);
@@ -143,6 +153,14 @@ describe("analyzeShape", () => {
     const rod = read(prism(circle(4, 32), 60));
     expect(rod).toMatchObject({ kind: "rod", axisymmetric: true });
     expect(rod.d1).toBeCloseTo(4, 0);
+  });
+
+  it("sees a hex bore in a round spacer, and none in a round tube (Harel, 2026-11-18)", () => {
+    // "HEX Spacer 1.969 in": Ø16.9, 50 mm long, 1/2" hex bore.
+    const s = read(prism(circle(16.9), 50, hexRing(12.7)));
+    expect(s).toMatchObject({ kind: "round-tube", bore: "hex" });
+    expect(s.boreFlats).toBeCloseTo(12.7, 0);
+    expect(read(prism(circle(16), 600, circle(14))).bore).toBeUndefined();
   });
 
   it("calls a short thick round part a turned spacer, not a plate", () => {
@@ -386,6 +404,22 @@ describe("suggestSetup with shapes", () => {
     expect(s?.changes).toMatchObject({ material: "Aluminum plate 6061 3mm", process1: "cnc" });
     expect(s?.reason).toContain("taken as aluminum");
     expect(setup({ shape: { kind: "round-tube", d1: 15.76, d2: 16, wall: 0.94, length: 659 } })?.changes).toMatchObject({ material: "Carbon Fiber 16x1 tube", classification: "inhouse" });
+  });
+
+  it("prints spacers in PLA instead of cutting them from the carbon 16x1 tube (Harel, 2026-11-18)", () => {
+    const printed = { material: "PLA", process1: "3d-bambu", process2: null, preProcess: null, classification: "inhouse" };
+    // Measured from the mesh: hex bore.
+    const hex = setup({ shape: shapeOf(prism(circle(16.9), 50, hexRing(12.7))) }, { onshapeName: "HEX Spacer 1.969 in" });
+    expect(hex?.changes).toEqual(printed);
+    expect(hex?.reason).toContain("hex bore");
+    // As it was measured before bores were read: the name, or a short length, says spacer.
+    const old = { kind: "round-tube", d1: 16.9, d2: 16.9, wall: 1.12, length: 50 } as const;
+    expect(setup({ shape: old }, { onshapeName: "HEX Spacer 1.969 in" })?.changes).toEqual(printed);
+    expect(setup({ shape: { ...old, length: 25 } })?.changes).toEqual(printed);
+    // A real tube is still the stock tube; a carbon or metal part keeps its own rule.
+    expect(setup({ shape: shapeOf(prism(circle(16), 600, circle(14))) })?.changes).toMatchObject({ material: "Carbon Fiber 16x1 tube" });
+    expect(setup({ onshapeMaterial: "Carbon Fiber", shape: { ...old, length: 25, wall: 1 } })?.changes.material).toBe("Carbon Fiber 16x1 tube");
+    expect(setup({ onshapeMaterial: "Aluminum - 6061", shape: old }, { onshapeName: "Spacer" })?.changes.process1).toBe("lathe");
   });
 
   it("reads hex stock from the name when nothing was measured", () => {

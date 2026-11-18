@@ -40,6 +40,16 @@ export const PRINT_MATERIALS: { match: RegExp; material: string; machine: string
   { match: /\bpa ?6?12\b|nylon/i, material: "PA612", machine: "3d-bambu" },
 ];
 
+// Spacers are printed (Harel, 2026-11-18: a hex-bore "HEX Spacer" was suggested as a cut of the
+// carbon 16x1 tube). A round part with no metal or tube material in Onshape is a printed spacer,
+// not stock tube, when its bore isn't round (hex), its name says so, or it's at most
+// `maxLengthPerOd` times as long as it is wide. Printed in `material` (one of PRINT_MATERIALS).
+export const PRINTED_SPACER = {
+  name: /\b(spacers?|standoffs?|bushings?|collars?)\b/i,
+  maxLengthPerOd: 2,
+  material: "PLA",
+};
+
 // How close a part's measured thickness must be to a plate's, in mm (the closest plate wins).
 export const PLATE_TOLERANCE_MM = 0.25;
 // How close a tube's outside size must be to an item's, and its wall, in mm.

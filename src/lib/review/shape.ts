@@ -16,6 +16,10 @@ export type Shape = {
   d2?: number;
   length?: number; // along the long axis, mm
   wall?: number; // tube wall, mm
+  // A round part's bore when it isn't round (a hex bore for a 1/2" shaft), and its width across
+  // the flats, mm: a stock tube's bore is round, so this part is printed or machined.
+  bore?: "hex" | "polygon";
+  boreFlats?: number;
   t?: number; // plate thickness, mm
   pocketed?: boolean; // a plate with floors between its top and bottom faces (pockets, steps)
   turned?: boolean; // a hex shaft with ends turned round
@@ -316,6 +320,10 @@ export function analyzeShape(positions: ArrayLike<number>, indices: ArrayLike<nu
       if (fill >= 0.08 && fill <= 0.6) {
         // The bore: side faces that face the axis.
         const inner: { x: number; w: number }[] = [];
+        // The bore faces' distance from the axis over the bore's farthest corner: ~1 on a round
+        // bore (its facets are narrow), cos 30° = 0.87 on a hex bore's flats.
+        const apothem: { x: number; w: number }[] = [];
+        let farthest = 0;
         for (const t of tris) {
           if (Math.abs(dot(t.n, L)) > 0.15) continue;
           const rc = radius(t.c);
@@ -324,11 +332,19 @@ export function analyzeShape(positions: ArrayLike<number>, indices: ArrayLike<nu
             sec.u[1] * (dot(t.c, sec.u) - sec.centre2[0]) + sec.v[1] * (dot(t.c, sec.v) - sec.centre2[1]),
             sec.u[2] * (dot(t.c, sec.u) - sec.centre2[0]) + sec.v[2] * (dot(t.c, sec.v) - sec.centre2[1]),
           ];
-          if (rc > od * 0.15 && dot(t.n, out) < -0.9 * rc) inner.push({ x: Math.max(...t.v.map(radius)), w: t.area });
+          if (rc > od * 0.15 && dot(t.n, out) < -0.8 * rc) {
+            const corner = Math.max(...t.v.map(radius));
+            inner.push({ x: corner, w: t.area });
+            apothem.push({ x: -dot(t.n, out), w: t.area });
+            farthest = Math.max(farthest, corner);
+          }
         }
         const ri = median(inner);
         const wall = ri !== undefined ? od / 2 - ri : undefined;
-        return { kind: "round-tube", ...base, ...(wall !== undefined && wall > 0.2 && { wall: r2(wall) }) };
+        const a = median(apothem);
+        const f = a !== undefined && farthest ? a / farthest : undefined;
+        const bore = f !== undefined && a !== undefined && f < 0.96 ? { bore: f >= 0.83 && f <= 0.9 ? ("hex" as const) : ("polygon" as const), boreFlats: r2(2 * a) } : {};
+        return { kind: "round-tube", ...base, ...(wall !== undefined && wall > 0.2 && { wall: r2(wall) }), ...bore };
       }
       if (fill > 0.6) return { kind: "rod", ...base, axisymmetric: true };
     }

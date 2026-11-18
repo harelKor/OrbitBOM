@@ -13,6 +13,7 @@ import {
   DEFAULT_PROCESSES,
   PLATE_TOLERANCE_MM,
   PRINT_MATERIALS,
+  PRINTED_SPACER,
   SHAPE_MACHINES,
   TUBE_TOLERANCE_MM,
   WALL_TOLERANCE_MM,
@@ -297,6 +298,11 @@ function planFor(part: SetupInput, stock: StockItem[], linked: StockItem | undef
   return { kind, item: legacy, category: legacy.category, set, fixed: !!set, why: `material "${own}"` };
 }
 
+function printedSpacer(why: string): Plan {
+  const p = PRINT_MATERIALS.find((m) => m.material === PRINTED_SPACER.material)!;
+  return { kind: "print", material: p.material, set: { process1: p.machine }, fixed: true, why };
+}
+
 function shapePlan(part: SetupInput, stock: StockItem[], linked: StockItem | undefined, text: string): Plan | undefined {
   const g = part.geometry;
   const om = text ? `Onshape material ${text}` : "no material in Onshape";
@@ -333,6 +339,14 @@ function shapePlan(part: SetupInput, stock: StockItem[], linked: StockItem | und
         const item = cylinderFor(od, fam, stock);
         return { kind: "spacer", item, set: { process1: SHAPE_MACHINES.turned }, fixed: true, why: `${om}, round part Ø${fmt(od)} mm${s.length ? `, ${fmt(s.length)} mm long` : ""}` };
       }
+      // A hex bore, a spacer's name or a short length: a printed spacer, unless Onshape says the
+      // part is carbon or poly tube.
+      const short = s.length !== undefined && s.length <= PRINTED_SPACER.maxLengthPerOd * od;
+      const named = PRINTED_SPACER.name.exec(name)?.[0];
+      if (fam !== "carbon" && fam !== "poly" && (s.bore || named || short)) {
+        const what = s.bore ? `${s.bore === "hex" ? "hex" : "non-round"} bore${s.boreFlats ? ` ${fmt(s.boreFlats)} mm` : ""}` : named ? `named "${named}"` : `${fmt(s.length!)} mm long`;
+        return printedSpacer(`round spacer Ø${fmt(od)} mm, ${what}`);
+      }
       // No material in Onshape: whichever stock tube has the size (the carbon 16×1).
       const item = roundTubeFor(od, s.wall, fam === "carbon" || fam === "poly" ? fam : text ? "aluminum" : undefined, stock);
       return { kind: "round-tube", item, category: "round-tubes", why: `round tube Ø${fmt(od)} mm${s.wall ? `, ${fmt(s.wall)} mm wall` : ""}` };
@@ -347,6 +361,7 @@ function shapePlan(part: SetupInput, stock: StockItem[], linked: StockItem | und
       const item = cylinderFor(s.d2, fam, stock);
       return { kind: "spacer", item, set: { process1: SHAPE_MACHINES.turned }, fixed: true, why: `${om}, round part Ø${fmt(s.d2)} mm, ${fmt(s.d1 ?? 0)} mm thick` };
     }
+    if (s.kind === "spacer" && s.d2 && !text && PRINTED_SPACER.name.test(name)) return printedSpacer(`round spacer Ø${fmt(s.d2)} mm, ${fmt(s.d1 ?? 0)} mm thick`);
     // Rule 5: plates, with or without pockets.
     // A plate Onshape gives no material is taken as aluminum, the shop's usual plate (Harel,
     // 2026-11-06); it waits in To Review like every guess.
