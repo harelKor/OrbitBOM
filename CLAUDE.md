@@ -181,7 +181,8 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
 
 - **CAD 3D viewer rework** (2026-11-10/11): done. Mates (S8, 2026-11-18, plan/cad-mates.md): the
   model build reads Onshape's mates, groups and limits (`src/lib/model/mates.ts`), the browser moves
-  them (`kinematics.ts`, `motion.ts`: drag a part, "Move along <mate>", Move / explode by rigid set). `plan/cad-3d-viewer.md` has what shipped (Progress table) and the briefs. The
+  them (`kinematics.ts`, `motion.ts`: left-drag a part; each mechanism's base is the part Onshape
+  fixes; Move / explode by rigid set; no "Move along" item, Harel 2026-11-18). `plan/cad-3d-viewer.md` has what shipped (Progress table) and the briefs. The
   viewer lives in `src/components/viewer/` (one module per area; `SceneTools` is the API). Rule
   (Harel, 2026-11-11): the 3D view copies Onshape's assembly view unless he decided otherwise
   (kept: hover blue / picked orange, Shift+Y brings back the hidden part under the mouse, Space

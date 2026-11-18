@@ -579,8 +579,6 @@ export function ReviewScreen({
     const system = onRobot && systems.size === 1 ? [...systems][0] : null;
     return [
       ...(one ? [{ label: "Open part", run: () => void openPartWindow(one.id) }] : []),
-      // Onshape's own "Open" on an assembly part opens its Part Studio: a plain link, no API call.
-      ...(one?.onshape ? [{ label: "Open in Onshape", run: () => void window.open(one.onshape, "_blank", "noopener") }] : []),
       // The robot's page scoped to that system (?system=), as its Isolate does.
       ...(system ? [{ label: "Open system", run: () => (onIsolate ? onIsolate(system) : router.push(`/robots/${robotId}/cad-review?system=${system}`)) }] : []),
       ...(keys.length === 1 ? [{ label: "Add comment here", run: () => startAdding({ key: keys[0], name: one?.name ?? null, systemId: one?.systemId ?? null }) }] : []),

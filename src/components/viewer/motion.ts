@@ -7,7 +7,7 @@
 import * as THREE from "three";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 import { createKinematics, type Dof, type Kinematics } from "@/lib/model/kinematics";
-import { slides, turns } from "@/lib/model/mates";
+import { turns } from "@/lib/model/mates";
 import type { Stage } from "./stage";
 import type { PartMesh, ViewerModel } from "./types";
 
@@ -49,10 +49,7 @@ export function explodeOffsets(items: { g: number; c: V3 }[], t: number): V3[] {
 export type MoveMode = "slide" | "turn";
 // What the panels show: the explode slider (its panel open or not), Move on some copies, and
 // whether anything sits away from its CAD place (the "Moved (not in CAD)" chip).
-// Moving along a mate (plan/cad-mates.md): its name, the degrees of freedom it has, the one the
-// handle drives, the values from the CAD place (radians, metres) and Onshape's limits.
-export type MateView = { name: string; dofs: Dof[]; dof: Dof; value: { turn: number; slide: number }; lim?: { turn?: [number, number]; slide?: [number, number] } };
-export type MotionView = { explode: number; panel: boolean; moving: { count: number; mode: MoveMode } | null; moved: boolean; mate: MateView | null };
+export type MotionView = { explode: number; panel: boolean; moving: { count: number; mode: MoveMode } | null; moved: boolean };
 export type Copy = { m: number; i: number };
 
 export type MotionTools = {
@@ -63,12 +60,8 @@ export type MotionTools = {
   moveDone: () => void; // the triad away, the parts stay where they are
   resetPositions: () => void; // everything back to its CAD place, explode at 0
   motionNow: () => MotionView;
-  // The mates (plan/cad-mates.md): the mate a copy moves along (its name), the handle on it, the
-  // handle's degree of freedom and a typed value; the copies moving with it (its rigid set).
-  mateOf: (c: Copy) => string | null;
-  mateMove: (c: Copy) => void;
-  mateDof: (dof: Dof) => void;
-  mateValue: (dof: Dof, v: number) => void;
+  // The mates (plan/cad-mates.md): the copies moving with a copy (its rigid set), and where the
+  // mates are moved to (saved views).
   groupOf: (c: Copy) => Copy[];
   matesNow: () => Record<string, [number, number]>;
   setMates: (v: Record<string, [number, number]>) => void;
@@ -80,7 +73,7 @@ export type Motion = { tools: MotionTools; dispose: () => void };
 export function createMotion(
   stage: Stage,
   meshes: PartMesh[],
-  model: Pick<ViewerModel, "placements" | "joints" | "relations">,
+  model: Pick<ViewerModel, "placements" | "joints" | "relations" | "fixed">,
   controls: { enabled: boolean }, // the camera's, off while the triad drags
   on: {
     // A copy's place (its kept place while hidden with Y) and putting it somewhere (visibility.ts).
@@ -96,9 +89,9 @@ export function createMotion(
   const orig = new Map<string, Entry>();
   // The mates: a tree of rigid bodies from each piece's first one (kinematics.ts).
   const joints = model.joints ?? [];
-  const kin: Kinematics | null = joints.length ? createKinematics(joints, model.relations ?? []) : null;
+  const kin: Kinematics | null = joints.length ? createKinematics(joints, model.relations ?? [], new Set(model.fixed ?? [])) : null;
   const bodyOf = (c: Copy) => meshes[c.m]?.bodies?.[c.i] ?? -1;
-  let mating: { j: number; dof: Dof } | null = null;
+
   let t = 0;
   let panel = false;
   let mode: MoveMode = "slide";
@@ -107,20 +100,9 @@ export function createMotion(
   const view = (): MotionView => ({
     explode: t,
     panel,
-    moving: moving.length && !mating ? { count: moving.length, mode } : null,
+    moving: moving.length ? { count: moving.length, mode } : null,
     moved: t > 0 || !!kin?.moved() || [...orig.values()].some((o) => !isIdentity(o.move)),
-    mate: mating && kin ? mateView(mating.j, mating.dof) : null,
   });
-  const mateView = (j: number, dof: Dof): MateView => {
-    const jt = joints[j];
-    const dofs: Dof[] = [...(turns(jt.type) ? (["turn"] as const) : []), ...(slides(jt.type) ? (["slide"] as const) : [])];
-    // Shown from the far side's view: the handle's way is positive.
-    const v = kin!.value(j);
-    const d = kin!.dir(j);
-    const flip = (r?: [number, number]): [number, number] | undefined => (r ? (d === 1 ? r : [-r[1], -r[0]]) : undefined);
-    const lim = jt.lim ? { turn: flip(jt.lim.turn), slide: flip(jt.lim.slide) } : undefined;
-    return { name: jt.name, dofs, dof, value: { turn: d * v.turn, slide: d * v.slide }, ...(lim ? { lim } : {}) };
-  };
   const tell = () => {
     const v = view();
     listeners.forEach((cb) => cb(v));
@@ -237,20 +219,7 @@ export function createMotion(
     pivot.quaternion.identity();
     pivot.updateMatrix();
   };
-  let start: { pivot: THREE.Matrix4; move: Map<string, THREE.Matrix4>; quat: THREE.Quaternion; pos: THREE.Vector3; value: number } | null = null;
-  // The mate's handle sits on its connector, where it is now: a ring about its Z, or an arrow
-  // along its Z (a pin slot's slide: its X).
-  const placeMate = () => {
-    if (!mating || !kin) return;
-    const f = kin.frame(mating.j);
-    f.decompose(pivot.position, pivot.quaternion, new THREE.Vector3());
-    pivot.updateMatrix();
-    const slideX = mating.dof === "slide" && joints[mating.j].type === "pinSlot";
-    gizmo.setMode(mating.dof === "turn" ? "rotate" : "translate");
-    gizmo.showX = slideX;
-    gizmo.showY = false;
-    gizmo.showZ = !slideX;
-  };
+  let start: { pivot: THREE.Matrix4; move: Map<string, THREE.Matrix4> } | null = null;
   const drive = (j: number, dof: Dof, v: number) => {
     if (!kin) return;
     applyBodies(kin.set(j, dof, v));
@@ -258,26 +227,10 @@ export function createMotion(
   };
   gizmo.addEventListener("mouseDown", () => {
     pivot.updateMatrix();
-    const value = mating && kin ? kin.value(mating.j)[mating.dof] : 0;
-    start = { pivot: pivot.matrix.clone(), move: new Map(moving.map(({ m, i }) => [`${m}:${i}`, entry(m, i).move.clone()])), quat: pivot.quaternion.clone(), pos: pivot.position.clone(), value };
+    start = { pivot: pivot.matrix.clone(), move: new Map(moving.map(({ m, i }) => [`${m}:${i}`, entry(m, i).move.clone()])) };
   });
   gizmo.addEventListener("objectChange", () => {
     if (!start) return;
-    if (mating && kin) {
-      const { j, dof } = mating;
-      const d = kin.dir(j);
-      let by: number;
-      if (dof === "turn") {
-        const qd = start.quat.clone().invert().multiply(pivot.quaternion);
-        by = 2 * Math.atan2(qd.z, qd.w);
-      } else {
-        const axis = new THREE.Vector3(joints[j].type === "pinSlot" ? 1 : 0, 0, joints[j].type === "pinSlot" ? 0 : 1).applyQuaternion(start.quat);
-        by = pivot.position.clone().sub(start.pos).dot(axis);
-      }
-      drive(j, dof, start.value + d * by);
-      tell();
-      return;
-    }
     pivot.updateMatrix();
     // The pivot's change since the press, in the model frame; each copy's Move gets it, under
     // its explode offset (the offset stays a plain slide out).
@@ -296,7 +249,6 @@ export function createMotion(
   });
   gizmo.addEventListener("mouseUp", () => {
     start = null;
-    if (mating) placeMate(); // the handle back on the connector (it stopped at a limit)
     on.settled();
     tell();
   });
@@ -311,7 +263,6 @@ export function createMotion(
   };
 
   const moveParts = (target: Copy | string[], only = false) => {
-    endMate();
     moving = [];
     if (Array.isArray(target)) {
       const want = new Set(target);
@@ -334,44 +285,9 @@ export function createMotion(
     stage.render();
     tell();
   };
-  const endMate = () => {
-    if (!mating) return;
-    mating = null;
-    gizmo.showX = gizmo.showY = gizmo.showZ = true;
-    gizmo.setMode(mode === "slide" ? "translate" : "rotate");
-  };
-  const mateOf = (c: Copy) => {
-    const j = kin?.driver(bodyOf(c));
-    return j === null || j === undefined ? null : joints[j].name;
-  };
-  const mateMove = (c: Copy) => {
-    const j = kin?.driver(bodyOf(c));
-    if (j === null || j === undefined) return;
-    moving = groupOf(c);
-    mating = { j, dof: turns(joints[j].type) ? "turn" : "slide" };
-    placeMate();
-    gizmo.attach(pivot);
-    stage.render();
-    tell();
-  };
-  const mateDof = (dof: Dof) => {
-    if (!mating) return;
-    mating.dof = dof;
-    placeMate();
-    stage.render();
-    tell();
-  };
-  const mateValue = (dof: Dof, v: number) => {
-    if (!mating || !kin) return;
-    drive(mating.j, dof, kin.dir(mating.j) * v);
-    placeMate();
-    on.settled();
-    tell();
-  };
   const moveDone = () => {
     if (!moving.length) return;
     moving = [];
-    endMate();
     gizmo.detach();
     stage.render();
     tell();
@@ -390,8 +306,7 @@ export function createMotion(
       dirty.add(o.m);
     }
     orig.clear();
-    if (gizmo.object && mating) placeMate();
-    else if (gizmo.object) placePivot();
+    if (gizmo.object) placePivot();
     flush();
     on.settled();
     tell();
@@ -464,7 +379,8 @@ export function createMotion(
   };
   let press: { x: number; y: number; id: number; j: number; p0: THREE.Vector3; value: number; going: boolean } | null = null;
   const onPress = (e: PointerEvent) => {
-    if (!kin || e.button !== 0 || e.pointerType !== "mouse" || e.target !== canvas || dragId !== null) return;
+    // Not while Move's triad is up: Move moves the parts freely (Harel, 2026-11-18).
+    if (!kin || moving.length || e.button !== 0 || e.pointerType !== "mouse" || e.target !== canvas || dragId !== null) return;
     const hit = rayAt(e.clientX, e.clientY).intersectObjects(meshes.filter((x) => x.mesh.visible && x.bodies).map((x) => x.mesh), false)[0];
     if (!hit || hit.instanceId === undefined) return;
     const m = meshes.findIndex((x) => x.mesh === hit.object);
@@ -520,7 +436,6 @@ export function createMotion(
     if (!went) return;
     e.stopPropagation();
     controls.enabled = true;
-    if (mating) placeMate();
     on.settled();
     tell();
   };
@@ -547,10 +462,6 @@ export function createMotion(
       moveDone,
       resetPositions,
       motionNow: view,
-      mateOf,
-      mateMove,
-      mateDof,
-      mateValue,
       groupOf,
       matesNow: () => kin?.values() ?? {},
       setMates: (v) => {

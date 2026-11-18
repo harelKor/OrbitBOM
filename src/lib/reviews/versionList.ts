@@ -13,6 +13,20 @@ export type VersionItem = {
   subId: string | null; // a sub-version's update
 };
 
+// The Onshape assembly a tree's versions open in (Open in Onshape on a version, Harel 2026-11-18).
+export type OnshapeLink = { base: string; did: string; eid: string | null };
+
+// A version's page in Onshape: an Onshape version of the tree's document, else the version or
+// microversion the 3D model was read at (a BOM version, a sub-version). The assembly's tab when
+// it's in that document.
+export function onshapeUrlOf(item: VersionItem, did: string | null, link: OnshapeLink | null | undefined): string | null {
+  if (!link) return null;
+  const tab = (d: string) => (d === link.did && link.eid ? `/e/${link.eid}` : "");
+  if (item.vid && did) return `${link.base}/documents/${did}/v/${item.vid}${tab(did)}`;
+  if (item.ref) return `${link.base}/documents/${link.did}/${item.ref.wvm}/${item.ref.wvmid}${tab(link.did)}`;
+  return null;
+}
+
 export function flatVersions(tree: TreeNode[]): VersionItem[] {
   const out: VersionItem[] = [];
   for (const n of [...tree].reverse()) {

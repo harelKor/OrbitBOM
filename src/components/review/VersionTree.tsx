@@ -12,7 +12,7 @@ import { askConfirm } from "@/components/ui/useConfirm";
 import { CommitWindow } from "@/components/versions/CommitWindow";
 import type { ReviewComment } from "@/lib/data/cadReview";
 import type { TreeNode } from "@/lib/reviews/tree";
-import { flatVersions, previousOf, type VersionItem } from "@/lib/reviews/versionList";
+import { flatVersions, onshapeUrlOf, previousOf, type OnshapeLink, type VersionItem } from "@/lib/reviews/versionList";
 import type { Draft } from "@/lib/versions/detect";
 import { VersionContext, type Entry, type VersionPick } from "./versionView";
 
@@ -32,6 +32,7 @@ export function VersionTree({
   empty = "No versions yet. Update system brings the first one.",
   owner,
   did = null,
+  onshape = null,
   current = null,
 }: {
   tree: TreeNode[];
@@ -41,6 +42,7 @@ export function VersionTree({
   empty?: string; // what an empty tree says
   owner?: TreeOwner; // without it the tree only lists (no visiting)
   did?: string | null; // the tree's Onshape document (Delete version)
+  onshape?: OnshapeLink | null; // the assembly its versions open in (Open in Onshape)
   current?: VersionPick | null; // what the 3D model is on now (Compare's other side)
 }) {
   const [folded, setFolded] = useState<Set<string>>(() => new Set());
@@ -64,28 +66,28 @@ export function VersionTree({
       ) : (
         <>
           <div className="rounded-lg border-2 border-accent/50 bg-accent/5 p-3">
-            <NodeHead node={top} list={list} owner={owner} did={did} current={current} big folded={folded.has(top.key)} onFold={() => toggle(top.key)} />
+            <NodeHead node={top} list={list} owner={owner} did={did} onshape={onshape} current={current} big folded={folded.has(top.key)} onFold={() => toggle(top.key)} />
             {!folded.has(top.key) && (
               <>
                 {top.description && <p className="mt-1 text-xs whitespace-pre-wrap text-fg-2">{top.description}</p>}
                 <NodeComments node={top} comments={comments} onFocus={onFocus} />
               </>
             )}
-            <SubVersions node={top} newest list={list} owner={owner} did={did} current={current} />
+            <SubVersions node={top} newest list={list} owner={owner} did={did} onshape={onshape} current={current} />
           </div>
           {rest.length > 0 && (
             <ol className="relative ml-2 border-l-2 border-line">
               {rest.map((n) => (
                 <li key={n.key} className="relative pb-3 pl-4">
                   <span className={`absolute top-1.5 -left-[7px] h-3 w-3 rounded-full border-2 border-surface ${n.bom.length ? "bg-accent" : "bg-line"}`} />
-                  <NodeHead node={n} list={list} owner={owner} did={did} current={current} folded={folded.has(n.key)} onFold={() => toggle(n.key)} />
+                  <NodeHead node={n} list={list} owner={owner} did={did} onshape={onshape} current={current} folded={folded.has(n.key)} onFold={() => toggle(n.key)} />
                   {!folded.has(n.key) && (
                     <>
                       {n.description && <p className="mt-1 text-xs whitespace-pre-wrap text-fg-2">{n.description}</p>}
                       <NodeComments node={n} comments={comments} onFocus={onFocus} />
                     </>
                   )}
-                  <SubVersions node={n} newest={false} list={list} owner={owner} did={did} current={current} />
+                  <SubVersions node={n} newest={false} list={list} owner={owner} did={did} onshape={onshape} current={current} />
                 </li>
               ))}
             </ol>
@@ -121,20 +123,29 @@ function prevPick(list: VersionItem[], key: string, owner: TreeOwner | undefined
   return prev ? pickOf(prev, owner) : null;
 }
 
-type RowProps = { list: VersionItem[]; owner?: TreeOwner; did: string | null; current: VersionPick | null };
+type RowProps = { list: VersionItem[]; owner?: TreeOwner; did: string | null; onshape?: OnshapeLink | null; current: VersionPick | null };
 
-function NodeHead({ node, list, owner, did, current, big = false, folded, onFold }: RowProps & { node: TreeNode; big?: boolean; folded: boolean; onFold: () => void }) {
+// The version the 3D view is on now (the same state for every system it draws): pressing it does
+// nothing there (Harel, 2026-11-18); while another version is shown it goes back.
+function isCurrent(pick: VersionPick | null, current: VersionPick | null): boolean {
+  if (!pick || !current || pick.entries.length !== current.entries.length) return false;
+  return pick.entries.every((e) => current.entries.some((c) => c.owner === e.owner && c.ref.wvm === e.ref.wvm && c.ref.wvmid === e.ref.wvmid));
+}
+
+function NodeHead({ node, list, owner, did, onshape, current, big = false, folded, onFold }: RowProps & { node: TreeNode; big?: boolean; folded: boolean; onFold: () => void }) {
   const ctx = useContext(VersionContext);
   const item = list.find((x) => x.key === node.key)!;
   const pick = pickOf(item, owner);
   const viewing = ctx?.target?.a.key === node.key && ctx.target.mode === "visit";
+  const here = isCurrent(pick, current);
   const n = node.added.length + node.done.length;
   return (
     <div className="flex items-start gap-1">
       <button
-        className={`press -mx-1 block min-w-0 flex-1 rounded px-1 text-left pointer-coarse:min-h-9 ${pick ? "hover:bg-raised" : ""} ${viewing ? "bg-accent/15 ring-2 ring-accent/60" : ""}`}
-        onClick={() => (pick && ctx ? ctx.show({ mode: "visit", a: pick, b: prevPick(list, node.key, owner) }) : onFold())}
-        title={pick ? "Show this version in 3D" : undefined}
+        className={`press -mx-1 block min-w-0 flex-1 rounded px-1 text-left pointer-coarse:min-h-9 disabled:cursor-default ${pick && !(here && !ctx?.target) ? "hover:bg-raised" : ""} ${viewing ? "bg-accent/15 ring-2 ring-accent/60" : ""}`}
+        disabled={here && !ctx?.target}
+        onClick={() => (here && ctx ? ctx.show(null) : pick && ctx ? ctx.show({ mode: "visit", a: pick, b: prevPick(list, node.key, owner) }) : onFold())}
+        title={here ? (ctx?.target ? "Back to this version, the one the 3D view is on" : "The 3D view is on this version") : pick ? "Show this version in 3D" : undefined}
         aria-pressed={viewing}
       >
         <span className="flex flex-wrap items-center gap-2">
@@ -152,13 +163,13 @@ function NodeHead({ node, list, owner, did, current, big = false, folded, onFold
           </span>
         </button>
       )}
-      <VersionMenu item={item} pick={pick} list={list} owner={owner} did={did} current={current} bomVersionId={node.bom.at(-1)?.id ?? null} subIds={node.subs.map((s) => s.id)} />
+      <VersionMenu item={item} pick={pick} list={list} owner={owner} did={did} onshape={onshape} current={current} bomVersionId={node.bom.at(-1)?.id ?? null} subIds={node.subs.map((s) => s.id)} />
     </div>
   );
 }
 
 // ⋮ on a version (Harel, 2026-11-17).
-function VersionMenu({ item, pick, list, owner, did, current, bomVersionId, subIds = [] }: RowProps & { item: VersionItem; pick: VersionPick | null; bomVersionId: string | null; subIds?: string[] }) {
+function VersionMenu({ item, pick, list, owner, did, onshape, current, bomVersionId, subIds = [] }: RowProps & { item: VersionItem; pick: VersionPick | null; bomVersionId: string | null; subIds?: string[] }) {
   const ctx = useContext(VersionContext);
   const router = useRouter();
   const [bom, setBom] = useState<Draft | null>(null);
@@ -200,7 +211,9 @@ function VersionMenu({ item, pick, list, owner, did, current, bomVersionId, subI
         router.refresh();
       }
     : null;
+  const link = onshapeUrlOf(item, did, onshape);
   const items = [
+    ...(link ? [{ label: "Open in Onshape", run: () => void window.open(link, "_blank", "noopener") }] : []),
     ...(compare ? [{ label: `Compare with ${base!.label}`, run: compare }] : []),
     ...(commit ? [{ label: "Commit window", run: () => void commit() }] : []),
     ...(remove ? [{ label: "Delete version", danger: true, run: () => void remove() }] : []),
@@ -256,7 +269,7 @@ function newerFirst(x: VersionPick, y: VersionPick) {
 // Update CAD's sub-versions of a version ("V12 v1", Harel 2026-11-11): a small branch off it.
 // Open on the newest version, where work goes on; once a newer Onshape version exists, the branch
 // folds into its version and opens with a tap.
-function SubVersions({ node, newest, list, owner, did, current }: RowProps & { node: TreeNode; newest: boolean }) {
+function SubVersions({ node, newest, list, owner, did, onshape, current }: RowProps & { node: TreeNode; newest: boolean }) {
   const ctx = useContext(VersionContext);
   const [open, setOpen] = useState(newest);
   if (!node.subs.length) return null;
@@ -273,14 +286,15 @@ function SubVersions({ node, newest, list, owner, did, current }: RowProps & { n
             const item = list.find((x) => x.key === `sub:${s.id}`)!;
             const pick = pickOf(item, owner);
             const viewing = ctx?.target?.mode === "visit" && ctx.target.a.key === item.key;
+            const here = isCurrent(pick, current);
             return (
               <li key={s.id} className="relative flex items-start gap-1 py-0.5 pl-3">
                 <span className="absolute top-2 -left-[5px] h-2 w-2 rounded-full bg-violet-500/70" aria-hidden />
                 <button
                   className={`press -mx-1 min-w-0 flex-1 rounded px-1 text-left pointer-coarse:min-h-9 ${pick ? "hover:bg-raised" : ""} ${viewing ? "bg-accent/15 ring-2 ring-accent/60" : ""}`}
-                  disabled={!pick || !ctx}
-                  onClick={() => pick && ctx?.show({ mode: "visit", a: pick, b: prevPick(list, item.key, owner) })}
-                  title={pick ? "Show this version in 3D" : undefined}
+                  disabled={!pick || !ctx || (here && !ctx.target)}
+                  onClick={() => (here ? ctx?.show(null) : pick && ctx?.show({ mode: "visit", a: pick, b: prevPick(list, item.key, owner) }))}
+                  title={here ? (ctx?.target ? "Back to this version, the one the 3D view is on" : "The 3D view is on this version") : pick ? "Show this version in 3D" : undefined}
                 >
                   <span className="font-mono text-xs font-semibold text-fg tabular-nums">{s.label}</span>
                   <span className="block text-[0.625rem] text-subtle">
@@ -288,7 +302,7 @@ function SubVersions({ node, newest, list, owner, did, current }: RowProps & { n
                     <LocalTime at={s.at} />
                   </span>
                 </button>
-                <VersionMenu item={item} pick={pick} list={list} owner={owner} did={did} current={current} bomVersionId={null} />
+                <VersionMenu item={item} pick={pick} list={list} owner={owner} did={did} onshape={onshape} current={current} bomVersionId={null} />
               </li>
             );
           })}

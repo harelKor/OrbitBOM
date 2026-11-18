@@ -48,10 +48,10 @@ export type Job = { key: string; path: string; state?: string; configuration?: s
 // A Geometry sketches file placed in the model: its job / studio index, its transform, group, and
 // the robot or system it belongs to (its sketches' keys, sketch.ts).
 export type SketchPlacement = { s: number; t: number[]; g?: number; owner: string };
-export type Built = { rev: string; builtAt: string; studios: string[]; placements: ModelPlacement[]; groups?: ModelGroup[]; sketches?: SketchPlacement[]; joints?: ModelJoint[]; relations?: Relation[] };
-export type Draft = { rev: string; jobs: Job[]; placements: ModelPlacement[]; groups?: ModelGroup[]; names?: Record<string, string>; sketches?: SketchPlacement[]; joints?: ModelJoint[]; relations?: Relation[] };
+export type Built = { rev: string; builtAt: string; studios: string[]; placements: ModelPlacement[]; groups?: ModelGroup[]; sketches?: SketchPlacement[]; joints?: ModelJoint[]; relations?: Relation[]; fixed?: number[] };
+export type Draft = { rev: string; jobs: Job[]; placements: ModelPlacement[]; groups?: ModelGroup[]; names?: Record<string, string>; sketches?: SketchPlacement[]; joints?: ModelJoint[]; relations?: Relation[]; fixed?: number[] };
 const SKETCH_VERSION = "1"; // bump to fetch every sketch file again after changing its format
-const PLAN_VERSION = "g3"; // g3: mates (2026-11-18) // bump when the plan's shape changes, so the next Update replans
+const PLAN_VERSION = "g4"; // g3: mates, g4: fixed parts (2026-11-18) // bump when the plan's shape changes, so the next Update replans
 // One group's plan (a linked assembly or Part Studio), kept so a rebuild reads only the groups
 // that moved. `sketch`: its Geometry sketches' file (job j) and where they sit.
 export type GroupPlan = { rev: string; jobs: Job[]; placements: { j: number; k: string; t: number[] }[]; names: Record<string, string>; sketch?: { j: number; t: number[]; owner: string }; mates?: GroupMates };
@@ -132,7 +132,7 @@ export async function robotModelsBuiltAt(robotId: string): Promise<Record<ModelK
 // `sketches`: the Geometry sketch files (sketch.ts) and where they sit. The Final model shows the
 // Basepart's sketches too, hidden until Shift+H (`sketchesHidden`; Harel, 2026-11-12).
 export type ModelSketches = { url: string | null; key: string; t: number[]; g?: number; owner: string };
-export type RobotModel = { builtAt: string; studios: (string | null)[]; keys: string[]; placements: ModelPlacement[]; groups: ModelGroup[]; sketches: ModelSketches[]; sketchesHidden?: boolean; joints?: ModelJoint[]; relations?: Relation[] };
+export type RobotModel = { builtAt: string; studios: (string | null)[]; keys: string[]; placements: ModelPlacement[]; groups: ModelGroup[]; sketches: ModelSketches[]; sketchesHidden?: boolean; joints?: ModelJoint[]; relations?: Relation[]; fixed?: number[] };
 export async function robotModel(robotId: string, systemId?: string, kind: ModelKind = "final"): Promise<RobotModel | null> {
   const { built, basepart } = kind === "final" ? await loadFinalWithSketches(robotId) : { built: await loadBuilt(robotId, kind), basepart: undefined };
   if (!built || !storageConfigured()) return null;
@@ -165,6 +165,7 @@ export async function robotModel(robotId: string, systemId?: string, kind: Model
     ...(kind === "final" ? { sketchesHidden: true } : {}),
     ...(joints.length ? { joints } : {}),
     ...(relations.length ? { relations } : {}),
+    ...(joints.length && built.fixed?.length ? { fixed: built.fixed } : {}),
   };
 }
 
@@ -387,6 +388,7 @@ async function buildStep(robotId: string, client: OnshapeClient, sources: ModelS
     ...(draft.sketches?.length ? { sketches: draft.sketches } : {}),
     ...(draft.joints?.length ? { joints: draft.joints } : {}),
     ...(draft.relations?.length ? { relations: draft.relations } : {}),
+    ...(draft.fixed?.length ? { fixed: draft.fixed } : {}),
   };
   await save({ built, plans });
   return { state: "done", unchanged: false, parts: built.placements.length, calls: client.calls };
@@ -575,9 +577,9 @@ async function matesOf(client: OnshapeClient, ref: ModelSource, raw: AssemblyDef
       console.error(`model mates ${ref.eid}: no limits from ${path}`, err instanceof Error ? err.message : err);
     }
   }
-  const { joints, relations, bodies } = read;
-  console.log(`model mates ${ref.eid}: ${[...kinds].map(([k, n]) => `${k}=${n}`).join(" ") || "no features"}; bodies=${new Set(bodies.filter((b) => b >= 0)).size} joints=${joints.length} limited=${joints.filter((j) => j.lim).length} relations=${relations?.length ?? 0} limitCalls=${calls}`);
-  return { bodies, joints, ...(relations?.length ? { relations } : {}) };
+  const { joints, relations, bodies, fixed } = read;
+  console.log(`model mates ${ref.eid}: ${[...kinds].map(([k, n]) => `${k}=${n}`).join(" ") || "no features"}; bodies=${new Set(bodies.filter((b) => b >= 0)).size} joints=${joints.length} limited=${joints.filter((j) => j.lim).length} relations=${relations?.length ?? 0} fixed=${fixed?.length ?? 0} limitCalls=${calls}`);
+  return { bodies, joints, ...(relations?.length ? { relations } : {}), ...(fixed?.length ? { fixed } : {}) };
 }
 
 // Where an assembly element's features list is read: the root as the assembly is read, a
@@ -600,6 +602,7 @@ export function mergePlans(sources: { did: string; eid?: string; kind?: ModelSou
   const names: Record<string, string> = {};
   const joints: ModelJoint[] = [];
   const relations: Relation[] = [];
+  const fixed: number[] = [];
   let bodyBase = 0; // each group's bodies numbered after the ones before
   sources.forEach((ref, g) => {
     const plan = plans[groupKey(ref)];
@@ -620,12 +623,13 @@ export function mergePlans(sources: { did: string; eid?: string; kind?: ModelSou
     if (m) {
       for (const j of m.joints) joints.push({ ...j, a: bodyBase + j.a, b: bodyBase + j.b, g });
       for (const r of m.relations ?? []) relations.push({ ...r, from: jointBase + r.from, to: jointBase + r.to });
+      for (const b of m.fixed ?? []) fixed.push(bodyBase + b);
       bodyBase += Math.max(-1, ...m.bodies, ...m.joints.flatMap((j) => [j.a, j.b])) + 1;
     }
     if (plan.sketch) sketches.push({ s: global[plan.sketch.j], t: plan.sketch.t, g, owner: plan.sketch.owner });
     Object.assign(names, plan.names);
   });
-  return { rev, jobs, placements, groups: sources.map((s) => s.group), names, ...(sketches.length ? { sketches } : {}), ...(joints.length ? { joints } : {}), ...(relations.length ? { relations } : {}) };
+  return { rev, jobs, placements, groups: sources.map((s) => s.group), names, ...(sketches.length ? { sketches } : {}), ...(joints.length ? { joints } : {}), ...(relations.length ? { relations } : {}), ...(fixed.length ? { fixed } : {}) };
 }
 
 // Rebuild model (Harel, 2026-11-18): the next build reads this system's assembly again even when

@@ -105,7 +105,6 @@ export function ContextMenu({
             { label: "Select group", run: () => tools.selectGroup(copy) },
           ]
         : []),
-      ...(copy && tools.mateOf(copy) ? [{ label: `Move along ${tools.mateOf(copy)}`, run: () => tools.mateMove(copy) }] : []),
       // View normal to looks straight at the flat face under the pointer (N), like Onshape's menu.
       ...(at.face ? [{ label: "View normal to", run: () => tools.look(sceneDir(at.face!.normal)) }] : []),
       // On a round face: along its axis, as Onshape does.

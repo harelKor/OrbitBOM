@@ -165,6 +165,7 @@ export function CadReview({
                 empty="No Basepart updates yet. Update Basepart in the Onshape panel brings the first one."
                 owner={{ systemId: sys.id }}
                 did={sys.basepart?.treeDid ?? null}
+                onshape={sys.basepart?.onshape ?? null}
                 current={now(sys.id, sys.basepart?.modelRef)}
               />
             ) : (
@@ -175,6 +176,7 @@ export function CadReview({
                 refresh={canSync && me.onshape && sys.treeDid ? { systemId: sys.id, readAt: sys.treeReadAt } : null}
                 owner={{ systemId: sys.id }}
                 did={sys.treeDid}
+                onshape={sys.onshape}
                 current={now(sys.id, sys.modelRef)}
               />
             )}
@@ -228,6 +230,7 @@ export function CadReview({
                 empty="No Basepart updates yet. Update Basepart in the Onshape panel brings the first one."
                 owner={{ robotBasepart: true }}
                 did={review.robotBasepart.treeDid}
+                onshape={review.robotBasepart.onshape}
                 current={now("robot", review.robotBasepart.modelRef)}
               />
             </Fold>
@@ -246,10 +249,11 @@ export function CadReview({
                       empty="No Basepart updates yet. Update Basepart in the Onshape panel brings the first one."
                       owner={{ systemId: s.id }}
                       did={s.basepart?.treeDid ?? null}
+                      onshape={s.basepart?.onshape ?? null}
                       current={now(s.id, s.basepart?.modelRef)}
                     />
                   ) : (
-                    <VersionTree tree={s.tree} comments={byId} onFocus={onFocus} owner={{ systemId: s.id }} did={s.treeDid} current={now(s.id, s.modelRef)} />
+                    <VersionTree tree={s.tree} comments={byId} onFocus={onFocus} owner={{ systemId: s.id }} did={s.treeDid} onshape={s.onshape} current={now(s.id, s.modelRef)} />
                   )}
                 </Fold>
               );

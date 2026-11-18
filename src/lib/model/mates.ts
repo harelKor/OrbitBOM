@@ -26,8 +26,9 @@ export type Joint = {
 // (turn → slide), a linear relation (slide → slide).
 export type Relation = { from: number; by: "turn" | "slide"; to: number; dof: "turn" | "slide"; k: number };
 // A group's mates: each placement's body (by its place in the plan's placements; -1: none), the
-// joints and the relations (joint indexes).
-export type GroupMates = { bodies: number[]; joints: Joint[]; relations?: Relation[] };
+// joints, the relations (joint indexes) and the bodies holding a part fixed in Onshape (each
+// mechanism's base: it stays put and the rest moves from it).
+export type GroupMates = { bodies: number[]; joints: Joint[]; relations?: Relation[]; fixed?: number[] };
 
 const MOVING: Record<string, JointType> = { REVOLUTE: "revolute", SLIDER: "slider", CYLINDRICAL: "cylindrical", PIN_SLOT: "pinSlot" };
 const TURNS = new Set<JointType>(["revolute", "cylindrical", "pinSlot"]);
@@ -113,6 +114,13 @@ export function readMates(def: AssemblyDefinition, placed: string[][]): ReadMate
   const transformOf = new Map(occs.map((o) => [pathKey(o.path), o.transform]));
   const sets = new Sets(parts.length);
   const partsUnder = (prefix: string[]) => parts.flatMap((o, i) => (startsWith(o.path, prefix) ? [i] : []));
+  // Fixed in Onshape: the part's own occurrence, or a fixed sub-assembly's first part.
+  const fixedParts = new Set<number>();
+  for (const o of occs) {
+    if (!o.fixed) continue;
+    const i = o.inst.type === "Part" ? index.get(pathKey(o.path)) : partsUnder(o.path)[0];
+    if (i !== undefined) fixedParts.add(i);
+  }
 
   type Edge = { prefix: string[]; featureId: string; name: string; type: JointType; a: number; b: number; f: number[]; cad: { turn: number; slide: number }; sub: SubAssembly | null };
   const edges: Edge[] = [];
@@ -169,7 +177,8 @@ export function readMates(def: AssemblyDefinition, placed: string[][]): ReadMate
       pieces.set(r, [...(pieces.get(r) ?? []), i]);
     }
     if (pieces.size < 2) continue;
-    const sorted = [...pieces.values()].sort((x, y) => y.length - x.length);
+    // Its main piece: the one with a fixed part, else the biggest.
+    const sorted = [...pieces.values()].sort((x, y) => Number(y.some((i) => fixedParts.has(i))) - Number(x.some((i) => fixedParts.has(i))) || y.length - x.length);
     const main = sorted[0];
     for (const other of sorted.slice(1)) sets.join(main[0], other[0]);
   }
@@ -230,7 +239,8 @@ export function readMates(def: AssemblyDefinition, placed: string[][]): ReadMate
     }
   }
 
-  return { bodies, joints, ...(ties.length ? { relations: ties } : {}), asks: [...asks.values()] };
+  const fixed = [...new Set([...fixedParts].map(body))];
+  return { bodies, joints, ...(ties.length ? { relations: ties } : {}), ...(fixed.length ? { fixed } : {}), asks: [...asks.values()] };
 }
 
 // ---------- Limits (the assembly's features list: 1 call per assembly element asked) ----------

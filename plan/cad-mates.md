@@ -1,6 +1,6 @@
 # Motion along the mates, rigid groups (S8 of plan/cad-3d-viewer.md)
 
-Status: built 2026-11-18 (M1–M4), checked on `/dev/viewer` (carriage slide with limits, arm on the moved carriage, typed angle). Not yet checked on a real robot: after deploy, Update 3D model and read the `model mates` log line (`sudo journalctl -u orbitparts | grep "model mates"`) to confirm Onshape's fields. Changes from the plan: the tree's base is the body placed first (Onshape fixes the first part), not the biggest; Alt-to-move-one-part is a "Move part only" menu item; every level's mates move (the definition doesn't say which sub-assemblies are flexible).
+Status: built 2026-11-18 (M1–M4), checked on `/dev/viewer` (carriage slide with limits, arm on the moved carriage, typed angle). Not yet checked on a real robot: after deploy, Update 3D model and read the `model mates` log line (`sudo journalctl -u orbitparts | grep "model mates"`) to confirm Onshape's fields. Changes from the plan: the tree's base is the body with the part fixed in Onshape (occurrence `fixed`; else the first placed), not the biggest; "Move along" and its handle were removed (Harel, 2026-11-18), dragging is the way; Alt-to-move-one-part is a "Move part only" menu item; every level's mates move (the definition doesn't say which sub-assemblies are flexible).
 
 Goal: on every 3D view (CAD page first), parts move the way Onshape's assembly lets them. Drag
 an arm and it turns about its revolute mate's axis, at that mate connector. Drag an elevator

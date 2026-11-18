@@ -13,7 +13,7 @@ const def: AssemblyDefinition = {
   rootAssembly: {
     instances: [part("F"), part("G"), { id: "S", type: "Assembly", documentId: "d", elementId: "sub" }],
     occurrences: [
-      { path: ["F"], transform: I },
+      { path: ["F"], transform: I, fixed: true },
       { path: ["G"], transform: at(1, 0, 0) },
       { path: ["S"], transform: I },
       { path: ["S", "P"], transform: I },
@@ -48,6 +48,7 @@ it("reads groups, fastened mates, a sub-assembly's moving mate and its loose par
   expect(l).toBe(p); // unmated in S: goes with S's main piece
   expect(b).toBe(a); // fastened in S
   expect(a).not.toBe(p);
+  expect(m.fixed).toEqual([f]);
   expect(m.joints).toHaveLength(1);
   expect(m.joints[0]).toMatchObject({ id: "S/r1", name: "Arm pivot", type: "revolute", a: p, b: a });
   expect(m.joints[0].f).toEqual(at(0, 0, 0.5));
@@ -56,7 +57,10 @@ it("reads groups, fastened mates, a sub-assembly's moving mate and its loose par
   // Limits as moves from the CAD place; the arm turns its whole body, the frame stays.
   applyLimits(m.joints, m.asks[0], { features: [{ message: { featureId: "r1", parameters: [{ message: { parameterId: "limitsEnabled", value: true } }, { message: { parameterId: "limitAxialZMin", expression: "-10 deg" } }, { message: { parameterId: "limitAxialZMax", expression: "90 deg" } }] } }] });
   expect(m.joints[0].lim?.turn?.map((x) => Math.round((x * 180) / Math.PI))).toEqual([-10, 90]);
-  const k = createKinematics(m.joints, []);
+  // The fixed frame is the base even though the arm's body comes first here.
+  const k = createKinematics([{ ...m.joints[0], a: m.joints[0].b, b: m.joints[0].a }], [], new Set(m.fixed));
+  expect(k.dir(0)).toBe(-1);
+  k.reset();
   expect(k.driver(a)).toBe(0);
   expect(k.driver(p)).toBeNull();
   k.set(0, "turn", 3); // clamped to 90°

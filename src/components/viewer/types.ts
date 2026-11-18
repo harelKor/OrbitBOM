@@ -26,6 +26,7 @@ export type ViewerModel = {
   placements: { s: number; k: string; t: number[]; g?: number; b?: number }[]; // b: rigid body (mates.ts)
   joints?: (Joint & { g?: number })[]; // moving mates between bodies (plan/cad-mates.md)
   relations?: Relation[];
+  fixed?: number[]; // bodies holding a part fixed in Onshape: each mechanism's base
   groups?: { systemIds: string[]; name: string }[]; // subsystems, by placement g
   // A Basepart's Geometry sketch files (src/lib/model/sketch.ts), where they sit (row-major, like
   // placements), their subsystem group (none: the robot's own) and whose they are (Harel,

@@ -1,6 +1,6 @@
 // Motion along the mates in the browser (plan/cad-mates.md): the model's rigid bodies and joints
-// (mates.ts) as a tree from each piece's base: its body placed first in the assembly (bodies are
-// numbered in placement order), as Onshape fixes the first part inserted.
+// (mates.ts) as a tree from each piece's base: the body holding a part fixed in Onshape, else its
+// body placed first in the assembly (bodies are numbered in placement order).
 // Each joint has a value per degree of freedom, 0 at the CAD place; a body's move is its joints'
 // moves from the base, so an arm on an elevator carriage rides up with it and still turns about
 // its own axis. A joint inside a closed loop (a four-bar, a belt drawn with mates) is locked:
@@ -35,7 +35,7 @@ function local(type: Joint["type"], q: JointValue, out: THREE.Matrix4) {
   return type === "pinSlot" ? out.multiplyMatrices(r, t) : out.multiplyMatrices(t, r);
 }
 
-export function createKinematics(joints: Joint[], relations: Relation[]): Kinematics {
+export function createKinematics(joints: Joint[], relations: Relation[], fixed: Set<number> = new Set()): Kinematics {
   const frames = joints.map((j) => m4(j.f));
   const inverses = frames.map((f) => f.clone().invert());
   const q: JointValue[] = joints.map(() => ({ turn: 0, slide: 0 }));
@@ -67,11 +67,11 @@ export function createKinematics(joints: Joint[], relations: Relation[]): Kinema
     for (const u of adj.keys()) if (!disc.has(u)) visit(u, -1);
   }
 
-  // The tree: each piece from its first body, breadth first.
+  // The tree: each piece from its fixed body (else its first), breadth first.
   const parent = new Map<number, { j: number; from: number }>();
   const order: number[] = [];
   const seen = new Set<number>();
-  const bodies = [...adj.keys()].sort((x, y) => x - y);
+  const bodies = [...adj.keys()].sort((x, y) => Number(fixed.has(y)) - Number(fixed.has(x)) || x - y);
   for (const base of bodies) {
     if (seen.has(base)) continue;
     seen.add(base);

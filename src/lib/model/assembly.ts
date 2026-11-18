@@ -36,7 +36,7 @@ export type AssemblyFeature = {
 export type AssemblyDefinition = {
   rootAssembly?: {
     instances?: Instance[];
-    occurrences?: { path?: string[]; transform?: number[]; hidden?: boolean }[];
+    occurrences?: { path?: string[]; transform?: number[]; hidden?: boolean; fixed?: boolean }[];
     features?: AssemblyFeature[];
     documentId?: string;
     elementId?: string;
@@ -68,7 +68,7 @@ const config = (c?: string) => (c && c !== "default" ? c : "");
 // Every occurrence that isn't suppressed (itself or an assembly above it): its path, its world
 // transform, whether it's hidden, its instance and, for a sub-assembly, that sub-assembly's own
 // definition (its instances and features).
-export type Occurrence = { path: string[]; transform: number[]; hidden: boolean; inst: Instance; sub?: SubAssembly };
+export type Occurrence = { path: string[]; transform: number[]; hidden: boolean; fixed: boolean; inst: Instance; sub?: SubAssembly };
 export function walkAssembly(def: AssemblyDefinition): Occurrence[] {
   const root = def.rootAssembly?.instances ?? [];
   const subs = def.subAssemblies ?? [];
@@ -99,7 +99,7 @@ export function walkAssembly(def: AssemblyDefinition): Occurrence[] {
     }
     if (!leaf) continue;
     const sub = leaf.type === "Assembly" ? subFor(leaf) : undefined;
-    out.push({ path, transform: occ.transform, hidden: !!occ.hidden, inst: leaf, ...(sub ? { sub } : {}) });
+    out.push({ path, transform: occ.transform, hidden: !!occ.hidden, fixed: !!occ.fixed, inst: leaf, ...(sub ? { sub } : {}) });
   }
   return out;
 }

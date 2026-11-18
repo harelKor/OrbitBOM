@@ -1,3 +1,4 @@
+import type { OnshapeLink } from "@/lib/reviews/versionList";
 import "server-only";
 import type { Anchor } from "@/lib/reviews/anchor";
 import { listDesignReviews, reviewName, type DesignReview } from "@/lib/reviews/designReviews";
@@ -162,11 +163,12 @@ export type SystemReview = {
   modelRef: FrozenRef | null;
   // The Basepart's own tree (Harel, 2026-11-13), when the system has a Basepart.
   basepart: BasepartTree | null;
+  onshape: OnshapeLink | null; // the Final assembly, for Open in Onshape on a version
 };
 
 // A Basepart's version tree: its document's Onshape versions from its first update on, its
 // updates' sub-versions, and the comments written on the Basepart model. No BOM marks.
-export type BasepartTree = { tree: TreeNode[]; treeDid: string | null; treeReadAt: string | null; modelRef: FrozenRef | null };
+export type BasepartTree = { tree: TreeNode[]; treeDid: string | null; treeReadAt: string | null; modelRef: FrozenRef | null; onshape: OnshapeLink | null };
 
 async function basepartTree(owner: { systemId: string } | { robotId: string }, url: string | null, comments: ReviewComment[], pinned: FrozenRef | null = null): Promise<BasepartTree | null> {
   const ref = url ? parseOnshapeUrl(url) : null;
@@ -178,7 +180,7 @@ async function basepartTree(owner: { systemId: string } | { robotId: string }, u
     comments.filter((c) => c.model === "basepart").map(treeComment),
     { since: updates.first, cad: updates.subs.map((u) => ({ ...u, ref: u.did === ref.did ? u.ref : null })), ownDoc: true, deleted },
   );
-  return { tree, treeDid: ref.did, treeReadAt: kept?.at.toISOString() ?? null, modelRef: pinned };
+  return { tree, treeDid: ref.did, treeReadAt: kept?.at.toISOString() ?? null, modelRef: pinned, onshape: { base: ref.baseUrl, did: ref.did, eid: ref.eid ?? null } };
 }
 
 // Onshape versions of a document deleted from OrbitParts (Harel, 2026-11-17).
@@ -273,6 +275,7 @@ export async function loadSystemReview(systemId: string, opts: { comments?: Revi
     current: current ? { id: current.id, label: versionLabel(current) } : null,
     modelRef,
     basepart,
+    onshape: asm ? { base: asm.baseUrl, did: asm.did, eid: asm.eid ?? null } : null,
   };
 }
 
@@ -344,7 +347,7 @@ export async function loadRobotReview(robotId: string, opts: { changes?: boolean
     comments,
     systems: linked.map((r, i) => {
       const s = reviews[i];
-      return { id: r.id, name: r.name, final: !!r.url, tree: s?.tree ?? [], treeDid: s?.treeDid ?? null, treeReadAt: s?.treeReadAt ?? null, changes: s?.changes ?? [], current: s?.current ?? null, modelRef: s?.modelRef ?? null, basepart: s?.basepart ?? null };
+      return { id: r.id, name: r.name, final: !!r.url, tree: s?.tree ?? [], treeDid: s?.treeDid ?? null, treeReadAt: s?.treeReadAt ?? null, changes: s?.changes ?? [], current: s?.current ?? null, modelRef: s?.modelRef ?? null, basepart: s?.basepart ?? null, onshape: s?.onshape ?? null };
     }),
     robotBasepart,
     robotVersions,
