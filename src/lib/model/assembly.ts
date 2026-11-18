@@ -2,7 +2,7 @@
 // instances per (sub)assembly and one occurrence per placed instance, with its path through
 // the subassemblies and its world transform. This flattens it to one placement per part.
 
-type Instance = {
+export type Instance = {
   id: string;
   name?: string; // "Side plate <2>"
   type?: string; // "Part" | "Assembly" | ...
@@ -15,18 +15,33 @@ type Instance = {
   suppressed?: boolean;
 };
 
-type SubAssembly = {
+export type SubAssembly = {
   documentId?: string;
   elementId?: string;
   documentMicroversion?: string;
   configuration?: string;
   instances?: Instance[];
+  features?: AssemblyFeature[]; // with includeMateFeatures=true (mates.ts)
+};
+
+// A mate, mate group or mate relation, as the definition lists them with includeMateFeatures=true
+// (read in mates.ts). Occurrence paths are relative to the assembly the feature is in.
+export type AssemblyFeature = {
+  id?: string;
+  featureType?: string; // "mate" | "mateGroup" | "mateRelation" | "mateConnector"
+  suppressed?: boolean;
+  featureData?: Record<string, unknown>;
 };
 
 export type AssemblyDefinition = {
   rootAssembly?: {
     instances?: Instance[];
     occurrences?: { path?: string[]; transform?: number[]; hidden?: boolean }[];
+    features?: AssemblyFeature[];
+    documentId?: string;
+    elementId?: string;
+    documentMicroversion?: string;
+    configuration?: string;
   };
   subAssemblies?: SubAssembly[];
 };
@@ -45,11 +60,16 @@ export type Placement = {
   partId: string;
   transform: number[]; // 4x4, row-major, metres
   name?: string; // the instance's name without Onshape's " <n>" count
+  path: string[]; // the occurrence's instance ids from the root assembly down (mates.ts)
 };
 
 const config = (c?: string) => (c && c !== "default" ? c : "");
 
-export function flattenAssembly(def: AssemblyDefinition): Placement[] {
+// Every occurrence that isn't suppressed (itself or an assembly above it): its path, its world
+// transform, whether it's hidden, its instance and, for a sub-assembly, that sub-assembly's own
+// definition (its instances and features).
+export type Occurrence = { path: string[]; transform: number[]; hidden: boolean; inst: Instance; sub?: SubAssembly };
+export function walkAssembly(def: AssemblyDefinition): Occurrence[] {
   const root = def.rootAssembly?.instances ?? [];
   const subs = def.subAssemblies ?? [];
   const subFor = (inst: Instance) =>
@@ -62,10 +82,10 @@ export function flattenAssembly(def: AssemblyDefinition): Placement[] {
     ) ??
     subs.find((s) => s.documentId === inst.documentId && s.elementId === inst.elementId && config(s.configuration) === config(inst.configuration));
 
-  const out: Placement[] = [];
+  const out: Occurrence[] = [];
   for (const occ of def.rootAssembly?.occurrences ?? []) {
     const path = occ.path ?? [];
-    if (occ.hidden || !path.length || occ.transform?.length !== 16) continue;
+    if (!path.length || occ.transform?.length !== 16) continue;
     let list = root;
     let leaf: Instance | undefined;
     for (let i = 0; i < path.length; i++) {
@@ -77,7 +97,17 @@ export function flattenAssembly(def: AssemblyDefinition): Placement[] {
       if (i === path.length - 1) leaf = inst;
       else list = subFor(inst)?.instances ?? [];
     }
-    if (!leaf || leaf.type !== "Part" || !leaf.documentId || !leaf.elementId || !leaf.partId) continue;
+    if (!leaf) continue;
+    const sub = leaf.type === "Assembly" ? subFor(leaf) : undefined;
+    out.push({ path, transform: occ.transform, hidden: !!occ.hidden, inst: leaf, ...(sub ? { sub } : {}) });
+  }
+  return out;
+}
+
+export function flattenAssembly(def: AssemblyDefinition): Placement[] {
+  const out: Placement[] = [];
+  for (const { path, transform, hidden, inst: leaf } of walkAssembly(def)) {
+    if (hidden || leaf.type !== "Part" || !leaf.documentId || !leaf.elementId || !leaf.partId) continue;
     out.push({
       studio: {
         did: leaf.documentId,
@@ -87,8 +117,9 @@ export function flattenAssembly(def: AssemblyDefinition): Placement[] {
         ...(config(leaf.configuration) ? { configuration: leaf.configuration } : {}),
       },
       partId: leaf.partId,
-      transform: occ.transform,
+      transform,
       ...(leaf.name ? { name: leaf.name.replace(/\s*<\d+>$/, "") } : {}),
+      path,
     });
   }
   return out;

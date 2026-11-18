@@ -34,8 +34,8 @@ it("flattens nested subassemblies to one placement per visible part", () => {
     ],
   });
   expect(placements).toEqual([
-    { studio: { did: "d1", eid: "e1", microversion: "m1" }, partId: "JHD", transform: I },
-    { studio: { did: "d9", eid: "e9", version: "v9", configuration: "Length%3D2" }, partId: "JFD", transform: moved },
+    { studio: { did: "d1", eid: "e1", microversion: "m1" }, partId: "JHD", transform: I, path: ["A"] },
+    { studio: { did: "d9", eid: "e9", version: "v9", configuration: "Length%3D2" }, partId: "JFD", transform: moved, path: ["B", "X"] },
   ]);
   expect(partKey("d9", "e9", "JFD")).toBe("d9:e9:JFD");
 });

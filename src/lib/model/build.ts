@@ -11,6 +11,7 @@ import { contextKey, studioRevisions, studioState, type StudioContext } from "@/
 import { apiPath, onshapeUrl, parseOnshapeUrl, type OnshapeRef } from "@/lib/onshape/url";
 import { imageUrl, objectExists, putObject, StorageNotConfiguredError, storageConfigured } from "@/lib/storage/r2";
 import { flattenAssembly, partKey, type AssemblyDefinition, type StudioRef } from "./assembly";
+import { applyLimits, readMates, type GroupMates, type Joint, type LimitAsk, type ReadMates, type Relation } from "./mates";
 import { saveSnapshot } from "./snapshotStore";
 import { encodeMeshes, lookOf, meshesFromTessellation, type Appearance, type Mesh, type Tessellation } from "./mesh";
 
@@ -34,7 +35,9 @@ const { robots, systems, systemVersions, onshapeCache } = schema;
 export const TESS_VERSION = "3"; // bump to re-export every mesh after changing the parameters below or the file format
 export const TESS_QUERY = "angleTolerance=0.35&chordTolerance=0.0005&outputFacetNormals=false&outputVertexNormals=false&outputFaceAppearances=true";
 
-export type ModelPlacement = { s: number; k: string; t: number[]; g?: number }; // studio index, part key, transform, group
+export type ModelPlacement = { s: number; k: string; t: number[]; g?: number; b?: number }; // studio index, part key, transform, group, rigid body (mates.ts)
+// A joint of the model (mates.ts) with its bodies numbered across the whole model and its group.
+export type ModelJoint = Joint & { g: number };
 // A group is one linked assembly: the systems that use it (usually one), for showing and
 // hiding subsystems in the viewer. Models built before groups existed have none.
 export type ModelGroup = { systemIds: string[]; name: string };
@@ -45,13 +48,13 @@ export type Job = { key: string; path: string; state?: string; configuration?: s
 // A Geometry sketches file placed in the model: its job / studio index, its transform, group, and
 // the robot or system it belongs to (its sketches' keys, sketch.ts).
 export type SketchPlacement = { s: number; t: number[]; g?: number; owner: string };
-export type Built = { rev: string; builtAt: string; studios: string[]; placements: ModelPlacement[]; groups?: ModelGroup[]; sketches?: SketchPlacement[] };
-export type Draft = { rev: string; jobs: Job[]; placements: ModelPlacement[]; groups?: ModelGroup[]; names?: Record<string, string>; sketches?: SketchPlacement[] };
+export type Built = { rev: string; builtAt: string; studios: string[]; placements: ModelPlacement[]; groups?: ModelGroup[]; sketches?: SketchPlacement[]; joints?: ModelJoint[]; relations?: Relation[] };
+export type Draft = { rev: string; jobs: Job[]; placements: ModelPlacement[]; groups?: ModelGroup[]; names?: Record<string, string>; sketches?: SketchPlacement[]; joints?: ModelJoint[]; relations?: Relation[] };
 const SKETCH_VERSION = "1"; // bump to fetch every sketch file again after changing its format
-const PLAN_VERSION = "g2"; // bump when the plan's shape changes, so the next Update replans
+const PLAN_VERSION = "g3"; // g3: mates (2026-11-18) // bump when the plan's shape changes, so the next Update replans
 // One group's plan (a linked assembly or Part Studio), kept so a rebuild reads only the groups
 // that moved. `sketch`: its Geometry sketches' file (job j) and where they sit.
-export type GroupPlan = { rev: string; jobs: Job[]; placements: { j: number; k: string; t: number[] }[]; names: Record<string, string>; sketch?: { j: number; t: number[]; owner: string } };
+export type GroupPlan = { rev: string; jobs: Job[]; placements: { j: number; k: string; t: number[] }[]; names: Record<string, string>; sketch?: { j: number; t: number[]; owner: string }; mates?: GroupMates };
 type State = { built?: Built; draft?: Draft; plans?: Record<string, GroupPlan> };
 
 // The Final model keeps the key it always had; the Basepart model is new (Harel, 2026-11-12).
@@ -129,7 +132,7 @@ export async function robotModelsBuiltAt(robotId: string): Promise<Record<ModelK
 // `sketches`: the Geometry sketch files (sketch.ts) and where they sit. The Final model shows the
 // Basepart's sketches too, hidden until Shift+H (`sketchesHidden`; Harel, 2026-11-12).
 export type ModelSketches = { url: string | null; key: string; t: number[]; g?: number; owner: string };
-export type RobotModel = { builtAt: string; studios: (string | null)[]; keys: string[]; placements: ModelPlacement[]; groups: ModelGroup[]; sketches: ModelSketches[]; sketchesHidden?: boolean };
+export type RobotModel = { builtAt: string; studios: (string | null)[]; keys: string[]; placements: ModelPlacement[]; groups: ModelGroup[]; sketches: ModelSketches[]; sketchesHidden?: boolean; joints?: ModelJoint[]; relations?: Relation[] };
 export async function robotModel(robotId: string, systemId?: string, kind: ModelKind = "final"): Promise<RobotModel | null> {
   const { built, basepart } = kind === "final" ? await loadFinalWithSketches(robotId) : { built: await loadBuilt(robotId, kind), basepart: undefined };
   if (!built || !storageConfigured()) return null;
@@ -148,6 +151,10 @@ export async function robotModel(robotId: string, systemId?: string, kind: Model
   }
   let sketches: Omit<ModelSketches, "url">[] = (built.sketches ?? []).filter((s) => own(s.g)).map((s) => ({ key: built.studios[s.s], t: s.t, g: s.g, owner: s.owner }));
   if (kind === "final") sketches = basepartSketchesFor(basepart, robotId, groups, systemId);
+  // The joints of the groups sent, and the relations between them (renumbered).
+  const jointIndex = new Map<number, number>();
+  const joints = (built.joints ?? []).filter((j, i) => own(j.g) && jointIndex.set(i, jointIndex.size));
+  const relations = (built.relations ?? []).flatMap((r) => (jointIndex.has(r.from) && jointIndex.has(r.to) ? [{ ...r, from: jointIndex.get(r.from)!, to: jointIndex.get(r.to)! }] : []));
   return {
     builtAt: built.builtAt,
     studios: await Promise.all(studios.map((key) => (key ? imageUrl(key) : null))),
@@ -156,6 +163,8 @@ export async function robotModel(robotId: string, systemId?: string, kind: Model
     groups,
     sketches: await Promise.all(sketches.map(async (s) => ({ ...s, url: await imageUrl(s.key) }))),
     ...(kind === "final" ? { sketchesHidden: true } : {}),
+    ...(joints.length ? { joints } : {}),
+    ...(relations.length ? { relations } : {}),
   };
 }
 
@@ -376,6 +385,8 @@ async function buildStep(robotId: string, client: OnshapeClient, sources: ModelS
     placements: draft.placements,
     groups: draft.groups,
     ...(draft.sketches?.length ? { sketches: draft.sketches } : {}),
+    ...(draft.joints?.length ? { joints: draft.joints } : {}),
+    ...(draft.relations?.length ? { relations: draft.relations } : {}),
   };
   await save({ built, plans });
   return { state: "done", unchanged: false, parts: built.placements.length, calls: client.calls };
@@ -440,10 +451,13 @@ export async function planGroup(client: OnshapeClient, ref: ModelSource, rev: st
   const names: Record<string, string> = {}; // part key → its instance name in Onshape
   const own: StudioRef = { did: ref.did, eid: ref.eid! };
   const sketchStudio: StudioRef | null = ref.sketch ? { did: ref.sketch.studio.did, eid: ref.sketch.studio.eid! } : null;
-  const def =
+  const raw =
     ref.kind === "assembly"
-      ? flattenAssembly(await client.json<AssemblyDefinition>(`assemblies/${apiPath(ref)}?includeMateFeatures=false&includeNonSolids=false&includeMateConnectors=false`))
-      : [];
+      ? await client.json<AssemblyDefinition>(`assemblies/${apiPath(ref)}?includeMateFeatures=true&includeNonSolids=false&includeMateConnectors=false`)
+      : null;
+  const def = raw ? flattenAssembly(raw) : [];
+  // The mates (mates.ts) come in the same answer; only their limits cost calls.
+  const mates = raw ? await matesOf(client, ref, raw, def.map((p) => p.path)) : undefined;
   const contexts = [...def.map((p) => p.studio), ...(ref.kind === "partstudio" ? [own] : []), ...(sketchStudio ? [sketchStudio] : [])];
   const revisions = await studioRevisions(client, contexts.flatMap((s) => studioContext(s, ref) ?? []));
 
@@ -529,7 +543,52 @@ export async function planGroup(client: OnshapeClient, ref: ModelSource, rev: st
     const placed = def.find((p) => p.studio.did === sketchStudio.did && p.studio.eid === sketchStudio.eid);
     sketch = { j, t: placed?.transform ?? IDENTITY, owner: ref.sketch.owner };
   }
-  return { rev, jobs, placements, names, ...(sketch ? { sketch } : {}) };
+  return { rev, jobs, placements, names, ...(sketch ? { sketch } : {}), ...(mates ? { mates } : {}) };
+}
+
+const LIMIT_CALLS = 6; // at most this many assembly elements' limits per group (1 call each)
+
+// The group's mates and, for assembly elements with moving mates, their limits from the features
+// list (best effort). One log line says what was found, to check a real assembly's answer.
+async function matesOf(client: OnshapeClient, ref: ModelSource, raw: AssemblyDefinition, paths: string[][]): Promise<GroupMates | undefined> {
+  let read: ReadMates;
+  try {
+    read = readMates(raw, paths);
+  } catch (err) {
+    console.error(`model mates ${ref.eid}: couldn't read them`, err);
+    return undefined;
+  }
+  const kinds = new Map<string, number>();
+  for (const f of [...(raw.rootAssembly?.features ?? []), ...(raw.subAssemblies ?? []).flatMap((x) => x.features ?? [])]) {
+    const d = f.featureData ?? {};
+    const kind = `${f.featureType}${d.mateType ? `:${d.mateType}` : d.relationType ? `:${d.relationType}` : ""}`;
+    kinds.set(kind, (kinds.get(kind) ?? 0) + 1);
+  }
+  let calls = 0;
+  for (const ask of read.asks.slice(0, LIMIT_CALLS)) {
+    const path = limitPath(ref, ask);
+    if (!path) continue;
+    try {
+      calls++;
+      applyLimits(read.joints, ask, await client.json(`assemblies/${path}`));
+    } catch (err) {
+      console.error(`model mates ${ref.eid}: no limits from ${path}`, err instanceof Error ? err.message : err);
+    }
+  }
+  const { joints, relations, bodies } = read;
+  console.log(`model mates ${ref.eid}: ${[...kinds].map(([k, n]) => `${k}=${n}`).join(" ") || "no features"}; bodies=${new Set(bodies.filter((b) => b >= 0)).size} joints=${joints.length} limited=${joints.filter((j) => j.lim).length} relations=${relations?.length ?? 0} limitCalls=${calls}`);
+  return { bodies, joints, ...(relations?.length ? { relations } : {}) };
+}
+
+// Where an assembly element's features list is read: the root as the assembly is read, a
+// sub-assembly in the same document the same way, one in another document at its microversion.
+function limitPath(ref: ModelSource, ask: LimitAsk): string | null {
+  if (ask.root) return `${apiPath(ref)}/features`;
+  if (!ask.did || !ask.eid) return null;
+  const config = ask.configuration && ask.configuration !== "default" ? `configuration=${encodeURIComponent(ask.configuration)}` : "";
+  if (ask.did === ref.did) return `d/${ref.did}/${ref.wvm}/${ref.wvmid}/e/${ask.eid}/features${config ? `?${config}` : ""}`;
+  if (!ask.microversion) return null;
+  return `d/${ask.did}/m/${ask.microversion}/e/${ask.eid}/features?linkDocumentId=${ref.did}${config ? `&${config}` : ""}`;
 }
 
 // The robot's plan from its groups' plans: each Part Studio file once, placements by group.
@@ -539,6 +598,9 @@ export function mergePlans(sources: { did: string; eid?: string; kind?: ModelSou
   const placements: ModelPlacement[] = [];
   const sketches: SketchPlacement[] = [];
   const names: Record<string, string> = {};
+  const joints: ModelJoint[] = [];
+  const relations: Relation[] = [];
+  let bodyBase = 0; // each group's bodies numbered after the ones before
   sources.forEach((ref, g) => {
     const plan = plans[groupKey(ref)];
     const global = plan.jobs.map((job) => {
@@ -549,11 +611,21 @@ export function mergePlans(sources: { did: string; eid?: string; kind?: ModelSou
       }
       return index;
     });
-    for (const p of plan.placements) placements.push({ s: global[p.j], k: p.k, t: p.t, g });
+    const m = plan.mates;
+    const jointBase = joints.length;
+    plan.placements.forEach((p, i) => {
+      const b = m?.bodies[i] ?? -1;
+      placements.push({ s: global[p.j], k: p.k, t: p.t, g, ...(b >= 0 ? { b: bodyBase + b } : {}) });
+    });
+    if (m) {
+      for (const j of m.joints) joints.push({ ...j, a: bodyBase + j.a, b: bodyBase + j.b, g });
+      for (const r of m.relations ?? []) relations.push({ ...r, from: jointBase + r.from, to: jointBase + r.to });
+      bodyBase += Math.max(-1, ...m.bodies, ...m.joints.flatMap((j) => [j.a, j.b])) + 1;
+    }
     if (plan.sketch) sketches.push({ s: global[plan.sketch.j], t: plan.sketch.t, g, owner: plan.sketch.owner });
     Object.assign(names, plan.names);
   });
-  return { rev, jobs, placements, groups: sources.map((s) => s.group), names, ...(sketches.length ? { sketches } : {}) };
+  return { rev, jobs, placements, groups: sources.map((s) => s.group), names, ...(sketches.length ? { sketches } : {}), ...(joints.length ? { joints } : {}), ...(relations.length ? { relations } : {}) };
 }
 
 // ---------- Update CAD / Update Basepart (Harel, 2026-11-13) ----------

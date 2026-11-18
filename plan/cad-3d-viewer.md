@@ -24,7 +24,7 @@ no new cloud resources), heavy work stays in the browser, phones are first-class
 | S6 | Saved views + comment pins (migration) | 2 | done (2026-11-11, 99cad69) | Named views per robot in the cube menu, view in the URL hash, numbered comment pins that restore the comment's view; migration 0081 |
 | S7 | Explode and move | 2 | done (2026-11-11, c85c69b) | Onshape's exploded view slider and Move triad on picked parts, local only, Reset |
 | S9 | Display modes and polish | 2 | done (2026-11-11, 3548d95) | Onshape's render modes, silhouettes, gradient background, mm / inch |
-| S8 | Motion along the mates | later | needs its own plan first | |
+| S8 | Motion along the mates | later | plan written, waiting for Harel's go (2026-11-17) | plan/cad-mates.md |
 | ~~S5~~ | ~~Parts list~~ | | dropped (Harel, 2026-11-10) | |
 
 How to pick up: take the first row that is not done and whose wave can start, read its brief in
