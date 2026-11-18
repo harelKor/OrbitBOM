@@ -225,6 +225,7 @@ export function createPicking(
   on: {
     pick: (key: string | null) => void; // a click on a part (its key) or on empty space (null)
     open: () => ((key: string) => void) | undefined; // a double-click on a part, when the page takes it
+    boxed?: () => ((keys: string[], drop: boolean) => void) | undefined; // box select with no face picking, when the page takes it
     hide: (g: Gone) => void;
     hiddenAt: (ray: THREE.Raycaster) => { g: Gone; at: THREE.Matrix4 } | null;
     anyHidden: () => boolean;
@@ -490,9 +491,13 @@ export function createPicking(
     }, LABEL_MS);
   };
 
-  // Long press (touch): the menu, and the lift that ends it picks nothing.
+  // Long press (touch): the menu, and the lift that ends it picks nothing. Where box select works,
+  // the hold is `held` first: a drag from there draws a box, a lift without one opens the menu
+  // (Harel, 2026-11-17).
   let press: { x: number; y: number; timer: number } | null = null;
   let pressed = false;
+  let held: { x: number; y: number; id: number } | null = null;
+  const canBox = () => !!measure().filter() || !!on.boxed?.();
   const touches = new Set<number>();
   const cancelPress = () => {
     if (press) clearTimeout(press.timer);
@@ -618,15 +623,18 @@ export function createPicking(
       pair = { t: performance.now(), x: (p.x + q.x) / 2, y: (p.y + q.y) / 2, moved: false };
       down = null; // not a one-finger tap any more
     } else if (touches.size > 2) pair = null;
+    held = null;
     if (touches.size === 1) {
-      const { clientX: x, clientY: y } = e;
+      const { clientX: x, clientY: y, pointerId: id } = e;
       press = {
         x,
         y,
         timer: window.setTimeout(() => {
           press = null;
           pressed = true;
-          menuAt(x, y, true);
+          if (!canBox()) return menuAt(x, y, true);
+          held = { x, y, id };
+          navigator.vibrate?.(12);
         }, LONG_PRESS_MS),
       };
     }
@@ -639,6 +647,11 @@ export function createPicking(
     touches.delete(e.pointerId);
     starts.delete(e.pointerId);
     cancelPress();
+    if (held) {
+      const h = held;
+      held = null;
+      if (!box) menuAt(h.x, h.y, true);
+    }
     if (pair) {
       if (touches.size) return;
       const p = pair;
@@ -674,6 +687,7 @@ export function createPicking(
     touches.delete(e.pointerId);
     starts.delete(e.pointerId);
     cancelPress();
+    held = null;
     down = null;
     pair = null;
   };
@@ -689,8 +703,9 @@ export function createPicking(
   // Box select, Onshape's: a left drag from empty space (no key needed). Dragged left to right it
   // takes the part copies wholly inside the box (blue), right to left every one it touches
   // (orange); with Ctrl (Cmd) it takes them off instead (while picking faces, as on the CAD page).
-  // Caught before the camera controls.
-  let box: { x: number; y: number; div: HTMLDivElement; drop: boolean } | null = null;
+  // Caught before the camera controls. With no face picking, the page may take whole parts
+  // (on.boxed: a BOM page's Bulk edit). On touch: hold still, then drag (`held`).
+  let box: { x: number; y: number; div: HTMLDivElement; drop: boolean; touch: boolean } | null = null;
   const boxRect = (e: PointerEvent) => {
     const r = el.getBoundingClientRect();
     const x0 = Math.min(box!.x, e.clientX) - r.left;
@@ -709,13 +724,16 @@ export function createPicking(
     if (!box) return;
     const { x0, y0, x1, y1 } = boxRect(e);
     const crossing = e.clientX < box.x;
-    const drop = box.drop;
+    const { drop, touch } = box;
     box.div.remove();
     box = null;
     window.removeEventListener("pointermove", onBoxMove);
     window.removeEventListener("pointerup", onBoxUp);
+    window.removeEventListener("pointercancel", onBoxUp);
     if (x1 - x0 < CLICK_PX && y1 - y0 < CLICK_PX) {
-      // No drag: a click on empty space, which clears (the canvas never saw the press).
+      // No drag: a click on empty space, which clears (the canvas never saw the press). A finger
+      // that came back to where it was held drew nothing.
+      if (touch) return;
       if (!drop && !on.sectionTap?.(e)) measure().tap(null);
       return;
     }
@@ -754,31 +772,70 @@ export function createPicking(
         const xs = corners.filter((p) => p).map((p) => p![0]);
         const ys = corners.filter((p) => p).map((p) => p![1]);
         if (!xs.length || Math.max(...xs) < x0 || Math.min(...xs) > x1 || Math.max(...ys) < y0 || Math.min(...ys) > y1) continue;
-        for (let k = 0; k < pos.count; k++) {
-          if (inBox(toScreen(q.fromBufferAttribute(pos, k).applyMatrix4(at)))) {
-            found.push({ m, i });
-            break;
+        // A point inside the box, else a triangle side across it (a long upright through the box
+        // with both ends outside). Each point is projected once.
+        const px = new Float32Array(pos.count);
+        const py = new Float32Array(pos.count);
+        const front = new Uint8Array(pos.count);
+        let hit = false;
+        for (let k = 0; k < pos.count && !hit; k++) {
+          const p = toScreen(q.fromBufferAttribute(pos, k).applyMatrix4(at));
+          if (!p) continue;
+          [px[k], py[k], front[k]] = [p[0], p[1], 1];
+          hit = inBox(p);
+        }
+        const idx = g.index;
+        if (!hit && idx) {
+          const side = (a: number, b: number) => front[a] && front[b] && segmentMeetsRect(px[a], py[a], px[b], py[b], x0, y0, x1, y1);
+          for (let t = 0; t + 2 < idx.count && !hit; t += 3) {
+            const [a, b, c] = [idx.getX(t), idx.getX(t + 1), idx.getX(t + 2)];
+            hit = !!(side(a, b) || side(b, c) || side(c, a));
           }
         }
+        if (hit) found.push({ m, i });
       }
     });
-    if (found.length) measure().box(found, drop);
+    if (!found.length) return;
+    if (measure().filter()) return measure().box(found, drop);
+    on.boxed?.()?.([...new Set(found.map((f) => meshes[f.m].keys[f.i]).filter(Boolean))], drop);
   };
-  const onBoxDown = (e: PointerEvent) => {
-    if (e.target !== canvas || e.button !== 0 || e.pointerType !== "mouse" || !measure().filter() || hitAt(e)) return;
-    e.stopPropagation(); // not to the camera controls
-    e.preventDefault();
+  const startBox = (x: number, y: number, drop: boolean, touch: boolean) => {
     hideLabel();
+    setHover(null);
     const div = document.createElement("div");
     div.className = boxLook(false);
     el.appendChild(div);
-    box = { x: e.clientX, y: e.clientY, div, drop: e.ctrlKey || e.metaKey };
-    onBoxMove(e);
+    box = { x, y, div, drop, touch };
     window.addEventListener("pointermove", onBoxMove);
     window.addEventListener("pointerup", onBoxUp);
+    window.addEventListener("pointercancel", onBoxUp);
+  };
+  const onBoxDown = (e: PointerEvent) => {
+    if (e.target !== canvas || e.button !== 0 || e.pointerType !== "mouse" || !canBox() || hitAt(e)) return;
+    e.stopPropagation(); // not to the camera controls
+    e.preventDefault();
+    startBox(e.clientX, e.clientY, e.ctrlKey || e.metaKey, false);
+    onBoxMove(e);
+  };
+  // A finger that was held still and now moves draws the box; its moves don't reach the camera
+  // controls (which saw the press, but no movement, so they stay put).
+  const onHeldMove = (e: PointerEvent) => {
+    if (box?.touch) {
+      e.stopPropagation();
+      onBoxMove(e);
+      return;
+    }
+    if (!held || e.pointerId !== held.id || Math.hypot(e.clientX - held.x, e.clientY - held.y) <= 8) {
+      if (held && e.pointerId === held.id) e.stopPropagation();
+      return;
+    }
+    e.stopPropagation();
+    startBox(held.x, held.y, false, true);
+    onBoxMove(e);
   };
 
   el.addEventListener("pointerdown", onBoxDown, { capture: true });
+  el.addEventListener("pointermove", onHeldMove, { capture: true });
   canvas.addEventListener("pointermove", onMove);
   canvas.addEventListener("pointermove", onTouchMove);
   canvas.addEventListener("pointerleave", onLeave);
@@ -794,8 +851,10 @@ export function createPicking(
     setHover,
     dispose: () => {
       el.removeEventListener("pointerdown", onBoxDown, { capture: true });
+      el.removeEventListener("pointermove", onHeldMove, { capture: true });
       window.removeEventListener("pointermove", onBoxMove);
       window.removeEventListener("pointerup", onBoxUp);
+      window.removeEventListener("pointercancel", onBoxUp);
       canvas.removeEventListener("pointerdown", onDown);
       canvas.removeEventListener("pointerup", onUp);
       canvas.removeEventListener("pointercancel", onCancel);
@@ -818,4 +877,28 @@ export function createPicking(
       outlineLine.dispose();
     },
   };
+}
+
+// Whether the segment a–b (screen px) meets the rectangle x0..x1 × y0..y1 (Liang–Barsky clipping).
+export function segmentMeetsRect(ax: number, ay: number, bx: number, by: number, x0: number, y0: number, x1: number, y1: number) {
+  const dx = bx - ax;
+  const dy = by - ay;
+  let lo = 0;
+  let hi = 1;
+  for (const [p, q] of [
+    [-dx, ax - x0],
+    [dx, x1 - ax],
+    [-dy, ay - y0],
+    [dy, y1 - ay],
+  ]) {
+    if (p === 0) {
+      if (q < 0) return false;
+      continue;
+    }
+    const r = q / p;
+    if (p < 0) lo = Math.max(lo, r);
+    else hi = Math.min(hi, r);
+    if (lo > hi) return false;
+  }
+  return true;
 }

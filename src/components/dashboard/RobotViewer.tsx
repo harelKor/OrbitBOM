@@ -124,6 +124,13 @@ export function RobotViewer({
     if (!key && !selected && !large && performance.now() - lastTap.current < 500) openLarge();
     setSelected(key);
   };
+  // Box select in the 3D view while Bulk edit is on adds the boxed parts' rows (Harel, 2026-11-17).
+  const onBox = (keys: string[], drop: boolean) => {
+    for (const key of keys) {
+      const part = partByKey.get(key);
+      if (part) window.dispatchEvent(new CustomEvent<BulkToggleDetail>(BULK_TOGGLE_EVENT, { detail: { partId: part.id, set: !drop } }));
+    }
+  };
   const pageMenu: PageMenu = (keys) => {
     const found = [...new Set(keys)].flatMap((k) => partByKey.get(k) ?? []);
     const one = found.length === 1 ? found[0] : undefined;
@@ -353,6 +360,7 @@ export function RobotViewer({
               hidden={hidden}
               selectedKey={bulkKeys}
               onPick={onPick}
+              onBox={bulk ? onBox : undefined}
               onTools={picks.setTools}
               onMeasure={picks.setMeasured}
               menu={pageMenu}

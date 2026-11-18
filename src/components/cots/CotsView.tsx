@@ -13,6 +13,7 @@ import type { Condition, InvCategory, Item, Location } from "@/components/invent
 import { useCan, useManage, useMode } from "@/components/shell/ModeContext";
 import { statusDenied } from "@/components/shell/mode";
 import { useEscape } from "@/components/ui/useEscape";
+import { useBoxSelect } from "@/components/ui/useBoxSelect";
 import { statusTint } from "@/components/ui/statusTint";
 import { StatusField } from "@/components/bom/fields";
 import { Thumb } from "@/components/bom/Thumb";
@@ -310,7 +311,7 @@ export function CotsView({
         {rows.map((row) => {
           const ids = row.members.map((m) => m.id);
           return (
-            <div key={row.key} className={`relative ${row.members.every((m) => struck.has(m.id)) ? "opacity-60" : ""} ${dim(row)}`} data-arrival={arrivedRow(row) ? "" : undefined} {...dragProps(ids, from)}>
+            <div key={row.key} data-box-key={row.key} className={`relative ${row.members.every((m) => struck.has(m.id)) ? "opacity-60" : ""} ${dim(row)}`} data-arrival={arrivedRow(row) ? "" : undefined} {...dragProps(ids, from)}>
               <PartListRow
                 part={row.part}
                 save={saveRow(row)}
@@ -341,7 +342,7 @@ export function CotsView({
               </GroupBox>
             );
           return (
-            <div key={row.key} className={`relative ${dim(row)}`} data-arrival={arrivedRow(row) ? "" : undefined} {...dragProps(ids, from)}>
+            <div key={row.key} data-box-key={row.key} className={`relative ${dim(row)}`} data-arrival={arrivedRow(row) ? "" : undefined} {...dragProps(ids, from)}>
               <CotsCard
                 part={row.part}
                 save={saveRow(row)}
@@ -388,6 +389,25 @@ export function CotsView({
     selecting !== "cart" || (listKeys.has(row.key) && !row.members.some((m) => cartOf.has(m.id)) && vendorOf(row.part) !== NO_VENDOR && (!cartVendor || vendorOf(row.part) === cartVendor));
   const pick = (row: Row) => (ordering && pickable(row) ? () => setSelected((s) => toggle(s, row.key)) : undefined);
   const dim = (row: Row) => (ordering && !pickable(row) ? "opacity-40" : "");
+  // While picking, a long press (or a mouse drag) draws a box; the cards it crosses join by the
+  // tap's rules (a cart takes one vendor's, set by the first) (Harel, 2026-11-17).
+  const boxRef = useBoxSelect({
+    enabled: ordering,
+    selector: "[data-box-key]",
+    keyOf: (el) => el.dataset.boxKey ?? null,
+    onBox: (keys) => {
+      const next = new Set(selected);
+      let vendor = cartVendor;
+      for (const key of keys) {
+        const row = allRows.find((r) => r.key === key);
+        if (!row || next.has(key)) continue;
+        if (selecting === "cart" && (!listKeys.has(key) || row.members.some((m) => cartOf.has(m.id)) || vendorOf(row.part) === NO_VENDOR || (vendor && vendorOf(row.part) !== vendor))) continue;
+        vendor ??= vendorOf(row.part);
+        next.add(key);
+      }
+      setSelected(next);
+    },
+  });
   const vendors = [...new Set(main.map(vendorOf))].sort((a, b) => (a === NO_VENDOR ? 1 : b === NO_VENDOR ? -1 : a.localeCompare(b)));
   // Released: the parts already on the order list, in a small section below.
   const queued = list === "released" ? optimistic.filter((p) => computeStatus(p) === COTS_ORDERED && ofCategory(p)) : [];
@@ -440,7 +460,7 @@ export function CotsView({
   });
 
   return (
-    <div className={`space-y-5 ${ordering ? "pb-20" : ""}`}>
+    <div className={`space-y-5 ${ordering ? "hold-area pb-20" : ""}`} ref={boxRef}>
       <CategoryBoxes
         compact
         categories={categories}

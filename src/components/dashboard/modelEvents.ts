@@ -20,5 +20,6 @@ export const OPEN_PART_PENDING = "orbit:open-part";
 export const BULK_SELECTION_EVENT = "orbit:bulk-selection";
 export type BulkSelectionDetail = { ids: string[] | null };
 export const BULK_TOGGLE_EVENT = "orbit:bulk-toggle";
-export type BulkToggleDetail = { partId: string };
+// `set`: a box select's part, added (true) or taken off with Ctrl (false) rather than toggled.
+export type BulkToggleDetail = { partId: string; set?: boolean };
 export const BULK_ASK_EVENT = "orbit:bulk-ask";

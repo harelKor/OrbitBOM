@@ -14,7 +14,7 @@ const CONTROLS = "button, input, select, textarea, label, [role=dialog]";
 // Once a hold has fired, the page must not scroll under the finger, and the click that follows the
 // release must not open the thing.
 const block = (e: TouchEvent) => e.preventDefault();
-function swallowNextClick() {
+export function swallowNextClick() {
   const stop = (e: Event) => {
     e.stopPropagation();
     e.preventDefault();

@@ -14,6 +14,7 @@ import { useCan } from "@/components/shell/ModeContext";
 import { Chevron } from "@/components/ui/Chevron";
 import { statusTint } from "@/components/ui/statusTint";
 import { useEscape } from "@/components/ui/useEscape";
+import { useBoxSelect } from "@/components/ui/useBoxSelect";
 import type { FabArea } from "@/config/machines";
 import { AREA_READY, FACTORY_IN_STOCK_DAYS } from "@/lib/fab";
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
@@ -116,6 +117,17 @@ export function FactoryView({
       else next.add(id);
       return next;
     });
+  // While packing, a long press (or a mouse drag) draws a box; the Released cards it crosses are
+  // added (Harel, 2026-11-17).
+  const boxRef = useBoxSelect({
+    enabled: packing,
+    selector: '[id^="part-"]',
+    keyOf: (el) => {
+      const id = el.id.slice("part-".length);
+      return view.released.some((p) => p.id === id) ? id : null;
+    },
+    onBox: (ids) => setSelected((s) => new Set([...s, ...ids])),
+  });
   const targetPack = view.packs.find((b) => b.id === target) ?? null;
   const packLabel = (b: (typeof view.packs)[number]) =>
     `${new Date(b.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })} · ${b.members.length} part${b.members.length === 1 ? "" : "s"}`;
@@ -161,7 +173,7 @@ export function FactoryView({
 
   return (
     <BomProvider value={{ inventory, isAdmin, robotId }}>
-      <div className="space-y-6">
+      <div className={`space-y-6 ${packing ? "hold-area" : ""}`} ref={boxRef}>
         {error && <Notice tone="error">Couldn&apos;t save: {error}</Notice>}
 
         {/* Zivudim packs by itself, so Released only shows for the moment before the page reloads. */}

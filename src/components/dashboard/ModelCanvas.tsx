@@ -41,6 +41,7 @@ export function ModelCanvas({
   selectedKey,
   onPick,
   onOpen,
+  onBox,
   names,
   panelLeft,
   onTools,
@@ -62,6 +63,9 @@ export function ModelCanvas({
   selectedKey?: string | readonly string[] | null; // a part picked with a click (or Bulk edit's parts): drawn in bright green
   onPick?: (key: string | null) => void; // a click on a part (its key) or on empty space (null)
   onOpen?: (key: string) => void; // a double-click on a part
+  // Box select while no faces are being picked (a BOM page's Bulk edit): the parts' keys the box
+  // took (drop: Ctrl held, take them off). Without it a box needs face picking on.
+  onBox?: (keys: string[], drop: boolean) => void;
   names?: Map<string, string>; // part key -> its name, for the hidden parts list
   panelLeft?: number; // px from the left for the hidden parts list, past the viewer's own panels
   onTools?: (tools: SceneTools | null) => void; // the review tools, once the model is loaded
@@ -112,10 +116,12 @@ export function ModelCanvas({
   const [gone, setGone] = useState<Gone[]>([]);
   const pick = useRef(onPick);
   const openPart = useRef(onOpen);
+  const boxParts = useRef(onBox);
   useEffect(() => {
     pick.current = onPick;
     openPart.current = onOpen;
-  }, [onPick, onOpen]);
+    boxParts.current = onBox;
+  }, [onPick, onOpen, onBox]);
   // Parts draw as their files arrive: `loaded` once the first are in, `progress` until the last.
   const [progress, setProgress] = useState<{ done: number; total: number } | null>({ done: 0, total: model.studios.length });
   const [loaded, setLoaded] = useState(false);
@@ -147,6 +153,7 @@ export function ModelCanvas({
       names: () => namesRef.current,
       pick: (key) => pick.current?.(key),
       open: () => openPart.current,
+      boxed: () => boxParts.current,
       measured: (m) => measureRef.current?.(m),
       gone: setGone,
       progress: (done, total) => setProgress(done < total ? { done, total } : null),

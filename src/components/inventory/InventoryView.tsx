@@ -21,6 +21,7 @@ import { EditOnly, useManage, usePermissions } from "@/components/shell/ModeCont
 import { IconButton } from "@/components/ui/IconButton";
 import { useEscape } from "@/components/ui/useEscape";
 import { holdTarget, useLongPress } from "@/components/ui/longPress";
+import { useBoxSelect } from "@/components/ui/useBoxSelect";
 import {
   CategoryBoxes,
   pushQuery,
@@ -463,6 +464,17 @@ export function InventoryView({
       setNotice(null);
     },
   });
+  // While picking, a long press (or a mouse drag) draws a box; the items it crosses are added
+  // (Harel, 2026-11-17).
+  const boxRef = useBoxSelect({
+    enabled: selecting !== null,
+    selector: "[data-item]",
+    keyOf: (el) => {
+      const id = el.dataset.item;
+      return id && !saving(id) ? id : null;
+    },
+    onBox: (ids) => setSelected((s) => new Set([...s, ...ids])),
+  });
   const editSelected = () => {
     const id = [...selected][0];
     setPicking(null);
@@ -619,7 +631,7 @@ export function InventoryView({
   const selectable = boxes ? optimistic : shownMain;
 
   return (
-    <div className={`space-y-4 ${selecting ? "pb-20" : ""}`} {...hold}>
+    <div className={`space-y-4 ${selecting ? "hold-area pb-20" : ""}`} {...hold} ref={boxRef}>
       <EditOnly>
         {/* Phones open on the search and the shelf: the spreadsheet, Move and Delete wait behind
             ⋮ (they're shown while Move or Delete is picking, to end it). */}

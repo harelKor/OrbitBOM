@@ -14,6 +14,7 @@ import { useCan } from "@/components/shell/ModeContext";
 import { Chevron } from "@/components/ui/Chevron";
 import { Icon } from "@/components/ui/Icon";
 import { useEscape } from "@/components/ui/useEscape";
+import { useBoxSelect } from "@/components/ui/useBoxSelect";
 import { Segmented } from "@/components/ui/Segmented";
 import { useStoredChoice } from "@/components/ui/useStoredChoice";
 import { FINISHED_STATUS, fabStage, machinesOf } from "@/lib/fab";
@@ -251,6 +252,26 @@ export function FabView({
         ? fitsBatch(p, targetBatch)
         : machinesOf(p).some((m) => (picked.length ? sharedMachines : machine ? [machine] : MACHINES.map((x) => x.id as string)).includes(m)) &&
           (material === null || (p.material ?? "") === material)));
+  // While picking, a long press (or a mouse drag) draws a box (Harel, 2026-11-17). The cards it
+  // crosses join one by one by the same rules as a tap: loose parts sharing a machine with the
+  // picks so far, of the first pick's material (or fitting the batch picked).
+  const boxRef = useBoxSelect({
+    enabled: fab,
+    selector: '[id^="part-"]',
+    keyOf: (el) => el.id.slice("part-".length),
+    onBox: (ids) => {
+      const acc = [...picked];
+      for (const id of ids) {
+        const p = optimistic.find((x) => x.id === id);
+        if (!p || selected.has(id) || acc.includes(p) || batchOf(p)) continue;
+        const mat = acc.length ? (acc[0].material ?? "") : null;
+        const machines = machine ? [machine] : acc.length ? common(acc.map(machinesOf)) : MACHINES.map((x) => x.id as string);
+        const fits = targetBatch ? fitsBatch(p, targetBatch) : machinesOf(p).some((m) => machines.includes(m)) && (mat === null || (p.material ?? "") === mat);
+        if (fits) acc.push(p);
+      }
+      setSelected(new Set(acc.map((p) => p.id)));
+    },
+  });
   const startFab = (on: boolean) => {
     setFab(on);
     setSelected(new Set());
@@ -417,7 +438,7 @@ export function FabView({
 
   return (
     <BomProvider value={{ inventory, isAdmin, robotId }}>
-      <div className="space-y-6">
+      <div className={`space-y-6 ${fab ? "hold-area" : ""}`} ref={boxRef}>
         <div className="flex flex-wrap items-stretch gap-2">
           <MachineBox href={machineHref(null)} name="All machines" count={counts.total} active={!machine} className="hidden sm:flex" />
           {machinesWithParts.map((m) => (

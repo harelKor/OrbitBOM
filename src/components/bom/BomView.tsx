@@ -13,6 +13,7 @@ import { usePermissions } from "@/components/shell/ModeContext";
 import { BUILD_STATUSES } from "@/components/shell/mode";
 import { useEscape } from "@/components/ui/useEscape";
 import { holdTarget, useLongPress } from "@/components/ui/longPress";
+import { useBoxSelect } from "@/components/ui/useBoxSelect";
 import { BULK_ASK_EVENT, BULK_SELECTION_EVENT, BULK_TOGGLE_EVENT, type BulkSelectionDetail, type BulkToggleDetail } from "@/components/dashboard/modelEvents";
 import { DrawingsBar } from "./DrawingsBar";
 import { MergeBar, type MergeInfo } from "./MergeBar";
@@ -200,6 +201,19 @@ export function BomView({
     },
   });
 
+  // While selecting, a long press (or a mouse drag) draws a box; the rows it crosses are added
+  // (Harel, 2026-11-17).
+  const shownIds = useMemo(() => new Set(shown.map((p) => p.id)), [shown]);
+  const boxRef = useBoxSelect({
+    enabled: selecting && view !== "kanban",
+    selector: '[id^="part-"]',
+    keyOf: (el) => {
+      const id = el.id.slice("part-".length);
+      return shownIds.has(id) ? id : null;
+    },
+    onBox: (ids) => setSelected((s) => new Set([...s, ...ids])),
+  });
+
   // Bulk edit picks parts in the page's 3D view too (Harel, 2026-11-10): the viewer is told which
   // parts are selected (a merged row as its members), and a click there toggles the part's row.
   const rowOf = useMemo(() => {
@@ -224,11 +238,12 @@ export function BomView({
   useEffect(() => {
     if (mode !== "bulk") return;
     const onToggle = (e: Event) => {
-      const row = rowOf.get((e as CustomEvent<BulkToggleDetail>).detail.partId);
+      const { partId, set } = (e as CustomEvent<BulkToggleDetail>).detail;
+      const row = rowOf.get(partId);
       if (!row) return;
       setSelected((s) => {
         const next = new Set(s);
-        if (next.has(row)) next.delete(row);
+        if (set === false || (set === undefined && next.has(row))) next.delete(row);
         else next.add(row);
         return next;
       });
@@ -278,7 +293,7 @@ export function BomView({
   return (
     <BomProvider value={{ inventory, isAdmin, robotId, versions }}>
     {/* With the sticky toolbar, a card jumped to (#part-…) lands below both bars. */}
-    <div className={`space-y-4 ${selecting ? "pb-20" : ""} ${stickyToolbar ? "[&_[id^=part-]]:scroll-mt-[calc(var(--topbar-h)+5rem)]" : ""}`} {...hold}>
+    <div className={`space-y-4 ${selecting ? "hold-area pb-20" : ""} ${stickyToolbar ? "[&_[id^=part-]]:scroll-mt-[calc(var(--topbar-h)+5rem)]" : ""}`} {...hold} ref={boxRef}>
       <div
         className={`flex flex-wrap items-center gap-3 ${
           // Sticks right under the top bar (whatever its height); the strip bleeds into main's padding so cards scroll

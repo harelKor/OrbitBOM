@@ -204,6 +204,10 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
   `SystemDrawerButton`), helpers `src/lib/inventory/places.ts`, edits `settings/mapActions.ts` +
   `components/settings/MapSettings.tsx` (Settings → Map), `systems.drawers` = a system's drawer
   per status. Sandbox `/dev/shop-map`. `GET /api/places` for pages without them.
+- Box select (2026-11-17): every select mode (BOM, COTS, To Fab, Factory, Inventory) uses
+  `useBoxSelect` (`src/components/ui/useBoxSelect.ts`): long press then drag, or a mouse drag;
+  rows carry `[id^=part-]`, `[data-item]` or `[data-box-key]`. 3D: `picking.ts` (hold then drag on
+  touch; `onBox` on `ModelCanvas` for Bulk edit).
 - Files: `src/lib/storage/r2.ts`; backups and restore: `src/lib/storage/backup.ts`, `restore.ts`.
 - Work the user needn't wait for: `afterResponse` (`src/lib/later.ts`).
 - Installed app / offline (2026-11-13): `public/sw.js` (plain JS, production only, registered by

@@ -23,6 +23,7 @@ export type ViewerHost = {
   names: () => Map<string, string> | undefined;
   pick: (key: string | null) => void;
   open: () => ((key: string) => void) | undefined;
+  boxed?: () => ((keys: string[], drop: boolean) => void) | undefined; // box select with no face picking (Bulk edit)
   measured: (m: MeasureInfo) => void;
   gone: (gone: Gone[]) => void;
   progress: (done: number, total: number) => void;
@@ -75,6 +76,7 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
   picking = createPicking(stage, meshes, topo, () => measure!, {
     pick: (key) => host.pick(key),
     open: host.open,
+    boxed: () => host.boxed?.(),
     hide: visibility.hideOne,
     hiddenAt: visibility.hiddenAt,
     anyHidden: () => visibility.gone().length > 0,
