@@ -588,8 +588,19 @@ export function createPicking(
   };
   // Y (by key position, so it works on a Hebrew layout too) while the mouse is on the model.
   const onKey = (e: KeyboardEvent) => {
-    if (!over || e.code !== "KeyY" || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+    if (e.code !== "KeyY" || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
     if ((e.target as HTMLElement | null)?.closest?.("input, textarea, select, [contenteditable=true]")) return;
+    // Y with parts picked hides them (a picked group too), like Onshape, wherever the mouse is
+    // (Harel, 2026-11-18); the picks go with them.
+    const picked = e.shiftKey || document.querySelector("dialog[open]") ? [] : measure().copies();
+    if (picked.length) {
+      hideLabel();
+      stage.batch(() => picked.forEach(({ m, i }) => on.hide({ m, i, key: meshes[m].keys[i] })));
+      measure().box(picked, true);
+      e.preventDefault();
+      return;
+    }
+    if (!over) return;
     hideLabel();
     if (e.shiftKey) {
       // Nothing hidden under the mouse: nothing happens.
