@@ -926,6 +926,7 @@ export function ReviewScreen({
           count={listed.length}
           onHide={() => setSide(false)}
           tone="amber"
+          className={canApprove ? "xl:[flex:var(--cad-split-a)]" : undefined}
           big
           lead={
             <label className="-ml-1 flex h-9 w-8 shrink-0 cursor-pointer items-center justify-center" title="Show the comments as tags in the 3D view">
@@ -951,8 +952,9 @@ export function ReviewScreen({
             <li className="p-2 text-xs text-muted">{stateFilter === "active" ? "No open comments." : "No comments in this state."}</li>
           )}
         </Popup>
+        {canApprove && <SplitResizer root={root} />}
         {canApprove && (
-          <Popup title={me.isMentor ? "To check · waiting for you" : "To check"} count={waiting.length} tone="violet">
+          <Popup title={me.isMentor ? "To check · waiting for you" : "To check"} count={waiting.length} tone="violet" className="xl:[flex:var(--cad-split-b)]">
             {waitingRows.length ? (
               onRobot ? (
                 <BySystem rows={waitingRows} onIsolate={onIsolate}>
@@ -1084,10 +1086,10 @@ function SystemSection({ name, count, onIsolate, children }: { name: string; cou
   );
 }
 
-function Popup({ title, count, onHide, tone, big = false, tools, lead, children }: { title: string; count: number; onHide?: () => void; tone: "amber" | "violet"; big?: boolean; tools?: React.ReactNode; lead?: React.ReactNode; children: React.ReactNode }) {
+function Popup({ title, count, onHide, tone, big = false, tools, lead, className = "", children }: { title: string; count: number; onHide?: () => void; tone: "amber" | "violet"; big?: boolean; tools?: React.ReactNode; lead?: React.ReactNode; className?: string; children: React.ReactNode }) {
   const badge = tone === "amber" ? "bg-amber-500/15 text-amber-600" : "bg-violet-500/15 text-violet-600 dark:text-violet-300";
   return (
-    <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-line bg-surface/95 shadow-md backdrop-blur">
+    <div className={`flex min-h-0 flex-col overflow-hidden rounded-lg border border-line bg-surface/95 shadow-md backdrop-blur ${className}`}>
       {/* No folding up and down: the column folds sideways from the arrow (Harel, 2026-11-11).
         `big`: the Comments header, a bit taller to hold its filters (Harel, 2026-11-18). */}
       <div className={`flex items-center px-3 font-semibold text-fg ${big ? "min-h-12 gap-1.5 py-2 text-base" : "gap-2 py-2 text-sm pointer-coarse:min-h-11"}`}>
@@ -1103,6 +1105,83 @@ function Popup({ title, count, onHide, tone, big = false, tools, lead, children 
         )}
       </div>
       <ul className="min-h-0 flex-1 overflow-y-auto border-t border-line p-1">{children}</ul>
+    </div>
+  );
+}
+
+// The divider between Comments and To check on wide screens (Harel, 2026-11-18): dragged up or
+// down, it shares the column's height between them (each list scrolls on its own); kept in this
+// browser, double-click goes back to each one's natural height. Written straight onto the column as
+// `--cad-split-a` / `-b` (flex values), like the column's width.
+const SPLIT_KEY = "orbit-cad-comments-split";
+function SplitResizer({ root }: { root: React.RefObject<HTMLDivElement | null> }) {
+  const col = () => root.current?.querySelector<HTMLElement>("[data-comments]") ?? null;
+  const set = (share: number | null) => {
+    const el = col();
+    if (!el) return;
+    if (share === null) {
+      el.style.removeProperty("--cad-split-a");
+      el.style.removeProperty("--cad-split-b");
+    } else {
+      el.style.setProperty("--cad-split-a", `${share} 1 0%`);
+      el.style.setProperty("--cad-split-b", `${1 - share} 1 0%`);
+    }
+  };
+  useEffect(() => {
+    try {
+      const v = Number(localStorage.getItem(SPLIT_KEY));
+      if (v > 0 && v < 1) set(v);
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on load
+  }, []);
+  const save = (share: number | null) => {
+    set(share);
+    try {
+      if (share === null) localStorage.removeItem(SPLIT_KEY);
+      else localStorage.setItem(SPLIT_KEY, String(share));
+    } catch {}
+  };
+  const start = (e: React.PointerEvent<HTMLDivElement>) => {
+    const handle = e.currentTarget;
+    const above = handle.previousElementSibling as HTMLElement | null;
+    const below = handle.nextElementSibling as HTMLElement | null;
+    if (!above || !below || e.button !== 0) return;
+    e.preventDefault();
+    handle.setPointerCapture(e.pointerId);
+    const top = above.getBoundingClientRect().top;
+    const height = below.getBoundingClientRect().bottom - top;
+    let share = above.getBoundingClientRect().height / height;
+    let frame = 0;
+    const move = (ev: PointerEvent) => {
+      // Each keeps at least its header and a row or two.
+      share = Math.min(0.85, Math.max(0.15, (ev.clientY - top) / height));
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => set(share));
+    };
+    const end = () => {
+      cancelAnimationFrame(frame);
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", end);
+      handle.removeEventListener("pointercancel", end);
+      document.body.classList.remove("select-none", "cursor-row-resize");
+      save(share);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
+    document.body.classList.add("select-none", "cursor-row-resize");
+  };
+  return (
+    <div
+      role="separator"
+      aria-orientation="horizontal"
+      aria-label="Drag to share the height between Comments and To check"
+      title="Drag to resize, double-click to reset"
+      onPointerDown={start}
+      onDoubleClick={() => save(null)}
+      className="group relative -my-2 hidden h-2 shrink-0 cursor-row-resize touch-none xl:block"
+    >
+      <span className="absolute inset-x-2 top-1/2 h-0.5 -translate-y-1/2 rounded-full bg-accent opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-active:opacity-100" />
     </div>
   );
 }
