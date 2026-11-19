@@ -87,3 +87,12 @@ describe("3D Printing statuses", () => {
     expect(pickableStatuses("cad", "print")).toEqual(["Released", "Gcoded", "In Process 1", "Ready for QA", "In Stock", "Reproduction"]);
   });
 });
+
+describe("inventory deletes (Harel, 2026-11-19)", () => {
+  it("lets every team delete items, but keeps manage for admins in Edit", () => {
+    for (const m of ["edit", "cad", "build"] as const) expect(can(m, "discard")).toBe(true);
+    expect(can("none", "discard")).toBe(false);
+    expect(can("cad", "manage")).toBe(false);
+    expect(can("build", "manage")).toBe(false);
+  });
+});

@@ -6,7 +6,7 @@ import { saveItem, type ItemInput } from "@/app/(app)/inventory/actions";
 import { CATEGORY_GROUPS, type CategoryGroupId } from "@/config/inventory";
 import { activeFields, buildName, dropInactive, getCategory } from "@/lib/inventory/categories";
 import { formatStockExact as formatStock, isSheetGoods, parseStock } from "@/lib/inventory/stock";
-import { useManage } from "@/components/shell/ModeContext";
+import { useCan } from "@/components/shell/ModeContext";
 import { FieldInput } from "./fields";
 import { hostOf } from "./ItemCard";
 import { LocationPicker, PlaceTag } from "./LocationPicker";
@@ -97,10 +97,10 @@ export function ItemForm({
   onSaved: (id: string, message?: string) => void;
   onSubmit?: (input: ItemInput) => void; // the add box saves it itself, so the form closes at once
   onCancel: () => void;
-  // The item window's Delete (admins): it confirms, deletes and closes the window.
+  // The item window's Delete (any team member, Harel 2026-11-19): it confirms, deletes and closes the window.
   onDelete?: () => void | Promise<void>;
 }) {
-  const manage = useManage();
+  const discard = useCan("discard");
   const [deleting, startDelete] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -308,7 +308,7 @@ export function ItemForm({
       {error && <p className="text-sm text-rose-700">{error}</p>}
       {/* On phones the buttons stay at the bottom of the sheet, Add full width. */}
       <div className="flex items-center justify-end gap-2 max-sm:sticky max-sm:bottom-0 max-sm:z-[1] max-sm:-mx-4 max-sm:border-t max-sm:border-line max-sm:bg-surface max-sm:px-4 max-sm:py-3">
-        {itemId && onDelete && manage && (
+        {itemId && onDelete && discard && (
           <button type="button" className="btn mr-auto min-h-11 text-rose-700 active:scale-[0.98]" disabled={deleting} onClick={() => startDelete(async () => void (await onDelete()))}>
             {deleting ? "Deleting…" : "Delete"}
           </button>

@@ -17,7 +17,7 @@ import {
   countStock,
 } from "@/app/(app)/inventory/actions";
 import { Dialog } from "@/components/Dialog";
-import { EditOnly, useManage, usePermissions } from "@/components/shell/ModeContext";
+import { EditOnly, useCan, useManage, usePermissions } from "@/components/shell/ModeContext";
 import { IconButton } from "@/components/ui/IconButton";
 import { useEscape } from "@/components/ui/useEscape";
 import { holdTarget, useLongPress } from "@/components/ui/longPress";
@@ -162,6 +162,10 @@ export function InventoryView({
   // Move / Delete: taps select cards, the bar at the bottom acts on them. On a phone a long press
   // on an item selects it and opens the same bar with Edit, Move and Delete (Harel, 2026-11-12).
   const edit = useManage();
+  // Every team member gets the long-press bar: Edit and Move are work, Delete is discard; the
+  // toolbar (import, spreadsheet) stays admin-only (Harel, 2026-11-19).
+  const tidy = useCan("work");
+  const discard = useCan("discard");
   // The Build Team has no Export spreadsheet button (Harel, 2026-11-02).
   const hideExport = usePermissions().mode === "build";
   const [picking, setPicking] = useState<"select" | "move" | "delete" | null>(null);
@@ -169,7 +173,7 @@ export function InventoryView({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [moveCat, setMoveCat] = useState("");
   const [moveLoc, setMoveLoc] = useState(""); // "" keep, "none" clear, else a location id
-  const selecting = edit ? picking : null;
+  const selecting = tidy ? picking : null;
 
   // Stock steps, and an item being added (on top, glowing, until its save comes back).
   const [optimistic, addOptimistic] = useOptimistic(
@@ -453,7 +457,7 @@ export function InventoryView({
   };
   // Long press: that item selected, the bar offering Edit / Move / Delete; taps add more.
   const hold = useLongPress<string>({
-    enabled: edit && picking === null,
+    enabled: tidy && picking === null,
     find: (t, area) => holdTarget(t, area, "[data-item]")?.dataset.item ?? null,
     onHold: (id) => {
       if (saving(id)) return;
@@ -983,13 +987,15 @@ export function InventoryView({
                 >
                   Move
                 </button>
-                <button
-                  className="btn min-h-11 text-rose-600 active:scale-[0.98]"
-                  disabled={busy || selected.size === 0}
-                  onClick={confirmDelete}
-                >
-                  Delete
-                </button>
+                {discard && (
+                  <button
+                    className="btn min-h-11 text-rose-600 active:scale-[0.98]"
+                    disabled={busy || selected.size === 0}
+                    onClick={confirmDelete}
+                  >
+                    Delete
+                  </button>
+                )}
               </>
             ) : selecting === "move" ? (
               <>

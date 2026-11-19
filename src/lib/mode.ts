@@ -41,6 +41,7 @@ export const DENIED: Record<Capability, string> = {
   shape: "Only the CAD Team can bulk edit, merge or add parts.",
   instruct: "Only the CAD Team can write assembly steps.",
   check: "Only the CAD Team can run the design check.",
+  discard: "Ask an admin to put you on a team (Build or CAD) to delete items.",
   manage: "Only an admin in Edit mode can do this.",
 };
 

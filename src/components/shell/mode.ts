@@ -19,11 +19,13 @@ export const ROBOT_COOKIE = "orbit-robot";
 // instruct: write the Assembly page's steps (CAD too, Harel 2026-11-10; ticking them is work).
 // check: run the CAD page's Design check, set a part's weight, mark an overlap as fine (CAD too,
 // Harel 2026-11-13; its limits are manage).
-// manage: everything else (deletes, robot and system settings, Settings).
-export type Capability = "work" | "draw" | "review" | "sync" | "classify" | "shape" | "instruct" | "check" | "manage";
+// discard: delete inventory items (to Recently deleted); every team, like work, so the Inventory
+// page's long-press menu offers Delete and Move to CAD and Build too (Harel, 2026-11-19).
+// manage: everything else (other deletes, robot and system settings, Settings).
+export type Capability = "work" | "draw" | "review" | "sync" | "classify" | "shape" | "instruct" | "check" | "discard" | "manage";
 
 export function can(mode: Mode, cap: Capability): boolean {
-  if (cap === "work") return mode !== "none";
+  if (cap === "work" || cap === "discard") return mode !== "none";
   if (cap === "manage") return mode === "edit";
   return mode === "edit" || mode === "cad";
 }

@@ -193,8 +193,9 @@ export async function removeItemPhoto(itemId: string): Promise<ActionResult> {
   return { message: "Photo deleted." };
 }
 
+// Deleting items is "discard": any team member, not only admins (Harel, 2026-11-19).
 export async function deleteItem(itemId: string) {
-  const member = await requireCapability("manage");
+  const member = await requireCapability("discard");
   if (!isUuid(itemId)) return;
   await trashItems([itemId], member.id);
   refresh();
@@ -202,7 +203,7 @@ export async function deleteItem(itemId: string) {
 
 // The Inventory page's Delete mode.
 export async function bulkDeleteItems(itemIds: string[]): Promise<ActionResult> {
-  const member = await requireCapability("manage");
+  const member = await requireCapability("discard");
   if (!itemIds.length || itemIds.some((id) => !isUuid(id))) return { error: "Unknown item." };
   await trashItems(itemIds, member.id);
   refresh();
@@ -221,9 +222,10 @@ async function trashItems(itemIds: string[], memberId: string) {
 }
 
 // The Inventory page's Move mode: a new category and / or location for every selected item.
-// A field left out stays as it is; null clears the location.
+// A field left out stays as it is; null clears the location. Work, like one item's category or
+// location, so CAD and Build move items too (Harel, 2026-11-19).
 export async function bulkMoveItems(itemIds: string[], target: { category?: string | null; locationId?: string | null }): Promise<ActionResult> {
-  return moveItems(await requireCapability("manage"), itemIds, target);
+  return moveItems(await requireCapability("work"), itemIds, target);
 }
 
 async function moveItems(member: { id: string }, itemIds: string[], target: { category?: string | null; locationId?: string | null }): Promise<ActionResult> {
