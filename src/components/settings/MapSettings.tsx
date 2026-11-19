@@ -220,7 +220,7 @@ function ZoneEditor({ zones, selId, onSelect, run, pending }: { zones: Place[]; 
           </>
         )}
       </div>
-      <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#070B14]">
+      <div className="overflow-hidden rounded-2xl border border-white/10 bg-ink">
         <svg
           ref={svg}
           viewBox={`${view.x} ${view.y} ${view.w} ${view.w * ASPECT}`}
