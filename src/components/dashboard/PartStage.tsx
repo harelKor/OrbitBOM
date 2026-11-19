@@ -7,6 +7,7 @@ import { Icon } from "@/components/ui/Icon";
 import type { ModelPart } from "@/lib/data/parts";
 import { MeasureBox } from "@/components/viewer/MeasureBox";
 import { costHint, openFlatCost } from "@/config/callCosts";
+import { openInOnshape } from "@/lib/onshape/partLink";
 import type { PageMenu, ViewerModel } from "./ModelCanvas";
 import { useMeasurePicks } from "./useMeasurePicks";
 
@@ -115,6 +116,8 @@ export function PartModel({
     const system = systems.size === 1 && robotId ? [...systems][0] : null;
     return [
       ...(one ? [{ label: "Open part", run: () => openPicked(one) }] : []),
+      // The BOM's version in Onshape, not the workspace (Harel, 2026-11-19).
+      ...(one?.onshape ? [openInOnshape(one.onshape)] : []),
       ...(system
         ? [
             {

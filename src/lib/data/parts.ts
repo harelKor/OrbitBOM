@@ -9,7 +9,9 @@ import { cotsCategoryOf } from "@/lib/cots";
 import { categoryOf, type InvCategory } from "@/lib/inventory/categories";
 import { partKey } from "@/lib/model/assembly";
 import { thumbKey } from "@/lib/onshape/thumbnails";
-import { onshapeUrl, parseOnshapeUrl, type WVM } from "@/lib/onshape/url";
+import { partOnshapeUrl, type PartAt } from "@/lib/onshape/partLink";
+import { parseOnshapeUrl } from "@/lib/onshape/url";
+import { bomModelRef } from "@/lib/model/build";
 import { isOnshapeDrawingKey } from "@/lib/parts/files";
 import { computeStatus } from "@/lib/status";
 import { versionLabel } from "@/lib/versions/label";
@@ -42,6 +44,7 @@ export type BomPart = Omit<typeof parts.$inferSelect, "systemId" | ServerOnly> &
   files: PartFileRef[];
   thumbUrl: string | null;
   modelKey: string | null; // the part's key in the robot's 3D model
+  onshape: string | null; // the part in Onshape at its system's BOM version (null: not known)
   groups: { id: string; name: string; color: string | null }[];
   hasDrawing: boolean;
   drawingOutdated: boolean; // the part changed in Onshape since its drawing was made
@@ -80,7 +83,7 @@ async function load(where: ReturnType<typeof and>, { anySystem = false } = {}): 
   );
   // Files, thumbnail links, groups and the shelf don't depend on each other: one round trip.
   const ids = rows.map((r) => r.part.id);
-  const [files, thumbs, lockedThumbs, labels, groups, shelf] = await Promise.all([
+  const [files, thumbs, lockedThumbs, labels, groups, shelf, bomAt] = await Promise.all([
     ids.length
       ? db
           .select({ id: partFiles.id, partId: partFiles.partId, type: partFiles.type, filename: partFiles.filename, r2Key: partFiles.r2Key })
@@ -101,6 +104,7 @@ async function load(where: ReturnType<typeof and>, { anySystem = false } = {}): 
     bomLabels(rows.map((r) => r.part).filter((p) => p.releasedSnapshot && p.versionRowId && p.versionRowId !== p.releasedRowId).map((p) => p.versionRowId!)),
     groupsOfParts(ids),
     shelfOfParts(rows.map((r) => r.part)),
+    bomStates(rows.map((r) => r.part.systemId)),
   ]);
   const filesOf = new Map<string, PartFileRef[]>();
   for (const { partId, r2Key, ...f } of files) {
@@ -113,6 +117,7 @@ async function load(where: ReturnType<typeof and>, { anySystem = false } = {}): 
     thumbUrl: thumbs.get(r.part.id) ?? null,
     modelKey:
       r.part.sourceDid && r.part.sourceEid && r.part.onshapePartId ? partKey(r.part.sourceDid, r.part.sourceEid, r.part.onshapePartId) : null,
+    onshape: onshapeOfPart(r.part, bomAt),
     status: computeStatus(r.part),
     systemName: r.systemName ?? "",
     lastModifiedByName: r.lastModifiedByName,
@@ -130,6 +135,37 @@ function fabLockOf(p: typeof parts.$inferSelect, thumbUrl: string | null, bomLab
   const s = p.releasedSnapshot;
   if (!s) return null;
   return { label: s.versionLabel, name: s.versionName, partName: s.name, quantity: s.quantity, material: s.material, thumbUrl, studio: s.studio, bomLabel: bomLabel !== s.versionLabel ? bomLabel : null, changed: fabChanged(p), at: s.at };
+}
+
+// Where each system's BOM version was read (its assembly document's version or microversion, and
+// the other documents' versions it keeps), for the part window's Onshape button. No Onshape call.
+async function bomStates(systemIds: (string | null)[]): Promise<Map<string, PartAt>> {
+  const ids = [...new Set(systemIds.filter((x): x is string => !!x))];
+  if (!ids.length) return new Map();
+  const rows = await db
+    .select({ id: systems.id, url: systems.assemblyUrl, ref: systemVersions.onshapeRef })
+    .from(systems)
+    .innerJoin(systemVersions, eq(systemVersions.id, systems.currentVersionId))
+    .where(inArray(systems.id, ids));
+  const out = new Map<string, PartAt>();
+  for (const r of rows) {
+    const asm = r.url ? parseOnshapeUrl(r.url) : null;
+    if (!asm || !r.ref) continue;
+    out.set(r.id, { asm: { base: asm.baseUrl, did: asm.did, eid: asm.eid ?? null }, at: bomModelRef(r.ref, asm.did), docs: r.ref.sources });
+  }
+  return out;
+}
+
+// The part's Part Studio at its system's BOM version: that document's version when the BOM version
+// keeps it, the assembly's state when the Part Studio is in the assembly's document, else the
+// version Onshape's BOM said the assembly inserts it at. Null when none is known.
+function onshapeOfPart(p: Pick<typeof parts.$inferSelect, "systemId" | "sourceDid" | "sourceEid" | "sourceWvm" | "sourceWid">, states: Map<string, PartAt>): string | null {
+  const state = p.systemId ? states.get(p.systemId) : undefined;
+  if (!state) return null;
+  const src = p.sourceDid && p.sourceEid ? { did: p.sourceDid, eid: p.sourceEid } : null;
+  // A linked document Onshape's BOM read by version (the long name taken too, to be safe).
+  const inserted = src && src.did !== state.asm.did && !state.docs?.[src.did] && p.sourceWvm?.toLowerCase().startsWith("v") && p.sourceWid ? { [src.did]: { versionId: p.sourceWid } } : {};
+  return partOnshapeUrl(src, { ...state, docs: { ...state.docs, ...inserted } });
 }
 
 // The version labels ("V70") of these part version rows.
@@ -270,39 +306,36 @@ export async function countCotsStatuses(): Promise<Map<string, number>> {
 
 // The robot's BOM parts by their key in its 3D model, for a 3D view that has no cards to read
 // them from (a part window's Locate in robot): a click there names the part and opens it.
-// `onshape`: the part's Part Studio in Onshape, a plain link for the 3D menu's "Open in Onshape"
-// (no API call), on the host of its system's assembly.
+// `onshape`: the part in Onshape at its system's BOM version, for the 3D menu's "Open in Onshape"
+// (a plain link, no API call).
 export type ModelPart = { key: string; id: string; systemId: string; name: string; onshape?: string };
 export async function modelPartsOfRobot(robotId: string): Promise<ModelPart[]> {
   const rows = await db
     .select({
       id: parts.id,
       systemId: parts.systemId,
-      did: parts.sourceDid,
-      eid: parts.sourceEid,
+      sourceDid: parts.sourceDid,
+      sourceEid: parts.sourceEid,
       pid: parts.onshapePartId,
-      wvm: parts.sourceWvm,
-      wid: parts.sourceWid,
-      assemblyUrl: systems.assemblyUrl,
+      sourceWvm: parts.sourceWvm,
+      sourceWid: parts.sourceWid,
       displayName: parts.displayName,
       onshapeName: parts.onshapeName,
     })
     .from(parts)
     .innerJoin(systems, eq(systems.id, parts.systemId))
     .where(eq(systems.robotId, robotId));
+  const states = await bomStates(rows.map((r) => r.systemId));
   return rows.flatMap((r) => {
-    if (!r.did || !r.eid || !r.pid || !r.systemId) return [];
-    // Onshape's BOM gives "w" / "v" / "m"; the long names are taken too, to be safe.
-    const t = r.wvm?.toLowerCase()[0];
-    const wvm = t === "w" || t === "v" || t === "m" ? (t as WVM) : null;
-    const baseUrl = (r.assemblyUrl && parseOnshapeUrl(r.assemblyUrl)?.baseUrl) || "https://cad.onshape.com";
+    if (!r.sourceDid || !r.sourceEid || !r.pid || !r.systemId) return [];
+    const onshape = onshapeOfPart(r, states);
     return [
       {
-        key: partKey(r.did, r.eid, r.pid),
+        key: partKey(r.sourceDid, r.sourceEid, r.pid),
         id: r.id,
         systemId: r.systemId,
         name: r.displayName ?? r.onshapeName ?? "Unnamed part",
-        ...(wvm && r.wid && { onshape: onshapeUrl({ baseUrl, did: r.did, wvm, wvmid: r.wid, eid: r.eid }) }),
+        ...(onshape && { onshape }),
       },
     ];
   });

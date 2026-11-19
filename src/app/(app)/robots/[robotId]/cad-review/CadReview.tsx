@@ -10,6 +10,7 @@ import { Dialog } from "@/components/Dialog";
 import { toast } from "@/components/ui/Toaster";
 import type { FrozenRef } from "@/lib/reviews/tree";
 import { flatVersions, previousOf, sameRef } from "@/lib/reviews/versionList";
+import { partOnshapeUrl, sourceOfKey } from "@/lib/onshape/partLink";
 import { makeRobotVersion } from "./versionActions";
 import { UpdateSystem } from "@/components/versions/UpdateSystem";
 import type { RobotReview } from "@/lib/data/cadReview";
@@ -111,6 +112,18 @@ export function CadReview({
     return entries.length ? { key: "current", label: "Current", at: null, entries } : null;
   }, [review.systems]);
 
+  // The 3D menu's Open in Onshape (Harel, 2026-11-19): the part at the version the view shows, its
+  // system's Final (or Basepart) state from the tree, else where the model is read now. Hidden when
+  // the model is on a workspace (no version to open).
+  const onshapeOf = (key: string, systemId: string | null, view: VersionPick | null, k: ModelKind): string | null => {
+    const s = systemId ? review.systems.find((x) => x.id === systemId) : undefined;
+    const own = k === "basepart" ? (s ? s.basepart : review.robotBasepart) : s;
+    if (!own?.onshape) return null;
+    const owner = s ? s.id : "robot";
+    const at = view ? (view.entries.find((e) => e.owner === owner)?.ref ?? null) : own.modelRef;
+    return partOnshapeUrl(sourceOfKey(key), { asm: own.onshape, at });
+  };
+
   if (sys) {
     const comments = review.comments.filter((c) => c.systemId === sys.id);
     // Compare to last version (the Changes tab): the version the Final is on now and the one before.
@@ -141,6 +154,7 @@ export function CadReview({
         changes={kind === "final" ? { label: sys.current?.label ?? null, list: sys.changes } : undefined}
         canBuild={canBuild}
         compareLast={compareLast}
+        onshapeOf={onshapeOf}
         panel={(onFocus, open) => (
           <>
             {extra?.assemblyUrl && (canSync || extra.draft) && (
@@ -199,6 +213,7 @@ export function CadReview({
       target={{ systems }}
       onlySystem={null}
       onIsolate={isolate}
+      onshapeOf={onshapeOf}
       check={check}
       me={me}
       canTick={canTick}

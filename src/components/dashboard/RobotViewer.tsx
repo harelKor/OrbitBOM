@@ -10,6 +10,7 @@ import { Segmented } from "@/components/ui/Segmented";
 import { buildModel } from "@/components/viewer/buildModel";
 import { drawPictures } from "@/components/viewer/pictures";
 import { MeasureBox } from "@/components/viewer/MeasureBox";
+import { openInOnshape } from "@/lib/onshape/partLink";
 import type { PageMenu, ViewerMode, ViewerModel } from "./ModelCanvas";
 import { useMeasurePicks } from "./useMeasurePicks";
 import {
@@ -28,7 +29,8 @@ import {
 const ModelCanvas = dynamic(() => import("./ModelCanvas").then((m) => m.ModelCanvas), { ssr: false });
 
 // A BOM part as the viewer knows it: its key in the model, status colour, and where its card is.
-export type ViewerPart = { key: string; color: string; id: string; systemId: string; name: string; fab: boolean };
+// `onshape`: the part in Onshape at its system's BOM version (the 3D menu's Open in Onshape).
+export type ViewerPart = { key: string; color: string; id: string; systemId: string; name: string; fab: boolean; onshape?: string };
 
 // The 3D robot stage. The model is built from the systems' Onshape assemblies on demand
 // (Edit mode's Update 3D model) and kept in R2; viewing it costs no Onshape calls. On the page it
@@ -132,6 +134,8 @@ export function RobotViewer({
     const system = systems.size === 1 ? [...systems][0] : null;
     return [
       ...(one ? [{ label: "Open part", run: () => onOpen(one.key) }] : []),
+      // The BOM's version in Onshape, not the workspace (Harel, 2026-11-19).
+      ...(one?.onshape ? [openInOnshape(one.onshape)] : []),
       // Not on the system's own page: it's already there.
       ...(system && system !== systemId
         ? [
