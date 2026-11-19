@@ -31,7 +31,11 @@ import { CadCommitWindow } from "@/components/versions/CadCommitWindow";
 import { diffVersions, isOld, OLD, plainKey, type VersionChange } from "@/lib/versions/versionDiff";
 import { buildVersion, useVersionModel, VersionContext, type VersionTarget } from "./versionView";
 
-const ModelCanvas = dynamic(() => import("@/components/dashboard/ModelCanvas").then((m) => m.ModelCanvas), { ssr: false });
+// Text while the 3D code downloads (seconds on the shop's 4G), not an empty view.
+const ModelCanvas = dynamic(() => import("@/components/dashboard/ModelCanvas").then((m) => m.ModelCanvas), {
+  ssr: false,
+  loading: () => <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">Loading the 3D view…</div>,
+});
 
 export type ReviewPart = { id: string; key: string; name: string; systemId: string | null; onshape?: string };
 type Colors = "cad" | "compare";
@@ -155,12 +159,14 @@ export function ReviewScreen({
   // it's open becomes the comment's part and pin (the newest pick's point, S6); the 3D view is
   // kept as it is when the comment is saved.
   const [addingPin, setAddingPin] = useState<[number, number, number] | null>(null);
+  const [bubble, setBubble] = useState<string | null>(null); // the 3D comment tag whose popup is open
   // The face / edge / corner picked with it (Harel, 2026-11-18).
   const [addingAnchor, setAddingAnchor] = useState<Anchor | null>(null);
   // Every pick, of any parts, while the window is open (Harel, 2026-11-18): the comment is about all of them.
   const [addingAnchors, setAddingAnchors] = useState<Anchor[]>([]);
   const [addingBody, setAddingBody] = useState("");
   const startAdding = (part: { key: string; name: string | null; systemId: string | null } | null, from?: { body: string; pin: [number, number, number] | null }) => {
+    setBubble(null);
     setAddingPin(from ? from.pin : (tools?.pickPoint() ?? null));
     setAddingAnchor(from ? null : (tools?.pickAnchor() ?? null));
     setAddingAnchors(from ? [] : (tools?.pickAnchors() ?? []));
@@ -496,7 +502,6 @@ export function ReviewScreen({
       localStorage.setItem(TAGS_KEY, on ? "1" : "0");
     } catch {}
   };
-  const [bubble, setBubble] = useState<string | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   // Local checks (/dev/cad-review): the 3D view's tools in the browser console.
   useEffect(() => {
@@ -556,6 +561,8 @@ export function ReviewScreen({
   );
   // The part of the newest pick (the 3D view reports it); a tap on a pick again drops it.
   const onPick = (key: string | null) => {
+    // A tap anywhere in the 3D view closes a tag's bubble (a tap on a tag never reaches here).
+    setBubble(null);
     if (key) setFocus(null);
     setSelected(key);
     // + Add comment is open (it doesn't block the view): the comment is about the new pick now.
@@ -732,7 +739,9 @@ export function ReviewScreen({
       </aside>
       <PanelResizer root={root} />
 
-      <section ref={section} className="relative min-w-0 flex-1 overflow-hidden bg-surface">
+      {/* --bottom-clear: the 3D view's own bottom panels (Move, Exploded view, files failed) sit
+        above + Add comment and the rotation lock on a phone. */}
+      <section ref={section} className="relative min-w-0 flex-1 overflow-hidden bg-surface max-lg:[--bottom-clear:5rem]">
         {/* While a Design Review is open: a soft Orbit-blue glow from the 3D view's bottom left
           corner, fading out (Harel, 2026-11-18: moved here from the left panel). Over the canvas,
           never in the way of a click. */}
@@ -770,7 +779,12 @@ export function ReviewScreen({
         ) : vt ? (
           <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">
             {vload?.state === "error" ? (
-              vload.error
+              <span className="flex flex-col items-center gap-2">
+                {vload.error}
+                <button type="button" className="btn min-h-9 active:scale-[0.98]" onClick={() => setVAttempt((n) => n + 1)}>
+                  Retry
+                </button>
+              </span>
             ) : vload?.state === "missing" ? (
               <span className="flex max-w-sm flex-col items-center gap-2">
                 <span>
@@ -957,7 +971,15 @@ export function ReviewScreen({
           />
         )}
         {tools && bubbleComment && createPortal(<CommentBubble c={bubbleComment} onClose={() => setBubble(null)} onOpen={() => setWindowed(bubbleComment.id)} />, tools.popupHost())}
-        <MeasureBox measured={measured} className="max-lg:bottom-20 lg:bottom-3" />
+        <MeasureBox
+          measured={measured}
+          className="max-lg:bottom-20 lg:bottom-3"
+          onClear={() => {
+            setSelected(null);
+            tools?.measure(null);
+            tools?.measure("any");
+          }}
+        />
 
         <ViewerToolbar tools={tools} hidden={hidden}>
           {colourToggle}

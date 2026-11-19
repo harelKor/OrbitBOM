@@ -241,7 +241,7 @@ export function ModelCanvas({
       {cube && motion && (motion.panel || motion.moving || motion.moved) && <MotionPanel view={motion} tools={cube} />}
       {error && <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">{error}</div>}
       {partial && !error && !progress && (
-        <div className="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border border-line bg-surface/95 px-3 py-1 text-xs shadow-sm backdrop-blur" role="status">
+        <div className="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full max-lg:bottom-[var(--bottom-clear,0.75rem)] border border-line bg-surface/95 px-3 py-1 text-xs shadow-sm backdrop-blur" role="status">
           <span className="text-fg-2 tabular-nums">
             {partial.failed} {partial.failed === 1 ? "file" : "files"} failed
           </span>

@@ -22,8 +22,10 @@ export type PinTools = {
   pickPoint: () => [number, number, number] | null; // the newest pick's point, in assembly mm
 };
 
-const W = 30; // the bubble
-const H = 28;
+// The bubble; bigger on touch screens, to be hit with a finger (Harel, 2026-11-19).
+const coarse = typeof matchMedia !== "undefined" && matchMedia("(pointer: coarse)").matches;
+const W = coarse ? 38 : 30;
+const H = coarse ? 36 : 28;
 const TAIL = 8; // its tail, below its left side; the tip is the point
 
 export function createPins(stage: Stage, meshes: PartMesh[], topo: Topo, newest: () => Pick | null): { tools: PinTools; dispose: () => void } {

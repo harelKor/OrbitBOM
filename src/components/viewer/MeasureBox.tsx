@@ -10,7 +10,8 @@ import { UnitsSwitch, useUnits } from "./units";
 // the angle (src/lib/model/measure.ts). Each value has a copy button, like Onshape's. Shared by the
 // CAD page and the /dev/viewer sandbox; `className` places it (above + Add comment on a phone).
 // Lengths in mm or inches (the switch at the top, kept per browser, like Onshape's units; S9).
-export function MeasureBox({ measured, className = "bottom-3" }: { measured: MeasureInfo; className?: string }) {
+// `onClear`: a ✕ on phones, where there's no Esc (Harel, 2026-11-19).
+export function MeasureBox({ measured, className = "bottom-3", onClear }: { measured: MeasureInfo; className?: string; onClear?: () => void }) {
   const units = useUnits();
   if (!measured.picks.length) return null;
   // The number as shown, without the "≈" that marks a value read off the tessellation.
@@ -20,8 +21,15 @@ export function MeasureBox({ measured, className = "bottom-3" }: { measured: Mea
       () => toast("Couldn't copy it", true),
     );
   return (
-    <div className={`absolute right-3 z-20 w-80 max-w-[calc(100%-1.5rem)] animate-pop rounded-md border border-line bg-surface/95 p-3 text-sm shadow-md backdrop-blur ${className}`}>
+    <div className={`absolute right-3 z-[15] w-80 max-w-[calc(100%-1.5rem)] animate-pop rounded-md border border-line bg-surface/95 p-3 text-sm shadow-md backdrop-blur ${className}`}>
+      {/* Under the bottom controls (Show all, Exploded view, the compare slider: z-20), over the
+        view cube (z-10): it shows on every pick and used to cover them on a phone. */}
       <UnitsSwitch className="float-right -mt-1 -mr-1 ml-2" />
+      {onClear && (
+        <button type="button" onClick={onClear} aria-label="Clear the picks" title="Clear the picks" className="press float-right -mt-1 mr-1 flex size-9 items-center justify-center rounded text-muted hover:bg-raised hover:text-fg active:scale-[0.98] lg:hidden">
+          ✕
+        </button>
+      )}
       <ul className="max-h-36 space-y-0.5 overflow-y-auto">
         {measured.picks.map((p, k) => (
           <li key={k} className="flex items-center gap-1.5 text-fg-2">
@@ -54,7 +62,10 @@ export function MeasureBox({ measured, className = "bottom-3" }: { measured: Mea
         </tbody>
       </table>
       {measured.picks.length === 1 && <p className="mt-1 text-xs text-subtle">Pick a second one to measure between them.</p>}
-      {measured.picks.length > 2 && <p className="mt-1 text-xs text-subtle">Measures show for one or two picks. Space drops the newest, Esc all.</p>}
+      {measured.picks.length > 2 && <p className="mt-1 text-xs text-subtle">
+          Measures show for one or two picks. <span className="pointer-coarse:hidden">Space drops the newest, Esc all.</span>
+          <span className="hidden pointer-coarse:inline">Tap a pick to drop it, ✕ or a double tap on empty space clears them all.</span>
+        </p>}
     </div>
   );
 }

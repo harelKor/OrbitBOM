@@ -13,7 +13,7 @@ const box = "pointer-events-auto animate-pop rounded-md border border-line bg-su
 export function MotionPanel({ view, tools }: { view: MotionView; tools: SceneTools }) {
   const pct = Math.round(view.explode * 100);
   return (
-    <div className="pointer-events-none absolute inset-x-3 bottom-3 z-20 flex flex-col items-center gap-2" onClick={(e) => e.stopPropagation()}>
+    <div className="pointer-events-none absolute inset-x-3 bottom-3 z-20 max-lg:bottom-[var(--bottom-clear,0.75rem)] flex flex-col items-center gap-2" onClick={(e) => e.stopPropagation()}>
       {view.moving && (
         <div className={`${box} flex items-center gap-0.5 p-1`} role="toolbar" aria-label="Move">
           <span className="px-1.5 font-semibold text-fg tabular-nums">Move {view.moving.count > 1 ? `${view.moving.count} parts` : ""}</span>

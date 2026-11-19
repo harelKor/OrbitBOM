@@ -139,7 +139,7 @@ export function ContextMenu({
       aria-label={one ? name(one) : keys.length ? `${keys.length} parts` : "View"}
       onContextMenu={(e) => e.preventDefault()}
       style={pos}
-      className="fixed z-50 w-56 animate-pop overflow-hidden rounded-md border border-line bg-surface/95 py-1 text-sm shadow-lg backdrop-blur"
+      className="fixed z-50 w-56 animate-pop max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-md border border-line bg-surface/95 py-1 text-sm shadow-lg backdrop-blur"
     >
       {keys.length > 0 && <p className="truncate border-b border-line px-3 pt-1 pb-1.5 text-xs font-semibold text-muted">{one ? name(one) : `${keys.length} picked parts`}</p>}
       {groups.map((items, g) => (

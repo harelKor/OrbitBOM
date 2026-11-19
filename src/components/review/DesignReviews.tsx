@@ -209,7 +209,7 @@ export function ReviewTag({ c }: { c: ReviewComment }) {
     <Popover
       hideCaret
       width={260}
-      triggerClassName="press inline-flex items-center gap-1 rounded-full bg-sky-500/15 px-2 py-0.5 text-[0.6875rem] font-semibold text-sky-700 hover:bg-sky-500/25 dark:text-sky-300 pointer-coarse:min-h-8"
+      triggerClassName="press inline-flex items-center gap-1 rounded-full bg-sky-500/15 px-2 py-0.5 text-[0.6875rem] font-semibold text-sky-700 hover:bg-sky-500/25 dark:text-sky-300 pointer-coarse:min-h-9"
       trigger={<span title={`${dr.name}: tap for its state`}>DR · {versionText(dr.version)}</span>}
     >
       {() => (
