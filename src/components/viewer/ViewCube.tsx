@@ -19,7 +19,9 @@ const FACES: { label: string; n: V; r: V; u: V; place: string }[] = [
   { label: "Bottom", n: [0, -1, 0], r: [1, 0, 0], u: [0, 0, 1], place: "rotateX(-90deg)" },
 ];
 // Each face is a 3×3 grid: the middle looks at the face, the sides at an edge, the corners at a
-// corner (the direction is the sum of the faces' normals).
+// corner (the direction is the sum of the faces' normals). The sides are 22%, 30% on touch so a
+// finger can hit an edge or a corner (they were 10–14 px wide on the 64 px cube, phone audit
+// 2026-11-19).
 const CELLS = [1, 0, -1].flatMap((b) => [-1, 0, 1].map((a) => [a, b] as const));
 const dirOf = (f: (typeof FACES)[number], a: number, b: number): V => [0, 1, 2].map((k) => f.n[k] + a * f.r[k] + b * f.u[k]) as V;
 
@@ -106,7 +108,9 @@ export function ViewCube({ tools }: { tools: SceneTools }) {
   return (
     <>
       <div
-        className="absolute top-3 right-3 z-10 grid size-28 grid-cols-[1fr_var(--cube)_1fr] grid-rows-[1fr_var(--cube)_1fr] place-items-center select-none [--cube:72px] pointer-coarse:size-[calc(var(--cube)+2.5rem)] pointer-coarse:[--cube:64px]"
+        // Above the CAD page's Comments strip and Measure box while the menu is open: on phones they
+        // overlap it (phone audit, 2026-11-19).
+        className={`absolute top-3 right-3 ${menu ? "z-30" : "z-10"} grid size-28 grid-cols-[1fr_var(--cube)_1fr] grid-rows-[1fr_var(--cube)_1fr] place-items-center select-none [--cube:72px] pointer-coarse:size-[calc(var(--cube)+2.5rem)] pointer-coarse:[--cube:64px]`}
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
@@ -121,7 +125,7 @@ export function ViewCube({ tools }: { tools: SceneTools }) {
             {FACES.map((f) => (
               <div
                 key={f.label}
-                className="absolute inset-0 grid grid-cols-[22%_1fr_22%] grid-rows-[22%_1fr_22%] overflow-hidden rounded-[3px] border border-line-strong bg-raised/95 shadow-[inset_0_0_6px_rgb(0_0_0/0.08)] [backface-visibility:hidden]"
+                className="absolute inset-0 grid grid-cols-[22%_1fr_22%] grid-rows-[22%_1fr_22%] overflow-hidden rounded-[3px] border border-line-strong bg-raised/95 shadow-[inset_0_0_6px_rgb(0_0_0/0.08)] [backface-visibility:hidden] pointer-coarse:grid-cols-[30%_1fr_30%] pointer-coarse:grid-rows-[30%_1fr_30%]"
                 style={{ transform: `${f.place} translateZ(calc(var(--cube) / 2))` }}
               >
                 {CELLS.map(([a, b]) => {
@@ -166,7 +170,7 @@ export function ViewCube({ tools }: { tools: SceneTools }) {
           ▾
         </button>
         {menu && (
-          <div className={`absolute top-full right-0 mt-1 max-h-[min(36rem,75vh)] w-52 animate-pop overflow-y-auto p-1 ${box}`} role="menu" aria-label="Camera and render options">
+          <div className={`absolute top-full right-0 mt-1 max-h-[min(36rem,calc(100dvh-var(--review-top,0px)-9rem))] w-52 animate-pop overflow-y-auto p-1 ${box}`} role="menu" aria-label="Camera and render options">
             <div className="grid grid-cols-1 pointer-coarse:grid-cols-3 pointer-coarse:gap-0.5">
               {MENU_VIEWS.map(({ v, label, key: k }) => (
                 <button key={v} className={`${item} pointer-coarse:justify-center pointer-coarse:px-1`} role="menuitem" onClick={run(() => tools.view(v))}>
