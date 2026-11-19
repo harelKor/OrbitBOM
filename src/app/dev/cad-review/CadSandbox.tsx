@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ReviewScreen, type ReviewPart } from "@/components/review/ReviewScreen";
 import type { ViewerModel } from "@/components/dashboard/ModelCanvas";
+import type { ModelKind } from "@/components/dashboard/ModelToggle";
 import type { ReviewComment } from "@/lib/data/cadReview";
 import type { Anchor } from "@/lib/reviews/anchor";
 import type { DesignReview } from "@/lib/reviews/designReviews";
@@ -91,6 +92,16 @@ export function CadSandbox() {
   }, []);
   const shown = useMemo(() => comments.map((c, i) => (anchors[i] ? { ...c, anchor: anchors[i], partKey: anchors[i].key, pin: anchors[i].at } : c)), [comments, anchors]);
   const [closed] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("closed") === "1");
+  // ?models=1: the Basepart | Final toggle (both draw the same sandbox model); ?changes=1: the Part
+  // colours toggle with a few made-up changes; ?system=1: one system isolated, with the phone's
+  // back-to-robot chip. For checking the phone layout (Harel, 2026-11-19).
+  const [flags] = useState(() => {
+    const q = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+    return { models: q?.get("models") === "1", changes: q?.get("changes") === "1", system: q?.get("system") === "1" };
+  });
+  const [kind, setKind] = useState<ModelKind>("final");
+  const [only, setOnly] = useState<string | null | undefined>(undefined); // undefined: the first system
+  const onlySystem = flags.system ? (only === undefined ? (systems[0]?.id ?? null) : only) : null;
   if (!data) return <p className="p-6 text-sm text-muted">Loading the sandbox…</p>;
   return (
     <div className="p-4 md:p-6">
@@ -105,7 +116,11 @@ export function CadSandbox() {
         me={{ id: "author-0", isAdmin: true, isMentor: true }}
         canTick
         canApprove
-        onIsolate={() => {}}
+        onIsolate={(id) => flags.system && setOnly(id)}
+        onlySystem={onlySystem}
+        back={onlySystem ? { label: "Sandbox robot", onClick: () => setOnly(null) } : undefined}
+        models={flags.models ? { kind, both: true, onKind: setKind } : undefined}
+        changes={flags.changes ? { label: "V2", list: parts.slice(0, 3).map((p, i) => ({ partId: p.id, change: i === 0 ? "added" : "changed", geometry: i === 1, name: p.name })) } : undefined}
         // ?closed=1: no DR open (Start DR).
         reviews={{ list: closed ? REVIEWS.map((d) => ({ ...d, open: false })) : REVIEWS, nextVersion: 5, systems }}
         panel={() => <p className="text-xs text-muted">The version tree shows here on the real CAD page.</p>}

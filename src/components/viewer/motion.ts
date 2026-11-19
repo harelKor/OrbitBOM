@@ -82,6 +82,7 @@ export function createMotion(
     shown: (m: number, i: number) => boolean;
     moved: () => void; // matrices changed: redraw the selection
     settled: () => void; // a drag or the slider let go: redo the slower things (section outlines)
+    fingerDrags?: () => boolean; // the phone's rotation lock is on: one finger drags parts too
   },
 ): Motion {
   // Per copy touched: its CAD place, the Move on top of it, and its explode offset.
@@ -366,6 +367,10 @@ export function createMotion(
   };
   // Onshape's drag: a left drag on a part with a mate moves it along that mate (a turn follows
   // the pointer round the axis; a slide along it). A press that doesn't move is still a click.
+  // On a phone with the rotation lock on, one finger does the same (Harel, 2026-11-19): the
+  // finger's events still go on to picking and the camera (the lock keeps the camera still), so
+  // their own touch bookkeeping stays right; a finger held still first is a long press instead
+  // (picking's menu or box select), not a drag.
   const ray = new THREE.Raycaster();
   const toModel = () => stage.root.matrixWorld.clone().invert();
   const screen = (p: THREE.Vector3) => {
@@ -378,25 +383,33 @@ export function createMotion(
     ray.setFromCamera(new THREE.Vector2(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1), stage.camera);
     return ray;
   };
-  let press: { x: number; y: number; id: number; j: number; p0: THREE.Vector3; value: number; going: boolean } | null = null;
+  let press: { x: number; y: number; id: number; j: number; p0: THREE.Vector3; value: number; going: boolean; finger: boolean; t: number } | null = null;
   const onPress = (e: PointerEvent) => {
+    const finger = e.pointerType === "touch";
+    // A second finger: a pinch, not a drag (unless the part is already moving).
+    if (finger && press) {
+      if (!press.going) press = null;
+      return;
+    }
+    if (finger ? !on.fingerDrags?.() : e.pointerType !== "mouse") return;
     // Not while Move's triad is up: Move moves the parts freely (Harel, 2026-11-18).
-    if (!kin || moving.length || e.button !== 0 || e.pointerType !== "mouse" || e.target !== canvas || dragId !== null) return;
+    if (!kin || moving.length || e.button !== 0 || e.target !== canvas || dragId !== null) return;
     const hit = rayAt(e.clientX, e.clientY).intersectObjects(meshes.filter((x) => x.mesh.visible && x.bodies).map((x) => x.mesh), false)[0];
     if (!hit || hit.instanceId === undefined) return;
     const m = meshes.findIndex((x) => x.mesh === hit.object);
     const j = kin.driver(bodyOf({ m, i: hit.instanceId }));
     if (j === null) return;
-    press = { x: e.clientX, y: e.clientY, id: e.pointerId, j, p0: hit.point.clone().applyMatrix4(toModel()), value: kin.value(j)[turns(joints[j].type) ? "turn" : "slide"], going: false };
+    press = { x: e.clientX, y: e.clientY, id: e.pointerId, j, p0: hit.point.clone().applyMatrix4(toModel()), value: kin.value(j)[turns(joints[j].type) ? "turn" : "slide"], going: false, finger, t: performance.now() };
   };
   const onPressMove = (e: PointerEvent) => {
     if (!press || e.pointerId !== press.id || !kin) return;
     if (!press.going) {
-      if (Math.hypot(e.clientX - press.x, e.clientY - press.y) <= 4) return;
+      if (press.finger && performance.now() - press.t > HOLD_MS) return void (press = null);
+      if (Math.hypot(e.clientX - press.x, e.clientY - press.y) <= (press.finger ? 8 : 4)) return;
       press.going = true;
       controls.enabled = false;
     }
-    e.stopPropagation();
+    if (!press.finger) e.stopPropagation();
     const { j, p0 } = press;
     const f = kin.frame(j);
     const o = new THREE.Vector3().setFromMatrixPosition(f);
@@ -432,10 +445,10 @@ export function createMotion(
   };
   const onPressUp = (e: PointerEvent) => {
     if (!press || e.pointerId !== press.id) return;
-    const went = press.going;
+    const { going: went, finger } = press;
     press = null;
     if (!went) return;
-    e.stopPropagation();
+    if (!finger) e.stopPropagation();
     controls.enabled = true;
     on.settled();
     tell();
@@ -502,5 +515,7 @@ export function createMotion(
   };
 }
 
+// A finger held this long before moving is picking's long press (its LONG_PRESS_MS is 500).
+const HOLD_MS = 450;
 const ID = new THREE.Matrix4();
 const isIdentity = (m: THREE.Matrix4) => m.elements.every((v, k) => Math.abs(v - ID.elements[k]) < 1e-12);

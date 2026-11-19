@@ -122,6 +122,7 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
       const s = section.tools.sectionNow();
       if (s) section.tools.section(s);
     },
+    fingerDrags: camera.tools.rotationLocked,
   });
   const red = createRedOverlap(stage); // a Design check overlap's Show
   const pins = createPins(stage, meshes, topo, () => measure?.newest() ?? null); // comment pins (S6)

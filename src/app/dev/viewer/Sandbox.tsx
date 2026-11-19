@@ -165,7 +165,7 @@ export function Sandbox() {
 
       <MeasureBox measured={measured} />
 
-      <ViewerToolbar tools={tools} hidden={hidden}>
+      <ViewerToolbar tools={tools} hidden={hidden} childrenOnPhone>
         <Segmented
           label="Part colours"
           value={mode}

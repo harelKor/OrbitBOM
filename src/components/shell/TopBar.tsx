@@ -23,7 +23,9 @@ export function TopBar({ onMenu, onRobots, navHidden, robotsHidden }: { onMenu: 
   // opens a dropdown of matching parts and inventory items (Harel, 2026-11-04); phones show it on
   // the robot pages, and elsewhere behind a search button that opens it (a short dropdown,
   // SearchDropdown), so Home, Inventory and Orders can search too.
-  const partPages = pathname.startsWith("/robots/") && pathname !== "/robots/new";
+  // Not on the CAD page: its 3D view needs the height, and the search doesn't filter it (Harel,
+  // 2026-11-19); phones keep the search button there.
+  const partPages = pathname.startsWith("/robots/") && pathname !== "/robots/new" && !/\/cad-review\/?$/.test(pathname);
   const [phoneOpen, setPhoneOpen] = useState(false);
   const shown = partPages || phoneOpen;
   // A new page puts the button back.

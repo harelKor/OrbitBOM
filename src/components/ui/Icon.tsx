@@ -10,6 +10,9 @@ const PATHS = {
   download: "M10 3.5v9M6.5 9 10 12.5 13.5 9M4 16h12",
   locate: "M10 15.5a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11zM10 2v3M10 15v3M2 10h3M15 10h3M10 11a1 1 0 1 0 0-2 1 1 0 0 0 0 2z",
   lock: "M5.5 9h9v7.5h-9zM7 9V6.5a3 3 0 0 1 6 0V9M10 12v2",
+  unlock: "M5.5 9h9v7.5h-9zM7 9V6.5a3 3 0 0 1 5.8-1.1M10 12v2",
+  // A clock with a turning-back arrow: the CAD page's Versions panel on phones.
+  history: "M3.5 10a6.5 6.5 0 1 0 1.9-4.6M3.5 3v2.9h2.9M10 6.5V10l2.5 1.5",
   note: "M5 3.5h7l3 3v10H5zM12 3.5v3h3M7.5 10h5M7.5 13h3.5",
   gear: "M10 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4",
   chevron: "M7.5 5 12.5 10l-5 5",

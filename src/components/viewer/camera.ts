@@ -39,6 +39,10 @@ export type CameraTools = {
   setPose: (pose: ViewPose, animate?: boolean) => void;
   watch: (turned: (q: THREE.Quaternion) => void) => () => void; // the camera's orientation, on every change (the view cube)
   onShortcuts: (open: (() => void) | null) => void; // the `?` key
+  // Phones' rotation lock (Harel, 2026-11-19): one finger no longer rotates (pinch still zooms and
+  // two fingers still move); a one-finger drag on a part moves it along its mate (motion.ts).
+  lockRotation: (on: boolean) => void;
+  rotationLocked: () => boolean;
 };
 export type Camera = {
   controls: OrbitControls;
@@ -138,7 +142,7 @@ type Pose = { target: THREE.Vector3; quat: THREE.Quaternion; half: number };
 // starts on the model; middle drag and Ctrl+right drag move; the wheel zooms at the pointer. Left
 // drag doesn't rotate (Onshape's is box select, picking.ts; Harel, 2026-11-13: "exactly like
 // Onshape"); a touchpad rotates with its right button held, as in Onshape. One finger (or a pen)
-// rotates, two pinch (at their centre) and move. `shown` is the box of what's drawn now,
+// rotates, unless the phone's rotation lock is on; two pinch (at their centre) and move. `shown` is the box of what's drawn now,
 // for Fit and the views.
 export function createCamera(stage: Stage, shown: () => THREE.Box3, meshes: PartMesh[]): Camera {
   const { camera, renderer, render, el } = stage;
@@ -362,12 +366,14 @@ export function createCamera(stage: Stage, shown: () => THREE.Box3, meshes: Part
   };
   let drag: { id: number; x: number; y: number; x0: number; y0: number; pivot: THREE.Vector3 | null } | null = null;
   const touches = new Set<number>();
+  let locked = false;
   const onDown = (e: PointerEvent) => {
     stop();
     if (e.pointerType === "touch") {
       touches.add(e.pointerId);
       // A second finger: OrbitControls pinches and moves.
       if (touches.size > 1) return void (drag = null);
+      if (locked) return;
     } else if (e.pointerType === "mouse" ? e.button !== 2 || e.ctrlKey || e.metaKey : e.button !== 0) return;
     drag = { id: e.pointerId, x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, pivot: null };
   };
@@ -455,6 +461,11 @@ export function createCamera(stage: Stage, shown: () => THREE.Box3, meshes: Part
         return () => watchers.delete(turned);
       },
       onShortcuts: (open) => (shortcuts = open),
+      lockRotation: (on) => {
+        locked = on;
+        if (on && drag && touches.has(drag.id)) drag = null;
+      },
+      rotationLocked: () => locked,
     },
     dispose: () => {
       stop();
