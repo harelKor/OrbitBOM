@@ -96,6 +96,13 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
       actions={
         <>
           {!part.isManual && !cots && <PartVersionsButton partId={part.id} lock={part.fabLock} released={fabStage(part) !== null} />}
+          {/* The part in Onshape at the version the BOM is linked to, not the workspace (Harel, 2026-11-19). */}
+          {!part.isManual && part.onshape && (
+            <a href={part.onshape} target="_blank" rel="noopener noreferrer" className="btn h-8 text-xs active:scale-[0.98]" title="Open this part in Onshape at the BOM's version">
+              <Icon name="link" className="h-3.5 w-3.5" />
+              Onshape
+            </a>
+          )}
           {phone ? hasMenu && <MoreMenu>{tools}</MoreMenu> : tools}
         </>
       }

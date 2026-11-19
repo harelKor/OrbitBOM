@@ -37,6 +37,7 @@ export type CardPart = PartRow & {
   files: { id: string; type: string; filename: string; onshape?: boolean }[];
   thumbUrl: string | null;
   modelKey: string | null; // the part's key in the robot's 3D model
+  onshape?: string | null; // the part in Onshape at the BOM's version (the window's Onshape button)
   geometry?: { onshapeMaterial?: string; sheetMetal?: { flatPartId: string }; wallMm?: number } | null;
   groups: { id: string; name: string; color: string | null }[];
   memberIds?: string[]; // set on a merged row

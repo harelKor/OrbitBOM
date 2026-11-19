@@ -28,7 +28,8 @@ import { toast } from "@/components/ui/Toaster";
 import { Icon } from "@/components/ui/Icon";
 import { CadCommitWindow } from "@/components/versions/CadCommitWindow";
 import { diffVersions, isOld, OLD, plainKey, type VersionChange } from "@/lib/versions/versionDiff";
-import { buildVersion, useVersionModel, VersionContext, type VersionTarget } from "./versionView";
+import { buildVersion, useVersionModel, VersionContext, type VersionPick, type VersionTarget } from "./versionView";
+import { openInOnshape } from "@/lib/onshape/partLink";
 
 // Text while the 3D code downloads (seconds on the shop's 4G), not an empty view.
 const ModelCanvas = dynamic(() => import("@/components/dashboard/ModelCanvas").then((m) => m.ModelCanvas), {
@@ -76,6 +77,7 @@ export function ReviewScreen({
   canBuild = false,
   compareLast,
   reviews,
+  onshapeOf,
 }: {
   robotId: string;
   title: string;
@@ -106,6 +108,8 @@ export function ReviewScreen({
   // The robot's Design Reviews (Harel, 2026-11-18): newest first; `nextVersion` the number Finish's
   // robot version would get; `systems` what Start DR offers.
   reviews?: { list: DesignReview[]; nextVersion: number; systems: { id: string; name: string }[] };
+  // The 3D menu's Open in Onshape: a part at the version shown (null: the current one) (Harel, 2026-11-19).
+  onshapeOf?: (key: string, systemId: string | null, view: VersionPick | null, kind: ModelKind) => string | null;
 }) {
   const kind: ModelKind = models?.kind ?? "final";
   const [model, setModel] = useState<ViewerModel | null | undefined>(builtAt ? undefined : null);
@@ -574,10 +578,14 @@ export function ReviewScreen({
     const one = keys.length === 1 ? partByKey.get(keys[0]) : undefined;
     const systems = new Set(keys.map((k) => partByKey.get(k)?.systemId ?? null));
     const system = onRobot && systems.size === 1 ? [...systems][0] : null;
+    // A version shown: the older one's copies (compare) open at that one.
+    const shown = vt ? (picks.some(isOld) && vt.b ? vt.b : vt.a) : null;
+    const onshapeLink = keys.length === 1 ? (onshapeOf?.(keys[0], one?.systemId ?? onlySystem, shown, kind) ?? null) : null;
     return [
       ...(one ? [{ label: "Open part", run: () => void openPartWindow(one.id) }] : []),
       // The robot's page scoped to that system (?system=), as its Isolate does.
       ...(system ? [{ label: "Open system", run: () => (onIsolate ? onIsolate(system) : router.push(`/robots/${robotId}/cad-review?system=${system}`)) }] : []),
+      ...(onshapeLink ? [openInOnshape(onshapeLink)] : []),
       ...(keys.length === 1 ? [{ label: "Add comment here", run: () => startAdding({ key: keys[0], name: one?.name ?? null, systemId: one?.systemId ?? null }) }] : []),
       // In the Changes tab: these parts over their copies in the version before (Harel, 2026-11-17).
       ...(!vt && compareLast && changes && colors === "compare" ? [{ label: "Compare to last version", run: () => showVersion({ mode: "compare", ...compareLast, only: keys }) }] : []),
