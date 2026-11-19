@@ -25,11 +25,16 @@ import { Segmented } from "@/components/ui/Segmented";
 import { ModelToggle, type ModelKind } from "@/components/dashboard/ModelToggle";
 import type { ReviewComment } from "@/lib/data/cadReview";
 import { toast } from "@/components/ui/Toaster";
+import { Icon } from "@/components/ui/Icon";
 import { CadCommitWindow } from "@/components/versions/CadCommitWindow";
 import { diffVersions, isOld, OLD, plainKey, type VersionChange } from "@/lib/versions/versionDiff";
 import { buildVersion, useVersionModel, VersionContext, type VersionTarget } from "./versionView";
 
-const ModelCanvas = dynamic(() => import("@/components/dashboard/ModelCanvas").then((m) => m.ModelCanvas), { ssr: false });
+// Text while the 3D code downloads (seconds on the shop's 4G), not an empty view.
+const ModelCanvas = dynamic(() => import("@/components/dashboard/ModelCanvas").then((m) => m.ModelCanvas), {
+  ssr: false,
+  loading: () => <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">Loading the 3D view…</div>,
+});
 
 export type ReviewPart = { id: string; key: string; name: string; systemId: string | null; onshape?: string };
 type Colors = "cad" | "compare";
@@ -43,9 +48,12 @@ export type Changes = { label: string | null; list: { partId: string | null; cha
 
 // CAD's review screen for a system or the whole robot (Harel, 2026-11-08 and 2026-11-09). Wide
 // screens: the panel (title, + Add comment, Update system, the tree) on the left, the 3D view
-// beside it. Phones: the 3D view fills the screen; Versions (top left) slides the panel in, Tools
-// fold under it, + Add comment sits at the bottom. Top right: open comments and, for mentors and
-// Edit mode, those waiting for approval. A tap on a part offers Add comment (and on the robot's
+// beside it. Top right: open comments and, for mentors and Edit mode, those waiting for approval.
+// Phones (below lg, Harel 2026-11-19): the 3D view fills the screen, with no search bar over it.
+// The Versions icon (top left) slides the panel in from the left, with Basepart | Final and the
+// Part colours at its top; the "Hidden" box sits under it, + Add comment at the bottom and the
+// rotation lock at the bottom left. The "Comments" tab (right) opens the comments over the whole
+// view; a tap on their header closes them. A tap on a part offers Add comment (and on the robot's
 // page Open system); a second tap opens its BOM window. A tap on a comment shows its part.
 export function ReviewScreen({
   robotId,
@@ -150,12 +158,14 @@ export function ReviewScreen({
   // it's open becomes the comment's part and pin (the newest pick's point, S6); the 3D view is
   // kept as it is when the comment is saved.
   const [addingPin, setAddingPin] = useState<[number, number, number] | null>(null);
+  const [bubble, setBubble] = useState<string | null>(null); // the 3D comment tag whose popup is open
   // The face / edge / corner picked with it (Harel, 2026-11-18).
   const [addingAnchor, setAddingAnchor] = useState<Anchor | null>(null);
   // Every pick, of any parts, while the window is open (Harel, 2026-11-18): the comment is about all of them.
   const [addingAnchors, setAddingAnchors] = useState<Anchor[]>([]);
   const [addingBody, setAddingBody] = useState("");
   const startAdding = (part: { key: string; name: string | null; systemId: string | null } | null, from?: { body: string; pin: [number, number, number] | null }) => {
+    setBubble(null);
     setAddingPin(from ? from.pin : (tools?.pickPoint() ?? null));
     setAddingAnchor(from ? null : (tools?.pickAnchor() ?? null));
     setAddingAnchors(from ? [] : (tools?.pickAnchors() ?? []));
@@ -170,6 +180,16 @@ export function ReviewScreen({
   // the server's first render already matches).
   const [sideChoice, setSide] = useState<boolean | null>(null);
   const side = sideChoice ?? true;
+  // On a phone the comments cover the whole 3D view: showing a part or a view folds them first.
+  const foldOnPhone = useCallback(() => {
+    if (isPhone()) setSide(false);
+  }, []);
+  // The rotation lock (Harel, 2026-11-19): one finger moves parts along their mates instead of
+  // turning the view; kept on a new 3D view (a version opened, the other model).
+  const [rotLock, setRotLock] = useState(false);
+  useEffect(() => {
+    tools?.lockRotation(rotLock);
+  }, [tools, rotLock]);
   const onRobot = "systems" in target;
   // The screen fills what's left under the top bar, which is two rows on a phone (taller than
   // --topbar-h): measured, and kept on resize. --review-top places the phone's Versions panel.
@@ -409,9 +429,10 @@ export function ReviewScreen({
         models.onKind(c.model);
         return;
       }
+      foldOnPhone();
       if (c.view) goToView(c.view);
     },
-    [goToView, models],
+    [goToView, models, foldOnPhone],
   );
   // A comment's part tag: a close view of its face / edge / corner from where the camera is, picked;
   // an older comment with no anchor: its part (the copy nearest its pin). No see-through, no
@@ -421,11 +442,12 @@ export function ReviewScreen({
       if (models && c.model !== models.kind) return models.onKind(c.model);
       setFocus(null);
       setDrawer(false);
+      foldOnPhone();
       if (c.anchors?.length && tools?.showAnchors(c.anchors)) return;
       if (c.anchor && tools?.showAnchor(c.anchor)) return;
       if (c.partKey && tools && !tools.showPartAt(c.partKey, c.pin)) toast("That part isn't in this 3D model.", true);
     },
-    [tools, models],
+    [tools, models, foldOnPhone],
   );
   // Comment tags in the 3D view (Harel, 2026-11-18): only while the box beside "Comments" is
   // ticked (kept in this browser), for the comments the column lists, on the model shown. A tag
@@ -443,7 +465,6 @@ export function ReviewScreen({
       localStorage.setItem(TAGS_KEY, on ? "1" : "0");
     } catch {}
   };
-  const [bubble, setBubble] = useState<string | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   // Local checks (/dev/cad-review): the 3D view's tools in the browser console.
   useEffect(() => {
@@ -492,13 +513,19 @@ export function ReviewScreen({
     tools.hoverAnchor(hc?.anchor && hc.model === kind ? hc.anchor : null);
   }, [tools, hoverId, bubble, comments, kind]);
   const onLocated = useCallback(() => {}, []);
-  const showPart = useCallback((key: string) => {
-    setSelected(null);
-    setDrawer(false);
-    setFocus((f) => (f === key ? null : key));
-  }, []);
+  const showPart = useCallback(
+    (key: string) => {
+      setSelected(null);
+      setDrawer(false);
+      foldOnPhone();
+      setFocus((f) => (f === key ? null : key));
+    },
+    [foldOnPhone],
+  );
   // The part of the newest pick (the 3D view reports it); a tap on a pick again drops it.
   const onPick = (key: string | null) => {
+    // A tap anywhere in the 3D view closes a tag's bubble (a tap on a tag never reaches here).
+    setBubble(null);
     if (key) setFocus(null);
     setSelected(key);
     // + Add comment is open (it doesn't block the view): the comment is about the new pick now.
@@ -557,6 +584,32 @@ export function ReviewScreen({
     ];
   };
   const focusName = focus ? (nameByKey.get(focus) ?? comments.find((c) => c.partKey === focus)?.partName ?? "The part") : null;
+  // The Part colours toggle and its legend: over the 3D view on wide screens, in the Versions panel
+  // on phones (Harel, 2026-11-19).
+  const colourToggle = changes && !vt && (
+    <>
+      <Segmented
+        label="Part colours"
+        value={colors}
+        onChange={setColors}
+        options={[
+          { value: "cad", label: "CAD" },
+          { value: "compare", label: "Changes in last version" },
+        ]}
+      />
+      {colors === "compare" && (
+        <div className="rounded-md border border-line bg-surface/95 px-2.5 py-1.5 text-[0.6875rem] text-fg-2 shadow-sm backdrop-blur">
+          <div className="flex flex-wrap gap-x-3 gap-y-1">
+            <Dot c={COMPARE.shape}>Shape</Dot>
+            <Dot c={COMPARE.props}>Properties</Dot>
+            <Dot c={COMPARE.added}>Added</Dot>
+          </div>
+          {removed.length > 0 && <p className="mt-1 text-subtle">Removed: {removed.map((r) => r.name).join(", ")}</p>}
+          {!changes.list.length && <p className="text-subtle">No changes in this version.</p>}
+        </div>
+      )}
+    </>
+  );
 
   // Esc closes the panel on a phone, then clears the picked or shown part (not under a window).
   useEffect(() => {
@@ -591,7 +644,7 @@ export function ReviewScreen({
     <div ref={root} className="relative -m-4 flex h-[calc(100dvh-var(--topbar-h,2.75rem))] md:-m-6">
       {drawer && <button aria-label="Close versions" onClick={() => setDrawer(false)} className="fixed inset-0 z-30 modal-backdrop lg:hidden" />}
       <aside
-        className={`flex min-h-0 flex-col gap-4 overflow-y-auto border-line bg-surface p-4 lg:w-[var(--cad-panel-w,20rem)] lg:shrink-0 lg:border-r max-lg:fixed max-lg:top-[var(--review-top,2.75rem)] max-lg:bottom-0 max-lg:left-0 max-lg:z-40 max-lg:w-[min(22rem,88vw)] max-lg:border-r max-lg:shadow-xl ${drawer ? "max-lg:animate-pop" : "max-lg:hidden"}`}
+        className={`flex min-h-0 flex-col gap-4 overflow-y-auto border-line bg-surface p-4 lg:w-[var(--cad-panel-w,20rem)] lg:shrink-0 lg:border-r max-lg:fixed max-lg:top-[var(--review-top,2.75rem)] max-lg:bottom-0 max-lg:left-0 max-lg:z-40 max-lg:w-[min(22rem,88vw)] max-lg:border-r max-lg:shadow-xl max-lg:transition-[translate,visibility] max-lg:duration-200 max-lg:ease-snap max-lg:motion-reduce:transition-none ${drawer ? "" : "max-lg:invisible max-lg:-translate-x-full"}`}
       >
         <div className="max-lg:hidden">
           {back?.href ? (
@@ -608,7 +661,13 @@ export function ReviewScreen({
             {reviews && me.isAdmin && <DesignReviewButton robotId={robotId} systems={reviews.systems} open={openReview} nextVersion={reviews.nextVersion} />}
           </div>
         </div>
-        {/* Phones: the panel's title row is hidden, so Start / Finish DR sits on top of it. */}
+        {/* Phones: Basepart | Final first (Harel, 2026-11-19); the panel's title row is hidden,
+          so Start / Finish DR sits on top of it, then the Part colours. */}
+        {models?.both && (
+          <div className="lg:hidden">
+            <ModelToggle value={models.kind} onChange={models.onKind} />
+          </div>
+        )}
         {reviews && me.isAdmin && (
           <div className="flex items-center justify-between gap-2 lg:hidden">
             <span className="text-sm font-semibold text-fg-2">{openReview ? `${openReview.name} is open` : "Design Review"}</span>
@@ -618,6 +677,7 @@ export function ReviewScreen({
         <button className="btn-primary h-12 w-full justify-center text-base shadow-[0_0_18px_-4px_var(--color-accent)] active:scale-[0.98] max-lg:hidden" onClick={() => startAdding(picked)}>
           + Add comment
         </button>
+        {colourToggle && <div className="flex flex-col items-start gap-2 lg:hidden">{colourToggle}</div>}
         {check && (
           <DesignCheck
             key={kind}
@@ -642,7 +702,9 @@ export function ReviewScreen({
       </aside>
       <PanelResizer root={root} />
 
-      <section ref={section} className="relative min-w-0 flex-1 overflow-hidden bg-surface">
+      {/* --bottom-clear: the 3D view's own bottom panels (Move, Exploded view, files failed) sit
+        above + Add comment and the rotation lock on a phone. */}
+      <section ref={section} className="relative min-w-0 flex-1 overflow-hidden bg-surface max-lg:[--bottom-clear:5rem]">
         {/* While a Design Review is open: a soft Orbit-blue glow from the 3D view's bottom left
           corner, fading out (Harel, 2026-11-18: moved here from the left panel). Over the canvas,
           never in the way of a click. */}
@@ -655,7 +717,7 @@ export function ReviewScreen({
         )}
         {snipStep === "drag" && <SnipOverlay onSnip={takeSnip} onCancel={() => setSnipStep(null)} />}
         {models?.both && (
-          <div className="absolute top-3 left-1/2 z-10 -translate-x-1/2 max-lg:top-16">
+          <div className="absolute top-3 left-1/2 z-10 -translate-x-1/2 max-lg:hidden">
             <ModelToggle value={models.kind} onChange={models.onKind} />
           </div>
         )}
@@ -679,7 +741,12 @@ export function ReviewScreen({
         ) : vt ? (
           <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">
             {vload?.state === "error" ? (
-              vload.error
+              <span className="flex flex-col items-center gap-2">
+                {vload.error}
+                <button type="button" className="btn min-h-9 active:scale-[0.98]" onClick={() => setVAttempt((n) => n + 1)}>
+                  Retry
+                </button>
+              </span>
             ) : vload?.state === "missing" ? (
               <span className="flex max-w-sm flex-col items-center gap-2">
                 <span>
@@ -734,7 +801,7 @@ export function ReviewScreen({
         )}
 
         {vt && (
-          <div className="absolute top-3 left-1/2 z-20 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 animate-pop flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-lg border border-accent/50 bg-surface/95 px-3 py-1.5 text-xs shadow-md backdrop-blur max-lg:top-28">
+          <div className="absolute top-3 left-1/2 z-20 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 animate-pop flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-lg border border-accent/50 bg-surface/95 px-3 py-1.5 text-xs shadow-md backdrop-blur max-lg:top-[7.5rem] max-lg:right-15 max-lg:left-3 max-lg:max-w-none max-lg:translate-x-0">
             {vt.mode === "visit" ? (
               <>
                 <span className="font-semibold text-fg">Viewing {vt.a.label}</span>
@@ -777,13 +844,20 @@ export function ReviewScreen({
           </div>
         )}
 
-        {/* Phones: the panel behind a Versions button, top left. */}
-        <button onClick={() => setDrawer(true)} className="press absolute top-3 left-3 z-10 h-10 rounded-md border border-line bg-surface/95 px-3 text-sm font-semibold text-fg shadow-sm backdrop-blur active:scale-[0.98] lg:hidden">
-          ☰ Versions
+        {/* Phones: the panel behind the Versions icon, top left (an icon only, Harel 2026-11-19). */}
+        <button
+          onClick={() => setDrawer(true)}
+          aria-label="Versions"
+          title="Versions"
+          aria-expanded={drawer}
+          className="press absolute top-3 left-3 z-10 flex h-10 w-10 items-center justify-center rounded-md border border-line bg-surface/95 text-fg shadow-sm backdrop-blur active:scale-[0.98] lg:hidden"
+        >
+          <Icon name="history" className="h-5 w-5" />
         </button>
-        {/* Phones: the isolated system under it, a tap goes back to the whole robot. */}
+        {/* Phones: the isolated system beside it (clear of the view cube), a tap goes back to the
+          whole robot. */}
         {onlySystem && back?.onClick && (
-          <button onClick={back.onClick} className="press absolute top-15 left-3 z-10 flex h-10 max-w-[calc(100%-23rem)] items-center gap-1.5 rounded-md border border-accent/50 bg-surface/95 px-3 text-sm font-semibold text-fg shadow-sm backdrop-blur active:scale-[0.98] lg:hidden max-sm:max-w-[calc(100%-15rem)]" title="Back to the whole robot">
+          <button onClick={back.onClick} className="press absolute top-3 left-16 z-10 flex h-10 max-w-[calc(100%-12.5rem)] items-center gap-1.5 rounded-md border border-accent/50 bg-surface/95 px-3 text-sm font-semibold text-fg shadow-sm backdrop-blur active:scale-[0.98] lg:hidden" title="Back to the whole robot">
             <span className="truncate">{title}</span>
             <span className="text-subtle">✕</span>
           </button>
@@ -815,6 +889,21 @@ export function ReviewScreen({
         >
           + Add comment
         </button>
+        {/* Phones: the rotation lock, bottom left (Harel, 2026-11-19): on, one finger moves the
+          part under it along its mate instead of turning the view; pinch still zooms and two
+          fingers still move the view. */}
+        <button
+          onClick={() => {
+            setRotLock(!rotLock);
+            if (!rotLock) toast("Rotation locked: drag a part to move it");
+          }}
+          aria-pressed={rotLock}
+          aria-label={rotLock ? "Unlock rotation" : "Lock rotation"}
+          title={rotLock ? "Rotation locked: one finger moves parts. Tap to unlock" : "Lock rotation: one finger moves parts"}
+          className={`press absolute bottom-4 left-3 z-10 flex h-12 w-12 items-center justify-center rounded-md border shadow-sm backdrop-blur active:scale-[0.98] lg:hidden ${rotLock ? "border-accent bg-accent text-white shadow-[0_0_14px_-4px_var(--color-accent)]" : "border-line bg-surface/95 text-fg-2"}`}
+        >
+          <Icon name={rotLock ? "lock" : "unlock"} className="h-5 w-5" />
+        </button>
 
         {/* What's picked: its size, or between two picks distance and angle (bottom right, like
             Onshape's measure box, a bit bigger since 2026-11-11 (Harel); on a phone above + Add
@@ -844,43 +933,29 @@ export function ReviewScreen({
           />
         )}
         {tools && bubbleComment && createPortal(<CommentBubble c={bubbleComment} onClose={() => setBubble(null)} onOpen={() => setWindowed(bubbleComment.id)} />, tools.popupHost())}
-        <MeasureBox measured={measured} className="max-lg:bottom-20 lg:bottom-3" />
+        <MeasureBox
+          measured={measured}
+          className="max-lg:bottom-20 lg:bottom-3"
+          onClear={() => {
+            setSelected(null);
+            tools?.measure(null);
+            tools?.measure("any");
+          }}
+        />
 
         <ViewerToolbar tools={tools} hidden={hidden}>
-          {changes && !vt && (
-            <>
-              <Segmented
-                label="Part colours"
-                value={colors}
-                onChange={setColors}
-                options={[
-                  { value: "cad", label: "CAD" },
-                  { value: "compare", label: "Changes in last version" },
-                ]}
-              />
-              {colors === "compare" && (
-                <div className="rounded-md border border-line bg-surface/95 px-2.5 py-1.5 text-[0.6875rem] text-fg-2 shadow-sm backdrop-blur">
-                  <div className="flex flex-wrap gap-x-3 gap-y-1">
-                    <Dot c={COMPARE.shape}>Shape</Dot>
-                    <Dot c={COMPARE.props}>Properties</Dot>
-                    <Dot c={COMPARE.added}>Added</Dot>
-                  </div>
-                  {removed.length > 0 && <p className="mt-1 text-subtle">Removed: {removed.map((r) => r.name).join(", ")}</p>}
-                  {!changes.list.length && <p className="text-subtle">No changes in this version.</p>}
-                </div>
-              )}
-            </>
-          )}
+          {colourToggle}
         </ViewerToolbar>
       </section>
       {/* Open comments, and below them those waiting for approval. Wide screens: a column of
         its own right of the 3D view, so the view (its Fit, its view cube) isn't under it.
-        Narrower: over the view's right side, under the view cube (7 rem, 6.5 on touch). */}
+        Narrower: over the view's right side, under the view cube (7 rem, 6.5 on touch). Phones:
+        folded at first, then over the whole 3D view (Harel, 2026-11-19). */}
       {(!side || sideChoice === null) && (
         <button
           onClick={() => setSide(true)}
           title="Show comments"
-          className={`${sideChoice === null ? "sm:hidden" : ""} press absolute top-[8rem] right-3 z-10 flex w-9 flex-col items-center gap-2 rounded-md border border-line bg-surface/95 py-3 text-xs font-semibold text-fg-2 shadow-md hover:bg-raised pointer-coarse:top-[7.5rem] xl:static xl:shrink-0 xl:rounded-none xl:border-y-0 xl:border-r-0 xl:shadow-none`}
+          className={`${sideChoice === null ? "lg:hidden" : ""} press absolute top-[8rem] right-3 z-10 flex w-9 flex-col items-center gap-2 rounded-md border border-line bg-surface/95 py-3 text-xs font-semibold text-fg-2 shadow-md hover:bg-raised pointer-coarse:top-[7.5rem] xl:static xl:shrink-0 xl:rounded-none xl:border-y-0 xl:border-r-0 xl:shadow-none`}
         >
           <span aria-hidden>‹</span>
           <span className="rounded-full bg-amber-500/15 px-1.5 text-amber-600 tabular-nums">{open.length}</span>
@@ -888,14 +963,14 @@ export function ReviewScreen({
         </button>
       )}
       {side && <PanelResizer root={root} side="right" />}
-      <div data-comments className={`absolute top-[8rem] right-3 z-10 flex max-h-[calc(100%-12.5rem)] w-[min(20rem,calc(100%-1.5rem))] flex-col gap-2 pointer-coarse:top-[7.5rem] max-sm:w-56 xl:static xl:max-h-none xl:w-[var(--cad-comments-w,18rem)] xl:shrink-0 xl:overflow-y-auto xl:border-l xl:border-line xl:bg-surface xl:p-3 ${sideChoice === null ? "max-sm:hidden" : side ? "" : "hidden"}`}>
+      <div data-comments className={`absolute z-10 flex flex-col gap-2 max-lg:inset-0 max-lg:z-30 max-lg:bg-surface max-lg:p-3 lg:top-[8rem] lg:right-3 lg:max-h-[calc(100%-12.5rem)] lg:w-[min(20rem,calc(100%-1.5rem))] lg:pointer-coarse:top-[7.5rem] xl:static xl:max-h-none xl:w-[var(--cad-comments-w,18rem)] xl:shrink-0 xl:overflow-y-auto xl:border-l xl:border-line xl:bg-surface xl:p-3 ${sideChoice === null ? "max-lg:hidden" : side ? "" : "hidden"}`}>
 
         <Popup
           title="Comments"
           count={listed.length}
           onHide={() => setSide(false)}
           tone="amber"
-          className={canApprove ? "xl:[flex:var(--cad-split-a)]" : undefined}
+          className={`max-lg:flex-1 ${canApprove ? "xl:[flex:var(--cad-split-a)]" : ""}`}
           big
           lead={
             <label className="-ml-1 flex h-9 w-8 shrink-0 cursor-pointer items-center justify-center" title="Show the comments as tags in the 3D view">
@@ -923,7 +998,7 @@ export function ReviewScreen({
         </Popup>
         {canApprove && <SplitResizer root={root} />}
         {canApprove && (
-          <Popup title={me.isMentor ? "To check · waiting for you" : "To check"} count={waiting.length} tone="violet" className="xl:[flex:var(--cad-split-b)]">
+          <Popup title={me.isMentor ? "To check · waiting for you" : "To check"} count={waiting.length} tone="violet" className="max-lg:max-h-[40%] xl:[flex:var(--cad-split-b)]">
             {waitingRows.length ? (
               onRobot ? (
                 <BySystem rows={waitingRows} onIsolate={onIsolate}>
@@ -1001,6 +1076,8 @@ function Dot({ c, children }: { c: string; children: React.ReactNode }) {
 }
 
 const NO_GROUPS = new Set<number>();
+// Below Tailwind's lg (64rem): the phone layout.
+const isPhone = () => typeof window !== "undefined" && window.matchMedia("(max-width: 63.98rem)").matches;
 const TAGS_KEY = "orbit-cad-comment-tags";
 const initialsOf = (name: string | null) =>
   (name ?? "?")
@@ -1061,15 +1138,38 @@ function Popup({ title, count, onHide, tone, big = false, tools, lead, className
     <div className={`flex min-h-0 flex-col overflow-hidden rounded-lg border border-line bg-surface/95 shadow-md backdrop-blur ${className}`}>
       {/* No folding up and down: the column folds sideways from the arrow (Harel, 2026-11-11).
         `big`: the Comments header, a bit taller to hold its filters (Harel, 2026-11-18). */}
-      <div className={`flex items-center px-3 font-semibold text-fg ${big ? "min-h-12 gap-1.5 py-2 text-base" : "gap-2 py-2 text-sm pointer-coarse:min-h-11"}`}>
-        {lead}
+      {/* Phones: the comments cover the 3D view, and a tap anywhere on this row closes them
+        (Harel, 2026-11-19); its checkbox and filters keep their taps to themselves (menus opened
+        from them too: React bubbles through portals). */}
+      <div
+        onClick={onHide ? () => isPhone() && onHide() : undefined}
+        className={`flex items-center px-3 font-semibold text-fg ${onHide ? "max-lg:cursor-pointer" : ""} ${big ? "min-h-12 gap-1.5 py-2 text-base" : "gap-2 py-2 text-sm pointer-coarse:min-h-11"}`}
+      >
+        {lead && (
+          <span className="contents" onClick={(e) => e.stopPropagation()}>
+            {lead}
+          </span>
+        )}
         <span className={`min-w-0 truncate ${big ? "shrink-0" : ""}`}>{title}</span>
         <span className={`rounded-full px-2 py-0.5 text-xs tabular-nums ${badge}`}>{count}</span>
         <span className="flex-1" />
-        {tools}
+        {tools && (
+          <span className="contents" onClick={(e) => e.stopPropagation()}>
+            {tools}
+          </span>
+        )}
         {onHide && (
-          <button onClick={onHide} title="Hide comments" className="press -mr-1 rounded px-1.5 text-subtle hover:bg-raised hover:text-fg pointer-coarse:min-h-9 pointer-coarse:min-w-9">
-            ›
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onHide();
+            }}
+            title="Hide comments"
+            aria-label="Hide comments"
+            className="press -mr-1 rounded px-1.5 text-subtle hover:bg-raised hover:text-fg active:scale-[0.98] pointer-coarse:min-h-9 pointer-coarse:min-w-9"
+          >
+            <span className="max-lg:hidden">›</span>
+            <Icon name="close" className="h-4 w-4 lg:hidden" />
           </button>
         )}
       </div>

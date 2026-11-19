@@ -1,6 +1,6 @@
 "use client";
 
-import { costHint, exportManyCost } from "@/config/callCosts";
+import { CALL_COSTS, costHint, exportManyCost } from "@/config/callCosts";
 import { createContext, useContext, useEffect, useEffectEvent, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { areaOfMachine, getMachine } from "@/config/machines";
@@ -10,7 +10,7 @@ import { removeBatchGcode } from "@/app/(app)/files-actions";
 import { deleteGroup, removeFromGroup, updateGroup } from "@/app/(app)/groups/actions";
 import { upload } from "@/components/bom/FilesField";
 import { OptionList, Popover } from "@/components/bom/Popover";
-import { cadFormat } from "@/components/bom/PartCard";
+import { cadFormat, label as exportLabel } from "@/components/bom/PartCard";
 import { partTitle, type CardPart } from "@/components/bom/types";
 import { useCan, useMode } from "@/components/shell/ModeContext";
 import { pickableStatuses } from "@/components/shell/mode";
@@ -86,7 +86,7 @@ function placeOf(el: HTMLElement | null, parts: number): Place | null {
 
 // A fab batch: a collage of its parts, who makes it (on top of the collage; glowing when it's
 // you) and, closed, the day it was made, its machine and material, one status for all of them
-// (named as the machine calls it), download all (on a closed batch only until it has G-code) and
+// (named as the machine calls it), one download menu (Layout, Layout STEP, All STEP, Layout DXF, All DXF) and
 // its G-code. Clicking the card opens it in place, with each part's own status; cards dropped on
 // it join it. Batches show no name: machine and material say which one it is (Harel,
 // 2026-11-04). Delete is in Edit mode.
@@ -172,8 +172,17 @@ export function BatchCard({
     const f = cadFormat(p);
     return f ? [`/api/parts/${p.id}/export?format=${f}${p.fabView ? "&fab=1" : ""}`] : [];
   });
+  // All STEP is every part's STEP, laser parts too (Harel, 2026-11-19); a sheet metal part on a
+  // machine that takes flat STEPs gets its flat pattern.
+  const steps = members.flatMap((p) => {
+    const f = cadFormat(p);
+    return f ? [`/api/parts/${p.id}/export?format=${f === "STEP_FLAT" ? "STEP_FLAT" : "STEP"}${p.fabView ? "&fab=1" : ""}`] : [];
+  });
+  // A machine that takes neither STEP nor DXF (Bending: Parasolid) keeps its own "All <format>".
+  const otherFormats = [...new Set(members.map(cadFormat).filter((f) => f && !["STEP", "STEP_FLAT", "DXF", "DXF_FLAT"].includes(f)))];
+  const otherFormat = otherFormats.length === 1 ? exportLabel(otherFormats[0]!) : otherFormats.length > 1 ? "machine files" : null;
   // A laser batch (or one whose parts all cut from flat DXFs) downloads them as one zip.
-  const dxfZip = batch.machine === "laser" || (members.length > 0 && members.every((p) => ["DXF", "DXF_FLAT"].includes(cadFormat(p) ?? "")));
+  const dxfZip =batch.machine === "laser" || (members.length > 0 && members.every((p) => ["DXF", "DXF_FLAT"].includes(cadFormat(p) ?? "")));
   const notDone = members.filter((p) => !isDone(p));
   // "Set status for all" leaves finished parts alone (it would send them back to the machine);
   // a batch that is all finished takes it on every part.
@@ -412,34 +421,69 @@ export function BatchCard({
     )
   ) : (
     <>
-      {downloads.length > 0 && !(batch.gcode && !open) && (
-        <button className="overlay-btn" onClick={() => void downloadAll(downloads)} {...costHint(exportManyCost(downloads.length))} aria-label={`Download ${downloads.length} files`} title={`Download ${downloads.length} files`}>
-          <Icon name="download" />
-        </button>
-      )}
-      {/* A laser batch's whole sheet, laid out as in Auto Layout, in one DXF. */}
-      {batch.machine === "laser" && (
-        <button
-          className="overlay-btn w-auto gap-1 px-2 text-xs font-semibold"
-          onClick={() => void downloadExport(`/api/groups/${batch.id}/layout-dxf`)}
-          aria-label={`Download ${what}'s sheet layout as one DXF`}
-          title="The whole sheet as one DXF: every copy where Auto Layout put it"
-        >
-          <Icon name="download" />
-          Layout DXF
-        </button>
-      )}
-      {dxfZip && downloads.length > 0 && (
-        <button
-          className="overlay-btn w-auto gap-1 px-2 text-xs font-semibold"
-          onClick={() => void downloadExport(`/api/groups/${batch.id}/dxf`)}
-          aria-label={`Download ${what}'s flat DXFs as a zip`}
-          title="All flat DXFs in one zip, named with each part's quantity"
-        >
-          <Icon name="download" />
-          DXF zip
-        </button>
-      )}
+      {/* One download icon; its menu holds every batch download, items that don't apply left out
+          (Harel, 2026-11-19). */}
+      <Popover
+        align="right"
+        hideCaret
+        width={240}
+        triggerClassName="overlay-btn active:scale-[0.98]"
+        trigger={
+          <>
+            <Icon name="download" />
+            <span className="sr-only">Download {what}</span>
+          </>
+        }
+      >
+        {(close) => {
+          const pick = (run: () => unknown) => () => {
+            close();
+            void run();
+          };
+          return (
+            <div className="space-y-0.5 text-sm">
+              <button type="button" className={MENU_ITEM} onClick={pick(() => setLayoutOpen(true))} title="Lay the parts flat and nest them on the smallest plate on the shelf">
+                <span className="font-medium text-fg">Layout</span>
+                <span className="text-[0.6875rem] text-subtle">Auto Layout</span>
+              </button>
+              {batch.onshapeLayoutUrl && (
+                <button
+                  type="button"
+                  className={MENU_ITEM}
+                  onClick={pick(() => downloadExport(`/api/groups/${batch.id}/onshape-layout/step`, "POST"))}
+                  {...costHint(CALL_COSTS.layoutStep)}
+                  title="The batch's Onshape layout assembly as one STEP file"
+                >
+                  <span className="font-medium text-fg">Layout STEP</span>
+                </button>
+              )}
+              {steps.length > 0 && (
+                <button type="button" className={MENU_ITEM} onClick={pick(() => downloadAll(steps))} {...costHint(exportManyCost(steps.length))} title={`Every part's STEP, ${steps.length} files`}>
+                  <span className="font-medium text-fg">All STEP</span>
+                  <span className="text-[0.6875rem] text-subtle tabular-nums">{steps.length} {steps.length === 1 ? "file" : "files"}</span>
+                </button>
+              )}
+              {otherFormat && (
+                <button type="button" className={MENU_ITEM} onClick={pick(() => downloadAll(downloads))} {...costHint(exportManyCost(downloads.length))} title={`Each part in its machine's format, ${downloads.length} files`}>
+                  <span className="font-medium text-fg">All {otherFormat}</span>
+                  <span className="text-[0.6875rem] text-subtle tabular-nums">{downloads.length} {downloads.length === 1 ? "file" : "files"}</span>
+                </button>
+              )}
+              {batch.machine === "laser" && (
+                <button type="button" className={MENU_ITEM} onClick={pick(() => downloadExport(`/api/groups/${batch.id}/layout-dxf`))} title="The whole sheet as one DXF: every copy where Auto Layout put it">
+                  <span className="font-medium text-fg">Layout DXF</span>
+                </button>
+              )}
+              {dxfZip && downloads.length > 0 && (
+                <button type="button" className={MENU_ITEM} onClick={pick(() => downloadExport(`/api/groups/${batch.id}/dxf`))} title="All flat DXFs in one zip, named with each part's quantity">
+                  <span className="font-medium text-fg">All DXF</span>
+                  <span className="text-[0.6875rem] text-subtle">zip</span>
+                </button>
+              )}
+            </div>
+          );
+        }}
+      </Popover>
       {!open && batch.gcode && (
         <a className="overlay-btn" href={`/api/files/${batch.gcode.id}?download=1`} aria-label={`Download G-code ${batch.gcode.filename}`} title={`G-code: ${batch.gcode.filename}`}>
           <Icon name="gcode" />
@@ -867,3 +911,6 @@ function partNames(parts: CardPart[]): string {
   if (names.length <= 2) return names.join(", ");
   return `${names.slice(0, 2).join(", ")} +${names.length - 2} more`;
 }
+
+// A row in the batch's download menu: 36px under a finger.
+const MENU_ITEM = "press flex w-full items-center justify-between gap-3 rounded px-2 py-1.5 text-left hover:bg-raised active:scale-[0.98] pointer-coarse:min-h-9";

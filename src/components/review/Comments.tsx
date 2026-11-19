@@ -105,7 +105,7 @@ export function StatusMenu({ c, onDone }: { c: ReviewComment; onDone?: () => voi
   };
   return (
     <span className={`inline-flex flex-col ${pending ? "opacity-60" : ""}`}>
-      <Popover locked={!choices.length || pending} hideCaret width={220} trigger={<CommentStatusPill status={c.state} caret={choices.length > 0} />} onClosed={() => setAsking(null)}>
+      <Popover locked={!choices.length || pending} hideCaret width={220} triggerClassName="pointer-coarse:min-h-9 pointer-coarse:px-1" trigger={<CommentStatusPill status={c.state} caret={choices.length > 0} />} onClosed={() => setAsking(null)}>
         {(close) =>
           asking ? (
             <form
@@ -211,7 +211,7 @@ function PartChip({ c, onFocus }: { c: ReviewComment; onFocus?: (key: string) =>
   return (
     <button
       onClick={() => (ctx?.focus ? ctx.focus(c) : onFocus?.(c.partKey!))}
-      className="press inline-flex max-w-full items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-[0.6875rem] font-semibold text-accent-hover hover:bg-accent/20 pointer-coarse:min-h-8"
+      className="press inline-flex max-w-full items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-[0.6875rem] font-semibold text-accent-hover hover:bg-accent/20 pointer-coarse:min-h-9"
       title={what ? `${what} of ${c.partName ?? "the part"}: show it` : "Show the part"}
     >
       <AnchorGlyph kind={c.anchor?.kind ?? null} />
@@ -299,11 +299,11 @@ function TextBox({ initial = "", placeholder, action, pending, onSave, onCancel,
       <div className="flex items-center justify-end gap-1.5">
         <span className="mr-auto text-[0.625rem] text-subtle max-sm:hidden">Ctrl+Enter</span>
         {onCancel && (
-          <button type="button" className="btn h-8 px-3 text-xs active:scale-[0.98]" onClick={onCancel}>
+          <button type="button" className="btn h-8 px-3 text-xs active:scale-[0.98] pointer-coarse:h-9" onClick={onCancel}>
             Cancel
           </button>
         )}
-        <button className="btn-primary h-8 px-3 text-xs active:scale-[0.98]" disabled={pending || !text.trim() || text === initial}>
+        <button className="btn-primary h-8 px-3 text-xs active:scale-[0.98] pointer-coarse:h-9" disabled={pending || !text.trim() || text === initial}>
           {pending ? "Saving…" : action}
         </button>
       </div>
@@ -339,7 +339,7 @@ function ReplyItem({ r, onFocus }: { r: CommentReply; onFocus?: (key: string) =>
         {r.partKey && (
           <button
             onClick={() => onFocus?.(r.partKey!)}
-            className="press mt-1 inline-flex max-w-full items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-[0.6875rem] font-semibold text-accent-hover hover:bg-accent/20 pointer-coarse:min-h-8"
+            className="press mt-1 inline-flex max-w-full items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-[0.6875rem] font-semibold text-accent-hover hover:bg-accent/20 pointer-coarse:min-h-9"
             title="Show the part"
           >
             <span className="h-1.5 w-1.5 rounded-full bg-accent" />
@@ -425,7 +425,7 @@ function Thread({ c, full, onFocus }: { c: ReviewComment; full: boolean; onFocus
   return (
     <div className="mt-2">
       {n > 0 && (
-        <button className="press flex items-center gap-1 text-xs font-semibold text-fg-2 hover:text-fg pointer-coarse:min-h-8" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <button className="press flex items-center gap-1 text-xs font-semibold text-fg-2 hover:text-fg pointer-coarse:min-h-9" onClick={() => setOpen(!open)} aria-expanded={open}>
           <span aria-hidden className={`inline-block text-subtle transition-transform ${open ? "rotate-90" : ""}`}>▸</span>
           {n} {n === 1 ? "reply" : "replies"}
         </button>
@@ -467,7 +467,7 @@ function Thread({ c, full, onFocus }: { c: ReviewComment; full: boolean; onFocus
           }
         />
       ) : (
-        <button className="press mt-1 text-xs font-semibold text-accent-hover hover:underline pointer-coarse:min-h-8" onClick={() => setReplying(true)}>
+        <button className="press mt-1 text-xs font-semibold text-accent-hover hover:underline pointer-coarse:min-h-9" onClick={() => setReplying(true)}>
           Reply
         </button>
       )}
@@ -570,7 +570,7 @@ export function CommentRow({
             )}
             {ctx?.canApprove && c.state === "to_check" && (
               <button
-                className="press rounded-full border border-emerald-500/50 px-2 py-0.5 font-semibold text-emerald-600 hover:bg-emerald-500/10 active:scale-[0.98] pointer-coarse:min-h-8"
+                className="press rounded-full border border-emerald-500/50 px-2 py-0.5 font-semibold text-emerald-600 hover:bg-emerald-500/10 active:scale-[0.98] pointer-coarse:min-h-9"
                 disabled={pending}
                 onClick={() => run(() => setReviewCommentStatus(c.id, "done"))}
                 title="Approve: Done"
@@ -717,6 +717,7 @@ export function AddCommentDialog({
       // Top left of the 3D view, no blur: the model can still be turned and picked while writing
       // (Harel, 2026-11-18). Phones: a low sheet at the bottom, the view above it.
       floating={FLOATING}
+      compact
       width="w-[min(22rem,calc(100%-1.5rem))]"
       actions={
         <button type="button" className="btn h-9 gap-1.5 px-3 text-sm active:scale-[0.98]" onClick={onSnip} title="Cut a picture out of the 3D view and draw on it">
@@ -725,7 +726,7 @@ export function AddCommentDialog({
       }
     >
       <form
-        className="-m-5 space-y-3 p-4"
+        className="-m-5 space-y-3 p-4 max-sm:-m-3"
         // Esc closes it only while nothing is written: a comment isn't lost to a key press.
         onKeyDown={(e) => {
           if (e.key !== "Escape") return;
@@ -820,7 +821,7 @@ export function AddCommentDialog({
               e.currentTarget.form?.requestSubmit();
             }
           }}
-          rows={4} maxLength={2000} className="input min-h-28 w-full" placeholder="What should change?" />
+          rows={3} maxLength={2000} className="input min-h-20 w-full" placeholder="What should change?" />
         {error && <p className="text-sm text-rose-600">{error}</p>}
         <button className="btn-primary w-full justify-center active:scale-[0.98]" disabled={pending || !body.trim() || missing}>
           {pending ? "Saving…" : "Add comment"}
@@ -854,7 +855,7 @@ export function CommentBubble({ c, onClose, onOpen }: { c: ReviewComment; onClos
       <div className="mt-2 flex items-center gap-2 text-[0.6875rem] text-subtle">
         <When at={c.createdAt} edited={c.editedAt} />
         {c.replies.length > 0 && <span>· {c.replies.length === 1 ? "1 reply" : `${c.replies.length} replies`}</span>}
-        <button type="button" onClick={onOpen} className="press ml-auto font-semibold text-accent-hover hover:underline pointer-coarse:min-h-8">
+        <button type="button" onClick={onOpen} className="press ml-auto font-semibold text-accent-hover hover:underline pointer-coarse:min-h-9">
           Open
         </button>
       </div>

@@ -118,9 +118,9 @@ export function CadCommitWindow({
                     <div className="space-y-2 border-t border-line px-3 py-3 text-sm">
                       {c.geometry && <p className="text-fg">{c.note ? "No shape was stored for this part before, so it can't be compared: check Before → After." : "The part’s shape changed."}</p>}
                       {c.before && c.after ? (
-                        <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+                        <div className="grid grid-cols-1 items-center gap-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
                           <Preview robotId={robotId} file={c.before.file} k={c.before.k} label="Before" />
-                          <Icon name="arrow" className="h-5 w-5 text-accent" />
+                          <Icon name="arrow" className="h-5 w-5 text-accent max-sm:mx-auto max-sm:rotate-90" />
                           <Preview robotId={robotId} file={c.after.file} k={c.after.k} label="After" />
                         </div>
                       ) : (

@@ -4,41 +4,29 @@ import { useState } from "react";
 import type { HiddenParts, SceneTools } from "@/components/dashboard/ModelCanvas";
 
 const tool = "press inline-flex h-8 items-center justify-center rounded-md px-2 text-xs font-semibold text-fg-2 hover:bg-raised hover:text-fg active:scale-[0.98] pointer-coarse:h-9 pointer-coarse:min-w-9";
-const on = "bg-accent/15 text-accent-hover";
 const box = "rounded-md border border-line bg-surface/95 shadow-sm backdrop-blur";
 
-
-// CAD's tools on the 3D view. The views, projection and section are in the view cube's menu, like
-// Onshape (Harel, 2026-11-11); what stays here is the colours toggle, Fit on phones only (a big
-// target there; F and the cube menu on a computer) and the hidden parts. (Picking points, edges and
-// faces to measure is always on: ReviewScreen shows the results.) Wide screens show them at the
-// bottom left; phones fold them into a Tools button on the left, under Versions (Harel,
-// 2026-11-09). Parts hidden with Y or Hide are listed below, folded behind a "Hidden" button.
+// CAD's tools on the 3D view. The views, projection, section and Fit are in the view cube's menu,
+// like Onshape (Harel, 2026-11-11); what stays here is the colours toggle and the hidden parts.
+// (Picking points, edges and faces to measure is always on: ReviewScreen shows the results.) Wide
+// screens show them at the bottom left. Phones have no Tools button any more (Harel, 2026-11-19):
+// the colours toggle is in the Versions panel (ReviewScreen), and only the "Hidden" box stays on
+// the view, top left under Versions. Parts hidden with Y or Hide are listed in it, folded.
 export function ViewerToolbar({
-  tools,
-  children,
   hidden,
+  children,
+  childrenOnPhone = false,
 }: {
-  tools: SceneTools | null;
-  children?: React.ReactNode; // the colour toggle, above the tools
+  tools?: SceneTools | null;
+  children?: React.ReactNode; // the colour toggle, above the hidden parts (wide screens only)
+  childrenOnPhone?: boolean; // /dev/viewer: its test controls on phones too
   hidden?: HiddenParts | null;
 }) {
-  const [open, setOpen] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
-  const folded = open ? "" : "max-lg:hidden";
+  if (!children && !hidden) return null;
   return (
     <div className="absolute left-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-col items-start gap-2 max-lg:top-16 max-lg:max-h-[calc(100%-9rem)] max-lg:overflow-y-auto lg:bottom-3" onClick={(e) => e.stopPropagation()}>
-      <button className={`${box} ${tool} h-10 px-3 text-sm lg:hidden ${open ? on : ""}`} aria-expanded={open} onClick={() => setOpen(!open)}>
-        Tools {open ? "▴" : "▾"}
-      </button>
-      <div className={`flex flex-col items-start gap-2 ${folded}`}>{children}</div>
-      {tools && (
-        <div className={`flex items-center p-1 lg:hidden ${box} ${folded}`}>
-          <button className={tool} onClick={() => tools.view("fit")}>
-            Fit
-          </button>
-        </div>
-      )}
+      {children && <div className={`flex flex-col items-start gap-2 ${childrenOnPhone ? "" : "max-lg:hidden"}`}>{children}</div>}
       {hidden && (
         <div className={`flex w-48 flex-col overflow-hidden text-xs ${box}`}>
           <div className="flex items-center gap-2 px-1 py-0.5">
