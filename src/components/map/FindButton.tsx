@@ -52,7 +52,7 @@ export function FindButton({
         <Icon name="map" className="h-4 w-4" />
       </button>
       <Dialog open={open} onClose={() => setOpen(false)} width="w-[min(60rem,calc(100vw-1rem))]" title={title}>
-        {open && !shown && <div className="h-[min(68dvh,36rem,130vw)] w-full animate-pulse rounded-2xl bg-[#070B14]" />}
+        {open && !shown && <div className="h-[min(68dvh,36rem,130vw)] w-full animate-pulse rounded-2xl bg-ink" />}
         {open && shown && (
           <div className="space-y-3">
             <ShopMap

@@ -48,7 +48,13 @@ type Sel = { id: string; kind: "zone" | "spot" } | null;
 // read from the theme, so the colour slider turns the map too.
 const ACCENT = "var(--color-accent)";
 const tint = (pct: number, base: string) => `color-mix(in oklab, var(--color-accent) ${pct}%, ${base})`;
-const BG = tint(3, "#06080c");
+// The ground follows the greyscale slider (Harel, 2026-11-19): the page's own --color-ink (white
+// to near-black with the slider), with the paved yard a step toward --color-line. At the dark end
+// these land on the old fixed navy; the buildings stay dark blocks, so their labels and the zones
+// on them read the same at both ends.
+const INK = "var(--color-ink)";
+const ground = (linePct: number) => `color-mix(in oklab, var(--color-line) ${linePct}%, ${INK})`;
+const BG = tint(3, INK);
 
 function useBoxSize() {
   const ref = useRef<HTMLDivElement>(null);
@@ -443,8 +449,8 @@ export function ShopMap({
         <svg viewBox={`${plan.x} ${plan.y} ${plan.w} ${plan.w * aspect}`} className="block h-full w-full" aria-hidden>
           <defs>
             <radialGradient id="sm-ground" cx="50%" cy="42%" r="70%">
-              <stop offset="0%" style={{ stopColor: tint(7, "#11161f") }} />
-              <stop offset="100%" style={{ stopColor: tint(3, "#06080c") }} />
+              <stop offset="0%" style={{ stopColor: tint(7, ground(25)) }} />
+              <stop offset="100%" style={{ stopColor: BG }} />
             </radialGradient>
             <linearGradient id="sm-roof" x1="0" y1="0" x2="0.3" y2="1">
               <stop offset="0%" style={{ stopColor: tint(12, "#2b3242") }} />
@@ -489,10 +495,10 @@ export function ShopMap({
                 neighbours merge into one rounded lot. */}
             <g pointerEvents="none">
               {WORKSHOP_ROOMS.map((room) => (
-                <polygon key={`lot-${room.id}`} points={room.points} strokeLinejoin="round" strokeWidth={40} style={{ fill: tint(5, "#151922"), stroke: tint(5, "#151922") }} />
+                <polygon key={`lot-${room.id}`} points={room.points} strokeLinejoin="round" strokeWidth={40} style={{ fill: tint(5, ground(40)), stroke: tint(5, ground(40)) }} />
               ))}
               {WORKSHOP_ROOMS.map((room) => (
-                <polygon key={`lot2-${room.id}`} points={room.points} strokeLinejoin="round" strokeWidth={28} style={{ fill: tint(6, "#1b2029"), stroke: tint(6, "#1b2029") }} />
+                <polygon key={`lot2-${room.id}`} points={room.points} strokeLinejoin="round" strokeWidth={28} style={{ fill: tint(6, ground(60)), stroke: tint(6, ground(60)) }} />
               ))}
             </g>
 
