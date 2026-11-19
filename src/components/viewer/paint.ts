@@ -1,9 +1,10 @@
 // How the parts look: the colours, the materials, and painting them by status (or CAD: Onshape's
 // own appearance, see-through parts included, lit by a studio environment like Onshape's). While
 // locating, the robot turns see-through and the located part is drawn solid in bright green.
-// Onshape's render modes (S9, from the view cube's menu) choose how faces and edges are drawn, and
-// curved parts get Onshape's silhouette outline.
+// The view cube's Edges box turns the dark face borders on or off, and curved parts get Onshape's
+// silhouette outline (the Quality slider can turn those off, quality.ts).
 import * as THREE from "three";
+import type { QualityTools } from "./quality";
 import type { Stage } from "./stage";
 import type { PartMesh, ViewerMode } from "./types";
 
@@ -17,19 +18,12 @@ export const LOCATED = "#22ff5e"; // the located part: bright green, through a s
 export const HOVER = "#6f9bff"; // a light blue wash over the part under the mouse, like Onshape's
 export const EDGE = "#15171d"; // Onshape's dark face borders
 
-// Onshape's render modes, in its menu's order (S9; Harel, 2026-11-11: copy Onshape's assembly view).
-export type DisplayMode = "shadedEdges" | "shaded" | "shadedHidden" | "hiddenRemoved" | "hiddenVisible" | "translucent";
-export const DISPLAY_MODES: { v: DisplayMode; label: string }[] = [
-  { v: "shadedEdges", label: "Shaded with edges" },
-  { v: "shaded", label: "Shaded" },
-  { v: "shadedHidden", label: "Shaded with hidden edges" },
-  { v: "hiddenRemoved", label: "Hidden edges removed" },
-  { v: "hiddenVisible", label: "Hidden edges visible" },
-  { v: "translucent", label: "Translucent" },
-];
-export type DisplayTools = {
-  display: () => DisplayMode;
-  setDisplay: (m: DisplayMode) => void;
+// Onshape's six render modes gave way to one Edges box and a Quality slider, so the menu is short
+// and lets a phone run the view smoothly (Harel, 2026-11-19). Old views that name a mode are read
+// as edges on or off (viewState.ts).
+export type DisplayTools = QualityTools & {
+  edges: () => boolean; // the dark face borders drawn
+  setEdges: (on: boolean) => void;
   // Version compare (Harel, 2026-11-17): each listed subsystem group drawn at that opacity (0–1)
   // over its colours; null ends it.
   fadeGroups: (opacity: Map<number, number> | null) => void;
@@ -44,8 +38,6 @@ const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 export const statusOpacities = (opacity: number) => ({ more: clamp01(opacity + STATUS_SPREAD), less: clamp01(opacity - STATUS_SPREAD) });
 // A part "has a status" once it's past Not Started (and is on the BOM at all).
 export const hasStatus = (color: string | undefined) => !!color && !new THREE.Color(color).equals(NOT_STARTED);
-const LINE_FACE = "#ffffff"; // the faces in the hidden-line modes: plain white, like Onshape's
-const TRANSLUCENT = 0.3;
 
 // Onshape's colours are sRGB; three.js works in linear light, so they're converted on the way
 // in (read as linear, every colour came out pale: aluminium white, greens pastel).
@@ -64,11 +56,10 @@ const WHITE = new THREE.Color(1, 1, 1);
 export const srgb = ([r, g, b]: [number, number, number]) => new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
 
 // The face borders of every copy of a part, drawn in one call: the lines read the part's own
-// instance matrices (so a hidden copy hides its lines too) and honour the section plane. `hidden`:
-// only the stretches behind a face (the depth test reversed), drawn faint for the hidden-edge modes.
-function edgeMaterial(hidden = false) {
+// instance matrices (so a hidden copy hides its lines too) and honour the section plane.
+function edgeMaterial() {
   return new THREE.ShaderMaterial({
-    uniforms: { color: { value: new THREE.Color(EDGE) }, opacity: { value: hidden ? 0.3 : 0.85 } },
+    uniforms: { color: { value: new THREE.Color(EDGE) }, opacity: { value: 0.85 } },
     vertexShader: `#include <common>
 #include <clipping_planes_pars_vertex>
 attribute mat4 instanceMatrix;
@@ -88,7 +79,6 @@ void main() {
 }`,
     transparent: true,
     depthWrite: false,
-    ...(hidden && { depthFunc: THREE.GreaterDepth }),
     clipping: true,
   });
 }
@@ -135,10 +125,7 @@ export type Looks = {
   material: THREE.MeshStandardMaterial; // status colours (per instance)
   cad: THREE.MeshStandardMaterial; // Onshape's colours (per instance)
   edgeLook: THREE.ShaderMaterial; // face borders
-  hiddenEdgeLook: THREE.ShaderMaterial; // face borders behind faces (hidden-edge modes)
   outlineLook: THREE.ShaderMaterial; // silhouettes
-  lineFace: THREE.MeshBasicMaterial; // faces in the hidden-line modes
-  translucent: (base: THREE.Material) => THREE.Material; // Translucent mode's copy of a material
   ghost: THREE.MeshStandardMaterial; // the see-through robot while locating
   glow: THREE.MeshStandardMaterial; // located / selected parts
   seeThrough: (opacity: number) => THREE.MeshStandardMaterial; // Onshape's see-through appearances
@@ -151,21 +138,7 @@ export function createLooks(): Looks {
   const material = new THREE.MeshStandardMaterial({ roughness: 0.6, metalness: 0.05, ...offset });
   const cad = new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.2, ...offset });
   const edgeLook = edgeMaterial();
-  const hiddenEdgeLook = edgeMaterial(true);
   const outlineLook = outlineMaterial();
-  const lineFace = new THREE.MeshBasicMaterial({ color: LINE_FACE, ...offset });
-  const faint = new Map<THREE.Material, THREE.Material>();
-  const translucent = (base: THREE.Material) => {
-    let m = faint.get(base);
-    if (!m) {
-      m = base.clone();
-      m.transparent = true;
-      m.opacity = Math.min(base.opacity, TRANSLUCENT);
-      m.depthWrite = false;
-      faint.set(base, m);
-    }
-    return m;
-  };
   const ghost = new THREE.MeshStandardMaterial({ roughness: 0.6, transparent: true, opacity: 0.14, depthWrite: false });
   const glow = new THREE.MeshStandardMaterial({ color: LOCATED, emissive: LOCATED, emissiveIntensity: 0.55, roughness: 0.4 });
   // Onshape's see-through appearances, one material per opacity.
@@ -182,10 +155,7 @@ export function createLooks(): Looks {
     material,
     cad,
     edgeLook,
-    hiddenEdgeLook,
     outlineLook,
-    lineFace,
-    translucent,
     ghost,
     glow,
     seeThrough,
@@ -193,10 +163,7 @@ export function createLooks(): Looks {
       material.dispose();
       cad.dispose();
       edgeLook.dispose();
-      hiddenEdgeLook.dispose();
       outlineLook.dispose();
-      lineFace.dispose();
-      faint.forEach((m) => m.dispose());
       clear.forEach((m) => m.dispose());
       ghost.dispose();
       glow.dispose();
@@ -209,21 +176,24 @@ export type Paint = (colors: Map<string, string>, mode: ViewerMode, locateKey: s
 
 export type Painter = {
   paint: Paint;
-  display: () => DisplayMode;
-  setDisplay: (m: DisplayMode) => void; // paints again in the new mode (the caller repaints see-through parts)
+  edges: () => boolean;
+  setEdges: (on: boolean) => void;
   statusOpacity: (opacity: number | null) => void; // DisplayTools'; the caller repaints see-through parts
-  outlines: (on: boolean) => void; // phones drop the silhouettes while the view moves
+  outlines: (on: boolean) => void; // the Quality slider's silhouettes (quality.ts)
+  studio: (on: boolean) => void; // the Quality slider's studio reflections
   fade: (opacity: Map<number, number> | null) => void;
   dispose: () => void;
 };
 
 export function createPaint(stage: Stage, meshes: PartMesh[], looks: Looks, fit: (box: THREE.Box3, minRadius?: number) => void): Painter {
   const { world, root, studio, render, renderer } = stage;
-  const { material, cad, edgeLook, hiddenEdgeLook, outlineLook, lineFace, translucent, ghost, glow, seeThrough } = looks;
+  const { material, cad, edgeLook, outlineLook, ghost, glow, seeThrough } = looks;
   const highlights = new THREE.Group();
   root.add(highlights);
-  let display: DisplayMode = "shadedEdges";
+  let edgesOn = true;
   let outlinesOn = true;
+  let studioOn = true;
+  let locating = false;
   let last: Parameters<Paint> | null = null;
   // Version compare's fade: a see-through copy of the status material per faded group.
   const fades = new Map<number, THREE.MeshStandardMaterial>();
@@ -245,9 +215,9 @@ export function createPaint(stage: Stage, meshes: PartMesh[], looks: Looks, fit:
     setFade(seeLess, less);
   };
 
-  // Each part's silhouette and hidden-edge lines, made the first time it is painted: children of
-  // its mesh (hidden with it) on its own geometry and instance matrices, never picked. Added
-  // after load.ts's face borders, which stay the mesh's first line child (picking reads it).
+  // Each part's silhouette, made the first time it is painted: a child of its mesh (hidden with
+  // it) on its own geometry and instance matrices, never picked. Added after load.ts's face
+  // borders, which stay the mesh's first line child (picking reads it).
   const made = new WeakSet<THREE.InstancedMesh>();
   const hulls: THREE.Mesh[] = [];
   const extras = (mesh: THREE.InstancedMesh) => {
@@ -267,13 +237,6 @@ export function createPaint(stage: Stage, meshes: PartMesh[], looks: Looks, fit:
     hull.raycast = () => {};
     mesh.add(hull);
     hulls.push(hull);
-    const segs = mesh.children.find((c) => (c as THREE.LineSegments).isLineSegments) as THREE.LineSegments | undefined;
-    if (segs) {
-      const hidden = new THREE.LineSegments(segs.geometry, hiddenEdgeLook);
-      hidden.frustumCulled = false;
-      hidden.raycast = () => {};
-      mesh.add(hidden);
-    }
   };
   // Silhouettes only behind solid faces: through a see-through one they'd show as a dark shape.
   const screen = new THREE.Vector2();
@@ -289,16 +252,13 @@ export function createPaint(stage: Stage, meshes: PartMesh[], looks: Looks, fit:
 
   const paintNow = (colors: Map<string, string>, mode: ViewerMode, locateKey: string | null, refit: boolean) => {
     highlights.clear();
-    // Hidden-line modes: white faces, dark edges, no colours (Onshape's); locating overrides them.
-    const lines = !locateKey && (display === "hiddenRemoved" || display === "hiddenVisible");
     const cadLike = mode !== "status";
-    world.environment = cadLike && !locateKey && !lines ? studio : null;
+    locating = !!locateKey;
+    world.environment = cadLike && !locateKey && studioOn ? studio : null;
     // Edges fade with the robot while locating, and are lighter over status colours.
-    edgeLook.uniforms.opacity.value = locateKey ? 0.05 : lines ? 0.95 : cadLike ? 0.85 : 0.55;
-    edgeLook.visible = display !== "shaded" || !!locateKey;
-    hiddenEdgeLook.visible = !locateKey && (display === "shadedHidden" || display === "hiddenVisible");
+    edgeLook.uniforms.opacity.value = locateKey ? 0.05 : cadLike ? 0.85 : 0.55;
+    edgeLook.visible = edgesOn || !!locateKey;
     const plain = new THREE.Color(PLAIN);
-    const white = new THREE.Color(LINE_FACE);
     const box = new THREE.Box3();
     const piece = new THREE.Box3();
     for (const { mesh, keys, look, sketch, g } of meshes) {
@@ -309,14 +269,14 @@ export function createPaint(stage: Stage, meshes: PartMesh[], looks: Looks, fit:
       const faded = fades.get(g);
       // The Status view: one material per mesh, so a part drawn in several copies is clearer when
       // any of them has a status.
-      const seen = see !== null && mode === "status" && !lines ? (keys.some((k) => hasStatus(colors.get(k))) ? seeMore : seeLess) : null;
-      mesh.material = faded && !locateKey ? faded : locateKey ? base : lines ? lineFace : seen ?? (display === "translucent" ? translucent(base) : base);
+      const seen = see !== null && mode === "status" ? (keys.some((k) => hasStatus(colors.get(k))) ? seeMore : seeLess) : null;
+      mesh.material = faded && !locateKey ? faded : locateKey ? base : seen ?? base;
       // A faded copy's face borders go once it's mostly see-through.
       const borders = mesh.children[0];
       if (borders) borders.visible = !faded || faded.opacity >= 0.5;
       const onshape = own ? srgb(look.color) : plain;
       keys.forEach((k, i) => {
-        mesh.setColorAt(i, locateKey ? plain : lines ? white : mode === "status" ? new THREE.Color(colors.get(k) ?? UNKNOWN) : mode === "tint" ? tinted(onshape, colors.get(k)) : onshape);
+        mesh.setColorAt(i, locateKey ? plain : mode === "status" ? new THREE.Color(colors.get(k) ?? UNKNOWN) : mode === "tint" ? tinted(onshape, colors.get(k)) : onshape);
         if (k !== locateKey) return;
         // The located part, drawn solid on top of its see-through instance.
         const lit = new THREE.Mesh(mesh.geometry, glow);
@@ -340,11 +300,12 @@ export function createPaint(stage: Stage, meshes: PartMesh[], looks: Looks, fit:
   };
   return {
     paint,
-    display: () => display,
-    setDisplay: (m) => {
-      display = m;
-      if (last) paintNow(...last, false);
-      else render();
+    edges: () => edgesOn,
+    // Only the border material's visibility: no repaint, so see-through parts stay as they are.
+    setEdges: (on) => {
+      edgesOn = on;
+      edgeLook.visible = on || locating;
+      render();
     },
     statusOpacity: (opacity) => {
       const was = see;
@@ -357,6 +318,13 @@ export function createPaint(stage: Stage, meshes: PartMesh[], looks: Looks, fit:
     },
     outlines: (on) => {
       outlinesOn = on;
+      render();
+    },
+    // Before the first paint only the flag is set; paintNow puts the environment on.
+    studio: (on) => {
+      if (studioOn === on) return;
+      studioOn = on;
+      if (last) world.environment = last[1] !== "status" && !last[2] && on ? studio : null;
       render();
     },
     fade: (opacity) => {

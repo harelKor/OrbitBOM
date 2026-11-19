@@ -45,7 +45,7 @@ else
       expect(junk.view).toBeNull();
       expect(junk.pin).toBeNull();
       const listed = await listComments({ robotId: robot.id });
-      expect(listed.find((x) => x.id === c.id)).toMatchObject({ pin: [12.35, -3, 400], view: { display: "shaded" } });
+      expect(listed.find((x) => x.id === c.id)).toMatchObject({ pin: [12.35, -3, 400], view: { edges: false } }); // an old Shaded view: no face borders
     });
 
     it("named views: saved per robot, the same name replaces, only the author deletes", async () => {
@@ -53,7 +53,7 @@ else
       await saveNamedView(b, robot.id, "Intake side", { ...VIEW, display: "translucent" });
       const list = await listNamedViews(robot.id);
       expect(list).toHaveLength(1);
-      expect(list[0]).toMatchObject({ id, name: "Intake side", by: "Viewer B", view: { display: "translucent" } });
+      expect(list[0]).toMatchObject({ id, name: "Intake side", by: "Viewer B", view: { edges: false } });
       await expect(saveNamedView(a, robot.id, "", VIEW)).rejects.toThrow("Name the view");
       await expect(saveNamedView(a, robot.id, "Bad", { pose: null })).rejects.toThrow("couldn't be read");
       await expect(deleteNamedView(a, id)).rejects.toThrow("Only whoever saved it");

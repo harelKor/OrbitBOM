@@ -10,7 +10,7 @@ import type { MenuTarget } from "@/components/viewer/picking";
 import type { SectionView } from "@/components/viewer/section";
 import { SectionDialog } from "@/components/viewer/SectionDialog";
 import type { Gone, HiddenParts, SceneTools, ViewerMode, ViewerModel } from "@/components/viewer/types";
-import { ViewCube, type NamedViews } from "@/components/viewer/ViewCube";
+import { ViewCube } from "@/components/viewer/ViewCube";
 import { GhostSlider } from "@/components/viewer/GhostSlider";
 import { createViewer } from "@/components/viewer/viewer";
 
@@ -21,7 +21,6 @@ export type { ViewName } from "@/components/viewer/camera";
 export type { Axis, Section } from "@/components/viewer/section";
 export type { MeasureFilter } from "@/components/viewer/picking";
 export type { MenuItem, PageMenu } from "@/components/viewer/ContextMenu";
-export type { NamedViews };
 
 // The three.js stage: one instanced mesh per part shape, coloured by status (or CAD: Onshape's
 // own appearance, see-through parts included, lit by a studio environment like Onshape's). While
@@ -51,7 +50,6 @@ export function ModelCanvas({
   onIsolated,
   onHover,
   cube: cubeProp,
-  views,
   statusOpacity = null,
 }: {
   model: ViewerModel;
@@ -77,7 +75,6 @@ export function ModelCanvas({
   // The view cube and its menu (with the section): by default on pages with the tools; part
   // windows and the robot page ask for it (Harel, 2026-11-11). False: small views, the slides.
   cube?: boolean;
-  views?: NamedViews; // Onshape's Named views in the cube's menu (S6: the CAD pages)
   statusOpacity?: number | null; // "status" mode drawn see-through at about this opacity (the BOM pages' Status view)
 }) {
   const withCube = cubeProp ?? !!onTools;
@@ -229,7 +226,7 @@ export function ModelCanvas({
         </div>
       )}
       {menuAt && !progress && <ContextMenu {...menuAt} names={names} page={menu} onClose={closeMenu} />}
-      {cube && withCube && <ViewCube tools={cube} views={views} />}
+      {cube && withCube && <ViewCube tools={cube} />}
       {cube && isolatedKeys && <GhostSlider key={isolatedKeys.join()} tools={cube} />}
       {cube && withCube && section?.open && (
         // Past the page's own left panels (panelLeft); on narrow screens under the view cube, which

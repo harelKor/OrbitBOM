@@ -3,10 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { cubeMatrix, type ViewName } from "./camera";
 import type { SectionView } from "./section";
-import { DISPLAY_MODES, type DisplayMode } from "./paint";
+import { QUALITY_LABELS, type Quality } from "./quality";
 import { UnitsSwitch } from "./units";
 import type { SceneTools } from "./types";
-import { askConfirm } from "@/components/ui/useConfirm";
 
 type V = [number, number, number];
 // The cube's faces in the scene's frame: outward normal, the face's right and up on screen, and
@@ -45,19 +44,22 @@ const MENU_VIEWS: { v: ViewName; label: string; key?: string }[] = [
 // Shift, 5° with Ctrl, like Onshape's. Its
 // menu is Onshape's camera and render options (Harel, 2026-11-11): the standard views with
 // Dimetric and Trimetric, Zoom to fit, Perspective / Orthographic, and the section (Section view,
-// Edit section view, Turn off section view, the same calls as Shift+X). On phones it's 64 px, no
-// arrows (a swipe turns the view), and the views sit in a grid so the menu fits. The `?` key opens
-// the shortcuts sheet.
+// Edit section view, Turn off section view, the same calls as Shift+X). Render options are just
+// Quality (how hard the device works, quality.ts) and Edges; Onshape's six render modes and the
+// Named views are gone (Harel, 2026-11-19: Named views were only kept in OrbitParts, and the menu
+// should help a phone run the view). On phones it's 64 px, no arrows (a swipe turns the view), and
+// the views sit in a grid so the menu fits. The `?` key opens the shortcuts sheet.
 const arrowStep = (e: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean }) => (e.shiftKey ? 90 : e.ctrlKey || e.metaKey ? 5 : 15);
 
-export function ViewCube({ tools, views }: { tools: SceneTools; views?: NamedViews }) {
+export function ViewCube({ tools }: { tools: SceneTools }) {
   const cube = useRef<HTMLDivElement>(null);
   const [hot, setHot] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
   const [help, setHelp] = useState(false);
   const [ortho, setOrtho] = useState(() => tools.projection() === "ortho");
   const [section, setSection] = useState<SectionView | null>(null);
-  const [display, setDisplay] = useState<DisplayMode>(() => tools.display());
+  const [edges, setEdges] = useState(() => tools.edges());
+  const [quality, setQuality] = useState<Quality>(() => tools.quality());
 
   useEffect(() => {
     const stop = tools.watch((q) => {
@@ -154,9 +156,10 @@ export function ViewCube({ tools, views }: { tools: SceneTools; views?: NamedVie
           aria-label="View options"
           aria-expanded={menu}
           onClick={() => {
-            // A saved view (S6) may have changed these since the menu was last open.
+            // A view put back from a comment or a link may have changed these since the menu was last open.
             setOrtho(tools.projection() === "ortho");
-            setDisplay(tools.display());
+            setEdges(tools.edges());
+            setQuality(tools.quality());
             setMenu(!menu);
           }}
         >
@@ -184,25 +187,41 @@ export function ViewCube({ tools, views }: { tools: SceneTools; views?: NamedVie
             <button className={item} role="menuitemradio" aria-checked={ortho} onClick={() => project(true)}>
               <span className="w-3 text-accent-hover">{ortho ? "✓" : ""}</span>Orthographic
             </button>
-            {/* Render modes and units (S9): Onshape's names and order. */}
+            {/* Quality and Edges replace the render modes (Harel, 2026-11-19); both stay open to try. */}
             <div className={line} />
-            <div className="grid grid-cols-1">
-              {DISPLAY_MODES.map(({ v, label }) => (
-                <button
-                  key={v}
-                  className={item}
-                  role="menuitemradio"
-                  aria-checked={display === v}
-                  onClick={run(() => {
-                    tools.setDisplay(v);
-                    setDisplay(v);
-                  })}
-                >
-                  <span className="w-3 shrink-0 text-accent-hover">{display === v ? "✓" : ""}</span>
-                  {label}
-                </button>
-              ))}
-            </div>
+            <label className="flex flex-col gap-1 px-2 py-1.5 text-xs text-fg-2" title="Lower runs smoother on slow devices; remembered on this device">
+              <span className="flex items-center gap-2">
+                <span className="w-3" />
+                Quality
+                <span className="ml-auto text-[0.625rem] text-subtle">{QUALITY_LABELS[quality]}</span>
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={2}
+                step={1}
+                value={quality}
+                aria-valuetext={QUALITY_LABELS[quality]}
+                className="ml-5 h-1 accent-accent pointer-coarse:h-9"
+                onChange={(e) => {
+                  const q = Number(e.target.value) as Quality;
+                  tools.setQuality(q);
+                  setQuality(q);
+                }}
+              />
+            </label>
+            <button
+              className={item}
+              role="menuitemcheckbox"
+              aria-checked={edges}
+              onClick={() => {
+                tools.setEdges(!edges);
+                setEdges(!edges);
+              }}
+            >
+              <span className="w-3 text-accent-hover">{edges ? "✓" : ""}</span>
+              Edges
+            </button>
             <div className="flex items-center gap-2 px-2 py-1 text-xs text-fg-2">
               <span className="w-3" />
               Units
@@ -232,7 +251,6 @@ export function ViewCube({ tools, views }: { tools: SceneTools; views?: NamedVie
               <span className="w-3" />
               Exploded view
             </button>
-            {views && <NamedViewsBlock views={views} close={() => setMenu(false)} item={item} line={line} />}
             <div className={`${line} pointer-coarse:hidden`} />
             <button className={`${item} pointer-coarse:hidden`} role="menuitem" onClick={run(() => setHelp(true))}>
               <span className="w-3" />
@@ -242,102 +260,6 @@ export function ViewCube({ tools, views }: { tools: SceneTools; views?: NamedVie
         )}
       </div>
       {help && <Shortcuts onClose={() => setHelp(false)} />}
-    </>
-  );
-}
-
-// Onshape's Named views (S6, plan/cad-3d-viewer.md), on pages that keep them (the CAD pages: per
-// robot in the database, shared by the team): the saved views to pick back, "Save view…" under a
-// name, and "Copy view link" (the URL carries the view). Owned by S6; the rest of the menu is R3's
-// and S9's.
-export type NamedViews = {
-  list: { id: string; name: string; by: string | null; mine: boolean }[];
-  open: (id: string) => void;
-  save: (name: string) => Promise<string | null>; // an error, or null when saved
-  remove: (id: string) => void;
-  copyLink: () => Promise<boolean>;
-};
-
-function NamedViewsBlock({ views, close, item, line }: { views: NamedViews; close: () => void; item: string; line: string }) {
-  const [naming, setNaming] = useState(false);
-  const [name, setName] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [copied, setCopied] = useState(false);
-  return (
-    <>
-      <div className={line} />
-      <p className="px-2 pt-1 pb-0.5 text-[0.625rem] font-semibold tracking-wide text-subtle uppercase">Named views</p>
-      {views.list.map((v) => (
-        <div key={v.id} className="group flex items-center">
-          <button
-            className={`${item} min-w-0 flex-1`}
-            role="menuitem"
-            title={v.by ? `Saved by ${v.by}` : undefined}
-            onClick={() => {
-              close();
-              views.open(v.id);
-            }}
-          >
-            <span className="w-3 shrink-0" />
-            <span className="truncate">{v.name}</span>
-          </button>
-          {v.mine && (
-            <button
-              className="press shrink-0 rounded px-1.5 text-subtle opacity-0 group-hover:opacity-100 hover:text-rose-500 focus:opacity-100 pointer-coarse:min-h-9 pointer-coarse:min-w-9 pointer-coarse:opacity-100"
-              aria-label={`Delete ${v.name}`}
-              title="Delete this view"
-              onClick={async () => {
-                if (await askConfirm({ title: `Delete the view "${v.name}"?`, confirm: "Delete", danger: true })) views.remove(v.id);
-              }}
-            >
-              ✕
-            </button>
-          )}
-        </div>
-      ))}
-      {naming ? (
-        <form
-          className="flex flex-col gap-1 px-2 py-1"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setBusy(true);
-            const err = await views.save(name);
-            setBusy(false);
-            if (err) return setError(err);
-            setNaming(false);
-            setName("");
-            setError(null);
-          }}
-        >
-          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} maxLength={80} placeholder="View name" className="input h-8 w-full text-xs pointer-coarse:h-9" aria-label="View name" />
-          {error && <span className="text-[0.6875rem] text-rose-600">{error}</span>}
-          <div className="flex gap-1">
-            <button className="btn-primary h-7 flex-1 justify-center text-xs active:scale-[0.98] pointer-coarse:h-9" disabled={busy || !name.trim()}>
-              {busy ? "Saving…" : "Save"}
-            </button>
-            <button type="button" className="btn h-7 justify-center px-2 text-xs pointer-coarse:h-9" onClick={() => setNaming(false)}>
-              Cancel
-            </button>
-          </div>
-        </form>
-      ) : (
-        <button className={item} role="menuitem" onClick={() => setNaming(true)}>
-          <span className="w-3" />
-          Save view…
-        </button>
-      )}
-      <button
-        className={item}
-        role="menuitem"
-        onClick={async () => {
-          setCopied(await views.copyLink());
-          setTimeout(() => setCopied(false), 1500);
-        }}
-      >
-        <span className="w-3 text-accent-hover">{copied ? "✓" : ""}</span>
-        {copied ? "Link copied" : "Copy view link"}
-      </button>
     </>
   );
 }

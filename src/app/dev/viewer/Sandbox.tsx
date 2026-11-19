@@ -2,12 +2,11 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { HiddenParts, MeasureInfo, NamedViews, SceneTools, ViewerMode, ViewerModel } from "@/components/dashboard/ModelCanvas";
+import type { HiddenParts, MeasureInfo, SceneTools, ViewerMode, ViewerModel } from "@/components/dashboard/ModelCanvas";
 import { ViewerToolbar } from "@/components/review/ViewerToolbar";
 import { MeasureBox } from "@/components/viewer/MeasureBox";
 import { DesignCheck } from "@/components/check/DesignCheck";
 import { markFinding, showOverlap } from "@/components/check/showOverlap";
-import { applyView, captureView, hashWithView, type ViewState } from "@/components/viewer/viewState";
 import { Segmented } from "@/components/ui/Segmented";
 
 const ModelCanvas = dynamic(() => import("@/components/dashboard/ModelCanvas").then((m) => m.ModelCanvas), { ssr: false });
@@ -60,9 +59,7 @@ export function Sandbox() {
     }
     return { limits: { weightKg: 50, perimeterMm: 2800, heightMm: 1000, frameZoneMm: 60 }, facts, ignored: [], latest: null };
   }, [names]);
-  // Named views (S6), kept in memory here (the CAD pages keep them per robot in the database);
   // `window.viewerTools` lets a check in the browser console drive the pins and views.
-  const [saved, setSaved] = useState<{ id: string; name: string; view: ViewState }[]>([]);
   // `window.designCheck()` runs the CAD page's Design check (plan/design-check.md) on the sandbox
   // robot, with no limits and no materials known.
   useEffect(() => {
@@ -76,26 +73,6 @@ export function Sandbox() {
       return runCheck(tools.checkParts(), { model: data.model, names, systemsOf: new Map(), facts: {}, limits: {}, ignored: new Set() }, (step, done, total) => (w.checkProgress = { step, done, total, at: Math.round(performance.now()) }));
     };
   }, [tools, data, names]);
-  const views: NamedViews | undefined = tools
-    ? {
-        list: saved.map((v) => ({ id: v.id, name: v.name, by: null, mine: true })),
-        open: (id) => {
-          const v = saved.find((x) => x.id === id);
-          if (v) applyView(tools, v.view, true);
-        },
-        save: async (name) => {
-          setSaved((l) => [...l.filter((v) => v.name !== name.trim()), { id: String(Date.now()), name: name.trim(), view: captureView(tools) }]);
-          return null;
-        },
-        remove: (id) => setSaved((l) => l.filter((v) => v.id !== id)),
-        copyLink: async () => {
-          const url = location.origin + location.pathname + location.search + hashWithView(captureView(tools));
-          history.replaceState(history.state, "", url);
-          return navigator.clipboard.writeText(url).then(() => true, () => false);
-        },
-      }
-    : undefined;
-
   // Points, edges and faces are picked at all times, like the CAD page; Esc drops them all.
   useEffect(() => {
     tools?.measure("any");
@@ -126,7 +103,6 @@ export function Sandbox() {
           onPick={setPicked}
           onMeasure={setMeasured}
           onHidden={setHidden}
-          views={views}
           menu={(keys) => (keys.length === 1 ? [{ label: "Open part (sandbox: no BOM)", run: () => alert(names.get(keys[0]) ?? keys[0]) }] : [])}
         />
       ) : (

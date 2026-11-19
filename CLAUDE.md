@@ -174,9 +174,11 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
   `CommentBubble`) shown by the ☐ beside "Comments". Design Reviews: `design_reviews`,
   `src/lib/reviews/designReviews.ts` (admins start / finish, one open per robot, new comments in
   its scope join it), UI `src/components/review/DesignReviews.tsx`. Sandbox: `/dev/cad-review`.
-  The whole 3D view as data (camera, hidden / isolated, section, render mode, colours):
-  `src/components/viewer/viewState.ts`, in the URL hash (`#v=`), on each comment with its pin
-  (`pins.ts`, assembly mm), and as Onshape's Named views per robot (`src/lib/reviews/namedViews.ts`).
+  The whole 3D view as data (camera, hidden / isolated, section, edges, colours):
+  `src/components/viewer/viewState.ts`, in the URL hash (`#v=`) and on each comment with its pin
+  (`pins.ts`, assembly mm). The view cube's menu has Quality (`viewer/quality.ts`: pixel ratio,
+  silhouettes, reflections; per device) and Edges instead of Onshape's render modes, and no Named
+  views (Harel, 2026-11-19); `named_views` / `src/lib/reviews/namedViews.ts` are unused, to drop.
 - 3D views (every viewer: CAD pages, BOM pages, part windows, Commit window): `ModelCanvas`
   (`src/components/dashboard/ModelCanvas.tsx`), tools in `src/components/review/ViewerToolbar.tsx`,
   picking / measuring maths in `src/lib/model/topology.ts`, `measure.ts`. Being reworked to work

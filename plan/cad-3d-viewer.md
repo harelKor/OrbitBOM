@@ -21,9 +21,9 @@ no new cloud resources), heavy work stays in the browser, phones are first-class
 | R1 | Section view like Onshape (panel, face picks, circular sections, red) | parity | done (2026-11-11, fb16cc8) | checked in /dev/viewer only; tilt arcs, 3-cut limit and real-robot speed unchecked; cylinder side that a cut removes is a guess (Flip swaps) |
 | R2 | Menu, isolate without ghosts, no pick pop-up, bigger measure box | parity | done (2026-11-11, fdb45fa) | menu: no Hide others / Zoom to, "Section view" + "View normal to" on flat faces; not checked in a browser (no local node_modules) |
 | R3 | View cube menu = Onshape's camera and render options; toolbar; part windows; gap pass | parity | done (2026-11-11, 8e1f040, 2dfe17f, 1100f0b, ea26107) | gaps built: Select other (parts), other instances, measure max distance + copy, view normal to round faces; section entries in every right-click; R1 follow-up 9dc26ca: hatched caps with outline, no panel help text. Not tried on real data or a phone |
-| S6 | Saved views + comment pins (migration) | 2 | done (2026-11-11, 99cad69) | Named views per robot in the cube menu, view in the URL hash, numbered comment pins that restore the comment's view; migration 0081 |
+| S6 | Saved views + comment pins (migration) | 2 | done (2026-11-11, 99cad69) | Named views per robot in the cube menu, view in the URL hash, numbered comment pins that restore the comment's view; migration 0081. Named views left the menu 2026-11-19 (Harel) |
 | S7 | Explode and move | 2 | done (2026-11-11, c85c69b) | Onshape's exploded view slider and Move triad on picked parts, local only, Reset |
-| S9 | Display modes and polish | 2 | done (2026-11-11, 3548d95) | Onshape's render modes, silhouettes, gradient background, mm / inch |
+| S9 | Display modes and polish | 2 | done (2026-11-11, 3548d95) | Onshape's render modes, silhouettes, gradient background, mm / inch. 2026-11-19 (Harel): render modes replaced by a Quality slider and an Edges box (`quality.ts`) |
 | S8 | Motion along the mates | later | done (2026-11-18) | plan/cad-mates.md; not yet tried on a real robot |
 | ~~S5~~ | ~~Parts list~~ | | dropped (Harel, 2026-11-10) | |
 

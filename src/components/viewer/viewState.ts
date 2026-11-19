@@ -1,10 +1,9 @@
 // The whole view as data (S6 in plan/cad-3d-viewer.md): the camera (pose and projection), hidden
-// and isolated parts, the section, the render mode and the page's part colours. Written to the URL
-// hash (`#v=…`, so a reload keeps it and "Copy view link" shares it), saved with each comment and
-// as Onshape's Named views, and put back from them. No three.js here: the server checks a view a
-// browser sent with `cleanView` before saving it.
+// and isolated parts, the section, the face borders (Edges) and the page's part colours. Written to
+// the URL hash (`#v=…`, so a reload keeps it and a copied address shares it), saved with each
+// comment (and, before 2026-11-19, as Named views), and put back from them. No three.js here: the
+// server checks a view a browser sent with `cleanView` before saving it.
 import type { ViewPose } from "./camera";
-import type { DisplayMode } from "./paint";
 import type { Section } from "./sectionMath";
 import type { SceneTools } from "./types";
 import type { VisibilityState } from "./visibility";
@@ -13,7 +12,7 @@ export type ViewState = {
   pose: ViewPose;
   vis?: VisibilityState; // left out when nothing is hidden, isolated or see-through
   section?: Section | null;
-  display?: DisplayMode;
+  edges?: boolean; // the dark face borders; left out by views saved before Edges, read from `display`
   colors?: string; // the page's part colours ("cad", "compare"), when it has a choice
   // Where the mates were moved (plan/cad-mates.md): by joint id, [turn rad, slide m] from the CAD place.
   mates?: Record<string, [number, number]>;
@@ -44,8 +43,11 @@ export function decodeView(text: string): ViewState | null {
   }
 }
 
-// paint.ts's render modes (not imported: it brings three.js, and the server checks views too).
-const DISPLAYS: DisplayMode[] = ["shadedEdges", "shaded", "shadedHidden", "hiddenRemoved", "hiddenVisible", "translucent"];
+// Views saved before 2026-11-19 name one of Onshape's six render modes instead of Edges (Harel,
+// 2026-11-19: the menu has Edges and Quality now). Every mode drew the face borders except Shaded
+// and Translucent; Translucent's see-through is dropped (the Status view and version compare have
+// their own).
+const OLD_DISPLAYS: Record<string, boolean> = { shadedEdges: true, shaded: false, shadedHidden: true, hiddenRemoved: true, hiddenVisible: true, translucent: false };
 const MAX_JSON = 40_000; // a few hundred hidden parts; a view is normally well under 1 kB
 const num = (x: unknown) => typeof x === "number" && Number.isFinite(x);
 const v3 = (x: unknown): x is [number, number, number] => Array.isArray(x) && x.length === 3 && x.every(num);
@@ -78,7 +80,8 @@ export function cleanView(x: unknown): ViewState | null {
     const ok = sec.planes.every((c) => Object.values(c as object).every(field));
     if (ok) view.section = { planes: sec.planes as Section["planes"], open: false };
   }
-  if (DISPLAYS.includes(o.display as DisplayMode)) view.display = o.display as DisplayMode;
+  if (typeof o.edges === "boolean") view.edges = o.edges;
+  else if (typeof o.display === "string" && Object.hasOwn(OLD_DISPLAYS, o.display)) view.edges = OLD_DISPLAYS[o.display];
   if (typeof o.colors === "string" && o.colors.length <= 40) view.colors = o.colors;
   if (o.mates && typeof o.mates === "object" && !Array.isArray(o.mates)) {
     const mates = Object.entries(o.mates as Record<string, unknown>).filter(([k, v]) => k.length <= 300 && Array.isArray(v) && v.length === 2 && v.every(num)).slice(0, 200);
@@ -97,7 +100,7 @@ export function captureView(tools: SceneTools, colors?: string): ViewState {
     pose: tools.pose(),
     vis: busy ? vis : undefined,
     section: section?.planes.length ? { planes: section.planes, open: false } : undefined,
-    display: tools.display(),
+    edges: tools.edges(),
     colors,
     ...(Object.keys(mates).length ? { mates } : {}),
   };
@@ -107,7 +110,7 @@ export function captureView(tools: SceneTools, colors?: string): ViewState {
 // once every part file is in (a hidden part still on its way couldn't be found yet).
 export function applyView(tools: SceneTools, v: ViewState, animate: boolean) {
   tools.setPose(v.pose, animate);
-  if (v.display) tools.setDisplay(v.display);
+  if (v.edges !== undefined) tools.setEdges(v.edges);
   void tools.whenLoaded().then(() => {
     tools.setVisibilityState(v.vis ?? { hidden: [], isolated: null, ghost: 0, clear: [] });
     tools.section(v.section?.planes.length ? { planes: v.section.planes, open: false } : null);

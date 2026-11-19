@@ -8,8 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Anchor } from "@/lib/reviews/anchor";
 import { openPartWindow } from "@/components/bom/PartDetailsHost";
-import { deleteReviewView, saveReviewView } from "@/app/(app)/review-comments-actions";
-import type { HiddenParts, MeasureInfo, NamedViews, PageMenu, SceneTools, ViewerModel, ViewerMode } from "@/components/dashboard/ModelCanvas";
+import type { HiddenParts, MeasureInfo, PageMenu, SceneTools, ViewerModel, ViewerMode } from "@/components/dashboard/ModelCanvas";
 import { AddCommentDialog, CommentBubble, CommentContext, CommentRow, CommentWindow, useStickyList, type CommentTarget, type ReplyAttach } from "@/components/review/Comments";
 import { inStateFilter, isActive, statusOf, type StateFilter } from "@/lib/reviews/status";
 import { StateFilterMenu } from "@/components/review/CommentFilters";
@@ -370,17 +369,6 @@ export function ReviewScreen({
     };
   }, [tools]);
 
-  // Onshape's Named views of this robot, shared by the team (the view cube's menu).
-  const [named, setNamed] = useState<{ id: string; name: string; view: ViewState; by: string | null; byId: string | null }[]>([]);
-  const loadNamed = useCallback(() => {
-    fetch(`/api/robots/${robotId}/views`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => d && setNamed(d.views))
-      .catch(() => {});
-  }, [robotId]);
-  useEffect(() => {
-    if (tools) loadNamed();
-  }, [tools, loadNamed]);
   const goToView = useCallback(
     (v: ViewState) => {
       if (!tools) return;
@@ -391,31 +379,6 @@ export function ReviewScreen({
     },
     [tools, changes],
   );
-  const views: NamedViews | undefined = tools
-    ? {
-        list: named.map((v) => ({ id: v.id, name: v.name, by: v.by, mine: me.isAdmin || v.byId === me.id })),
-        open: (id) => {
-          const v = named.find((x) => x.id === id);
-          if (v) goToView(v.view);
-        },
-        save: async (name) => {
-          const r = await saveReviewView(robotId, name, captureView(tools, changes ? colors : undefined));
-          if (r.error) return r.error;
-          loadNamed();
-          return null;
-        },
-        remove: (id) => void deleteReviewView(id).then((r) => (r.error ? toast(r.error, true) : loadNamed())),
-        copyLink: async () => {
-          const url = location.origin + location.pathname + location.search + hashWithView(captureView(tools, changes ? colors : undefined));
-          history.replaceState(history.state, "", url);
-          return navigator.clipboard.writeText(url).then(
-            () => true,
-            () => false,
-          );
-        },
-      }
-    : undefined;
-
   // Open and On it, newest first, then To check: a comment whose status moves it out stays where it
   // was, struck through, until the page is left (Harel, 2026-11-13).
   const newest = useMemo(() => [...comments].reverse(), [comments]);
@@ -712,7 +675,6 @@ export function ReviewScreen({
             hidden={shownHidden}
             menu={pageMenu}
             onIsolated={onIsolatedChange}
-            views={views}
           />
         ) : vt ? (
           <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">

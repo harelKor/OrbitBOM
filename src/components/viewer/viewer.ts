@@ -11,6 +11,7 @@ import { createLooks, createPaint, type Paint } from "./paint";
 import { createMarks, createPicking, createSelection, createTopo, type MenuTarget, type Picking } from "./picking";
 import { createMotion } from "./motion";
 import { createPins } from "./pins";
+import { createQuality } from "./quality";
 import { createAnchors } from "./anchors";
 import { createSection } from "./section";
 import { loadSketches, sketchKeys } from "./sketches";
@@ -72,6 +73,8 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
   // Repainting a batch that arrived late doesn't frame the located part again (quietFit).
   let quietFit = false;
   const painter = createPaint(stage, meshes, looks, (box, r) => !quietFit && camera.fit(box, r));
+  // The Quality slider (quality.ts): pixel ratio, silhouettes and reflections, sharper when still.
+  const quality = createQuality(stage.renderer, camera.controls, painter, stage.render);
   const selection = createSelection(stage, meshes, looks);
   const topo = createTopo(meshes);
   picking = createPicking(stage, meshes, topo, () => measure!, {
@@ -150,13 +153,9 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
     ...createCheckTools(meshes, visibility.place),
     ...red.tools,
     whenLoaded: () => allIn, // every part file is in (a saved view's hidden parts can be found)
-    // Onshape's render modes (S9): paint again, then put Make transparent's parts back.
-    display: painter.display,
-    setDisplay: (m) => {
-      painter.setDisplay(m);
-      visibility.repaint();
-      stage.render();
-    },
+    edges: painter.edges,
+    setEdges: painter.setEdges,
+    ...quality.tools,
     statusOpacity: (o) => {
       painter.statusOpacity(o);
       visibility.repaint();
@@ -267,21 +266,6 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
       host.failed();
     });
 
-  // Phones draw at a lower pixel ratio while the view moves, sharp again when it stops.
-  const sharp = stage.renderer.getPixelRatio();
-  if (sharp > 1 && window.matchMedia("(pointer: coarse)").matches) {
-    // …and without the silhouettes (S9), one more draw of every part.
-    camera.controls.addEventListener("start", () => {
-      stage.renderer.setPixelRatio(1);
-      painter.outlines(false);
-    });
-    camera.controls.addEventListener("end", () => {
-      painter.outlines(true);
-      stage.renderer.setPixelRatio(sharp);
-      stage.render();
-    });
-  }
-
   return {
     paint,
     hide,
@@ -302,6 +286,7 @@ export function createViewer(el: HTMLElement, model: ViewerModel, host: ViewerHo
       motion.dispose();
       pins.dispose();
       red.dispose();
+      quality.dispose();
       geometries.forEach((g) => g.dispose());
       marks.dispose();
       topo.dispose();
