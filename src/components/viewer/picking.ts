@@ -503,6 +503,22 @@ export function createPicking(
     if (press) clearTimeout(press.timer);
     press = null;
   };
+  // A ring under the finger once a hold counts (phone audit G5, Harel 2026-11-19): iOS has no
+  // vibration, so it's the only sign the hold took; it goes when the finger lifts or drags a box.
+  let ring: HTMLDivElement | null = null;
+  const ringOff = () => {
+    ring?.remove();
+    ring = null;
+  };
+  const ringAt = (x: number, y: number) => {
+    ringOff();
+    const r = el.getBoundingClientRect();
+    ring = document.createElement("div");
+    ring.className = "pointer-events-none absolute z-20 size-12 -translate-x-1/2 -translate-y-1/2 animate-pop rounded-full border-2 border-accent bg-accent/15";
+    ring.style.left = `${x - r.left}px`;
+    ring.style.top = `${y - r.top}px`;
+    el.appendChild(ring);
+  };
   const menuAt = (x: number, y: number, finger: boolean) => {
     hideLabel();
     const pt = { clientX: x, clientY: y };
@@ -643,6 +659,7 @@ export function createPicking(
         timer: window.setTimeout(() => {
           press = null;
           pressed = true;
+          ringAt(x, y);
           if (!canBox()) return menuAt(x, y, true);
           held = { x, y, id };
           navigator.vibrate?.(12);
@@ -658,6 +675,7 @@ export function createPicking(
     touches.delete(e.pointerId);
     starts.delete(e.pointerId);
     cancelPress();
+    ringOff();
     if (held) {
       const h = held;
       held = null;
@@ -687,7 +705,9 @@ export function createPicking(
       const now = performance.now();
       const again = now - lastTouchTap.t < 350 && Math.hypot(e.clientX - lastTouchTap.x, e.clientY - lastTouchTap.y) < 30;
       lastTouchTap = again ? { t: 0, x: 0, y: 0 } : { t: now, x: e.clientX, y: e.clientY };
-      if (again) return filter ? measure().tap(null) : on.pick(null);
+      // A double tap clears every pick only on empty space: two quick taps on two faces of a part
+      // (to measure between them) pick both (phone audit G5, Harel 2026-11-19).
+      if (again && !hitAt(e)) return filter ? measure().tap(null) : on.pick(null);
     }
     // A click picks what's under the pointer and a click on a pick drops it, like Onshape (the
     // parts behind: Select other in the menu); a click on empty space clears.
@@ -698,6 +718,7 @@ export function createPicking(
     touches.delete(e.pointerId);
     starts.delete(e.pointerId);
     cancelPress();
+    ringOff();
     held = null;
     down = null;
     pair = null;
@@ -817,6 +838,7 @@ export function createPicking(
     div.className = boxLook(false);
     el.appendChild(div);
     box = { x, y, div, drop, touch };
+    ringOff();
     window.addEventListener("pointermove", onBoxMove);
     window.addEventListener("pointerup", onBoxUp);
     window.addEventListener("pointercancel", onBoxUp);
@@ -861,6 +883,7 @@ export function createPicking(
   return {
     setHover,
     dispose: () => {
+      ringOff();
       el.removeEventListener("pointerdown", onBoxDown, { capture: true });
       el.removeEventListener("pointermove", onHeldMove, { capture: true });
       window.removeEventListener("pointermove", onBoxMove);

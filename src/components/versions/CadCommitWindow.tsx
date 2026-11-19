@@ -158,10 +158,22 @@ function Preview({ robotId, file, k, label }: { robotId: string; file: string; k
       cancelled = true;
     };
   }, [robotId, file, k]);
+  // Touch: a finger on the preview scrolls the window until the preview is tapped; then it turns
+  // the part (phone audit G8, Harel 2026-11-19: two live views caught every scroll).
+  const [live, setLive] = useState(false);
   return (
     <div className="relative h-44 overflow-hidden stage-frame">
       <span className="absolute top-2 left-2 z-10 rounded-full bg-surface/90 px-2 py-0.5 text-[0.6875rem] font-semibold text-muted">{label}</span>
-      {model && <ModelCanvas model={model} colors={NO_COLORS} mode="cad" locateKey={null} onLocated={noop} />}
+      {model && (
+        <div className={`absolute inset-0 ${live ? "" : "pointer-coarse:pointer-events-none"}`}>
+          <ModelCanvas model={model} colors={NO_COLORS} mode="cad" locateKey={null} onLocated={noop} />
+        </div>
+      )}
+      {model && !live && (
+        <button type="button" onClick={() => setLive(true)} className="absolute inset-0 z-10 hidden items-end justify-center pb-2 pointer-coarse:flex" aria-label={`Turn the ${label.toLowerCase()} preview`}>
+          <span className="rounded-full bg-surface/90 px-2.5 py-1 text-[0.6875rem] font-semibold text-muted">Tap to turn it</span>
+        </button>
+      )}
       {!model && <div className="absolute inset-0 flex items-center justify-center p-3 text-center text-xs text-muted">{error ?? "Loading…"}</div>}
     </div>
   );

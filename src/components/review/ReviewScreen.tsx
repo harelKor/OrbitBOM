@@ -53,8 +53,10 @@ export type Changes = { label: string | null; list: { partId: string | null; cha
 // The Versions icon (top left) slides the panel in from the left, with Basepart | Final and the
 // Part colours at its top; the "Hidden" box sits under it, + Add comment at the bottom and the
 // rotation lock at the bottom left. The "Comments" tab (right) opens the comments over the whole
-// view; a tap on their header closes them. A tap on a part offers Add comment (and on the robot's
-// page Open system); a second tap opens its BOM window. A tap on a comment shows its part.
+// view; a tap on their header closes them. The Measure box, the Showing chip and the 3D view's own
+// panels stack above + Add comment. A tap on a part picks it; its menu (right-click, or touch and
+// hold) has Open part, Add comment here and, on the robot's page, Open system; a double-click
+// opens its BOM window. A tap on a comment shows its part.
 export function ReviewScreen({
   robotId,
   title,
@@ -187,6 +189,16 @@ export function ReviewScreen({
   // The rotation lock (Harel, 2026-11-19): one finger moves parts along their mates instead of
   // turning the view; kept on a new 3D view (a version opened, the other model).
   const [rotLock, setRotLock] = useState(false);
+  // The phone's bottom stack, where the 3D view puts its own bottom panels (G2).
+  const [stackHost, setStackHost] = useState<HTMLDivElement | null>(null);
+  const [phone, setPhone] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 63.98rem)");
+    const on = () => setPhone(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
   useEffect(() => {
     tools?.lockRotation(rotLock);
   }, [tools, rotLock]);
@@ -206,6 +218,52 @@ export function ReviewScreen({
     window.addEventListener("resize", fit);
     return () => window.removeEventListener("resize", fit);
   }, []);
+
+  // Phones (Harel, 2026-11-19): a window sliding up from the bottom (a comment, Add comment) covers
+  // the lower part of the 3D view, so the view frames into what it leaves free and slides back
+  // when it closes. Turning the phone frames the model again for the new shape.
+  useEffect(() => {
+    const el = root.current;
+    if (!tools || !el) return;
+    let frame = 0;
+    const measure = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const sec = section.current?.getBoundingClientRect();
+        let bottom = 0;
+        if (sec && isPhone())
+          for (const d of el.querySelectorAll("dialog[open]")) {
+            const r = d.getBoundingClientRect();
+            // A sheet: low on the screen and nearly as wide as the view.
+            if (r.height && r.top > sec.top + sec.height * 0.25 && r.width > sec.width * 0.7) bottom = Math.max(bottom, Math.round(sec.bottom - r.top));
+          }
+        tools.setInset(bottom > 0 ? { top: 0, right: 0, bottom, left: 0 } : null);
+      });
+    };
+    const sizes = new ResizeObserver(measure);
+    const watch = () => {
+      sizes.disconnect();
+      el.querySelectorAll("dialog[open]").forEach((d) => sizes.observe(d));
+      measure();
+    };
+    const dialogs = new MutationObserver(watch);
+    dialogs.observe(el, { subtree: true, childList: true, attributes: true, attributeFilter: ["open"] });
+    watch();
+    let turnTimer = 0;
+    const turned = () => {
+      clearTimeout(turnTimer);
+      turnTimer = window.setTimeout(() => tools.view("fit"), 350); // after the resize settles
+    };
+    screen.orientation?.addEventListener("change", turned);
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(turnTimer);
+      sizes.disconnect();
+      dialogs.disconnect();
+      screen.orientation?.removeEventListener("change", turned);
+      tools.setInset(null);
+    };
+  }, [tools]);
 
   // Points, edges and faces are picked at all times, like Onshape (Harel, 2026-11-09).
   useEffect(() => {
@@ -702,9 +760,7 @@ export function ReviewScreen({
       </aside>
       <PanelResizer root={root} />
 
-      {/* --bottom-clear: the 3D view's own bottom panels (Move, Exploded view, files failed) sit
-        above + Add comment and the rotation lock on a phone. */}
-      <section ref={section} className="relative min-w-0 flex-1 overflow-hidden bg-surface max-lg:[--bottom-clear:5rem]">
+      <section ref={section} className="relative min-w-0 flex-1 overflow-hidden bg-surface">
         {/* While a Design Review is open: a soft Orbit-blue glow from the 3D view's bottom left
           corner, fading out (Harel, 2026-11-18: moved here from the left panel). Over the canvas,
           never in the way of a click. */}
@@ -737,6 +793,7 @@ export function ReviewScreen({
             hidden={shownHidden}
             menu={pageMenu}
             onIsolated={onIsolatedChange}
+            bottomHost={phone ? stackHost : null}
           />
         ) : vt ? (
           <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">
@@ -832,17 +889,6 @@ export function ReviewScreen({
             </button>
           </div>
         )}
-        {vt?.mode === "compare" && vReady && (
-          <div className="absolute bottom-4 left-1/2 z-20 flex w-[min(26rem,calc(100%-1.5rem))] -translate-x-1/2 items-center gap-3 rounded-lg border border-line bg-surface/95 px-3 py-2 text-xs shadow-md backdrop-blur max-lg:bottom-20">
-            <span className="max-w-[7rem] shrink-0 truncate font-semibold" style={{ color: VCOMP.older }}>
-              {vt.b.label}
-            </span>
-            <input type="range" min={0} max={1} step={0.01} value={fade} onChange={(e) => setFade(Number(e.target.value))} className="min-w-0 flex-1 accent-[var(--color-accent)] pointer-coarse:h-9" aria-label="Fade between the two versions" />
-            <span className="max-w-[7rem] shrink-0 truncate font-semibold" style={{ color: VCOMP.newer }}>
-              {vt.a.label}
-            </span>
-          </div>
-        )}
 
         {/* Phones: the panel behind the Versions icon, top left (an icon only, Harel 2026-11-19). */}
         <button
@@ -863,24 +909,6 @@ export function ReviewScreen({
           </button>
         )}
 
-        {/* No pop-up on a pick: the right-click / long-press menu does Isolate, Hide, Open part and
-            Open system, like Onshape (Harel, 2026-11-11). This chip stays while a part is shown or
-            parts are isolated: the quick way back on a phone. */}
-        {(focusName || isolated) && (
-          <div className="absolute z-20 flex animate-pop items-center gap-2 rounded-full border border-emerald-500/50 bg-surface/95 px-3 py-1.5 text-xs shadow-sm backdrop-blur max-lg:bottom-20 max-lg:left-1/2 max-lg:-translate-x-1/2 lg:top-3 lg:left-3">
-            <span className="font-semibold whitespace-nowrap text-fg">{focusName ? `Showing ${focusName}` : overlapOn ? "Marked in red" : isolated && isolated.length > 1 ? `${isolated.length} parts isolated` : "Isolated"}</span>
-            <button
-              onClick={() => {
-                setFocus(null);
-                tools?.isolate(null);
-                setIsolated(null);
-              }}
-              className="press font-semibold whitespace-nowrap text-accent-hover hover:underline pointer-coarse:min-h-9"
-            >
-              Show all
-            </button>
-          </div>
-        )}
 
         {/* Phones: + Add comment at the bottom. */}
         <button
@@ -933,15 +961,52 @@ export function ReviewScreen({
           />
         )}
         {tools && bubbleComment && createPortal(<CommentBubble c={bubbleComment} onClose={() => setBubble(null)} onOpen={() => setWindowed(bubbleComment.id)} />, tools.popupHost())}
-        <MeasureBox
-          measured={measured}
-          className="max-lg:bottom-20 lg:bottom-3"
-          onClear={() => {
-            setSelected(null);
-            tools?.measure(null);
-            tools?.measure("any");
-          }}
-        />
+        {/* Phones: one stack above + Add comment and the rotation lock (phone audit G2, Harel
+          2026-11-19) for everything that used to sit there on its own and cover the rest: the
+          Measure box at the top, then the compare slider, the Showing / Isolated chip, and the 3D
+          view's own panels (Move, Exploded view, Ghosts, files failed: `stackHost`). Wide screens:
+          `contents`, each placed over the view as before. */}
+        <div className="max-lg:pointer-events-none max-lg:absolute max-lg:inset-x-3 max-lg:bottom-20 max-lg:z-20 max-lg:flex max-lg:flex-col max-lg:items-center max-lg:gap-2 lg:contents [&>*]:pointer-events-auto">
+          <MeasureBox
+            measured={measured}
+            className="max-lg:static max-lg:self-end lg:bottom-3"
+            onClear={() => {
+              setSelected(null);
+              tools?.measure(null);
+              tools?.measure("any");
+            }}
+          />
+          {vt?.mode === "compare" && vReady && (
+            <div className="flex w-[min(26rem,calc(100%-1.5rem))] items-center gap-3 rounded-lg border border-line bg-surface/95 px-3 py-2 text-xs shadow-md backdrop-blur max-lg:w-full lg:absolute lg:bottom-4 lg:left-1/2 lg:z-20 lg:-translate-x-1/2">
+              <span className="max-w-[7rem] shrink-0 truncate font-semibold" style={{ color: VCOMP.older }}>
+                {vt.b.label}
+              </span>
+              <input type="range" min={0} max={1} step={0.01} value={fade} onChange={(e) => setFade(Number(e.target.value))} className="min-w-0 flex-1 accent-[var(--color-accent)] pointer-coarse:h-9" aria-label="Fade between the two versions" />
+              <span className="max-w-[7rem] shrink-0 truncate font-semibold" style={{ color: VCOMP.newer }}>
+                {vt.a.label}
+              </span>
+            </div>
+          )}
+          {/* No pop-up on a pick: the right-click / long-press menu does Isolate, Hide, Open part and
+              Open system, like Onshape (Harel, 2026-11-11). This chip stays while a part is shown or
+              parts are isolated: the quick way back on a phone. */}
+          {(focusName || isolated) && (
+            <div className="flex animate-pop items-center gap-2 rounded-full border border-emerald-500/50 bg-surface/95 px-3 py-1.5 text-xs shadow-sm backdrop-blur lg:absolute lg:top-3 lg:left-3 lg:z-20">
+              <span className="font-semibold whitespace-nowrap text-fg">{focusName ? `Showing ${focusName}` : overlapOn ? "Marked in red" : isolated && isolated.length > 1 ? `${isolated.length} parts isolated` : "Isolated"}</span>
+              <button
+                onClick={() => {
+                  setFocus(null);
+                  tools?.isolate(null);
+                  setIsolated(null);
+                }}
+                className="press font-semibold whitespace-nowrap text-accent-hover hover:underline pointer-coarse:min-h-9"
+              >
+                Show all
+              </button>
+            </div>
+          )}
+          <div ref={setStackHost} className="contents" />
+        </div>
 
         <ViewerToolbar tools={tools} hidden={hidden}>
           {colourToggle}
@@ -961,6 +1026,13 @@ export function ReviewScreen({
           <span aria-hidden>‹</span>
           <span className="rounded-full bg-amber-500/15 px-1.5 text-amber-600 tabular-nums">{open.length}</span>
           <span className="[writing-mode:vertical-rl]">Comments</span>
+          {/* The open Design Review, where new comments go: on a phone the Versions panel was the
+            only place showing it (phone audit G9, Harel 2026-11-19). */}
+          {openReview && (
+            <span className="rounded bg-accent/15 px-0.5 py-1 text-[0.625rem] font-bold text-accent-hover [writing-mode:vertical-rl]" title={`${openReview.name} is open: new comments join it`}>
+              {openReview.name}
+            </span>
+          )}
         </button>
       )}
       {side && <PanelResizer root={root} side="right" />}

@@ -43,7 +43,12 @@ export type CameraTools = {
   // two fingers still move); a one-finger drag on a part moves it along its mate (motion.ts).
   lockRotation: (on: boolean) => void;
   rotationLocked: () => boolean;
+  // What covers the view's edges (CSS px), e.g. a phone's comment sheet (Harel, 2026-11-19): Fit and
+  // every framing then centre in the free rest; changing it slides the view along (or frames
+  // again, right after a framing). null: nothing covers it.
+  setInset: (inset: Inset | null) => void;
 };
+export type Inset = { top: number; right: number; bottom: number; left: number };
 export type Camera = {
   controls: OrbitControls;
   // Frames a box (world space) at once; `minRadius` keeps a tiny part from filling the screen.
@@ -251,15 +256,59 @@ export function createCamera(stage: Stage, shown: () => THREE.Box3, meshes: Part
   controls.addEventListener("start", stop);
 
   const direction = () => BACK.clone().applyQuaternion((goal ?? current()).quat);
+  let inset: Inset | null = null;
+  // The centre of what the inset leaves free, from the view's centre (CSS px, + right / down).
+  const freeShift = (i: Inset | null) => (i ? { x: (i.left - i.right) / 2, y: (i.top - i.bottom) / 2 } : { x: 0, y: 0 });
+  // The newest framing, done again when a sheet opens right after it (a comment opened: its part
+  // is framed, then its window slides up over the view).
+  let lastFrame: { b: THREE.Box3; dir: THREE.Vector3; minRadius: number; t: number } | null = null;
   const framing = (b: THREE.Box3, dir: THREE.Vector3, minRadius: number): Pose | null => {
     // The view's own size, not camera.aspect: the resize that sets that may not have run yet.
-    const aspect = el.clientWidth && el.clientHeight ? el.clientWidth / el.clientHeight : camera.aspect;
+    const W = el.clientWidth;
+    const H = el.clientHeight;
+    // The free part (at least 40 % each way): the box is fitted to it and centred in it.
+    const fw = inset && W ? Math.max(W * 0.4, W - inset.left - inset.right) : W;
+    const fh = inset && H ? Math.max(H * 0.4, H - inset.top - inset.bottom) : H;
+    const aspect = fw && fh ? fw / fh : camera.aspect;
     const pose = fitPose(b, dir, camera.fov, minRadius, aspect);
     if (!pose) return null;
-    const half = camera.ortho ? pose.radius / Math.min(1, aspect) : pose.position.distanceTo(pose.target) * tanV();
-    return { target: pose.target, quat: lookFrom(dir), half };
+    const quat = lookFrom(dir);
+    let half = camera.ortho ? pose.radius / Math.min(1, aspect) : pose.position.distanceTo(pose.target) * tanV();
+    const target = pose.target.clone();
+    if (inset && H) {
+      half *= H / fh;
+      const perPx = (2 * half) / H; // world units per CSS px at the target's depth
+      const { x, y } = freeShift(inset);
+      // The box's centre on the free part's centre: the view's centre moves the other way.
+      target.addScaledVector(new THREE.Vector3(1, 0, 0).applyQuaternion(quat), -x * perPx).addScaledVector(new THREE.Vector3(0, 1, 0).applyQuaternion(quat), y * perPx);
+    }
+    return { target, quat, half };
+  };
+  const setInset = (next: Inset | null) => {
+    const was = inset;
+    const same = (a: Inset | null, b: Inset | null) => (a && b ? a.top === b.top && a.right === b.right && a.bottom === b.bottom && a.left === b.left : a === b);
+    if (same(was, next)) return;
+    inset = next;
+    if (lastFrame && performance.now() - lastFrame.t < 1200) {
+      const pose = framing(lastFrame.b, lastFrame.dir, lastFrame.minRadius);
+      if (pose) animateTo(pose);
+      return;
+    }
+    // Otherwise the view slides so what was in the free part's centre still is.
+    const H = el.clientHeight;
+    if (!H) return;
+    const from = goal ?? current();
+    const a = freeShift(was);
+    const b = freeShift(next);
+    const perPx = (2 * from.half) / H;
+    const target = from.target
+      .clone()
+      .addScaledVector(new THREE.Vector3(1, 0, 0).applyQuaternion(from.quat), -(b.x - a.x) * perPx)
+      .addScaledVector(new THREE.Vector3(0, 1, 0).applyQuaternion(from.quat), (b.y - a.y) * perPx);
+    animateTo({ ...from, target });
   };
   const fit = (b: THREE.Box3, minRadius = 0.02) => {
+    lastFrame = { b: b.clone(), dir: direction(), minRadius, t: performance.now() };
     const pose = framing(b, direction(), minRadius);
     if (!pose) return;
     stop();
@@ -268,6 +317,7 @@ export function createCamera(stage: Stage, shown: () => THREE.Box3, meshes: Part
     moved();
   };
   const frameTo = (b: THREE.Box3, dir: THREE.Vector3) => {
+    lastFrame = { b: b.clone(), dir: dir.clone(), minRadius: 0.02, t: performance.now() };
     const pose = framing(b, dir, 0.02);
     if (pose) animateTo(pose);
   };
@@ -466,6 +516,7 @@ export function createCamera(stage: Stage, shown: () => THREE.Box3, meshes: Part
         if (on && drag && touches.has(drag.id)) drag = null;
       },
       rotationLocked: () => locked,
+      setInset,
     },
     dispose: () => {
       stop();

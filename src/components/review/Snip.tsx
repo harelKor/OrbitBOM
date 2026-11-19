@@ -181,9 +181,23 @@ export function SnipEditor({
       compact
       actions={
         editing ? (
-          <button className="btn-primary h-9 px-4 text-sm active:scale-[0.98]" disabled={saving} onClick={() => onConfirm(lines)}>
-            {saving ? "Saving…" : "Confirm"}
-          </button>
+          // Undo beside Confirm in the title row, not a row of its own: the picture gets the room on
+          // a phone (phone audit G10, Harel 2026-11-19).
+          <>
+            <button
+              className="btn h-9 px-3 text-sm active:scale-[0.98]"
+              disabled={!history.length}
+              onClick={() => {
+                setLines(history[history.length - 1]);
+                setHistory((hst) => hst.slice(0, -1));
+              }}
+            >
+              ↶ Undo
+            </button>
+            <button className="btn-primary h-9 px-4 text-sm active:scale-[0.98]" disabled={saving} onClick={() => onConfirm(lines)}>
+              {saving ? "Saving…" : "Confirm"}
+            </button>
+          </>
         ) : (
           // Someone else's snip opens to look at; the pencil shows the drawing tools (Harel, 2026-11-10).
           <button className="btn h-9 px-3 text-sm active:scale-[0.98]" onClick={() => setEditing(true)} aria-label="Draw on it" title="Draw on it">
@@ -204,13 +218,13 @@ export function SnipEditor({
             </button>
           </div>
           <label className="flex items-center gap-2 text-xs text-muted">
-            Size
+            <span className="max-sm:hidden">Size</span>
             <input type="range" min={1} max={24} value={size} onChange={(e) => setSize(Number(e.target.value))} className="w-24 accent-[var(--color-accent)]" aria-label="Pen size" />
             <span className="flex h-6 w-10 items-center" aria-hidden>
               <span className="w-full rounded-full" style={{ height: size, background: erasing ? "var(--color-muted)" : color }} />
             </span>
           </label>
-          <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="Pen colour">
+          <div className="flex flex-wrap gap-1 max-sm:gap-0.5" role="radiogroup" aria-label="Pen colour">
             {SNIP_COLORS.map((c) => (
               <button
                 key={c}
@@ -226,12 +240,6 @@ export function SnipEditor({
               />
             ))}
           </div>
-          <button className={`${tool} ml-auto`} disabled={!history.length} onClick={() => {
-            setLines(history[history.length - 1]);
-            setHistory((hst) => hst.slice(0, -1));
-          }}>
-            ↶ Undo
-          </button>
         </div>
         )}
         {changed && changed.length > 0 && <p className="text-xs text-muted">{changed.map((c) => `${c.name} changed`).join(" · ")}</p>}

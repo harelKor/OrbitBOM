@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ContextMenu, type PageMenu } from "@/components/viewer/ContextMenu";
 import type { MeasureInfo } from "@/components/viewer/measureLayer";
 import type { Paint } from "@/components/viewer/paint";
@@ -51,6 +52,7 @@ export function ModelCanvas({
   onHover,
   cube: cubeProp,
   statusOpacity = null,
+  bottomHost = null,
 }: {
   model: ViewerModel;
   colors: Map<string, string>; // part key → status colour
@@ -76,6 +78,9 @@ export function ModelCanvas({
   // windows and the robot page ask for it (Harel, 2026-11-11). False: small views, the slides.
   cube?: boolean;
   statusOpacity?: number | null; // "status" mode drawn see-through at about this opacity (the BOM pages' Status view)
+  // The CAD page on a phone: one stack above + Add comment for every panel at the bottom (phone
+  // audit G2, Harel 2026-11-19). Move / Exploded view, files failed and Ghosts go in there.
+  bottomHost?: HTMLElement | null;
 }) {
   const withCube = cubeProp ?? !!onTools;
   const host = useRef<HTMLDivElement>(null);
@@ -217,6 +222,8 @@ export function ModelCanvas({
     if (loaded) scene.current?.select(selectedKey ?? null);
   }, [loaded, selectedKey]);
 
+  // On the CAD page's phones: into the bottom stack (bottomHost) instead of over the view.
+  const inStack = (c: React.ReactNode) => (bottomHost ? createPortal(c, bottomHost) : c);
   return (
     <div ref={host} className="absolute inset-0">
       {!loaded && !error && <div className="absolute inset-0 flex items-center justify-center text-sm text-muted">Loading the robot…</div>}
@@ -227,7 +234,7 @@ export function ModelCanvas({
       )}
       {menuAt && !progress && <ContextMenu {...menuAt} names={names} page={menu} onClose={closeMenu} />}
       {cube && withCube && <ViewCube tools={cube} />}
-      {cube && isolatedKeys && <GhostSlider key={isolatedKeys.join()} tools={cube} />}
+      {cube && isolatedKeys && inStack(<GhostSlider key={isolatedKeys.join()} tools={cube} stacked={!!bottomHost} />)}
       {cube && withCube && section?.open && (
         // Past the page's own left panels (panelLeft); on narrow screens under the view cube, which
         // it would otherwise cover (R1's report).
@@ -235,10 +242,13 @@ export function ModelCanvas({
           <SectionDialog section={section} tools={cube} />
         </div>
       )}
-      {cube && motion && (motion.panel || motion.moving || motion.moved) && <MotionPanel view={motion} tools={cube} />}
+      {cube && motion && (motion.panel || motion.moving || motion.moved) && inStack(<MotionPanel view={motion} tools={cube} stacked={!!bottomHost} />)}
       {error && <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">{error}</div>}
-      {partial && !error && !progress && (
-        <div className="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full max-lg:bottom-[var(--bottom-clear,0.75rem)] border border-line bg-surface/95 px-3 py-1 text-xs shadow-sm backdrop-blur" role="status">
+      {partial &&
+        !error &&
+        !progress &&
+        inStack(
+        <div className={`${bottomHost ? "" : "absolute bottom-3 left-1/2 z-20 -translate-x-1/2"} flex items-center gap-2 rounded-full border border-line bg-surface/95 px-3 py-1 text-xs shadow-sm backdrop-blur`} role="status">
           <span className="text-fg-2 tabular-nums">
             {partial.failed} {partial.failed === 1 ? "file" : "files"} failed
           </span>

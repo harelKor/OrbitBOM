@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { createContext, useContext, useState, useTransition } from "react";
+import { createContext, useContext, useEffect, useRef, useState, useTransition } from "react";
 import { addReviewComment, deleteReviewComment, deleteReviewReply, editReviewComment, editReviewReply, replyToReviewComment, setReviewCommentStatus, type CommentResult } from "@/app/(app)/review-comments-actions";
 import { Popover } from "@/components/bom/Popover";
 import { textOn } from "@/components/bom/options";
@@ -520,8 +520,10 @@ export function CommentRow({
   return (
     // A light tint under the pointer (Harel, 2026-11-18).
     <li
-      onMouseEnter={full ? undefined : () => ctx?.hover?.set(c.id)}
-      onMouseLeave={full ? undefined : () => ctx?.hover?.set(null)}
+      // A mouse only: a tap's emulated mouseenter stuck, leaving the tag lit (phone audit G11,
+      // Harel 2026-11-19).
+      onPointerEnter={full ? undefined : (e) => e.pointerType === "mouse" && ctx?.hover?.set(c.id)}
+      onPointerLeave={full ? undefined : (e) => e.pointerType === "mouse" && ctx?.hover?.set(null)}
       className={`${full ? "" : `mb-2.5 rounded-lg border bg-surface p-2.5 shadow-[0_1px_3px_rgb(0_0_0/0.12)] transition-colors duration-100 last:mb-0 hover:border-accent/40 hover:bg-accent/5 ${lit ? "border-accent/40 bg-accent/5" : "border-line-strong"}`} list-none ${pending ? "opacity-60" : ""}`}
     >
       <div className="flex gap-2.5">
@@ -662,7 +664,7 @@ export function CommentWindow({ c, onClose, onFocus, onView, open = true }: { c:
 // Where a comment goes: one system, or on the robot's page the choice of the whole robot or a
 // system (the picked part's, else one picked from the list) (Harel, 2026-11-09).
 const FLOATING =
-  "absolute top-3 left-3 z-30 m-0 max-h-[calc(100%-1.5rem)]! shadow-xl max-lg:top-16 max-sm:top-auto! max-sm:bottom-0 max-sm:left-0 max-sm:w-full! max-sm:max-h-[55%]! max-sm:rounded-b-none";
+  "absolute top-3 left-3 z-30 m-0 max-h-[calc(100%-1.5rem)]! shadow-xl max-lg:top-16 max-sm:top-auto! max-sm:bottom-[var(--kb,0px)] max-sm:left-0 max-sm:w-full! max-sm:max-h-[min(55%,calc(100%-var(--kb,0px)-1rem))]! max-sm:rounded-b-none";
 
 export type CommentTarget = { systemId: string } | { systems: { id: string; name: string }[] };
 
@@ -697,6 +699,27 @@ export function AddCommentDialog({
   initialBody?: string; // a Design check finding's words, to edit before saving
 }) {
   const [body, setBody] = useState(initialBody);
+  // Phones: the on-screen keyboard covers the bottom of the page without making it shorter (iOS,
+  // Chrome on Android), so the sheet would sit under it with the text box and Add comment hidden.
+  // It rides on top of the keyboard instead (--kb, phone audit G3, Harel 2026-11-19).
+  const form = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    const dlg = form.current?.closest("dialog");
+    if (!open || !vv || !dlg) return;
+    const place = () => {
+      const kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+      dlg.style.setProperty("--kb", `${kb}px`);
+    };
+    place();
+    vv.addEventListener("resize", place);
+    vv.addEventListener("scroll", place);
+    return () => {
+      vv.removeEventListener("resize", place);
+      vv.removeEventListener("scroll", place);
+      dlg.style.removeProperty("--kb");
+    };
+  }, [open]);
   const { pending, error, run } = useCommentAction();
   const onRobot = "systems" in target;
   const [scope, setScope] = useState<"system" | "robot">(onRobot && !part?.systemId ? "robot" : "system");
@@ -726,6 +749,7 @@ export function AddCommentDialog({
       }
     >
       <form
+        ref={form}
         className="-m-5 space-y-3 p-4 max-sm:-m-3"
         // Esc closes it only while nothing is written: a comment isn't lost to a key press.
         onKeyDown={(e) => {
@@ -761,7 +785,11 @@ export function AddCommentDialog({
             </button>
           </div>
         ) : (
-          <p className="text-xs text-muted">Tap a part in the 3D view to tie the comment to it.</p>
+          <p className="text-xs text-muted">
+            Tap a part in the 3D view to tie the comment to it.
+            {/* Phones: the hold has no other hint (phone audit G5, Harel 2026-11-19). */}
+            <span className="hidden pointer-coarse:inline"> Touch and hold a part for more (open it, hide, isolate).</span>
+          </p>
         )}
         {onRobot && (
           <div className="space-y-2">

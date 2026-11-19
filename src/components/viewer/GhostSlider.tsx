@@ -6,10 +6,11 @@ import type { SceneTools } from "./types";
 // Isolate's ghost slider (Harel, 2026-11-13), in place of the menu's Show others as ghosts: 0 is
 // no ghosts; further right, the other parts show see-through farther round the isolated ones, the
 // nearest clearer (ghosts.ts). Shown on every 3D view while parts are isolated.
-export function GhostSlider({ tools }: { tools: SceneTools }) {
+// `stacked`: in the CAD page's phone stack above + Add comment (it sat over the view cube there).
+export function GhostSlider({ tools, stacked = false }: { tools: SceneTools; stacked?: boolean }) {
   const [value, setValue] = useState(() => tools.ghosts());
   return (
-    <label className="absolute top-3 left-1/2 z-20 flex -translate-x-1/2 animate-pop items-center gap-2 rounded-full border border-line bg-surface/95 px-3 py-1 text-xs font-semibold text-muted shadow-sm backdrop-blur max-sm:top-15 pointer-coarse:py-1.5" title="Show the other parts as see-through ghosts round the isolated ones">
+    <label className={`${stacked ? "" : "absolute top-3 left-1/2 z-20 -translate-x-1/2 max-sm:top-15"} flex animate-pop items-center gap-2 rounded-full border border-line bg-surface/95 px-3 py-1 text-xs font-semibold text-muted shadow-sm backdrop-blur pointer-coarse:py-1.5`} title="Show the other parts as see-through ghosts round the isolated ones">
       Ghosts
       <input
         type="range"
