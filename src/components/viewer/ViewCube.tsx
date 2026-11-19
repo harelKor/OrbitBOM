@@ -109,8 +109,11 @@ export function ViewCube({ tools }: { tools: SceneTools }) {
     <>
       <div
         // Above the CAD page's Comments strip and Measure box while the menu is open: on phones they
-        // overlap it (phone audit, 2026-11-19).
-        className={`absolute top-3 right-3 ${menu ? "z-30" : "z-10"} grid size-28 grid-cols-[1fr_var(--cube)_1fr] grid-rows-[1fr_var(--cube)_1fr] place-items-center select-none [--cube:72px] pointer-coarse:size-[calc(var(--cube)+2.5rem)] pointer-coarse:[--cube:64px]`}
+        // overlap it (phone audit, 2026-11-19). The cube's size is in rem like the box round it: on a
+        // scaled-down page (UI_SCALE_SCRIPT, a laptop at 150 %) a fixed 72 px cube left the side
+        // columns 15 px wide, so ▶ and the ▾ menu button spilled out past the view's edge, under
+        // the Comments strip (Harel, 2026-11-19).
+        className={`absolute top-3 right-3 ${menu ? "z-30" : "z-10"} grid size-28 grid-cols-[1fr_var(--cube)_1fr] grid-rows-[1fr_var(--cube)_1fr] place-items-center select-none [--cube:4.5rem] pointer-coarse:size-[calc(var(--cube)+2.5rem)] pointer-coarse:[--cube:4rem]`}
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >

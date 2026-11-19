@@ -801,7 +801,7 @@ export function ReviewScreen({
         )}
 
         {vt && (
-          <div className="absolute top-3 left-1/2 z-20 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 animate-pop flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-lg border border-accent/50 bg-surface/95 px-3 py-1.5 text-xs shadow-md backdrop-blur max-lg:top-[7.5rem] max-lg:right-15 max-lg:left-3 max-lg:max-w-none max-lg:translate-x-0">
+          <div className="absolute top-3 left-1/2 z-20 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 animate-pop flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-lg border border-accent/50 bg-surface/95 px-3 py-1.5 text-xs shadow-md backdrop-blur max-lg:top-[8.25rem] max-lg:right-15 max-lg:left-3 max-lg:max-w-none max-lg:translate-x-0">
             {vt.mode === "visit" ? (
               <>
                 <span className="font-semibold text-fg">Viewing {vt.a.label}</span>
@@ -949,13 +949,14 @@ export function ReviewScreen({
       </section>
       {/* Open comments, and below them those waiting for approval. Wide screens: a column of
         its own right of the 3D view, so the view (its Fit, its view cube) isn't under it.
-        Narrower: over the view's right side, under the view cube (7 rem, 6.5 on touch). Phones:
+        Narrower: over the view's right side, under the view cube and its ▾ (8.25 rem, touch too).
+        Phones:
         folded at first, then over the whole 3D view (Harel, 2026-11-19). */}
       {(!side || sideChoice === null) && (
         <button
           onClick={() => setSide(true)}
           title="Show comments"
-          className={`${sideChoice === null ? "lg:hidden" : ""} press absolute top-[8rem] right-3 z-10 flex w-9 flex-col items-center gap-2 rounded-md border border-line bg-surface/95 py-3 text-xs font-semibold text-fg-2 shadow-md hover:bg-raised pointer-coarse:top-[7.5rem] xl:static xl:shrink-0 xl:rounded-none xl:border-y-0 xl:border-r-0 xl:shadow-none`}
+          className={`${sideChoice === null ? "lg:hidden" : ""} press absolute top-[8.25rem] right-3 z-10 flex w-9 flex-col items-center gap-2 rounded-md border border-line bg-surface/95 py-3 text-xs font-semibold text-fg-2 shadow-md hover:bg-raised xl:static xl:shrink-0 xl:rounded-none xl:border-y-0 xl:border-r-0 xl:shadow-none`}
         >
           <span aria-hidden>‹</span>
           <span className="rounded-full bg-amber-500/15 px-1.5 text-amber-600 tabular-nums">{open.length}</span>
@@ -963,7 +964,7 @@ export function ReviewScreen({
         </button>
       )}
       {side && <PanelResizer root={root} side="right" />}
-      <div data-comments className={`absolute z-10 flex flex-col gap-2 max-lg:inset-0 max-lg:z-30 max-lg:bg-surface max-lg:p-3 lg:top-[8rem] lg:right-3 lg:max-h-[calc(100%-12.5rem)] lg:w-[min(20rem,calc(100%-1.5rem))] lg:pointer-coarse:top-[7.5rem] xl:static xl:max-h-none xl:w-[var(--cad-comments-w,18rem)] xl:shrink-0 xl:overflow-y-auto xl:border-l xl:border-line xl:bg-surface xl:p-3 ${sideChoice === null ? "max-lg:hidden" : side ? "" : "hidden"}`}>
+      <div data-comments className={`absolute z-10 flex flex-col gap-2 max-lg:inset-0 max-lg:z-30 max-lg:bg-surface max-lg:p-3 lg:top-[8.25rem] lg:right-3 lg:max-h-[calc(100%-12.75rem)] lg:w-[min(20rem,calc(100%-1.5rem))] xl:static xl:max-h-none xl:w-[var(--cad-comments-w,18rem)] xl:shrink-0 xl:overflow-y-auto xl:border-l xl:border-line xl:bg-surface xl:p-3 ${sideChoice === null ? "max-lg:hidden" : side ? "" : "hidden"}`}>
 
         <Popup
           title="Comments"
