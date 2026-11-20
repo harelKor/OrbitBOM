@@ -158,7 +158,7 @@ read("system_stats", "member", "A system's completion and count per status.", z.
 read(
   "search_inventory",
   "member",
-  "Inventory items with stock, category and specs (use them to match BOM parts to items when setting up parts: pass the id to set_up_parts as inventory_item_id). All active robots share one shelf: need is what every robot's linked parts need together, short what the stock doesn't cover, free what no part needs. Sheet items (plates) count sheets and pieces (2.75 = 2 ¾ sheets) and have no need. season_need is a separate shelf target for the season (season_short what the stock is under it); on_order is the status of a COTS card already ordering it. The PC stations (Scouting PC, CAD PC, Build PC) count their PCs, listed under pcs with each one's condition (1-5), keyboard, mouse and note.",
+  "Inventory items with stock, category and specs (use them to match BOM parts to items when setting up parts: pass the id to set_up_parts as inventory_item_id). All active robots share one shelf: need is what every robot's linked parts need together, short what the stock doesn't cover, free what no part needs. Sheet items (plates) count sheets and pieces (2.75 = 2 ¾ sheets) and have no need. season_need is a separate shelf target for the season (season_short what the stock is under it); on_order is the status of a COTS card already ordering it. The PC stations (Scouting PC, CAD PC, Build PC) count their PCs, listed under pcs with each one's condition (1-5) and note.",
   z.object({ text: z.string().optional(), limit: z.number().int().min(1).max(500).optional().describe("At most this many items (default 200).") }),
   async ({ text, limit = 200 }) => {
     const { items } = await listInventory();
@@ -186,7 +186,7 @@ read(
         has_image: Boolean(i.imagePath),
         image_path: i.imagePath,
         per_robot: i.usage?.robots.map((r) => ({ robot: r.robotName, needed: r.needed, covered: r.allocated })) ?? [],
-        ...(devices.has(i.id) ? { pcs: devices.get(i.id)!.map((d, n) => ({ number: n + 1, condition_out_of_5: d.condition, keyboard: d.keyboard, mouse: d.mouse, note: d.note })) } : {}),
+        ...(devices.has(i.id) ? { pcs: devices.get(i.id)!.map((d, n) => ({ number: n + 1, condition_out_of_5: d.condition, note: d.note })) } : {}),
       })),
     };
   },

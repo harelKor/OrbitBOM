@@ -14,7 +14,7 @@ import type { Item } from "./types";
 // The PC stations (config/stations.ts, Harel 2026-11-20): instead of the photo and the count, a
 // station's window shows the floor plan around its room with each PC as an icon on it. The view
 // pans and zooms freely with the room's outline always lit, and Reset flies back. Anyone
-// who can work drags the PCs (saved on drop); a tap opens Keyboard / Mouse / Notes / Delete. + Add
+// who can work drags the PCs (saved on drop); a tap opens its note and Delete. + Add
 // PC puts one in the middle of the room. Below: every PC with its condition (1-5) and its Delete.
 
 type ChangeItem = (change: (i: Item) => Partial<Item>, run: () => Promise<{ error?: string }>) => void;
@@ -132,7 +132,6 @@ function PcRow({ device: d, n, work, onSave, onDelete, onOpen }: { device: Devic
     }, 400);
   };
   useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
-  const tick = "flex min-h-9 items-center gap-1.5 text-sm text-fg-2";
   return (
     <li className="space-y-1.5 rounded-xl border border-line bg-raised p-2.5">
       <div className="flex items-center gap-2">
@@ -140,14 +139,6 @@ function PcRow({ device: d, n, work, onSave, onDelete, onOpen }: { device: Devic
           <Icon name="pc" className="h-5 w-5" />
           <span className="tabular-nums">PC {n}</span>
         </button>
-        <label className={tick}>
-          <input type="checkbox" className="h-5 w-5" disabled={!work} checked={d.keyboard} onChange={(e) => onSave({ keyboard: e.target.checked })} />
-          Keyboard
-        </label>
-        <label className={tick}>
-          <input type="checkbox" className="h-5 w-5" disabled={!work} checked={d.mouse} onChange={(e) => onSave({ mouse: e.target.checked })} />
-          Mouse
-        </label>
         {work && (
           <button type="button" onClick={onDelete} className="press ml-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-subtle hover:bg-surface hover:text-rose-500 active:scale-[0.98]" aria-label={`Delete PC ${n}`} title="Delete this PC">
             <Icon name="close" className="h-4 w-4" />
@@ -169,7 +160,7 @@ function PcRow({ device: d, n, work, onSave, onDelete, onOpen }: { device: Devic
         />
         <span className="w-8 text-right font-mono font-semibold text-fg tabular-nums">{shown ?? "–"}/5</span>
       </label>
-      {d.note && <p className="truncate text-xs text-muted">{d.note}</p>}
+      <PcNote device={d} work={work} onSave={onSave} />
     </li>
   );
 }
@@ -435,8 +426,52 @@ function PcIcon({
   );
 }
 
-// A PC's small menu: Keyboard and Mouse ticks, its note (saved as the box loses focus or the menu
-// closes) and Delete. Drawn over the map's edge rather than cut off by it.
+// A PC's note, in the same amber box as an item's Notes so it stands out (Harel, 2026-11-20).
+// Saved when the box loses focus, or when it goes (the menu closed by a tap elsewhere).
+function PcNote({ device: d, work, onSave }: { device: Device; work: boolean; onSave: (p: Patch) => void }) {
+  const [note, setNote] = useState(d.note ?? "");
+  const [seen, setSeen] = useState(d.note);
+  const [focused, setFocused] = useState(false);
+  // A note saved in the other box (the list or the menu) shows here unless it's being typed in.
+  if (seen !== d.note && !focused) {
+    setSeen(d.note);
+    setNote(d.note ?? "");
+  }
+  const latest = useRef({ note, saved: d.note ?? "", onSave });
+  useEffect(() => {
+    latest.current = { note, saved: d.note ?? "", onSave };
+  });
+  useEffect(
+    () => () => {
+      const { note: text, saved, onSave: save } = latest.current;
+      if (text.trim() !== saved.trim()) save({ note: text });
+    },
+    [],
+  );
+  return (
+    <label className="block rounded-xl border-2 border-amber-400/70 bg-amber-50 px-3 py-2 shadow-[3px_4px_0_0_rgba(245,158,11,0.25)] focus-within:border-amber-500 dark:bg-amber-400/10">
+      <span className="flex items-center gap-1.5 text-xs font-bold tracking-wide text-amber-700 uppercase dark:text-amber-300">
+        <Icon name="note" className="h-3.5 w-3.5" />
+        Notes
+      </span>
+      <textarea
+        value={note}
+        rows={3}
+        readOnly={!work}
+        onChange={(e) => setNote(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => {
+          setFocused(false);
+          if (note.trim() !== (d.note ?? "").trim()) onSave({ note });
+        }}
+        placeholder={work ? "A note about this PC…" : "No note"}
+        className="mt-0.5 block w-full resize-y bg-transparent text-base leading-snug font-semibold text-fg outline-none placeholder:font-normal placeholder:text-amber-700/50 dark:placeholder:text-amber-300/40"
+      />
+    </label>
+  );
+}
+
+// A PC's small menu: its note and Delete. Drawn over the map's edge rather than cut off by it.
 function PcMenu({
   device: d,
   n,
@@ -456,22 +491,9 @@ function PcMenu({
   onSave: (p: Patch) => void;
   onDelete: () => void;
 }) {
-  const [note, setNote] = useState(d.note ?? "");
-  const latest = useRef({ note, saved: d.note ?? "", onSave });
-  useEffect(() => {
-    latest.current = { note, saved: d.note ?? "", onSave };
-  });
-  useEffect(
-    () => () => {
-      const { note: text, saved, onSave: save } = latest.current;
-      if (text.trim() !== saved.trim()) save({ note: text });
-    },
-    [],
-  );
-  const width = Math.min(224, size.w - 8);
+  const width = Math.min(272, size.w - 8);
   const left = clamp(at.left - width / 2, 4, size.w - width - 4);
   const below = at.top < size.h / 2;
-  const tick = "flex min-h-10 items-center gap-2.5 rounded-lg px-2 text-sm font-medium text-fg hover:bg-raised";
   return (
     <div
       className="absolute z-[5] rounded-xl border border-line-strong bg-surface p-2 shadow-[0_12px_32px_rgba(0,0,0,0.5)]"
@@ -483,26 +505,7 @@ function PcMenu({
           <Icon name="close" className="h-3.5 w-3.5" />
         </button>
       </div>
-      <label className={tick}>
-        <input type="checkbox" className="h-5 w-5" disabled={!work} checked={d.keyboard} onChange={(e) => onSave({ keyboard: e.target.checked })} />
-        Keyboard
-      </label>
-      <label className={tick}>
-        <input type="checkbox" className="h-5 w-5" disabled={!work} checked={d.mouse} onChange={(e) => onSave({ mouse: e.target.checked })} />
-        Mouse
-      </label>
-      <label className="mt-1 block px-1">
-        <span className="text-xs font-semibold tracking-wide text-subtle uppercase">Notes</span>
-        <textarea
-          value={note}
-          rows={2}
-          readOnly={!work}
-          onChange={(e) => setNote(e.target.value)}
-          onBlur={() => note.trim() !== (d.note ?? "").trim() && onSave({ note })}
-          placeholder={work ? "This PC's note…" : "No note"}
-          className="input mt-0.5 block w-full resize-y py-1.5 text-sm"
-        />
-      </label>
+      <PcNote device={d} work={work} onSave={onSave} />
       {work && (
         <button type="button" onClick={onDelete} className="press mt-1 flex min-h-10 w-full items-center gap-2 rounded-lg px-2 text-sm font-medium text-rose-500 hover:bg-raised active:scale-[0.98]">
           <Icon name="close" className="h-4 w-4" /> Delete PC

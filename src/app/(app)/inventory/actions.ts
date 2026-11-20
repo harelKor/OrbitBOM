@@ -408,14 +408,12 @@ const devicePatch = z
     // Floor plan units (config/workshopMap.ts).
     x: z.number().min(0).max(MAP_W),
     y: z.number().min(0).max(MAP_H),
-    keyboard: z.boolean(),
-    mouse: z.boolean(),
     note: z.string().max(2000).nullable(),
     condition: z.number().int().min(1).max(5).nullable(),
   })
   .partial();
 
-// A PC's place on the floor plan (saved on drop), its Keyboard / Mouse ticks, note and condition.
+// A PC's place on the floor plan (saved on drop), its note and condition.
 export async function updateDevice(deviceId: string, patch: z.input<typeof devicePatch>): Promise<ActionResult> {
   await requireCapability("work");
   const parsed = devicePatch.safeParse(patch);
