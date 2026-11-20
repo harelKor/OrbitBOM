@@ -1103,6 +1103,9 @@ export const inventoryCategories = pgTable("inventory_categories", {
   group: text("group").notNull().default("general"), // CATEGORY_GROUPS in config/inventory.ts
   // Counted in whole sheets and pieces of one (¼ ⅓ ½ ⅔ ¾).
   sheet: boolean("sheet").notNull().default(false),
+  // Each item is one station's kind of computer and its stock is its rows in inventory_devices,
+  // each placed on the zone's picture (Computers & Devices, Harel 2026-11-20).
+  devices: boolean("devices").notNull().default(false),
   image: text("image"), // the category's picture (its box): a public/categories/ path or an R2 key
   defaultLocationId: uuid("default_location_id").references(() => inventoryLocations.id, { onDelete: "set null" }),
   fields: jsonb("fields").$type<CategoryField[]>().notNull().default([]),
@@ -1172,6 +1175,29 @@ export const inventoryMoves = pgTable(
     index("inventory_moves_visit_idx").on(t.visitId),
     index("inventory_moves_part_idx").on(t.partId),
   ],
+);
+
+// One computer / laptop / tablet of a devices item (Computers & Devices, Harel 2026-11-20): the
+// item's stock is how many of these rows it has (lib/inventory/moves.ts keeps them in step). x / y
+// are its icon's place on the zone's picture (0..1); specs are by the category's field ids.
+export const inventoryDevices = pgTable(
+  "inventory_devices",
+  {
+    id: id(),
+    itemId: uuid("item_id")
+      .notNull()
+      .references(() => inventoryItems.id, { onDelete: "cascade" }),
+    x: real("x").notNull().default(0.5),
+    y: real("y").notNull().default(0.5),
+    keyboard: boolean("keyboard").notNull().default(false),
+    mouse: boolean("mouse").notNull().default(false),
+    note: text("note"),
+    specs: jsonb("specs").$type<Record<string, string>>().notNull().default({}),
+    position: integer("position").notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("inventory_devices_item_idx").on(t.itemId, t.position)],
 );
 
 // Every COTS order, one card each on the COTS Order History page and in the item's Past orders:

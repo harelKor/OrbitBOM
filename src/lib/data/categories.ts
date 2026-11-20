@@ -26,7 +26,7 @@ async function loadCategories(exec: Exec): Promise<InvCategory[]> {
   if (!rows.length) {
     await exec
       .insert(inventoryCategories)
-      .values(DEFAULT_CATEGORIES.map((c, i) => ({ id: c.id, label: c.label, noun: c.noun, group: c.group, sheet: !!c.sheet, position: i, fields: c.fields, image: c.image ?? null })))
+      .values(DEFAULT_CATEGORIES.map((c, i) => ({ id: c.id, label: c.label, noun: c.noun, group: c.group, sheet: !!c.sheet, devices: !!c.devices, position: i, fields: c.fields, image: c.image ?? null })))
       .onConflictDoNothing();
     rows = await exec.select().from(inventoryCategories).orderBy(asc(inventoryCategories.position), asc(inventoryCategories.label));
   }
@@ -40,6 +40,7 @@ async function loadCategories(exec: Exec): Promise<InvCategory[]> {
     noun: r.noun,
     group: groupOf(r.group),
     sheet: r.sheet,
+    devices: r.devices,
     image: r.image,
     defaultLocationId: r.defaultLocationId,
     fields: r.fields.map((f) => (f.kind === "material" ? { ...f, materialChoices: choices(f) } : withBoreList(f, boreList))),

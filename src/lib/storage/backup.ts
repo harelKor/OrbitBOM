@@ -33,6 +33,7 @@ export const BACKUP_TABLES = {
   inventoryGroups: schema.inventoryGroups,
   inventoryItems: schema.inventoryItems,
   inventoryMoves: schema.inventoryMoves,
+  inventoryDevices: schema.inventoryDevices,
 };
 
 // Every row of those tables as one gzipped JSON file, backups/orbitparts-YYYY-MM-DD.json.gz

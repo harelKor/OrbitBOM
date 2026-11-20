@@ -5,6 +5,8 @@ import { effectiveMode, partChangesCapability } from "@/components/shell/mode";
 import { PRIORITIES } from "@/config/priorities";
 import { db, schema } from "@/db";
 import { listInventory } from "@/lib/data/inventory";
+import { getCategory } from "@/lib/inventory/categories";
+import { devicesOf } from "@/lib/inventory/devices";
 import { searchProducts } from "@/lib/inventory/search";
 import { hasSeasonNeed, missing } from "@/lib/inventory/season";
 import { formatStockExact as formatStock } from "@/lib/inventory/stock";
@@ -157,11 +159,13 @@ read("system_stats", "member", "A system's completion and count per status.", z.
 read(
   "search_inventory",
   "member",
-  "Inventory items with stock, category and specs (use them to match BOM parts to items when setting up parts: pass the id to set_up_parts as inventory_item_id). All active robots share one shelf: need is what every robot's linked parts need together, short what the stock doesn't cover, free what no part needs. Sheet items (plates) count sheets and pieces (2.75 = 2 ¾ sheets) and have no need. season_need is a separate shelf target for the season (season_short what the stock is under it); on_order is the status of a COTS card already ordering it.",
+  "Inventory items with stock, category and specs (use them to match BOM parts to items when setting up parts: pass the id to set_up_parts as inventory_item_id). All active robots share one shelf: need is what every robot's linked parts need together, short what the stock doesn't cover, free what no part needs. Sheet items (plates) count sheets and pieces (2.75 = 2 ¾ sheets) and have no need. season_need is a separate shelf target for the season (season_short what the stock is under it); on_order is the status of a COTS card already ordering it. Computers & Devices items (a station's computers) count their devices, listed under devices with each one's specs, keyboard, mouse and note.",
   z.object({ text: z.string().optional(), limit: z.number().int().min(1).max(500).optional().describe("At most this many items (default 200).") }),
   async ({ text, limit = 200 }) => {
-    const { items } = await listInventory();
+    const { items, categories } = await listInventory();
     const found = items.filter((i) => !text || i.name.toLowerCase().includes(text.toLowerCase()));
+    // Computers & Devices items list their devices (read only here).
+    const devices = await devicesOf(found.slice(0, limit).filter((i) => getCategory(categories, i.category)?.devices).map((i) => i.id));
     return {
       total: found.length,
       truncated: found.length > limit,
@@ -183,6 +187,7 @@ read(
         has_image: Boolean(i.imagePath),
         image_path: i.imagePath,
         per_robot: i.usage?.robots.map((r) => ({ robot: r.robotName, needed: r.needed, covered: r.allocated })) ?? [],
+        ...(devices.has(i.id) ? { devices: devices.get(i.id)!.map((d, n) => ({ number: n + 1, specs: d.specs, keyboard: d.keyboard, mouse: d.mouse, note: d.note })) } : {}),
       })),
     };
   },

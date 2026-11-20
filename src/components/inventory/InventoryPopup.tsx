@@ -39,6 +39,7 @@ import { ProductSearch } from "./ProductSearch";
 import { CartButton, CountBox, ItemPrice, NewSize, PieceStepper, conditionColor, hostOf } from "./ItemCard";
 import { ItemForm, draftOf } from "./ItemForm";
 import { ConditionSelect } from "./ConditionSelect";
+import { DevicesPanel } from "./DevicesPanel";
 import { CotsOrderBox, showsOrder, type CotsOrderInfo } from "./CotsOrderBox";
 import { ItemHistory } from "./ItemHistory";
 import { usePhotoPicker } from "./photo";
@@ -590,6 +591,89 @@ function ItemBody({
       }}
     />
   );
+  // The category, season tag, condition and place pills.
+  const chips = (
+    <div className="flex items-center gap-1.5 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:[scrollbar-width:none] sm:flex-wrap sm:gap-1">
+      {cat && (
+        <Link href={`/inventory/c/${cat.id}`} onClick={onClose} className={`${tag} bg-[#111318]/85 text-white hover:bg-accent`}>
+          {cat.label}
+        </Link>
+      )}
+      <SeasonTag itemId={item.id} tag={item.seasonTag} className={tag} />
+      {work && data ? (
+        // Condition and location pills are menus that save at once.
+        <>
+          <ConditionSelect
+            conditions={conditions}
+            value={item.conditionId}
+            onChange={(conditionId) => onChange(() => ({ conditionId }), () => setItemCondition(item.id, conditionId))}
+            emptyLabel="Condition"
+            className={`${tag} press cursor-pointer appearance-none border pr-5 disabled:opacity-60 ${condition ? "border-transparent hover:brightness-110" : "border-dashed border-line-strong bg-transparent text-muted hover:border-sky-400/40"}`}
+            style={condition ? { ...caretOf(textOn(color!)), backgroundColor: color, color: textOn(color!) } : caretOf("currentColor")}
+          />
+          <LocationPicker
+            locations={locations}
+            value={item.locationId}
+            onChange={(id) => onChange(() => ({ locationId: id }), () => setItemLocation(item.id, id))}
+            className={`${tag} press flex items-center gap-1.5 border bg-transparent hover:border-sky-400/40 active:scale-[0.98] disabled:opacity-60 ${location ? "border-line text-fg-2" : "border-dashed border-line-strong text-muted"}`}
+          >
+            <PlaceTag place={location} places={locations} />
+          </LocationPicker>
+          <FindButton places={locations} placeId={location?.id} onFilter={(id) => { onClose(); router.push(`/inventory?loc=${id}`); }} />
+        </>
+      ) : (
+        <>
+          {condition && (
+            <Link href={`/inventory/condition/${condition.id}`} onClick={onClose} className={`${tag} hover:brightness-110`} style={{ background: color, color: textOn(color!) }}>
+              {condition.label}
+            </Link>
+          )}
+          <FindButton places={locations} placeId={location?.id} onFilter={(id) => { onClose(); router.push(`/inventory?loc=${id}`); }} />
+        </>
+      )}
+    </div>
+  );
+  const footer = (
+    <>
+      {message && <p className="text-sm text-emerald-700">{message}</p>}
+      {/* History and the pencil share the last line. */}
+      <div className="flex items-start justify-between gap-2 border-t border-line pt-2">
+        <div className="min-w-0 flex-1">
+          <HistorySection item={item} categories={categories} locations={locations} conditions={conditions} />
+        </div>
+        {work && (
+          <button
+            type="button"
+            className="btn mt-1 h-8 w-8 shrink-0 justify-center px-0 active:scale-[0.98]"
+            disabled={!data}
+            onClick={() => {
+              setDraft(draftOf(item));
+              setMode("edit");
+            }}
+            title="Edit item"
+            aria-label="Edit item"
+          >
+            <Icon name="pencil" className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+    </>
+  );
+  // Computers & Devices (Harel, 2026-11-20): the zone's picture with the devices on it takes the
+  // photo's and the count's place; Season needs goes under the list, and there's no item note
+  // (each device has its own).
+  if (cat?.devices && data?.devices)
+    return (
+      <div className="space-y-2.5">
+        {chips}
+        <DevicesPanel item={item} cat={cat} places={locations} devices={data.devices} onChange={onChange} onSaved={onSaved} onError={setMessage} />
+        <div className="flex">
+          <SeasonBox item={item} onChange={onChange} onError={setMessage} />
+        </div>
+        {!!usage?.parts.length && <UsedIn usage={usage} sheet={item.sheet} />}
+        {footer}
+      </div>
+    );
   // On phones the right column dissolves into the outer row: the picture spans the top, the tags
   // sit on one line below it, and the count line and what follows take the whole width.
   const wide = "max-sm:w-full";
@@ -619,45 +703,7 @@ function ItemBody({
         </div>
         <div className="max-sm:contents sm:flex sm:min-w-0 sm:flex-1 sm:flex-col sm:gap-2.5">
           <div className="flex min-w-0 flex-1 flex-col gap-1.5 sm:flex-none">
-            <div className="flex items-center gap-1.5 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:[scrollbar-width:none] sm:flex-wrap sm:gap-1">
-              {cat && (
-                <Link href={`/inventory/c/${cat.id}`} onClick={onClose} className={`${tag} bg-[#111318]/85 text-white hover:bg-accent`}>
-                  {cat.label}
-                </Link>
-              )}
-              <SeasonTag itemId={item.id} tag={item.seasonTag} className={tag} />
-              {work && data ? (
-                // Condition and location pills are menus that save at once.
-                <>
-                  <ConditionSelect
-                    conditions={conditions}
-                    value={item.conditionId}
-                    onChange={(conditionId) => onChange(() => ({ conditionId }), () => setItemCondition(item.id, conditionId))}
-                    emptyLabel="Condition"
-                    className={`${tag} press cursor-pointer appearance-none border pr-5 disabled:opacity-60 ${condition ? "border-transparent hover:brightness-110" : "border-dashed border-line-strong bg-transparent text-muted hover:border-sky-400/40"}`}
-                    style={condition ? { ...caretOf(textOn(color!)), backgroundColor: color, color: textOn(color!) } : caretOf("currentColor")}
-                  />
-                  <LocationPicker
-                    locations={locations}
-                    value={item.locationId}
-                    onChange={(id) => onChange(() => ({ locationId: id }), () => setItemLocation(item.id, id))}
-                    className={`${tag} press flex items-center gap-1.5 border bg-transparent hover:border-sky-400/40 active:scale-[0.98] disabled:opacity-60 ${location ? "border-line text-fg-2" : "border-dashed border-line-strong text-muted"}`}
-                  >
-                    <PlaceTag place={location} places={locations} />
-                  </LocationPicker>
-                  <FindButton places={locations} placeId={location?.id} onFilter={(id) => { onClose(); router.push(`/inventory?loc=${id}`); }} />
-                </>
-              ) : (
-                <>
-                  {condition && (
-                    <Link href={`/inventory/condition/${condition.id}`} onClick={onClose} className={`${tag} hover:brightness-110`} style={{ background: color, color: textOn(color!) }}>
-                      {condition.label}
-                    </Link>
-                  )}
-                  <FindButton places={locations} placeId={location?.id} onFilter={(id) => { onClose(); router.push(`/inventory?loc=${id}`); }} />
-                </>
-              )}
-            </div>
+            {chips}
             {(item.sheet || usage?.need || gap > 0) && (
               <div className="text-xs text-muted">
                 {[item.sheet ? (isSheetGoods(cat?.label ?? item.name) ? "sheets on the shelf" : "on the shelf") : null, usage?.need ? `Robots need ${usage.need}` : null].filter(Boolean).join(" · ")}
@@ -732,28 +778,7 @@ function ItemBody({
         </div>
       )}
 
-      {message && <p className="text-sm text-emerald-700">{message}</p>}
-      {/* History and the pencil share the last line. */}
-      <div className="flex items-start justify-between gap-2 border-t border-line pt-2">
-        <div className="min-w-0 flex-1">
-          <HistorySection item={item} categories={categories} locations={locations} conditions={conditions} />
-        </div>
-        {work && (
-          <button
-            type="button"
-            className="btn mt-1 h-8 w-8 shrink-0 justify-center px-0 active:scale-[0.98]"
-            disabled={!data}
-            onClick={() => {
-              setDraft(draftOf(item));
-              setMode("edit");
-            }}
-            title="Edit item"
-            aria-label="Edit item"
-          >
-            <Icon name="pencil" className="h-4 w-4" />
-          </button>
-        )}
-      </div>
+      {footer}
     </div>
   );
 }

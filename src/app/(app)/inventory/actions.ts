@@ -28,6 +28,7 @@ import { applyEachPartChanges } from "@/lib/parts/apply";
 import { StorageNotConfiguredError, deleteObject, objectExists, presignUpload } from "@/lib/storage/r2";
 import { deleteToTrash } from "@/lib/trash";
 import { createItem } from "@/lib/inventory/create";
+import { itemDevices } from "@/lib/inventory/devices";
 import { isUuid } from "@/lib/uuid";
 
 const { inventoryItems, inventoryGroups, inventoryConditions, inventoryLocations, inventoryCategories, parts } = schema;
@@ -379,6 +380,50 @@ export async function editItemPieces(itemId: string, op: PieceOp): Promise<Actio
   const cats = await listCategories();
   await db.transaction((tx) => editPieces(tx, itemId, op, { memberId: member.id, via: "ui", cats }));
   refresh();
+  return {};
+}
+
+// Computers & Devices (Harel, 2026-11-20): the item window's − asks which device goes; it comes
+// off the stock like any − (a move in the item's history). + is adjustStock: a new device.
+export async function removeDevice(itemId: string, deviceId: string): Promise<ActionResult> {
+  const member = await requireCapability("work");
+  if (!isUuid(itemId) || !isUuid(deviceId)) return { error: "Unknown device." };
+  const cats = await listCategories();
+  await db.transaction((tx) => moveStock(tx, { itemId, delta: -1, reason: "counted", deviceId }, { memberId: member.id, via: "ui", cats }));
+  refresh();
+  return {};
+}
+
+const devicePatch = z
+  .object({
+    x: z.number().min(0).max(1),
+    y: z.number().min(0).max(1),
+    keyboard: z.boolean(),
+    mouse: z.boolean(),
+    note: z.string().max(2000).nullable(),
+    specs: z.record(z.string().max(60), z.string().max(200)),
+  })
+  .partial();
+
+// A device's place on the picture (saved on drop), its Keyboard / Mouse ticks, note and specs.
+export async function updateDevice(deviceId: string, patch: z.input<typeof devicePatch>): Promise<ActionResult> {
+  await requireCapability("work");
+  const parsed = devicePatch.safeParse(patch);
+  if (!isUuid(deviceId) || !parsed.success) return { error: "Unknown device." };
+  const [device] = await db
+    .select({ specs: schema.inventoryDevices.specs, category: inventoryItems.category })
+    .from(schema.inventoryDevices)
+    .innerJoin(inventoryItems, eq(inventoryItems.id, schema.inventoryDevices.itemId))
+    .where(eq(schema.inventoryDevices.id, deviceId));
+  if (!device) return { error: "That device was removed." };
+  const { specs, note, ...rest } = parsed.data;
+  // Only the category's own fields, blank ones dropped.
+  const fields = getCategory(await listCategories(), device.category)?.fields.map((f) => f.id) ?? [];
+  const nextSpecs = specs && Object.fromEntries(Object.entries({ ...device.specs, ...specs }).filter(([k, v]) => fields.includes(k) && v.trim()).map(([k, v]) => [k, v.trim()]));
+  await db
+    .update(schema.inventoryDevices)
+    .set({ ...rest, ...(note !== undefined ? { note: note?.trim() || null } : {}), ...(nextSpecs ? { specs: nextSpecs } : {}), updatedAt: new Date() })
+    .where(eq(schema.inventoryDevices.id, deviceId));
   return {};
 }
 
@@ -823,7 +868,8 @@ export async function itemPopup(itemId: string) {
   if (!isUuid(itemId)) return null;
   const [detail, targets] = await Promise.all([inventoryItemWithLists(itemId), listBomTargets()]);
   if (!detail) return null;
-  return { ...detail, targets, order: detail.item.openOrder ? await openOrderPart(detail.item.openOrder.partId) : null };
+  const devices = getCategory(detail.categories, detail.item.category)?.devices ? await itemDevices(itemId) : null;
+  return { ...detail, targets, devices, order: detail.item.openOrder ? await openOrderPart(detail.item.openOrder.partId) : null };
 }
 
 // The COTS card on its way for an item, for the window's Need to Order box and order status.

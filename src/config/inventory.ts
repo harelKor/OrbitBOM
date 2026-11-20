@@ -49,6 +49,9 @@ export const CATEGORY_GROUPS = [
   },
 ] as const;
 
+// A device's Type in Computers & Devices: picks its icon on the zone's picture.
+export const DEVICE_TYPES = ["Laptop", "PC", "Tablet"] as const;
+
 export type CategoryGroupId = (typeof CATEGORY_GROUPS)[number]["id"];
 export const DEFAULT_GROUP: CategoryGroupId = "hardware";
 export const isCategoryGroup = (id: string): id is CategoryGroupId =>
@@ -62,6 +65,7 @@ export type CategorySeed = {
   noun: string;
   group: CategoryGroupId;
   sheet?: boolean;
+  devices?: boolean; // each item is a station's computers, placed on the zone's picture
   fields: CategoryField[];
   match: RegExp | null;
   image?: string; // a picture in public/categories/ (a path starting with "/"), or an R2 key
@@ -877,6 +881,20 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
         options: ["Anderson", "Ferrule (סופיות)", "Ring Terminal", "Stripper"],
         when: "Crimper",
       },
+    ],
+  },
+  // One item per station's kind of computer (CNC PC, CAD PC...); its stock is its devices, each
+  // an icon on the zone's picture (Harel, 2026-11-20). Migration 0099 adds it to seeded teams.
+  {
+    id: "computers-devices",
+    group: "tools",
+    label: "Computers & Devices",
+    noun: "",
+    devices: true,
+    match: null,
+    fields: [
+      { id: "type", label: "Type", kind: "options", options: [...DEVICE_TYPES], name: "" },
+      { id: "condition", label: "Condition", kind: "number", name: "" },
     ],
   },
 ];

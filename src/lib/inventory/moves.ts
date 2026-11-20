@@ -1,12 +1,12 @@
 import "server-only";
-import { asc, eq, inArray } from "drizzle-orm";
+import { asc, desc, eq, inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { categoryOf, getCategory, type InvCategory } from "./categories";
 import { listCategories } from "@/lib/data/categories";
 import { currentVisit } from "@/lib/visits";
 import { type PieceOp, type PieceRow, type StoredPieces, applyPieceOp, countPieces, snapStock, stepStock } from "./stock";
 
-const { inventoryItems, inventoryMoves } = schema;
+const { inventoryDevices, inventoryItems, inventoryMoves } = schema;
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export type StockReason = (typeof schema.stockReason.enumValues)[number];
@@ -20,10 +20,11 @@ export type MoveCtx = { memberId: string | null; via: "ui" | "sync" | "mcp"; aiN
 // that size. Returns the stock before and after.
 export async function moveStock(
   tx: Tx,
-  move: { itemId: string; delta: number; reason: StockReason; partId?: string | null; size?: string },
+  // `deviceId`: a devices item's − takes off that device (the item window asks which one).
+  move: { itemId: string; delta: number; reason: StockReason; partId?: string | null; size?: string; deviceId?: string },
   ctx: MoveCtx,
 ): Promise<{ name: string; from: number; to: number } | null> {
-  return changeStock(tx, move.itemId, (item) => stepStock(item, move.delta, move.size), move.reason, move.partId ?? null, ctx);
+  return changeStock(tx, move.itemId, (item) => stepStock(item, move.delta, move.size), move.reason, move.partId ?? null, ctx, move.deviceId);
 }
 
 // The Spread's edits (a size's count, ✏, ✕, a new size): a "Counted" move when the stock changes.
@@ -38,14 +39,17 @@ async function changeStock(
   reason: StockReason,
   partId: string | null,
   ctx: MoveCtx,
+  deviceId?: string,
 ) {
   const [item] = await tx.select().from(inventoryItems).where(eq(inventoryItems.id, itemId)).for("update");
   if (!item) return null;
   const cats = ctx.cats ?? (await listCategories(tx));
-  const sheet = !!getCategory(cats, categoryOf(item, cats))?.sheet;
+  const cat = getCategory(cats, categoryOf(item, cats));
+  const sheet = !!cat?.sheet;
   const after = next({ inStock: item.inStock, sheet, pieces: item.pieces, specs: item.specs, name: item.name });
   // A fraction item's stock is its pieces' sum (a custom size can be any share), so it isn't snapped.
   const to = sheet ? Math.max(0, after.inStock) : snapStock(after.inStock, sheet);
+  if (cat?.devices) await fitDevices(tx, item.id, to, deviceId);
   const pieces = after.pieces ?? item.pieces;
   if (to !== item.inStock || JSON.stringify(pieces) !== JSON.stringify(item.pieces)) {
     await tx.update(inventoryItems).set({ inStock: to, pieces }).where(eq(inventoryItems.id, item.id));
@@ -66,6 +70,21 @@ async function changeStock(
     });
   }
   return { name: item.name, from: item.inStock, to };
+}
+
+// A devices item's stock is how many devices it has (Computers & Devices, Harel 2026-11-20): a
+// new one stands in the middle of the zone's picture; fewer take off `remove` first, then the
+// newest. Run under the item's row lock, so two phones tapping at once can't miss a row.
+export async function fitDevices(tx: Tx, itemId: string, count: number, remove?: string) {
+  const rows = await tx.select({ id: inventoryDevices.id, position: inventoryDevices.position }).from(inventoryDevices).where(eq(inventoryDevices.itemId, itemId)).orderBy(desc(inventoryDevices.position), desc(inventoryDevices.createdAt));
+  if (rows.length < count) {
+    const top = rows[0]?.position ?? -1;
+    await tx.insert(inventoryDevices).values(Array.from({ length: count - rows.length }, (_, i) => ({ itemId, position: top + 1 + i })));
+  } else if (rows.length > count) {
+    const first = rows.filter((r) => r.id === remove);
+    const gone = [...first, ...rows.filter((r) => r.id !== remove)].slice(0, rows.length - count).map((r) => r.id);
+    await tx.delete(inventoryDevices).where(inArray(inventoryDevices.id, gone));
+  }
 }
 
 // Set the stock to a counted amount (the item form, a stocktake). Worked out on the locked row,

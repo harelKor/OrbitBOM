@@ -14,8 +14,8 @@ type Row = Record<string, unknown>;
 export const RESTORE_SCOPES = {
   inventory: {
     label: "Inventory",
-    text: "Items, stock and stock moves, categories with their fields, base materials, the Bore list, groups, locations and conditions.",
-    tables: ["inventoryLocations", "inventoryConditions", "baseMaterials", "bores", "inventoryGroups", "inventoryCategories", "inventoryItems", "inventoryMoves"],
+    text: "Items, stock and stock moves, devices, categories with their fields, base materials, the Bore list, groups, locations and conditions.",
+    tables: ["inventoryLocations", "inventoryConditions", "baseMaterials", "bores", "inventoryGroups", "inventoryCategories", "inventoryItems", "inventoryMoves", "inventoryDevices"],
   },
   bom: {
     label: "BOM",
