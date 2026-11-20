@@ -51,7 +51,7 @@ export default async function MembersPage() {
             {requests.map((r) => (
               <li key={r.userId} className="flex flex-wrap items-center gap-3 px-4 py-3">
                 <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium">{r.name}</div>
+                  <div dir="auto" className="truncate font-medium">{r.name}</div>
                   <div className="truncate text-sm text-muted">{r.email}</div>
                 </div>
                 <form action={approveRequest.bind(null, r.userId)}>
@@ -70,7 +70,7 @@ export default async function MembersPage() {
           {members.map((m) => (
             <li
               key={m.id}
-              data-search={[m.name, m.email, TEAMS.find((t) => t.id === m.team)?.label, m.systemId && systemName.get(m.systemId), m.isAdmin && "admin", m.isMentor && "mentor"]
+              data-search={[m.name, me.isAdmin && m.email, TEAMS.find((t) => t.id === m.team)?.label, m.systemId && systemName.get(m.systemId), m.isAdmin && "admin", m.isMentor && "mentor"]
                 .filter(Boolean)
                 .join(" ")
                 .toLowerCase()}
@@ -78,7 +78,7 @@ export default async function MembersPage() {
             >
               <div className="min-w-0 flex-1">
                 <div className="truncate font-medium">
-                  {m.name}
+                  <bdi>{m.name}</bdi>
                   {m.isAdmin && (
                     <span className="ml-2 rounded bg-accent px-1.5 py-0.5 text-[0.6875rem] text-white">
                       Admin
@@ -86,11 +86,17 @@ export default async function MembersPage() {
                   )}
                   {m.isMentor && <span className="ml-2 rounded bg-sky-600 px-1.5 py-0.5 text-[0.6875rem] text-white">Mentor</span>}
                 </div>
-                <div className="truncate text-sm text-muted">
-                  {m.email}
-                  {!me.isAdmin && m.team && ` · ${TEAMS.find((t) => t.id === m.team)?.label}`}
-                  {!me.isAdmin && m.team === "cad" && m.systemId && systemName.has(m.systemId) && `, ${systemName.get(m.systemId)}`}
-                </div>
+                {/* Emails are for admins only (audit, 2026-11-20): members see each other's team. */}
+                {me.isAdmin ? (
+                  <div className="truncate text-sm text-muted">{m.email}</div>
+                ) : (
+                  m.team && (
+                    <div className="truncate text-sm text-muted">
+                      {TEAMS.find((t) => t.id === m.team)?.label}
+                      {m.team === "cad" && m.systemId && systemName.has(m.systemId) && `, ${systemName.get(m.systemId)}`}
+                    </div>
+                  )
+                )}
               </div>
               {me.isAdmin && <MemberTeam memberId={m.id} team={m.team} systemId={m.systemId} systems={systems} />}
               {me.isAdmin && (

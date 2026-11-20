@@ -939,7 +939,7 @@ function MaterialBody({ data, onStep, onOpen, onClose }: { data: MaterialData; o
             )}
           </button>
           <button type="button" onClick={() => onOpen(i.id)} className="min-w-0 flex-1 text-left">
-            <div className="truncate font-semibold hover:text-accent">{i.name}</div>
+            <div dir="auto" className="truncate font-semibold hover:text-accent">{i.name}</div>
             <div className="text-xs text-muted">
               {getCategory(categories, i.category)?.label}
             </div>

@@ -226,7 +226,7 @@ export function CotsCard({
 
       <div className={`flex min-w-0 flex-col ${order ? "gap-3 p-3" : "gap-1.5 px-2.5 py-2"}`}>
         <div className="flex min-w-0 items-center gap-1">
-          <div className={`min-w-0 flex-1 truncate font-semibold ${order ? "text-base" : ""} ${struck ? "line-through decoration-2" : ""}`} title={title}>
+          <div dir="auto" className={`min-w-0 flex-1 truncate font-semibold ${order ? "text-base" : ""} ${struck ? "line-through decoration-2" : ""}`} title={title}>
             {links[0] ? (
               <a
                 href={links[0].url}

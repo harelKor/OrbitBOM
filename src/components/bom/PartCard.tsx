@@ -274,7 +274,7 @@ function MadePartCard({
       ) : (
         <div className="flex min-w-0 flex-col gap-1.5 px-2.5 py-2">
           <div className="flex min-w-0 items-center gap-1">
-            <div className={`min-w-0 flex-1 truncate text-[0.8125rem] font-semibold text-fg ${checked ? "line-through" : ""}`} title={part.displayName ?? part.onshapeName ?? undefined}>
+            <div dir="auto" className={`min-w-0 flex-1 truncate text-[0.8125rem] font-semibold text-fg ${checked ? "line-through" : ""}`} title={part.displayName ?? part.onshapeName ?? undefined}>
               {edit ? <NameField part={part} save={save} bare /> : (part.displayName ?? part.onshapeName ?? "Unnamed part")}
               {showSystem && <span className="ml-1.5 text-[0.6875rem] font-normal text-subtle">{part.systemName}</span>}
               {nameNote && <span className="ml-1.5 text-[0.6875rem] font-normal text-muted">{nameNote}</span>}
@@ -327,7 +327,7 @@ function FabFooter({ part, save, current, made, editStatus }: { part: CardPart; 
   return (
     <div className="flex min-w-0 flex-col gap-1.5 px-2.5 py-2">
       {/* The part's name always shows: a pale plate on the pale well can look like an empty card. */}
-      <div className="min-w-0 truncate text-[0.8125rem] font-semibold text-fg" title={partTitle(part)}>
+      <div dir="auto" className="min-w-0 truncate text-[0.8125rem] font-semibold text-fg" title={partTitle(part)}>
         {partTitle(part)}
       </div>
       <div className="flex min-w-0 items-center gap-1.5">

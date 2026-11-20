@@ -247,9 +247,9 @@ export function InputEditor({
       className="space-y-2"
     >
       {multiline ? (
-        <textarea autoFocus value={v} onChange={(e) => setV(e.target.value)} rows={3} className="input" />
+        <textarea dir="auto" autoFocus value={v} onChange={(e) => setV(e.target.value)} rows={3} className="input" />
       ) : (
-        <input autoFocus type={type} value={v} onChange={(e) => setV(e.target.value)} className="input" list={listId} min={type === "number" ? 0 : undefined} />
+        <input dir={type === "text" ? "auto" : undefined} autoFocus type={type} value={v} onChange={(e) => setV(e.target.value)} className="input" list={listId} min={type === "number" ? 0 : undefined} />
       )}
       {suggestions && (
         <datalist id={listId}>

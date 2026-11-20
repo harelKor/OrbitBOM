@@ -5,7 +5,6 @@ import { isDone } from "@/lib/status";
 import {
   MachineField,
   MaterialField,
-  NameField,
   NoteField,
   QuantityField,
   AddProcessField,
@@ -16,6 +15,7 @@ import {
 } from "./fields";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { FilesField } from "./FilesField";
+import { usePartDetails } from "./PartDetailsHost";
 import { Thumb } from "./Thumb";
 import { partIds, partTitle, type CardPart } from "./types";
 import { SheetViewport } from "@/components/ui/SheetViewport";
@@ -76,7 +76,7 @@ export function TableView({
                   </td>
                 )}
                 <td><Thumb part={p} size={44} /></td>
-                <td className="sheet-name"><NameField part={p} save={save} /></td>
+                <td className="sheet-name"><PartName part={p} save={save} /></td>
                 {showSystem && <td className="text-muted">{p.systemName}</td>}
                 <td><TypeField part={p} save={save} /></td>
                 <td><QuantityField part={p} save={save} /></td>
@@ -95,12 +95,23 @@ export function TableView({
                 <td><FilesField part={p} /></td>
                 <td><NoteField part={p} save={save} /></td>
                 <td className="whitespace-nowrap text-muted">{p.lastModifiedAt.toISOString().slice(0, 10)}</td>
-                <td className="whitespace-nowrap text-muted">{p.lastModifiedByName ?? "—"}</td>
+                <td dir="auto" className="whitespace-nowrap text-muted">{p.lastModifiedByName ?? "—"}</td>
               </tr>
             );
           })}
         </tbody>
       </table>
     </SheetViewport>
+  );
+}
+
+// The part's name opens its window, the same as a card tap (audit, 2026-11-20); renaming is in
+// the window.
+function PartName({ part, save }: { part: CardPart; save: SaveFn }) {
+  const show = usePartDetails(part, save);
+  return (
+    <button type="button" dir="auto" onClick={() => show()} className="press text-left font-semibold text-accent-soft hover:underline active:scale-[0.98]">
+      {partTitle(part)}
+    </button>
   );
 }

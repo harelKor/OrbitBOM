@@ -15,6 +15,7 @@ import type { PartChanges } from "@/lib/parts/changes";
 import { cotsLinkDenied } from "@/lib/parts/cotsLink";
 import { orderStatus } from "@/lib/status";
 import { OrderStatusButton } from "./CotsCard";
+import { useOverdue } from "./overdue";
 
 // An Order List cart: a Factory pack's card (the same collage, date, and strip that opens under its
 // row, Harel 2026-11-04) named by its vendor, with the cart button, which opens the vendor's site
@@ -46,6 +47,7 @@ export function CartCard({
   const delivery = (
     <DeliveryPill
       value={dates.length === 1 ? dates[0] : null}
+      status={orderStatus(lowest)}
       mixed={dates.length > 1}
       editable={work}
       onChange={(date) => {
@@ -109,14 +111,15 @@ export const deliveryDay = (date: string) => `${MONTHS[Number(date.slice(5, 7)) 
 
 // The cart's delivery date on its pictures' top left, on a frosted pill like the day it was made.
 // A tap opens the browser's date picker; clearing it there takes the date off.
-function DeliveryPill({ value, mixed, editable, onChange }: { value: string | null; mixed: boolean; editable: boolean; onChange: (date: string | null) => void }) {
+function DeliveryPill({ value, status, mixed, editable, onChange }: { value: string | null; status: string; mixed: boolean; editable: boolean; onChange: (date: string | null) => void }) {
+  const late = useOverdue(value, status);
   if (!editable && !value) return null;
   const label = value ? deliveryDay(value) : mixed ? "Mixed dates" : "Delivery date";
   return (
     <span
-      title={value ? "Delivery date" : "Set the delivery date"}
+      title={late ? "Delivery date: passed and the order isn't here yet" : value ? "Delivery date" : "Set the delivery date"}
       className={`relative flex items-center gap-1 rounded-full border bg-surface/90 px-2 py-0.5 text-[0.6875rem] font-semibold whitespace-nowrap tabular-nums shadow-sm backdrop-blur-md ${
-        value ? "border-emerald-400/60 text-emerald-600 dark:text-emerald-300" : "border-dashed border-line-strong text-muted"
+        late ? "border-rose-400/70 text-rose-600 dark:text-rose-300" : value ? "border-emerald-400/60 text-emerald-600 dark:text-emerald-300" : "border-dashed border-line-strong text-muted"
       } ${editable ? "press cursor-pointer hover:border-accent" : ""}`}
     >
       <Icon name="truck" className="h-3.5 w-3.5" />

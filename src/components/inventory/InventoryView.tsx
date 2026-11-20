@@ -388,12 +388,16 @@ export function InventoryView({
       items: optimistic.filter(
         (i) => hasSeasonNeed(i) && missing(i, "season") > 0,
       ),
+      // Every item in the view, covered ones too: the category boxes count these, so their sum is
+      // bigger than the toggle's number (audit, 2026-11-20).
+      inView: optimistic.filter(hasSeasonNeed).length,
     },
     {
       id: "robots" as const,
       title: "Short for Robots",
       text: "Items the active robots need more of than the shelf has",
       items: optimistic.filter((i) => (i.usage?.short ?? 0) > 0),
+      inView: optimistic.filter(usedByRobots).length,
     },
   ];
 
@@ -779,6 +783,7 @@ export function InventoryView({
                 // Leaving the view keeps one category at most (outside it a box picks just one).
                 onClick={() => pushQuery({ view: on ? null : t.id, ...(on && cats.length > 1 ? { cat: null } : {}) })}
                 aria-pressed={on}
+                title={`${t.items.length} short or on order · ${t.inView - t.items.length} covered. The category boxes count all ${t.inView} items in this view.`}
                 className={`card-interactive group flex min-w-0 items-center gap-3 p-3 text-left active:scale-[0.98] sm:gap-4 sm:px-4 sm:py-3 ${tint}`}
               >
                 <span
@@ -792,7 +797,7 @@ export function InventoryView({
                   </span>
                   <span className="hidden text-xs text-muted sm:block">
                     {on
-                      ? "Showing every item in this view · tap to close"
+                      ? `${t.items.length} short or on order · ${t.inView - t.items.length} covered · tap to close`
                       : t.text}
                   </span>
                 </span>

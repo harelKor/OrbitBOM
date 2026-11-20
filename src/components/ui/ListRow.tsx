@@ -71,12 +71,13 @@ export function ListRow({
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => e.stopPropagation()}
+            dir="auto"
             className="self-start max-w-full truncate text-base font-bold text-sky-500 underline-offset-2 hover:underline dark:text-sky-400"
           >
             {title}
           </a>
         ) : (
-          <span className="truncate text-base font-bold text-fg">{title}</span>
+          <span dir="auto" className="truncate text-base font-bold text-fg">{title}</span>
         )}
         {detail && <span className="truncate text-xs text-muted">{detail}</span>}
         {pills && <span className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">{pills}</span>}

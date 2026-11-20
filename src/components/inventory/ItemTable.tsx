@@ -323,7 +323,7 @@ function NoteButton({ note }: { note: string }) {
         }
       >
         {() => (
-          <div className="max-w-72 rounded-[1.4rem] border-[3px] border-[#111318] bg-[#fff59d] px-3.5 py-2 text-sm leading-snug font-bold break-words whitespace-pre-line text-[#111318] shadow-[3px_4px_0_0_rgba(17,19,24,0.9)]">
+          <div className="max-w-72 rounded-[1.4rem] border-[3px] border-[#111318] bg-[#fff59d] px-3.5 py-2 text-sm leading-snug font-bold break-words whitespace-pre-line text-[#111318] shadow-[3px_4px_0_0_rgba(17,19,24,0.9)]" dir="auto">
             {note}
           </div>
         )}

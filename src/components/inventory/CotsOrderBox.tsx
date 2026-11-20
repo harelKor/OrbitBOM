@@ -7,6 +7,7 @@ import { Popover } from "@/components/bom/Popover";
 import { textOn } from "@/components/bom/options";
 import { statusDenied } from "@/components/shell/mode";
 import { useCan, useMode } from "@/components/shell/ModeContext";
+import { useOverdue } from "@/components/cots/overdue";
 import type { PartChanges } from "@/lib/parts/changes";
 
 // The COTS card behind an item, shown in the item window as two small glowing boxes under Needed
@@ -41,6 +42,7 @@ export function CotsOrderBox({ info, onSave, editable, onLeave }: { info: CotsOr
   const [qty, setQty] = useState(info.quantity);
   const [typed, setTyped] = useState<string | null>(null);
   const [delivery, setDelivery] = useState(info.deliveryDate ?? null);
+  const late = useOverdue(delivery, status);
   const canStatus = editable && work;
   const canCount = editable && work && !info.grouped;
 
@@ -146,10 +148,11 @@ export function CotsOrderBox({ info, onSave, editable, onLeave }: { info: CotsOr
                 } else onSave({ cotsDeliveryDate: next });
               }}
               aria-label="Delivery date"
-              className="min-w-0 cursor-pointer rounded-md bg-transparent px-1 text-right text-sm font-bold text-fg tabular-nums outline-none [color-scheme:light_dark] hover:bg-surface focus:bg-surface focus:ring-1 focus:ring-sky-400/60"
+              title={late ? "Passed and the order isn't here yet" : undefined}
+              className={`min-w-0 cursor-pointer rounded-md bg-transparent px-1 text-right text-sm font-bold tabular-nums ${late ? "text-rose-600 dark:text-rose-300" : "text-fg"} outline-none [color-scheme:light_dark] hover:bg-surface focus:bg-surface focus:ring-1 focus:ring-sky-400/60`}
             />
           ) : (
-            <span className="text-sm font-bold text-fg tabular-nums">{delivery}</span>
+            <span className={`text-sm font-bold tabular-nums ${late ? "text-rose-600 dark:text-rose-300" : "text-fg"}`}>{delivery}</span>
           )}
         </label>
       )}

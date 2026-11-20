@@ -97,7 +97,7 @@ function LogRow({ log }: { log: AiLog }) {
             {log.source === "ai" ? (log.aiName ?? "AI") : "RULE"}
           </span>
           <span className="font-semibold text-fg">{tool(log.tool)}</span>
-          <span className="min-w-0 flex-1 truncate text-sm text-muted" title={log.summary}>
+          <span dir="auto" className="min-w-0 flex-1 truncate text-sm text-muted" title={log.summary}>
             {log.summary}
           </span>
           {log.itemChangeCount > 0 && (
@@ -122,7 +122,7 @@ function LogRow({ log }: { log: AiLog }) {
             {parts.map((p) => (
               <div key={p.part + p.where}>
                 <div className="flex min-w-0 items-baseline gap-2">
-                  <span className="truncate font-medium text-fg">{p.part}</span>
+                  <span dir="auto" className="truncate font-medium text-fg">{p.part}</span>
                   <span className="shrink-0 text-xs text-subtle">{p.where}</span>
                 </div>
                 <ul className="mt-0.5 space-y-0.5 text-xs text-fg-2">
@@ -139,7 +139,7 @@ function LogRow({ log }: { log: AiLog }) {
             {items.map((i, n) => (
               <div key={n}>
                 <div className="flex min-w-0 items-baseline gap-2">
-                  <span className="truncate font-medium text-fg">{i.item}</span>
+                  <span dir="auto" className="truncate font-medium text-fg">{i.item}</span>
                   <span className="shrink-0 text-xs text-subtle">Inventory › {i.category}</span>
                 </div>
                 <ul className="mt-0.5 space-y-0.5 text-xs text-fg-2">

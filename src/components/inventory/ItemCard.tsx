@@ -56,13 +56,13 @@ export function ProductName({ item, className = "", wrap = false }: { item: Pick
           e.stopPropagation();
           openItem(item.id);
         }}
-        className={`min-w-0 text-left text-fg hover:text-accent ${fit} ${className}`} title={item.name}>
+        dir="auto" className={`min-w-0 text-left text-fg hover:text-accent ${fit} ${className}`} title={item.name}>
         {item.name}
       </button>
     );
   return (
     <span className={`flex min-w-0 items-center gap-1 ${className}`} onClick={(e) => e.stopPropagation()}>
-      <a href={first.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className={`min-w-0 ${fit} text-sky-600 underline-offset-2 hover:underline dark:text-sky-400`} title={`${item.name} · ${first.site || hostOf(first.url)}`}>
+      <a dir="auto" href={first.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className={`min-w-0 ${fit} text-sky-600 underline-offset-2 hover:underline dark:text-sky-400`} title={`${item.name} · ${first.site || hostOf(first.url)}`}>
         {item.name}
       </a>
       {more.length > 0 && (

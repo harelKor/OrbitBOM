@@ -123,7 +123,7 @@ export function StatusMenu({ c, onDone }: { c: ReviewComment; onDone?: () => voi
               }}
             >
               <p className="text-xs text-muted">Back to {statusOf(asking).label}: why isn&rsquo;t it done yet?</p>
-              <textarea autoFocus required value={note} onChange={(e) => setNote(e.target.value)} rows={3} className="input min-h-16 w-full text-sm" />
+              <textarea dir="auto" autoFocus required value={note} onChange={(e) => setNote(e.target.value)} rows={3} className="input min-h-16 w-full text-sm" />
               <button className="btn-danger h-9 w-full justify-center text-xs active:scale-[0.98]" disabled={!note.trim()}>
                 Send back
               </button>
@@ -278,6 +278,7 @@ function TextBox({ initial = "", placeholder, action, pending, onSave, onCancel,
       }}
     >
       <textarea
+        dir="auto"
         autoFocus={autoFocus}
         value={text}
         placeholder={placeholder}
@@ -325,7 +326,7 @@ function ReplyItem({ r, onFocus }: { r: CommentReply; onFocus?: (key: string) =>
       <Avatar name={r.author} src={r.authorAvatar} id={r.authorId} small />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
-          <span className="truncate text-xs font-semibold text-fg">{r.author ?? "Someone"}</span>
+          <span dir="auto" className="truncate text-xs font-semibold text-fg">{r.author ?? "Someone"}</span>
           <When at={r.createdAt} edited={r.editedAt} />
           <span className="ml-auto">
             <MoreMenu items={items} />
@@ -334,7 +335,7 @@ function ReplyItem({ r, onFocus }: { r: CommentReply; onFocus?: (key: string) =>
         {editing ? (
           <TextBox initial={r.body} action="Save" pending={pending} onCancel={() => setEditing(false)} onSave={(t) => run(() => editReviewReply(r.id, t), () => setEditing(false))} />
         ) : (
-          <p className="text-sm whitespace-pre-wrap break-words text-fg-2">{r.body}</p>
+          <p dir="auto" className="text-sm whitespace-pre-wrap break-words text-fg-2">{r.body}</p>
         )}
         {r.partKey && (
           <button
@@ -532,7 +533,7 @@ export function CommentRow({
         </div>
         <div className="min-w-0 flex-1 text-sm">
           <div className="flex items-center gap-1.5">
-            <span className="min-w-0 truncate font-semibold text-fg">{c.author ?? "Someone"}</span>
+            <span dir="auto" className="min-w-0 truncate font-semibold text-fg">{c.author ?? "Someone"}</span>
             <When at={c.createdAt} edited={c.editedAt} />
             <span className="ml-auto flex shrink-0 items-center gap-1">
               <StatusMenu c={c} />
@@ -555,11 +556,11 @@ export function CommentRow({
             <TextBox initial={c.body} action="Save" pending={pending} onCancel={() => setEditing(false)} onSave={(t) => run(() => editReviewComment(c.id, t), () => setEditing(false))} />
           ) : (
             tappable ? (
-              <button className={`${bodyClass} press`} onClick={() => ctx?.open?.(c)} title="Open the comment">
+              <button dir="auto" className={`${bodyClass} press`} onClick={() => ctx?.open?.(c)} title="Open the comment">
                 {c.body}
               </button>
             ) : (
-              <p className={bodyClass}>{c.body}</p>
+              <p dir="auto" className={bodyClass}>{c.body}</p>
             )
           )}
           <CommentSnip c={c} />
@@ -601,7 +602,7 @@ export function TreeComment({ c, onFocus }: { c: ReviewComment; onFocus?: (key: 
         title={`${s.label}: open the comment`}
       >
         <span className="mt-1 h-2 w-2 shrink-0 rounded-full" style={{ background: s.color }} />
-        <span className={`min-w-0 flex-1 truncate ${isActive(c.state) ? "text-fg-2" : "text-muted line-through"}`}>
+        <span dir="auto" className={`min-w-0 flex-1 truncate ${isActive(c.state) ? "text-fg-2" : "text-muted line-through"}`}>
           {c.partName && <span className="font-semibold">{c.partName}: </span>}
           {c.body}
           {c.snip && " 📷"}
@@ -839,6 +840,7 @@ export function AddCommentDialog({
           </div>
         )}
         <textarea
+          dir="auto"
           autoFocus
           required
           value={body}
@@ -872,13 +874,13 @@ export function CommentBubble({ c, onClose, onOpen }: { c: ReviewComment; onClos
       />
       <div className="flex items-center gap-2">
         <Avatar name={c.author} src={c.authorAvatar} id={c.authorId} small />
-        <span className="min-w-0 flex-1 truncate font-semibold text-fg">{c.author ?? "Someone"}</span>
+        <span dir="auto" className="min-w-0 flex-1 truncate font-semibold text-fg">{c.author ?? "Someone"}</span>
         <CommentStatusPill status={c.state} />
         <button type="button" onClick={onClose} aria-label="Close" className="press -mr-1 flex h-7 w-7 items-center justify-center rounded-full text-muted hover:bg-raised hover:text-fg pointer-coarse:h-9 pointer-coarse:w-9">
           ✕
         </button>
       </div>
-      <p className="mt-2 max-h-40 overflow-y-auto break-words whitespace-pre-wrap text-fg">{c.body}</p>
+      <p dir="auto" className="mt-2 max-h-40 overflow-y-auto break-words whitespace-pre-wrap text-fg">{c.body}</p>
       <CommentSnip c={c} />
       <div className="mt-2 flex items-center gap-2 text-[0.6875rem] text-subtle">
         <When at={c.createdAt} edited={c.editedAt} />

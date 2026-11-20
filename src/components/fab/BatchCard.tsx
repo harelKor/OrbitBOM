@@ -686,7 +686,7 @@ export function BatchCard({
           </span>
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="flex min-w-0 items-baseline gap-2">
-              <span className={`min-w-0 flex-1 truncate text-sm font-semibold ${textColor ? "" : "text-fg"}`} style={textColor ? { color: textColor } : undefined}>
+              <span dir="auto" className={`min-w-0 flex-1 truncate text-sm font-semibold ${textColor ? "" : "text-fg"}`} style={textColor ? { color: textColor } : undefined}>
                 {pack ? (title ?? `${members.length} part${members.length === 1 ? "" : "s"}`) : material}
                 {!pack && machineName && ` · ${machineName}`}
               </span>
@@ -756,7 +756,8 @@ export function BatchCard({
                   // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links
                   <img src={p.thumbUrl} alt="" loading="lazy" className={`thumb-edge h-full w-full object-contain ${thumbs.length === 1 ? "p-3" : "p-1.5"}`} />
                 ) : (
-                  <span className="px-1 text-center text-[0.625rem] text-subtle">{partTitle(p)}</span>
+                  // A cart's part with no picture shows its vendor, not a name scraped off the shop's page (audit, 2026-11-20: "open prime modal").
+                  <span className="px-1 text-center text-[0.625rem] text-subtle">{cart ? title : partTitle(p)}</span>
                 )}
               </span>
             ))}
@@ -782,14 +783,14 @@ export function BatchCard({
         ) : (
         <div className="flex min-w-0 flex-1 flex-col gap-2 p-3">
           {(!pack || title) && (
-            <div className={`min-w-0 truncate text-sm font-semibold ${textColor ? "" : "text-fg"}`} style={textColor ? { color: textColor } : undefined}>
+            <div dir="auto" className={`min-w-0 truncate text-sm font-semibold ${textColor ? "" : "text-fg"}`} style={textColor ? { color: textColor } : undefined}>
               {pack ? title : material}
               {!pack && machineName && ` · ${machineName}`}
             </div>
           )}
           {/* Which parts, always in words: a pale plate's picture on the pale well can look blank. */}
           {members.length > 0 && (
-            <div className="-mt-1.5 min-w-0 truncate text-xs text-fg-2" title={members.map(partTitle).join(", ")}>
+            <div dir="auto" className="-mt-1.5 min-w-0 truncate text-xs text-fg-2" title={members.map(partTitle).join(", ")}>
               {partNames(members)}
             </div>
           )}

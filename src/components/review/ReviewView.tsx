@@ -466,7 +466,7 @@ function ReviewCard({ item, disabled, onDecide }: { item: ReviewItem; disabled: 
 
       <div className="flex min-w-0 flex-1 flex-col gap-2 p-3">
         <div className="flex min-w-0 items-center gap-2">
-          <div className="min-w-0 flex-1 truncate font-semibold text-fg" title={partTitle(part)}>
+          <div dir="auto" className="min-w-0 flex-1 truncate font-semibold text-fg" title={partTitle(part)}>
             {part.displayName ?? part.onshapeName ?? "Unnamed part"}
           </div>
           <DismissButton onClick={() => onDecide("dismiss")} disabled={disabled} />

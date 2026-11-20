@@ -73,7 +73,7 @@ export function NameField({ part, save, bare = false }: Props & { bare?: boolean
     <Popover
       locked={locked}
       triggerClassName={bare ? "max-w-full" : ""}
-      trigger={<span className={`font-semibold ${bare ? "truncate text-fg" : "text-accent-soft"}`}>{name}</span>}
+      trigger={<span dir="auto" className={`font-semibold ${bare ? "truncate text-fg" : "text-accent-soft"}`}>{name}</span>}
     >
       {(close) => (
         <InputEditor
@@ -531,7 +531,7 @@ export function PersonField({
 export function NoteField({ part, save }: Props) {
   const locked = !useCan("work");
   return (
-    <Popover locked={locked} trigger={part.note ? <span className="line-clamp-2 max-w-48">{part.note}</span> : <Empty text="Add a note" />}>
+    <Popover locked={locked} trigger={part.note ? <span dir="auto" className="line-clamp-2 max-w-48">{part.note}</span> : <Empty text="Add a note" />}>
       {(close) => (
         <InputEditor
           multiline

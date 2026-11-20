@@ -424,7 +424,7 @@ function Slide({
             )}
           </div>
           <div className="space-y-3 p-3">
-            {step.body && <p className="text-base leading-relaxed whitespace-pre-wrap text-fg">{step.body}</p>}
+            {step.body && <p dir="auto" className="text-base leading-relaxed whitespace-pre-wrap text-fg">{step.body}</p>}
             {sub && (
               <button className="btn-primary h-10 px-4" onClick={onOpenSub}>
                 Open {book.subName(step.systemId, sub)} →

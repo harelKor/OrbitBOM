@@ -87,7 +87,7 @@ function KanbanCard({ part, save, showSystem }: { part: CardPart; save: SaveFn; 
     >
       <div className="flex items-start justify-between gap-1">
         {part.thumbUrl && <Thumb part={part} size={28} />}
-        <span className="flex-1 font-semibold text-accent-soft">{partTitle(part)}</span>
+        <span dir="auto" className="flex-1 font-semibold text-accent-soft">{partTitle(part)}</span>
         <span className="text-muted">×{part.quantity}</span>
       </div>
       {showSystem && <div className="text-subtle">{part.systemName}</div>}
@@ -99,7 +99,7 @@ function KanbanCard({ part, save, showSystem }: { part: CardPart; save: SaveFn; 
       </div>
       {part.material && <div className="mt-1 text-muted">{part.material}</div>}
       <div className="mt-1"><StatusPill status={computeStatus(part)} /></div>
-      {part.note && <div className="mt-1 line-clamp-2 text-subtle">{part.note}</div>}
+      {part.note && <div dir="auto" className="mt-1 line-clamp-2 text-subtle">{part.note}</div>}
     </div>
   );
 }

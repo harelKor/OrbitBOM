@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { checkForChanges, commitChanges, rebuildSystemModel, revertToVersion } from "@/app/(app)/versions-actions";
 import { useCan } from "@/components/shell/ModeContext";
+import { LocalTime } from "@/components/ui/LocalTime";
 import type { Draft } from "@/lib/versions/detect";
 import { PARTS_UPDATING_EVENT, afterPartsUpdate } from "./afterUpdate";
 import { CommitWindow, type CommitComment } from "./CommitWindow";
@@ -187,7 +188,7 @@ export function UpdateSystem({
       {loading && <span className="animate-pulse text-sm text-subtle">Loading the new part data and 3D views…</span>}
       {error && <span className="text-sm text-rose-600">{error}</span>}
       {!message && !error && !draft && lastSyncedAt && (
-        <span className="text-xs text-subtle max-sm:hidden">Last committed {lastSyncedAt.toISOString().slice(0, 16).replace("T", " ")} UTC</span>
+        <span className="text-xs text-subtle max-sm:hidden">Last committed <LocalTime at={lastSyncedAt.toISOString()} /></span>
       )}
       <RebuildDialog open={!!upToDate} onClose={() => setUpToDate(null)} onRebuild={rebuild} text={upToDate ?? ""} />
       {draft && (

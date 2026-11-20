@@ -23,11 +23,20 @@ const nextConfig: NextConfig = {
   // The panel inside Onshape (cad.onshape.com or the team's Enterprise domain) frames only the
   // panel's own pages (/onshape/*); the rest of the site can't be framed by another site, so it
   // can't be clicked through from inside a frame. The later rule wins for /onshape.
+  // The site is HTTPS only (Caddy), so browsers are told to never try plain HTTP. The camera stays
+  // allowed on our own pages (Inventory's Scan); microphone, location and payment are never used.
+  poweredByHeader: false,
   async headers() {
     return [
       {
         source: "/:path*",
-        headers: [{ key: "Content-Security-Policy", value: "frame-ancestors 'self'" }],
+        headers: [
+          { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
+          { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=()" },
+        ],
       },
       {
         source: "/onshape/:path*",

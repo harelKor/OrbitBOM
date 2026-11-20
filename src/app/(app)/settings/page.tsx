@@ -1,6 +1,5 @@
 import { asc, desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { redirect } from "next/navigation";
 import { requireMember } from "@/lib/auth";
 import { isEditMode } from "@/lib/mode";
 import { listBaseMaterials } from "@/lib/data/baseMaterials";
@@ -18,8 +17,17 @@ const { inventoryItems, inventoryConditions } = schema;
 // the nightly backups, and what was deleted lately. BOM materials are inventory items now, so they're edited in Inventory.
 export default async function SettingsPage() {
   const member = await requireMember();
-  // Settings is for admins in Edit mode; the teams land back on their home page.
-  if (!(await isEditMode())) redirect("/");
+  // Settings is for admins in Edit mode. Elsewhere the page says so instead of silently sending
+  // you Home (audit, 2026-11-20).
+  if (!(await isEditMode()))
+    return (
+      <div className="max-w-xl space-y-2">
+        <h1 className="text-2xl font-semibold">Settings</h1>
+        <p className="text-muted">
+          {member.isAdmin ? "Settings is available in Edit mode. Switch to Edit to open it." : "Settings is available in Edit mode, which admins use."}
+        </p>
+      </div>
+    );
   const [categories, materials, boreList, conditions, locations, items, backups, robots, deleted] = await Promise.all([
     listCategories(),
     listBaseMaterials(),

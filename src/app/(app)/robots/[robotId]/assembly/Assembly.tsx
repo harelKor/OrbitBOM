@@ -10,6 +10,7 @@ import { StepSlides } from "@/components/assembly/StepSlides";
 import type { ViewerModel } from "@/components/dashboard/ModelCanvas";
 import { Dialog } from "@/components/Dialog";
 import { Icon } from "@/components/ui/Icon";
+import { ScrollRow } from "@/components/ui/ScrollRow";
 import { parsePlace, placeKey, subColor, type Place } from "@/lib/assembly/groups";
 import { makeBook, subModel, type Book } from "@/lib/assembly/view";
 import type { AssemblyData, AssemblyStep } from "@/lib/data/assembly";
@@ -234,7 +235,7 @@ function Overview({ book, robotName, onOpen, canEdit }: { book: Book; robotName:
         <h1 className="display text-2xl text-accent">Assembly</h1>
         <p className="text-xs text-muted">{canEdit ? "Open a system to write its steps." : "Open a system or a sub-assembly to see its steps."}</p>
       </div>
-      <div className="-mx-3 flex snap-x gap-3 overflow-x-auto px-3 pb-2 sm:mx-0 sm:px-0">
+      <ScrollRow className="-mx-3 flex snap-x gap-3 overflow-x-auto px-3 pb-2 sm:mx-0 sm:px-0">
         {book.systems.map((s) => {
           const place = { systemId: s.id, sub: null };
           const list = book.steps(place);
@@ -271,7 +272,7 @@ function Overview({ book, robotName, onOpen, canEdit }: { book: Book; robotName:
             </div>
           );
         })}
-      </div>
+      </ScrollRow>
     </section>
   );
 }

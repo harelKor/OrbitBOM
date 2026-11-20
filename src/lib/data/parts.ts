@@ -223,8 +223,12 @@ export async function listMyParts(memberName: string) {
   return rows.map((p) => ({ ...p, systemName: label.get(p.systemId) ?? p.systemName }));
 }
 
+// Who can make a batch: the Build Team first, then everyone else, each by name (audit, 2026-11-20).
 export async function listMemberNames(): Promise<string[]> {
-  const rows = await db.select({ name: members.name }).from(members).orderBy(asc(members.name));
+  const rows = await db
+    .select({ name: members.name })
+    .from(members)
+    .orderBy(sql`${members.team} is distinct from 'build'`, asc(members.name));
   return rows.map((r) => r.name);
 }
 

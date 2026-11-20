@@ -15,8 +15,28 @@ if (typeof window !== "undefined") {
     e.preventDefault();
     saved = e as InstallPrompt;
   });
-  window.addEventListener("appinstalled", () => (saved = null));
+  window.addEventListener("appinstalled", () => {
+    saved = null;
+    forget();
+  });
 }
+
+// Once installed from this browser, or put away with its ×, the button stays hidden here: a normal
+// tab of the site can't tell the app is installed (audit, 2026-11-20).
+const DONE_KEY = "orbit:install-app-done";
+const forget = () => {
+  try {
+    localStorage.setItem(DONE_KEY, "1");
+  } catch {}
+  window.dispatchEvent(new Event(DONE_KEY));
+};
+const done = () => {
+  try {
+    return localStorage.getItem(DONE_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
 
 const installed = () =>
   matchMedia("(display-mode: standalone), (display-mode: fullscreen), (display-mode: window-controls-overlay)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
@@ -32,8 +52,10 @@ export function InstallApp() {
   const [show, setShow] = useState(false);
   const [help, setHelp] = useState<"ios" | "android" | "pc" | null>(null);
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- browser-only: is it installed already?
-    setShow(!installed());
+    const check = () => setShow(!installed() && !done());
+    check(); // browser-only: is it installed already, or put away?
+    window.addEventListener(DONE_KEY, check);
+    return () => window.removeEventListener(DONE_KEY, check);
   }, []);
   if (!show) return null;
   const install = async () => {
@@ -41,20 +63,29 @@ export function InstallApp() {
       await saved.prompt();
       const { outcome } = await saved.userChoice;
       saved = null;
-      if (outcome === "accepted") setShow(false);
+      if (outcome === "accepted") forget();
       return;
     }
     setHelp(iPhone() ? "ios" : phone() ? "android" : "pc");
   };
   return (
-    <div className="px-2 pb-2 @max-[10rem]:hidden">
+    <div className="relative px-2 pb-2 @max-[10rem]:hidden">
       <button
         type="button"
         onClick={() => void install()}
-        className="press flex min-h-11 w-full items-center gap-2.5 rounded-xl border border-accent/50 bg-accent/10 px-3 py-2 text-sm font-semibold text-accent hover:bg-accent/15 active:scale-[0.98]"
+        className="press flex min-h-11 w-full items-center gap-2.5 rounded-xl border border-accent/50 bg-accent/10 py-2 pr-11 pl-3 text-sm font-semibold text-accent hover:bg-accent/15 active:scale-[0.98]"
       >
         <Icon name="download" className="h-4 w-4 shrink-0" />
         Install app
+      </button>
+      <button
+        type="button"
+        aria-label="Hide Install app"
+        title="Hide (already installed, or not wanted)"
+        onClick={forget}
+        className="press absolute top-1 right-3 flex h-9 w-9 items-center justify-center rounded-lg text-accent/70 hover:bg-accent/15 hover:text-accent active:scale-[0.98]"
+      >
+        <Icon name="close" className="h-4 w-4" />
       </button>
       <Dialog open={!!help} onClose={() => setHelp(null)} title="Install OrbitParts">
         <div className="space-y-3 text-sm">
