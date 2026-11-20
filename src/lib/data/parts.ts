@@ -116,7 +116,8 @@ async function load(where: ReturnType<typeof and>, { anySystem = false } = {}): 
   const raw = { ids: new Set(rawStock.map((i) => i.id)), names: new Set(rawStock.map((i) => i.name)) };
   // Part numbers on two shapes, per system (what Update BOM's check compares).
   const sysNumber = (p: typeof parts.$inferSelect) => (p.isManual || p.removedFromCadAt || !numberOf(p) ? null : `${p.systemId}|${numberOf(p)}`);
-  const colliding = collidingNumbers(rows.map((r) => r.part), sysNumber, (p) => p.shapeSig);
+  // Bought parts are bought by name: a belt modelled at two lengths isn't a collision.
+  const colliding = collidingNumbers(rows.map((r) => r.part), sysNumber, (p) => (p.classification === "cots" ? null : p.shapeSig));
   const filesOf = new Map<string, PartFileRef[]>();
   for (const { partId, r2Key, ...f } of files) {
     filesOf.set(partId, [...(filesOf.get(partId) ?? []), isOnshapeDrawingKey(r2Key) ? { ...f, onshape: true } : f]);

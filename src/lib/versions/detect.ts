@@ -186,7 +186,12 @@ export async function checkSystem(systemId: string, memberId: string, { force = 
   // part number on two different shapes. A row's shape is its new fingerprint, else the committed
   // part's it was paired with.
   const rowSig = new Map<string, string | null>(parsed.rows.map((r) => [partKey(r), sigs[sigKey(r)] ?? null]));
-  for (const u of plan.update) if (!rowSig.get(partKey(u.identity))) rowSig.set(partKey(u.identity), committedSig(byId.get(u.id)!));
+  // Bought parts are bought by name: a belt modelled at two lengths isn't a collision.
+  for (const u of plan.update) {
+    const part = byId.get(u.id)!;
+    if (part.classification === "cots") rowSig.set(partKey(u.identity), null);
+    else if (!rowSig.get(partKey(u.identity))) rowSig.set(partKey(u.identity), committedSig(part));
+  }
   const colliding = collidingNumbers(parsed.rows, numberOf, (r) => rowSig.get(partKey(r)));
   const collide = (c: VersionChange) => (c.change !== "removed" && colliding.has(numberOf({ partNumber: c.partNumber, onshapeName: c.name }) ?? "") ? { ...c, collision: true } : c);
   changes.splice(0, changes.length, ...changes.map(collide));
