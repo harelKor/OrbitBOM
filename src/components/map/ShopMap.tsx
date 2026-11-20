@@ -123,6 +123,9 @@ export function ShopMap({
   }, []);
   const [sel, setSel] = useState<Sel>(null);
   const [flash, setFlash] = useState<string | null>(null);
+  // The zones walked through, newest last: Back walks to where you were, looking where you looked
+  // (Harel, 2026-11-20). Leaving to the floor plan or a Find flight forgets them.
+  const [trail, setTrail] = useState<{ from: string; scene: Cam["scene"]; at: string }[]>([]);
   // How solid the drawer tags are in a zone's picture: 1 shows the category picture, 0 only the
   // outline over the real drawer (Harel, 2026-11-17). Kept on this device.
   const [tagStep, setTagStep] = useStoredChoice("shopMap.tagOpacity", TAG_STEPS, "1");
@@ -188,11 +191,15 @@ export function ShopMap({
     const target = find ? byId.get(find) : undefined;
     const zone = target ? (target.parentId ? byId.get(target.parentId) : target) : undefined;
     if (!target || !zone?.outline?.length) {
-      anim.current = requestAnimationFrame(() => setCam(homeCam(aspect)));
+      anim.current = requestAnimationFrame(() => {
+        setTrail([]);
+        setCam(homeCam(aspect));
+      });
       return;
     }
     const spot = target.parentId ? target : null;
     play(FIND_MS, (t) => findCam(t, zone, spot, aspect), () => {
+      setTrail([]);
       setFlash(target.id);
       setSel({ id: target.id, kind: spot ? "spot" : "zone" });
     });
@@ -253,6 +260,7 @@ export function ShopMap({
       const now = panoOf(c.scene, pic);
       if (factor < 1 && now.fov >= maxFov(pic) - 0.01) {
         // Zooming out past the widest view walks back out to the floor plan.
+        setTrail([]);
         setCam({ ...c, dive: clamp(c.dive + Math.log(factor) / Math.log(DIVE_SPAN), 0, 1), scene: FULL_SCENE });
         return;
       }
@@ -263,6 +271,7 @@ export function ShopMap({
       const s = c.scene.s * factor;
       if (factor < 1 && c.scene.s <= 1.0001) {
         // Zooming out of the whole picture walks back out to the floor plan.
+        setTrail([]);
         setCam({ ...c, dive: clamp(c.dive + Math.log(factor) / Math.log(DIVE_SPAN), 0, 1), scene: FULL_SCENE });
         return;
       }
@@ -396,6 +405,7 @@ export function ShopMap({
     const z = c.zone ? byId.get(c.zone) : undefined;
     const zf = z ? zoneFit(z, aspect) : null;
     setSel(z ? { id: z.id, kind: "zone" } : null);
+    setTrail([]);
     glideTo({ plan: zf ?? c.plan, zone: null, dive: 0, scene: FULL_SCENE }, 650);
   };
   // A zone door (Harel, 2026-11-20): like walking in Street View. The view turns to the door and
@@ -418,29 +428,46 @@ export function ShopMap({
     }
     // Warm the next picture while walking.
     if (!to.imageUrl.startsWith("data:")) void fetch(to.imageUrl, { mode: "cors" }).catch(() => {});
-    const fromPano = pic;
     const s0 = c.scene;
-    const ahead = { s: Math.min(s0.s * 2.2, fromPano ? 3 : SCENE_MAX), cx: fromPano ? s0.cx + wrapDelta(door.spotX - s0.cx) : door.spotX, cy: door.spotY };
+    const ahead = { s: Math.min(s0.s * 2.2, pic ? 3 : SCENE_MAX), cx: pic ? s0.cx + wrapDelta(door.spotX - s0.cx) : door.spotX, cy: door.spotY };
     const back = spotsIn(to.id).find((s) => s.kind === "zone" && s.linkId === door.parentId && s.spotX != null);
     const toPic = isPanorama(to) && to.imageW && to.imageH ? { w: to.imageW, h: to.imageH } : null;
     const arrive = toPic ? { s: 1, cx: back ? mod1(back.spotX! + 0.5) : 0.5, cy: 0.5 } : FULL_SCENE;
+    if (c.zone) setTrail((tr) => [...tr, { from: c.zone!, scene: s0, at: to.id }]);
+    stride(to.id, ahead, arrive, 1);
+  };
+  const lastStep = trail.at(-1);
+  const goBack = () => {
+    const step = trail.at(-1);
+    const c = camRef.current;
+    if (!step || step.at !== c.zone || !byId.get(step.from)) return setTrail([]);
+    setSel(null);
+    setFlash(null);
+    setTrail((tr) => tr.slice(0, -1));
+    stride(step.from, { s: c.scene.s * 0.75, cx: c.scene.cx, cy: c.scene.cy }, step.scene, -1);
+  };
+  // One step: forward pushes into the picture as it blurs out and the next comes in from a little
+  // closer; back (-1) draws away from it and the one before comes in from a little further.
+  const stride = (toId: string, out: Cam["scene"], arrive: Cam["scene"], dir: 1 | -1) => {
+    const c = camRef.current;
+    const s0 = c.scene;
     const OUT = 600;
     const IN = 700;
     play(
       OUT,
       (t) => {
         const e = easeInOut(t / OUT);
-        setWalkFx({ scale: 1 + 0.12 * e, blur: 7 * e, opacity: 1 - 0.75 * e });
-        return { ...c, scene: { s: lerp(s0.s, ahead.s, e), cx: lerp(s0.cx, ahead.cx, e), cy: lerp(s0.cy, ahead.cy, e) } };
+        setWalkFx({ scale: 1 + dir * 0.12 * e, blur: 7 * e, opacity: 1 - 0.75 * e });
+        return { ...c, scene: { s: lerp(s0.s, out.s, e), cx: lerp(s0.cx, out.cx, e), cy: lerp(s0.cy, out.cy, e) } };
       },
       () => {
-        const base = { ...camRef.current, zone: to.id, dive: 1 };
+        const base = { ...camRef.current, zone: toId, dive: 1 };
         play(
           IN,
           (t) => {
             const e = 1 - (1 - t / IN) ** 3;
-            setWalkFx(t >= IN ? null : { scale: 1.08 - 0.08 * e, blur: 7 * (1 - e), opacity: 0.25 + 0.75 * e });
-            return { ...base, scene: { ...arrive, s: arrive.s * lerp(1.35, 1, e) } };
+            setWalkFx(t >= IN ? null : { scale: 1 + dir * 0.08 * (1 - e), blur: 7 * (1 - e), opacity: 0.25 + 0.75 * e });
+            return { ...base, scene: { ...arrive, s: arrive.s * lerp(dir > 0 ? 1.35 : 0.8, 1, e) } };
           },
           () => setWalkFx(null),
         );
@@ -953,6 +980,15 @@ export function ShopMap({
       <div data-ui className="absolute top-2 left-2 flex flex-col items-start gap-1">
         <div className="flex gap-1">
           {toolbar}
+          {inScene && !walkFx && lastStep?.at === cam.zone && (
+            // Back through the door you came in by.
+            <button type="button" className={`${CTRL} w-auto gap-1 px-2.5 text-xs`} onClick={goBack} title="Back to the zone you came from">
+              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M15 6l-6 6 6 6" />
+              </svg>
+              Back
+            </button>
+          )}
           {cam.dive > 0.5 && (
             <button type="button" className={`${CTRL} w-auto px-2.5 text-xs`} onClick={stepOut}>
               ↩ Floor plan
