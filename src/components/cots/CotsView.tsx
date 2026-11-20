@@ -378,7 +378,6 @@ export function CotsView({
                 part={row.part}
                 save={saveRow(row)}
                 onOpen={openRow(row)}
-                showSystem
                 variant={variant} shelfOnThumb
                 origin={list === "released" ? originOf(row.members[0]) : undefined}
                 line={lineOf(row)}
@@ -493,7 +492,7 @@ export function CotsView({
     return cartLayout === "list" ? (
       <PartListRow part={p} save={saveRow(row)} onOpen={openRow(row)} />
     ) : (
-      <CotsCard part={p} save={saveRow(row)} onOpen={openRow(row)} showSystem variant="order" shelfOnThumb struck={struck.has(p.id)} line={{ title: orderTitle(p), bomName: bomTitle(p), renamed: !!p.orderName }} />
+      <CotsCard part={p} save={saveRow(row)} onOpen={openRow(row)} variant="order" shelfOnThumb struck={struck.has(p.id)} line={{ title: orderTitle(p), bomName: bomTitle(p), renamed: !!p.orderName }} />
     );
   };
   const removeFromCart = (cartId: string) => (ids: string[]) =>
