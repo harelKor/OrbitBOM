@@ -555,7 +555,6 @@ function ItemBody({
         onDelete={{
           confirm: {
             title: `Delete "${item.name}" from the inventory?`,
-            body: `${usage?.parts.length ? `${usage.parts.length} BOM parts will no longer draw from it. ` : ""}It stays in Settings → Recently deleted for 30 days.`,
             confirm: "Delete",
             danger: true,
           },

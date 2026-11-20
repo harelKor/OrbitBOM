@@ -69,7 +69,7 @@ export function DevicesPanel({
   // Asked before anything runs (never inside a transition: the question couldn't show).
   const remove = async (id: string) => {
     const n = devices.findIndex((d) => d.id === id) + 1;
-    if (!(await askConfirm({ title: `Delete PC ${n}?`, body: "It's deleted for good (it doesn't go to Recently deleted), and the count goes down by one.", confirm: "Delete", danger: true }))) return;
+    if (!(await askConfirm({ title: `Delete PC ${n}?`, confirm: "Delete", danger: true }))) return;
     setOpen(null);
     setDevices((ds) => ds.filter((d) => d.id !== id));
     onChange(
@@ -206,8 +206,8 @@ function StationMap({
   }, []);
   const aspect = size.w && size.h ? size.w / size.h : 4 / 3;
   // The starting view: the room close up with a strip of what's around it, enough to know where
-  // it is (Harel, 2026-11-20: closer than the first 2.2×).
-  const home: View = room ? { cx: room.box.cx, cy: room.box.cy, w: Math.max(room.box.w * 1.6, room.box.h * 1.6 * aspect, 160) } : { cx: MAP_W / 2, cy: MAP_H / 2, w: MAP_W };
+  // it is; how close is each station's `zoom` (config/stations.ts).
+  const home: View = room ? { cx: room.box.cx, cy: room.box.cy, w: Math.max(room.box.w * room.zoom, room.box.h * room.zoom * aspect, 120) } : { cx: MAP_W / 2, cy: MAP_H / 2, w: MAP_W };
   const [view, setView] = useState<View | null>(null);
   const [moved, setMoved] = useState(false);
   const v = view ?? home;
