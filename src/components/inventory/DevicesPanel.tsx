@@ -9,6 +9,7 @@ import { stationRoom } from "@/config/stations";
 import { MAP_H, MAP_W, WORKSHOP_ROOMS } from "@/config/workshopMap";
 import type { Device } from "@/lib/inventory/devices";
 import { safeAction } from "@/lib/safeAction";
+import { textOn } from "@/components/bom/options";
 import type { Item } from "./types";
 
 // The PC stations (config/stations.ts, Harel 2026-11-20): instead of the photo and the count, a
@@ -22,6 +23,10 @@ type Patch = Parameters<typeof updateDevice>[1];
 type View = { cx: number; cy: number; w: number };
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+// A PC's condition as a colour, red at 1 through amber to green at 5 (Harel, 2026-11-20): its
+// slider and its icon on the map. No condition: no colour (the neutral icon).
+const CONDITION_COLORS = ["#DC2626", "#EA580C", "#EAB308", "#84CC16", "#16A34A"];
+const conditionColor = (c: number | null | undefined) => (c ? CONDITION_COLORS[clamp(Math.round(c), 1, 5) - 1] : null);
 
 export function DevicesPanel({
   item,
@@ -156,7 +161,8 @@ function PcRow({ device: d, n, work, onSave, onDelete, onOpen }: { device: Devic
           value={shown ?? 3}
           onChange={(e) => slide(Number(e.target.value))}
           aria-label={`PC ${n} condition, 1 to 5`}
-          className={`h-9 min-w-0 flex-1 accent-[var(--color-accent)] ${shown == null ? "opacity-40" : ""}`}
+          style={{ accentColor: conditionColor(shown) ?? "var(--color-accent)" }}
+          className={`h-9 min-w-0 flex-1 ${shown == null ? "opacity-40" : ""}`}
         />
         <span className="w-8 text-right font-mono font-semibold text-fg tabular-nums">{shown ?? "–"}/5</span>
       </label>
@@ -328,6 +334,7 @@ function StationMap({
             <PcIcon
               key={d.id}
               n={i + 1}
+              color={conditionColor(d.condition)}
               at={screen(d.x, d.y)}
               open={open === d.id}
               movable={movable}
@@ -365,6 +372,7 @@ function StationMap({
 
 function PcIcon({
   n,
+  color,
   at,
   open,
   movable,
@@ -374,6 +382,7 @@ function PcIcon({
   onDrop,
 }: {
   n: number;
+  color: string | null;
   at: { left: number; top: number };
   open: boolean;
   movable: boolean;
@@ -395,8 +404,10 @@ function PcIcon({
       type="button"
       aria-label={`PC ${n}`}
       aria-expanded={open}
-      className={`press absolute z-[1] flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 text-white shadow-[0_2px_8px_rgba(0,0,0,0.45)] ${open ? "border-white bg-accent" : "border-white/80 bg-[#0D111A]/85"} ${movable ? "cursor-grab active:cursor-grabbing" : ""}`}
-      style={{ left: at.left, top: at.top }}
+      // A condition colours the icon (white rim and a dark shadow keep it clear on any floor or
+      // theme); open, it wears the accent ring.
+      className={`press absolute z-[1] flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white text-white shadow-[0_2px_8px_rgba(0,0,0,0.45)] ${color ? "" : open ? "bg-accent" : "border-white/80 bg-[#0D111A]/85"} ${open ? "ring-4 ring-accent/50" : ""} ${movable ? "cursor-grab active:cursor-grabbing" : ""}`}
+      style={{ left: at.left, top: at.top, ...(color ? { backgroundColor: color, color: textOn(color) } : {}) }}
       onPointerDown={(e) => {
         // The icon, not the map, takes this pointer.
         e.stopPropagation();
