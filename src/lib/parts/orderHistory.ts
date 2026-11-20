@@ -4,10 +4,13 @@ import type { db } from "@/db";
 import { schema } from "@/db";
 import { cotsStatusOf } from "@/config/cots";
 import { siteOf } from "@/lib/cots";
+import { isBought, orderStatus } from "@/lib/status";
 
 // The COTS Order History cards (Harel, 2026-11-02). A COTS part's status move records its order:
 // going In Route opens a card, reaching Arrived or In Stock dates its arrival. A move undone
 // within a day takes the card back; after a day the card stays and the next move starts a new one.
+// A part bought as its Process 1 records its order the same way, from its order status (Harel,
+// 2026-11-20): it has no inventory item of its own, so its card has none.
 
 const { cotsOrderHistory } = schema;
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -17,9 +20,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 type Stage = "lower" | "route" | "arrived";
 
 // Arrived is checked by name too, so this works before and after it joins COTS_STATUSES.
-function stageOf(designState: string | null): Stage {
-  if (designState === "Arrived") return "arrived";
-  const s = cotsStatusOf(designState);
+function stageOf(part: Part): Stage {
+  if (part.classification === "cots" && part.designState === "Arrived") return "arrived";
+  const s = part.classification === "cots" ? cotsStatusOf(part.designState) : orderStatus(part);
   if (s === "In Route") return "route";
   if (s === "In Stock" || (s as string) === "Arrived") return "arrived";
   return "lower"; // Not Started, Released, In Order List, Seen
@@ -28,9 +31,9 @@ function stageOf(designState: string | null): Stage {
 const within = (at: Date | null, now: Date) => !!at && now.getTime() - at.getTime() < DAY_MS;
 
 export async function recordOrderHistory(tx: Tx, before: Part, after: Part) {
-  if (after.classification !== "cots") return;
-  const from = stageOf(before.designState);
-  const to = stageOf(after.designState);
+  if (!isBought(after)) return;
+  const from = isBought(before) ? stageOf(before) : "lower";
+  const to = stageOf(after);
   if (from === to) return;
   const now = new Date();
   const mine = eq(cotsOrderHistory.partId, after.id);
@@ -49,7 +52,8 @@ export async function recordOrderHistory(tx: Tx, before: Part, after: Part) {
   const card = (inRouteAt: Date | null, arrivedAt: Date | null) => {
     const link = after.cotsLinks[0];
     return {
-      inventoryItemId: after.inventoryItemId,
+      // A made part's item is its material, not what was bought.
+      inventoryItemId: after.classification === "cots" ? after.inventoryItemId : null,
       partId: after.id,
       name: after.displayName ?? after.onshapeName ?? "Unnamed part",
       quantity: after.quantity,

@@ -79,4 +79,27 @@ else
       await go("In Stock");
       expect(await cards()).toHaveLength(2);
     });
+
+    // Harel, 2026-11-20: a part bought as its Process 1 records its order too, with no item.
+    it("records a part bought as its Process 1", async () => {
+      const [bought] = await db
+        .insert(schema.parts)
+        .values({ systemId: null, isManual: true, displayName: `Bracket ${tag}`, classification: "inhouse", process1: "cots", addedProcesses: [{ machine: "cnc", done: 0, qa: false }], quantity: 2, designState: "In Order List" })
+        .returning();
+      try {
+        const set = (status: string) => applyPartChanges([bought.id], { status }, { memberId: null, via: "mcp" });
+        const mine = () => db.select().from(h).where(eq(h.partId, bought.id));
+        await set("In Route");
+        expect(await mine()).toMatchObject([{ name: `Bracket ${tag}`, quantity: 2, inventoryItemId: null, arrivedAt: null }]);
+        await set("In Stock");
+        const [card] = await mine();
+        expect(card.arrivedAt).toBeTruthy();
+        // In Stock on the Order List, Ready for QA in the BOM: bought, nothing counted at the CNC yet.
+        const [after] = await db.select().from(schema.parts).where(eq(schema.parts.id, bought.id));
+        expect(after).toMatchObject({ designState: null, doneProcess1: 2 });
+      } finally {
+        await db.delete(h).where(eq(h.partId, bought.id));
+        await db.delete(schema.parts).where(eq(schema.parts.id, bought.id));
+      }
+    });
   });
