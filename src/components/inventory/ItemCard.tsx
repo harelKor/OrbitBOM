@@ -195,7 +195,7 @@ export function ItemCard({
             {condition.label}
           </Link>
         )}
-        {!hideSeason && <SeasonTag itemId={item.id} tag={item.seasonTag} />}
+        {!hideSeason && !item.station && <SeasonTag itemId={item.id} tag={item.seasonTag} />}
       </div>
       <div className="card-overlay absolute top-2 right-2 flex max-w-[38%] flex-col items-end gap-1">
         {(gap > 0 || item.openOrder) && <CartButton item={item} gap={gap} />}
@@ -249,6 +249,12 @@ export function ItemCard({
 
       {/* As tall as the − / + buttons even without them (no team), or the name slides up under the picture. */}
       <div className="card-overlay -mt-12 flex min-h-13 items-center justify-between gap-2 px-2 pb-2" onClick={stop}>
+        {item.station ? (
+          // A PC station: its PCs are added and deleted in its window (Harel, 2026-11-20).
+          <span className="z-10 mx-auto rounded-full bg-[#111318]/80 px-2.5 py-1 font-mono text-xs font-semibold whitespace-nowrap text-white tabular-nums">
+            {item.inStock} {item.inStock === 1 ? "PC" : "PCs"}
+          </span>
+        ) : (<>
         {work && (<StepButton
           step={-1}
           size="lg"
@@ -271,6 +277,7 @@ export function ItemCard({
           className="z-10"
           label={item.sheet && isSheetGoods(category?.label ?? item.name) ? "One sheet more" : "One more"}
         />)}
+        </>)}
       </div>
 
       <div className="flex min-w-0 flex-col gap-1.5 p-3 pt-2">

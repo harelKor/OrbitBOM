@@ -7,6 +7,7 @@ import { after } from "next/server";
 import { z } from "zod";
 import { COTS_DEFAULT_STATUS, COTS_IN_STOCK, COTS_ORDERED, COTS_RELEASED, cotsStatusOf } from "@/config/cots";
 import { guessCategory, isCategoryGroup } from "@/config/inventory";
+import { MAP_H, MAP_W } from "@/config/workshopMap";
 import { vendorOfUrl } from "@/config/vendors";
 import { db, schema } from "@/db";
 import { requireMember } from "@/lib/auth";
@@ -111,6 +112,8 @@ export async function saveItem(itemId: string | null, input: ItemInput): Promise
     if (id) {
       const [before] = await tx.select().from(inventoryItems).where(eq(inventoryItems.id, id)).for("update");
       if (!before) return null;
+      // A PC station keeps its name and category (config/stations.ts).
+      if (before.station) Object.assign(values, { name: before.name, category: before.category });
       await tx.update(inventoryItems).set(values).where(eq(inventoryItems.id, id));
       await recordItemChanges(tx, id, before, values, ctx);
       // Its COTS cards show the same product.
@@ -195,31 +198,37 @@ export async function removeItemPhoto(itemId: string): Promise<ActionResult> {
 }
 
 // Deleting items is "discard": any team member, not only admins (Harel, 2026-11-19).
-export async function deleteItem(itemId: string) {
+export async function deleteItem(itemId: string): Promise<ActionResult> {
   const member = await requireCapability("discard");
-  if (!isUuid(itemId)) return;
-  await trashItems([itemId], member.id);
+  if (!isUuid(itemId)) return { error: "Unknown item." };
+  const error = await trashItems([itemId], member.id);
   refresh();
+  return error ? { error } : {};
 }
 
 // The Inventory page's Delete mode.
 export async function bulkDeleteItems(itemIds: string[]): Promise<ActionResult> {
   const member = await requireCapability("discard");
   if (!itemIds.length || itemIds.some((id) => !isUuid(id))) return { error: "Unknown item." };
-  await trashItems(itemIds, member.id);
+  const error = await trashItems(itemIds, member.id);
+  if (error) return { error };
   refresh();
   return { message: `Deleted ${itemIds.length} item${itemIds.length === 1 ? "" : "s"}. An admin can bring them back from Settings → Recently deleted.` };
 }
 
 // Each item goes to Recently deleted on its own (with its stock moves, history and orders, and
 // the parts that were linked to it), so one can come back without the others.
-async function trashItems(itemIds: string[], memberId: string) {
-  const items = await db.select({ id: inventoryItems.id, name: inventoryItems.name }).from(inventoryItems).where(inArray(inventoryItems.id, itemIds));
+// The three PC stations (config/stations.ts) can't be deleted: the answer says so and nothing goes.
+async function trashItems(itemIds: string[], memberId: string): Promise<string | null> {
+  const items = await db.select({ id: inventoryItems.id, name: inventoryItems.name, station: inventoryItems.station }).from(inventoryItems).where(inArray(inventoryItems.id, itemIds));
+  const fixed = items.filter((i) => i.station);
+  if (fixed.length) return `${fixed.map((i) => i.name).join(", ")} ${fixed.length === 1 ? "is a PC station and can't" : "are PC stations and can't"} be deleted.`;
   await db.transaction(async (tx) => {
     for (const item of items) {
       await deleteToTrash(tx, { kind: "item", label: item.name, root: inventoryItems, where: eq(inventoryItems.id, item.id), memberId });
     }
   });
+  return null;
 }
 
 // The Inventory page's Move mode: a new category and / or location for every selected item.
@@ -383,8 +392,8 @@ export async function editItemPieces(itemId: string, op: PieceOp): Promise<Actio
   return {};
 }
 
-// Computers & Devices (Harel, 2026-11-20): the item window's − asks which device goes; it comes
-// off the stock like any − (a move in the item's history). + is adjustStock: a new device.
+// A PC station's PC Delete (Harel, 2026-11-20): gone for good (not Recently deleted), a −1 move in
+// the item's history. + Add PC is adjustStock: a new PC in the middle of the station's room.
 export async function removeDevice(itemId: string, deviceId: string): Promise<ActionResult> {
   const member = await requireCapability("work");
   if (!isUuid(itemId) || !isUuid(deviceId)) return { error: "Unknown device." };
@@ -396,35 +405,28 @@ export async function removeDevice(itemId: string, deviceId: string): Promise<Ac
 
 const devicePatch = z
   .object({
-    x: z.number().min(0).max(1),
-    y: z.number().min(0).max(1),
+    // Floor plan units (config/workshopMap.ts).
+    x: z.number().min(0).max(MAP_W),
+    y: z.number().min(0).max(MAP_H),
     keyboard: z.boolean(),
     mouse: z.boolean(),
     note: z.string().max(2000).nullable(),
-    specs: z.record(z.string().max(60), z.string().max(200)),
+    condition: z.number().int().min(1).max(5).nullable(),
   })
   .partial();
 
-// A device's place on the picture (saved on drop), its Keyboard / Mouse ticks, note and specs.
+// A PC's place on the floor plan (saved on drop), its Keyboard / Mouse ticks, note and condition.
 export async function updateDevice(deviceId: string, patch: z.input<typeof devicePatch>): Promise<ActionResult> {
   await requireCapability("work");
   const parsed = devicePatch.safeParse(patch);
   if (!isUuid(deviceId) || !parsed.success) return { error: "Unknown device." };
-  const [device] = await db
-    .select({ specs: schema.inventoryDevices.specs, category: inventoryItems.category })
-    .from(schema.inventoryDevices)
-    .innerJoin(inventoryItems, eq(inventoryItems.id, schema.inventoryDevices.itemId))
-    .where(eq(schema.inventoryDevices.id, deviceId));
-  if (!device) return { error: "That device was removed." };
-  const { specs, note, ...rest } = parsed.data;
-  // Only the category's own fields, blank ones dropped.
-  const fields = getCategory(await listCategories(), device.category)?.fields.map((f) => f.id) ?? [];
-  const nextSpecs = specs && Object.fromEntries(Object.entries({ ...device.specs, ...specs }).filter(([k, v]) => fields.includes(k) && v.trim()).map(([k, v]) => [k, v.trim()]));
-  await db
+  const { note, ...rest } = parsed.data;
+  const done = await db
     .update(schema.inventoryDevices)
-    .set({ ...rest, ...(note !== undefined ? { note: note?.trim() || null } : {}), ...(nextSpecs ? { specs: nextSpecs } : {}), updatedAt: new Date() })
-    .where(eq(schema.inventoryDevices.id, deviceId));
-  return {};
+    .set({ ...rest, ...(note !== undefined ? { note: note?.trim() || null } : {}), updatedAt: new Date() })
+    .where(eq(schema.inventoryDevices.id, deviceId))
+    .returning({ id: schema.inventoryDevices.id });
+  return done.length ? {} : { error: "That PC was deleted." };
 }
 
 // The count typed on a card or in the item window: a "Counted" move of the difference.
@@ -868,7 +870,7 @@ export async function itemPopup(itemId: string) {
   if (!isUuid(itemId)) return null;
   const [detail, targets] = await Promise.all([inventoryItemWithLists(itemId), listBomTargets()]);
   if (!detail) return null;
-  const devices = getCategory(detail.categories, detail.item.category)?.devices ? await itemDevices(itemId) : null;
+  const devices = detail.item.station ? await itemDevices(itemId) : null;
   return { ...detail, targets, devices, order: detail.item.openOrder ? await openOrderPart(detail.item.openOrder.partId) : null };
 }
 

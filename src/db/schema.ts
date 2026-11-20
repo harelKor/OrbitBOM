@@ -20,6 +20,7 @@ import {
   pgTable,
   primaryKey,
   real,
+  smallint,
   text,
   timestamp,
   uniqueIndex,
@@ -1143,6 +1144,8 @@ export const inventoryItems = pgTable("inventory_items", {
   // key are linked on sync. Other names the item was linked under, for match suggestions.
   onshapeKey: text("onshape_key"),
   aliases: text("aliases").array().notNull().default(sql`'{}'::text[]`),
+  // One of the three PC stations (config/stations.ts): its stock is its PCs in inventory_devices.
+  station: text("station").unique(),
   createdAt: createdAt(),
 });
 
@@ -1177,9 +1180,9 @@ export const inventoryMoves = pgTable(
   ],
 );
 
-// One computer / laptop / tablet of a devices item (Computers & Devices, Harel 2026-11-20): the
-// item's stock is how many of these rows it has (lib/inventory/moves.ts keeps them in step). x / y
-// are its icon's place on the zone's picture (0..1); specs are by the category's field ids.
+// One PC of a station (config/stations.ts, Harel 2026-11-20): the item's stock is how many of
+// these rows it has (lib/inventory/moves.ts keeps them in step). x / y are its icon's place on the
+// floor plan (config/workshopMap.ts units); condition 1-5. `specs` is unused.
 export const inventoryDevices = pgTable(
   "inventory_devices",
   {
@@ -1192,6 +1195,7 @@ export const inventoryDevices = pgTable(
     keyboard: boolean("keyboard").notNull().default(false),
     mouse: boolean("mouse").notNull().default(false),
     note: text("note"),
+    condition: smallint("condition"),
     specs: jsonb("specs").$type<Record<string, string>>().notNull().default({}),
     position: integer("position").notNull().default(0),
     createdAt: createdAt(),

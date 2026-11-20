@@ -4,6 +4,7 @@ import { db, schema } from "@/db";
 import { categoryOf, getCategory, type InvCategory } from "./categories";
 import { listCategories } from "@/lib/data/categories";
 import { currentVisit } from "@/lib/visits";
+import { stationRoom } from "@/config/stations";
 import { type PieceOp, type PieceRow, type StoredPieces, applyPieceOp, countPieces, snapStock, stepStock } from "./stock";
 
 const { inventoryDevices, inventoryItems, inventoryMoves } = schema;
@@ -49,7 +50,7 @@ async function changeStock(
   const after = next({ inStock: item.inStock, sheet, pieces: item.pieces, specs: item.specs, name: item.name });
   // A fraction item's stock is its pieces' sum (a custom size can be any share), so it isn't snapped.
   const to = sheet ? Math.max(0, after.inStock) : snapStock(after.inStock, sheet);
-  if (cat?.devices) await fitDevices(tx, item.id, to, deviceId);
+  if (item.station) await fitDevices(tx, item.id, to, deviceId, item.station);
   const pieces = after.pieces ?? item.pieces;
   if (to !== item.inStock || JSON.stringify(pieces) !== JSON.stringify(item.pieces)) {
     await tx.update(inventoryItems).set({ inStock: to, pieces }).where(eq(inventoryItems.id, item.id));
@@ -72,14 +73,16 @@ async function changeStock(
   return { name: item.name, from: item.inStock, to };
 }
 
-// A devices item's stock is how many devices it has (Computers & Devices, Harel 2026-11-20): a
-// new one stands in the middle of the zone's picture; fewer take off `remove` first, then the
-// newest. Run under the item's row lock, so two phones tapping at once can't miss a row.
-export async function fitDevices(tx: Tx, itemId: string, count: number, remove?: string) {
+// A PC station's stock is how many PCs it has (config/stations.ts, Harel 2026-11-20): a new one
+// stands in the middle of the station's room on the floor plan; fewer take off `remove` first (a
+// PC's own Delete: gone for good, a −1 move in the history), then the newest. Run under the item's
+// row lock, so two phones tapping at once can't miss a row.
+export async function fitDevices(tx: Tx, itemId: string, count: number, remove?: string, station?: string | null) {
   const rows = await tx.select({ id: inventoryDevices.id, position: inventoryDevices.position }).from(inventoryDevices).where(eq(inventoryDevices.itemId, itemId)).orderBy(desc(inventoryDevices.position), desc(inventoryDevices.createdAt));
   if (rows.length < count) {
     const top = rows[0]?.position ?? -1;
-    await tx.insert(inventoryDevices).values(Array.from({ length: count - rows.length }, (_, i) => ({ itemId, position: top + 1 + i })));
+    const [x, y] = stationRoom(station)?.centre ?? [0.5, 0.5];
+    await tx.insert(inventoryDevices).values(Array.from({ length: count - rows.length }, (_, i) => ({ itemId, position: top + 1 + i, x, y })));
   } else if (rows.length > count) {
     const first = rows.filter((r) => r.id === remove);
     const gone = [...first, ...rows.filter((r) => r.id !== remove)].slice(0, rows.length - count).map((r) => r.id);

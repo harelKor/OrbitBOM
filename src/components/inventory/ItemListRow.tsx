@@ -90,7 +90,7 @@ export function ItemListRow({
       title={item.name}
       href={item.cotsLinks[0]?.url}
       detail={
-        stepper ? (
+        stepper && !item.station ? (
           detail || undefined
         ) : (
           <>
@@ -107,7 +107,7 @@ export function ItemListRow({
           // A tap on a control works it, not the row (menus are portaled, so their clicks still
           // bubble through React to the row).
           <span className="contents" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
-            {stepper && (
+            {stepper && !item.station && (
               <span className="inline-flex items-center gap-1">
                 <StepButton
                   step={-1}
@@ -162,14 +162,14 @@ export function ItemListRow({
                 style={condition ? { backgroundColor: color, color: textOn(color!) } : undefined}
               />
             )}
-            {!hideSeason && <SeasonTag itemId={item.id} tag={item.seasonTag} className="rounded-full border border-transparent px-2.5 py-0.5 text-[0.6875rem]" />}
+            {!hideSeason && !item.station && <SeasonTag itemId={item.id} tag={item.seasonTag} className="rounded-full border border-transparent px-2.5 py-0.5 text-[0.6875rem]" />}
             {showStanding && state !== "ok" && <ListPill color={STANDING[state].color}>{STANDING[state].label(formatStock(gap, item.sheet))}</ListPill>}
           </span>
         ) : (
           <>
             {location && !rawStock && <ListPill><Icon name="map" className="inline h-3.5 w-3.5" /></ListPill>}
             {condition && <ListPill color={conditionColor(condition.color)}>{condition.label}</ListPill>}
-            {!hideSeason && <SeasonTag itemId={item.id} tag={item.seasonTag} className="rounded-full border border-transparent px-2.5 py-0.5 text-[0.6875rem]" />}
+            {!hideSeason && !item.station && <SeasonTag itemId={item.id} tag={item.seasonTag} className="rounded-full border border-transparent px-2.5 py-0.5 text-[0.6875rem]" />}
             {showStanding && state !== "ok" && <ListPill color={STANDING[state].color}>{STANDING[state].label(formatStock(gap, item.sheet))}</ListPill>}
           </>
         )

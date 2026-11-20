@@ -552,10 +552,18 @@ function ItemBody({
           setMessage(m ?? "Saved.");
           onSaved();
         }}
-        onDelete={async () => {
-          const warn = usage?.parts.length ? `${usage.parts.length} BOM parts will no longer draw from it. ` : "";
-          if (!(await askConfirm({ title: `Delete "${item.name}" from the inventory?`, body: `${warn}It stays in Settings → Recently deleted for 30 days.`, confirm: "Delete", danger: true }))) return;
-          return deleteItem(item.id).then(onClose);
+        onDelete={{
+          confirm: {
+            title: `Delete "${item.name}" from the inventory?`,
+            body: `${usage?.parts.length ? `${usage.parts.length} BOM parts will no longer draw from it. ` : ""}It stays in Settings → Recently deleted for 30 days.`,
+            confirm: "Delete",
+            danger: true,
+          },
+          run: async () => {
+            const r = await safeAction(() => deleteItem(item.id));
+            if (r.error) return setMessage(r.error);
+            onClose();
+          },
         }}
       />
     );
@@ -641,7 +649,7 @@ function ItemBody({
         <div className="min-w-0 flex-1">
           <HistorySection item={item} categories={categories} locations={locations} conditions={conditions} />
         </div>
-        {work && (
+        {work && !item.station && (
           <button
             type="button"
             className="btn mt-1 h-8 w-8 shrink-0 justify-center px-0 active:scale-[0.98]"
@@ -659,14 +667,25 @@ function ItemBody({
       </div>
     </>
   );
-  // Computers & Devices (Harel, 2026-11-20): the zone's picture with the devices on it takes the
-  // photo's and the count's place; Season needs goes under the list, and there's no item note
-  // (each device has its own).
-  if (cat?.devices && data?.devices)
+  // A PC station (config/stations.ts, Harel 2026-11-20): the floor plan with its PCs takes the
+  // photo's and the count's place. Only the category pill (no season tag, no place: the station is
+  // its room), Season needs under the list, no item note (each PC has its own), no pencil (it can't
+  // be renamed or deleted).
+  if (item.station)
     return (
       <div className="space-y-2.5">
-        {chips}
-        <DevicesPanel item={item} cat={cat} places={locations} devices={data.devices} onChange={onChange} onSaved={onSaved} onError={setMessage} />
+        {cat && (
+          <div className="flex">
+            <Link href={`/inventory/c/${cat.id}`} onClick={onClose} className={`${tag} bg-[#111318]/85 text-white hover:bg-accent`}>
+              {cat.label}
+            </Link>
+          </div>
+        )}
+        {data?.devices ? (
+          <DevicesPanel item={item} devices={data.devices} onChange={onChange} onSaved={onSaved} onError={setMessage} />
+        ) : (
+          <p className="py-8 text-center text-sm text-muted">Loading the PCs…</p>
+        )}
         <div className="flex">
           <SeasonBox item={item} onChange={onChange} onError={setMessage} />
         </div>

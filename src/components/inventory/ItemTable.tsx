@@ -137,7 +137,7 @@ export function ItemTable({
                         />
                       )}
                       <ProductName item={item} className="font-semibold" />
-                      {!hideSeason && (
+                      {!hideSeason && !item.station && (
                         <span onClick={stop} className="shrink-0">
                           <SeasonTag itemId={item.id} tag={item.seasonTag} />
                         </span>
@@ -158,7 +158,7 @@ export function ItemTable({
                 )}
                 <td onClick={stop}>
                   <span className="flex items-center justify-center gap-1.5">
-                    {work && (<StepButton
+                    {work && !item.station && (<StepButton
                       step={-1}
                       onClick={() => onStep(item.id, -1)}
                       disabled={item.sheet ? item.inStock <= 0 : item.inStock < 1}
@@ -184,7 +184,7 @@ export function ItemTable({
                         onStep={(d, b) => onStep(item.id, d, b)}
                       />
                     )}
-                    {work && (<StepButton
+                    {work && !item.station && (<StepButton
                       step={1}
                       onClick={() => onStep(item.id, 1)}
                       label={`One more ${item.name}`}

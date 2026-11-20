@@ -701,6 +701,13 @@
       "when": 1795166637551,
       "tag": "0099_computers_devices",
       "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1795169191098,
+      "tag": "0100_pc_stations",
+      "breakpoints": true
     }
   ]
 }

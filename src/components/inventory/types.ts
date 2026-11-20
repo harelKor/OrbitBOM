@@ -27,6 +27,7 @@ export type Item = {
   openOrder: OpenOrder | null;
   sheet: boolean;
   thumbUrl: string | null;
+  station?: string | null; // one of the three PC stations (config/stations.ts)
 };
 export type Group = { id: string; name: string; parentId: string | null; templateId: string | null; locationId: string | null };
 export type Condition = { id: string; label: string; color: string };

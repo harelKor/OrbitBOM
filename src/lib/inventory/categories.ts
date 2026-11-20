@@ -12,7 +12,7 @@ export type InvCategory = {
   noun: string;
   group: CategoryGroupId;
   sheet: boolean;
-  devices?: boolean; // Computers & Devices: stock = its rows in inventory_devices
+  devices?: boolean; // unused since the PC stations (config/stations.ts); dropped in a later push
   image: string | null; // its picture: a public/categories/ path ("/categories/gears.png") or an R2 key
   imageUrl?: string | null; // a short-lived link to it, filled for pages
   defaultLocationId: string | null;

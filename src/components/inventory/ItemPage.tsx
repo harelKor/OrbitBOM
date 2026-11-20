@@ -172,7 +172,8 @@ export function ItemPage({
                   const warn = usage?.parts.length ? `${usage.parts.length} BOM parts will no longer draw from it. ` : "";
                   if (!(await askConfirm({ title: `Delete "${item.name}" from the inventory?`, body: `${warn}It stays in Settings → Recently deleted for 30 days.`, confirm: "Delete", danger: true }))) return;
                   startTransition(async () => {
-                    await deleteItem(item.id);
+                    const r = await deleteItem(item.id);
+                    if (r.error) return setResult(r);
                     router.push("/inventory");
                   });
                 }}

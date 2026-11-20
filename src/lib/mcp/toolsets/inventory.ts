@@ -346,6 +346,8 @@ write(
       const row = rows.find((r) => r.id === i.item_id);
       if (!row) throw new ToolError(`No inventory item ${i.item_id}.`);
       const values: Record<string, unknown> = { ...checkItemInfo(i, row, cats) };
+      // The three PC stations keep their names and category (config/stations.ts).
+      if (row.station && ((values.name !== undefined && values.name !== row.name) || (values.category !== undefined && values.category !== row.category))) throw new ToolError(`${row.name} is a PC station: it can't be renamed or moved to another category.`);
       // A new product link replaces the old one from the same store (a family page swapped for the
       // exact variant), so the card doesn't keep the wrong page as a second link.
       if (values.cotsLinks) {
