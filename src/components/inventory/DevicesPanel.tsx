@@ -13,7 +13,7 @@ import type { Item } from "./types";
 
 // The PC stations (config/stations.ts, Harel 2026-11-20): instead of the photo and the count, a
 // station's window shows the floor plan around its room with each PC as an icon on it. The view
-// pans and zooms freely; once it's moved the room's outline lights up, and Reset flies back. Anyone
+// pans and zooms freely with the room's outline always lit, and Reset flies back. Anyone
 // who can work drags the PCs (saved on drop); a tap opens Keyboard / Mouse / Notes / Delete. + Add
 // PC puts one in the middle of the room. Below: every PC with its condition (1-5) and its Delete.
 
@@ -209,7 +209,6 @@ function StationMap({
   // it is; how close is each station's `zoom` (config/stations.ts).
   const home: View = room ? { cx: room.box.cx, cy: room.box.cy, w: Math.max(room.box.w * room.zoom, room.box.h * room.zoom * aspect, 120) } : { cx: MAP_W / 2, cy: MAP_H / 2, w: MAP_W };
   const [view, setView] = useState<View | null>(null);
-  const [moved, setMoved] = useState(false);
   const v = view ?? home;
   const h = v.w / aspect;
   const x0 = v.cx - v.w / 2;
@@ -225,7 +224,6 @@ function StationMap({
   };
   const move = (next: View) => {
     stopFly();
-    setMoved(true);
     const clamped = { ...next, w: clamp(next.w, 60, MAP_W * 1.6) };
     // Gestures read the newest view even before React paints it.
     live.current = { ...live.current, v: clamped };
@@ -234,7 +232,6 @@ function StationMap({
   // Reset glides back to the starting view.
   const reset = () => {
     stopFly();
-    setMoved(false);
     const from = live.current.v;
     const t0 = performance.now();
     const step = (t: number) => {
@@ -325,9 +322,9 @@ function StationMap({
           {WORKSHOP_ROOMS.map((r) => (
             <polygon key={r.id} points={r.points} className={r.main ? "fill-raised stroke-line-strong" : "fill-surface stroke-line-strong"} strokeWidth={stroke} />
           ))}
-          {/* The station's room lights up only once the view has moved (Harel, 2026-11-20). */}
-          {moved && room && (
-            <polygon points={room.points.map((p) => p.join(",")).join(" ")} style={{ fill: "color-mix(in srgb, var(--color-accent) 18%, transparent)", stroke: "var(--color-accent)" }} strokeWidth={stroke * 2.5} />
+          {/* The station's room is always lit, softly (Harel, 2026-11-20). */}
+          {room && (
+            <polygon points={room.points.map((p) => p.join(",")).join(" ")} style={{ fill: "color-mix(in srgb, var(--color-accent) 10%, transparent)", stroke: "color-mix(in srgb, var(--color-accent) 65%, transparent)" }} strokeWidth={stroke * 2} />
           )}
           {WORKSHOP_ROOMS.map((r) => (
             <text key={r.id} x={r.labelPos[0]} y={r.labelPos[1]} fontSize={r.labelSize} textAnchor="middle" dominantBaseline="middle" className="fill-subtle font-semibold">

@@ -4,12 +4,12 @@ import { bounds, centroid, type MapPoint } from "@/lib/inventory/places";
 // The team's three PC stations (Harel, 2026-11-20): fixed items in Computers & Devices
 // (inventory_items.station, added by migration 0100), each tied to its room on the floor plan.
 // Their stock is their PCs, each an icon on that room; they can't be deleted or renamed.
-// `zoom`: the window's starting view is the room's size times this, so the rooms around it show;
-// CAD and Build start closer (Harel, 2026-11-20).
+// `zoom`: the window's starting view is the room's size times this: the whole room with a thin
+// strip of what's around it (Harel, 2026-11-20).
 export const STATIONS = [
-  { key: "scouting", name: "Scouting PC", room: "pc-room", zoom: 1.6 },
-  { key: "cad", name: "CAD PC", room: "cage", zoom: 1.3 },
-  { key: "build", name: "Build PC", room: "circus", zoom: 1.3 },
+  { key: "scouting", name: "Scouting PC", room: "pc-room", zoom: 1.15 },
+  { key: "cad", name: "CAD PC", room: "cage", zoom: 1.12 },
+  { key: "build", name: "Build PC", room: "circus", zoom: 1.12 },
 ] as const;
 export type StationKey = (typeof STATIONS)[number]["key"];
 
