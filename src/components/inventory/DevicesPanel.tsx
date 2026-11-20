@@ -225,8 +225,7 @@ function PcRow({ device: d, n, work, picked, onSave, onDelete, onPick }: { devic
         />
         <span className="w-8 text-right font-mono font-semibold text-fg tabular-nums">{shown ?? "–"}/5</span>
       </label>
-      <SpecLine device={d} />
-      <PcNote device={d} work={work} onSave={onSave} />
+      <PcNote device={d} work={work} onSave={onSave} lead={<SpecChips device={d} work={work} onSave={onSave} />} />
     </li>
   );
 }
@@ -632,7 +631,8 @@ function PcIcon({
 // A PC's note (Harel, 2026-11-20): just its text, lightly highlighted like a marker, and only when
 // there is one. A tap on it edits it in place; "Add note" starts one; an emptied note goes. Saved
 // when the box loses focus, or when it goes (the menu closed by a tap elsewhere).
-function PcNote({ device: d, work, onSave }: { device: Device; work: boolean; onSave: (p: Patch) => void }) {
+// `lead` (a card's spec chips) shares the "+ Note" row, so it adds no height to a card.
+function PcNote({ device: d, work, onSave, lead }: { device: Device; work: boolean; onSave: (p: Patch) => void; lead?: React.ReactNode }) {
   const [text, setText] = useState<string | null>(null); // being edited
   const latest = useRef({ text, saved: d.note ?? "", onSave });
   useEffect(() => {
@@ -654,8 +654,11 @@ function PcNote({ device: d, work, onSave }: { device: Device; work: boolean; on
     latest.current = { ...latest.current, text: null };
     setText(null);
   };
+  const leadRow = lead ? <div className="flex min-h-9 items-center gap-1">{lead}</div> : null;
   if (text !== null)
     return (
+      <>
+      {leadRow}
       <textarea
         autoFocus
         value={text}
@@ -667,22 +670,35 @@ function PcNote({ device: d, work, onSave }: { device: Device; work: boolean; on
         aria-label="Note"
         className="input block w-full resize-y py-1.5 text-base leading-snug"
       />
+      </>
     );
   if (d.note) {
     const mark = <mark className="box-decoration-clone rounded-sm bg-amber-300/40 px-1 text-base leading-relaxed text-fg dark:bg-amber-400/25">{d.note}</mark>;
-    return work ? (
-      <button type="button" onClick={() => setText(d.note ?? "")} className="block min-h-9 w-full py-0.5 text-left whitespace-pre-wrap" aria-label="Edit the note">
-        {mark}
-      </button>
-    ) : (
-      <p className="whitespace-pre-wrap">{mark}</p>
+    return (
+      <>
+        {leadRow}
+        {work ? (
+          <button type="button" onClick={() => setText(d.note ?? "")} className="block min-h-9 w-full py-0.5 text-left whitespace-pre-wrap" aria-label="Edit the note">
+            {mark}
+          </button>
+        ) : (
+          <p className="whitespace-pre-wrap">{mark}</p>
+        )}
+      </>
     );
   }
-  return work ? (
-    <button type="button" onClick={() => setText("")} className="press min-h-9 px-1 text-sm font-medium text-muted hover:text-accent active:scale-[0.98]">
-      + Add note
+  const add = work ? (
+    <button type="button" onClick={() => setText("")} className="press min-h-9 shrink-0 px-1 text-sm font-medium text-muted hover:text-accent active:scale-[0.98]" aria-label="Add note">
+      {lead ? "+ Note" : "+ Add note"}
     </button>
   ) : null;
+  if (!lead) return add;
+  return (
+    <div className="flex min-h-9 items-center gap-1">
+      {lead}
+      {add}
+    </div>
+  );
 }
 
 // A text being typed, saved when it's left: on blur, or when the box goes (the menu closed by a tap
@@ -763,20 +779,63 @@ function PcSpecs({ device: d, className = "" }: { device: Device; className?: st
   );
 }
 
-// A card's GPU / CPU / RAM on one small muted line (Harel, 2026-11-20), so cards stay compact.
-function SpecLine({ device: d }: { device: Device }) {
-  const filled = SPECS.filter((f) => d[f.key]);
-  if (!filled.length) return null;
+// A card's GPU / CPU / RAM as three small chips on one line (Harel, 2026-11-20), always there so
+// what can be filled in shows, without making the card bigger. A tap on one types it in place
+// (Enter or leaving saves, blank clears, Escape drops).
+function SpecChips({ device: d, work, onSave }: { device: Device; work: boolean; onSave: (p: Patch) => void }) {
+  const [editing, setEditing] = useState<(typeof SPECS)[number] | null>(null);
+  if (editing) return <SpecChipInput key={editing.key} field={editing} device={d} onSave={onSave} onDone={() => setEditing(null)} />;
   return (
-    <p className="truncate px-1 text-xs text-muted" title={filled.map((f) => `${f.label}: ${d[f.key]}`).join(" · ")}>
-      {filled.map((f, i) => (
-        <span key={f.key}>
-          {i > 0 && <span aria-hidden className="px-1 text-subtle">·</span>}
-          <span className="sr-only">{f.label} </span>
-          {d[f.key]}
-        </span>
-      ))}
-    </p>
+    <div className="flex min-w-0 flex-1 items-center gap-1">
+      {SPECS.map((f) => {
+        const value = d[f.key];
+        const chip = (
+          <>
+            <span className="shrink-0 text-[0.625rem] font-bold tracking-wide text-subtle">{f.label}</span>
+            <span className={`truncate ${value ? "text-fg" : "text-subtle"}`}>{value || "–"}</span>
+          </>
+        );
+        const look = `flex min-h-7 min-w-0 items-center gap-1 rounded-full border px-2 text-xs pointer-coarse:min-h-9 ${value ? "border-line bg-surface" : "border-dashed border-line"}`;
+        return work ? (
+          <button key={f.key} type="button" onClick={() => setEditing(f)} className={`press ${look} shrink hover:border-accent active:scale-[0.98]`} title={value ? `${f.label}: ${value}` : `Add ${f.label}`} aria-label={value ? `${f.label} ${value}, edit` : `Add ${f.label}`}>
+            {chip}
+          </button>
+        ) : (
+          <span key={f.key} className={`${look} shrink`} title={value ? `${f.label}: ${value}` : undefined}>
+            {chip}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function SpecChipInput({ field, device: d, onSave, onDone }: { field: (typeof SPECS)[number]; device: Device; onSave: (p: Patch) => void; onDone: () => void }) {
+  const saved = d[field.key] ?? "";
+  const { setText, text, done, cancel } = useDraft(saved, (v) => onSave({ [field.key]: v.trim() || null }));
+  return (
+    <label className="flex min-w-0 flex-1 items-center gap-1.5">
+      <span className="shrink-0 text-[0.625rem] font-bold tracking-wide text-subtle">{field.label}</span>
+      <input
+        autoFocus
+        value={text ?? saved}
+        maxLength={200}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => {
+          done();
+          onDone();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          else if (e.key === "Escape") {
+            cancel();
+            onDone();
+          }
+        }}
+        placeholder={field.hint}
+        className="input min-h-8 min-w-0 flex-1 py-0.5 text-base pointer-coarse:min-h-9"
+      />
+    </label>
   );
 }
 
