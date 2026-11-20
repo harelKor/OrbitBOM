@@ -681,7 +681,7 @@ function ItemBody({
           </div>
         )}
         {data?.devices ? (
-          <DevicesPanel item={item} devices={data.devices} onChange={onChange} onSaved={onSaved} onError={setMessage} />
+          <DevicesPanel item={item} devices={data.devices} panorama={data.panorama} onChange={onChange} onSaved={onSaved} onError={setMessage} />
         ) : (
           <p className="py-8 text-center text-sm text-muted">Loading the PCs…</p>
         )}

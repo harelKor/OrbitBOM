@@ -1,9 +1,12 @@
 import "server-only";
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { stationRoom } from "@/config/stations";
+import { imageUrl } from "@/lib/storage/r2";
 import { fitDevices } from "./moves";
+import { centroid, isPanorama, pointInPolygon } from "./places";
 
-const { inventoryDevices, inventoryItems } = schema;
+const { inventoryDevices, inventoryItems, inventoryLocations } = schema;
 
 // A PC station's PCs (config/stations.ts, Harel 2026-11-20): each one's place on the floor plan
 // (workshopMap units), its name, GPU / CPU / RAM (free text), condition (1-5) and note.
@@ -12,6 +15,9 @@ export type Device = {
   itemId: string;
   x: number;
   y: number;
+  // Its place on the station zone's 360° picture (0..1), null until it's put there.
+  panoX: number | null;
+  panoY: number | null;
   keyboard: boolean;
   mouse: boolean;
   name: string | null;
@@ -28,6 +34,8 @@ const columns = {
   itemId: inventoryDevices.itemId,
   x: inventoryDevices.x,
   y: inventoryDevices.y,
+  panoX: inventoryDevices.panoX,
+  panoY: inventoryDevices.panoY,
   keyboard: inventoryDevices.keyboard,
   mouse: inventoryDevices.mouse,
   name: inventoryDevices.name,
@@ -61,4 +69,25 @@ export async function devicesOf(itemIds: string[]): Promise<Map<string, Device[]
   const rows = await db.select(columns).from(inventoryDevices).where(inArray(inventoryDevices.itemId, itemIds)).orderBy(asc(inventoryDevices.position), asc(inventoryDevices.createdAt));
   for (const r of rows) out.set(r.itemId, [...(out.get(r.itemId) ?? []), r]);
   return out;
+}
+
+// The 360° picture of a station's room, when a zone inside that room has one (Harel, 2026-11-20:
+// the CAD PC window looks round the cage instead of the floor plan). Null: the floor plan.
+export type StationPanorama = { zoneId: string; imageUrl: string; imageW: number; imageH: number };
+export async function stationPanorama(station: string | null | undefined): Promise<StationPanorama | null> {
+  const room = stationRoom(station);
+  if (!room) return null;
+  const zones = await db
+    .select({ id: inventoryLocations.id, outline: inventoryLocations.outline, imageKey: inventoryLocations.imageKey, imageW: inventoryLocations.imageW, imageH: inventoryLocations.imageH, panorama: inventoryLocations.panorama })
+    .from(inventoryLocations)
+    .where(and(isNull(inventoryLocations.parentId), isNotNull(inventoryLocations.imageKey)))
+    .orderBy(asc(inventoryLocations.position), asc(inventoryLocations.name));
+  const z = zones.find((r) => {
+    if (!r.outline?.length || !r.imageW || !r.imageH) return false;
+    const [x, y] = centroid(r.outline);
+    return pointInPolygon(x, y, room.points) && isPanorama({ id: r.id, name: "", imageUrl: r.imageKey, imageW: r.imageW, imageH: r.imageH, panorama: r.panorama });
+  });
+  if (!z?.imageKey || !z.imageW || !z.imageH) return null;
+  const url = z.imageKey.startsWith("/") ? z.imageKey : await imageUrl(z.imageKey);
+  return url ? { zoneId: z.id, imageUrl: url, imageW: z.imageW, imageH: z.imageH } : null;
 }

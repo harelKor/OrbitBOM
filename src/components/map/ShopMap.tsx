@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { MAP_H, MAP_W, WORKSHOP_ROOMS } from "@/config/workshopMap";
 import { useStoredChoice } from "@/components/ui/useStoredChoice";
-import { bounds, centroid, kindLabel, placeIndex, pointInPolygon, spotRect, spotsOf, zoneColor, type Place } from "@/lib/inventory/places";
+import { bounds, centroid, isPanorama, kindLabel, placeIndex, pointInPolygon, spotRect, spotsOf, zoneColor, type Place } from "@/lib/inventory/places";
+import { clampPano, dragPano, maxFov, project, projectRect, startFov, zoomPano, type Pano, type Pic } from "./panorama";
+import { PanoramaView } from "./PanoramaStage";
 import {
   DIVE_SPAN,
   FIND_MS,
@@ -31,6 +33,9 @@ import {
 // plan tilts away and the zone's first-person picture stands up in front (the dive); zooming out
 // plays it back. In the picture every drawer and shelf is a rectangle showing its main category. `find` flies from the whole map
 // to a place in about 2.5 seconds. "pick" mode chooses a zone or a drawer instead of filtering.
+// A zone with a 360° picture (Harel, 2026-11-20) is a first-person panorama instead: you stand in
+// it, drag to look round, pinch to zoom; the camera's scene then reads cx / cy as where you look
+// (u / v of the picture) and s as the zoom from the opening view (panorama.ts).
 
 export type PlaceStat = {
   count: number;
@@ -232,6 +237,10 @@ export function ShopMap({
   const fitScale = Math.min(box.w / img.w, box.h / img.h);
   const dw = img.w * fitScale;
   const dh = img.h * fitScale;
+  // A panorama zone: the scene as where you look.
+  const pic: Pic | null = zone && isPanorama(zone) ? img : null;
+  const panoOf = (s: Cam["scene"], p: Pic): Pano => clampPano({ u: s.cx, v: s.cy, fov: startFov(p) / s.s }, p);
+  const sceneOf = (q: Pano, p: Pic) => ({ s: startFov(p) / q.fov, cx: q.u, cy: q.v });
 
   const zoomBy = (factor: number, clientX: number, clientY: number) => {
     stop();
@@ -240,6 +249,16 @@ export function ShopMap({
     const r = boxRef.current!.getBoundingClientRect();
     const px = clientX - r.left;
     const py = clientY - r.top;
+    if (c.dive >= 0.999 && c.zone && pic) {
+      const now = panoOf(c.scene, pic);
+      if (factor < 1 && now.fov >= maxFov(pic) - 0.01) {
+        // Zooming out past the widest view walks back out to the floor plan.
+        setCam({ ...c, dive: clamp(c.dive + Math.log(factor) / Math.log(DIVE_SPAN), 0, 1), scene: FULL_SCENE });
+        return;
+      }
+      setCam({ ...c, scene: sceneOf(zoomPano(now, pic, box, factor, px, py), pic) });
+      return;
+    }
     if (c.dive >= 0.999 && c.zone) {
       const s = c.scene.s * factor;
       if (factor < 1 && c.scene.s <= 1.0001) {
@@ -324,7 +343,11 @@ export function ShopMap({
       if (g.travel < 5) return;
       if (!ev.currentTarget.hasPointerCapture(ev.pointerId)) ev.currentTarget.setPointerCapture(ev.pointerId);
       const c = camRef.current;
-      if (c.dive >= 0.999) {
+      if (c.dive >= 0.999 && pic) {
+        const r = boxRef.current!.getBoundingClientRect();
+        const next = dragPano(panoOf(c.scene, pic), pic, box, { x: prev.x - r.left, y: prev.y - r.top }, { x: ev.clientX - r.left, y: ev.clientY - r.top });
+        setCam({ ...c, scene: sceneOf(next, pic) });
+      } else if (c.dive >= 0.999) {
         setCam({ ...c, scene: clampScene({ ...c.scene, cx: c.scene.cx - dx / (dw * c.scene.s), cy: c.scene.cy - dy / (dh * c.scene.s) }) });
       } else if (c.dive === 0) {
         const r = boxRef.current!.getBoundingClientRect();
@@ -418,6 +441,64 @@ export function ShopMap({
     return smoothstep(14, 34, Math.min(b.w, b.h) / k) * smoothstep(36, 76, Math.max(b.w, b.h) / k);
   };
   const pictured = drawn.filter((z) => stats?.get(z.id)?.categories.length).map((z) => ({ outline: z.outline!, show: picturesShown(z) }));
+
+  // A drawer's tag over the picture (flat or panorama): where its centre is and its size in px.
+  // The tag is a rectangle over the drawer, sized as a share of the picture, so it grows and
+  // shrinks with the zoom (Harel, 2026-11-17). Its tap target never drops below 36 px.
+  const spotTag = (s: Place, zone: Place, pos: { left: number | string; top: number | string }, rw: number, rh: number) => {
+    const st = stats?.get(s.id);
+    const isFlash = flash === s.id;
+    const isSel = selectedId === s.id || (sel?.kind === "spot" && sel.id === s.id);
+    const on = isFlash || isSel;
+    const color = zoneColor(zone);
+    // The drawer a find flight lands on turns see-through, so the real drawer shows inside
+    // its outline (Harel, 2026-11-17); back to the slider's look on the next touch.
+    const solid = isFlash ? 0 : tagOpacity;
+    return (
+      <button
+        key={s.id}
+        type="button"
+        data-spot={s.id}
+        aria-label={`${kindLabel(s.kind)}${st ? `, ${st.count} items` : ""}`}
+        aria-pressed={isSel}
+        className="absolute flex -translate-x-1/2 -translate-y-1/2 items-center justify-center"
+        style={{ left: pos.left, top: pos.top, width: Math.max(rw, 36), height: Math.max(rh, 36), opacity: smoothstep(0.8, 1, cam.dive) }}
+        onClick={(ev) => {
+          // Taps arrive through the pointer handlers; this is for keyboards.
+          if (ev.detail === 0) tap({ id: s.id, kind: "spot" });
+        }}
+      >
+        <span
+          className={`relative block shrink-0 rounded-[6px] transition-[box-shadow,background-color] duration-500 ${st?.picture ? "" : "bg-white/10 backdrop-blur-[1px]"}`}
+          style={{
+            width: rw,
+            height: rh,
+            background: st?.picture ? `rgba(255,255,255,${solid})` : undefined,
+            // Rings drawn outside the box (shadows, not a border), so the picture fills it all.
+            boxShadow: on
+              ? `0 0 0 2px #fff, 0 0 0 5px ${color}, 0 0 22px 6px rgba(255,255,255,0.6)`
+              : `0 0 0 1.5px ${st?.picture ? color : "rgba(255,255,255,0.7)"}, 0 3px 12px rgba(0,0,0,0.55)`,
+          }}
+        >
+          {st?.picture && (
+            // The category most of the drawer's items are (Harel, 2026-11-17), filling the tag.
+            // eslint-disable-next-line @next/next/no-img-element -- a public picture or a signed link
+            <img src={st.picture} alt="" className="absolute inset-0 h-full w-full rounded-[6px] object-cover transition-opacity duration-500" style={{ opacity: solid }} draggable={false} />
+          )}
+          {on && <span className="absolute -inset-[6px] animate-ping rounded-[10px] border-4" style={{ borderColor: color }} />}
+          {/* The count once the tag is big enough not to be hidden by it (zoom in on a phone). */}
+          {!!st?.count && rw >= 52 && rh >= 30 && (
+            <span
+              className="absolute -top-2 -right-2 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white px-1 text-[0.625rem] font-bold text-white tabular-nums shadow-[0_1px_4px_rgba(0,0,0,0.5)]"
+              style={{ background: color }}
+            >
+              {st.count > 99 ? "99+" : st.count}
+            </span>
+          )}
+        </span>
+      </button>
+    );
+  };
 
   return (
     <div
@@ -700,8 +781,34 @@ export function ShopMap({
         </svg>
       </div>
 
+      {/* A 360° zone: you stand in it and look round (Harel, 2026-11-20); its drawers keep their
+          places on the picture, drawn where they are in the view. */}
+      {zone?.imageUrl && pic && cam.dive > 0 && (() => {
+        const view = panoOf(cam.scene, pic);
+        const lit = byId.get(flash ?? (sel?.kind === "spot" ? sel.id : "") ?? "");
+        const litAt = lit && lit.parentId === zone.id && lit.spotX != null && lit.spotY != null ? project(view, pic, box, lit.spotX, lit.spotY) : null;
+        const litRect = lit && litAt?.front ? projectRect(view, pic, box, spotRect(lit, zone)) : null;
+        return (
+          <div className="absolute inset-0 overflow-hidden" style={{ opacity: smoothstep(0.6, 0.97, cam.dive) }}>
+            <PanoramaView src={zone.imageUrl} pic={pic} pano={view} box={box} />
+            {litRect && (
+              <div
+                key={lit!.id}
+                className="pointer-events-none absolute inset-0 animate-[modal-fade_400ms_ease-out]"
+                style={{ background: `radial-gradient(circle at ${litRect.x}px ${litRect.y}px, transparent 0, transparent ${Math.max(litRect.w, litRect.h) * 0.6 + 30}px, rgba(2,6,23,0.6) ${Math.max(litRect.w, litRect.h) * 0.6 + 110}px)` }}
+              />
+            )}
+            {spotsIn(zone.id).map((s) => {
+              if (s.spotX == null || s.spotY == null) return null;
+              const r = projectRect(view, pic, box, spotRect(s, zone));
+              return r.front ? spotTag(s, zone, { left: r.x, top: r.y }, r.w, r.h) : null;
+            })}
+          </div>
+        );
+      })()}
+
       {/* The zone's first-person picture, standing up from the floor as the dive goes on. */}
-      {zone?.imageUrl && cam.dive > 0 && (
+      {zone?.imageUrl && !pic && cam.dive > 0 && (
         <div
           className="absolute inset-0 overflow-hidden"
           style={{
@@ -738,63 +845,8 @@ export function ShopMap({
             })()}
             {spotsIn(zone.id).map((s) => {
               if (s.spotX == null || s.spotY == null) return null;
-              const st = stats?.get(s.id);
-              const isFlash = flash === s.id;
-              const isSel = selectedId === s.id || (sel?.kind === "spot" && sel.id === s.id);
-              const on = isFlash || isSel;
-              const color = zoneColor(zone);
-              // The tag is a rectangle over the drawer, sized as a share of the picture, so it grows
-              // and shrinks with the zoom (Harel, 2026-11-17). Its tap target never drops below 36 px.
               const r = spotRect(s, zone);
-              const rw = r.w * dw * cam.scene.s;
-              const rh = r.h * dh * cam.scene.s;
-              // The drawer a find flight lands on turns see-through, so the real drawer shows inside
-              // its outline (Harel, 2026-11-17); back to the slider's look on the next touch.
-              const solid = isFlash ? 0 : tagOpacity;
-              return (
-                <button
-                  key={s.id}
-                  type="button"
-                  data-spot={s.id}
-                  aria-label={`${kindLabel(s.kind)}${st ? `, ${st.count} items` : ""}`}
-                  aria-pressed={isSel}
-                  className="absolute flex -translate-x-1/2 -translate-y-1/2 items-center justify-center"
-                  style={{ left: `${r.x * 100}%`, top: `${r.y * 100}%`, width: Math.max(rw, 36), height: Math.max(rh, 36), opacity: smoothstep(0.8, 1, cam.dive) }}
-                  onClick={(ev) => {
-                    // Taps arrive through the pointer handlers; this is for keyboards.
-                    if (ev.detail === 0) tap({ id: s.id, kind: "spot" });
-                  }}
-                >
-                  <span
-                    className={`relative block shrink-0 rounded-[6px] transition-[box-shadow,background-color] duration-500 ${st?.picture ? "" : "bg-white/10 backdrop-blur-[1px]"}`}
-                    style={{
-                      width: rw,
-                      height: rh,
-                      background: st?.picture ? `rgba(255,255,255,${solid})` : undefined,
-                      // Rings drawn outside the box (shadows, not a border), so the picture fills it all.
-                      boxShadow: on
-                        ? `0 0 0 2px #fff, 0 0 0 5px ${color}, 0 0 22px 6px rgba(255,255,255,0.6)`
-                        : `0 0 0 1.5px ${st?.picture ? color : "rgba(255,255,255,0.7)"}, 0 3px 12px rgba(0,0,0,0.55)`,
-                    }}
-                  >
-                    {st?.picture && (
-                      // The category most of the drawer's items are (Harel, 2026-11-17), filling the tag.
-                      // eslint-disable-next-line @next/next/no-img-element -- a public picture or a signed link
-                      <img src={st.picture} alt="" className="absolute inset-0 h-full w-full rounded-[6px] object-cover transition-opacity duration-500" style={{ opacity: solid }} draggable={false} />
-                    )}
-                    {on && <span className="absolute -inset-[6px] animate-ping rounded-[10px] border-4" style={{ borderColor: color }} />}
-                    {/* The count once the tag is big enough not to be hidden by it (zoom in on a phone). */}
-                    {!!st?.count && rw >= 52 && rh >= 30 && (
-                      <span
-                        className="absolute -top-2 -right-2 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white px-1 text-[0.625rem] font-bold text-white tabular-nums shadow-[0_1px_4px_rgba(0,0,0,0.5)]"
-                        style={{ background: color }}
-                      >
-                        {st.count > 99 ? "99+" : st.count}
-                      </span>
-                    )}
-                  </span>
-                </button>
-              );
+              return spotTag(s, zone, { left: `${r.x * 100}%`, top: `${r.y * 100}%` }, r.w * dw * cam.scene.s, r.h * dh * cam.scene.s);
             })}
           </div>
         </div>

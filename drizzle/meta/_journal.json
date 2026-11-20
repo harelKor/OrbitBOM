@@ -736,6 +736,13 @@
       "when": 1795202459628,
       "tag": "0104_pc_specs",
       "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1795203550961,
+      "tag": "0105_zone_panorama",
+      "breakpoints": true
     }
   ]
 }

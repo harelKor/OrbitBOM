@@ -7,7 +7,9 @@ import { askConfirm } from "@/components/ui/useConfirm";
 import { useCan } from "@/components/shell/ModeContext";
 import { stationRoom } from "@/config/stations";
 import { MAP_H, MAP_W, WORKSHOP_ROOMS } from "@/config/workshopMap";
-import type { Device } from "@/lib/inventory/devices";
+import type { Device, StationPanorama } from "@/lib/inventory/devices";
+import { PanoramaStage, type PanoTools } from "@/components/map/PanoramaStage";
+import { facing, mod1 } from "@/components/map/panorama";
 import { safeAction } from "@/lib/safeAction";
 import { textOn } from "@/components/bom/options";
 import type { Item } from "./types";
@@ -18,7 +20,9 @@ import type { Item } from "./types";
 // who can work drags the PCs (saved on drop); a tap opens its note and Delete. + Add
 // PC puts one in the middle of the room. Below: every PC with its condition (1-5) and its Delete.
 // Each PC has its own name (pencil beside it) and GPU / CPU / RAM, edited in its menu on the map
-// and listed under it (Harel, 2026-11-20).
+// and listed under it (Harel, 2026-11-20). When a zone in the station's room has a 360° picture
+// (the CAD PC's cage), the window stands you in it instead: it opens facing the PCs, each PC's icon
+// sits on the PC in the picture (pano_x / pano_y) and drags to another (Harel, 2026-11-20).
 
 type ChangeItem = (change: (i: Item) => Partial<Item>, run: () => Promise<{ error?: string }>) => void;
 type Patch = Parameters<typeof updateDevice>[1];
@@ -40,12 +44,14 @@ const SPECS = [
 export function DevicesPanel({
   item,
   devices: loaded,
+  panorama,
   onChange,
   onSaved,
   onError,
 }: {
   item: Item;
   devices: Device[];
+  panorama?: StationPanorama | null;
   onChange: ChangeItem;
   onSaved: () => void;
   onError: (m: string | null) => void;
@@ -109,6 +115,18 @@ export function DevicesPanel({
         )}
       </div>
 
+      {panorama ? (
+        <StationPano
+          panorama={panorama}
+          devices={devices}
+          open={open}
+          movable={work}
+          onOpen={setOpen}
+          onMove={(id, u, v) => setDevices((ds) => ds.map((d) => (d.id === id ? { ...d, panoX: u, panoY: v } : d)))}
+          onSave={save}
+          onDelete={remove}
+        />
+      ) : (
       <StationMap
         station={item.station ?? null}
         devices={devices}
@@ -119,6 +137,7 @@ export function DevicesPanel({
         onSave={save}
         onDelete={remove}
       />
+      )}
 
       {devices.length > 0 && (
         // Two PCs a row from tablets up, one on phones.
@@ -378,6 +397,103 @@ function StationMap({
         />
       )}
     </div>
+  );
+}
+
+// Where a PC sits on the panorama: its saved spot, or (not put there yet) in a row below where the
+// placed ones are, to be dragged onto its computer.
+function panoSpot(d: Device, devices: Device[], pic: { w: number; h: number }) {
+  if (d.panoX != null && d.panoY != null) return { u: d.panoX, v: d.panoY };
+  const placed = devices.filter((x) => x.panoX != null && x.panoY != null).map((x) => ({ u: x.panoX!, v: x.panoY! }));
+  const centre = facing(placed, pic, { w: 4, h: 3 }).u;
+  const loose = devices.filter((x) => x.panoX == null || x.panoY == null);
+  const i = loose.indexOf(d);
+  return { u: mod1(centre + (i - (loose.length - 1) / 2) * 0.03), v: 0.62 };
+}
+
+// The station's room as its 360° picture: you stand in it, drag to look round, pinch to zoom.
+function StationPano({
+  panorama,
+  devices,
+  open,
+  movable,
+  onOpen,
+  onMove,
+  onSave,
+  onDelete,
+}: {
+  panorama: StationPanorama;
+  devices: Device[];
+  open: string | null;
+  movable: boolean;
+  onOpen: (id: string | null) => void;
+  onMove: (id: string, u: number, v: number) => void;
+  onSave: (id: string, p: Patch) => void;
+  onDelete: (id: string) => void;
+}) {
+  const pic = { w: panorama.imageW, h: panorama.imageH };
+  const spots = devices.map((d) => ({ d, at: panoSpot(d, devices, pic) }));
+  const icon = (t: PanoTools) =>
+    spots.map(({ d, at }, i) => {
+      const s = t.at(at.u, at.v);
+      if (!s.front) return null;
+      const color = conditionColor(d.condition);
+      return (
+        <div key={d.id} className="contents">
+          {/* A soft light on the PC, so it reads at a glance in a busy room. */}
+          <span
+            aria-hidden
+            className="pointer-events-none absolute h-24 w-24 -translate-x-1/2 -translate-y-1/2 rounded-full"
+            style={{ left: s.x, top: s.y, background: `radial-gradient(circle, color-mix(in srgb, ${color ?? "var(--color-accent)"} 55%, transparent) 0%, transparent 68%)` }}
+          />
+          <PcIcon
+            n={i + 1}
+            name={pcName(d, i + 1)}
+            color={color}
+            at={{ left: s.x, top: s.y }}
+            open={open === d.id}
+            movable={movable}
+            toMap={(x, y) => {
+              const q = t.under(x, y);
+              return [q.u, q.v];
+            }}
+            onTap={() => onOpen(open === d.id ? null : d.id)}
+            onMove={(u, v) => onMove(d.id, u, v)}
+            onDrop={(u, v) => onSave(d.id, { panoX: Math.round(u * 10000) / 10000, panoY: Math.round(v * 10000) / 10000 })}
+          />
+        </div>
+      );
+    });
+  const opened = spots.find((s) => s.d.id === open);
+  return (
+    <PanoramaStage
+      src={panorama.imageUrl}
+      pic={pic}
+      // Facing the PCs that are placed, as close as shows them (Harel, 2026-11-20).
+      start={(box) => facing(spots.filter((s) => s.d.panoX != null).map((s) => s.at), pic, box)}
+      className="thumb-well aspect-[4/3] w-full rounded-xl sm:aspect-[16/9]"
+      onBackground={() => onOpen(null)}
+      outside={(t) => {
+        if (!opened) return null;
+        const s = t.at(opened.at.u, opened.at.v);
+        if (!s.front) return null;
+        return (
+          <PcMenu
+            key={opened.d.id}
+            device={opened.d}
+            n={devices.indexOf(opened.d) + 1}
+            at={{ left: Math.min(Math.max(s.x, 0), t.box.w), top: Math.min(Math.max(s.y, 0), t.box.h) }}
+            size={t.box}
+            work={movable}
+            onClose={() => onOpen(null)}
+            onSave={(p) => onSave(opened.d.id, p)}
+            onDelete={() => onDelete(opened.d.id)}
+          />
+        );
+      }}
+    >
+      {icon}
+    </PanoramaStage>
   );
 }
 

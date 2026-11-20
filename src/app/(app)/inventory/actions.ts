@@ -29,7 +29,7 @@ import { applyEachPartChanges } from "@/lib/parts/apply";
 import { StorageNotConfiguredError, deleteObject, objectExists, presignUpload } from "@/lib/storage/r2";
 import { deleteToTrash } from "@/lib/trash";
 import { createItem } from "@/lib/inventory/create";
-import { itemDevices } from "@/lib/inventory/devices";
+import { itemDevices, stationPanorama } from "@/lib/inventory/devices";
 import { isUuid } from "@/lib/uuid";
 
 const { inventoryItems, inventoryGroups, inventoryConditions, inventoryLocations, inventoryCategories, parts } = schema;
@@ -408,6 +408,9 @@ const devicePatch = z
     // Floor plan units (config/workshopMap.ts).
     x: z.number().min(0).max(MAP_W),
     y: z.number().min(0).max(MAP_H),
+    // Its place on the station zone's 360° picture, 0..1 of the picture.
+    panoX: z.number().min(0).max(1),
+    panoY: z.number().min(0).max(1),
     note: z.string().max(2000).nullable(),
     condition: z.number().int().min(1).max(5).nullable(),
     name: z.string().max(80).nullable(),
@@ -422,12 +425,12 @@ export async function updateDevice(deviceId: string, patch: z.input<typeof devic
   await requireCapability("work");
   const parsed = devicePatch.safeParse(patch);
   if (!isUuid(deviceId) || !parsed.success) return { error: "Unknown device." };
-  const { x, y, condition, ...texts } = parsed.data;
+  const { x, y, panoX, panoY, condition, ...texts } = parsed.data;
   // Text fields: blank clears them; names and parts are one line.
   const tidy = Object.fromEntries(Object.entries(texts).map(([k, v]) => [k, (k === "note" ? v?.trim() : v?.replace(/\s+/g, " ").trim()) || null]));
   const done = await db
     .update(schema.inventoryDevices)
-    .set({ x, y, condition, ...tidy, updatedAt: new Date() })
+    .set({ x, y, panoX, panoY, condition, ...tidy, updatedAt: new Date() })
     .where(eq(schema.inventoryDevices.id, deviceId))
     .returning({ id: schema.inventoryDevices.id });
   return done.length ? {} : { error: "That PC was deleted." };
@@ -874,8 +877,8 @@ export async function itemPopup(itemId: string) {
   if (!isUuid(itemId)) return null;
   const [detail, targets] = await Promise.all([inventoryItemWithLists(itemId), listBomTargets()]);
   if (!detail) return null;
-  const devices = detail.item.station ? await itemDevices(itemId) : null;
-  return { ...detail, targets, devices, order: detail.item.openOrder ? await openOrderPart(detail.item.openOrder.partId) : null };
+  const [devices, panorama] = detail.item.station ? await Promise.all([itemDevices(itemId), stationPanorama(detail.item.station)]) : [null, null];
+  return { ...detail, targets, devices, panorama, order: detail.item.openOrder ? await openOrderPart(detail.item.openOrder.partId) : null };
 }
 
 // The COTS card on its way for an item, for the window's Need to Order box and order status.

@@ -1044,6 +1044,9 @@ export const inventoryLocations = pgTable("inventory_locations", {
   imageH: integer("image_h"),
   // Which way the picture looks, in degrees on the floor plan (0 = up), for the dive.
   facing: real("facing").notNull().default(0),
+  // A 360° picture (its left edge continues its right edge), shown as a first-person panorama you
+  // look around in (Harel, 2026-11-20). Null: decided by its shape (lib/inventory/places.ts).
+  panorama: boolean("panorama"),
   spotX: real("spot_x"),
   spotY: real("spot_y"),
   // The spot's tag is a rectangle over the drawer in the picture (Harel, 2026-11-17): its width and
@@ -1199,7 +1202,8 @@ export const inventoryMoves = pgTable(
 
 // One PC of a station (config/stations.ts, Harel 2026-11-20): the item's stock is how many of
 // these rows it has (lib/inventory/moves.ts keeps them in step). x / y are its icon's place on the
-// floor plan (config/workshopMap.ts units); condition 1-5. `specs` is unused.
+// floor plan (config/workshopMap.ts units); pano_x / pano_y its place on the station zone's 360°
+// picture (0..1 of the picture, null = not placed there yet); condition 1-5. `specs` is unused.
 export const inventoryDevices = pgTable(
   "inventory_devices",
   {
@@ -1209,6 +1213,8 @@ export const inventoryDevices = pgTable(
       .references(() => inventoryItems.id, { onDelete: "cascade" }),
     x: real("x").notNull().default(0.5),
     y: real("y").notNull().default(0.5),
+    panoX: real("pano_x"),
+    panoY: real("pano_y"),
     keyboard: boolean("keyboard").notNull().default(false),
     mouse: boolean("mouse").notNull().default(false),
     note: text("note"),

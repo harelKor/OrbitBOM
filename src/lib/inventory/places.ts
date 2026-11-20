@@ -16,6 +16,8 @@ export type Place = {
   imageW?: number | null;
   imageH?: number | null;
   facing?: number | null;
+  // A 360° picture (null: by its shape).
+  panorama?: boolean | null;
   spotX?: number | null;
   spotY?: number | null;
   spotW?: number | null;
@@ -34,6 +36,11 @@ export const SPOT_KINDS: { id: SpotKind; label: string }[] = [
 export const ZONE_COLORS = ["#38BDF8", "#F472B6", "#A3E635", "#FBBF24", "#A78BFA", "#34D399", "#FB7185", "#60A5FA", "#F97316", "#2DD4BF", "#E879F9", "#FACC15"];
 
 export const isZone = (p: Place) => !p.parentId;
+// Wider than this is taken for a 360° picture unless the zone says otherwise.
+export const PANORAMA_RATIO = 2.6;
+export const isPanoramaPicture = (w?: number | null, h?: number | null) => !!w && !!h && w / h >= PANORAMA_RATIO;
+// Whether the zone's picture is shown as a first-person 360° panorama (Harel, 2026-11-20).
+export const isPanorama = (z: Place | null | undefined) => !!z?.imageUrl && (z.panorama ?? isPanoramaPicture(z.imageW, z.imageH));
 // Every zone wears the one Orbit tint (Harel, 2026-11-14: no rainbow), so this is the accent in
 // CSS (style props, not SVG attributes). The stored colour is kept but not shown.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- same call shape as before

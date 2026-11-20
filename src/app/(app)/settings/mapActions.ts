@@ -56,6 +56,8 @@ const zonePatch = z.object({
   outline: outlineSchema.nullable().optional(),
   color: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
   facing: z.number().min(-720).max(720).optional(),
+  // A 360° picture or a flat one; null goes back to deciding by its shape.
+  panorama: z.boolean().nullable().optional(),
 });
 
 export async function updateZone(id: string, patch: z.infer<typeof zonePatch>): Promise<MapResult> {
@@ -70,6 +72,7 @@ export async function updateZone(id: string, patch: z.infer<typeof zonePatch>): 
       ...(v.outline !== undefined && { outline: v.outline ? round(v.outline) : null }),
       ...(v.color && { color: v.color }),
       ...(v.facing !== undefined && { facing: ((Math.round(v.facing) % 360) + 360) % 360 }),
+      ...(v.panorama !== undefined && { panorama: v.panorama }),
     })
     .where(eq(inventoryLocations.id, id));
   refresh();

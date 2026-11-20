@@ -17,7 +17,7 @@ import {
 import { LocationPicker, PlaceTag } from "@/components/inventory/LocationPicker";
 import { MAP_H, MAP_W, WORKSHOP_ROOMS } from "@/config/workshopMap";
 import { STATUSES } from "@/config/statuses";
-import { MIN_SPOT, SPOT_KINDS, bounds, centroid, kindLabel, spotRect, spotsOf, zoneColor, type MapPoint, type Place, type SpotKind } from "@/lib/inventory/places";
+import { MIN_SPOT, SPOT_KINDS, bounds, centroid, isPanorama, isPanoramaPicture, kindLabel, spotRect, spotsOf, zoneColor, type MapPoint, type Place, type SpotKind } from "@/lib/inventory/places";
 import { Notice } from "@/components/ui/Notice";
 import { askConfirm } from "@/components/ui/useConfirm";
 
@@ -50,11 +50,12 @@ function useRun() {
   return { run, pending, error };
 }
 
-// The picture shrunk in the browser: longest side 2000 px, WebP (JPEG where WebP can't be written).
+// The picture shrunk in the browser: longest side 2000 px (a 360° one 4096, so looking round it
+// stays sharp), WebP (JPEG where WebP can't be written).
 async function shrink(file: File): Promise<{ blob: Blob; w: number; h: number; ext: "webp" | "jpg" }> {
   const bitmap = await createImageBitmap(file).catch(() => null);
   if (!bitmap) throw new Error("That file isn't a picture this browser can open.");
-  const scale = Math.min(1, 2000 / Math.max(bitmap.width, bitmap.height));
+  const scale = Math.min(1, (isPanoramaPicture(bitmap.width, bitmap.height) ? 4096 : 2000) / Math.max(bitmap.width, bitmap.height));
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(bitmap.width * scale);
   canvas.height = Math.round(bitmap.height * scale);
@@ -441,6 +442,14 @@ function ZonePanel({ zone, places, run, onDeleted }: { zone: Place; places: Plac
               aria-label="Which way the picture looks on the floor plan"
             />
             <span className="w-8 tabular-nums">{facing}°</span>
+          </label>
+        )}
+        {image && (
+          // A 360° picture opens on the map as a panorama you look round in (Harel, 2026-11-20);
+          // a very wide one is taken for one until this says otherwise.
+          <label className="flex min-h-9 items-center gap-2 text-xs text-muted">
+            <input type="checkbox" className="h-4 w-4" checked={isPanorama({ ...zone, imageUrl: image })} onChange={(e) => run(() => updateZone(zone.id, { panorama: e.target.checked }))} />
+            360° panorama
           </label>
         )}
         {uploadError && <span className="text-xs text-rose-600">{uploadError}</span>}

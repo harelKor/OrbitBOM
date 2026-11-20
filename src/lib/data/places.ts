@@ -20,6 +20,7 @@ export async function listPlaces(): Promise<Place[]> {
       imageW: r.imageW,
       imageH: r.imageH,
       facing: r.facing,
+      panorama: r.panorama,
       spotX: r.spotX,
       spotY: r.spotY,
       spotW: r.spotW,
