@@ -426,49 +426,60 @@ function PcIcon({
   );
 }
 
-// A PC's note, in the same amber box as an item's Notes so it stands out (Harel, 2026-11-20).
-// Saved when the box loses focus, or when it goes (the menu closed by a tap elsewhere).
+// A PC's note (Harel, 2026-11-20): just its text, lightly highlighted like a marker, and only when
+// there is one. A tap on it edits it in place; "Add note" starts one; an emptied note goes. Saved
+// when the box loses focus, or when it goes (the menu closed by a tap elsewhere).
 function PcNote({ device: d, work, onSave }: { device: Device; work: boolean; onSave: (p: Patch) => void }) {
-  const [note, setNote] = useState(d.note ?? "");
-  const [seen, setSeen] = useState(d.note);
-  const [focused, setFocused] = useState(false);
-  // A note saved in the other box (the list or the menu) shows here unless it's being typed in.
-  if (seen !== d.note && !focused) {
-    setSeen(d.note);
-    setNote(d.note ?? "");
-  }
-  const latest = useRef({ note, saved: d.note ?? "", onSave });
+  const [text, setText] = useState<string | null>(null); // being edited
+  const latest = useRef({ text, saved: d.note ?? "", onSave });
   useEffect(() => {
-    latest.current = { note, saved: d.note ?? "", onSave };
+    latest.current = { text, saved: d.note ?? "", onSave };
   });
   useEffect(
     () => () => {
-      const { note: text, saved, onSave: save } = latest.current;
-      if (text.trim() !== saved.trim()) save({ note: text });
+      const { text: t, saved, onSave: save } = latest.current;
+      if (t !== null && t.trim() !== saved.trim()) save({ note: t });
     },
     [],
   );
-  return (
-    <label className="block rounded-xl border-2 border-amber-400/70 bg-amber-50 px-3 py-2 shadow-[3px_4px_0_0_rgba(245,158,11,0.25)] focus-within:border-amber-500 dark:bg-amber-400/10">
-      <span className="flex items-center gap-1.5 text-xs font-bold tracking-wide text-amber-700 uppercase dark:text-amber-300">
-        <Icon name="note" className="h-3.5 w-3.5" />
-        Notes
-      </span>
+  const done = () => {
+    if (text !== null && text.trim() !== (d.note ?? "").trim()) onSave({ note: text });
+    setText(null);
+  };
+  // Escape drops the edit; the blur that follows must not save it.
+  const cancel = () => {
+    latest.current = { ...latest.current, text: null };
+    setText(null);
+  };
+  if (text !== null)
+    return (
       <textarea
-        value={note}
+        autoFocus
+        value={text}
         rows={3}
-        readOnly={!work}
-        onChange={(e) => setNote(e.target.value)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => {
-          setFocused(false);
-          if (note.trim() !== (d.note ?? "").trim()) onSave({ note });
-        }}
-        placeholder={work ? "A note about this PC…" : "No note"}
-        className="mt-0.5 block w-full resize-y bg-transparent text-base leading-snug font-semibold text-fg outline-none placeholder:font-normal placeholder:text-amber-700/50 dark:placeholder:text-amber-300/40"
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => latest.current.text !== null && done()}
+        onKeyDown={(e) => e.key === "Escape" && cancel()}
+        placeholder="A note about this PC…"
+        aria-label="Note"
+        className="input block w-full resize-y py-1.5 text-base leading-snug"
       />
-    </label>
-  );
+    );
+  if (d.note) {
+    const mark = <mark className="box-decoration-clone rounded-sm bg-amber-300/40 px-1 text-base leading-relaxed text-fg dark:bg-amber-400/25">{d.note}</mark>;
+    return work ? (
+      <button type="button" onClick={() => setText(d.note ?? "")} className="block min-h-9 w-full py-0.5 text-left whitespace-pre-wrap" aria-label="Edit the note">
+        {mark}
+      </button>
+    ) : (
+      <p className="whitespace-pre-wrap">{mark}</p>
+    );
+  }
+  return work ? (
+    <button type="button" onClick={() => setText("")} className="press min-h-9 px-1 text-sm font-medium text-muted hover:text-accent active:scale-[0.98]">
+      + Add note
+    </button>
+  ) : null;
 }
 
 // A PC's small menu: its note and Delete. Drawn over the map's edge rather than cut off by it.
