@@ -80,6 +80,18 @@ else
       expect(await cards()).toHaveLength(2);
     });
 
+    // Harel, 2026-11-20: the card takes the order pages' name: its own there, else the item's.
+    it("names the card as the order pages do", async () => {
+      await db.delete(h).where(eq(h.partId, part.id));
+      await db.update(schema.parts).set({ displayName: `Gear part ${tag}`, designState: "In Order List" }).where(eq(schema.parts.id, part.id));
+      await go("In Route");
+      expect((await cards())[0].name).toBe(`Gear ${tag}`);
+      await db.delete(h).where(eq(h.partId, part.id));
+      await db.update(schema.parts).set({ orderName: "Gears, 20 pack", designState: "In Order List" }).where(eq(schema.parts.id, part.id));
+      await go("In Route");
+      expect((await cards())[0].name).toBe("Gears, 20 pack");
+    });
+
     // Harel, 2026-11-20: a part bought as its Process 1 records its order too, with no item.
     it("records a part bought as its Process 1", async () => {
       const [bought] = await db

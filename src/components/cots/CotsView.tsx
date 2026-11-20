@@ -4,7 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useOptimistic, useState, useTransition } from "react";
 import { COTS_ARRIVED, COTS_IN_STOCK, COTS_ORDERED, COTS_RELEASED, IN_STOCK_SHOWN_DAYS, ORDER_STATUSES, getCotsStatus } from "@/config/cots";
 import { CATEGORY_GROUPS, groupOf, isCategoryGroup, type CategoryGroupId } from "@/config/inventory";
-import { addCotsFromItem, clearInStock, removeFromCotsCart, saveCotsCart, updateCotsParts } from "@/app/(app)/cots/actions";
+import { addCotsFromItem, clearInStock, mergeOrderRows, removeFromCotsCart, saveCotsCart, unmergeOrderRows, updateCotsParts } from "@/app/(app)/cots/actions";
 import { BomProvider, useBom } from "@/components/bom/BomContext";
 import { PartStage, type StageView } from "@/components/dashboard/PartStage";
 import { AddBox } from "@/components/inventory/AddBox";
@@ -22,7 +22,8 @@ import { CategoryBoxes, pushQuery } from "@/components/ui/CategoryBoxes";
 import { Chevron } from "@/components/ui/Chevron";
 import { Icon } from "@/components/ui/Icon";
 import { ViewPicker } from "@/components/ui/ViewPicker";
-import { cotsTotal, groupSameCots, siteOf, spreadCotsChanges } from "@/lib/cots";
+import { MERGE_ITEMS_DIFFER, bomTitle, cotsTotal, groupSameCots, orderTitle, sameItemForMerge, siteOf, spreadCotsChanges } from "@/lib/cots";
+import type { OrderLine } from "./OrderName";
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { orderStatus } from "@/lib/status";
 import type { CotsCart } from "@/lib/data/cotsCarts";
@@ -134,7 +135,8 @@ export function CotsView({
   const [vendorPick, setVendorPick] = useState<string | null>(null);
   // Picking cards: "order" (Released's Send to order), "status" (set one status on all of them) or
   // "cart" (the Order List's Cart: parts from one vendor).
-  const [selecting, setSelecting] = useState<"order" | "status" | "cart" | null>(null);
+  const [selecting, setSelecting] = useState<"order" | "status" | "cart" | "merge" | null>(null);
+  const [mergeName, setMergeName] = useState("");
   const ordering = selecting !== null;
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState<Set<string>>(new Set()); // groups shown per system
@@ -269,9 +271,37 @@ export function CotsView({
           shelf: shelfOf(members),
           shelfSuggestion: members.find((m) => m.shelfSuggestion)?.shelfSuggestion ?? null,
           memberIds: members.map((m) => m.id),
+          // A merged line's name, given when it was merged (or since).
+          orderName: members.find((m) => m.orderName)?.orderName ?? null,
           systemName: [...new Set(members.map((m) => m.systemName).filter(Boolean))].join(", "),
         },
       };
+    });
+
+  // The order line a row shows (Harel, 2026-11-20): its own name, else its inventory item's, else
+  // the part's; on Released a pencil renames it for the order pages only. A merged line (parts
+  // merged on Released) is tagged Merged with its parts' pictures together.
+  const lineOf = (row: Row): OrderLine => {
+    const merged = row.members.some((m) => m.orderMerge);
+    return {
+      title: orderTitle(row.part),
+      bomName: bomTitle(row.members[0]),
+      renamed: !!row.part.orderName,
+      onRename: list === "released" && work ? (name) => saveRow(row)({ orderName: name }) : undefined,
+      merged: merged
+        ? {
+            count: row.members.length,
+            thumbs: row.members.map((m) => (!m.isManual && m.thumbUrl) || m.shelf?.thumbUrl || null),
+            onUnmerge: work ? () => unmerge(row) : undefined,
+          }
+        : undefined,
+    };
+  };
+  const unmerge = (row: Row) =>
+    startTransition(async () => {
+      setError(null);
+      const r = await unmergeOrderRows(row.members.filter((m) => m.orderMerge).map((m) => m.id));
+      if (r.error) setError(r.error);
     });
 
   const toggle = <T,>(set: Set<T>, v: T) => {
@@ -305,7 +335,7 @@ export function CotsView({
     const clearable = canClear && work;
     return (
     view === "table" ? (
-      <CotsTable rows={rows} saveRow={saveRow} struck={struck} orderList={list === "order" && !small} onClear={clearable ? clear : undefined} />
+      <CotsTable rows={rows} titleOf={(row) => lineOf(row).title} saveRow={saveRow} struck={struck} orderList={list === "order" && !small} onClear={clearable ? clear : undefined} />
     ) : view === "list" ? (
       <PartList>
         {rows.map((row) => {
@@ -314,6 +344,7 @@ export function CotsView({
             <div key={row.key} data-box-key={row.key} className={`relative ${row.members.every((m) => struck.has(m.id)) ? "opacity-60" : ""} ${dim(row)}`} data-arrival={arrivedRow(row) ? "" : undefined} {...dragProps(ids, from)}>
               <PartListRow
                 part={row.part}
+                title={lineOf(row).title}
                 save={saveRow(row)}
                 selected={selected.has(row.key)}
                 onToggleSelect={pick(row)}
@@ -333,7 +364,7 @@ export function CotsView({
           const ids = row.members.map((m) => m.id);
           if (grouped && open.has(row.key) && !ordering)
             return (
-              <GroupBox key={row.key} row={row} onClose={() => setOpen((s) => toggle(s, row.key))} {...dragProps(ids, from)}>
+              <GroupBox key={row.key} row={row} line={lineOf(row)} onClose={() => setOpen((s) => toggle(s, row.key))} {...dragProps(ids, from)}>
                 {row.members.map((m) => (
                   <div key={m.id} {...dragProps([m.id], from)}>
                     <CotsCard part={m} save={saveRow({ key: m.id, part: m, members: [m] })} onOpen={openRow({ key: m.id, part: m, members: [m] })} showSystem highlightSystem variant={variant} shelfOnThumb struck={struck.has(m.id)} />
@@ -350,6 +381,7 @@ export function CotsView({
                 showSystem
                 variant={variant} shelfOnThumb
                 origin={list === "released" ? originOf(row.members[0]) : undefined}
+                line={lineOf(row)}
                 struck={crossed}
                 group={grouped && !ordering ? { systems: new Set(row.members.map((m) => m.systemId)).size, onOpen: () => setOpen((s) => toggle(s, row.key)) } : undefined}
                 selected={selected.has(row.key)}
@@ -423,10 +455,25 @@ export function CotsView({
     setSelecting(null);
     setSelected(new Set());
   };
-  const toggleSelecting = (m: "order" | "status" | "cart") => {
+  const toggleSelecting = (m: "order" | "status" | "cart" | "merge") => {
     setSelecting((cur) => (cur === m ? null : m));
+    setMergeName("");
     setSelected(new Set());
     setCartTarget("");
+  };
+  // Released's Merge: the picked lines' parts become one order line, if they share one inventory
+  // item (or have none) (Harel, 2026-11-20).
+  const mergeRows = allRows.filter((r) => selected.has(r.key));
+  const mergeParts = mergeRows.flatMap((r) => r.members);
+  const mergeBlocked = mergeParts.length > 0 && !sameItemForMerge(mergeParts);
+  const submitMerge = () => {
+    const name = mergeName.trim() || (mergeRows[0] ? orderTitle(mergeRows[0].part) : "");
+    setError(null);
+    startTransition(async () => {
+      const r = await mergeOrderRows(mergeParts.map((m) => m.id), name);
+      if (r.error) setError(r.error);
+      else toggleSelecting("merge");
+    });
   };
   const vendorCarts = cartVendor ? shownCarts.filter((c) => c.cart.vendor === cartVendor) : [];
   const targetCart = vendorCarts.find((c) => c.cart.id === cartTarget)?.cart ?? null;
@@ -446,7 +493,7 @@ export function CotsView({
     return cartLayout === "list" ? (
       <PartListRow part={p} save={saveRow(row)} onOpen={openRow(row)} />
     ) : (
-      <CotsCard part={p} save={saveRow(row)} onOpen={openRow(row)} showSystem variant="order" shelfOnThumb struck={struck.has(p.id)} />
+      <CotsCard part={p} save={saveRow(row)} onOpen={openRow(row)} showSystem variant="order" shelfOnThumb struck={struck.has(p.id)} line={{ title: orderTitle(p), bomName: bomTitle(p), renamed: !!p.orderName }} />
     );
   };
   const removeFromCart = (cartId: string) => (ids: string[]) =>
@@ -572,6 +619,20 @@ export function CotsView({
                 </select>
                 <AddBoxSlot shelf={shelf} onPick={addItem} />
               </div>
+            )}
+            {work && (
+              // Merge, beside the search box: several lines become one order (Harel, 2026-11-20).
+              <button
+                type="button"
+                onClick={() => toggleSelecting("merge")}
+                aria-pressed={selecting === "merge"}
+                title="Pick parts to order as one, under one name"
+                className={`press min-h-12 w-full shrink-0 rounded-xl border px-5 py-2.5 text-base font-bold sm:w-auto transition-colors active:scale-[0.98] ${
+                  selecting === "merge" ? "border-line-strong bg-surface text-fg" : "border-accent/60 bg-raised text-accent hover:bg-accent/10"
+                }`}
+              >
+                {selecting === "merge" ? "Cancel" : "⧉ Merge"}
+              </button>
             )}
             {work && canOrder && <button
               onClick={() => toggleSelecting("order")}
@@ -757,6 +818,34 @@ export function CotsView({
         </div>
       )}
 
+      {selecting === "merge" && (
+        <div className="sticky bottom-3 z-30 rounded-xl border border-line-strong bg-surface/95 p-3 shadow-lg backdrop-blur">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="font-semibold tabular-nums">{selected.size} selected</span>
+            {mergeBlocked ? (
+              <span className="text-rose-600 dark:text-rose-400">{MERGE_ITEMS_DIFFER}</span>
+            ) : (
+              <span className="text-subtle">Tap the parts to order as one.</span>
+            )}
+            <span className="ml-auto" />
+            <input
+              value={mergeName}
+              onChange={(e) => setMergeName(e.target.value)}
+              placeholder={mergeRows[0] ? orderTitle(mergeRows[0].part) : "Name of the order"}
+              aria-label="Name of the merged order"
+              maxLength={200}
+              className="input w-full min-w-0 py-1 sm:w-64"
+            />
+            <button className="btn-primary active:scale-[0.98]" disabled={pending || mergeParts.length < 2 || mergeBlocked} onClick={submitMerge}>
+              ⧉ Merge
+            </button>
+            <button className="btn active:scale-[0.98]" onClick={() => setSelected(new Set())} disabled={selected.size === 0}>
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+
       {selecting === "order" && (
         <div className="sticky bottom-3 z-30 rounded-xl border border-line-strong bg-surface/95 p-3 shadow-lg backdrop-blur">
           <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -862,8 +951,9 @@ function Section({
 
 // The same part from several systems, opened: a big card across the row with the part's name and
 // total on top (click it to close) and each system's part inside, its system highlighted.
-function GroupBox({ row, onClose, children, ...drag }: { row: Row; onClose: () => void; children: React.ReactNode } & React.HTMLAttributes<HTMLDivElement>) {
+function GroupBox({ row, line, onClose, children, ...drag }: { row: Row; line: OrderLine; onClose: () => void; children: React.ReactNode } & React.HTMLAttributes<HTMLDivElement>) {
   const p = row.part;
+  const merged = line.merged;
   return (
     <div {...drag} style={{ gridColumn: "1 / -1", ...statusTint(orderStatus(p)) }} className="card-interactive flex flex-col ring-2 ring-amber-400/70 ring-offset-2 ring-offset-ink">
       <button type="button" onClick={onClose} aria-expanded className="press flex items-center gap-3 p-3 text-left">
@@ -871,13 +961,20 @@ function GroupBox({ row, onClose, children, ...drag }: { row: Row; onClose: () =
           <Thumb part={p} size={52} />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-base font-semibold text-fg">{partTitle(p)}</span>
+          <span className="block truncate text-base font-semibold text-fg">{line.title}</span>
           <span className="font-mono text-xs text-subtle tabular-nums">
-            ×{p.quantity} in {new Set(row.members.map((m) => m.systemId)).size} systems
+            ×{p.quantity} {merged ? `· ${merged.count} parts merged` : `in ${new Set(row.members.map((m) => m.systemId)).size} systems`}
           </span>
         </span>
         <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[0.6875rem] font-bold text-amber-950">Close ⧉</span>
       </button>
+      {merged?.onUnmerge && (
+        <div className="flex justify-end border-t border-line px-3 py-2">
+          <button type="button" className="btn active:scale-[0.98]" onClick={merged.onUnmerge}>
+            Unmerge
+          </button>
+        </div>
+      )}
       <div className="card-grid cursor-default border-t border-line p-3" style={{ "--card-min": "240px" } as React.CSSProperties}>
         {children}
       </div>
@@ -888,12 +985,14 @@ function GroupBox({ row, onClose, children, ...drag }: { row: Row; onClose: () =
 // The table ("chart") view of the same cards.
 function CotsTable({
   rows,
+  titleOf,
   saveRow,
   struck,
   orderList,
   onClear,
 }: {
   rows: Row[];
+  titleOf: (row: Row) => string; // the order line's name
   saveRow: (row: Row) => (changes: PartChanges) => void;
   struck: Set<string>;
   orderList: boolean;
@@ -932,10 +1031,10 @@ function CotsTable({
                 <td className={`sheet-name font-semibold ${crossed ? "line-through" : ""} ${row.members.length > 1 ? "text-amber-500" : ""}`}>
                   {link ? (
                     <a href={link.url} target="_blank" rel="noreferrer" className="text-sky-500 underline-offset-2 hover:underline dark:text-sky-400">
-                      {partTitle(p)}
+                      {titleOf(row)}
                     </a>
                   ) : (
-                    partTitle(p)
+                    titleOf(row)
                   )}
                 </td>
                 <td className="text-muted">{p.systemName}</td>

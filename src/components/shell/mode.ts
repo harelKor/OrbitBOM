@@ -64,6 +64,7 @@ const WORK_PART_FIELDS = new Set([
   "fromStock",
   "cotsSentBack",
   "cotsDeliveryDate",
+  "orderName",
   "cotsLinks",
   "unitPrice",
   "cotsCategory",

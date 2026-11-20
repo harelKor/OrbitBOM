@@ -21,6 +21,7 @@ type Identity = Named & {
   sourceDid?: string | null;
   sourceEid?: string | null;
   onshapePartId?: string | null;
+  orderMerge?: string | null;
 };
 
 // The same COTS part in different systems: the same Onshape part (one library part inserted in
@@ -32,6 +33,8 @@ export function groupSameCots<T extends Identity>(parts: T[]): T[][] {
   parts.forEach((p, i) => {
     const name = (p.displayName ?? p.onshapeName ?? "").trim().toLowerCase().replace(/\s+/g, " ");
     const keys = [
+      // Merged on Released into one order line (Harel, 2026-11-20).
+      p.orderMerge ? `merge:${p.orderMerge}` : null,
       p.sourceDid && p.sourceEid && p.onshapePartId ? `os:${p.sourceDid}:${p.sourceEid}:${p.onshapePartId}` : null,
       name ? `name:${name}` : null,
     ];
@@ -67,3 +70,15 @@ export function siteOf(link: { url: string; site?: string }) {
     return link.url;
   }
 }
+
+// The name an order line shows on Released and the Order List (Harel, 2026-11-20): the one given
+// there, else its linked inventory item's, else the part's own.
+export const orderTitle = (p: { orderName?: string | null; displayName: string | null; onshapeName: string | null; shelf?: { itemName: string } | null }) =>
+  p.orderName ?? p.shelf?.itemName ?? p.displayName ?? p.onshapeName ?? "Unnamed part";
+
+// The part's own BOM name, to go back to from a name given on the order pages.
+export const bomTitle = (p: { displayName: string | null; onshapeName: string | null }) => p.displayName ?? p.onshapeName ?? "Unnamed part";
+
+// Released's Merge only joins parts of one inventory item (or none).
+export const MERGE_ITEMS_DIFFER = "These parts are linked to different inventory items, so they can't be one order.";
+export const sameItemForMerge = (parts: { inventoryItemId: string | null }[]) => new Set(parts.map((p) => p.inventoryItemId).filter(Boolean)).size <= 1;

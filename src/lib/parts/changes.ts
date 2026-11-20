@@ -79,6 +79,10 @@ export const partChangesSchema = z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/)
       .nullable(),
+    // The name on the Released and Order List pages; null shows the item's (or the part's) name.
+    orderName: text,
+    // Merged into one order line with the other parts that share it (mergeOrderRows checks them).
+    orderMerge: z.uuid().nullable(),
     // Counts one more (or takes one back) from the saved count rather than the page's copy, so
     // two people counting the same part at once never lose a piece (resolveCounterAdds).
     add: z.partialRecord(z.enum(["doneProcess1", "postDone", "stockCount"]), delta),
@@ -141,6 +145,8 @@ export type PartRow = {
   stockCount: number;
   cotsSentBack: string | null;
   cotsDeliveryDate: string | null;
+  orderName: string | null;
+  orderMerge: string | null;
   overriddenFields: string[];
 };
 

@@ -21,6 +21,7 @@ import { orderStatus } from "@/lib/status";
 import { stepShelfStock } from "@/app/(app)/inventory/actions";
 import { toast } from "@/components/ui/Toaster";
 import { LinkTag, ShelfCoversPrompt, ShelfPill } from "./ShelfPill";
+import { OrderCollage, OrderMergedTag, OrderNameEdit, type OrderLine } from "./OrderName";
 import { formatPrice, setCurrency, useCurrency } from "./currency";
 
 // A COTS part's card, on every page, washed in its status colour: the light-blue name links to the
@@ -47,6 +48,7 @@ export function CotsCard({
   shelfOnThumb = false,
   origin,
   onOpen,
+  line,
 }: {
   part: CardPart;
   save: SaveFn;
@@ -65,6 +67,9 @@ export function CotsCard({
   origin?: "General" | "Robot";
   // On the COTS pages a click opens the linked inventory item's window instead of the part's.
   onOpen?: () => void;
+  // On the order pages: the order line's name (its own, the item's or the part's), its rename
+  // pencil on Released, and a merged line's tag and pictures (Harel, 2026-11-20).
+  line?: OrderLine;
 }) {
   const edit = useManage();
   const work = useCan("work");
@@ -73,7 +78,7 @@ export function CotsCard({
   const showDetails = usePartDetails(part, save);
   const order = variant === "order";
   const links = part.cotsLinks ?? [];
-  const title = partTitle(part);
+  const title = line?.title ?? partTitle(part);
   // Its order status: an arrived part waiting for CAD's QA is still In Stock here.
   const status = orderStatus(part);
   const sentBack = status === COTS_RELEASED && part.cotsSentBack;
@@ -145,7 +150,7 @@ export function CotsCard({
       )}
 
       <div className="thumb-well thumb-cots relative flex aspect-[4/3] items-center justify-center">
-        <div className="flex h-full w-full items-center justify-center">{thumb}</div>
+        <div className="flex h-full w-full items-center justify-center">{line?.merged ? <OrderCollage thumbs={line.merged.thumbs} /> : thumb}</div>
         <div className="absolute top-2 left-2 flex items-center gap-1">
           <span className={`rounded-full bg-[#111318]/85 font-bold text-white tabular-nums ${order ? "px-3 py-1 text-base" : "px-2 py-0.5 text-[0.6875rem]"}`}>
             {work && !order ? <QuantityField part={part} save={save} /> : `×${part.quantity}`}
@@ -153,6 +158,7 @@ export function CotsCard({
           {/* Every card on the COTS pages is COTS: the tag only shows on a BOM page. */}
           {!order && !shelfOnThumb && (classify ? <TypeField part={part} save={save} badge /> : <TypeBadge part={part} />)}
           {!group && <MergedBadge part={part} />}
+          {line?.merged && <OrderMergedTag count={line.merged.count} />}
         </div>
         <div className="absolute top-2 right-2 flex max-w-[55%] flex-col items-end gap-1">
           {origin && (
@@ -163,7 +169,7 @@ export function CotsCard({
               {origin}
             </span>
           )}
-          {group && (
+          {group && !line?.merged && (
             <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[0.6875rem] font-bold text-amber-950 shadow-sm" title="Click to see each system's part">
               ⧉ {group.systems} systems
             </span>
@@ -235,6 +241,7 @@ export function CotsCard({
               <span className="text-fg">{title}</span>
             )}
           </div>
+          {line && <OrderNameEdit line={line} />}
           {links.length > 1 && <LinksMenu links={links} />}
           {edit && !order && !group && <EditMenu part={part} />}
         </div>

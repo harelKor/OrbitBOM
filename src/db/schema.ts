@@ -349,6 +349,11 @@ export const parts = pgTable(
     cotsSentBack: text("cots_sent_back"),
     // When the order is due to arrive (Order List: the item window and its cart; Harel, 2026-11-05).
     cotsDeliveryDate: date("cots_delivery_date"),
+    // The Released / Order List pages only (Harel, 2026-11-20): the name the order shows (else the
+    // linked item's name, else the part's), and the parts merged into one order line there (tubes
+    // cut to several lengths, bought as one stock).
+    orderName: text("order_name"),
+    orderMerge: uuid("order_merge"),
     // When the COTS part reached In Stock (null while it isn't), and when someone cleared it from
     // the COTS page's In Stock sections (they also drop it a week after it arrived).
     cotsInStockAt: timestamp("cots_in_stock_at", { withTimezone: true }),

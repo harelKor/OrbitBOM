@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_CATEGORIES } from "@/config/inventory";
-import { cotsCategoryOf, groupSameCots, spreadCotsChanges } from "./cots";
+import { cotsCategoryOf, groupSameCots, orderTitle, sameItemForMerge, spreadCotsChanges } from "./cots";
 import { computeStatus } from "./status";
 
 const IDS = DEFAULT_CATEGORIES.map((c) => c.id);
@@ -26,6 +26,24 @@ describe("COTS", () => {
     expect(cotsCategoryOf(part("a", "Bracket", { cotsCategory: "wheels" }), IDS, "gears")).toBe("gears");
     expect(cotsCategoryOf(part("a", "Bracket", { cotsCategory: "motion" }), IDS)).toBe("other");
     expect(cotsCategoryOf(part("a", "Thing"), IDS)).toBe("other");
+  });
+
+  // Harel, 2026-11-20: tubes cut to several lengths, merged on Released and ordered as one.
+  it("keeps parts merged on Released as one order line", () => {
+    const groups = groupSameCots([part("1", "Tube 120mm", { orderMerge: "m" }), part("2", "Tube 340mm", { orderMerge: "m" }), part("3", "Tube 500mm")]);
+    expect(groups.map((g) => g.map((p) => p.id))).toEqual([["1", "2"], ["3"]]);
+  });
+
+  it("names an order line by its own name, else its item, else the part", () => {
+    const tube = { displayName: "Tube 120mm", onshapeName: null };
+    expect(orderTitle({ ...tube, orderName: "1x1 tube, 6 m" })).toBe("1x1 tube, 6 m");
+    expect(orderTitle({ ...tube, shelf: { itemName: "1x1 box tube" } })).toBe("1x1 box tube");
+    expect(orderTitle(tube)).toBe("Tube 120mm");
+  });
+
+  it("merges only parts of one inventory item", () => {
+    expect(sameItemForMerge([{ inventoryItemId: "a" }, { inventoryItemId: "a" }, { inventoryItemId: null }])).toBe(true);
+    expect(sameItemForMerge([{ inventoryItemId: "a" }, { inventoryItemId: "b" }])).toBe(false);
   });
 
   it("groups the same part across systems by Onshape identity or name", () => {

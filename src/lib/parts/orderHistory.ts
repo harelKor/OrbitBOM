@@ -49,13 +49,16 @@ export async function recordOrderHistory(tx: Tx, before: Part, after: Part) {
         .limit(1)
     )[0];
 
+  // The name the order pages show (Harel, 2026-11-20): its own there, else its item's, else the part's.
+  const itemId = after.classification === "cots" ? after.inventoryItemId : null;
+  const itemName = !after.orderName && itemId ? (await tx.select({ name: schema.inventoryItems.name }).from(schema.inventoryItems).where(eq(schema.inventoryItems.id, itemId)))[0]?.name : undefined;
   const card = (inRouteAt: Date | null, arrivedAt: Date | null) => {
     const link = after.cotsLinks[0];
     return {
       // A made part's item is its material, not what was bought.
-      inventoryItemId: after.classification === "cots" ? after.inventoryItemId : null,
+      inventoryItemId: itemId,
       partId: after.id,
-      name: after.displayName ?? after.onshapeName ?? "Unnamed part",
+      name: after.orderName ?? itemName ?? after.displayName ?? after.onshapeName ?? "Unnamed part",
       quantity: after.quantity,
       unitPrice: after.unitPrice,
       vendor: link ? siteOf(link) : null,

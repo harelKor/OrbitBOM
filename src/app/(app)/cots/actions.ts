@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { COTS_RELEASED } from "@/config/cots";
@@ -9,7 +10,7 @@ import { partChangesCapability } from "@/components/shell/mode";
 import { requireCapability, statusChangeDenied } from "@/lib/mode";
 import { applyEachPartChanges } from "@/lib/parts/apply";
 import { partChangesSchema, type PartChanges } from "@/lib/parts/changes";
-import { siteOf } from "@/lib/cots";
+import { MERGE_ITEMS_DIFFER, sameItemForMerge, siteOf } from "@/lib/cots";
 import { isUuid } from "@/lib/uuid";
 import type { ActionResult } from "../parts-actions";
 
@@ -146,6 +147,41 @@ export async function deleteCotsCart(cartId: string): Promise<ActionResult> {
   await requireCapability("work");
   if (!isUuid(cartId)) return { error: "Unknown cart." };
   await db.delete(schema.cotsCarts).where(eq(schema.cotsCarts.id, cartId));
+  revalidatePath("/cots", "layout");
+  return {};
+}
+
+// Released's Merge (Harel, 2026-11-20): several parts become one order line on the order pages
+// (tubes cut to several lengths in the BOM, bought as one stock), under one name. Parts linked to
+// different inventory items aren't merged: their shelves count apart.
+export async function mergeOrderRows(partIds: string[], name: string): Promise<ActionResult> {
+  const member = await requireCapability("work");
+  const ids = [...new Set(partIds)];
+  const title = name.trim().slice(0, 200);
+  if (ids.length < 2 || ids.some((id) => !isUuid(id))) return { error: "Pick at least two parts to merge." };
+  if (!title) return { error: "Give the merged order a name." };
+  const rows = await db.select({ id: schema.parts.id, inventoryItemId: schema.parts.inventoryItemId }).from(schema.parts).where(inArray(schema.parts.id, ids));
+  if (rows.length !== ids.length) return { error: "Unknown part." };
+  if (!sameItemForMerge(rows)) return { error: MERGE_ITEMS_DIFFER };
+  // Merging a merged line with more parts makes one new line of them all.
+  const mergeId = randomUUID();
+  await applyEachPartChanges(
+    ids.map((id) => ({ id, changes: { orderMerge: mergeId, orderName: title } })),
+    { memberId: member.id, via: "ui" },
+  );
+  revalidatePath("/cots", "layout");
+  return {};
+}
+
+// Unmerge: each part is its own order line again, under its own name.
+export async function unmergeOrderRows(partIds: string[]): Promise<ActionResult> {
+  const member = await requireCapability("work");
+  const ids = [...new Set(partIds)];
+  if (!ids.length || ids.some((id) => !isUuid(id))) return { error: "Unknown part." };
+  await applyEachPartChanges(
+    ids.map((id) => ({ id, changes: { orderMerge: null, orderName: null } })),
+    { memberId: member.id, via: "ui" },
+  );
   revalidatePath("/cots", "layout");
   return {};
 }

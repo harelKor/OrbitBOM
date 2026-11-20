@@ -24,12 +24,14 @@ export function PartListRow({
   selected,
   onToggleSelect,
   onOpen,
+  title,
 }: {
   part: CardPart;
   save: SaveFn;
   selected?: boolean;
   onToggleSelect?: () => void;
   onOpen?: () => void; // instead of the part window (COTS opens the inventory item window)
+  title?: string; // the order pages: the order line's name
 }) {
   const open = usePartDetails(part, save);
   const status = computeStatus(part);
@@ -52,7 +54,7 @@ export function PartListRow({
       style={statusTint(status)}
       picture={part.thumbUrl ?? (cots ? (part.shelf?.thumbUrl ?? null) : null)}
       placeholder={<span className="px-1 text-center text-[0.625rem] leading-tight text-slate-500">{part.isManual ? "Manual" : "No picture"}</span>}
-      title={partTitle(part)}
+      title={title ?? partTitle(part)}
       href={part.cotsLinks?.[0]?.url}
       detail={
         <span className="tabular-nums">
