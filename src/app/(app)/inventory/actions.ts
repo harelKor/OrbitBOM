@@ -410,6 +410,10 @@ const devicePatch = z
     y: z.number().min(0).max(MAP_H),
     note: z.string().max(2000).nullable(),
     condition: z.number().int().min(1).max(5).nullable(),
+    name: z.string().max(80).nullable(),
+    gpu: z.string().max(200).nullable(),
+    cpu: z.string().max(200).nullable(),
+    ram: z.string().max(200).nullable(),
   })
   .partial();
 
@@ -418,10 +422,12 @@ export async function updateDevice(deviceId: string, patch: z.input<typeof devic
   await requireCapability("work");
   const parsed = devicePatch.safeParse(patch);
   if (!isUuid(deviceId) || !parsed.success) return { error: "Unknown device." };
-  const { note, ...rest } = parsed.data;
+  const { x, y, condition, ...texts } = parsed.data;
+  // Text fields: blank clears them; names and parts are one line.
+  const tidy = Object.fromEntries(Object.entries(texts).map(([k, v]) => [k, (k === "note" ? v?.trim() : v?.replace(/\s+/g, " ").trim()) || null]));
   const done = await db
     .update(schema.inventoryDevices)
-    .set({ ...rest, ...(note !== undefined ? { note: note?.trim() || null } : {}), updatedAt: new Date() })
+    .set({ x, y, condition, ...tidy, updatedAt: new Date() })
     .where(eq(schema.inventoryDevices.id, deviceId))
     .returning({ id: schema.inventoryDevices.id });
   return done.length ? {} : { error: "That PC was deleted." };

@@ -17,6 +17,8 @@ import type { Item } from "./types";
 // pans and zooms freely with the room's outline always lit, and Reset flies back. Anyone
 // who can work drags the PCs (saved on drop); a tap opens its note and Delete. + Add
 // PC puts one in the middle of the room. Below: every PC with its condition (1-5) and its Delete.
+// Each PC has its own name (pencil beside it) and GPU / CPU / RAM, edited in its menu on the map
+// and listed under it (Harel, 2026-11-20).
 
 type ChangeItem = (change: (i: Item) => Partial<Item>, run: () => Promise<{ error?: string }>) => void;
 type Patch = Parameters<typeof updateDevice>[1];
@@ -27,6 +29,13 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 // slider and its icon on the map. No condition: no colour (the neutral icon).
 const CONDITION_COLORS = ["#DC2626", "#EA580C", "#EAB308", "#84CC16", "#16A34A"];
 const conditionColor = (c: number | null | undefined) => (c ? CONDITION_COLORS[clamp(Math.round(c), 1, 5) - 1] : null);
+// A PC with no name of its own is "PC n" by its place in the list.
+const pcName = (d: Device, n: number) => d.name || `PC ${n}`;
+const SPECS = [
+  { key: "gpu", label: "GPU", hint: "e.g. RTX 3060" },
+  { key: "cpu", label: "CPU", hint: "e.g. i5-12400" },
+  { key: "ram", label: "RAM", hint: "e.g. 16 GB" },
+] as const;
 
 export function DevicesPanel({
   item,
@@ -73,8 +82,8 @@ export function DevicesPanel({
   };
   // Asked before anything runs (never inside a transition: the question couldn't show).
   const remove = async (id: string) => {
-    const n = devices.findIndex((d) => d.id === id) + 1;
-    if (!(await askConfirm({ title: `Delete PC ${n}?`, confirm: "Delete", danger: true }))) return;
+    const n = devices.findIndex((d) => d.id === id);
+    if (n < 0 || !(await askConfirm({ title: `Delete ${pcName(devices[n], n + 1)}?`, confirm: "Delete", danger: true }))) return;
     setOpen(null);
     setDevices((ds) => ds.filter((d) => d.id !== id));
     onChange(
@@ -140,12 +149,12 @@ function PcRow({ device: d, n, work, onSave, onDelete, onOpen }: { device: Devic
   return (
     <li className="space-y-1.5 rounded-xl border border-line bg-raised p-2.5">
       <div className="flex items-center gap-2">
-        <button type="button" onClick={onOpen} className="press flex min-h-9 items-center gap-1.5 rounded-md px-1 text-sm font-semibold text-fg active:scale-[0.98]">
+        <button type="button" onClick={onOpen} className="press flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-fg active:scale-[0.98]" aria-label={`Show ${pcName(d, n)} on the map`} title="Show on the map">
           <Icon name="pc" className="h-5 w-5" />
-          <span className="tabular-nums">PC {n}</span>
         </button>
+        <PcName device={d} n={n} work={work} onSave={onSave} className="text-sm" />
         {work && (
-          <button type="button" onClick={onDelete} className="press ml-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-subtle hover:bg-surface hover:text-rose-500 active:scale-[0.98]" aria-label={`Delete PC ${n}`} title="Delete this PC">
+          <button type="button" onClick={onDelete} className="press ml-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-subtle hover:bg-surface hover:text-rose-500 active:scale-[0.98]" aria-label={`Delete ${pcName(d, n)}`} title="Delete this PC">
             <Icon name="close" className="h-4 w-4" />
           </button>
         )}
@@ -160,12 +169,13 @@ function PcRow({ device: d, n, work, onSave, onDelete, onOpen }: { device: Devic
           disabled={!work}
           value={shown ?? 3}
           onChange={(e) => slide(Number(e.target.value))}
-          aria-label={`PC ${n} condition, 1 to 5`}
+          aria-label={`${pcName(d, n)} condition, 1 to 5`}
           style={{ accentColor: conditionColor(shown) ?? "var(--color-accent)" }}
           className={`h-9 min-w-0 flex-1 ${shown == null ? "opacity-40" : ""}`}
         />
         <span className="w-8 text-right font-mono font-semibold text-fg tabular-nums">{shown ?? "–"}/5</span>
       </label>
+      <PcSpecs device={d} />
       <PcNote device={d} work={work} onSave={onSave} />
     </li>
   );
@@ -334,6 +344,7 @@ function StationMap({
             <PcIcon
               key={d.id}
               n={i + 1}
+              name={pcName(d, i + 1)}
               color={conditionColor(d.condition)}
               at={screen(d.x, d.y)}
               open={open === d.id}
@@ -372,6 +383,7 @@ function StationMap({
 
 function PcIcon({
   n,
+  name,
   color,
   at,
   open,
@@ -382,6 +394,7 @@ function PcIcon({
   onDrop,
 }: {
   n: number;
+  name: string;
   color: string | null;
   at: { left: number; top: number };
   open: boolean;
@@ -402,7 +415,8 @@ function PcIcon({
   return (
     <button
       type="button"
-      aria-label={`PC ${n}`}
+      aria-label={name}
+      title={name}
       aria-expanded={open}
       // A condition colours the icon (white rim and a dark shadow keep it clear on any floor or
       // theme); open, it wears the accent ring.
@@ -493,7 +507,108 @@ function PcNote({ device: d, work, onSave }: { device: Device; work: boolean; on
   ) : null;
 }
 
-// A PC's small menu: its note and Delete. Drawn over the map's edge rather than cut off by it.
+// A text being typed, saved when it's left: on blur, or when the box goes (the menu closed by a tap
+// elsewhere). Escape drops it, and the blur that follows mustn't save it.
+function useDraft(saved: string, save: (v: string) => void) {
+  const [text, setText] = useState<string | null>(null);
+  const latest = useRef({ text, saved, save });
+  useEffect(() => {
+    latest.current = { text, saved, save };
+  });
+  useEffect(
+    () => () => {
+      const { text: t, saved: was, save: put } = latest.current;
+      if (t !== null && t.trim() !== was.trim()) put(t);
+    },
+    [],
+  );
+  const done = () => {
+    const { text: t, saved: was, save: put } = latest.current;
+    if (t !== null && t.trim() !== was.trim()) put(t);
+    latest.current = { ...latest.current, text: null };
+    setText(null);
+  };
+  const cancel = () => {
+    latest.current = { ...latest.current, text: null };
+    setText(null);
+  };
+  return { text, setText, done, cancel };
+}
+
+// A PC's name with a small pencil beside it that edits it in place (Harel, 2026-11-20). Enter or
+// leaving the box saves; an emptied name goes back to "PC n".
+function PcName({ device: d, n, work, onSave, className = "" }: { device: Device; n: number; work: boolean; onSave: (p: Patch) => void; className?: string }) {
+  const { text, setText, done, cancel } = useDraft(d.name ?? "", (v) => onSave({ name: v.trim() || null }));
+  if (text !== null)
+    return (
+      <input
+        autoFocus
+        value={text}
+        maxLength={80}
+        onChange={(e) => setText(e.target.value)}
+        onFocus={(e) => e.currentTarget.select()}
+        onBlur={done}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") done();
+          else if (e.key === "Escape") cancel();
+        }}
+        placeholder={`PC ${n}`}
+        aria-label="PC name"
+        className="input min-h-9 min-w-0 flex-1 py-1 text-base font-semibold"
+      />
+    );
+  return (
+    <span className={`flex min-w-0 items-center gap-0.5 ${className}`}>
+      <span className="truncate font-semibold text-fg tabular-nums">{pcName(d, n)}</span>
+      {work && (
+        <button type="button" onClick={() => setText(d.name ?? "")} className="press flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-subtle hover:text-accent active:scale-[0.98]" aria-label={`Rename ${pcName(d, n)}`} title="Rename">
+          <Icon name="pencil" className="h-3.5 w-3.5" />
+        </button>
+      )}
+    </span>
+  );
+}
+
+// A PC's GPU / CPU / RAM as a short list, only the ones filled in.
+function PcSpecs({ device: d, className = "" }: { device: Device; className?: string }) {
+  const filled = SPECS.filter((f) => d[f.key]);
+  if (!filled.length) return null;
+  return (
+    <dl className={`grid grid-cols-[auto_1fr] gap-x-2.5 gap-y-0.5 px-1 text-sm ${className}`}>
+      {filled.map((f) => (
+        <div key={f.key} className="contents">
+          <dt className="font-semibold text-subtle">{f.label}</dt>
+          <dd className="min-w-0 break-words text-fg">{d[f.key]}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+// One of a PC's parts (GPU / CPU / RAM), free text, in its menu: saved when left, blank clears it.
+function SpecField({ field, device: d, onSave }: { field: (typeof SPECS)[number]; device: Device; onSave: (p: Patch) => void }) {
+  const saved = d[field.key] ?? "";
+  const { text, setText, done, cancel } = useDraft(saved, (v) => onSave({ [field.key]: v.trim() || null }));
+  return (
+    <label className="contents">
+      <span className="text-xs font-bold tracking-wide text-subtle uppercase">{field.label}</span>
+      <input
+        value={text ?? saved}
+        maxLength={200}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={done}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          else if (e.key === "Escape") cancel();
+        }}
+        placeholder={field.hint}
+        className="input min-h-9 min-w-0 py-1 text-base"
+      />
+    </label>
+  );
+}
+
+// A PC's small menu: its name, parts, note and Delete. Drawn over the map's edge rather than cut off by it.
 function PcMenu({
   device: d,
   n,
@@ -521,12 +636,21 @@ function PcMenu({
       className="absolute z-[5] rounded-xl border border-line-strong bg-surface p-2 shadow-[0_12px_32px_rgba(0,0,0,0.5)]"
       style={{ width, left, ...(below ? { top: at.top + 26 } : { bottom: size.h - at.top + 26 }) }}
     >
-      <div className="mb-1 flex items-center justify-between px-1">
-        <span className="text-xs font-bold tracking-wide text-subtle uppercase">PC {n}</span>
-        <button type="button" onClick={onClose} className="press flex h-9 w-9 items-center justify-center rounded-md text-subtle hover:text-fg" aria-label="Close">
+      <div className="mb-1 flex items-center justify-between gap-1 pl-1">
+        <PcName device={d} n={n} work={work} onSave={onSave} className="text-sm" />
+        <button type="button" onClick={onClose} className="press flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-subtle hover:text-fg" aria-label="Close">
           <Icon name="close" className="h-3.5 w-3.5" />
         </button>
       </div>
+      {work ? (
+        <div className="mb-1.5 grid grid-cols-[auto_1fr] items-center gap-x-2 gap-y-1 px-1">
+          {SPECS.map((f) => (
+            <SpecField key={f.key} field={f} device={d} onSave={onSave} />
+          ))}
+        </div>
+      ) : (
+        <PcSpecs device={d} className="mb-1.5" />
+      )}
       <PcNote device={d} work={work} onSave={onSave} />
       {work && (
         <button type="button" onClick={onDelete} className="press mt-1 flex min-h-10 w-full items-center gap-2 rounded-lg px-2 text-sm font-medium text-rose-500 hover:bg-raised active:scale-[0.98]">

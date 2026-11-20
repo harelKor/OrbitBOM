@@ -6,8 +6,22 @@ import { fitDevices } from "./moves";
 const { inventoryDevices, inventoryItems } = schema;
 
 // A PC station's PCs (config/stations.ts, Harel 2026-11-20): each one's place on the floor plan
-// (workshopMap units), its keyboard / mouse ticks, condition (1-5) and note.
-export type Device = { id: string; itemId: string; x: number; y: number; keyboard: boolean; mouse: boolean; note: string | null; condition: number | null; position: number };
+// (workshopMap units), its name, GPU / CPU / RAM (free text), condition (1-5) and note.
+export type Device = {
+  id: string;
+  itemId: string;
+  x: number;
+  y: number;
+  keyboard: boolean;
+  mouse: boolean;
+  name: string | null;
+  gpu: string | null;
+  cpu: string | null;
+  ram: string | null;
+  note: string | null;
+  condition: number | null;
+  position: number;
+};
 
 const columns = {
   id: inventoryDevices.id,
@@ -16,6 +30,10 @@ const columns = {
   y: inventoryDevices.y,
   keyboard: inventoryDevices.keyboard,
   mouse: inventoryDevices.mouse,
+  name: inventoryDevices.name,
+  gpu: inventoryDevices.gpu,
+  cpu: inventoryDevices.cpu,
+  ram: inventoryDevices.ram,
   note: inventoryDevices.note,
   condition: inventoryDevices.condition,
   position: inventoryDevices.position,

@@ -1213,6 +1213,11 @@ export const inventoryDevices = pgTable(
     mouse: boolean("mouse").notNull().default(false),
     note: text("note"),
     condition: smallint("condition"),
+    // A PC's own name and its parts, free text (Harel, 2026-11-20); no name shows "PC n".
+    name: text("name"),
+    gpu: text("gpu"),
+    cpu: text("cpu"),
+    ram: text("ram"),
     specs: jsonb("specs").$type<Record<string, string>>().notNull().default({}),
     position: integer("position").notNull().default(0),
     createdAt: createdAt(),
