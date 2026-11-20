@@ -169,11 +169,7 @@ export function CotsCard({
               {origin}
             </span>
           )}
-          {group && !line?.merged && (
-            <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[0.6875rem] font-bold text-amber-950 shadow-sm" title="Click to see each system's part">
-              ⧉ {group.systems} systems
-            </span>
-          )}
+          {/* No "⧉ N systems" tag on the order pages (Harel, 2026-11-20); a click still opens each system's part. */}
           {!struck && <ShelfCoversPrompt part={part} shelf={shelf} save={save} overlay />}
           {!order && <LinkTag part={part} save={save} />}
           {sentBack && (
