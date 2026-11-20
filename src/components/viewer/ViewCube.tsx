@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { cubeMatrix, type ViewName } from "./camera";
+import { cubeMatrix } from "./camera";
 import type { SectionView } from "./section";
 import { QUALITY_LABELS, type Quality } from "./quality";
 import { UnitsSwitch } from "./units";
@@ -28,29 +28,14 @@ const dirOf = (f: (typeof FACES)[number], a: number, b: number): V => [0, 1, 2].
 const key = "press flex items-center justify-center rounded text-[0.625rem] font-semibold text-fg-2 hover:bg-raised hover:text-fg active:scale-[0.98]";
 const box = "rounded-md border border-line bg-surface/95 shadow-sm backdrop-blur";
 
-// The cube menu's views, Onshape's order and keys.
-const MENU_VIEWS: { v: ViewName; label: string; key?: string }[] = [
-  { v: "front", label: "Front", key: "Shift+1" },
-  { v: "back", label: "Back", key: "Shift+2" },
-  { v: "left", label: "Left", key: "Shift+3" },
-  { v: "right", label: "Right", key: "Shift+4" },
-  { v: "top", label: "Top", key: "Shift+5" },
-  { v: "bottom", label: "Bottom", key: "Shift+6" },
-  { v: "iso", label: "Isometric", key: "Shift+7" },
-  { v: "dimetric", label: "Dimetric" },
-  { v: "trimetric", label: "Trimetric" },
-];
-
 // Onshape's view cube, top right of the 3D view (S1, plan/cad-3d-viewer.md): it turns with the
 // camera; a click on a face, edge or corner looks from there; the arrows turn the view 15°, 90° with
 // Shift, 5° with Ctrl, like Onshape's. Its
-// menu is Onshape's camera and render options (Harel, 2026-11-11): the standard views with
-// Dimetric and Trimetric, Zoom to fit, Perspective / Orthographic, and the section (Section view,
+// menu is Onshape's camera and render options (Harel, 2026-11-11): Zoom to fit (the standard views are only the cube's faces and Shift+1…7, no menu items, Harel, 2026-11-19), Perspective / Orthographic, and the section (Section view,
 // Edit section view, Turn off section view, the same calls as Shift+X). Render options are just
 // Quality (how hard the device works, quality.ts) and Edges; Onshape's six render modes and the
 // Named views are gone (Harel, 2026-11-19: Named views were only kept in OrbitParts, and the menu
-// should help a phone run the view). On phones it's 64 px, no arrows (a swipe turns the view), and
-// the views sit in a grid so the menu fits. The `?` key opens the shortcuts sheet.
+// should help a phone run the view). On phones it's 64 px, no arrows (a swipe turns the view). The `?` key opens the shortcuts sheet.
 const arrowStep = (e: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean }) => (e.shiftKey ? 90 : e.ctrlKey || e.metaKey ? 5 : 15);
 
 export function ViewCube({ tools }: { tools: SceneTools }) {
@@ -174,15 +159,6 @@ export function ViewCube({ tools }: { tools: SceneTools }) {
         </button>
         {menu && (
           <div className={`absolute top-full right-0 mt-1 max-h-[min(36rem,calc(100dvh-var(--review-top,0px)-9rem))] w-52 animate-pop overflow-y-auto p-1 ${box}`} role="menu" aria-label="Camera and render options">
-            <div className="grid grid-cols-1 pointer-coarse:grid-cols-3 pointer-coarse:gap-0.5">
-              {MENU_VIEWS.map(({ v, label, key: k }) => (
-                <button key={v} className={`${item} pointer-coarse:justify-center pointer-coarse:px-1`} role="menuitem" onClick={run(() => tools.view(v))}>
-                  <span className="w-3 pointer-coarse:hidden" />
-                  {label}
-                  {k && <kbd className={hint}>{k}</kbd>}
-                </button>
-              ))}
-            </div>
             <button className={item} role="menuitem" onClick={run(() => tools.view("fit"))}>
               <span className="w-3" />
               Zoom to fit <kbd className={hint}>F</kbd>
