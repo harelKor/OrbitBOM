@@ -4,7 +4,7 @@ import { z } from "zod";
 import { effectiveMode, partChangesCapability } from "@/components/shell/mode";
 import { COTS_PROCESS } from "@/config/machines";
 import { db, schema } from "@/db";
-import { autoLink, findLinks } from "@/lib/inventory/autolink";
+import { autoLink, fastenerLinkProblems, findLinks } from "@/lib/inventory/autolink";
 import { listRawStock } from "@/lib/data/materials";
 import { applyPartChanges } from "@/lib/parts/apply";
 import { planPartUpdate } from "@/lib/parts/changes";
@@ -122,6 +122,8 @@ write(
     }
     const rows = await db.select().from(parts).where(inArray(parts.id, ids));
     if (rows.length !== ids.length) throw new ToolError("Some part ids don't exist.");
+    const wrong = await fastenerLinkProblems(edits.flatMap((e) => (e.changes.inventoryItemId ? [{ partId: e.id, itemId: e.changes.inventoryItemId }] : [])));
+    if (wrong.length) throw new ToolError(`Fasteners link only to the same thread, length and head: ${wrong.slice(0, 20).join("; ")}`);
     const byId = new Map(edits.map((e) => [e.id, e]));
     const diffs = rows
       .map((p) => ({ id: p.id, part: nameOf(p), reason: byId.get(p.id)!.reason, changes: planPartUpdate(p, byId.get(p.id)!.changes, "mcp").history }))

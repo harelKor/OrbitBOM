@@ -20,6 +20,7 @@ import { PRINT_MATERIALS } from "@/config/autoSetup";
 import { sizeOf, suggestSetup, wallThickness } from "./rules";
 import { isDescriptiveName, looksLikeProduct, matchByName, nameMatchSetup, productSetup, type NameMatchItem, type NameMatchPart } from "./nameMatch";
 import { analyzeShape } from "./shape";
+import { keepFilled } from "./fill";
 
 const { parts, systems, partReviews, partHistory, members, aiLogs } = schema;
 
@@ -125,6 +126,7 @@ export async function applySuggestions(
       memberId: ctx.memberId,
       via: ctx.via,
       batchId,
+      adjust: keepFilled,
       afterEach: async (tx, row, plan) => {
         const [existing] = await tx.select().from(partReviews).where(eq(partReviews.partId, row.id)).for("update");
         const changes = { ...(existing?.changes ?? {}) };

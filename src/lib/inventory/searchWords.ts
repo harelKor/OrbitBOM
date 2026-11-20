@@ -1,3 +1,5 @@
+import { fastenerKey, fastenerSearchWords } from "./fastener";
+
 // The Inventory search box understands Hebrew and English shop words (Harel, 2026-10-27): a word
 // from one of these lists also finds items named with any other word in it, so "מיסב" finds
 // "Bearing 8×16×5mm" and "pulley" finds "פולי". Edit here; there is no settings UI.
@@ -53,13 +55,16 @@ const WORDS: string[][] = [
   ["spacer", "ספייסר", "ספייסרים"],
 ];
 
-// "8×16×5mm" and "8*16*5" find "8x16x5".
+// "8×16×5mm" and "8*16*5" find "8x16x5"; "M5x0.8 x 35", "M5 × 35mm" and "M5x35" are one key
+// (fastener.ts), so "M5x35" finds "Socket button head screw M5x0.8 x 35" (audit, 2026-11-20).
 const clean = (s: string) =>
-  s
-    .toLowerCase()
-    .replace(/["'׳״”]/g, "")
-    .replace(/(\d)\s*[×*]\s*(?=\d)/g, "$1x")
-    .replace(/(\d+(?:\.\d+)?x\d+(?:\.\d+)?x\d+(?:\.\d+)?)\s*mm\b/g, "$1");
+  fastenerKey(
+    s
+      .toLowerCase()
+      .replace(/["'׳״”]/g, "")
+      .replace(/(\d)\s*[×*]\s*(?=\d)/g, "$1x")
+      .replace(/(\d+(?:\.\d+)?x\d+(?:\.\d+)?x\d+(?:\.\d+)?)\s*mm\b/g, "$1"),
+  );
 const LISTS = WORDS.map((list) => list.map(clean));
 
 // What one typed word may match in an item's text: the word itself, plus every word listed with
@@ -89,10 +94,13 @@ const compact = (s: string) => s.replace(/[^\p{L}\p{N}]+/gu, "");
 // end of a name too). Spaces, dashes and dots don't count, so "sideplate" finds "Side plate" and
 // "26501" finds "1691-26-501"; failing that, the whole query run together may match (Harel,
 // 2026-11-04).
+// A screw's text also carries its head's words in both languages (fastener.ts): "button head"
+// finds "M5×10 כיפה" and "גלילי" finds "Socket head cap screw M5x20", without editing items.
 export function matchesSearch(text: string, query: string): boolean {
-  const t = clean(text);
+  const t = `${clean(text)} ${fastenerSearchWords(text)}`;
   const tc = compact(t);
-  const words = query.trim().split(/\s+/).filter(Boolean);
+  // The query is read whole first, so "M5 x 35" and "M5x0.8 x 35" are one word, "m5x35".
+  const words = clean(query).trim().split(/\s+/).filter(Boolean);
   if (!words.length) return true;
   const each = words.every((word) =>
     searchAlternatives(word).some((alt) => {

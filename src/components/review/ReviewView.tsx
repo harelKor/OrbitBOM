@@ -297,6 +297,8 @@ export function ReviewView({
   );
 }
 
+const APPROVE_WITHOUT_ASKING = 20;
+
 function BulkButtons({
   ids,
   count,
@@ -330,7 +332,15 @@ function BulkButtons({
       >
         Reject {word} <span className="font-mono tabular-nums">{count}</span>
       </button>
-      <button type="button" disabled={disabled || !count} className="btn-primary" onClick={() => onDecide(ids, true)}>
+      <button
+        type="button"
+        disabled={disabled || !count}
+        className="btn-primary"
+        onClick={async () => {
+          // A big batch is asked about first, like Reject (audit, 2026-11-20).
+          if (count <= APPROVE_WITHOUT_ASKING || (await askConfirm({ title: `Approve ${what}?`, body: "Every suggested change and inventory link in them is kept as it is.", confirm: "Approve" }))) onDecide(ids, true);
+        }}
+      >
         <Icon name="review" />
         Approve {word} <span className="font-mono tabular-nums">{count}</span>
       </button>

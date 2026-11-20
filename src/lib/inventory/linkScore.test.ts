@@ -63,6 +63,23 @@ describe("names from Onshape and vendors", () => {
     expect(link("Hex socket head cap screw M5x0.80 x 10 x 22", shcs10)).toBeGreaterThanOrEqual(LINK_THRESHOLD);
   });
 
+  it("links a screw only to the same thread, length and head (audit, 2026-11-20)", () => {
+    // The shop's items often have no specs: only the name says which screw it is.
+    const bare = (id: string, name: string) => item({ id, name, category: cat("fasteners"), thumbHashes: [{ hash: "f0f0f0f0f0f0f0f0", partName: "a screw" }] });
+    const pic = { thumbHash: "f0f0f0f0f0f0f0f1" };
+    const score = (name: string, i: LinkItem) => scoreLink(part({ names: [name], ...pic }), i).score;
+    expect(score("Socket button head screw M5x0.8 x 35", bare("b", "M5×10 כיפה"))).toBe(0);
+    expect(score("M5x6 button head screw", bare("b", "M5×10 כיפה"))).toBe(0);
+    expect(score("Hex socket head cap screw M5x0.8 x 35", bare("s", "M5×20 גלילי"))).toBe(0);
+    expect(score("Part 4", bare("b", "M5×10 כיפה"))).toBe(0);
+    // McMaster's configurable screw is one Onshape part for every length: the key isn't enough.
+    const keyed = { ...bare("b", "M5×10 כיפה"), onshapeKey: "d:e:p" };
+    expect(scoreLink(part({ names: ["Socket button head screw M5x0.8 x 35"], onshapeKey: "d:e:p" }), keyed).score).toBe(0);
+    expect(scoreLink(part({ names: ["Socket button head screw M5x0.8 x 10"], onshapeKey: "d:e:p" }), keyed).score).toBe(100);
+    expect(score("Socket button head screw M5x0.8 x 35", bare("b", "M5×35 כיפה"))).toBeGreaterThanOrEqual(LINK_THRESHOLD);
+    expect(link("Socket button head screw M5x0.8 x 35", bare("b", "M5×35 כיפה"))).toBeGreaterThanOrEqual(LINK_THRESHOLD);
+  });
+
   it("reads 5M and 3M belt pitches", () => {
     const htd = item({ id: "h", name: "HTD 5mm Belt 225mm (45T) 9mm", category: cat("belts"), specs: { pitch: "HTD 5mm", teeth: "45", width: "9", groove: "Single" } });
     const gt2 = item({ id: "g", name: "GT2 3mm Belt 135mm (45T) 9mm", category: cat("belts"), specs: { pitch: "GT2 3mm", teeth: "45", width: "9", groove: "Single" } });

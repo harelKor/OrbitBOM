@@ -9,6 +9,7 @@ import { logAiAction, type ReviewSource } from "@/lib/review/review";
 import { getObject, storageConfigured } from "@/lib/storage/r2";
 import { categoryOf, getCategory } from "./categories";
 import { bestLinks, type LinkItem, type LinkPart } from "./linkScore";
+import { fastenerMatch, itemFastener, partFastener } from "./fastener";
 import { onshapeKeyOf } from "./match";
 
 const { parts, systems, robots, inventoryItems, partReviews, inventoryLinkRejections } = schema;
@@ -128,6 +129,9 @@ export async function findLinks(scope: { partIds?: string[]; itemIds?: string[] 
   return { found, names };
 }
 
+// A review's reason without the sentence of a link it held before: the new link brings its own.
+const withoutLinkReason = (reason: string | null) => (reason ?? "").split(" · ").filter((r) => r && !r.startsWith("Link to \""));
+
 // Puts suggested links in To Review without linking (the part keeps no item until Approve).
 // Merges into a review the part already has; a site rule adding to an AI's review keeps the AI's
 // run and name. Used by auto-link and by a member's Claude (link_inventory).
@@ -143,7 +147,7 @@ export async function writePendingLinks(
       const keep = existing && existing.source === "ai" && ctx.source === "rule";
       const values = {
         source: keep ? existing.source : ctx.source,
-        reason: existing ? [existing.reason, l.reason].filter(Boolean).join(" · ") || null : l.reason,
+        reason: existing ? [...withoutLinkReason(existing.reason), l.reason].filter(Boolean).join(" · ") || null : l.reason,
         changes: existing?.changes ?? {},
         pending: { ...(existing?.pending ?? {}), inventoryItemId: l.itemId },
         memberId: keep ? existing.memberId : ctx.memberId,
@@ -186,4 +190,23 @@ async function fillThumbHashes(rows: { id: string; thumbnailRev: string | null; 
   };
   await Promise.all(Array.from({ length: 6 }, worker));
   return out;
+}
+
+// Links a member's Claude asks for that pair a fastener with a different one (or a fastener with
+// something that isn't): the same rule auto-link follows (fastener.ts), so a screw is linked
+// only when thread, length and head match. One line per refused link.
+export async function fastenerLinkProblems(links: { partId: string; itemId: string }[]) {
+  if (!links.length) return [];
+  const [rows, items, cats] = await Promise.all([
+    db.select({ id: parts.id, displayName: parts.displayName, onshapeName: parts.onshapeName }).from(parts).where(inArray(parts.id, links.map((l) => l.partId))),
+    db.select({ id: inventoryItems.id, name: inventoryItems.name, specs: inventoryItems.specs, category: inventoryItems.category }).from(inventoryItems).where(inArray(inventoryItems.id, links.map((l) => l.itemId))),
+    listCategories(),
+  ]);
+  return links.flatMap((l) => {
+    const part = rows.find((p) => p.id === l.partId);
+    const item = items.find((i) => i.id === l.itemId);
+    if (!part || !item) return [];
+    const fit = fastenerMatch(partFastener([part.displayName, part.onshapeName]), itemFastener({ name: item.name, specs: item.specs, categoryId: categoryOf(item, cats) }));
+    return fit.result === "clash" ? [`"${part.displayName ?? part.onshapeName ?? "a part"}" isn't "${item.name}": ${fit.why}`] : [];
+  });
 }

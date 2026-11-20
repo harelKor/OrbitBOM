@@ -13,3 +13,10 @@ it("prefers the same Onshape part, then the product page, then the name", () => 
   expect(suggestItem({ displayName: "608zz", onshapeName: null }, items)).toEqual({ itemId: "a", reason: "name" });
   expect(suggestItem({ displayName: "Gear", onshapeName: null }, items)).toBeNull();
 });
+
+it("doesn't take another length of a configurable screw for the item (audit, 2026-11-20)", () => {
+  const screw: MatchItem = { id: "s", name: "M5×10 \u05db\u05d9\u05e4\u05d4", onshapeKey: "d:e:s", aliases: ["Socket button head screw M5x0.8 x 35"], cotsLinks: [] };
+  const at = { sourceDid: "d", sourceEid: "e", onshapePartId: "s" };
+  expect(suggestItem({ displayName: "Socket button head screw M5x0.8 x 10", onshapeName: null, ...at }, [screw])).toEqual({ itemId: "s", reason: "onshape" });
+  expect(suggestItem({ displayName: "Socket button head screw M5x0.8 x 35", onshapeName: null, ...at }, [screw])).toBeNull();
+});

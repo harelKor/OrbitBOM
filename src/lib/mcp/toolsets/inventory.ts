@@ -6,7 +6,7 @@ import { effectiveMode } from "@/components/shell/mode";
 import { db, schema } from "@/db";
 import { vendorOfUrl } from "@/config/vendors";
 import { listInventory } from "@/lib/data/inventory";
-import { autoLink, findLinks, writePendingLinks } from "@/lib/inventory/autolink";
+import { autoLink, fastenerLinkProblems, findLinks, writePendingLinks } from "@/lib/inventory/autolink";
 import { checkSpecs, fieldChoices, getCategory, slugify, type InvCategory } from "@/lib/inventory/categories";
 import { recordItemChanges } from "@/lib/inventory/history";
 import { pushItemToCards } from "@/lib/inventory/cotsSync";
@@ -144,6 +144,8 @@ write(
     const unlinking = changes.filter((c) => !c.itemId).map((c) => c.part.id);
     const denied = unlinking.length ? await statusChangeDeniedFor(effectiveMode(member), unlinking, { inventoryItemId: null }) : null;
     if (denied) throw new ToolError(denied);
+    const wrong = await fastenerLinkProblems(changes.flatMap((c) => (c.itemId ? [{ partId: c.part.id, itemId: c.itemId }] : [])));
+    if (wrong.length) throw new ToolError(`Fasteners link only to the same thread, length and head: ${wrong.slice(0, 20).join("; ")}`);
     return {
       count: changes.length,
       summary: `${changes.length} inventory ${changes.length === 1 ? "link" : "links"}: unlinks at once, links wait in To Review`,

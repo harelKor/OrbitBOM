@@ -1,5 +1,9 @@
 // Which inventory item a BOM part probably is, most certain first: the same Onshape library part,
-// the same product page, then the same name (or a name the item was linked under before).
+// the same product page, then the same name (or a name the item was linked under before). A
+// fastener only matches the same thread, length and head (fastener.ts): McMaster's configurable
+// screws are one Onshape part for every length (audit, 2026-11-20).
+
+import { fastenerMatch, itemFastener, partFastener } from "./fastener";
 
 export type MatchItem = { id: string; name: string; onshapeKey: string | null; aliases: string[]; cotsLinks: { url: string }[] };
 export type MatchPart = {
@@ -50,13 +54,15 @@ export function itemMatcher(items: MatchItem[]) {
     return at === Infinity ? null : items[at];
   };
   return (part: MatchPart): { itemId: string; reason: MatchReason } | null => {
+    const screw = partFastener([part.displayName, part.onshapeName]);
+    const fits = (item: MatchItem | null) => !!item && fastenerMatch(screw, itemFastener(item)).result !== "clash";
     const key = onshapeKeyOf(part);
     const byOnshape = key ? best(byKey, [key]) : null;
-    if (byOnshape) return { itemId: byOnshape.id, reason: "onshape" };
+    if (fits(byOnshape)) return { itemId: byOnshape!.id, reason: "onshape" };
     const byLink = best(byUrl, (part.cotsLinks ?? []).map((l) => normUrl(l.url)));
-    if (byLink) return { itemId: byLink.id, reason: "link" };
+    if (fits(byLink)) return { itemId: byLink!.id, reason: "link" };
     const byNameHit = best(byName, [normName(part.displayName), normName(part.onshapeName)].filter(Boolean));
-    if (byNameHit) return { itemId: byNameHit.id, reason: "name" };
+    if (fits(byNameHit)) return { itemId: byNameHit!.id, reason: "name" };
     return null;
   };
 }

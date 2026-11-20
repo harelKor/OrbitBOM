@@ -37,6 +37,8 @@ type Ctx = {
   // Plans each locked row instead of planPartUpdate (undo writes stored values back as they were,
   // without the status rules), so the side effects below still follow the change.
   plan?: (row: typeof parts.$inferSelect) => Plan;
+  // Trims each part's changes against its locked, current row before they're planned.
+  adjust?: (row: typeof parts.$inferSelect, changes: PartChanges) => PartChanges;
 };
 
 // Applies the same changes to each part in one transaction and records every field change in
@@ -86,7 +88,8 @@ export async function applyEachPartChanges(
       const own = byId.get(row.id)!;
       // Linking an item sets the part's type from the item's group; what the edit says itself wins.
       const extra = own.inventoryItemId && row.classification !== "external" ? fromItem.get(own.inventoryItemId) : undefined;
-      const plan = ctx.plan ? ctx.plan(row) : planPartUpdate(row, extra ? { ...extra, ...own } : own, ctx.via);
+      const merged = extra ? { ...extra, ...own } : own;
+      const plan = ctx.plan ? ctx.plan(row) : planPartUpdate(row, ctx.adjust ? ctx.adjust(row, merged) : merged, ctx.via);
       const { set, history } = plan;
       if (!history.length) continue;
       changed++;

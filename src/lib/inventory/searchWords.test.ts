@@ -11,6 +11,15 @@ describe("matchesSearch", () => {
     expect(matchesSearch("20DP 30T 1/2\" Hex Gear", "גגשים")).toBe(true);
     expect(matchesSearch("Rivet 5×10mm (ניטים)", "rivet 5×10")).toBe(true);
   });
+  it("reads fastener sizes one way and heads in both languages (audit, 2026-11-20)", () => {
+    const vendor = "Socket button head screw M5x0.8 x 35";
+    for (const q of ["M5x35", "M5×35", "M5 x 35", "m5x0.8x35", "M5x35 כיפה"]) expect(matchesSearch(vendor, q)).toBe(true);
+    expect(matchesSearch("M5×35 כיפה", "button head M5x35")).toBe(true);
+    expect(matchesSearch("M5×20 גלילי", "socket head m5x20")).toBe(true);
+    expect(matchesSearch("Hex socket head cap screw M5x0.8 x 20", "גלילי M5x20")).toBe(true);
+    expect(matchesSearch(vendor, "M5x30")).toBe(false);
+    expect(matchesSearch("M5×20 גלילי", "button head")).toBe(false);
+  });
   it("still needs every word", () => {
     expect(matchesSearch("Bearing 8×16×5mm", "מיסב 6×12")).toBe(false);
     expect(matchesSearch("Drill bit 5mm", "מברז")).toBe(false);

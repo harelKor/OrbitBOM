@@ -5,6 +5,7 @@
 
 import { hashDistance } from "@/lib/images/dhash";
 import type { InvCategory } from "./categories";
+import { fastenerMatch, itemFastener, partFastener } from "./fastener";
 import { normName, normUrl } from "./match";
 import { parseSpecs, tokens } from "./quick";
 
@@ -60,6 +61,8 @@ const sameValue = (a: string, b: string) => norm(a) === norm(b);
 // screw M5x0.80 x 10" (Harel, 2026-11-06).
 const FULL_SPECS = 3;
 const FULL_SPECS_BONUS = 16;
+// Thread, length and head all agreeing name the screw, whatever language the names are in.
+const FASTENER_MATCH = 40;
 // Words that make a part something that goes on the product, not the product: "Kraken X60 Back
 // Cap" isn't a Kraken X60. Ruled out unless two sizes or more agree.
 const ACCESSORY = /\b(caps?|covers?|mounts?|brackets?|housings?|guards?|clamps?|holders?|cases?|plates?|inserts?)\b/i;
@@ -87,12 +90,21 @@ function itemSpecs(item: LinkItem): Record<string, string> {
 }
 
 export function scoreLink(part: LinkPart, item: LinkItem): { score: number; why: string[] } {
+  // A screw is linked only to the same screw: thread, length and head, checked before the same
+  // Onshape part (audit, 2026-11-20: McMaster's configurable screws are one Onshape part for
+  // every length, so an M5×35 button head was suggested as the "M5×10 כיפה" linked before).
+  const fastener = fastenerMatch(partFastener(part.names), itemFastener({ name: item.name, specs: item.specs, categoryId: item.category?.id }));
+  if (fastener.result === "clash") return { score: 0, why: [] };
   if (part.onshapeKey && part.onshapeKey === item.onshapeKey) return { score: CERTAIN, why: ["same Onshape part"] };
   const urls = new Set(part.urls.map(normUrl));
   if (urls.size && item.urls.some((u) => urls.has(normUrl(u)))) return { score: CERTAIN, why: ["same product link"] };
 
   let score = 0;
   const why: string[] = [];
+  if (fastener.result === "match") {
+    score += FASTENER_MATCH;
+    why.push(fastener.why);
+  }
 
   // Sizes in the part's name must agree with the item's.
   const agree: string[] = [];

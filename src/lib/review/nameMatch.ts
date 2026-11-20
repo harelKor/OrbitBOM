@@ -51,7 +51,9 @@ export function productSetup(part: {
   for (const f of ["material", "process1"] as const) if (part[f]) changes[f] = null;
   if (part.addedProcesses?.length) changes.addedProcesses = [];
   if (!Object.keys(changes).length) return null;
-  return { changes, reason: `"${descriptivePart(name)}" is named like a bought part, so COTS; no inventory item matches it yet` };
+  // No word on which item it is: auto-link runs after Suggest and adds its own link and reason
+  // (the card said "no inventory item matches" next to a link, audit 2026-11-20).
+  return { changes, reason: `"${descriptivePart(name)}" is named like a bought part, so COTS` };
 }
 
 export type NameMatchPart = {
