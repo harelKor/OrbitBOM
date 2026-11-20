@@ -731,7 +731,9 @@ function MadeRows({ part, save, was }: { part: CardPart; save: SaveFn; was: Was 
       <Row label="Material" was={was("material")}>
         <MaterialField part={part} save={save} />
       </Row>
-      {machineSlotsShown(part).map((slot) => {
+      {machineSlotsShown(part).map((slot, i, all) => {
+        // The QA tick between this process and the next sits on this one's row (Harel, 2026-11-20).
+        const next = all[i + 1];
         // The process the part is at now is highlighted (Harel, 2026-11-20).
         const now = slot.n === currentSlotN(part) && !!slot.machine;
         return (
@@ -740,7 +742,7 @@ function MadeRows({ part, save, was }: { part: CardPart; save: SaveFn; was: Was 
               <MachineField part={part} save={save} slot={slot} placeholder="None" />
               {slot.machine && slot.n === 1 && <span className="text-xs text-muted tabular-nums">{slot.done}/{part.quantity}</span>}
               {slot.n > 1 && <span className="text-xs text-muted tabular-nums">{slot.done}/{part.quantity}</span>}
-              {slot.n > 1 && <QaNeededField part={part} save={save} slot={slot} />}
+              {next && <QaNeededField part={part} save={save} slot={next} />}
               {now && <span className="text-[0.6875rem] font-bold uppercase">Now</span>}
             </span>
           </Row>

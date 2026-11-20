@@ -4,7 +4,7 @@ import { useState } from "react";
 import { machineName } from "@/config/machines";
 import { useMoveToQa } from "@/components/bom/MoveToQa";
 import { useBom } from "@/components/bom/BomContext";
-import { fabSteps } from "@/components/bom/PartCard";
+import { FabProcesses, fabSteps } from "@/components/bom/PartCard";
 import { StatusField, type SaveFn } from "@/components/bom/fields";
 import { usePartDetails } from "@/components/bom/PartDetailsHost";
 import { ownerPartId, partIds, partTitle, type CardPart } from "@/components/bom/types";
@@ -88,7 +88,7 @@ export function FabPartListRow({
           <span className="contents" {...stopAll}>
             {editStatus && work ? <StatusField part={part} save={save} size="sm" /> : <StatusPill status={computeStatus(part)} label={partStatusLabel(part)} />}
             {!post && <span className={pill} title="Material">{material ?? "No material"}</span>}
-            {!post && machine && <span className={`${pill} border-accent/60 text-accent`} title="Machine">{machine}</span>}
+            {!post && <FabProcesses part={part} current={at} />}
             {part.fabView?.changed && (
               <span
                 className="rounded-full bg-red-600 px-2 py-0.5 text-[0.625rem] font-bold tracking-wide text-white uppercase shadow-[0_0_8px_1px_rgba(220,38,38,0.45)]"

@@ -59,4 +59,21 @@ else
       expect(JSON.stringify(plan)).toContain("old A");
       expect(JSON.stringify(plan)).toContain("old E");
     });
+
+    // Harel, 2026-11-20: approved at QA for its next process, a part leaves its Shop Fab batch
+    // (other groups keep it) and is Released for that process.
+    it("takes a part approved at QA out of its batch", async () => {
+      const [part] = await db
+        .insert(schema.parts)
+        .values({ systemId: system.id, onshapeName: "Q", classification: "inhouse", process1: "laser", doneProcess1: 1, addedProcesses: [{ machine: "bending", done: 0, qa: true }] })
+        .returning();
+      const [batch] = await db.insert(schema.partGroups).values({ robotId: robot.id, name: "Laser 20/11", machine: "laser" }).returning();
+      const [group] = await db.insert(schema.partGroups).values({ robotId: robot.id, name: "Arm plates" }).returning();
+      await db.insert(schema.groupMembers).values([batch, group].map((g) => ({ groupId: g.id, partId: part.id, keySnapshot: {} })));
+      await applyEachPartChanges([{ id: part.id, changes: { qa: "approve" } }], { memberId: null, via: "mcp" });
+      const left = await db.select().from(schema.groupMembers).where(eq(schema.groupMembers.partId, part.id));
+      expect(left.map((m) => m.groupId)).toEqual([group.id]);
+      const [after] = await db.select().from(schema.parts).where(eq(schema.parts.id, part.id));
+      expect(after.addedProcesses).toEqual([{ machine: "bending", done: 0, qa: true, qaDone: true }]);
+    });
   });

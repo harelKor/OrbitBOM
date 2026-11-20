@@ -192,6 +192,16 @@ export function partStatusLabel(part: StatusInput): string {
   return statusLabel(status, statusMachine(part));
 }
 
+// Released P2+ to a process that needed QA first: it came back from QA approved, so it starts
+// over as a loose Released part on Shop Fab, out of its old batch (Harel, 2026-11-20).
+export function releasedAfterQa(part: StatusInput): boolean {
+  if (part.classification === "cots") return false;
+  const stage = stageOf(part);
+  if (stage.status !== RELEASED_LATER || stage.index < 1) return false;
+  const p = processesOf(part)[stage.index];
+  return !!p?.qa && p.qaDone;
+}
+
 // A mid-way Ready for QA (before an added process) isn't done; only the final one is.
 export function isMidQa(part: StatusInput): boolean {
   return part.classification !== "cots" && stageOf(part).midQa && computeStatus(part) === READY_FOR_QA;

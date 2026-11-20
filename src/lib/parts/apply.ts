@@ -1,6 +1,6 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { COTS_IN_STOCK, ORDER_STATUSES, cotsStatusOf } from "@/config/cots";
 import { usageOf } from "@/lib/data/inventory";
@@ -9,13 +9,13 @@ import { arrives } from "@/lib/seen";
 import { fillCardFromItem, pushCardToItem } from "@/lib/inventory/cotsSync";
 import { normName, onshapeKeyOf } from "@/lib/inventory/match";
 import { moveStock } from "@/lib/inventory/moves";
-import { isBought, orderStatus } from "@/lib/status";
+import { isBought, isMidQa, orderStatus, releasedAfterQa } from "@/lib/status";
 import { isReleaseMove, lockRelease } from "@/lib/versions/release";
 import { currentVisit } from "@/lib/visits";
 import { planPartUpdate, type PartChanges, type Plan } from "./changes";
 import { recordOrderHistory } from "./orderHistory";
 
-const { parts, partHistory, inventoryItems, inventoryCategories } = schema;
+const { parts, partHistory, inventoryItems, inventoryCategories, groupMembers, partGroups } = schema;
 const ORDERING = ORDER_STATUSES.filter((s) => s !== COTS_IN_STOCK) as string[];
 
 // In Stock on the COTS page (a part bought as its Process 1 too, Harel 2026-11-20).
@@ -93,7 +93,9 @@ export async function applyEachPartChanges(
       // An order arrived: a linked COTS part going from the Order List to In Stock adds what the
       // shelf was missing for it to its item's stock (nothing when the shelf already had it).
       const after = { ...row, ...set };
-      const plain = !ctx.afterEach && !isBought(row) && !isBought(after) && !set.inventoryItemId && !isReleaseMove(row, after);
+      // Approved at QA for its next process: it leaves its Shop Fab batch (Harel, 2026-11-20).
+      const backFromQa = isMidQa(row) && releasedAfterQa(after);
+      const plain = !ctx.afterEach && !backFromQa && !isBought(row) && !isBought(after) && !set.inventoryItemId && !isReleaseMove(row, after);
       if (!plain) await flush(); // what follows may read other parts (the shelf's count below)
       let received = 0;
       if (
@@ -152,6 +154,10 @@ export async function applyEachPartChanges(
       if (set.designState !== undefined && !own.fromShelfPrompt) await recordOrderHistory(tx, row, after);
       // Sent to fab: To Fab keeps this state until the part is released again (plan/fab-version-lock.md).
       if (isReleaseMove(row, after)) await lockRelease(tx, after, { memberId: ctx.memberId, batchId });
+      if (backFromQa) {
+        const batches = tx.select({ id: partGroups.id }).from(partGroups).where(isNotNull(partGroups.machine));
+        await tx.delete(groupMembers).where(and(eq(groupMembers.partId, row.id), inArray(groupMembers.groupId, batches)));
+      }
       if (received) await moveStock(tx, { itemId: after.inventoryItemId!, delta: received, reason: "received", partId: row.id }, { memberId: ctx.memberId, via: ctx.via, batchId });
       if (set.inventoryItemId) {
         // A made part's material item (a plate it's cut from) isn't the part: only COTS links teach

@@ -123,7 +123,7 @@ export function BulkEditBar({
         {field === "appendProcess" && value && value !== NONE && (
           <label className="flex items-center gap-1.5 text-sm whitespace-nowrap">
             <input type="checkbox" checked={qa} onChange={(e) => setQa(e.target.checked)} className="h-4 w-4" />
-            QA needed
+            QA before it
           </label>
         )}
         <button className="btn-primary" disabled={!value || !count} onClick={apply}>

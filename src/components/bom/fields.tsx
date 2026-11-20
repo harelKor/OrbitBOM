@@ -481,11 +481,14 @@ export function AddProcessField({ part, save, className, label = "+ Add process"
   );
 }
 
-// An added process's "QA needed" tick: QA before that process starts (Harel, 2026-11-20).
+// An added process's QA tick, shown on the row of the process before it as "QA after": QA once
+// that one is done, before this one starts (Harel, 2026-11-20).
 export function QaNeededField({ part, save, slot }: Props & { slot: Slot }) {
   const locked = !useCan("work");
+  // After a bought Process 1 QA comes anyway, like any COTS part's: no tick (Harel, 2026-11-20).
+  if (slot.n === 2 && part.process1 === COTS_PROCESS) return null;
   return (
-    <label className={`inline-flex shrink-0 items-center gap-1.5 text-xs text-muted ${locked ? "" : "cursor-pointer"} pointer-coarse:min-h-9`} title="QA is needed before this process starts">
+    <label className={`inline-flex shrink-0 items-center gap-1.5 text-xs text-muted ${locked ? "" : "cursor-pointer"} pointer-coarse:min-h-9`} title={`QA after this process, before Process ${slot.n} starts`}>
       <input
         type="checkbox"
         disabled={locked}
@@ -493,7 +496,7 @@ export function QaNeededField({ part, save, slot }: Props & { slot: Slot }) {
         onChange={(e) => save({ addedProcesses: addedList(part).map((p, i) => (i === slot.n - 2 ? { ...p, qa: e.target.checked } : p)) })}
         className="h-4 w-4 accent-[var(--accent)]"
       />
-      QA needed
+      QA after
     </label>
   );
 }

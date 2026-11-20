@@ -336,18 +336,31 @@ function FabFooter({ part, save, current, made, editStatus }: { part: CardPart; 
           {made}/{part.quantity}
         </span>
       </div>
-      <div className="flex min-w-0 items-center gap-1">
+      <div className="flex min-w-0 flex-wrap items-center gap-1">
         <span className={`${pill} min-w-0`} title="Material">
           {material ?? "No material"}
         </span>
-        {machine && (
-          <span className={`${pill} min-w-0 border-accent/60 text-accent`} title="Machine">
-            {machine}
-          </span>
-        )}
+        <FabProcesses part={part} current={current} />
       </div>
     </div>
   );
+}
+
+// Every process the part goes through, in order, the one it is at now highlighted, so the shop
+// sees the second, third... processes too (Harel, 2026-11-20).
+export function FabProcesses({ part, current }: { part: CardPart; current: Slot | undefined }) {
+  const slots = slotsOf(part).filter((s) => s.machine);
+  return slots.map((s, i) => (
+    <span key={s.n} className="contents">
+      {i > 0 && <span className="text-[0.625rem] text-faint">→</span>}
+      <span
+        className={`${pill} min-w-0 ${s.n === current?.n ? "border-accent/60 bg-accent/10 font-semibold text-accent" : "text-muted"}`}
+        title={`Process ${s.n}${s.n === current?.n ? " (now)" : ""}${s.qa ? ", QA before it" : ""}`}
+      >
+        {machineName(s.machine!)}
+      </span>
+    </span>
+  ));
 }
 
 // The CAD file for the part's first machine that takes one (a sheet metal part's flat pattern

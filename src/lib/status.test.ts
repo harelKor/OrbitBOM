@@ -79,6 +79,9 @@ describe("QA before a process (Harel, 2026-11-20)", () => {
     const approved = { ...qaFirst, addedProcesses: [proc("bending", { qa: true, qaDone: true })] };
     expect(partStatusLabel(approved)).toBe("Released P2");
     expect(isDone(approved)).toBe(false);
+    // Back under Shop Fab's Released, out of its batch (Harel, 2026-11-20).
+    expect(fabStage(approved)).toBe("ready");
+    expect(fabStage({ ...base, doneProcess1: 2 })).toBe("inProcess");
   });
   it("the final Ready for QA is done", () => {
     const last = { ...base, doneProcess1: 2, addedProcesses: [proc("bending", { done: 2 })] };
@@ -198,7 +201,7 @@ describe("COTS as Process 1 (Harel, 2026-11-20)", () => {
     expect(isDone(arrived)).toBe(false);
     const approved = { ...arrived, addedProcesses: [proc("cnc", { qaDone: true })] };
     expect(partStatusLabel(approved)).toBe("Released P2");
-    expect(fabStage(approved)).toBe("inProcess");
+    expect(fabStage(approved)).toBe("ready");
   });
   it("a bought COTS part waits for QA in the BOM", () => {
     const cots = { ...base, classification: "cots" as const, designState: "In Stock", cotsQa: true };

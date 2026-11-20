@@ -5,7 +5,7 @@
 import { COTS_PROCESS, areaOfMachine, type FabArea } from "@/config/machines";
 import type { StatusName } from "@/config/statuses";
 import type { PartChanges } from "@/lib/parts/changes";
-import { areaOf, computeStatus, factoryOf, isCotsProcess, isDone, isMidQa, printerOf, processesOf, stageOf, type StatusInput } from "@/lib/status";
+import { areaOf, computeStatus, factoryOf, isCotsProcess, isDone, isMidQa, printerOf, processesOf, releasedAfterQa, stageOf, type StatusInput } from "@/lib/status";
 
 // Released P2+ stays with In process, as Ready for Process 2 did: its batch is still being worked.
 export const IN_PROCESS_STATUSES: StatusName[] = ["Gcoded", "In Process 1", "Released P2+", "In Process 2+", "Post Processing"];
@@ -28,6 +28,8 @@ export function fabStage(part: StatusInput): FabStage {
   if (isCotsProcess(part) && stageOf(part).index === 0) return null;
   // Waiting for QA before its next process: still in process, not finished (Harel, 2026-11-20).
   if (isMidQa(part)) return "inProcess";
+  // Approved at QA for its next process: back under Released, to be batched again (Harel, 2026-11-20).
+  if (releasedAfterQa(part)) return "ready";
   const status = computeStatus(part) as StatusName;
   if (IN_PROCESS_STATUSES.includes(status)) return "inProcess";
   if (READY_STATUSES.includes(status)) return "ready";
