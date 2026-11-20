@@ -29,6 +29,7 @@ export function PanoramaStage({
   start,
   className = "",
   onBackground,
+  focus,
   children,
   outside,
 }: {
@@ -37,6 +38,8 @@ export function PanoramaStage({
   start: (box: Box) => Pano;
   className?: string;
   onBackground?: () => void;
+  // Turn to face this picture point whenever its key changes.
+  focus?: { u: number; v: number; key: number | string } | null;
   children?: (tools: PanoTools) => React.ReactNode;
   // Drawn over the stage but not clipped by it (a menu by its edge), placed in the same px.
   outside?: (tools: PanoTools) => React.ReactNode;
@@ -78,10 +81,9 @@ export function PanoramaStage({
   const anim = useRef(0);
   const stop = () => cancelAnimationFrame(anim.current);
   useEffect(() => () => cancelAnimationFrame(anim.current), []);
-  const reset = () => {
+  const glideTo = (to: Pano | null) => {
     stop();
     const from = live.current.pano;
-    const to = home;
     if (!from || !to) return;
     const du = wrapDelta(to.u - from.u);
     const t0 = performance.now();
@@ -93,6 +95,14 @@ export function PanoramaStage({
     };
     anim.current = requestAnimationFrame(step);
   };
+  const reset = () => glideTo(home);
+  const focusKey = focus?.key;
+  useEffect(() => {
+    const from = live.current.pano;
+    if (focusKey == null || !focus || !from) return;
+    glideTo(clampPano({ u: focus.u, v: focus.v, fov: from.fov }, pic));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- turns only for a new focus
+  }, [focusKey]);
 
   const local = (clientX: number, clientY: number) => {
     const r = node!.getBoundingClientRect();

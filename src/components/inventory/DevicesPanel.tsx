@@ -60,6 +60,10 @@ export function DevicesPanel({
   const [devices, setDevices] = useState(loaded);
   const [seen, setSeen] = useState(loaded);
   const [open, setOpen] = useState<string | null>(null);
+  // The PC picked in either place (Harel, 2026-11-20): its card and its icon light up together;
+  // picked from its card, the panorama turns to face it.
+  const [picked, setPicked] = useState<{ id: string; turn: number } | null>(null);
+  const pick = (id: string | null, fromCard = false) => setPicked(id ? { id, turn: fromCard ? (picked?.turn ?? 0) + 1 : (picked?.turn ?? 0) } : null);
   const [, start] = useTransition();
   // A reload (another phone, a + that landed) brings the saved PCs.
   if (seen !== loaded) {
@@ -120,8 +124,10 @@ export function DevicesPanel({
           panorama={panorama}
           devices={devices}
           open={open}
+          picked={picked}
           movable={work}
           onOpen={setOpen}
+          onPick={pick}
           onMove={(id, u, v) => setDevices((ds) => ds.map((d) => (d.id === id ? { ...d, panoX: u, panoY: v } : d)))}
           onSave={save}
           onDelete={remove}
@@ -131,8 +137,10 @@ export function DevicesPanel({
         station={item.station ?? null}
         devices={devices}
         open={open}
+        picked={picked?.id ?? null}
         movable={work}
         onOpen={setOpen}
+        onPick={pick}
         onMove={(id, x, y) => setDevices((ds) => ds.map((d) => (d.id === id ? { ...d, x, y } : d)))}
         onSave={save}
         onDelete={remove}
@@ -143,7 +151,19 @@ export function DevicesPanel({
         // Two PCs a row from tablets up, one on phones.
         <ul className="grid gap-2 sm:grid-cols-2">
           {devices.map((d, i) => (
-            <PcRow key={d.id} device={d} n={i + 1} work={work} onSave={(p) => save(d.id, p)} onDelete={() => remove(d.id)} onOpen={() => setOpen(d.id)} />
+            <PcRow
+              key={d.id}
+              device={d}
+              n={i + 1}
+              work={work}
+              picked={picked?.id === d.id}
+              onSave={(p) => save(d.id, p)}
+              onDelete={() => remove(d.id)}
+              onPick={() => {
+                setOpen(null);
+                pick(picked?.id === d.id ? null : d.id, true);
+              }}
+            />
           ))}
         </ul>
       )}
@@ -151,7 +171,12 @@ export function DevicesPanel({
   );
 }
 
-function PcRow({ device: d, n, work, onSave, onDelete, onOpen }: { device: Device; n: number; work: boolean; onSave: (p: Patch) => void; onDelete: () => void; onOpen: () => void }) {
+function PcRow({ device: d, n, work, picked, onSave, onDelete, onPick }: { device: Device; n: number; work: boolean; picked: boolean; onSave: (p: Patch) => void; onDelete: () => void; onPick: () => void }) {
+  const card = useRef<HTMLLIElement>(null);
+  // Picked from its icon on the map: the card comes into view.
+  useEffect(() => {
+    if (picked) card.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [picked]);
   const [level, setLevel] = useState<number | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shown = level ?? d.condition;
@@ -166,9 +191,15 @@ function PcRow({ device: d, n, work, onSave, onDelete, onOpen }: { device: Devic
   };
   useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
   return (
-    <li className="space-y-1.5 rounded-xl border border-line bg-raised p-2.5">
+    <li
+      ref={card}
+      data-picked={picked || undefined}
+      // A tap on the card (not on its controls) picks the PC: its icon lights up on the map.
+      onClick={(e) => !(e.target as Element).closest("button, input, textarea, label, a") && onPick()}
+      className={`cursor-pointer space-y-1.5 rounded-xl border bg-raised p-2.5 transition-[border-color,box-shadow] duration-200 ${picked ? "border-accent shadow-[0_0_0_2px_color-mix(in_srgb,var(--color-accent)_45%,transparent)]" : "border-line"}`}
+    >
       <div className="flex items-center gap-2">
-        <button type="button" onClick={onOpen} className="press flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-fg active:scale-[0.98]" aria-label={`Show ${pcName(d, n)} on the map`} title="Show on the map">
+        <button type="button" onClick={onPick} aria-pressed={picked} className={`press flex h-9 w-9 shrink-0 items-center justify-center rounded-md active:scale-[0.98] ${picked ? "bg-accent text-white" : "text-fg"}`} aria-label={`Show ${pcName(d, n)} on the map`} title="Show on the map">
           <Icon name="pc" className="h-5 w-5" />
         </button>
         <PcName device={d} n={n} work={work} onSave={onSave} className="text-sm" />
@@ -194,7 +225,7 @@ function PcRow({ device: d, n, work, onSave, onDelete, onOpen }: { device: Devic
         />
         <span className="w-8 text-right font-mono font-semibold text-fg tabular-nums">{shown ?? "–"}/5</span>
       </label>
-      <PcSpecs device={d} />
+      <SpecLine device={d} />
       <PcNote device={d} work={work} onSave={onSave} />
     </li>
   );
@@ -205,8 +236,10 @@ function StationMap({
   station,
   devices,
   open,
+  picked,
   movable,
   onOpen,
+  onPick,
   onMove,
   onSave,
   onDelete,
@@ -214,8 +247,10 @@ function StationMap({
   station: string | null;
   devices: Device[];
   open: string | null;
+  picked: string | null;
   movable: boolean;
   onOpen: (id: string | null) => void;
+  onPick: (id: string | null) => void;
   onMove: (id: string, x: number, y: number) => void;
   onSave: (id: string, p: Patch) => void;
   onDelete: (id: string) => void;
@@ -364,12 +399,17 @@ function StationMap({
               key={d.id}
               n={i + 1}
               name={pcName(d, i + 1)}
+              label={d.name}
               color={conditionColor(d.condition)}
               at={screen(d.x, d.y)}
               open={open === d.id}
+              lit={picked === d.id}
               movable={movable}
               toMap={toMap}
-              onTap={() => onOpen(open === d.id ? null : d.id)}
+              onTap={() => {
+                onOpen(open === d.id ? null : d.id);
+                onPick(d.id);
+              }}
               onMove={(x, y) => onMove(d.id, x, y)}
               onDrop={(x, y) => onSave(d.id, { x, y })}
             />
@@ -416,8 +456,10 @@ function StationPano({
   panorama,
   devices,
   open,
+  picked,
   movable,
   onOpen,
+  onPick,
   onMove,
   onSave,
   onDelete,
@@ -425,8 +467,10 @@ function StationPano({
   panorama: StationPanorama;
   devices: Device[];
   open: string | null;
+  picked: { id: string; turn: number } | null;
   movable: boolean;
   onOpen: (id: string | null) => void;
+  onPick: (id: string | null) => void;
   onMove: (id: string, u: number, v: number) => void;
   onSave: (id: string, p: Patch) => void;
   onDelete: (id: string) => void;
@@ -449,15 +493,20 @@ function StationPano({
           <PcIcon
             n={i + 1}
             name={pcName(d, i + 1)}
+            label={d.name}
             color={color}
             at={{ left: s.x, top: s.y }}
             open={open === d.id}
+            lit={picked?.id === d.id}
             movable={movable}
             toMap={(x, y) => {
               const q = t.under(x, y);
               return [q.u, q.v];
             }}
-            onTap={() => onOpen(open === d.id ? null : d.id)}
+            onTap={() => {
+              onOpen(open === d.id ? null : d.id);
+              onPick(d.id);
+            }}
             onMove={(u, v) => onMove(d.id, u, v)}
             onDrop={(u, v) => onSave(d.id, { panoX: Math.round(u * 10000) / 10000, panoY: Math.round(v * 10000) / 10000 })}
           />
@@ -465,8 +514,11 @@ function StationPano({
       );
     });
   const opened = spots.find((s) => s.d.id === open);
+  // A PC picked from its card: the view turns to face it.
+  const target = picked && picked.turn > 0 ? spots.find((s) => s.d.id === picked.id) : undefined;
   return (
     <PanoramaStage
+      focus={target ? { ...target.at, key: picked!.turn } : null}
       src={panorama.imageUrl}
       pic={pic}
       // Facing the PCs that are placed, as close as shows them (Harel, 2026-11-20).
@@ -500,9 +552,11 @@ function StationPano({
 function PcIcon({
   n,
   name,
+  label,
   color,
   at,
   open,
+  lit = false,
   movable,
   toMap,
   onTap,
@@ -511,9 +565,13 @@ function PcIcon({
 }: {
   n: number;
   name: string;
+  // A PC's own name, shown under its icon instead of its number (Harel, 2026-11-20).
+  label?: string | null;
   color: string | null;
   at: { left: number; top: number };
   open: boolean;
+  // Picked from its card: lit like an open one.
+  lit?: boolean;
   movable: boolean;
   toMap: (x: number, y: number) => [number, number];
   onTap: () => void;
@@ -536,7 +594,7 @@ function PcIcon({
       aria-expanded={open}
       // A condition colours the icon (white rim and a dark shadow keep it clear on any floor or
       // theme); open, it wears the accent ring.
-      className={`press absolute z-[1] flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white text-white shadow-[0_2px_8px_rgba(0,0,0,0.45)] ${color ? "" : open ? "bg-accent" : "border-white/80 bg-[#0D111A]/85"} ${open ? "ring-4 ring-accent/50" : ""} ${movable ? "cursor-grab active:cursor-grabbing" : ""}`}
+      className={`press absolute z-[1] flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white text-white shadow-[0_2px_8px_rgba(0,0,0,0.45)] ${color ? "" : open ? "bg-accent" : "border-white/80 bg-[#0D111A]/85"} ${open || lit ? "ring-4 ring-accent/60" : ""} ${lit && !open ? "animate-pulse" : ""} ${movable ? "cursor-grab active:cursor-grabbing" : ""}`}
       style={{ left: at.left, top: at.top, ...(color ? { backgroundColor: color, color: textOn(color) } : {}) }}
       onPointerDown={(e) => {
         // The icon, not the map, takes this pointer.
@@ -562,7 +620,11 @@ function PcIcon({
       }}
     >
       <Icon name="pc" className="h-5 w-5" />
-      <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-white px-1 text-[0.625rem] font-bold text-[#0D111A] tabular-nums">{n}</span>
+      {label ? (
+        <span className="pointer-events-none absolute top-full left-1/2 mt-1 max-w-24 -translate-x-1/2 truncate rounded-full bg-[#0D111A]/85 px-1.5 py-px text-[0.625rem] leading-tight font-semibold whitespace-nowrap text-white shadow-[0_1px_4px_rgba(0,0,0,0.5)]">{label}</span>
+      ) : (
+        <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-white px-1 text-[0.625rem] font-bold text-[#0D111A] tabular-nums">{n}</span>
+      )}
     </button>
   );
 }
@@ -698,6 +760,23 @@ function PcSpecs({ device: d, className = "" }: { device: Device; className?: st
         </div>
       ))}
     </dl>
+  );
+}
+
+// A card's GPU / CPU / RAM on one small muted line (Harel, 2026-11-20), so cards stay compact.
+function SpecLine({ device: d }: { device: Device }) {
+  const filled = SPECS.filter((f) => d[f.key]);
+  if (!filled.length) return null;
+  return (
+    <p className="truncate px-1 text-xs text-muted" title={filled.map((f) => `${f.label}: ${d[f.key]}`).join(" · ")}>
+      {filled.map((f, i) => (
+        <span key={f.key}>
+          {i > 0 && <span aria-hidden className="px-1 text-subtle">·</span>}
+          <span className="sr-only">{f.label} </span>
+          {d[f.key]}
+        </span>
+      ))}
+    </p>
   );
 }
 
