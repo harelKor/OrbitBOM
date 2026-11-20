@@ -18,7 +18,7 @@ export async function loadCheckData(robotId: string, model: "final" | "basepart"
   if (!robot) return null;
   const [rows, ignores, latest] = await Promise.all([
     db
-      .select({ did: parts.sourceDid, eid: parts.sourceEid, pid: parts.onshapePartId, material: parts.material, geometry: parts.geometry, preProcess: parts.preProcess, process1: parts.process1, process2: parts.process2 })
+      .select({ did: parts.sourceDid, eid: parts.sourceEid, pid: parts.onshapePartId, material: parts.material, geometry: parts.geometry, process1: parts.process1, addedProcesses: parts.addedProcesses })
       .from(parts)
       .innerJoin(systems, eq(systems.id, parts.systemId))
       .where(eq(systems.robotId, robotId)),
@@ -34,8 +34,8 @@ export async function loadCheckData(robotId: string, model: "final" | "basepart"
   const facts: Record<string, PartFacts> = {};
   for (const r of rows) {
     if (!r.did || !r.eid || !r.pid) continue;
-    const printed = [r.preProcess, r.process1, r.process2].some((m) => !!m && getMachine(m)?.kind === "print");
-    const machines = [r.preProcess, r.process1, r.process2].filter((m): m is string => !!m);
+    const machines = [r.process1, ...r.addedProcesses.map((p) => p.machine)].filter((m): m is string => !!m);
+    const printed = machines.some((m) => getMachine(m)?.kind === "print");
     facts[partKey(r.did, r.eid, r.pid)] = { material: r.material, onshapeMaterial: r.geometry?.onshapeMaterial ?? null, printed, setG: null, machines };
   }
   const keys = Object.keys(facts);

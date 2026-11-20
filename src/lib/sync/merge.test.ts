@@ -14,7 +14,6 @@ const row = (partId: string, name: string, extra: Partial<BomRow> = {}): BomRow 
   material: "3mm 6061-T6",
   onshapeMaterial: "Aluminum - 6061",
   quantity: 1,
-  preProcess: null,
   process1: "cnc",
   process2: null,
   ...extra,
@@ -32,9 +31,8 @@ const part = (id: string, partId: string, name: string, extra: Partial<ExistingP
   description: null,
   material: "3mm 6061-T6",
   quantity: 1,
-  preProcess: null,
   process1: "cnc",
-  process2: null,
+  addedProcesses: [],
   ...extra,
 });
 
@@ -93,29 +91,27 @@ describe("moreToMake", () => {
     classification: "inhouse" as const,
     quantity: 2,
     designState: "In Stock",
-    preProcess: null,
     process1: "cnc",
-    process2: "bend",
-    donePreprocess: 0,
     doneProcess1: 0,
-    doneProcess2: 0,
+    addedProcesses: [{ machine: "bend", done: 0, qa: false }],
+    qaHeld: false,
+    cotsQa: false,
     note: null,
   };
 
   it("keeps what was made and reopens a finished part when CAD raises its quantity", () => {
     const extra = moreToMake(made, { quantity: 4 });
-    expect(extra).toMatchObject({ doneProcess1: 2, doneProcess2: 2 });
-    expect(extra?.donePreprocess).toBeUndefined();
+    expect(extra).toMatchObject({ doneProcess1: 2, addedDone: [2] });
     expect(extra?.note).toContain("2 more to make");
   });
 
   it("uses Secondary Production for a finished part without machines", () => {
-    const extra = moreToMake({ ...made, process1: null, process2: null }, { quantity: 3 });
+    const extra = moreToMake({ ...made, process1: null, addedProcesses: [] }, { quantity: 3 });
     expect(extra?.status).toBe("Secondary Production");
   });
 
   it("only adds a note when the counters already show what was made", () => {
-    const extra = moreToMake({ ...made, designState: null, doneProcess1: 2, doneProcess2: 2 }, { quantity: 4 });
+    const extra = moreToMake({ ...made, designState: null, doneProcess1: 2, addedProcesses: [{ machine: "bend", done: 2, qa: false }] }, { quantity: 4 });
     expect(extra).toEqual({ note: expect.stringContaining("2 → 4") });
   });
 

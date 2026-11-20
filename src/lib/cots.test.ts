@@ -46,7 +46,7 @@ describe("COTS", () => {
   });
 
   it("gives COTS parts their own statuses", () => {
-    const base = { quantity: 1, preProcess: null, process1: null, process2: null, donePreprocess: 0, doneProcess1: 0, doneProcess2: 0 };
+    const base = { quantity: 1, process1: null, doneProcess1: 0, addedProcesses: [], qaHeld: false, cotsQa: false };
     expect(computeStatus({ ...base, classification: "cots", designState: "In Route" })).toBe("In Route");
     expect(computeStatus({ ...base, classification: "cots", designState: "Gcoded" })).toBe("Not Started");
     expect(computeStatus({ ...base, classification: "inhouse", designState: "In Route" })).toBe("Not Started");

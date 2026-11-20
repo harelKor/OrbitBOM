@@ -1,5 +1,5 @@
 import type { FabArea } from "@/config/machines";
-import { FACTORY_STATUSES, PRINT_STATUSES, isFactoryStatus, isPrintStatus } from "@/config/statuses";
+import { FACTORY_STATUSES, PRINT_STATUSES, isFactoryStatus, isPrintStatus, processStatusOf } from "@/config/statuses";
 
 // The effective mode is what a member can do. Admins pick Edit (everything), CAD or Build (the
 // app exactly as that team sees it); everyone else is locked to their team, or "none" (read only)
@@ -43,22 +43,25 @@ export function effectiveMode(member: { isAdmin: boolean; team: "cad" | "build" 
 // field needs Edit mode.
 const WORK_PART_FIELDS = new Set([
   "status",
-  "preProcess",
   "process1",
   "process2",
+  "addedProcesses",
+  "appendProcess",
+  "addAt",
+  "addedDone",
+  "qaHeld",
   "material",
   "inventoryItemId",
   "quantity",
   "note",
-  "donePreprocess",
   "doneProcess1",
-  "doneProcess2",
   "postDone",
   "add",
   "fabricators",
   "estMinutes",
   "actualMinutes",
   "stockCount",
+  "fromStock",
   "cotsSentBack",
   "cotsDeliveryDate",
   "cotsLinks",
@@ -68,6 +71,8 @@ const WORK_PART_FIELDS = new Set([
 
 export function partChangesCapability(changes: object): Capability {
   const keys = Object.keys(changes);
+  // Approving a part's QA (or taking it back) is CAD's review (Harel, 2026-11-20).
+  if (keys.length === 1 && keys[0] === "qa") return "review";
   if (keys.every((k) => WORK_PART_FIELDS.has(k))) return "work";
   if (keys.every((k) => k === "drawingUrl" || WORK_PART_FIELDS.has(k))) return "draw";
   const c = (changes as { classification?: unknown }).classification;
@@ -82,21 +87,18 @@ export const RESET_SPECS = {
   classification: "undefined",
   status: "Not Started",
   material: null,
-  preProcess: null,
   process1: null,
-  process2: null,
+  addedProcesses: [] as { machine: string; qa: boolean }[],
   inventoryItemId: null,
   cotsCategory: null,
-  donePreprocess: 0,
   doneProcess1: 0,
-  doneProcess2: 0,
 } as const;
 
 // True when `changes` is exactly RESET_SPECS (every field, same values, nothing else).
 export function isSpecReset(changes: object): boolean {
   const keys = Object.keys(changes);
   const reset = RESET_SPECS as Record<string, unknown>;
-  return keys.length === Object.keys(reset).length && keys.every((k) => k in reset && (changes as Record<string, unknown>)[k] === reset[k]);
+  return keys.length === Object.keys(reset).length && keys.every((k) => k in reset && JSON.stringify((changes as Record<string, unknown>)[k]) === JSON.stringify(reset[k]));
 }
 
 // ---------- Status rules by team (Harel, 2026-10-30) ----------
@@ -106,8 +108,9 @@ export function isSpecReset(changes: object): boolean {
 // Ready for QA. On a COTS part the CAD Team's two statuses put it back in the Order List.
 export const RELEASE_STATUS = "Released";
 export const NOTE_STATUSES: readonly string[] = ["Reproduction", "Secondary Production"];
-// "In Process" is the part's current process: In Process 1, or Ready for Process 2 after it.
-export const BUILD_STATUSES: readonly string[] = ["Released", "In Process 1", "Ready for Process 2", "Post Processing", "Ready for QA"];
+// "In Process" is the part's current process: In Process 1, or Released P2+ / In Process 2+ after
+// it (the menu offers each added process's own number).
+export const BUILD_STATUSES: readonly string[] = ["Released", "In Process 1", "Released P2+", "In Process 2+", "Post Processing", "Ready for QA"];
 const COTS_REORDER = "In Order List";
 // The Ready for QA check-off (QaSection, review capability) moves parts to In Stock and back.
 const QA_STATUSES: readonly string[] = ["Ready for QA", "In Stock"];
@@ -132,7 +135,9 @@ export function pickableStatuses(mode: Mode, area: FabArea | null = null): reado
 
 // Why the mode can't give these parts this status, or null when it can. `note` is the note sent
 // with the change: Reproduction and Secondary Production need one.
-export function statusDenied(mode: Mode, status: string | undefined, opts: { cots: boolean; factory?: boolean; print?: boolean; note?: string | null; reset?: boolean }): string | null {
+export function statusDenied(mode: Mode, picked: string | undefined, opts: { cots: boolean; factory?: boolean; print?: boolean; note?: string | null; reset?: boolean }): string | null {
+  // "Released P3" / "In Process 3" follow the rules of their group (Released P2+ / In Process 2+).
+  const status = picked && (processStatusOf(picked)?.group ?? picked);
   if (status && opts.print && !opts.cots) {
     if (!isPrintStatus(status)) return "3D printed parts take Not Started, Released, Sliced, Printing, Ready for QA, In Stock or Reproduction.";
     if (mode === "edit") return null;

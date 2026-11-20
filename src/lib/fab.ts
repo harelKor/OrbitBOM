@@ -2,11 +2,13 @@
 // being made.
 // "In Process" covers every status between Released and the done statuses (plan conflict 5).
 
-import { areaOf, areaOfMachine, factoryOf, printerOf, type FabArea } from "@/config/machines";
+import { COTS_PROCESS, areaOfMachine, type FabArea } from "@/config/machines";
 import type { StatusName } from "@/config/statuses";
-import { computeStatus, isDone, type StatusInput } from "@/lib/status";
+import type { PartChanges } from "@/lib/parts/changes";
+import { areaOf, computeStatus, factoryOf, isCotsProcess, isDone, isMidQa, printerOf, processesOf, stageOf, type StatusInput } from "@/lib/status";
 
-export const IN_PROCESS_STATUSES: StatusName[] = ["Gcoded", "In Process 1", "Ready for Process 2", "Post Processing"];
+// Released P2+ stays with In process, as Ready for Process 2 did: its batch is still being worked.
+export const IN_PROCESS_STATUSES: StatusName[] = ["Gcoded", "In Process 1", "Released P2+", "In Process 2+", "Post Processing"];
 export const READY_STATUS: StatusName = "Released";
 export const READY_STATUSES: StatusName[] = [READY_STATUS, "Reproduction"];
 // The status a part dropped into the In process section gets.
@@ -22,15 +24,19 @@ export function fabStage(part: StatusInput): FabStage {
   // Parts made at a Factory Fab factory or on a team printer are on Factory Fab or 3D Printing, not
   // Shop Fab (Harel, 2026-11-04).
   if (areaOf(part)) return null;
+  // Bought as its Process 1: on the COTS page until it arrives.
+  if (isCotsProcess(part) && stageOf(part).index === 0) return null;
+  // Waiting for QA before its next process: still in process, not finished (Harel, 2026-11-20).
+  if (isMidQa(part)) return "inProcess";
   const status = computeStatus(part) as StatusName;
   if (IN_PROCESS_STATUSES.includes(status)) return "inProcess";
   if (READY_STATUSES.includes(status)) return "ready";
   return null;
 }
 
-// The machines a part goes through, in order.
-export const machinesOf = (part: Pick<StatusInput, "preProcess" | "process1" | "process2">) =>
-  [part.preProcess, part.process1, part.process2].filter((m): m is string => !!m);
+// The machines a part goes through, in order (a bought Process 1 isn't one).
+export const machinesOf = (part: Pick<StatusInput, "process1" | "addedProcesses">) =>
+  [part.process1, ...(part.addedProcesses ?? []).map((p) => p.machine)].filter((m): m is string => !!m && m !== COTS_PROCESS);
 
 // A made part: an in-house part with a machine in a done status (Ready for QA, In Stock, …). To Fab
 // shows it in Finished; parts.fab_finished_at records since when.
@@ -64,12 +70,11 @@ export function fabBatchName(machineName: string, date = new Date()) {
   return `${machineName} ${day}`;
 }
 
-const DONE_KEYS = [
-  { key: "preProcess", done: "donePreprocess" },
-  { key: "process1", done: "doneProcess1" },
-  { key: "process2", done: "doneProcess2" },
-] as const;
-type DoneKey = (typeof DONE_KEYS)[number]["done"];
+// A process slot To Fab counts at: its number (1 = Process 1), machine and done count.
+export type FabSlot = { n: number; machine: string; done: number };
+
+// One more (or less) made at process n, from the saved count.
+export const countAt = (n: number, d: number): PartChanges => (n === 1 ? { add: { doneProcess1: d } } : { addAt: { process: n, delta: d } });
 
 // To Fab's − / + on a made part (pure, for PartCard and FabListRow). + counts one more at the
 // machine being worked on (the first whose counter hasn't reached the quantity); − takes back the
@@ -78,21 +83,31 @@ type DoneKey = (typeof DONE_KEYS)[number]["done"];
 // (applyStatus): it counts as fully made, so + does nothing and − leaves one fewer at the last
 // machine, instead of + starting it over at In Process 1 (audit 2026-11-14).
 export function fabCounts(part: StatusInput) {
-  const slots = DONE_KEYS.filter((s) => part[s.key]);
+  const slots: FabSlot[] = processesOf(part)
+    .map((p, i) => ({ n: i + 1, machine: p.machine, done: p.done }))
+    .filter((p): p is FabSlot => !!p.machine && p.machine !== COTS_PROCESS);
   const finished = isFabFinished(part);
   const full = Math.max(part.quantity, 1);
-  const progress = part.donePreprocess + part.doneProcess1 + part.doneProcess2;
+  const progress = processesOf(part).reduce((n, p) => n + p.done, 0);
   const allMade = finished && progress === 0;
-  const done = (s: (typeof DONE_KEYS)[number]) => (allMade ? full : part[s.done]);
+  // A status picked at a later process (Released P3): the processes before it are made.
+  const at = progress === 0 && !finished ? stageOf(part).index + 1 : 1;
+  const done = (s: FabSlot) => (allMade || s.n < at ? full : s.done);
   const current = slots.find((s) => done(s) < full);
   const counted = slots.slice(0, current ? slots.indexOf(current) + 1 : slots.length).reverse().find((s) => done(s) > 0);
   const made = current ? done(current) : part.quantity;
-  let takeBack: { add: Partial<Record<DoneKey, number>> } | { counters: Partial<Record<DoneKey, number>> } | { status: StatusName };
+  let takeBack: PartChanges;
   const left = slots.reduce((n, s) => n + done(s), 0) - 1;
   if (!counted || left <= 0) takeBack = { status: finished ? IN_PROCESS_STATUS : READY_STATUS };
-  else if (allMade) takeBack = { counters: Object.fromEntries(slots.map((s) => [s.done, s === counted ? full - 1 : full])) };
-  else takeBack = { add: { [counted.done]: -1 } };
-  const addOne = current ? { add: { [current.done]: 1 } } : null;
+  else if (allMade) {
+    const value = (s: FabSlot | undefined) => (s === counted ? full - 1 : full);
+    const first = slots.find((s) => s.n === 1);
+    takeBack = {
+      ...(first && { doneProcess1: value(first) }),
+      ...(part.addedProcesses.length && { addedDone: part.addedProcesses.map((_, i) => value(slots.find((s) => s.n === i + 2))) }),
+    };
+  } else takeBack = countAt(counted.n, -1);
+  const addOne = current ? countAt(current.n, 1) : null;
   return { slots, current, counted, finished, made, takeBack, addOne };
 }
 
@@ -101,7 +116,7 @@ export function fabCounts(part: StatusInput) {
 // Fab or 3D Printing pack goes whole, whatever its parts are made of.
 export function fabBatchRefusal(
   machine: { id: string; name: string },
-  parts: (Pick<StatusInput, "preProcess" | "process1" | "process2"> & { material: string | null })[],
+  parts: (Pick<StatusInput, "process1" | "addedProcesses"> & { material: string | null })[],
 ): string | null {
   if (parts.some((p) => !machinesOf(p).includes(machine.id))) return `Every part in the fab must go through ${machine.name}.`;
   if (!areaOfMachine(machine.id) && new Set(parts.map((p) => p.material ?? "")).size > 1) return "A fab can only hold parts of one material.";

@@ -4,8 +4,8 @@ import { costHint, exportCost } from "@/config/callCosts";
 import { toast } from "@/components/ui/Toaster";
 import { askConfirm } from "@/components/ui/useConfirm";
 import { useState, useTransition } from "react";
-import { getMachine } from "@/config/machines";
-import { fabCounts, fabStage } from "@/lib/fab";
+import { getMachine, machineName } from "@/config/machines";
+import { countAt, fabCounts, fabStage } from "@/lib/fab";
 import { deleteManualPart, unmergeParts } from "@/app/(app)/parts-actions";
 import { useCan, usePermissions } from "@/components/shell/ModeContext";
 import { computeStatus, partStatusLabel } from "@/lib/status";
@@ -16,7 +16,8 @@ import { StatusPill } from "@/components/ui/StatusPill";
 import { VersionTag } from "@/components/versions/VersionTag";
 import { useBom } from "./BomContext";
 import { PART_FILE_TYPES } from "@/config/fileTypes";
-import { MachineField, MaterialField, NameField, QuantityField, SLOTS, StatusField, TypeBadge, TypeField, type SaveFn } from "./fields";
+import { AddProcessField, MachineField, MaterialField, NameField, QuantityField, StatusField, TypeBadge, TypeField, currentSlotN, slotsOf, type SaveFn, type Slot } from "./fields";
+import { useMoveToQa } from "./MoveToQa";
 import { Popover } from "./Popover";
 import { ownerPartId, partIds, partTitle, type CardPart } from "./types";
 import { downloadDrawing } from "@/lib/drawing/download";
@@ -53,7 +54,8 @@ export const isCardBodyClick = (e: React.MouseEvent) => {
 // inventory). On To Fab the rows are read-only (status, amount, material, machine) and the
 // drawing icon sits on the thumbnail's top-left. COTS parts get their own card (CotsCard): bought, not made.
 export function PartCard(props: React.ComponentProps<typeof MadePartCard>) {
-  return props.part.classification === "cots" ? <CotsCard {...props} /> : <MadePartCard {...props} />;
+  // In the Ready for QA box a bought part gets the made card's big check (Harel, 2026-11-20).
+  return props.part.classification === "cots" && !props.onCheck ? <CotsCard {...props} /> : <MadePartCard {...props} />;
 }
 
 function MadePartCard({
@@ -96,8 +98,10 @@ function MadePartCard({
   // Edit: name, type and the manual part menu. Work (any team): status, amount, material, counters.
   const { canManage: edit, canWork: work, canClassify } = usePermissions();
   const { versions } = useBom();
-  const { machines, current, counted, finished, made, takeBack, addOne } = fabSteps(part, save);
+  const { count, prompt: qaPrompt } = useMoveToQa(part, save);
+  const { machines, current, counted, finished, made, takeBack, addOne } = fabSteps(part, save, count);
   const showCounter = !!current && part.classification !== "cots" && fabStage(part) !== null;
+  const at = currentSlotN(part);
   const fabControls = fabCounter && work && part.classification !== "cots" && machines.length > 0;
   const format = cadFormat(part);
   const showDetails = usePartDetails(part, save);
@@ -191,6 +195,7 @@ function MadePartCard({
           )}
         </div>
         {part.note && <NoteCloud note={part.note} raised={fabControls || !!post} />}
+        {work && !post && !onCheck && qaPrompt}
         {post && work && (
           <div className="absolute inset-x-2 bottom-2 flex items-center justify-between gap-2">
             <button type="button" onClick={() => post.onChange(post.done - 1)} disabled={post.done === 0} className="overlay-btn text-lg font-bold disabled:opacity-30" aria-label="One less post-processed">
@@ -274,7 +279,7 @@ function MadePartCard({
               {showSystem && <span className="ml-1.5 text-[0.6875rem] font-normal text-subtle">{part.systemName}</span>}
               {nameNote && <span className="ml-1.5 text-[0.6875rem] font-normal text-muted">{nameNote}</span>}
             </div>
-            {showCounter && <DoneCounter part={part} save={save} slot={current!} />}
+            {showCounter && <DoneCounter part={part} save={save} slot={current!} count={count} />}
             {edit && <EditMenu part={part} />}
           </div>
 
@@ -282,11 +287,13 @@ function MadePartCard({
             <StatusField part={part} save={save} size="sm" />
             {!post && !qa && (part.material || part.inventoryItemId || work) && <MaterialField part={part} save={save} className={pill} noOpen />}
             {!post && machines.map((slot, i) => (
-              <span key={slot.key} className="contents">
+              <span key={slot.n} className="contents">
                 {(!qa || i > 0) && <span className="text-[0.625rem] text-faint">→</span>}
-                <MachineField part={part} save={save} slot={slot} className={`${pill} ${slot === current ? "border-accent/60 text-accent" : ""}`} />
+                {/* The process the part is at now is highlighted (Harel, 2026-11-20). */}
+                <MachineField part={part} save={save} slot={slot} className={`${pill} ${slot.n === at ? "border-accent/60 bg-accent/10 font-semibold text-accent" : ""}`} />
               </span>
             ))}
+            {!post && !qa && work && machines.length > 0 && <AddProcessField part={part} save={save} label="+" className={`${pill} border-dashed`} />}
           </div>}
         </div>
       )}
@@ -298,22 +305,25 @@ function MadePartCard({
 // whose done counter hasn't reached the quantity) and − takes back the last one counted. When −
 // would leave nothing counted, the part goes back to In process if it was finished, else to Released.
 // The rules live in fabCounts (src/lib/fab.ts); a finished part with nothing counted is fully made.
-export function fabSteps(part: CardPart, save: SaveFn) {
+// `count` saves the "+" (useMoveToQa asks "Move to QA?" when it finishes the last step before QA).
+export function fabSteps(part: CardPart, save: SaveFn, count: SaveFn = save) {
   const c = fabCounts(part);
-  const slot = (k: { key: string } | undefined) => SLOTS.find((s) => s.key === k?.key);
-  const machines = SLOTS.filter((s) => part[s.key]);
-  const takeBack = () => save("counters" in c.takeBack ? c.takeBack.counters : c.takeBack);
-  const addOne = () => c.addOne && save(c.addOne);
+  const all = slotsOf(part);
+  const slot = (k: { n: number } | undefined) => all.find((s) => s.n === k?.n);
+  // A bought Process 1 isn't a machine.
+  const machines = all.filter((s) => s.machine);
+  const takeBack = () => save(c.takeBack);
+  const addOne = () => c.addOne && count(c.addOne);
   return { machines, current: slot(c.current), counted: slot(c.counted), finished: c.finished, made: c.made, takeBack, addOne };
 }
 
 // To Fab's rows: the status (its own menu inside a batch, else read-only) and how many are made of
 // the amount, then the material and the machine it's at.
-function FabFooter({ part, save, current, made, editStatus }: { part: CardPart; save: SaveFn; current: (typeof SLOTS)[number] | undefined; made: number; editStatus: boolean }) {
+function FabFooter({ part, save, current, made, editStatus }: { part: CardPart; save: SaveFn; current: Slot | undefined; made: number; editStatus: boolean }) {
   const { inventory } = useBom();
   const linked = part.inventoryItemId ? inventory.find((i) => i.id === part.inventoryItemId) : undefined;
   const material = linked?.name ?? part.material;
-  const machine = current ? (getMachine(part[current.key]!)?.name ?? part[current.key]) : null;
+  const machine = current?.machine ? machineName(current.machine) : null;
   return (
     <div className="flex min-w-0 flex-col gap-1.5 px-2.5 py-2">
       {/* The part's name always shows: a pale plate on the pale well can look like an empty card. */}
@@ -344,8 +354,8 @@ function FabFooter({ part, save, current, made, editStatus }: { part: CardPart; 
 // for a cutting machine), else STEP.
 export function cadFormat(part: CardPart): ExportFormat | null {
   if (part.isManual) return null;
-  for (const slot of SLOTS) {
-    const machine = part[slot.key] ? getMachine(part[slot.key]!) : undefined;
+  for (const slot of slotsOf(part)) {
+    const machine = slot.machine ? getMachine(slot.machine) : undefined;
     if (machine?.sheetFormat && part.geometry?.sheetMetal) return machine.sheetFormat;
     const f = machine?.cadFormat;
     if (f && (EXPORTABLE as readonly string[]).includes(f)) return f as ExportFormat;
@@ -416,18 +426,19 @@ export function DownloadMenu({ part, format }: { part: CardPart; format: ExportF
 }
 
 // How many are done at the current machine, with − / + for any team (it moves the status).
-export function DoneCounter({ part, save, slot }: { part: CardPart; save: SaveFn; slot: (typeof SLOTS)[number] }) {
+export function DoneCounter({ part, save, slot, count = save }: { part: CardPart; save: SaveFn; slot: Slot; count?: SaveFn }) {
   const work = useCan("work");
-  const done = part[slot.done];
+  const done = slot.done;
   // One more (or one less) from the saved count, so two phones counting the same part both count.
-  const step = (d: number) => save({ add: { [slot.done]: d } });
+  // A "+" that finishes the last step before QA asks first (useMoveToQa).
+  const step = (d: number) => (d > 0 ? count : save)(countAt(slot.n, d));
   return (
     // The shop's most-tapped control: 24px with a mouse, 36px under a finger (it was ~20×16).
     <span className="ml-auto inline-flex shrink-0 items-center rounded-full border border-line-strong bg-ink text-xs tabular-nums pointer-coarse:text-sm">
       {work && <button type="button" onClick={() => step(-1)} disabled={done === 0} className={COUNT_BTN} aria-label="One less done">
         −
       </button>}
-      <span className={`font-semibold text-fg ${work ? "px-0.5" : "px-2 py-0.5"}`} title={`Done at ${getMachine(part[slot.key]!)?.name}`}>
+      <span className={`font-semibold text-fg ${work ? "px-0.5" : "px-2 py-0.5"}`} title={`Done at ${slot.machine ? machineName(slot.machine) : "this process"}`}>
         {done}/{part.quantity}
       </span>
       {work && <button type="button" onClick={() => step(1)} className={COUNT_BTN} aria-label="One more done">

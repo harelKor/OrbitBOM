@@ -82,7 +82,7 @@ export async function applyBomRows(
     // material's filament item; the item's name stays its material on later syncs.
     const autoOf = (r: BomRow) => {
       const a = importSetup(r.material, r.onshapeMaterial);
-      return a && !r.preProcess && r.process1 === a.process1 && !r.process2 ? a : undefined;
+      return a && r.process1 === a.process1 && !r.process2 ? a : undefined;
     };
     const filament = plan.insert.some(autoOf) ? await filamentItems(tx) : [];
     const inserted = await tx
@@ -105,11 +105,11 @@ export async function applyBomRows(
           inventoryItemId: item?.id ?? null,
           overriddenFields: item ? ["material"] : [],
           quantity: r.quantity,
-          preProcess: r.preProcess,
           process1: r.process1,
-          process2: r.process2,
+          // Onshape's Process 2 is the first added process (Harel, 2026-11-20).
+          addedProcesses: r.process2 ? [{ machine: r.process2, done: 0, qa: false, qaDone: false }] : [],
           // A part with a process is made in-house; without one nobody has said yet (Undefined).
-          classification: r.preProcess || r.process1 || r.process2 ? ("inhouse" as const) : ("undefined" as const),
+          classification: r.process1 || r.process2 ? ("inhouse" as const) : ("undefined" as const),
           geometry: r.onshapeMaterial ? { onshapeMaterial: r.onshapeMaterial } : null,
           shapeSig: sigs[sigKey(r)] ?? null,
           lastModifiedBy: memberId,
@@ -130,7 +130,7 @@ export async function applyBomRows(
     const reopen = moreToMake(part, u.changes);
     const { set, history: changed } = planPartUpdate(part, reopen ? { ...u.changes, ...reopen } : u.changes, "sync");
     // A part nobody had typed that now has a process from Onshape (a PLA part on the Bambu) is made in-house.
-    if (part.classification === "undefined" && (set.preProcess || set.process1 || set.process2)) {
+    if (part.classification === "undefined" && (set.process1 || set.addedProcesses?.length)) {
       set.classification = "inhouse";
       changed.push({ field: "classification", oldValue: "undefined", newValue: "inhouse" });
     }

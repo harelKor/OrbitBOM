@@ -62,24 +62,21 @@ export const FACTORY_FAB_MACHINES = MACHINES.filter((m): m is Extract<(typeof MA
 export const packsByMaterial = (id: string | null | undefined) => !!id && !!getMachine(id)?.packsByMaterial;
 export const isFactoryFabMachine = (id: string | null | undefined) => !!id && !!getMachine(id)?.factoryFab;
 
-// The Factory Fab factory a part goes to (its first such process), or null.
-export const factoryOf = (part: { preProcess: string | null; process1: string | null; process2: string | null }) =>
-  [part.preProcess, part.process1, part.process2].find(isFactoryFabMachine) ?? null;
-
 // The team's own 3D printers (Bambu, Markforged, H2D), each with a 3D Printing page; ARAN and
 // PCBway print too but are factories (Harel, 2026-11-04).
 export const PRINTERS = MACHINES.filter((m) => m.kind === "print" && !("factoryFab" in m && m.factoryFab));
 export const isPrinter = (id: string | null | undefined) => !!id && getMachine(id)?.kind === "print" && !getMachine(id)?.factoryFab;
 
-// The printer a part is made on (its first), unless a factory makes it.
-export const printerOf = (part: { preProcess: string | null; process1: string | null; process2: string | null }) =>
-  factoryOf(part) ? null : ([part.preProcess, part.process1, part.process2].find(isPrinter) ?? null);
-
-// The pages a part's work is on besides Shop Fab: a factory's (Factory Fab) or a printer's (3D Printing).
+// The pages a part's work is on besides Shop Fab: a factory's (Factory Fab) or a printer's (3D
+// Printing). Which one follows the process the part is at now (areaOf in src/lib/status.ts).
 export type FabArea = "factory" | "print";
-export const areaOf = (part: { preProcess: string | null; process1: string | null; process2: string | null }): FabArea | null =>
-  factoryOf(part) ? "factory" : printerOf(part) ? "print" : null;
 export const areaOfMachine = (id: string | null | undefined): FabArea | null => (isFactoryFabMachine(id) ? "factory" : isPrinter(id) ? "print" : null);
+
+// Process 1 may be "COTS": the part is bought (COTS page, Order List), then QA, then its added
+// processes in the shop (Harel, 2026-11-20). Not a machine: no To Fab, no files.
+export const COTS_PROCESS = "cots";
+export const isMachineOrCots = (id: string) => id === COTS_PROCESS || byId.has(id);
+export const machineName = (id: string) => (id === COTS_PROCESS ? "COTS" : (getMachine(id)?.name ?? id));
 
 // Onshape custom properties hold the machine's display name; match it case-insensitively.
 export function findMachineByName(name: string): MachineDef | undefined {

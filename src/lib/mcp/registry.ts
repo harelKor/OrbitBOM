@@ -1,13 +1,13 @@
 import "server-only";
 import { z } from "zod";
 import { can, effectiveMode, type Capability } from "@/components/shell/mode";
-import { findMachineByName, getMachine } from "@/config/machines";
+import { COTS_PROCESS, findMachineByName, getMachine } from "@/config/machines";
 import { schema } from "@/db";
 import type { Member } from "@/lib/auth";
 import { partChangesSchema, type PartChanges } from "@/lib/parts/changes";
 import { logAiAction } from "@/lib/review/review";
 import { DENIED } from "@/lib/mode";
-import { computeStatus } from "@/lib/status";
+import { isDone, partStatusLabel } from "@/lib/status";
 import { checkConfirmToken, confirmToken } from "./confirm";
 
 // The MCP tools (plan §6). They run as the member who owns the token, with the same rules and
@@ -108,7 +108,7 @@ export const nameOf = (p: { displayName: string | null; onshapeName: string | nu
   const name = p.displayName ?? p.onshapeName ?? "Unnamed part";
   return p.partNumber ? `${p.partNumber} ${name}` : name;
 };
-export const machineName = (id: string | null) => (id ? (getMachine(id)?.name ?? id) : null);
+export const machineName = (id: string | null) => (id ? (id === COTS_PROCESS ? "COTS" : (getMachine(id)?.name ?? id)) : null);
 
 // Machines may be given by name ("CNC") or id ("cnc").
 export function machineId(value: string | null | undefined) {
@@ -120,7 +120,14 @@ export function machineId(value: string | null | undefined) {
 
 export function normaliseChanges(input: Record<string, unknown>): PartChanges {
   const c = { ...input };
-  for (const f of ["preProcess", "process1", "process2"]) if (f in c) c[f] = machineId(c[f] as string | null);
+  // Process 1 may be COTS: bought, then QA, then the added processes (Harel, 2026-11-20).
+  if ("process1" in c) c.process1 = typeof c.process1 === "string" && c.process1.trim().toLowerCase() === COTS_PROCESS ? COTS_PROCESS : machineId(c.process1 as string | null);
+  if ("process2" in c) c.process2 = machineId(c.process2 as string | null);
+  if (Array.isArray(c.addedProcesses)) c.addedProcesses = (c.addedProcesses as { machine: string; qa?: boolean }[]).map((p) => ({ machine: machineId(p.machine), qa: !!p.qa }));
+  if (c.appendProcess && typeof c.appendProcess === "object") {
+    const a = c.appendProcess as { machine: string; qa?: boolean };
+    c.appendProcess = { machine: machineId(a.machine), qa: !!a.qa };
+  }
   const parsed = partChangesSchema.safeParse(c);
   if (!parsed.success) throw new ToolError(parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
   return parsed.data;
@@ -143,10 +150,12 @@ export function summarise(p: typeof parts.$inferSelect & { systemName?: string }
     wall_mm: p.geometry?.wallMm ?? null,
     // The stock shape read from the 3D model (hex, box-tube, round-tube, rod, spacer, plate, block).
     shape: p.geometry?.shape ?? null,
-    pre_process: machineName(p.preProcess),
     process_1: machineName(p.process1),
-    process_2: machineName(p.process2),
-    status: computeStatus(p),
+    // The processes after Process 1, in order (Harel, 2026-11-20): QA needed before it starts.
+    added_processes: p.addedProcesses.map((a, i) => ({ process: i + 2, machine: machineName(a.machine), done: a.done, qa_needed: a.qa })),
+    status: partStatusLabel(p),
+    // A Ready for QA before an added process isn't done; only the last one is.
+    done: isDone(p),
     priority: p.priority,
     deadline: p.deadline,
     inventory_item_id: p.inventoryItemId,
@@ -157,7 +166,10 @@ export function summarise(p: typeof parts.$inferSelect & { systemName?: string }
 export const readable = (c: { field: string; oldValue: unknown; newValue: unknown }) =>
   ["preProcess", "process1", "process2"].includes(c.field)
     ? { field: c.field, from: machineName(c.oldValue as string | null), to: machineName(c.newValue as string | null) }
-    : { field: c.field, from: c.oldValue, to: c.newValue };
+    : c.field === "addedProcesses"
+      ? { field: c.field, from: machineNames(c.oldValue), to: machineNames(c.newValue) }
+      : { field: c.field, from: c.oldValue, to: c.newValue };
+const machineNames = (v: unknown) => (Array.isArray(v) ? v.map((p: { machine?: string; qa?: boolean }) => `${machineName(p.machine ?? null)}${p.qa ? " (QA first)" : ""}`) : v);
 
 // ---------- MCP plumbing ----------
 

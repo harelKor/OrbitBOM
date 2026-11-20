@@ -6,7 +6,6 @@
 
 export const ONSHAPE_PROPERTIES = {
   material: { id: "", name: "Material" },
-  preProcess: { id: "", name: "Pre Process" },
   process1: { id: "", name: "Process 1" },
   process2: { id: "", name: "Process 2" },
 } as const;

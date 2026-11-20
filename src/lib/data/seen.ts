@@ -59,12 +59,11 @@ function loadArrivals(since: Date) {
       classification: parts.classification,
       quantity: parts.quantity,
       designState: parts.designState,
-      preProcess: parts.preProcess,
       process1: parts.process1,
-      process2: parts.process2,
-      donePreprocess: parts.donePreprocess,
       doneProcess1: parts.doneProcess1,
-      doneProcess2: parts.doneProcess2,
+      addedProcesses: parts.addedProcesses,
+      qaHeld: parts.qaHeld,
+      cotsQa: parts.cotsQa,
     })
     .from(parts)
     .leftJoin(systems, eq(systems.id, parts.systemId))

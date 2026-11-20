@@ -28,9 +28,8 @@ export type SetupInput = {
   classification: "inhouse" | "cots" | "external" | "undefined";
   material: string | null;
   inventoryItemId?: string | null;
-  preProcess: string | null;
   process1: string | null;
-  process2: string | null;
+  addedProcesses: { machine: string }[];
   geometry: PartGeometry | null;
   onshapeName?: string | null;
   displayName?: string | null;
@@ -44,9 +43,8 @@ export type SetupChanges = {
   classification?: "inhouse";
   material?: string;
   inventoryItemId?: string | null; // null: a print leaves its filament item for the plain material
-  preProcess?: string | null;
   process1?: string | null;
-  process2?: string | null;
+  process2?: string | null; // the first added process (PartChanges.process2)
 };
 
 // No learned habits (Harel, 2026-11-06): processes come from the shape and the team defaults in
@@ -470,7 +468,7 @@ function withBending(set: ProcessSet): ProcessSet {
 }
 
 const names = (s: ProcessSet) =>
-  [s.preProcess, s.process1, s.process2]
+  [s.process1, s.process2]
     .filter(Boolean)
     .map((id) => getMachine(id!)?.name ?? id)
     .join(" → ");
@@ -515,17 +513,17 @@ export function suggestSetup(part: SetupInput, stock: StockItem[]): { changes: S
   // A free-text material (Onshape's) still picks the team default.
   material ??= part.material;
 
-  if (!part.preProcess && !part.process1 && !part.process2) {
+  if (!part.process1 && !part.addedProcesses?.length) {
     const p = plan?.fixed && plan.set ? { set: plan.set, why: "from its shape" } : processesFor(material ?? undefined, item, plan);
     let set = p?.set;
     // Metal is never printed; prints get nothing but the printer.
-    if (set && plan && plan.kind !== "print" && [set.preProcess, set.process1, set.process2].some(isPrint)) set = undefined;
+    if (set && plan && plan.kind !== "print" && [set.process1, set.process2].some(isPrint)) set = undefined;
     if (set && plan?.kind === "print") set = { process1: set.process1 };
     if (set && p) {
       const bent = plan?.kind === "bent";
       const final = bent ? withBending(set) : set;
-      const proc = { preProcess: final.preProcess ?? null, process1: final.process1 ?? null, process2: final.process2 ?? null };
-      if (proc.preProcess || proc.process1 || proc.process2) {
+      const proc = { process1: final.process1 ?? null, process2: final.process2 ?? null };
+      if (proc.process1 || proc.process2) {
         Object.assign(changes, proc);
         if (plan?.kind === "print" && !changes.material && !settled && !why.length) why.push(plan.why);
         why.push(`${names(final)}, ${p.why}${final !== set ? ", then bent" : ""}`);

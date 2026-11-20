@@ -4,9 +4,8 @@ import { sizeOf, suggestSetup as suggest, wallThickness, type SetupInput, type S
 const part = (over: Partial<SetupInput> = {}): SetupInput => ({
   classification: "cots",
   material: null,
-  preProcess: null,
   process1: null,
-  process2: null,
+  addedProcesses: [],
   geometry: null,
   ...over,
 });
@@ -29,7 +28,7 @@ const suggestSetup = (p: SetupInput) => suggest(p, STOCK);
 describe("suggestSetup", () => {
   it("maps a flat aluminum part to the plate of its thickness and the default process", () => {
     const s = suggestSetup(part({ geometry: { onshapeMaterial: "Aluminum - 6061", bbox: [3.02, 120, 200] } }));
-    expect(s?.changes).toEqual({ material: "Aluminum plate 6061 3mm", inventoryItemId: "Aluminum plate 6061 3mm", preProcess: null, process1: "cnc", process2: null, classification: "inhouse" });
+    expect(s?.changes).toEqual({ material: "Aluminum plate 6061 3mm", inventoryItemId: "Aluminum plate 6061 3mm", process1: "cnc", process2: null, classification: "inhouse" });
     expect(s?.reason).toContain("3 mm thick");
   });
 
@@ -63,7 +62,6 @@ describe("suggestSetup", () => {
   it("only adds processes to a part that has a material, and keeps processes someone set", () => {
     expect(suggestSetup(part({ classification: "inhouse", material: "Polycarbonate 2mm" }))?.changes).toEqual({
       inventoryItemId: "Polycarbonate 2mm",
-      preProcess: null,
       process1: "laser",
       process2: null,
     });

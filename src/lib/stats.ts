@@ -2,9 +2,9 @@
 // FRCBOM's status_breakdown). "Done" means a part is in one of the done statuses.
 
 import { DONE_STATUSES, STATUSES } from "@/config/statuses";
-import { getMachine } from "@/config/machines";
+import { COTS_PROCESS, getMachine } from "@/config/machines";
 import { COTS_STATUSES } from "@/config/cots";
-import { computeStatus, isDone, type PartStatus, type StatusInput } from "@/lib/status";
+import { computeStatus, isDone, isMidQa, processesOf, type PartStatus, type StatusInput } from "@/lib/status";
 
 // Every status a part can show: the made-part statuses, then the COTS-only ones.
 const ALL_STATUSES: { name: PartStatus; color: string }[] = [
@@ -17,13 +17,16 @@ export type Breakdown = { total: number; done: number; percent: number; statuses
 
 export function statusBreakdown(parts: StatusInput[]): Breakdown {
   const counts = new Map<PartStatus, number>();
+  let midQa = 0;
   for (const part of parts) {
     const status = computeStatus(part);
     counts.set(status, (counts.get(status) ?? 0) + 1);
+    if (isMidQa(part)) midQa++;
   }
   const total = parts.length;
   const pct = (n: number) => (total ? Math.round((n / total) * 100) : 0);
-  const done = DONE_STATUSES.reduce((n, s) => n + (counts.get(s) ?? 0), 0);
+  // A Ready for QA before an added process isn't done (Harel, 2026-11-20).
+  const done = DONE_STATUSES.reduce((n, s) => n + (counts.get(s) ?? 0), 0) - midQa;
   return {
     total,
     done,
@@ -42,20 +45,14 @@ export type ProcessCount = { id: string; name: string; total: number; done: numb
 // Completion per machine: of the parts that go through a machine, how many have finished
 // that step (its done counter reached the quantity) or are done altogether.
 export function processBreakdown(parts: StatusInput[]): ProcessCount[] {
-  const slots = [
-    ["preProcess", "donePreprocess"],
-    ["process1", "doneProcess1"],
-    ["process2", "doneProcess2"],
-  ] as const;
   const counts = new Map<string, { total: number; done: number }>();
   for (const part of parts) {
     const finished = isDone(part);
-    for (const [machine, done] of slots) {
-      const id = part[machine];
-      if (!id) continue;
+    for (const { machine: id, done } of processesOf(part)) {
+      if (!id || id === COTS_PROCESS) continue;
       const c = counts.get(id) ?? { total: 0, done: 0 };
       c.total += 1;
-      if (finished || part[done] >= Math.max(part.quantity, 1)) c.done += 1;
+      if (finished || done >= Math.max(part.quantity, 1)) c.done += 1;
       counts.set(id, c);
     }
   }

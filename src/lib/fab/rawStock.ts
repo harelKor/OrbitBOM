@@ -10,11 +10,10 @@
 
 import { MADE_FROM, NOT_LAID_OUT, NOT_MADE, PLATE_GAP, PLATE_MARGIN, PLATE_PRESETS, LENGTH_PRESETS, SAW_KERF } from "@/config/rawStock";
 import { STATUSES, getStatus } from "@/config/statuses";
-import { printerOf } from "@/config/machines";
 import type { PartGeometry } from "@/db/schema";
 import { categoryOf, getCategory, type InvCategory } from "@/lib/inventory/categories";
 import { isSheetGoods, pieceBase, pieceRows, sortedRows, SIZE_KEY, type StoredPieces } from "@/lib/inventory/stock";
-import { computeStatus, type StatusInput } from "@/lib/status";
+import { computeStatus, printerOf, type StatusInput } from "@/lib/status";
 import { cornerOf, cutLengths, footprint, nestOnSheets } from "./layout";
 
 export type StockKind = "plate" | "length";

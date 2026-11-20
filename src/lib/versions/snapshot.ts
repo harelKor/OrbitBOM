@@ -1,8 +1,10 @@
 import type { PartSnapshot } from "@/db/schema";
 import type { BomRow } from "@/lib/onshape/bom";
+import type { AddedProcess } from "@/lib/status";
 import { frozenStudio } from "./studio";
 
-type PartLike = Omit<PartSnapshot, "onshapeMaterial" | "sig"> & { geometry: { onshapeMaterial?: string } | null; shapeSig: string | null };
+// process2 is Onshape's Process 2 property: the part's first added process (Harel, 2026-11-20).
+type PartLike = Omit<PartSnapshot, "onshapeMaterial" | "sig" | "process2" | "preProcess"> & { addedProcesses: AddedProcess[] } & { geometry: { onshapeMaterial?: string } | null; shapeSig: string | null };
 
 export const snapshotOfPart = (p: PartLike, docMvs: Record<string, string>): PartSnapshot => ({
   sourceDid: p.sourceDid,
@@ -16,9 +18,8 @@ export const snapshotOfPart = (p: PartLike, docMvs: Record<string, string>): Par
   material: p.material,
   onshapeMaterial: p.geometry?.onshapeMaterial ?? null,
   quantity: p.quantity,
-  preProcess: p.preProcess,
   process1: p.process1,
-  process2: p.process2,
+  process2: p.addedProcesses[0]?.machine ?? null,
   sig: p.shapeSig,
   studio: frozenStudio(p, docMvs),
 });
@@ -35,7 +36,6 @@ export const snapshotOfRow = (r: BomRow, sig: string | null, docMvs: Record<stri
   material: r.material,
   onshapeMaterial: r.onshapeMaterial,
   quantity: r.quantity,
-  preProcess: r.preProcess,
   process1: r.process1,
   process2: r.process2,
   sig,
@@ -46,6 +46,6 @@ export const snapshotOfRow = (r: BomRow, sig: string | null, docMvs: Record<stri
 // Onshape fields.
 export function sameState(a: PartSnapshot, b: PartSnapshot): boolean {
   if (a.sig && b.sig && a.sig !== b.sig) return false;
-  const fields = ["onshapeName", "description", "material", "onshapeMaterial", "quantity", "preProcess", "process1", "process2"] as const;
+  const fields = ["onshapeName", "description", "material", "onshapeMaterial", "quantity", "process1", "process2"] as const;
   return fields.every((f) => (a[f] ?? null) === (b[f] ?? null));
 }

@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { areaOfMachine, getMachine } from "@/config/machines";
 import { PRIORITIES } from "@/config/priorities";
-import { STATUSES, type StatusName } from "@/config/statuses";
+import { STATUSES, processStatusOf, type StatusName } from "@/config/statuses";
 import { db, schema } from "@/db";
 import { requireCapability, statusChangeDenied } from "@/lib/mode";
 import { READY_STATUS, READY_STATUSES, fabBatchName, fabBatchRefusal } from "@/lib/fab";
@@ -170,7 +170,8 @@ export async function deleteGroup(groupId: string) {
   refresh();
 }
 
-const statusNames = STATUSES.map((s) => s.name) as string[];
+// Released P2+ / In Process 2+ are each part's own numbered status, not one for a whole group.
+const statusNames = STATUSES.map((s) => s.name).filter((s) => !processStatusOf(s)) as string[];
 
 // "Set status for all": every member still on the BOM, in one history batch.
 export async function setGroupStatus(groupId: string, status: string): Promise<ActionResult> {

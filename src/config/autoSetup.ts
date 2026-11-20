@@ -6,7 +6,8 @@
 // (LATHE), and solid metal blocks (CNC). Suggest no longer copies what other parts of the same
 // material got (Harel, 2026-11-06).
 
-export type ProcessSet = { preProcess?: string; process1?: string; process2?: string };
+// process2: the first process added after Process 1.
+export type ProcessSet = { process1?: string; process2?: string };
 
 export const DEFAULT_PROCESSES: Record<string, ProcessSet> = {
   "aluminum-plates": { process1: "cnc" },

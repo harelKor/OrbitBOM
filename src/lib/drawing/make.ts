@@ -1,6 +1,6 @@
 import "server-only";
 import { and, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
-import { getMachine } from "@/config/machines";
+import { COTS_PROCESS, getMachine } from "@/config/machines";
 import { db, schema } from "@/db";
 import { OnshapeError, onshapeClient } from "@/lib/onshape/client";
 import { studioPath } from "@/lib/onshape/parts";
@@ -113,9 +113,10 @@ export async function loadDrawing(partId: string) {
     .where(eq(schema.partDrawings.partId, partId));
   if (!row) return null;
   const { part, drawing } = row;
-  const processes = [part.preProcess, part.process1, part.process2, ...part.extraProcesses]
+  // Process 1, then the added processes (Harel, 2026-11-20).
+  const processes = [part.process1, ...part.addedProcesses.map((p) => p.machine)]
     .filter((p): p is string => !!p)
-    .map((p) => getMachine(p)?.name ?? p);
+    .map((p) => (p === COTS_PROCESS ? "COTS" : (getMachine(p)?.name ?? p)));
   // The system's other parts, for "fit for <part>" notes in the editor.
   const [others, version] = await Promise.all([
     db

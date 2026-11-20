@@ -41,15 +41,15 @@ export function productSetup(part: {
   displayName: string | null;
   onshapeName: string | null;
   material: string | null;
-  preProcess: string | null;
   process1: string | null;
-  process2: string | null;
+  addedProcesses?: unknown[];
 }): { changes: PartChanges; reason: string } | null {
   const name = part.displayName ?? part.onshapeName;
   if (!looksLikeProduct(name)) return null;
   const changes: PartChanges = {};
   if (part.classification !== "cots") changes.classification = "cots";
-  for (const f of ["material", "preProcess", "process1", "process2"] as const) if (part[f]) changes[f] = null;
+  for (const f of ["material", "process1"] as const) if (part[f]) changes[f] = null;
+  if (part.addedProcesses?.length) changes.addedProcesses = [];
   if (!Object.keys(changes).length) return null;
   return { changes, reason: `"${descriptivePart(name)}" is named like a bought part, so COTS; no inventory item matches it yet` };
 }
@@ -93,9 +93,8 @@ export function nameMatchSetup(
     classification: string;
     inventoryItemId?: string | null;
     material: string | null;
-    preProcess: string | null;
     process1: string | null;
-    process2: string | null;
+    addedProcesses?: unknown[];
   },
   match: NameMatch,
 ): { changes: PartChanges; reason: string } | null {
@@ -107,7 +106,8 @@ export function nameMatchSetup(
   if (item.categoryId) changes.cotsCategory = item.categoryId;
   if (!part.cotsLinks.length && item.cotsLinks.length) changes.cotsLinks = item.cotsLinks;
   if (part.unitPrice == null && item.price != null) changes.unitPrice = item.price;
-  for (const f of ["material", "preProcess", "process1", "process2"] as const) if (part[f]) changes[f] = null;
+  for (const f of ["material", "process1"] as const) if (part[f]) changes[f] = null;
+  if (part.addedProcesses?.length) changes.addedProcesses = [];
   if (!changes.inventoryItemId && !changes.classification) return null;
   const name = descriptivePart(part.displayName ?? part.onshapeName);
   return { changes, reason: `"${name}" is the inventory item ${item.name} (${match.why.join(", ")}), so COTS` };

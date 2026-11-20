@@ -3,11 +3,11 @@
 // The popover editors for each part field. The card, the table and the Kanban cards all use
 // these, so a field edits the same way everywhere (ref §2a, §3).
 
-import { areaOf, getMachine } from "@/config/machines";
+import { COTS_PROCESS, machineName } from "@/config/machines";
 import type { PartChanges } from "@/lib/parts/changes";
 import { PART_TAG_LABELS, partTag, type PartTag } from "@/lib/partTag";
-import { computeStatus, partStatusLabel, statusMachine } from "@/lib/status";
-import { STATUSES, getStatus, statusLabel } from "@/config/statuses";
+import { areaOf, buyingNow, computeStatus, isDone, numberedFor, partStatusLabel, stageOf, statusMachine } from "@/lib/status";
+import { IN_PROCESS_LATER, RELEASED_LATER, STATUSES, getStatus, processStatusName, processStatusOf, statusLabel } from "@/config/statuses";
 import { COTS_ORDERED } from "@/config/cots";
 import { COTS_LINK_REQUIRED, statusNeedsItem } from "@/lib/parts/cotsLink";
 import { toast } from "@/components/ui/Toaster";
@@ -41,12 +41,25 @@ import { partTitle, type CardPart } from "./types";
 export type SaveFn = (changes: PartChanges) => void;
 type Props = { part: CardPart; save: SaveFn };
 
-export const SLOTS = [
-  { key: "preProcess", done: "donePreprocess", label: "Pre Process", stage: "PreProcess" },
-  { key: "process1", done: "doneProcess1", label: "Process 1", stage: "Process" },
-  { key: "process2", done: "doneProcess2", label: "Process 2", stage: "Process" },
-] as const;
-export type Slot = (typeof SLOTS)[number];
+// A part's processes: Process 1, then any number of added processes, each with its own machine,
+// done count and QA tick (Harel, 2026-11-20). `n` is the process number (1 = Process 1).
+export type Slot = { n: number; machine: string | null; done: number; qa: boolean; label: string };
+
+export function slotsOf(part: Pick<CardPart, "process1" | "doneProcess1" | "addedProcesses">): Slot[] {
+  return [
+    { n: 1, machine: part.process1, done: part.doneProcess1, qa: false, label: "Process 1" },
+    ...(part.addedProcesses ?? []).map((p, i) => ({ n: i + 2, machine: p.machine, done: p.done, qa: p.qa, label: `Process ${i + 2}` })),
+  ];
+}
+
+// The process the part is at now (highlighted on the card and in the part window), or null once done.
+export function currentSlotN(part: CardPart): number | null {
+  if (part.classification === "cots" || isDone(part)) return null;
+  return stageOf(part).index + 1;
+}
+
+// The added processes as an edit sends them (each keeps its count while its machine stays).
+const addedList = (part: CardPart) => (part.addedProcesses ?? []).map((p) => ({ machine: p.machine, qa: p.qa }));
 
 export function Empty({ text = "—" }: { text?: string }) {
   return <span className="text-subtle">{text}</span>;
@@ -250,20 +263,27 @@ export function StatusField({ part, save, size = "md" }: Props & { size?: "sm" |
   const [releasing, setReleasing] = useState(false);
   const [checking, setChecking] = useState(false);
   const status = computeStatus(part);
-  const cots = part.classification === "cots";
+  // A part bought as its Process 1 goes through the COTS statuses until it arrives (Harel, 2026-11-20).
+  const cots = part.classification === "cots" || buyingNow(part);
   const machine = cots ? null : statusMachine(part);
   const area = cots ? null : areaOf(part);
   const pickable = pickableStatuses(mode, area);
   let options = cots
     ? COTS_STATUS_OPTIONS
-    : machine
-      ? STATUSES.map((s) => ({ value: s.name, label: statusLabel(s.name, machine), color: s.color }))
-      : STATUS_OPTIONS;
+    : (machine
+        ? STATUSES.map((s) => ({ value: s.name as string | null, label: statusLabel(s.name, machine), color: s.color as string | undefined }))
+        : STATUS_OPTIONS
+      ).flatMap((o) => {
+        // Released P2+ / In Process 2+: one choice per added process; none without one.
+        if (o.value !== RELEASED_LATER && o.value !== IN_PROCESS_LATER) return [o];
+        const group = o.value;
+        return (part.addedProcesses ?? []).map((_, i) => ({ value: processStatusName(group, i + 2), label: processStatusName(group, i + 2), color: o.color }));
+      });
+  const groupOf = (v: string) => processStatusOf(v)?.group ?? v;
   // A Factory Fab factory's or team printer's part: only that area's statuses.
-  if (area) options = options.filter((o) => o.value !== null && pickable!.includes(o.value));
+  if (area) options = options.filter((o) => o.value !== null && pickable!.includes(groupOf(o.value)));
   else if (mode === "cad") options = [RELEASE_STATUS, ...NOTE_STATUSES].map((name) => ({ value: name, label: name, color: getStatus(name)?.color }));
-  // Build: In Process is the part's current process, so Ready for Process 2 only with a second one.
-  else if (pickable && !cots) options = options.filter((o) => o.value !== null && pickable.includes(o.value) && (o.value !== "Ready for Process 2" || !!part.process2));
+  else if (pickable && !cots) options = options.filter((o) => o.value !== null && pickable.includes(groupOf(o.value)));
   // The CAD Team doesn't release a part that already is.
   if (mode === "cad" && status === RELEASE_STATUS) options = options.filter((o) => o.value !== RELEASE_STATUS);
   return (
@@ -272,7 +292,7 @@ export function StatusField({ part, save, size = "md" }: Props & { size?: "sm" |
         {(close) => (
           <OptionList
             options={options}
-            value={status}
+            value={cots ? status : (numberedFor(part, status) ?? status)}
             placeholder="Search status…"
             onPick={(v) => {
               // A COTS part goes to Released or the Order List only once it is linked to its inventory item.
@@ -413,23 +433,68 @@ export function PriorityField({ part, save }: Props) {
   );
 }
 
+// Process 1 offers COTS too: bought, then QA, then its added processes (Harel, 2026-11-20).
+const PROCESS1_OPTIONS = () => [...machineOptions("Process"), { value: COTS_PROCESS, label: "COTS" }];
+
+// A process's machine. Process 1's "— None —" clears it; an added process's takes it away.
 export function MachineField({ part, save, slot, placeholder, className }: Props & { slot: Slot; placeholder?: string; className?: string }) {
   const locked = !useCan("work");
-  const machineId = part[slot.key];
-  const name = machineId ? (getMachine(machineId)?.name ?? machineId) : null;
+  const name = slot.machine ? machineName(slot.machine) : null;
   return (
     <Popover locked={locked} triggerClassName={className} trigger={name ?? <Empty text={placeholder} />}>
       {(close) => (
         <OptionList
-          options={machineOptions(slot.stage)}
-          value={machineId}
+          options={slot.n === 1 ? PROCESS1_OPTIONS() : machineOptions("Process").map((o) => (o.value === null ? { ...o, label: "— Remove this process —" } : o))}
+          value={slot.machine}
           onPick={(v) => {
-            save({ [slot.key]: v });
+            if (slot.n === 1) save({ process1: v });
+            else {
+              const list = addedList(part);
+              save({ addedProcesses: v ? list.map((p, i) => (i === slot.n - 2 ? { ...p, machine: v } : p)) : list.filter((_, i) => i !== slot.n - 2) });
+            }
             close();
           }}
         />
       )}
     </Popover>
+  );
+}
+
+// "+ Add process": a machine for a new process after the last one (Harel, 2026-11-20).
+export function AddProcessField({ part, save, className, label = "+ Add process" }: Props & { className?: string; label?: string }) {
+  const locked = !useCan("work");
+  if (locked) return null;
+  return (
+    <Popover triggerClassName={className} trigger={<span className="text-subtle">{label}</span>}>
+      {(close) => (
+        <OptionList
+          options={machineOptions("Process").filter((o) => o.value !== null)}
+          value={null}
+          placeholder="Search machine…"
+          onPick={(v) => {
+            if (v) save({ addedProcesses: [...addedList(part), { machine: v, qa: false }] });
+            close();
+          }}
+        />
+      )}
+    </Popover>
+  );
+}
+
+// An added process's "QA needed" tick: QA before that process starts (Harel, 2026-11-20).
+export function QaNeededField({ part, save, slot }: Props & { slot: Slot }) {
+  const locked = !useCan("work");
+  return (
+    <label className={`inline-flex shrink-0 items-center gap-1.5 text-xs text-muted ${locked ? "" : "cursor-pointer"} pointer-coarse:min-h-9`} title="QA is needed before this process starts">
+      <input
+        type="checkbox"
+        disabled={locked}
+        checked={slot.qa}
+        onChange={(e) => save({ addedProcesses: addedList(part).map((p, i) => (i === slot.n - 2 ? { ...p, qa: e.target.checked } : p)) })}
+        className="h-4 w-4 accent-[var(--accent)]"
+      />
+      QA needed
+    </label>
   );
 }
 
@@ -479,7 +544,5 @@ export function NoteField({ part, save }: Props) {
   );
 }
 
-// Pre Process only lists PreProcess-stage machines; hide the slot when there are none and it's empty.
-export function machineSlotsShown(part: CardPart): Slot[] {
-  return SLOTS.filter((slot) => part[slot.key] || machineOptions(slot.stage).length > 1);
-}
+// The processes the part window lists: Process 1 always, then each added one.
+export const machineSlotsShown = (part: CardPart): Slot[] => slotsOf(part);

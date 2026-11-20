@@ -78,7 +78,7 @@ export function inheritFromBatch(p: CardPart, batch: Batch, members: CardPart[])
   if (!p.material && material) changes.material = material;
   if (!machinesOf(p).length) {
     const donor = others.find((m) => machinesOf(m).length > 0);
-    if (donor) Object.assign(changes, { preProcess: donor.preProcess, process1: donor.process1, process2: donor.process2 });
+    if (donor) Object.assign(changes, { process1: donor.process1, addedProcesses: donor.addedProcesses.map((a) => ({ machine: a.machine, qa: a.qa })) });
     else if (batch.machine) changes.process1 = batch.machine;
   }
   return Object.keys(changes).length ? changes : null;

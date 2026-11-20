@@ -9,7 +9,7 @@ import { cotsCategories } from "@/lib/data/parts";
 import { groupSameCots } from "@/lib/cots";
 import { planPartUpdate } from "@/lib/parts/changes";
 import { applySuggestions } from "@/lib/review/review";
-import { computeStatus } from "@/lib/status";
+import { orderStatus } from "@/lib/status";
 import { uuid, read, write, ToolError, nameOf, normaliseChanges, readable } from "../registry";
 
 const { parts, systems } = schema;
@@ -57,7 +57,7 @@ read(
         robot: g[0].robotName,
         systems: [...new Set(g.map((p) => p.systemName))],
         quantity: g.reduce((n, p) => n + p.quantity, 0),
-        status: computeStatus(g[0]),
+        status: orderStatus(g[0]),
         category: of.get(g[0].id),
         links: g[0].cotsLinks,
         unit_price_usd: g[0].unitPrice,

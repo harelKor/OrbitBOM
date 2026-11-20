@@ -11,11 +11,10 @@ export const PART_TAG_LABELS: Record<PartTag, string> = { cots: "COTS", factory:
 
 export function partTag(part: {
   classification: string;
-  preProcess: string | null;
   process1: string | null;
-  process2: string | null;
+  addedProcesses?: { machine: string }[];
 }): PartTag {
   if (part.classification === "cots") return "cots";
-  if ([part.preProcess, part.process1, part.process2].some(isFactoryMachine)) return "factory";
+  if ([part.process1, ...(part.addedProcesses ?? []).map((p) => p.machine)].some(isFactoryMachine)) return "factory";
   return part.classification === "undefined" ? "undefined" : "inhouse";
 }

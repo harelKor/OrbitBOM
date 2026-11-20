@@ -84,7 +84,7 @@ read(
     }
     if (f.machine) {
       const m = machineId(f.machine)!;
-      where.push(sql`${m} in (${parts.preProcess}, ${parts.process1}, ${parts.process2})`);
+      where.push(sql`(${parts.process1} = ${m} or ${parts.addedProcesses} @> ${JSON.stringify([{ machine: m }])}::jsonb)`);
     }
     const query = db
       .select({ part: parts, systemName: systems.name, total: sql<number>`count(*) over ()`.mapWith(Number) })
@@ -139,7 +139,7 @@ read("get_part", "member", "One part with every field, its files, groups and rec
     note: row.part.note,
     designer: row.part.designerName,
     fabricators: row.part.fabricators,
-    done: { pre_process: row.part.donePreprocess, process_1: row.part.doneProcess1, process_2: row.part.doneProcess2 },
+    done: { process_1: row.part.doneProcess1, ...Object.fromEntries(row.part.addedProcesses.map((a, i) => [`process_${i + 2}`, a.done])) },
     geometry: row.part.geometry,
     overridden_fields: row.part.overriddenFields,
     drawing_url: row.part.drawingUrl,
@@ -214,18 +214,26 @@ const changesInput = z
     classification: z.enum(["inhouse", "cots", "external", "undefined"]).optional(),
     material: z.string().nullable().optional(),
     description: z.string().nullable().optional(),
-    preProcess: z.string().nullable().optional().describe("Machine name or id, or null."),
-    process1: z.string().nullable().optional().describe("Machine name or id, or null."),
-    process2: z.string().nullable().optional().describe("Machine name or id, or null."),
-    status: z.string().optional().describe("A name from list_statuses. Resets the done counters."),
+    process1: z.string().nullable().optional().describe("Machine name or id, \"COTS\" (bought, then QA, then the added processes), or null."),
+    process2: z.string().nullable().optional().describe("The first added process's machine (Onshape's Process 2), or null to take it away."),
+    addedProcesses: z
+      .array(z.object({ machine: z.string().describe("Machine name or id."), qa: z.boolean().optional().describe("QA is needed before this process starts.") }))
+      .max(20)
+      .optional()
+      .describe("Every process after Process 1, in order (Process 2, 3...). Replaces the list; a process keeps its done count while its machine stays."),
+    appendProcess: z.object({ machine: z.string(), qa: z.boolean().optional() }).optional().describe("Add one process after the part's last one."),
+    status: z
+      .string()
+      .optional()
+      .describe("A name from list_statuses; Released P2+ / In Process 2+ are given with the process number (\"Released P3\", \"In Process 3\"). Resets the done counters."),
+    qa: z.enum(["approve", "reopen"]).optional().describe("Approve the QA the part waits for (CAD): a mid-way QA releases it to its next process, the last one puts it In Stock. reopen takes it back."),
     priority: z.enum(PRIORITIES).optional(),
     deadline: z.string().nullable().optional().describe("YYYY-MM-DD"),
     designerName: z.string().nullable().optional(),
-    fabricators: z.record(z.string(), z.string()).optional().describe("Per slot: preProcess, process1, process2."),
+    fabricators: z.record(z.string(), z.string()).optional().describe("Per process: process1, process2, process3..."),
     note: z.string().nullable().optional(),
-    donePreprocess: z.number().int().min(0).optional(),
     doneProcess1: z.number().int().min(0).optional(),
-    doneProcess2: z.number().int().min(0).optional(),
+    addedDone: z.array(z.number().int().min(0)).max(20).optional().describe("Done counts of the added processes, in order (Process 2 first)."),
     estMinutes: z.number().int().min(0).nullable().optional(),
     actualMinutes: z.number().int().min(0).nullable().optional(),
     inventoryItemId: z.string().nullable().optional().describe("Tie the part to an inventory item (search_inventory)."),

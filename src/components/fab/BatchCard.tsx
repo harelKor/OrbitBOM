@@ -5,7 +5,7 @@ import { createContext, useContext, useEffect, useEffectEvent, useRef, useState,
 import { createPortal } from "react-dom";
 import { areaOfMachine, getMachine } from "@/config/machines";
 import type { Priority } from "@/config/priorities";
-import { STATUSES, statusLabel, type StatusName } from "@/config/statuses";
+import { STATUSES, processStatusOf, statusLabel, type StatusName } from "@/config/statuses";
 import { removeBatchGcode } from "@/app/(app)/files-actions";
 import { deleteGroup, removeFromGroup, updateGroup } from "@/app/(app)/groups/actions";
 import { upload } from "@/components/bom/FilesField";
@@ -189,7 +189,8 @@ export function BatchCard({
   const statusTargets = (notDone.length ? notDone : members).map((p) => p.id);
   // The batch's status as its machine names it; a batch waiting to start is Ready to Fab.
   const label = (status: string) => (stage === "readyToFab" && status === READY_STATUS ? "Ready to Fab" : statusLabel(status, batch.machine));
-  const statusOptions = STATUSES.filter((s) => !pickable || pickable.includes(s.name)).map((s) => ({ value: s.name, label: s.name === READY_STATUS ? "Ready to Fab" : statusLabel(s.name, batch.machine), color: s.color }));
+  // Released P2+ / In Process 2+ are each part's own numbered status: not set for a whole batch.
+  const statusOptions = STATUSES.filter((s) => (!pickable || pickable.includes(s.name)) && !processStatusOf(s.name)).map((s) => ({ value: s.name, label: s.name === READY_STATUS ? "Ready to Fab" : statusLabel(s.name, batch.machine), color: s.color }));
   const thumbs = members.slice(0, 9);
 
   const mine = !pack && !!madeBy && madeBy === me;

@@ -8,7 +8,7 @@ import type { PartChanges, PartRow } from "@/lib/parts/changes";
 export const MERGE_PREFIX = "merge:";
 export const isMergeId = (id: string) => id.startsWith(MERGE_PREFIX);
 
-const COUNTERS = ["donePreprocess", "doneProcess1", "doneProcess2", "stockCount"] as const;
+const COUNTERS = ["doneProcess1", "stockCount"] as const;
 
 type Member = PartRow & { id: string };
 
@@ -23,9 +23,9 @@ export function mergedRow<T extends Member>(merge: { id: string; name: string },
     displayName: merge.name,
     partNumber: first.partNumber,
     quantity: sum("quantity"),
-    donePreprocess: sum("donePreprocess"),
     doneProcess1: sum("doneProcess1"),
-    doneProcess2: sum("doneProcess2"),
+    // The first member's added processes, each with the members' counts summed.
+    addedProcesses: first.addedProcesses.map((p, i) => ({ ...p, done: members.reduce((n, m) => n + (m.addedProcesses[i]?.done ?? 0), 0) })),
     stockCount: sum("stockCount"),
     memberIds: members.map((m) => m.id),
   };
@@ -49,6 +49,17 @@ export function fanOutChanges(
       const take = i === members.length - 1 ? Math.max(left, 0) : Math.min(members[i].quantity, Math.max(left, 0));
       pm.changes[field] = take;
       left -= take;
+    });
+  }
+  // The added processes' counts spread the same way, one process at a time.
+  if (rest.addedDone) {
+    const lefts = [...rest.addedDone];
+    perMember.forEach((pm, i) => {
+      pm.changes.addedDone = lefts.map((left, j) => {
+        const take = i === members.length - 1 ? Math.max(left, 0) : Math.min(members[i].quantity, Math.max(left, 0));
+        lefts[j] -= take;
+        return take;
+      });
     });
   }
   return {

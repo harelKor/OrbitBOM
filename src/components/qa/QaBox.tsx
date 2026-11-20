@@ -11,6 +11,8 @@ import { Icon } from "@/components/ui/Icon";
 import type { PartChanges } from "@/lib/parts/changes";
 import { Notice } from "@/components/ui/Notice";
 import { safeAction } from "@/lib/safeAction";
+import { qaNext } from "@/lib/status";
+import { QaGrid } from "./QaSection";
 
 export type QaSystem = { id: string; name: string; count: number };
 
@@ -73,7 +75,8 @@ export function QaBox({
         else next.delete(part.id);
         return next;
       });
-    save(part.id, { status: undo ? "Ready for QA" : "In Stock" }, back);
+    // Approval moves it on: In Stock, or to its next process when QA came before one (Harel, 2026-11-20).
+    save(part.id, { qa: undo ? "reopen" : "approve" }, back);
   };
   const closeSystem = () => {
     setSystem(null);
@@ -142,13 +145,9 @@ export function QaBox({
           <p className="text-sm text-muted">No parts in this system are waiting for QA.</p>
         ) : (
           <>
-            <p className="mb-3 text-sm text-subtle">Check a part off to move it to In Stock.</p>
+            <p className="mb-3 text-sm text-subtle">Check a part off to approve it: In Stock, or on to its next process.</p>
             <BomProvider value={{ inventory, isAdmin, robotId }}>
-              <div className="card-grid">
-                {shown.map((p) => (
-                  <PartCard key={p.id} part={p} save={(changes) => save(p.id, changes)} checked={checked.has(p.id)} onCheck={() => toggle(p)} />
-                ))}
-              </div>
+              <QaGrid parts={shown} card={(p) => <PartCard key={p.id} part={p} save={(changes) => save(p.id, changes)} checked={checked.has(p.id)} onCheck={() => toggle(p)} checkTo={qaNext(p)} />} />
             </BomProvider>
           </>
         )}

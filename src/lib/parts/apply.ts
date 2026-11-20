@@ -9,7 +9,7 @@ import { arrives } from "@/lib/seen";
 import { fillCardFromItem, pushCardToItem } from "@/lib/inventory/cotsSync";
 import { normName, onshapeKeyOf } from "@/lib/inventory/match";
 import { moveStock } from "@/lib/inventory/moves";
-import { computeStatus } from "@/lib/status";
+import { isBought, orderStatus } from "@/lib/status";
 import { isReleaseMove, lockRelease } from "@/lib/versions/release";
 import { currentVisit } from "@/lib/visits";
 import { planPartUpdate, type PartChanges, type Plan } from "./changes";
@@ -18,7 +18,8 @@ import { recordOrderHistory } from "./orderHistory";
 const { parts, partHistory, inventoryItems, inventoryCategories } = schema;
 const ORDERING = ORDER_STATUSES.filter((s) => s !== COTS_IN_STOCK) as string[];
 
-const inStockNow = (p: typeof parts.$inferSelect) => p.classification === "cots" && computeStatus(p) === COTS_IN_STOCK;
+// In Stock on the COTS page (a part bought as its Process 1 too, Harel 2026-11-20).
+const inStockNow = (p: typeof parts.$inferSelect) => isBought(p) && orderStatus(p) === COTS_IN_STOCK;
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Ctx = {
@@ -92,7 +93,7 @@ export async function applyEachPartChanges(
       // An order arrived: a linked COTS part going from the Order List to In Stock adds what the
       // shelf was missing for it to its item's stock (nothing when the shelf already had it).
       const after = { ...row, ...set };
-      const plain = !ctx.afterEach && row.classification !== "cots" && after.classification !== "cots" && !set.inventoryItemId && !isReleaseMove(row, after);
+      const plain = !ctx.afterEach && !isBought(row) && !isBought(after) && !set.inventoryItemId && !isReleaseMove(row, after);
       if (!plain) await flush(); // what follows may read other parts (the shelf's count below)
       let received = 0;
       if (

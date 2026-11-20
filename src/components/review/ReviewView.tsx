@@ -25,7 +25,7 @@ import { useCan } from "@/components/shell/ModeContext";
 import { Chevron } from "@/components/ui/Chevron";
 import { Icon } from "@/components/ui/Icon";
 import { statusTint } from "@/components/ui/statusTint";
-import { computeStatus } from "@/lib/status";
+import { computeStatus, processMachines } from "@/lib/status";
 import type { InventoryReview } from "@/lib/review/inventory";
 import { Notice } from "@/components/ui/Notice";
 import { askConfirm } from "@/components/ui/useConfirm";
@@ -151,7 +151,7 @@ function useDecisions(decided: Set<string>, listed: string[], send: (ids: string
 // true approves, false rejects; "dismiss" (the card's X) only takes the request off To Review.
 type Decision = boolean | "dismiss";
 
-const machinesOf = (p: CardPart) => [p.preProcess, p.process1, p.process2].filter((m): m is string => !!m);
+const machinesOf = (p: CardPart) => processMachines(p);
 
 // To Review: compact cards for parts that were set up automatically, with what changed and why.
 // Each subsystem is a big box, split into batches (one per suggestion run) that fold from their

@@ -24,7 +24,7 @@ import { Icon } from "@/components/ui/Icon";
 import { ViewPicker } from "@/components/ui/ViewPicker";
 import { cotsTotal, groupSameCots, siteOf, spreadCotsChanges } from "@/lib/cots";
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
-import { computeStatus } from "@/lib/status";
+import { orderStatus } from "@/lib/status";
 import type { CotsCart } from "@/lib/data/cotsCarts";
 import { OpenBatchContext } from "@/components/fab/BatchCard";
 import { CartCard } from "./CartCard";
@@ -153,7 +153,7 @@ export function CotsView({
         for (const e of edits) {
           if (e.changes.status === COTS_IN_STOCK) {
             next.add(e.id);
-            if (optimistic.some((p) => p.id === e.id && computeStatus(p) === COTS_ARRIVED)) setArrivedStruck((a) => new Set(a).add(e.id));
+            if (optimistic.some((p) => p.id === e.id && orderStatus(p) === COTS_ARRIVED)) setArrivedStruck((a) => new Set(a).add(e.id));
           }
           else if (e.changes.status) next.delete(e.id);
         }
@@ -184,7 +184,7 @@ export function CotsView({
     return () =>
       openItem(itemId, undefined, {
         cotsOrder: {
-          info: { quantity: p.quantity, status: computeStatus(p), links: p.cotsLinks ?? [], unitPrice: p.unitPrice, sentBack: p.cotsSentBack ?? null, deliveryDate: p.cotsDeliveryDate ?? null, grouped: row.members.length > 1 },
+          info: { quantity: p.quantity, status: orderStatus(p), links: p.cotsLinks ?? [], unitPrice: p.unitPrice, sentBack: p.cotsSentBack ?? null, deliveryDate: p.cotsDeliveryDate ?? null, grouped: row.members.length > 1 },
           save: saveRow(row),
         },
       });
@@ -210,18 +210,18 @@ export function CotsView({
   };
 
   const inList = (p: CardPart) => {
-    const s = computeStatus(p);
+    const s = orderStatus(p);
     return list === "released" ? s === COTS_RELEASED : ORDERING.includes(s) || (s === COTS_IN_STOCK && struck.has(p.id));
   };
   const shownInStock = (p: CotsViewPart) =>
-    computeStatus(p) === COTS_IN_STOCK && !p.cotsClearedAt && !cleared.has(p.id) && (!p.cotsInStockAt || now - new Date(p.cotsInStockAt).getTime() < SHOWN_MS);
+    orderStatus(p) === COTS_IN_STOCK && !p.cotsClearedAt && !cleared.has(p.id) && (!p.cotsInStockAt || now - new Date(p.cotsInStockAt).getTime() < SHOWN_MS);
   const ofCategory = (p: CotsViewPart) => (!group || groupOf(groupOfCat.get(p.category)) === group) && (!category || p.category === category);
-  const ofStatus = (p: CardPart) => list !== "order" || !statusFilter || computeStatus(p) === statusFilter || struck.has(p.id);
+  const ofStatus = (p: CardPart) => list !== "order" || !statusFilter || orderStatus(p) === statusFilter || struck.has(p.id);
   const listed = optimistic.filter(inList);
   const cartOf = new Map<string, CotsCart>();
   for (const c of list === "order" ? carts : []) for (const id of c.partIds) cartOf.set(id, c);
   // Arrived parts (and ones set In Stock from there on this visit) sit in the Order List's Arrived section.
-  const isArrived = (p: CardPart) => list === "order" && (computeStatus(p) === COTS_ARRIVED || (struck.has(p.id) && arrivedStruck.has(p.id)));
+  const isArrived = (p: CardPart) => list === "order" && (orderStatus(p) === COTS_ARRIVED || (struck.has(p.id) && arrivedStruck.has(p.id)));
   const main = listed.filter((p) => ofCategory(p) && ofStatus(p) && !isArrived(p) && !cartOf.has(p.id));
   const arrived = listed.filter((p) => ofCategory(p) && isArrived(p) && !cartOf.has(p.id));
   // A cart shows while any of its parts is on the list (and passes the filters), with all of those.
@@ -250,7 +250,7 @@ export function CotsView({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per target
   }, [target]);
   const statusCounts = new Map<string, number>();
-  for (const p of listed) if (ofCategory(p)) statusCounts.set(computeStatus(p), (statusCounts.get(computeStatus(p)) ?? 0) + 1);
+  for (const p of listed) if (ofCategory(p)) statusCounts.set(orderStatus(p), (statusCounts.get(orderStatus(p)) ?? 0) + 1);
 
   const rowsOf = (ps: CotsViewPart[]): Row[] =>
     groupSameCots(ps).map((members) => {
@@ -410,7 +410,7 @@ export function CotsView({
   });
   const vendors = [...new Set(main.map(vendorOf))].sort((a, b) => (a === NO_VENDOR ? 1 : b === NO_VENDOR ? -1 : a.localeCompare(b)));
   // Released: the parts already on the order list, in a small section below.
-  const queued = list === "released" ? optimistic.filter((p) => computeStatus(p) === COTS_ORDERED && ofCategory(p)) : [];
+  const queued = list === "released" ? optimistic.filter((p) => orderStatus(p) === COTS_ORDERED && ofCategory(p)) : [];
   const sendToOrder = () => {
     const ids = allRows.filter((r) => selected.has(r.key)).flatMap((r) => r.members.map((m) => m.id));
     save(ids.map((id) => ({ id, changes: { status: COTS_ORDERED, cotsSentBack: null } })));
@@ -865,7 +865,7 @@ function Section({
 function GroupBox({ row, onClose, children, ...drag }: { row: Row; onClose: () => void; children: React.ReactNode } & React.HTMLAttributes<HTMLDivElement>) {
   const p = row.part;
   return (
-    <div {...drag} style={{ gridColumn: "1 / -1", ...statusTint(computeStatus(p)) }} className="card-interactive flex flex-col ring-2 ring-amber-400/70 ring-offset-2 ring-offset-ink">
+    <div {...drag} style={{ gridColumn: "1 / -1", ...statusTint(orderStatus(p)) }} className="card-interactive flex flex-col ring-2 ring-amber-400/70 ring-offset-2 ring-offset-ink">
       <button type="button" onClick={onClose} aria-expanded className="press flex items-center gap-3 p-3 text-left">
         <span className="thumb-well thumb-cots flex h-14 w-20 shrink-0 items-center justify-center rounded-md">
           <Thumb part={p} size={52} />
@@ -925,7 +925,7 @@ function CotsTable({
             const total = cotsTotal(p);
             const crossed = row.members.every((m) => struck.has(m.id));
             return (
-              <tr key={row.key} className={crossed ? "opacity-60" : undefined} style={statusTint(computeStatus(p))}>
+              <tr key={row.key} className={crossed ? "opacity-60" : undefined} style={statusTint(orderStatus(p))}>
                 <td>
                   <ThumbLocate part={p} />
                 </td>

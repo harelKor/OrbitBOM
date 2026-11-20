@@ -257,7 +257,7 @@ const STOCK: StockItem[] = [
   item("Markforged Onyx filament", "filament", { material: "Onyx" }),
 ];
 const setup = (geometry: SetupInput["geometry"], over: Partial<SetupInput> = {}) =>
-  suggestSetup({ classification: "undefined", material: null, preProcess: null, process1: null, process2: null, geometry, ...over }, STOCK);
+  suggestSetup({ classification: "undefined", material: null, process1: null, addedProcesses: [], geometry, ...over }, STOCK);
 const shapeOf = (s: Solid) => read(s);
 
 describe("suggestSetup with shapes", () => {
@@ -282,7 +282,7 @@ describe("suggestSetup with shapes", () => {
       item("12.7mm Aluminum plate", "aluminum-plates", { thickness: "12" }),
       item("Polycarbonate 8mm", "polycarbonate", { thickness: "8" }),
     ];
-    const pick = (onshapeMaterial: string, t: number) => suggestSetup({ classification: "undefined", material: null, preProcess: null, process1: null, process2: null, geometry: { onshapeMaterial, shape: { kind: "plate", t } } }, stock)?.changes.material;
+    const pick = (onshapeMaterial: string, t: number) => suggestSetup({ classification: "undefined", material: null, process1: null, addedProcesses: [], geometry: { onshapeMaterial, shape: { kind: "plate", t } } }, stock)?.changes.material;
     expect(pick("Aluminum - 6061", 9.53)).toBe("10mm Aluminum plate");
     expect(pick("Aluminum - 6061", 11.09)).toBe("12.7mm Aluminum plate");
     expect(pick("Aluminum - 6061", 12.7)).toBe("12.7mm Aluminum plate");
@@ -298,7 +298,7 @@ describe("suggestSetup with shapes", () => {
 
   it("finds box tubes whose size spec is one number, and takes Carbon Steel for steel", () => {
     const stock = [...STOCK, item("Box tube 50×50×2mm", "square-tubes", { size: "50", wall: "2", material: "Aluminum" }), item("Steel block", "cylinders-blocks", { shape: "Block", material: "Steel" })];
-    const run = (geometry: SetupInput["geometry"]) => suggestSetup({ classification: "undefined", material: null, preProcess: null, process1: null, process2: null, geometry }, stock)?.changes;
+    const run = (geometry: SetupInput["geometry"]) => suggestSetup({ classification: "undefined", material: null, process1: null, addedProcesses: [], geometry }, stock)?.changes;
     expect(run({ onshapeMaterial: "Aluminum - 6061", shape: { kind: "box-tube", d1: 50, d2: 50, wall: 2, length: 700 } })?.material).toBe("Box tube 50×50×2mm");
     expect(run({ onshapeMaterial: "Carbon Steel", shape: { kind: "block", size: [11.1, 12.7, 13.6] } })).toMatchObject({ material: "Steel block", process1: "cnc" });
   });
@@ -311,12 +311,12 @@ describe("suggestSetup with shapes", () => {
 
   it("prints PLA, TPU and Onyx parts, and never adds a second process or bending", () => {
     const pla = setup({ onshapeMaterial: "PLA", bbox: [19, 19, 200], wallMm: 2, shape: { kind: "box-tube", d1: 19, d2: 19 } });
-    expect(pla?.changes).toEqual({ material: "PLA", preProcess: null, process1: "3d-bambu", process2: null, classification: "inhouse" });
+    expect(pla?.changes).toEqual({ material: "PLA", process1: "3d-bambu", process2: null, classification: "inhouse" });
     expect(setup({ onshapeMaterial: "TPU 95A" })?.changes).toMatchObject({ material: "TPU", process1: "3d-bambu", process2: null });
     expect(setup({ onshapeMaterial: "Onyx" })?.changes).toMatchObject({ material: "Onyx", process1: "3d-markforged" });
     // Sheet metal printed in PLA is still only printed.
     const s = setup({ onshapeMaterial: "PLA", sheetMetal: { flatPartId: "x" }, wallMm: 2 });
-    expect(s?.changes).toMatchObject({ process1: "3d-bambu", process2: null, preProcess: null });
+    expect(s?.changes).toMatchObject({ process1: "3d-bambu", process2: null });
   });
 
   it("links a hex shaft to its shaft item before any plate rule", () => {
@@ -407,7 +407,7 @@ describe("suggestSetup with shapes", () => {
   });
 
   it("prints spacers in PLA instead of cutting them from the carbon 16x1 tube (Harel, 2026-11-18)", () => {
-    const printed = { material: "PLA", process1: "3d-bambu", process2: null, preProcess: null, classification: "inhouse" };
+    const printed = { material: "PLA", process1: "3d-bambu", process2: null, classification: "inhouse" };
     // Measured from the mesh: hex bore.
     const hex = setup({ shape: shapeOf(prism(circle(16.9), 50, hexRing(12.7))) }, { onshapeName: "HEX Spacer 1.969 in" });
     expect(hex?.changes).toEqual(printed);

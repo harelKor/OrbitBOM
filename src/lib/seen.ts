@@ -5,10 +5,9 @@
 // and the Order List. parts.stage_at holds when it last arrived; page_seen when a member last
 // opened each page. No browser-only code here: the server and the pages share it.
 
-import { factoryOf, printerOf } from "@/config/machines";
-import { computeStatus, type StatusInput } from "@/lib/status";
+import { computeStatus, factoryOf, isBought, orderStatus, printerOf, statusMachine, type StatusInput } from "@/lib/status";
 
-const SHOP: readonly string[] = ["Released", "Reproduction", "Gcoded", "In Process 1", "Ready for Process 2", "Post Processing"];
+const SHOP: readonly string[] = ["Released", "Reproduction", "Gcoded", "In Process 1", "Released P2+", "In Process 2+", "Post Processing"];
 const PRINT: readonly string[] = ["Released", "Reproduction"];
 
 type Arrival = { page: string; machine?: string };
@@ -18,13 +17,17 @@ type Arrival = { page: string; machine?: string };
 // null when no tracked page lists it. Shop Fab is one page; `machine` says which of its tabs.
 export function arrivalPage(part: StatusInput, robotId: string | null): Arrival | null {
   const status = computeStatus(part);
-  if (part.classification === "cots") return status === "Released" ? { page: "cots:released" } : status === "In Order List" ? { page: "cots:order" } : null;
+  // A bought part (COTS, or bought as its Process 1) on the COTS page and Order List.
+  if (isBought(part) && (part.classification === "cots" || status === orderStatus(part))) {
+    const order = orderStatus(part);
+    return order === "Released" ? { page: "cots:released" } : order === "In Order List" ? { page: "cots:order" } : null;
+  }
   if (!robotId) return null;
   const factory = factoryOf(part);
   if (factory) return status === "Released" ? { page: `factory:${robotId}:${factory}` } : null;
   const printer = printerOf(part);
   if (printer) return PRINT.includes(status) ? { page: `print:${robotId}:${printer}` } : null;
-  const machine = part.process1 ?? part.preProcess ?? part.process2;
+  const machine = statusMachine(part);
   return machine && SHOP.includes(status) ? { page: `fab:${robotId}`, machine } : null;
 }
 

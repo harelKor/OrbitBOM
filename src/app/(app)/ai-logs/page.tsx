@@ -1,4 +1,4 @@
-import { getMachine } from "@/config/machines";
+import { machineName } from "@/config/machines";
 import { requireMember } from "@/lib/auth";
 import { listAiLogs, type AiLog, type AiLogChange, type AiLogItemChange } from "@/lib/review/review";
 import { RevertLogButton } from "./RevertLogButton";
@@ -9,6 +9,7 @@ const FIELDS: Record<string, string> = {
   preProcess: "Pre-process",
   process1: "Process 1",
   process2: "Process 2",
+  addedProcesses: "Processes after 1",
   designState: "Status",
   quantity: "Quantity",
   priority: "Priority",
@@ -28,7 +29,8 @@ const tool = (name: string) => {
 
 function value(field: string, v: unknown): string {
   if (v == null || v === "") return "none";
-  if (["preProcess", "process1", "process2"].includes(field)) return getMachine(String(v))?.name ?? String(v);
+  if (["preProcess", "process1", "process2"].includes(field)) return machineName(String(v));
+  if (field === "addedProcesses" && Array.isArray(v)) return v.map((p: { machine?: string }) => machineName(String(p.machine))).join(" → ") || "None";
   if (typeof v === "object") return JSON.stringify(v);
   return String(v);
 }

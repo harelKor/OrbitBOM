@@ -8,7 +8,8 @@ import {
   NameField,
   NoteField,
   QuantityField,
-  SLOTS,
+  AddProcessField,
+  slotsOf,
   StatusField,
   TypeField,
   type SaveFn,
@@ -50,11 +51,8 @@ export function TableView({
             <th>Type</th>
             <th>Qty</th>
             <th>Material</th>
-            {SLOTS.map((s) => (
-              <th key={s.key}>
-                {s.label}
-              </th>
-            ))}
+            <th>Process 1</th>
+            <th>Then</th>
             <th>Status</th>
             <th>Files</th>
             <th>Notes</th>
@@ -83,9 +81,16 @@ export function TableView({
                 <td><TypeField part={p} save={save} /></td>
                 <td><QuantityField part={p} save={save} /></td>
                 <td><MaterialField part={p} save={save} /></td>
-                {SLOTS.map((s) => (
-                  <td key={s.key}><MachineField part={p} save={save} slot={s} /></td>
-                ))}
+                <td><MachineField part={p} save={save} slot={slotsOf(p)[0]} /></td>
+                <td>
+                  {/* The added processes after Process 1 (Harel, 2026-11-20). */}
+                  <span className="flex flex-wrap items-center gap-1">
+                    {slotsOf(p).slice(1).map((s) => (
+                      <MachineField key={s.n} part={p} save={save} slot={s} />
+                    ))}
+                    <AddProcessField part={p} save={save} label="+" />
+                  </span>
+                </td>
                 <td><StatusField part={p} save={save} /></td>
                 <td><FilesField part={p} /></td>
                 <td><NoteField part={p} save={save} /></td>

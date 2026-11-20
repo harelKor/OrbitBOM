@@ -8,13 +8,12 @@ const part: PartRow = {
   description: null,
   material: "3mm 6061-T6",
   quantity: 2,
-  preProcess: null,
   process1: "cnc",
-  process2: null,
+  addedProcesses: [] as { machine: string; done: number; qa: boolean; qaDone?: boolean }[],
   designState: "Gcoded",
-  donePreprocess: 0,
   doneProcess1: 0,
-  doneProcess2: 0,
+  qaHeld: false,
+  cotsQa: false,
   priority: "normal",
   deadline: null,
   designerName: null,
@@ -120,5 +119,43 @@ describe("partChangesSchema", () => {
 
   it("turns empty text into null", () => {
     expect(partChangesSchema.parse({ note: "  " })).toEqual({ note: null });
+  });
+});
+
+describe("added processes (Harel, 2026-11-20)", () => {
+  const bend = { machine: "bending", done: 0, qa: true, qaDone: false };
+  const two: PartRow = { ...part, designState: null, addedProcesses: [bend] };
+  it("counts at an added process from the saved count", () => {
+    const plan = planPartUpdate({ ...two, doneProcess1: 2 }, { addAt: { process: 2, delta: 1 } }, "ui");
+    expect(plan.set.addedProcesses).toEqual([{ ...bend, done: 1 }]);
+  });
+  it("approves a mid-way QA into the next process", () => {
+    const plan = planPartUpdate({ ...two, doneProcess1: 2 }, { qa: "approve" }, "ui");
+    expect(plan.set.addedProcesses).toEqual([{ ...bend, qaDone: true }]);
+    const back = planPartUpdate({ ...two, doneProcess1: 2, addedProcesses: [{ ...bend, qaDone: true }] }, { qa: "reopen" }, "ui");
+    expect(back.set.addedProcesses).toEqual([bend]);
+  });
+  it("approves the final QA into In Stock", () => {
+    expect(planPartUpdate({ ...part, designState: null, doneProcess1: 2 }, { qa: "approve" }, "ui").set.designState).toBe("In Stock");
+  });
+  it("fills the first added process from Onshape's Process 2, keeping the rest", () => {
+    const three = { ...two, addedProcesses: [bend, { machine: "laser", done: 0, qa: false }] };
+    expect(planPartUpdate(three, { process2: "cnc" }, "sync").set.addedProcesses).toEqual([{ ...bend, machine: "cnc" }, three.addedProcesses[1]]);
+    expect(planPartUpdate(part, { process2: "cnc" }, "sync").set.addedProcesses).toEqual([{ machine: "cnc", done: 0, qa: false, qaDone: false }]);
+  });
+  it("skips a numbered status the part has no process for", () => {
+    expect(planPartUpdate(part, { status: "Released P2" }, "ui").set.designState).toBeUndefined();
+    expect(partChangesSchema.safeParse({ status: "Released P2+" }).success).toBe(false);
+  });
+  it("sends an arrived COTS part to QA, not one taken from the shelf", () => {
+    const ordered: PartRow = { ...part, classification: "cots", designState: "In Route" };
+    expect(planPartUpdate(ordered, { status: "In Stock" }, "ui").set.cotsQa).toBe(true);
+    expect(planPartUpdate(ordered, { status: "In Stock", fromShelfPrompt: true }, "ui").set.cotsQa).toBeUndefined();
+    expect(planPartUpdate({ ...ordered, cotsQa: true }, { qa: "approve" }, "ui").set.cotsQa).toBe(false);
+  });
+  it("a part bought as its Process 1 arrives into QA", () => {
+    const bought: PartRow = { ...part, process1: "cots", designState: "In Route", addedProcesses: [{ machine: "cnc", done: 0, qa: false }] };
+    const plan = planPartUpdate(bought, { status: "In Stock" }, "ui");
+    expect(plan.set).toMatchObject({ designState: null, doneProcess1: 2 });
   });
 });

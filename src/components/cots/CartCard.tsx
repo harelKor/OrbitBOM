@@ -13,7 +13,7 @@ import { cartKind } from "@/lib/cotsCart";
 import type { CotsCart } from "@/lib/data/cotsCarts";
 import type { PartChanges } from "@/lib/parts/changes";
 import { cotsLinkDenied } from "@/lib/parts/cotsLink";
-import { computeStatus } from "@/lib/status";
+import { orderStatus } from "@/lib/status";
 import { OrderStatusButton } from "./CotsCard";
 
 // An Order List cart: a Factory pack's card (the same collage, date, and strip that opens under its
@@ -39,7 +39,7 @@ export function CartCard({
   const { mode } = useMode();
   const ids = members.map((p) => p.id);
   // One status for the whole cart, shown as its least advanced part's; a pick sets every part.
-  const order = (p: CardPart) => (ORDER_STATUSES as readonly string[]).indexOf(computeStatus(p));
+  const order = (p: CardPart) => (ORDER_STATUSES as readonly string[]).indexOf(orderStatus(p));
   const lowest = members.reduce((a, p) => (order(p) < order(a) ? p : a), members[0]);
   const status = <OrderStatusButton part={{ ...lowest, displayName: `the ${cart.vendor} cart` }} save={(changes) => save(ids, changes)} compact={layout === "list"} />;
   const dates = [...new Set(members.map((p) => p.cotsDeliveryDate).filter((d): d is string => !!d))];
@@ -53,7 +53,7 @@ export function CartCard({
         // let move: the date saves either way).
         const moving =
           date && !statusDenied(mode, COTS_IN_ROUTE, { cots: true })
-            ? members.filter((p) => (BEFORE_IN_ROUTE as string[]).includes(computeStatus(p)) && !cotsLinkDenied(p, { status: COTS_IN_ROUTE })).map((p) => p.id)
+            ? members.filter((p) => (BEFORE_IN_ROUTE as string[]).includes(orderStatus(p)) && !cotsLinkDenied(p, { status: COTS_IN_ROUTE })).map((p) => p.id)
             : [];
         const rest = ids.filter((id) => !moving.includes(id));
         if (moving.length) save(moving, { cotsDeliveryDate: date, status: COTS_IN_ROUTE });

@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { MACHINES } from "@/config/machines";
+import { COTS_PROCESS, MACHINES } from "@/config/machines";
 import { pickMaterial } from "./options";
 import { MaterialPicker } from "./fields";
 import { useMaterials } from "@/components/shell/MaterialColors";
-import { STATUSES } from "@/config/statuses";
+import { IN_PROCESS_LATER, RELEASED_LATER, STATUSES, processStatusName } from "@/config/statuses";
 import type { PartChanges } from "@/lib/parts/changes";
 import { RESET_SPECS } from "@/components/shell/mode";
 import { useCan } from "@/components/shell/ModeContext";
@@ -15,9 +15,9 @@ import { askConfirm } from "@/components/ui/useConfirm";
 const FIELDS = [
   { id: "classification", label: "Type (COTS / In-House)" },
   { id: "material", label: "Material" },
-  { id: "preProcess", label: "Pre Process" },
   { id: "process1", label: "Process 1" },
-  { id: "process2", label: "Process 2" },
+  // Adds a process after each part's last one (Harel, 2026-11-20).
+  { id: "appendProcess", label: "+ Add process" },
   { id: "status", label: "Status" },
 ] as const;
 type FieldId = (typeof FIELDS)[number]["id"];
@@ -35,16 +35,27 @@ function valueOptions(field: Exclude<FieldId, "material">) {
         <option key="cots" value="cots">COTS</option>,
       ];
     case "status":
-      return STATUSES.map((s) => <option key={s.name}>{s.name}</option>);
-    default: {
-      const stage = field === "preProcess" ? "PreProcess" : "Process";
+      // Released P2+ / In Process 2+ by number; parts without that process are left as they are.
+      return STATUSES.flatMap((s) =>
+        s.name === RELEASED_LATER || s.name === IN_PROCESS_LATER
+          ? [2, 3, 4, 5].map((n) => <option key={`${s.name}${n}`}>{processStatusName(s.name, n)}</option>)
+          : [<option key={s.name}>{s.name}</option>],
+      );
+    case "appendProcess":
       return [
-        <option key={NONE} value={NONE}>— None —</option>,
-        ...MACHINES.filter((m) => m.stage === stage).map((m) => (
+        <option key={NONE} value={NONE}>— Remove the added processes —</option>,
+        ...MACHINES.map((m) => (
           <option key={m.id} value={m.id}>{m.name}</option>
         )),
       ];
-    }
+    default:
+      return [
+        <option key={NONE} value={NONE}>— None —</option>,
+        ...MACHINES.map((m) => (
+          <option key={m.id} value={m.id}>{m.name}</option>
+        )),
+        <option key={COTS_PROCESS} value={COTS_PROCESS}>COTS (bought)</option>,
+      ];
   }
 }
 
@@ -66,11 +77,16 @@ export function BulkEditBar({
   const canReset = useCan("classify");
   const [field, setField] = useState<FieldId>("status");
   const [value, setValue] = useState("");
+  const [qa, setQa] = useState(false);
 
   function apply() {
     if (!value || !count) return;
     if (field === "material") {
       onApply(pickMaterial(materials, value));
+      return;
+    }
+    if (field === "appendProcess") {
+      onApply(value === NONE ? { addedProcesses: [] } : { appendProcess: { machine: value, qa } });
       return;
     }
     onApply({ [field]: value === NONE ? null : value } as PartChanges);
@@ -103,6 +119,12 @@ export function BulkEditBar({
             <option value="">— Value —</option>
             {valueOptions(field)}
           </select>
+        )}
+        {field === "appendProcess" && value && value !== NONE && (
+          <label className="flex items-center gap-1.5 text-sm whitespace-nowrap">
+            <input type="checkbox" checked={qa} onChange={(e) => setQa(e.target.checked)} className="h-4 w-4" />
+            QA needed
+          </label>
         )}
         <button className="btn-primary" disabled={!value || !count} onClick={apply}>
           Apply

@@ -94,7 +94,8 @@ export async function measureParts<P extends Part>(robotId: string, rows: P[]): 
 // ---------- suggestions ----------
 
 // The fields a suggestion may set.
-export const SETUP_FIELDS = ["classification", "material", "preProcess", "process1", "process2"] as const;
+// A second process is recorded as the part's added processes (Harel, 2026-11-20).
+export const SETUP_FIELDS = ["classification", "material", "process1", "addedProcesses"] as const;
 // Everything an AI may configure on a part that waits in To Review (Reject puts these back).
 export const REVIEW_FIELDS = [
   ...SETUP_FIELDS,
@@ -174,8 +175,8 @@ export async function partsToSetUp(robotId: string, systemId?: string, opts: { u
         eq(parts.isManual, false),
         sql`${parts.classification} <> 'external'`,
         opts.unlinked
-          ? sql`(${parts.material} is null or coalesce(${parts.preProcess}, ${parts.process1}, ${parts.process2}) is null or (${parts.inventoryItemId} is null and ${parts.classification} <> 'cots'))`
-          : sql`(${parts.material} is null or coalesce(${parts.preProcess}, ${parts.process1}, ${parts.process2}) is null)`,
+          ? sql`(${parts.material} is null or (${parts.process1} is null and ${parts.addedProcesses} = '[]'::jsonb) or (${parts.inventoryItemId} is null and ${parts.classification} <> 'cots'))`
+          : sql`(${parts.material} is null or (${parts.process1} is null and ${parts.addedProcesses} = '[]'::jsonb))`,
       ),
     );
   const measured = await measureParts(robotId, rows.map((r) => ({ ...r.part, systemName: r.systemName })));
@@ -330,7 +331,7 @@ function freshEdit(
   }
   // Worked out as if the part had no item: an old free-text material ("6.7mm 6061-T6") stays as
   // a hint, an item's name doesn't.
-  const blankProcesses = { preProcess: null, process1: null, process2: null };
+  const blankProcesses = { process1: null, addedProcesses: [] };
   const material = p.material && !stockNames.has(p.material) ? p.material : null;
   const fresh = suggestSetup({ ...p, ...blankProcesses, material, inventoryItemId: null }, stock);
   const guess = fresh?.changes.material ? fresh : suggestSetup({ ...p, ...blankProcesses }, stock);
@@ -340,7 +341,7 @@ function freshEdit(
   if (p.inventoryItemId && changes.material && !("inventoryItemId" in changes) && PRINT_MATERIALS.some((m) => m.material === changes.material)) changes.inventoryItemId = null;
   // Processes are worked out fresh too: the setups on the robots so far are tests, not the
   // team's choices (Harel, 2026-11-06).
-  for (const f of Object.keys(changes) as (keyof typeof changes)[]) if (same(changes[f], p[f as keyof Part])) delete changes[f];
+  for (const f of Object.keys(changes) as (keyof typeof changes)[]) if (same(changes[f], f === "process2" ? (p.addedProcesses[0]?.machine ?? null) : p[f as keyof Part])) delete changes[f];
   return Object.keys(changes).length ? { id: p.id, changes, reason: guess.reason } : null;
 }
 

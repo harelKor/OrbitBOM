@@ -36,6 +36,7 @@ export function ManualPartButton({ systemId }: { systemId: string }) {
           {m.name}
         </option>
       ))}
+      {name === "process1" && <option value="cots">COTS (bought)</option>}
     </select>
   );
 
@@ -56,7 +57,6 @@ export function ManualPartButton({ systemId }: { systemId: string }) {
             <input type="hidden" name="material" value={picked.inventoryItemId ? "" : (picked.material ?? "")} />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            {machineSelect("preProcess", "Pre Process", "PreProcess")}
             {machineSelect("process1", "Process 1", "Process")}
             {machineSelect("process2", "Process 2", "Process")}
           </div>

@@ -1,9 +1,9 @@
 import "server-only";
 import { and, eq, inArray, isNull } from "drizzle-orm";
-import { FACTORY_FAB_MACHINES, PRINTERS, areaOf, type FabArea } from "@/config/machines";
+import { FACTORY_FAB_MACHINES, PRINTERS, type FabArea } from "@/config/machines";
 import { db, schema } from "@/db";
 import { AREA_READY, areaQueue } from "@/lib/fab";
-import { computeStatus } from "@/lib/status";
+import { areaOf, computeStatus } from "@/lib/status";
 
 const { parts, systems, partGroups, groupMembers } = schema;
 
@@ -21,12 +21,11 @@ export async function countArea(robotId: string, area: FabArea): Promise<Factory
         classification: parts.classification,
         quantity: parts.quantity,
         designState: parts.designState,
-        preProcess: parts.preProcess,
         process1: parts.process1,
-        process2: parts.process2,
-        donePreprocess: parts.donePreprocess,
         doneProcess1: parts.doneProcess1,
-        doneProcess2: parts.doneProcess2,
+        addedProcesses: parts.addedProcesses,
+        qaHeld: parts.qaHeld,
+        cotsQa: parts.cotsQa,
       })
       .from(parts)
       .innerJoin(systems, eq(systems.id, parts.systemId))

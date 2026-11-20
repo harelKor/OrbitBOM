@@ -2,7 +2,7 @@ import "server-only";
 import { inArray } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { can, effectiveMode, isSpecReset, MODE_COOKIE, statusDenied, type Capability, type Mode } from "@/components/shell/mode";
-import { areaOf } from "@/config/machines";
+import { areaOf, buyingNow } from "@/lib/status";
 import { db, schema } from "@/db";
 import { getMember, requireMember, type Member } from "@/lib/auth";
 import { cotsLinkDenied } from "@/lib/parts/cotsLink";
@@ -53,7 +53,7 @@ export async function statusChangeDenied(partIds: string[], changes: StatusChang
   return statusChangeDeniedFor(() => getMode(), partIds, changes);
 }
 
-type StatusChange = { status?: string; note?: string | null; inventoryItemId?: string | null; classification?: string; material?: string | null; preProcess?: string | null; process1?: string | null; process2?: string | null };
+type StatusChange = { status?: string; note?: string | null; inventoryItemId?: string | null; classification?: string; material?: string | null; process1?: string | null };
 
 // The same, for a mode that doesn't come from this request's cookies (MCP: effectiveMode(member)).
 export async function statusChangeDeniedFor(mode: Mode | (() => Promise<Mode>), partIds: string[], changes: StatusChange): Promise<string | null> {
@@ -66,9 +66,12 @@ export async function statusChangeDeniedFor(mode: Mode | (() => Promise<Mode>), 
           inventoryItemId: schema.parts.inventoryItemId,
           designState: schema.parts.designState,
           material: schema.parts.material,
-          preProcess: schema.parts.preProcess,
+          quantity: schema.parts.quantity,
           process1: schema.parts.process1,
-          process2: schema.parts.process2,
+          doneProcess1: schema.parts.doneProcess1,
+          addedProcesses: schema.parts.addedProcesses,
+          qaHeld: schema.parts.qaHeld,
+          cotsQa: schema.parts.cotsQa,
         })
         .from(schema.parts)
         .where(inArray(schema.parts.id, ids))
@@ -82,7 +85,8 @@ export async function statusChangeDeniedFor(mode: Mode | (() => Promise<Mode>), 
   // Each kind of part once: COTS, made at a Factory Fab factory, on a team printer, or in the shop.
   const kinds = new Map(
     rows.map((r) => {
-      const kind = { cots: r.classification === "cots", factory: areaOf(r) === "factory", print: areaOf(r) === "print" };
+      // A part bought as its Process 1 follows the COTS rules while it is on the COTS page.
+      const kind = { cots: r.classification === "cots" || buyingNow(r), factory: areaOf(r) === "factory", print: areaOf(r) === "print" };
       return [JSON.stringify(kind), kind];
     }),
   );

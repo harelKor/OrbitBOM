@@ -1,9 +1,9 @@
 import "server-only";
 import { and, eq, inArray, isNull } from "drizzle-orm";
-import { factoryOf, packsByMaterial } from "@/config/machines";
+import { packsByMaterial } from "@/config/machines";
 import { db, schema } from "@/db";
 import { cachedQuery } from "@/lib/data/cache";
-import { computeStatus } from "@/lib/status";
+import { computeStatus, factoryOf } from "@/lib/status";
 
 const { parts, systems, robots, partGroups, groupMembers } = schema;
 
@@ -86,12 +86,11 @@ async function hasLooseReleased(robotId: string, factory: string): Promise<boole
         classification: parts.classification,
         quantity: parts.quantity,
         designState: parts.designState,
-        preProcess: parts.preProcess,
         process1: parts.process1,
-        process2: parts.process2,
-        donePreprocess: parts.donePreprocess,
         doneProcess1: parts.doneProcess1,
-        doneProcess2: parts.doneProcess2,
+        addedProcesses: parts.addedProcesses,
+        qaHeld: parts.qaHeld,
+        cotsQa: parts.cotsQa,
       })
       .from(parts)
       .innerJoin(systems, eq(systems.id, parts.systemId))

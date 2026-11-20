@@ -1,4 +1,5 @@
-import { getMachine } from "@/config/machines";
+import { machineName } from "@/config/machines";
+import { processMachines } from "@/lib/status";
 import type { Filters } from "@/components/shell/FilterContext";
 import { matchesSearch } from "@/lib/inventory/searchWords";
 import { partTitle, type CardPart } from "./types";
@@ -8,7 +9,7 @@ import { partTitle, type CardPart } from "./types";
 // words alike, so "alu 1/4" or "מיסב" finds the same things on every page.
 export function matchesTopBar(p: CardPart, { q }: Pick<Filters, "q">): boolean {
   if (!q.trim()) return true;
-  const haystack = [partTitle(p), p.onshapeName, p.partNumber, p.material, ...[p.preProcess, p.process1, p.process2].map((m) => (m ? getMachine(m)?.name : null))]
+  const haystack = [partTitle(p), p.onshapeName, p.partNumber, p.material, ...processMachines(p).map(machineName)]
     .filter(Boolean)
     .join(" ");
   return matchesSearch(haystack, q);
@@ -16,7 +17,7 @@ export function matchesTopBar(p: CardPart, { q }: Pick<Filters, "q">): boolean {
 
 // The BOM filter row's Material and Process pills.
 export function matchesPills(p: CardPart, { material, process }: Pick<Filters, "material" | "process">): boolean {
-  if (process && ![p.preProcess, p.process1, p.process2].includes(process)) return false;
+  if (process && !processMachines(p).includes(process)) return false;
   if (material && p.material !== material) return false;
   return true;
 }

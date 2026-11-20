@@ -6,12 +6,11 @@ const part: StatusInput = {
   classification: "inhouse",
   quantity: 1,
   designState: "Not Started",
-  preProcess: null,
   process1: "laser",
-  process2: null,
-  donePreprocess: 0,
+  addedProcesses: [] as { machine: string; done: number; qa: boolean; qaDone?: boolean }[],
   doneProcess1: 0,
-  doneProcess2: 0,
+  qaHeld: false,
+  cotsQa: false,
 };
 const at = (designState: string, more: Partial<StatusInput> = {}) => ({ ...part, designState, ...more });
 

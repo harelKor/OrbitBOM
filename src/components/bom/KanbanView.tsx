@@ -2,10 +2,10 @@
 
 import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { useId } from "react";
-import { getMachine } from "@/config/machines";
+import { machineName } from "@/config/machines";
 import { COTS_STATUSES } from "@/config/cots";
 import { STATUSES } from "@/config/statuses";
-import { computeStatus } from "@/lib/status";
+import { computeStatus, numberedFor, processMachines } from "@/lib/status";
 import { StatusPill, TypeField, type SaveFn } from "./fields";
 import { Thumb } from "./Thumb";
 import { partIds, partTitle, type CardPart } from "./types";
@@ -34,7 +34,9 @@ export function KanbanView({
     const status = e.over?.id;
     const part = parts.find((p) => p.id === e.active.id);
     if (!part || typeof status !== "string" || computeStatus(part) === status) return;
-    saveFor(part.id)({ status });
+    // Released P2+ / In Process 2+ is the part's own numbered status; a part with no added process has none.
+    const picked = numberedFor(part, status);
+    if (picked) saveFor(part.id)({ status: picked });
   }
 
   return (
@@ -72,7 +74,7 @@ function Column({ id, color, title, meta, children }: { id: string; color: strin
 
 function KanbanCard({ part, save, showSystem }: { part: CardPart; save: SaveFn; showSystem: boolean }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: part.id });
-  const machines = [part.preProcess, part.process1, part.process2].filter(Boolean).map((m) => getMachine(m!)?.name ?? m);
+  const machines = processMachines(part).map(machineName);
   return (
     <div
       ref={setNodeRef}

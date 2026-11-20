@@ -5,12 +5,11 @@ const part = {
   classification: "inhouse" as const,
   quantity: 4,
   designState: null as string | null,
-  preProcess: null as string | null,
   process1: "cnc",
-  process2: null as string | null,
-  donePreprocess: 0,
+  addedProcesses: [] as { machine: string; done: number; qa: boolean; qaDone?: boolean }[],
   doneProcess1: 0,
-  doneProcess2: 0,
+  qaHeld: false,
+  cotsQa: false,
 };
 
 describe("fabCounts", () => {
@@ -27,12 +26,12 @@ describe("fabCounts", () => {
     expect(c.finished).toBe(true);
     expect(c.made).toBe(4);
     expect(c.addOne).toBeNull();
-    expect(c.takeBack).toEqual({ counters: { doneProcess1: 3 } });
+    expect(c.takeBack).toEqual({ doneProcess1: 3 });
   });
 
   it("keeps earlier machines full when taking one back from a finished part", () => {
-    const c = fabCounts({ ...part, preProcess: "laser", designState: "In Stock" });
-    expect(c.takeBack).toEqual({ counters: { donePreprocess: 4, doneProcess1: 3 } });
+    const c = fabCounts({ ...part, addedProcesses: [{ machine: "bending", done: 0, qa: false }], designState: "In Stock" });
+    expect(c.takeBack).toEqual({ doneProcess1: 4, addedDone: [3] });
   });
 
   it("sends a single finished piece back to In process", () => {
@@ -43,7 +42,7 @@ describe("fabCounts", () => {
 
 describe("fabBatchRefusal", () => {
   const cnc = { id: "cnc", name: "CNC" };
-  const plate = (material: string | null, process1 = "cnc") => ({ preProcess: null, process1, process2: null, material });
+  const plate = (material: string | null, process1 = "cnc") => ({ process1, addedProcesses: [], material });
   it("takes parts of one material that all go through the machine", () => {
     expect(fabBatchRefusal(cnc, [plate("6061"), plate("6061")])).toBeNull();
   });

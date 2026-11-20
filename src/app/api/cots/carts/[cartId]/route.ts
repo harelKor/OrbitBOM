@@ -6,7 +6,7 @@ import { getMember } from "@/lib/auth";
 import { cartKind, cartUrl, linkVariant, type CartLine } from "@/lib/cotsCart";
 import { shelfOfParts } from "@/lib/data/inventory";
 import { shopifyVariantId } from "@/lib/inventory/product";
-import { computeStatus } from "@/lib/status";
+import { orderStatus } from "@/lib/status";
 import { isUuid } from "@/lib/uuid";
 
 export const maxDuration = 30;
@@ -28,7 +28,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ car
   const ids = (await db.select({ id: schema.cotsCartMembers.partId }).from(schema.cotsCartMembers).where(eq(schema.cotsCartMembers.cartId, cartId))).map((r) => r.id);
   const rows = ids.length ? await db.select().from(schema.parts).where(inArray(schema.parts.id, ids)) : [];
   const all = rows.filter((p) => cartKind(p.cotsLinks[0]?.url));
-  const buying = all.filter((p) => BUYING.has(computeStatus(p)));
+  const buying = all.filter((p) => BUYING.has(orderStatus(p)));
   const parts = buying.length ? buying : all;
   if (!parts.length) return new NextResponse(`None of this cart's parts has a ${cart.vendor} product link that can go in a cart.`, { status: 400 });
 

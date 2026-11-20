@@ -1,5 +1,6 @@
 import "server-only";
-import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { COTS_PROCESS } from "@/config/machines";
 import { db, schema } from "@/db";
 import type { Shelf, ShelfSuggestion } from "@/components/bom/types";
 import { categoryImageUrl, listCategories } from "@/lib/data/categories";
@@ -13,7 +14,7 @@ import { partOnshapeUrl, type PartAt } from "@/lib/onshape/partLink";
 import { parseOnshapeUrl } from "@/lib/onshape/url";
 import { bomModelRef } from "@/lib/model/build";
 import { isOnshapeDrawingKey } from "@/lib/parts/files";
-import { computeStatus } from "@/lib/status";
+import { computeStatus, orderStatus } from "@/lib/status";
 import { versionLabel } from "@/lib/versions/label";
 import { fabChanged } from "@/lib/versions/release";
 import { imageUrl } from "@/lib/storage/r2";
@@ -263,6 +264,9 @@ export async function cotsCategories(list: CotsNamed[]): Promise<{ categories: I
   return { categories, of: new Map(list.map((p) => [p.id, cotsCategoryOf(p, ids, p.inventoryItemId ? itemCat.get(p.inventoryItemId) : null)])) };
 }
 
+// COTS parts and parts bought as their Process 1 (Harel, 2026-11-20).
+const boughtParts = or(eq(parts.classification, "cots"), and(eq(parts.process1, COTS_PROCESS), ne(parts.classification, "external")))!;
+
 // The COTS page: live COTS parts on active robots, each with its robot (null for a card in the
 // General section, added on the COTS page for no robot); robots newest first.
 export async function listCotsParts(): Promise<{ robots: { id: string; name: string }[]; parts: CotsPart[]; categories: InvCategory[] }> {
@@ -276,7 +280,7 @@ export async function listCotsParts(): Promise<{ robots: { id: string; name: str
     isNull(parts.systemId),
     ...(systemRows.length ? [inArray(parts.systemId, systemRows.map((s) => s.id))] : []),
   ];
-  const rows = await load(and(or(...own), isNull(parts.removedFromCadAt), eq(parts.classification, "cots")), { anySystem: true });
+  const rows = await load(and(or(...own), isNull(parts.removedFromCadAt), boughtParts), { anySystem: true });
   const { categories, of } = await cotsCategories(rows);
   return {
     robots: robotRows,
@@ -293,14 +297,14 @@ export async function listCotsParts(): Promise<{ robots: { id: string; name: str
 // How many COTS parts of active robots are in each status, for the COTS home page.
 export async function countCotsStatuses(): Promise<Map<string, number>> {
   const rows = await db
-    .select({ classification: parts.classification, designState: parts.designState, quantity: parts.quantity, preProcess: parts.preProcess, process1: parts.process1, process2: parts.process2, donePreprocess: parts.donePreprocess, doneProcess1: parts.doneProcess1, doneProcess2: parts.doneProcess2 })
+    .select({ classification: parts.classification, designState: parts.designState, quantity: parts.quantity, process1: parts.process1, doneProcess1: parts.doneProcess1, addedProcesses: parts.addedProcesses, qaHeld: parts.qaHeld, cotsQa: parts.cotsQa })
     .from(parts)
     .leftJoin(systems, eq(systems.id, parts.systemId))
     .leftJoin(robots, eq(robots.id, sql`coalesce(${systems.robotId}, ${parts.robotId})`))
     // General cards (no system, no robot) count too.
-    .where(and(or(isNull(robots.id), eq(robots.archived, false)), isNull(parts.removedFromCadAt), eq(parts.classification, "cots")));
+    .where(and(or(isNull(robots.id), eq(robots.archived, false)), isNull(parts.removedFromCadAt), boughtParts));
   const counts = new Map<string, number>();
-  for (const r of rows) counts.set(computeStatus(r), (counts.get(computeStatus(r)) ?? 0) + 1);
+  for (const r of rows) counts.set(orderStatus(r), (counts.get(orderStatus(r)) ?? 0) + 1);
   return counts;
 }
 

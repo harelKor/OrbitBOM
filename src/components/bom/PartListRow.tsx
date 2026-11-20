@@ -1,13 +1,13 @@
 "use client";
 
 import { getCotsStatus } from "@/config/cots";
-import { getMachine } from "@/config/machines";
+import { machineName } from "@/config/machines";
 import { getStatus } from "@/config/statuses";
 import { computeStatus } from "@/lib/status";
 import { ListPill, ListRow } from "@/components/ui/ListRow";
 import { statusTint } from "@/components/ui/statusTint";
 import { ShelfCoversPrompt } from "@/components/cots/ShelfPill";
-import { MachineField, MaterialField, SLOTS, StatusField, TypeBadge, TypeField, type SaveFn } from "./fields";
+import { AddProcessField, MachineField, MaterialField, StatusField, TypeBadge, TypeField, currentSlotN, slotsOf, type SaveFn } from "./fields";
 import { usePermissions } from "@/components/shell/ModeContext";
 import { usePartDetails } from "./PartDetailsHost";
 import { CardSuggest } from "./CardSuggest";
@@ -34,10 +34,11 @@ export function PartListRow({
   const open = usePartDetails(part, save);
   const status = computeStatus(part);
   const statusColor = getStatus(status)?.color ?? getCotsStatus(status)?.color;
-  const slots = SLOTS.filter((s) => part[s.key]);
-  // The machine being worked on: the first one not done with the whole amount, else the last.
-  const current = slots.find((s) => part[s.done] < Math.max(part.quantity, 1)) ?? slots.at(-1);
-  const machine = current ? (getMachine(part[current.key]!)?.name ?? part[current.key]) : null;
+  const slots = slotsOf(part).filter((s) => s.machine);
+  // The process the part is at now, else its last one.
+  const atN = currentSlotN(part);
+  const current = slots.find((s) => s.n === atN) ?? slots.at(-1);
+  const machine = current?.machine ? machineName(current.machine) : null;
   const cots = part.classification === "cots";
   const what = cots ? (part.shelf?.itemName ?? null) : part.material;
   const { canWork: work, canClassify } = usePermissions();
@@ -82,15 +83,16 @@ export function PartListRow({
                 {!slots.length && work && (
                   <span className="contents">
                     <span className="text-[0.625rem] text-faint">→</span>
-                    <MachineField part={part} save={save} slot={SLOTS[1]} placeholder="+ Process" className={addPill} />
+                    <MachineField part={part} save={save} slot={slotsOf(part)[0]} placeholder="+ Process" className={addPill} />
                   </span>
                 )}
                 {slots.map((slot) => (
-                  <span key={slot.key} className="contents">
+                  <span key={slot.n} className="contents">
                     <span className="text-[0.625rem] text-faint">→</span>
-                    <MachineField part={part} save={save} slot={slot} className={`${pill} ${slot === current ? "border-accent/60 text-accent" : ""}`} />
+                    <MachineField part={part} save={save} slot={slot} className={`${pill} ${slot.n === atN ? "border-accent/60 bg-accent/10 font-semibold text-accent" : ""}`} />
                   </span>
                 ))}
+                {slots.length > 0 && work && <AddProcessField part={part} save={save} label="+" className={`${pill} border-dashed`} />}
               </>
             )}
             <StatusField part={part} save={save} size="sm" />

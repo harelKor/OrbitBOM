@@ -23,13 +23,14 @@ import { SuggestIcon } from "@/components/ui/SuggestIcon";
 import { usePhone } from "@/components/ui/usePhone";
 import { computeStatus } from "@/lib/status";
 import { SystemDrawerButton } from "@/components/map/SystemDrawerButton";
-import { getMachine } from "@/config/machines";
+import { getMachine, machineName } from "@/config/machines";
 import { FabVersionBadge, PartVersionsButton } from "@/components/versions/PartVersionsWindow";
 import { cotsTotal, siteOf } from "@/lib/cots";
 import { fabStage } from "@/lib/fab";
 import { useBom } from "./BomContext";
 import { upload } from "./FilesField";
-import { MachineField, MaterialField, NameField, QuantityField, StatusField, TypeField, machineSlotsShown, type SaveFn } from "./fields";
+import { AddProcessField, MachineField, MaterialField, NameField, QaNeededField, QuantityField, StatusField, TypeField, currentSlotN, machineSlotsShown, type SaveFn } from "./fields";
+import { processMachines } from "@/lib/status";
 import { DownloadMenu, MergedBadge, cadFormat } from "./PartCard";
 import { ownerPartId, partTitle, type CardPart } from "./types";
 import { GoToButton } from "@/components/ui/GoToButton";
@@ -62,7 +63,7 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
   const place = placeRobot && part.systemId ? `/robots/${placeRobot}/systems/${part.systemId}` : null;
   const canLocate = !part.isManual && !!robotId && !!part.modelKey;
   // Open flatten on the 3D preview: parts bent on a Bending machine (Harel, 2026-11-17).
-  const bent = !part.isManual && !cots && [part.preProcess, part.process1, part.process2].some((id) => !!id && getMachine(id)?.kind === "bending");
+  const bent = !part.isManual && !cots && processMachines(part).some((id) => getMachine(id)?.kind === "bending");
   const overlay = "btn h-7 gap-1.5 bg-surface/95 px-2 text-xs shadow-sm sm:h-8 sm:px-3 pointer-coarse:h-9";
   const phone = usePhone();
   const suggest = useSuggest(part, !part.memberIds);
@@ -609,6 +610,7 @@ const FIELD_NAMES: Record<string, string> = {
   preProcess: "pre-process",
   process1: "machine 1",
   process2: "machine 2",
+  addedProcesses: "processes after 1",
   displayName: "name",
   cotsLinks: "product links",
   unitPrice: "price",
@@ -621,7 +623,8 @@ type InventoryDiff = { was: string; pending: string | null } | null;
 function formatOld(field: string, value: unknown, itemNames: Record<string, string>): string {
   if (value === null || value === undefined || value === "") return field === "inventoryItemId" ? "Unlinked" : "None";
   if (field === "classification") return value === "cots" ? "COTS" : value === "undefined" ? "Undefined" : "In-House";
-  if (field === "preProcess" || field === "process1" || field === "process2") return getMachine(String(value))?.name ?? String(value);
+  if (field === "preProcess" || field === "process1" || field === "process2") return machineName(String(value));
+  if (field === "addedProcesses" && Array.isArray(value)) return value.map((p: { machine?: string }) => machineName(String(p.machine))).join(" → ") || "None";
   if (field === "inventoryItemId") return itemNames[String(value)] ?? "Inventory item";
   if (Array.isArray(value)) return value.length ? `${value.length} ${value.length === 1 ? "link" : "links"}` : "None";
   if (typeof value === "object") return "—";
@@ -728,13 +731,26 @@ function MadeRows({ part, save, was }: { part: CardPart; save: SaveFn; was: Was 
       <Row label="Material" was={was("material")}>
         <MaterialField part={part} save={save} />
       </Row>
-      {machineSlotsShown(part).map((slot) => (
-        <Row key={slot.key} label={slot.label} was={was(slot.key)}>
-          <span className="flex min-w-0 items-center gap-2">
-            <MachineField part={part} save={save} slot={slot} placeholder="None" />
-          </span>
+      {machineSlotsShown(part).map((slot) => {
+        // The process the part is at now is highlighted (Harel, 2026-11-20).
+        const now = slot.n === currentSlotN(part) && !!slot.machine;
+        return (
+          <Row key={slot.n} label={slot.label} was={was(slot.n === 1 ? "process1" : slot.n === 2 ? "process2" : "")}>
+            <span className={`flex min-w-0 flex-wrap items-center gap-2 ${now ? "rounded-md bg-accent/10 px-1.5 py-0.5 font-semibold text-accent ring-1 ring-accent/50" : ""}`}>
+              <MachineField part={part} save={save} slot={slot} placeholder="None" />
+              {slot.machine && slot.n === 1 && <span className="text-xs text-muted tabular-nums">{slot.done}/{part.quantity}</span>}
+              {slot.n > 1 && <span className="text-xs text-muted tabular-nums">{slot.done}/{part.quantity}</span>}
+              {slot.n > 1 && <QaNeededField part={part} save={save} slot={slot} />}
+              {now && <span className="text-[0.6875rem] font-bold uppercase">Now</span>}
+            </span>
+          </Row>
+        );
+      })}
+      {(part.process1 || part.addedProcesses.length > 0) && (
+        <Row label="" was={undefined}>
+          <AddProcessField part={part} save={save} className="rounded-full border border-dashed border-line-strong px-2.5 py-0.5 text-xs" />
         </Row>
-      ))}
+      )}
     </>
   );
 }

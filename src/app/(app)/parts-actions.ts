@@ -4,7 +4,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { REFRESH } from "@/config/refresh";
 import { z } from "zod";
-import { MACHINES } from "@/config/machines";
+import { COTS_PROCESS, MACHINES } from "@/config/machines";
 import { db, schema } from "@/db";
 import { requireMember } from "@/lib/auth";
 import { partChangesCapability } from "@/components/shell/mode";
@@ -61,6 +61,8 @@ export async function settleLinkSuggestion(partIds: string[], itemId: string, ac
 }
 
 const machine = z.union([z.literal(""), z.enum(MACHINES.map((m) => m.id) as [string, ...string[]])]);
+// Process 1 may be COTS (bought, then QA, then its added processes).
+const process1 = z.union([machine, z.literal(COTS_PROCESS)]);
 
 const manualPart = z.object({
   name: z.string().trim().min(1, "Part name is required."),
@@ -68,9 +70,8 @@ const manualPart = z.object({
   inventoryItemId: z.union([z.literal(""), z.uuid()]).default(""),
   material: z.string().trim().default(""), // a general material, when no item is picked
   description: z.string().trim().default(""),
-  preProcess: machine,
-  process1: machine,
-  process2: machine,
+  process1,
+  process2: machine, // the first added process
   drawingUrl: z.union([z.literal(""), z.url("The drawing link must be a URL.")]),
 });
 
@@ -100,9 +101,8 @@ export async function addManualPart(
     material: item?.name ?? orNull(d.material),
     inventoryItemId: item?.id ?? null,
     description: orNull(d.description),
-    preProcess: orNull(d.preProcess),
     process1: orNull(d.process1),
-    process2: orNull(d.process2),
+    addedProcesses: d.process2 ? [{ machine: d.process2, done: 0, qa: false, qaDone: false }] : [],
     drawingUrl: orNull(d.drawingUrl),
     lastModifiedBy: member.id,
   }).returning({ id: schema.parts.id });

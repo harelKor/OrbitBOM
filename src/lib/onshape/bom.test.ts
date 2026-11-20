@@ -45,7 +45,6 @@ describe("parseBom", () => {
         material: "Aluminum - 6061",
         onshapeMaterial: "Aluminum - 6061",
         quantity: 2,
-        preProcess: null,
         process1: "cnc",
         process2: null,
       },

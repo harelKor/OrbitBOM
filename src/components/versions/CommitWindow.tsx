@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { Dialog } from "@/components/Dialog";
 import { Icon } from "@/components/ui/Icon";
 import { LocalTime } from "@/components/ui/LocalTime";
-import { getMachine } from "@/config/machines";
+import { machineName } from "@/config/machines";
 import type { VersionChange } from "@/db/schema";
 import type { ViewerModel } from "@/components/dashboard/ModelCanvas";
 import type { Draft } from "@/lib/versions/detect";
@@ -35,7 +35,7 @@ const PROCESS_FIELDS = new Set(["preProcess", "process1", "process2"]);
 
 function shown(field: string, value: unknown) {
   if (value === null || value === undefined || value === "") return "—";
-  if (PROCESS_FIELDS.has(field)) return getMachine(String(value))?.name ?? String(value);
+  if (PROCESS_FIELDS.has(field)) return machineName(String(value));
   return String(value);
 }
 

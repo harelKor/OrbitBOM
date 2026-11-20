@@ -8,6 +8,7 @@ import type { Shape } from "../lib/review/shape";
 import type { ViewState } from "../components/viewer/viewState";
 import type { CheckLimits, CheckResults } from "../lib/check/types";
 import type { Anchor } from "../lib/reviews/anchor";
+import type { AddedProcess } from "../lib/status";
 import {
   bigint,
   boolean,
@@ -294,11 +295,21 @@ export const parts = pgTable(
     }),
     quantity: integer("quantity").notNull().default(1), // from Onshape
 
-    // Machine ids from config/machines.ts. From Onshape custom properties.
+    // Machine ids from config/machines.ts (process1 may be "cots", bought). From Onshape custom
+    // properties. pre_process, process2, done_preprocess, done_process2 and extra_processes are no
+    // longer read (Harel, 2026-11-20: no Pre-process; Process 2 became the first added process):
+    // to drop in a later push.
     preProcess: text("pre_process"),
     process1: text("process1"),
     process2: text("process2"),
     extraProcesses: jsonb("extra_processes").$type<string[]>().notNull().default([]),
+    // The processes after Process 1, in order, each with its machine, done counter and whether QA
+    // is needed before it starts (src/lib/status.ts). Onshape's Process 2 fills the first one.
+    addedProcesses: jsonb("added_processes").$type<AddedProcess[]>().notNull().default([]),
+    // "+" finished a step that leads to QA and the member kept the part at its process.
+    qaHeld: boolean("qa_held").notNull().default(false),
+    // A bought part arrived from the Order List and waits for CAD's QA.
+    cotsQa: boolean("cots_qa").notNull().default(false),
 
     donePreprocess: integer("done_preprocess").notNull().default(0),
     doneProcess1: integer("done_process1").notNull().default(0),
@@ -712,9 +723,9 @@ export type PartSnapshot = {
   material: string | null;
   onshapeMaterial: string | null;
   quantity: number;
-  preProcess: string | null;
+  preProcess?: string | null; // before 2026-11-20: Pre-process is gone, no longer compared
   process1: string | null;
-  process2: string | null;
+  process2: string | null; // Onshape's Process 2: the first added process
   sig: string | null; // shape fingerprint (src/lib/versions/shape.ts)
   studio?: string | null; // its Part Studio, frozen (src/lib/versions/studio.ts), for the 3D preview
 };

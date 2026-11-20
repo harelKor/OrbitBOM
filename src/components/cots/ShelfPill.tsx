@@ -10,7 +10,7 @@ import { useInventoryPopup } from "@/components/inventory/InventoryPopup";
 import { useCan } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
 import { formatStock } from "@/lib/inventory/stock";
-import { computeStatus } from "@/lib/status";
+import { orderStatus } from "@/lib/status";
 
 const pill = "press inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[0.6875rem] font-semibold";
 const REASONS = { onshape: "the same Onshape part", link: "the same product page", name: "the same name", review: "a link waiting in AI review" } as const;
@@ -215,7 +215,7 @@ function useDismissed(id: string) {
 export function ShelfCoversPrompt({ part, shelf, save, overlay = false }: { part: CardPart; shelf: Shelf | null; save: SaveFn; overlay?: boolean }) {
   const work = useCan("work");
   const dismissed = useDismissed(part.id);
-  if (!work || !shelf || dismissed || computeStatus(part) === COTS_IN_STOCK) return null;
+  if (!work || !shelf || dismissed || orderStatus(part) === COTS_IN_STOCK) return null;
   if (shelf.restock ? !shelf.met : shelf.sheet || shelf.covered < Math.max(part.quantity, 1)) return null;
   const count = `${formatStock(shelf.inStock, shelf.sheet)}/${shelf.restock ? formatStock(shelf.total || part.quantity) : part.quantity}`;
   const why = shelf.restock ? `The shelf has ${count}, all that's needed. Mark In Stock` : `The shelf has ${part.quantity} for this. Mark In Stock`;

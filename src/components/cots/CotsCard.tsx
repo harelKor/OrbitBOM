@@ -17,7 +17,7 @@ import { CheckBadge } from "@/components/ui/CheckBadge";
 import { Icon } from "@/components/ui/Icon";
 import { cotsTotal, siteOf } from "@/lib/cots";
 import { formatStock } from "@/lib/inventory/stock";
-import { computeStatus } from "@/lib/status";
+import { orderStatus } from "@/lib/status";
 import { stepShelfStock } from "@/app/(app)/inventory/actions";
 import { toast } from "@/components/ui/Toaster";
 import { LinkTag, ShelfCoversPrompt, ShelfPill } from "./ShelfPill";
@@ -74,7 +74,8 @@ export function CotsCard({
   const order = variant === "order";
   const links = part.cotsLinks ?? [];
   const title = partTitle(part);
-  const status = computeStatus(part);
+  // Its order status: an arrived part waiting for CAD's QA is still In Stock here.
+  const status = orderStatus(part);
   const sentBack = status === COTS_RELEASED && part.cotsSentBack;
   // A part linked to an inventory item counts on the item's shelf: − / + move the item's stock
   // and the count shows how much of the part the shelf covers. Otherwise the part keeps its own.
@@ -99,7 +100,8 @@ export function CotsCard({
     // One more (or one less) from the saved count, so two people receiving the same order both count.
     const next = Math.max(0, stock + d);
     // Enough on the shelf: the part is in stock.
-    save(next >= Math.max(part.quantity, 1) && status !== COTS_IN_STOCK ? { add: { stockCount: d }, status: COTS_IN_STOCK } : { add: { stockCount: d } });
+    // Counted on the shelf: it was there already, so no QA (Harel, 2026-11-20).
+    save(next >= Math.max(part.quantity, 1) && status !== COTS_IN_STOCK ? { add: { stockCount: d }, status: COTS_IN_STOCK, fromStock: true } : { add: { stockCount: d } });
   };
   // A click anywhere but the card's own controls (and their popovers) opens it: a grouped card
   // shows each system's part, any other card the part's details window.
@@ -311,7 +313,7 @@ const SEND_BACK_COLOR = "#9ca3af";
 // The Order List's big status button: To order, Seen, In Route, In Stock, and a grey Send back that
 // asks why and returns the part to Released. `compact` is the table's smaller version.
 export function OrderStatusButton({ part, save, compact = false }: { part: CardPart; save: SaveFn; compact?: boolean }) {
-  const status = computeStatus(part);
+  const status = orderStatus(part);
   const color = getCotsStatus(status)?.color ?? "#cbd5e1";
   const [sendingBack, setSendingBack] = useState(false);
   const [reason, setReason] = useState("");

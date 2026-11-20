@@ -19,7 +19,7 @@ it("fans counters out by quantity and keeps the name on the merge", () => {
 });
 
 it("builds the merged row", () => {
-  const base = { partNumber: "P1", displayName: null, donePreprocess: 0, doneProcess2: 0 };
+  const base = { partNumber: "P1", displayName: null, addedProcesses: [] };
   const row = mergedRow({ id: "m1", name: "Spacers" }, [
     { ...base, id: "a", quantity: 4, doneProcess1: 4 },
     { ...base, id: "b", quantity: 2, doneProcess1: 1 },

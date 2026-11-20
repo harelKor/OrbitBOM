@@ -2,6 +2,7 @@ import "server-only";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { effectiveMode, partChangesCapability } from "@/components/shell/mode";
+import { COTS_PROCESS } from "@/config/machines";
 import { db, schema } from "@/db";
 import { autoLink, findLinks } from "@/lib/inventory/autolink";
 import { listRawStock } from "@/lib/data/materials";
@@ -55,9 +56,8 @@ const setupInput = z.object({
     .describe(
       "The inventory item this part is: for a COTS part the item itself (a motor, a bearing), for an in-house part the Raw Stock item it's made from (then it is the material too, like material_item_id). Match it by the part's name, sizes and specs, material and picture. null unlinks. Left out, the site's auto-link suggests one (it waits in To Review).",
     ),
-  pre_process: z.string().nullable().optional().describe("Machine name or id, or null."),
   process_1: z.string().nullable().optional().describe("Machine name or id, or null."),
-  process_2: z.string().nullable().optional().describe("Machine name or id, or null."),
+  process_2: z.string().nullable().optional().describe("The first added process's machine (name or id), or null."),
   reason: z.string().min(1).max(500).describe("One short sentence for the designer: why this material and these processes."),
 });
 
@@ -105,7 +105,6 @@ write(
             classification: e.type,
             material: item?.name,
             inventoryItemId: item ? item.id : e.inventory_item_id === null ? null : e.inventory_item_id ? findItem(e.inventory_item_id).id : undefined,
-            preProcess: e.pre_process,
             process1: e.process_1,
             process2: e.process_2,
           }).filter(
@@ -186,9 +185,8 @@ write(
     quantity: z.number().int().min(0).default(1),
     material: z.string().optional(),
     description: z.string().optional(),
-    preProcess: z.string().optional(),
-    process1: z.string().optional(),
-    process2: z.string().optional(),
+    process1: z.string().optional().describe("Machine name or id, or \"COTS\"."),
+    process2: z.string().optional().describe("A process after Process 1 (machine name or id)."),
   }),
   async (a, { member }) => {
     const [system] = await db.select({ name: systems.name }).from(systems).where(eq(systems.id, a.system_id));
@@ -200,9 +198,8 @@ write(
       quantity: a.quantity,
       material: a.material ?? null,
       description: a.description ?? null,
-      preProcess: machineId(a.preProcess) ?? null,
-      process1: machineId(a.process1) ?? null,
-      process2: machineId(a.process2) ?? null,
+      process1: a.process1?.trim().toLowerCase() === COTS_PROCESS ? COTS_PROCESS : (machineId(a.process1) ?? null),
+      addedProcesses: a.process2 ? [{ machine: machineId(a.process2)!, done: 0, qa: false, qaDone: false }] : [],
       lastModifiedBy: member.id,
     };
     return {

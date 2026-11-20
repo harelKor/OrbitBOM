@@ -9,7 +9,7 @@
 
 import { partKey, type BomRow } from "@/lib/onshape/bom";
 import { ONSHAPE_FIELDS, type PartChanges } from "@/lib/parts/changes";
-import { hasProgress, isDone, type StatusInput } from "@/lib/status";
+import { hasProgress, isDone, type AddedProcess, type StatusInput } from "@/lib/status";
 
 export type ExistingPart = {
   id: string;
@@ -23,9 +23,8 @@ export type ExistingPart = {
   description: string | null;
   material: string | null;
   quantity: number;
-  preProcess: string | null;
   process1: string | null;
-  process2: string | null;
+  addedProcesses: AddedProcess[];
   shapeSig?: string | null;
 };
 
@@ -73,7 +72,9 @@ export function planMerge(existing: ExistingPart[], bom: BomRow[], sigOf: (row: 
     const changes: PartChanges = {};
     for (const field of ONSHAPE_FIELDS) {
       if (part.overriddenFields.includes(field)) continue;
-      if (part[field] !== row[field]) Object.assign(changes, { [field]: row[field] });
+      // Onshape's Process 2 fills the first added process (Harel, 2026-11-20).
+      const now = field === "process2" ? (part.addedProcesses[0]?.machine ?? null) : part[field];
+      if (now !== row[field]) Object.assign(changes, { [field]: row[field] });
     }
     plan.update.push({
       id: part.id,
@@ -146,14 +147,10 @@ export function moreToMake(
   const line = `CAD quantity ${part.quantity} → ${newQty}: ${extra} more to make (${part.quantity} already made).`;
   const out: PartChanges = { note: part.note ? `${part.note}\n${line}` : line };
   if (hasProgress(part)) return out;
-  const machines = {
-    preProcess: changes.preProcess !== undefined ? changes.preProcess : part.preProcess,
-    process1: changes.process1 !== undefined ? changes.process1 : part.process1,
-    process2: changes.process2 !== undefined ? changes.process2 : part.process2,
-  };
-  if (!machines.preProcess && !machines.process1 && !machines.process2) return { ...out, status: "Secondary Production" };
-  if (machines.preProcess) out.donePreprocess = part.quantity;
-  if (machines.process1) out.doneProcess1 = part.quantity;
-  if (machines.process2) out.doneProcess2 = part.quantity;
+  const process1 = changes.process1 !== undefined ? changes.process1 : part.process1;
+  const added = part.addedProcesses.length ? part.addedProcesses.length : changes.process2 ? 1 : 0;
+  if (!process1 && !added) return { ...out, status: "Secondary Production" };
+  if (process1) out.doneProcess1 = part.quantity;
+  if (added) out.addedDone = Array.from({ length: added }, () => part.quantity);
   return out;
 }

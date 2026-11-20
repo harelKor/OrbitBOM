@@ -30,7 +30,6 @@ export type BomRow = {
   material: string | null;
   onshapeMaterial: string | null;
   quantity: number;
-  preProcess: string | null;
   process1: string | null;
   process2: string | null;
 };
@@ -70,7 +69,6 @@ export function parseBom(bom: OnshapeBom): ParsedBom {
     material: ONSHAPE_PROPERTIES.material.id
       ? findHeader(headers, ONSHAPE_PROPERTIES.material.id)
       : undefined,
-    preProcess: findHeader(headers, ONSHAPE_PROPERTIES.preProcess.id, ONSHAPE_PROPERTIES.preProcess.name),
     process1: findHeader(headers, ONSHAPE_PROPERTIES.process1.id, ONSHAPE_PROPERTIES.process1.name),
     process2: findHeader(headers, ONSHAPE_PROPERTIES.process2.id, ONSHAPE_PROPERTIES.process2.name),
   };
@@ -108,12 +106,11 @@ export function parseBom(bom: OnshapeBom): ParsedBom {
       material: col.material ? cellText(get(row, col.material)) : onshapeMaterial,
       onshapeMaterial,
       quantity: Math.max(0, Math.round(Number(cellText(get(row, col.quantity)) ?? 1)) || 0),
-      preProcess: machine(get(row, col.preProcess)),
       process1: machine(get(row, col.process1)),
       process2: machine(get(row, col.process2)),
     };
     // A PLA part with no process from Onshape is printed on the Bambu (config/autoSetup.ts).
-    const auto = !parsed.preProcess && !parsed.process1 && !parsed.process2 ? importSetup(parsed.material, onshapeMaterial) : undefined;
+    const auto = !parsed.process1 && !parsed.process2 ? importSetup(parsed.material, onshapeMaterial) : undefined;
     if (auto) parsed.process1 = auto.process1;
     const key = partKey(parsed);
     const seen = byKey.get(key);

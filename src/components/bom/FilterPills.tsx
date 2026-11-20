@@ -1,22 +1,23 @@
 "use client";
 
-import { getMachine, MACHINES } from "@/config/machines";
+import { COTS_PROCESS, getMachine, MACHINES } from "@/config/machines";
 import { useFilters } from "@/components/shell/FilterContext";
 import { useMaterials } from "@/components/shell/MaterialColors";
 import { OptionList, Popover, type Option } from "./Popover";
 import type { CardPart } from "./types";
+import { processMachines } from "@/lib/status";
 
 // The BOM filter row's Material and Process pills. They stay set across robot pages. Each lists only
 // the materials and processes the page's parts (this system or robot) use (Harel, 2026-11-13); a
 // pick carried over from another page stays listed so it can be seen and cleared.
-export function FilterPills({ parts }: { parts: Pick<CardPart, "material" | "preProcess" | "process1" | "process2">[] }) {
+export function FilterPills({ parts }: { parts: Pick<CardPart, "material" | "process1" | "addedProcesses">[] }) {
   const { filters, setFilters } = useFilters();
   const materials = useMaterials();
   const usedMaterials = new Set(parts.map((p) => p.material).filter(Boolean));
-  const usedProcesses = new Set(parts.flatMap((p) => [p.preProcess, p.process1, p.process2]).filter(Boolean));
+  const usedProcesses = new Set(parts.flatMap(processMachines));
   if (filters.material) usedMaterials.add(filters.material);
   if (filters.process) usedProcesses.add(filters.process);
-  const processPick: Option[] = [{ value: null, label: "Any process" }, ...MACHINES.filter((m) => usedProcesses.has(m.id)).map((m) => ({ value: m.id, label: m.name }))];
+  const processPick: Option[] = [{ value: null, label: "Any process" }, ...MACHINES.filter((m) => usedProcesses.has(m.id)).map((m) => ({ value: m.id, label: m.name })), ...(usedProcesses.has(COTS_PROCESS) ? [{ value: COTS_PROCESS, label: "COTS" }] : [])];
   // Parts filter by their material's name; items that share a name are one choice.
   const seen = new Set<string>();
   const firstOther = materials.find((g) => !g.raw && g.items.some((i) => usedMaterials.has(i.name)))?.id;

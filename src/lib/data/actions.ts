@@ -28,12 +28,15 @@ const FIELD_NAMES: Record<string, string> = {
   donePreprocess: "Status",
   doneProcess1: "Status",
   doneProcess2: "Status",
+  qaHeld: "Status",
+  cotsQa: "Status",
   postDone: "Post processed",
   material: "Material",
   preProcess: "Processes",
   process1: "Processes",
   process2: "Processes",
   extraProcesses: "Processes",
+  addedProcesses: "Processes",
   classification: "Type",
   displayName: "Name",
   partNumber: "Part number",
@@ -55,7 +58,7 @@ export const fieldName = (f: string) => FIELD_NAMES[f] ?? f.replace(/([A-Z])/g, 
 const THUMBS = 6;
 
 // Status is stored as these fields (see applyStatus and applyCounters).
-const STATUS_FIELDS = ["designState", "donePreprocess", "doneProcess1", "doneProcess2"];
+const STATUS_FIELDS = ["designState", "donePreprocess", "doneProcess1", "doneProcess2", "qaHeld", "cotsQa", "addedProcesses"];
 
 // An action drops off a week after it happened, or when the member closes it.
 const KEEP_DAYS = 7;

@@ -16,12 +16,11 @@ const row = (id: string, over: Partial<RawPartRow> = {}): RawPartRow => ({
   classification: "inhouse",
   quantity: 1,
   designState: null,
-  preProcess: null,
   process1: null,
-  process2: null,
-  donePreprocess: 0,
+  addedProcesses: [] as { machine: string; done: number; qa: boolean; qaDone?: boolean }[],
   doneProcess1: 0,
-  doneProcess2: 0,
+  qaHeld: false,
+  cotsQa: false,
   ...over,
 });
 

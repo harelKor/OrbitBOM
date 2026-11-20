@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { factoryOf, getMachine, isFactoryFabMachine, packsByMaterial } from "@/config/machines";
+import { getMachine, isFactoryFabMachine, packsByMaterial } from "@/config/machines";
+import { factoryOf } from "@/lib/status";
 import { FactoryView } from "@/components/factory/FactoryView";
 import { MarkSeen } from "@/components/shell/Arrivals";
 import { requireMember } from "@/lib/auth";

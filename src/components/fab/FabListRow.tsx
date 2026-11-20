@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { getMachine } from "@/config/machines";
+import { machineName } from "@/config/machines";
+import { useMoveToQa } from "@/components/bom/MoveToQa";
 import { useBom } from "@/components/bom/BomContext";
 import { fabSteps } from "@/components/bom/PartCard";
 import { StatusField, type SaveFn } from "@/components/bom/fields";
@@ -62,9 +63,10 @@ export function FabPartListRow({
   const work = useCan("work");
   const open = usePartDetails(part, save);
   const { inventory } = useBom();
-  const { machines, current, counted, finished, made, takeBack, addOne } = fabSteps(part, save);
+  const { count, prompt: qaPrompt } = useMoveToQa(part, save, "row");
+  const { machines, current, counted, finished, made, takeBack, addOne } = fabSteps(part, save, count);
   const at = current ?? machines.at(-1);
-  const machine = at ? (getMachine(part[at.key]!)?.name ?? part[at.key]) : null;
+  const machine = at?.machine ? machineName(at.machine) : null;
   const linked = part.inventoryItemId ? inventory.find((i) => i.id === part.inventoryItemId) : undefined;
   const material = linked?.name ?? part.material;
   const counter = work && part.classification !== "cots" && machines.length > 0 && !post;
@@ -74,6 +76,7 @@ export function FabPartListRow({
 
   return (
     <div className={`relative min-w-0 ${checked ? "opacity-60" : ""}`}>
+      {counter && qaPrompt}
       <ListRow
         id={`part-${part.id}`}
         data-part={partIds(part)}
