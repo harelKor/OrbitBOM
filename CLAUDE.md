@@ -38,7 +38,7 @@ last full audit and what's still open: `plan/audit-2026-11-14.md` §0.
   sheet one), not `DEFAULT_CATEGORIES`: a test needing a category creates it.
 - Schema: edit `src/db/schema.ts`, `npm run db:generate`, rename the file to a readable name
   (and its `tag` in `drizzle/meta/_journal.json`), add `ALTER TABLE "x" ENABLE ROW LEVEL SECURITY;`
-  for a new table, commit. Next migration: 0106. Migrations reach production before the code and
+  for a new table, commit. Next migration: 0107. Migrations reach production before the code and
   a rollback runs old code on the new schema, so expand → contract: add columns/tables in one
   push; drop or rename one only in a later push, once no deployed code reads it.
 - Local site: README "Local development" (local Supabase in Docker, "Dev sign-in" button; Onshape
@@ -225,6 +225,9 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
   their 0..1 places), `PanoramaCanvas` (three.js cylinder, lazy), `PanoramaStage` (own gestures);
   in `ShopMap` the scene's cx / cy / s are where you look. A PC station whose room holds such a
   zone shows it in its window (`stationPanorama`, PCs at `inventory_devices.pano_x/y`).
+  A 360° zone is a circle on the floor plan (`circleOf`). Spot kind `zone` (only on a 360°
+  picture) is a door: `link_id` = the zone it leads to; tapping it walks there (`walk` in
+  `ShopMap`); it holds no items.
 - Box select (2026-11-17): every select mode (BOM, COTS, To Fab, Factory, Inventory) uses
   `useBoxSelect` (`src/components/ui/useBoxSelect.ts`): long press then drag, or a mouse drag;
   rows carry `[id^=part-]`, `[data-item]` or `[data-box-key]`. 3D: `picking.ts` (hold then drag on

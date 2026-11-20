@@ -23,6 +23,8 @@ export type Place = {
   spotW?: number | null;
   spotH?: number | null;
   kind?: SpotKind | null;
+  // A "zone" spot's zone (it leads there).
+  linkId?: string | null;
   position?: number | null;
 };
 
@@ -30,7 +32,13 @@ export const SPOT_KINDS: { id: SpotKind; label: string }[] = [
   { id: "drawer", label: "Drawer" },
   { id: "shelf", label: "Shelf" },
   { id: "bin", label: "Bin" },
+  // Only on a 360° picture: a door you tap to walk into another zone (Harel, 2026-11-20).
+  { id: "zone", label: "Zone" },
 ];
+// What a zone's picture offers: drawers, shelves and bins, and on a 360° one zone doors too.
+export const spotKindsFor = (zone: Place | null | undefined) => SPOT_KINDS.filter((k) => k.id !== "zone" || isPanorama(zone));
+// A door to another zone holds no items: never a place to choose for them.
+export const isDoor = (p: Place | null | undefined) => p?.kind === "zone";
 
 // Bright, apart from each other on the dark map and on white.
 export const ZONE_COLORS = ["#38BDF8", "#F472B6", "#A3E635", "#FBBF24", "#A78BFA", "#34D399", "#FB7185", "#60A5FA", "#F97316", "#2DD4BF", "#E879F9", "#FACC15"];

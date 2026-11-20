@@ -9,7 +9,7 @@ import { STATUSES } from "@/config/statuses";
 import { MAP_H, MAP_W } from "@/config/workshopMap";
 import { requireCapability } from "@/lib/mode";
 import { isUuid } from "@/lib/uuid";
-import { MIN_SPOT, ZONE_COLORS, circleOf, isPanoramaPicture, nextSpotName, nextZoneName, placeInUseMessage, type MapPoint, type SpotKind } from "@/lib/inventory/places";
+import { MIN_SPOT, ZONE_COLORS, circleOf, isPanorama, isPanoramaPicture, nextSpotName, nextZoneName, placeInUseMessage, type MapPoint, type SpotKind } from "@/lib/inventory/places";
 import { StorageNotConfiguredError, deleteObject, objectExists, presignUpload } from "@/lib/storage/r2";
 
 const { inventoryLocations, inventoryItems, inventoryGroups, inventoryCategories, systems } = schema;
@@ -24,7 +24,7 @@ const outlineSchema = z
   .array(z.tuple([z.number().min(-50).max(MAP_W + 50), z.number().min(-50).max(MAP_H + 50)]))
   .min(3)
   .max(64);
-const kindSchema = z.enum(["drawer", "shelf", "bin"]);
+const kindSchema = z.enum(["drawer", "shelf", "bin", "zone"]);
 const unit = z.number().min(0).max(1);
 const size = z.number().min(MIN_SPOT).max(1);
 const IMAGE_KEY = /^map\/zones\/[0-9a-f-]{36}\.(webp|jpg)$/;
@@ -138,6 +138,8 @@ async function release(ids: string[], to: string | null) {
       if (Object.keys(next).length !== Object.keys(s.drawers).length || Object.entries(next).some(([k, v]) => s.drawers[k] !== v))
         await tx.update(systems).set({ drawers: next }).where(eq(systems.id, s.id));
     }
+    // Doors to a deleted zone lead nowhere until they're pointed elsewhere.
+    await tx.update(inventoryLocations).set({ linkId: null }).where(inArray(inventoryLocations.linkId, ids));
     await tx.delete(inventoryLocations).where(inArray(inventoryLocations.id, ids));
   });
 }
@@ -170,6 +172,7 @@ export async function addSpot(zoneId: string, at: { x: number; y: number }, kind
   const z0 = await zone(zoneId);
   if (!z0) return { error: "That zone was deleted." };
   if (!unit.safeParse(at.x).success || !unit.safeParse(at.y).success || !kindSchema.safeParse(kind).success) return { error: "That spot is off the picture." };
+  if (kind === "zone" && !isPanorama({ id: z0.id, name: z0.name, imageUrl: z0.imageKey, imageW: z0.imageW, imageH: z0.imageH, panorama: z0.panorama })) return { error: "Zone doors go on a 360° picture." };
   const all = await db.select({ id: inventoryLocations.id, name: inventoryLocations.name }).from(inventoryLocations);
   const [{ top }] = await db.select({ top: max(inventoryLocations.position) }).from(inventoryLocations).where(eq(inventoryLocations.parentId, zoneId));
   const [row] = await db
@@ -182,13 +185,21 @@ export async function addSpot(zoneId: string, at: { x: number; y: number }, kind
 
 // x / y are the tag's centre, w / h its size (Harel, 2026-11-17: tags are rectangles sized to
 // the drawer), all fractions of the zone picture.
-export async function updateSpot(id: string, patch: { x?: number; y?: number; w?: number; h?: number; kind?: SpotKind }): Promise<MapResult> {
+export async function updateSpot(id: string, patch: { x?: number; y?: number; w?: number; h?: number; kind?: SpotKind; linkId?: string | null }): Promise<MapResult> {
   await requireCapability("manage");
   if (!isUuid(id)) return { error: "Unknown spot." };
   const off = (["x", "y"] as const).some((k) => patch[k] !== undefined && !unit.safeParse(patch[k]).success);
   const badSize = (["w", "h"] as const).some((k) => patch[k] !== undefined && !size.safeParse(patch[k]).success);
   if (off || badSize) return { error: "That spot is off the picture." };
   if (patch.kind !== undefined && !kindSchema.safeParse(patch.kind).success) return { error: "Unknown kind." };
+  if (patch.linkId != null) {
+    // A door leads to another zone, never to its own.
+    const [[spot], [to]] = await Promise.all([
+      db.select({ parentId: inventoryLocations.parentId }).from(inventoryLocations).where(eq(inventoryLocations.id, id)),
+      isUuid(patch.linkId) ? db.select({ id: inventoryLocations.id, parentId: inventoryLocations.parentId }).from(inventoryLocations).where(eq(inventoryLocations.id, patch.linkId)) : Promise.resolve([]),
+    ]);
+    if (!to || to.parentId || to.id === spot?.parentId) return { error: "Pick another zone." };
+  }
   await db
     .update(inventoryLocations)
     .set({
@@ -197,6 +208,7 @@ export async function updateSpot(id: string, patch: { x?: number; y?: number; w?
       ...(patch.w !== undefined && { spotW: patch.w }),
       ...(patch.h !== undefined && { spotH: patch.h }),
       ...(patch.kind && { kind: patch.kind }),
+      ...(patch.linkId !== undefined && { linkId: patch.linkId }),
     })
     .where(eq(inventoryLocations.id, id));
   refresh();

@@ -26,6 +26,7 @@ export async function listPlaces(): Promise<Place[]> {
       spotW: r.spotW,
       spotH: r.spotH,
       kind: r.kind,
+      linkId: r.linkId,
       position: r.position,
     })),
   );

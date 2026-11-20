@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { MAP_H, MAP_W, WORKSHOP_ROOMS } from "@/config/workshopMap";
 import { useStoredChoice } from "@/components/ui/useStoredChoice";
 import { bounds, centroid, isPanorama, kindLabel, placeIndex, pointInPolygon, spotRect, spotsOf, zoneColor, type Place } from "@/lib/inventory/places";
-import { clampPano, dragPano, maxFov, project, projectRect, startFov, zoomPano, type Pano, type Pic } from "./panorama";
+import { clampPano, dragPano, maxFov, mod1, project, projectRect, startFov, wrapDelta, zoomPano, type Pano, type Pic } from "./panorama";
 import { PanoramaView } from "./PanoramaStage";
 import {
   DIVE_SPAN,
@@ -325,6 +325,7 @@ export function ShopMap({
   const onDown = (ev: React.PointerEvent<HTMLDivElement>) => {
     if ((ev.target as Element).closest("[data-ui]")) return;
     stop();
+    setWalkFx(null);
     const t = ev.target as Element;
     const spot = t.closest("[data-spot]")?.getAttribute("data-spot");
     const z = t.closest("[data-zone]")?.getAttribute("data-zone");
@@ -397,10 +398,61 @@ export function ShopMap({
     setSel(z ? { id: z.id, kind: "zone" } : null);
     glideTo({ plan: zf ?? c.plan, zone: null, dive: 0, scene: FULL_SCENE }, 650);
   };
+  // A zone door (Harel, 2026-11-20): like walking in Street View. The view turns to the door and
+  // pushes forward as the picture blurs out (0.6 s), then the next zone's picture comes in from a
+  // little closer and settles (0.7 s). You arrive facing away from that zone's door back, if it
+  // has one: the way you were walking.
+  const [walkFx, setWalkFx] = useState<{ scale: number; blur: number; opacity: number } | null>(null);
+  const walk = (door: Place) => {
+    const to = door.linkId ? byId.get(door.linkId) : undefined;
+    const c = camRef.current;
+    if (!to || to.parentId || door.spotX == null || door.spotY == null) return;
+    setSel(null);
+    setFlash(null);
+    if (!to.imageUrl) {
+      // Nothing to stand in there: out to the floor plan over it.
+      const zf = zoneFit(to, aspect);
+      setSel({ id: to.id, kind: "zone" });
+      glideTo({ plan: zf ?? c.plan, zone: null, dive: 0, scene: FULL_SCENE }, 900);
+      return;
+    }
+    // Warm the next picture while walking.
+    if (!to.imageUrl.startsWith("data:")) void fetch(to.imageUrl, { mode: "cors" }).catch(() => {});
+    const fromPano = pic;
+    const s0 = c.scene;
+    const ahead = { s: Math.min(s0.s * 2.2, fromPano ? 3 : SCENE_MAX), cx: fromPano ? s0.cx + wrapDelta(door.spotX - s0.cx) : door.spotX, cy: door.spotY };
+    const back = spotsIn(to.id).find((s) => s.kind === "zone" && s.linkId === door.parentId && s.spotX != null);
+    const toPic = isPanorama(to) && to.imageW && to.imageH ? { w: to.imageW, h: to.imageH } : null;
+    const arrive = toPic ? { s: 1, cx: back ? mod1(back.spotX! + 0.5) : 0.5, cy: 0.5 } : FULL_SCENE;
+    const OUT = 600;
+    const IN = 700;
+    play(
+      OUT,
+      (t) => {
+        const e = easeInOut(t / OUT);
+        setWalkFx({ scale: 1 + 0.12 * e, blur: 7 * e, opacity: 1 - 0.75 * e });
+        return { ...c, scene: { s: lerp(s0.s, ahead.s, e), cx: lerp(s0.cx, ahead.cx, e), cy: lerp(s0.cy, ahead.cy, e) } };
+      },
+      () => {
+        const base = { ...camRef.current, zone: to.id, dive: 1 };
+        play(
+          IN,
+          (t) => {
+            const e = 1 - (1 - t / IN) ** 3;
+            setWalkFx(t >= IN ? null : { scale: 1.08 - 0.08 * e, blur: 7 * (1 - e), opacity: 0.25 + 0.75 * e });
+            return { ...base, scene: { ...arrive, s: arrive.s * lerp(1.35, 1, e) } };
+          },
+          () => setWalkFx(null),
+        );
+      },
+    );
+  };
+
   const tap = (t: NonNullable<Sel>) => {
     setFlash(null);
     const p = byId.get(t.id);
     if (!p) return;
+    if (t.kind === "spot" && p.kind === "zone") return walk(p);
     if (t.kind === "spot") {
       if (mode === "pick") return onPick?.(p.id);
       setSel(t);
@@ -446,6 +498,35 @@ export function ShopMap({
   // The tag is a rectangle over the drawer, sized as a share of the picture, so it grows and
   // shrinks with the zoom (Harel, 2026-11-17). Its tap target never drops below 36 px.
   const spotTag = (s: Place, zone: Place, pos: { left: number | string; top: number | string }, rw: number, rh: number) => {
+    if (s.kind === "zone") {
+      // A door to another zone: a round "walk this way" marker like Street View's arrows. One
+      // that leads nowhere (not linked yet, or its zone deleted) isn't drawn.
+      const to = s.linkId ? byId.get(s.linkId) : undefined;
+      if (!to) return null;
+      const d = clamp(Math.min(rw, rh), 44, 88);
+      return (
+        <button
+          key={s.id}
+          type="button"
+          data-spot={s.id}
+          aria-label="Walk to the next zone"
+          title="Walk there"
+          className="absolute flex -translate-x-1/2 -translate-y-1/2 items-center justify-center"
+          style={{ left: pos.left, top: pos.top, width: d, height: d, opacity: smoothstep(0.8, 1, cam.dive) }}
+          onClick={(ev) => {
+            if (ev.detail === 0) tap({ id: s.id, kind: "spot" });
+          }}
+        >
+          <span className="absolute inset-0 animate-ping rounded-full bg-white/25 [animation-duration:2.4s]" />
+          <span className="relative flex h-full w-full items-center justify-center rounded-full border-2 border-white bg-[#0b0e18]/55 text-white shadow-[0_4px_16px_rgba(0,0,0,0.55)] backdrop-blur-sm" style={{ boxShadow: `0 0 0 3px ${zoneColor(zone)}, 0 4px 16px rgba(0,0,0,0.55)` }}>
+            <svg viewBox="0 0 24 24" className="h-1/2 w-1/2" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M6 15l6-6 6 6" />
+              <path d="M6 20l6-6 6 6" opacity={0.55} />
+            </svg>
+          </span>
+        </button>
+      );
+    }
     const st = stats?.get(s.id);
     const isFlash = flash === s.id;
     const isSel = selectedId === s.id || (sel?.kind === "spot" && sel.id === s.id);
@@ -781,6 +862,8 @@ export function ShopMap({
         </svg>
       </div>
 
+      {/* Walking through a zone door pushes forward and blurs the picture out, then the next one in. */}
+      <div className="absolute inset-0" style={walkFx ? { transform: `scale(${walkFx.scale})`, filter: walkFx.blur > 0.05 ? `blur(${walkFx.blur}px)` : undefined, opacity: walkFx.opacity } : undefined}>
       {/* A 360° zone: you stand in it and look round (Harel, 2026-11-20); its drawers keep their
           places on the picture, drawn where they are in the view. */}
       {zone?.imageUrl && pic && cam.dive > 0 && (() => {
@@ -851,6 +934,7 @@ export function ShopMap({
           </div>
         </div>
       )}
+      </div>
 
       </div>
 

@@ -17,7 +17,7 @@ import {
 import { LocationPicker, PlaceTag } from "@/components/inventory/LocationPicker";
 import { MAP_H, MAP_W, WORKSHOP_ROOMS } from "@/config/workshopMap";
 import { STATUSES } from "@/config/statuses";
-import { MIN_SPOT, SPOT_KINDS, bounds, centroid, circleOfOutline, circleOutline, isPanorama, isPanoramaPicture, kindLabel, spotRect, spotsOf, zoneColor, type MapPoint, type Place, type SpotKind } from "@/lib/inventory/places";
+import { MIN_SPOT, bounds, spotKindsFor, centroid, circleOfOutline, circleOutline, isPanorama, isPanoramaPicture, kindLabel, spotRect, spotsOf, zoneColor, type MapPoint, type Place, type SpotKind } from "@/lib/inventory/places";
 import { Notice } from "@/components/ui/Notice";
 import { askConfirm } from "@/components/ui/useConfirm";
 
@@ -403,6 +403,7 @@ function ZonePanel({ zone, places, run, onDeleted }: { zone: Place; places: Plac
   };
   const image = preview ?? zone.imageUrl;
   const picked = spots.find((s) => s.id === spotSel);
+  const kinds = spotKindsFor({ ...zone, imageUrl: image });
 
   return (
     <div className="panel space-y-3 p-3">
@@ -469,7 +470,7 @@ function ZonePanel({ zone, places, run, onDeleted }: { zone: Place; places: Plac
         <>
           <div className="flex flex-wrap items-center gap-1.5 text-xs">
             <span className="text-muted">Tap the picture to add a</span>
-            {SPOT_KINDS.map((s) => (
+            {kinds.map((s) => (
               <button key={s.id} type="button" aria-pressed={kind === s.id} onClick={() => setKind(s.id)} className={`press min-h-8 rounded-full border px-2.5 font-semibold ${kind === s.id ? "border-accent bg-accent text-white" : "border-line-strong text-fg-2"}`}>
                 {s.label}
               </button>
@@ -520,7 +521,29 @@ function ZonePanel({ zone, places, run, onDeleted }: { zone: Place; places: Plac
             <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-line p-2 text-xs">
               <span className="font-semibold">{picked.name}</span>
               <span className="flex-1" />
-              {SPOT_KINDS.map((s) => (
+              {picked.kind === "zone" && (
+                // The zone this door leads to (Harel, 2026-11-20): tapped on the map, you walk there.
+                <label className="flex items-center gap-1.5">
+                  <span className="text-muted">Leads to</span>
+                  <select
+                    value={picked.linkId ?? ""}
+                    onChange={(e) => run(() => updateSpot(picked.id, { linkId: e.target.value || null }))}
+                    className="input min-h-8 py-0.5 text-base sm:text-xs"
+                    aria-label="The zone this door leads to"
+                  >
+                    <option value="">Choose a zone…</option>
+                    {places
+                      .filter((p) => !p.parentId && p.id !== zone.id)
+                      .map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                          {p.imageUrl ? "" : " (no picture yet)"}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              )}
+              {kinds.map((s) => (
                 <button key={s.id} type="button" aria-pressed={picked.kind === s.id} onClick={() => run(() => updateSpot(picked.id, { kind: s.id }))} className={`press min-h-8 rounded-full border px-2.5 font-semibold ${picked.kind === s.id ? "border-accent bg-accent text-white" : "border-line-strong text-fg-2"}`}>
                   {s.label}
                 </button>

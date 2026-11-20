@@ -1031,7 +1031,8 @@ export const storedFiles = pgTable(
 // stays for the AI tools, search, history and backups. No foreign key on parent_id, so a restore
 // can insert the rows in any order; deleting a zone moves its spots' items to nothing in code.
 export type MapPoint = [number, number];
-export type SpotKind = "drawer" | "shelf" | "bin";
+// "zone": a door to another zone on a 360° picture (link_id), tapped to walk there; holds no items.
+export type SpotKind = "drawer" | "shelf" | "bin" | "zone";
 export const inventoryLocations = pgTable("inventory_locations", {
   id: id(),
   name: text("name").notNull().unique(),
@@ -1054,6 +1055,8 @@ export const inventoryLocations = pgTable("inventory_locations", {
   spotW: real("spot_w"),
   spotH: real("spot_h"),
   kind: text("kind").$type<SpotKind>(),
+  // A "zone" spot: the zone it leads to (Harel, 2026-11-20). No foreign key, as parent_id.
+  linkId: uuid("link_id"),
   position: integer("position").notNull().default(0),
 });
 
