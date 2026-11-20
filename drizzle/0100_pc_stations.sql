@@ -7,6 +7,8 @@ ALTER TABLE "inventory_items" ADD CONSTRAINT "inventory_items_station_unique" UN
 DELETE FROM "inventory_items" WHERE "category" = 'computers-devices' AND "station" IS NULL;--> statement-breakpoint
 -- Each PC's own condition (1-5) replaces the category's Type and Condition fields.
 UPDATE "inventory_categories" SET "fields" = '[]'::jsonb WHERE "id" = 'computers-devices';--> statement-breakpoint
+-- Its picture (Harel, 2026-11-20), unless one was already set on /settings.
+UPDATE "inventory_categories" SET "image" = '/categories/computers-devices.png' WHERE "id" = 'computers-devices' AND "image" IS NULL;--> statement-breakpoint
 INSERT INTO "inventory_items" ("name", "category", "station", "in_stock")
 VALUES ('Scouting PC', 'computers-devices', 'scouting', 0), ('CAD PC', 'computers-devices', 'cad', 0), ('Build PC', 'computers-devices', 'build', 0)
 ON CONFLICT ("station") DO NOTHING;
