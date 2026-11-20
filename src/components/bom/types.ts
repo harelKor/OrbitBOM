@@ -51,6 +51,8 @@ export type CardPart = PartRow & {
   fabLock?: FabLock | null; // the state it was released to fab at (plan/fab-version-lock.md)
   // Set on To Fab only: the card shows the locked state, downloads it, and tags a newer BOM change.
   fabView?: { changed: boolean };
+  typeWarning?: string | null; // a COTS-typed part that is really made (lib/parts/dataChecks.ts)
+  nameCollision?: boolean; // its part number is on a different shape in its system too
 };
 
 // The real part behind a row: a merged row's files and exports belong to its first member.

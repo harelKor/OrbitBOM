@@ -17,7 +17,7 @@ import { useEscape } from "@/components/ui/useEscape";
 import { useBoxSelect } from "@/components/ui/useBoxSelect";
 import { Segmented } from "@/components/ui/Segmented";
 import { useStoredChoice } from "@/components/ui/useStoredChoice";
-import { FINISHED_STATUS, fabStage, machinesOf } from "@/lib/fab";
+import { FINISHED_STATUS, fabStage, machinesOf, stockOf } from "@/lib/fab";
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { statusMachine } from "@/lib/status";
 import { FabPartListRow } from "./FabListRow";
@@ -227,10 +227,11 @@ export function FabView({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onMachine and matchesMat only read `machine` and `mat`
   }, [optimistic, batches, filters, machine, mat, mine, me, postChecked]);
 
-  // While picking a fab: the material of the first pick and the machines every pick goes through.
+  // While picking a fab: the machine every pick is at now. Picks of several stocks make one batch
+  // per stock (createFabBatch); a part with no material can't be batched (audit 2026-11-20).
   const picked = optimistic.filter((p) => selected.has(p.id));
-  const material = picked.length ? (picked[0].material ?? "") : null;
-  const sharedMachines = machine ? [machine] : common(picked.map(machinesOf));
+  const atNow = (p: CardPart) => (statusMachine(p) ? [statusMachine(p)!] : []);
+  const sharedMachines = machine ? [machine] : common(picked.map(atNow));
   const fabMachine = machine ?? (sharedMachines.includes(pickedMachine) ? pickedMachine : sharedMachines[0]);
   // The batches the Fab button can add to: unfinished ones on the machine (and of the material) of
   // the picks.
@@ -239,22 +240,21 @@ export function FabView({
     .filter((b) => b.members.length > 0 && batchStage(b.members) !== "finished");
   const batchMaterial = (b: { members: CardPart[] }) => b.members.find((p) => p.material)?.material ?? "";
   const fitsBatch = (p: CardPart, b: Batch & { members: CardPart[] }) =>
-    (!b.machine || !machinesOf(p).length || machinesOf(p).includes(b.machine)) && (!p.material || !batchMaterial(b) || p.material === batchMaterial(b));
+    !!stockOf(p) && (!b.machine || statusMachine(p) === b.machine) && (!batchMaterial(b) || stockOf(p) === stockOf({ material: batchMaterial(b) }));
   const targetOptions = openBatches.filter((b) => (!machine || !b.machine || b.machine === machine) && picked.every((p) => fitsBatch(p, b)));
   const targetBatch = targetOptions.find((b) => b.id === target) ?? null;
   const batchOf = (p: CardPart) => batches.find((b) => p.groups.some((g) => g.id === b.id))?.id ?? null;
-  // Only loose parts can be picked: a part already in a batch stays there. Adding to a batch also
-  // takes parts with no machine or material yet: they inherit them there.
+  // Only loose parts can be picked: a part already in a batch stays there. A part needs a material
+  // and to be at the batch's machine now.
   const canPick = (p: CardPart) =>
     selected.has(p.id) ||
     (!batchOf(p) &&
       (targetBatch
         ? fitsBatch(p, targetBatch)
-        : machinesOf(p).some((m) => (picked.length ? sharedMachines : machine ? [machine] : MACHINES.map((x) => x.id as string)).includes(m)) &&
-          (material === null || (p.material ?? "") === material)));
+        : !!stockOf(p) && atNow(p).some((m) => (picked.length ? sharedMachines : machine ? [machine] : MACHINES.map((x) => x.id as string)).includes(m))));
   // While picking, a long press (or a mouse drag) draws a box (Harel, 2026-11-17). The cards it
-  // crosses join one by one by the same rules as a tap: loose parts sharing a machine with the
-  // picks so far, of the first pick's material (or fitting the batch picked).
+  // crosses join one by one by the same rules as a tap: loose parts with a material at the machine
+  // of the picks so far (or fitting the batch picked).
   const boxRef = useBoxSelect({
     enabled: fab,
     selector: '[id^="part-"]',
@@ -264,9 +264,8 @@ export function FabView({
       for (const id of ids) {
         const p = optimistic.find((x) => x.id === id);
         if (!p || selected.has(id) || acc.includes(p) || batchOf(p)) continue;
-        const mat = acc.length ? (acc[0].material ?? "") : null;
-        const machines = machine ? [machine] : acc.length ? common(acc.map(machinesOf)) : MACHINES.map((x) => x.id as string);
-        const fits = targetBatch ? fitsBatch(p, targetBatch) : machinesOf(p).some((m) => machines.includes(m)) && (mat === null || (p.material ?? "") === mat);
+        const machines = machine ? [machine] : acc.length ? common(acc.map(atNow)) : MACHINES.map((x) => x.id as string);
+        const fits = targetBatch ? fitsBatch(p, targetBatch) : !!stockOf(p) && atNow(p).some((m) => machines.includes(m));
         if (fits) acc.push(p);
       }
       setSelected(new Set(acc.map((p) => p.id)));
@@ -295,6 +294,15 @@ export function FabView({
   const card = (p: CardPart, inBatch?: { batch: Batch; members: CardPart[] }) => {
     const pickable = fab && canPick(p);
     const inherit = inBatch && (!p.material || !machinesOf(p).length) ? inheritFromBatch(p, inBatch.batch, inBatch.members) : null;
+    // A loose Released part with no material says why it can't be batched (audit 2026-11-20).
+    const noStock = !inBatch && partStage(p) === "ready" && !stockOf(p) && (
+      <span
+        className="rounded-full bg-red-600 px-2 py-0.5 text-[0.6875rem] font-bold text-white shadow-sm"
+        title="No material: it can't join a batch or go to Ready to Fab until it has one"
+      >
+        No material
+      </span>
+    );
     // A loose Released card: a long press on a phone starts the Fab picking with it.
     const longPress = work && !fab && !inBatch && partStage(p) === "ready";
     const spark = inherit && work && (
@@ -356,7 +364,7 @@ export function FabView({
             style={fabTint(p)}
             selected={selected.has(p.id)}
             onToggleSelect={pickable ? () => toggle(p.id) : undefined}
-            lead={spark}
+            lead={spark || noStock}
           />
         ) : (
           <PartCard
@@ -367,7 +375,7 @@ export function FabView({
             style={fabTint(p)}
             selected={selected.has(p.id)}
             onToggleSelect={pickable ? () => toggle(p.id) : undefined}
-            thumbBadge={spark}
+            thumbBadge={spark || noStock}
           />
         )}
       </div>
@@ -400,8 +408,8 @@ export function FabView({
     />
   );
   const machinesWithParts = MACHINES.filter((m) => counts.byMachine.has(m.id));
-  // The machine a loose part is batched on: the one picked above, else the one it's at.
-  const batchMachine = (p: CardPart) => (machine && machinesOf(p).includes(machine) ? machine : (statusMachine(p) ?? machinesOf(p)[0]));
+  // The machine a loose part is batched on: the one it's at now.
+  const batchMachine = (p: CardPart) => statusMachine(p);
   const drop = (stage: Stage) => (load: DragLoad) => {
     if (!load.ids.length) return;
     const status = SECTION_STATUS[stage];
@@ -425,8 +433,8 @@ export function FabView({
     if (!load.batch && (load.from === "ready" || stage === "readyToFab") && stage !== "finished") {
       const p = optimistic.find((x) => x.id === load.ids[0]);
       const m = p && batchMachine(p);
-      if (!p || !m) {
-        if (stage === "readyToFab") setError("Give the part a machine before it goes into a batch.");
+      if (!p || !m || !stockOf(p)) {
+        if (stage === "readyToFab") setError(p && m ? `${partTitle(p)} has no material: give it one before it goes into a batch.` : "Give the part a machine before it goes into a batch.");
         else save(load.ids, { status });
         return;
       }
@@ -566,7 +574,7 @@ export function FabView({
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <span className="font-semibold tabular-nums">{selected.size} selected</span>
               <span className="text-subtle">
-                {material === null ? "Tap cards to add them to the fab." : `Only ${material || "parts with no material"} on the same machine can join.`}
+                {!picked.length ? "Tap cards to add them to the fab." : targetBatch ? "Only parts of the batch's stock at its machine can join." : "Parts with a material at the same machine can join; each stock gets its own batch."}
               </span>
               <span className="ml-auto" />
               <select

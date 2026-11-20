@@ -13,6 +13,7 @@ import { planMerge } from "@/lib/sync/merge";
 import { readDocVersions } from "./docVersions";
 import { onshapeName } from "./label";
 import { heldParts } from "./history";
+import { collidingNumbers, numberOf } from "@/lib/parts/dataChecks";
 import { shapeFingerprints } from "./shape";
 import { sameState, snapshotOfRow } from "./snapshot";
 
@@ -21,7 +22,8 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 // What a draft keeps to be applied as it is on commit.
 // `held`: parts a Revert holds behind the latest version (history.ts), left alone unless listed.
-export type DraftRows = { bom: BomRow[]; sigs: Record<string, string>; partSigs: Record<string, string>; unknownMachines: string[]; held?: string[] };
+// `collisions`: part numbers the BOM has on two different shapes (Name collision, warn only).
+export type DraftRows = { bom: BomRow[]; sigs: Record<string, string>; partSigs: Record<string, string>; unknownMachines: string[]; held?: string[]; collisions?: string[] };
 
 export type Draft = {
   id: string;
@@ -29,6 +31,7 @@ export type Draft = {
   onshape: string | null; // the Onshape version it comes from, "V70"
   detectedAt: Date;
   changes: VersionChange[];
+  collisions: string[]; // part numbers on two different shapes: a warning, never a block
 };
 
 // A change whose shape had nothing stored to compare with, or whose new shape Onshape didn't send
@@ -50,6 +53,7 @@ export const draftOf = (row: typeof systemVersions.$inferSelect): Draft => ({
   onshape: onshapeName(row.onshapeRef),
   detectedAt: row.detectedAt,
   changes: row.changes,
+  collisions: (row.rows as DraftRows | null)?.collisions ?? [...new Set(row.changes.filter((c) => c.collision).map((c) => numberOf({ partNumber: c.partNumber, onshapeName: c.name })!))],
 });
 
 export async function loadDraft(systemId: string): Promise<Draft | null> {
@@ -178,6 +182,16 @@ export async function checkSystem(systemId: string, memberId: string, { force = 
     changes.push({ key: partKey(part), partId: id, change: "removed", name: part.onshapeName ?? "Part", partNumber: part.partNumber, fields: {}, geometry: false });
   }
 
+  // Name collision (audit 2026-11-20, Harel: warn only, it never blocks a commit or release): one
+  // part number on two different shapes. A row's shape is its new fingerprint, else the committed
+  // part's it was paired with.
+  const rowSig = new Map<string, string | null>(parsed.rows.map((r) => [partKey(r), sigs[sigKey(r)] ?? null]));
+  for (const u of plan.update) if (!rowSig.get(partKey(u.identity))) rowSig.set(partKey(u.identity), committedSig(byId.get(u.id)!));
+  const colliding = collidingNumbers(parsed.rows, numberOf, (r) => rowSig.get(partKey(r)));
+  const collide = (c: VersionChange) => (c.change !== "removed" && colliding.has(numberOf({ partNumber: c.partNumber, onshapeName: c.name }) ?? "") ? { ...c, collision: true } : c);
+  changes.splice(0, changes.length, ...changes.map(collide));
+  relinked.splice(0, relinked.length, ...relinked.map(collide));
+
   // Only same shapes in newer references: committed below as a version of their own. With other
   // changes they're taken when the draft is committed, as before.
   const auto = !changes.length && relinked.length > 0;
@@ -188,7 +202,7 @@ export async function checkSystem(systemId: string, memberId: string, { force = 
   const now = new Date();
   const listed = new Set(changes.map((c) => c.partId));
   const keep = [...held.keys()].filter((id) => !listed.has(id));
-  const rows: DraftRows = { bom: parsed.rows, sigs, partSigs, unknownMachines: parsed.unknownMachines, held: keep };
+  const rows: DraftRows = { bom: parsed.rows, sigs, partSigs, unknownMachines: parsed.unknownMachines, held: keep, collisions: [...colliding] };
   const seenMv = {
     ...(microversion ? { docMicroversions: { ...system.docMicroversions, [ref.did]: microversion } } : {}),
     ...(followed ? { followedVersionId: followed.id } : {}),

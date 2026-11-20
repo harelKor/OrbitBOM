@@ -1,4 +1,6 @@
 import "server-only";
+import { listRawStock } from "@/lib/data/materials";
+import { collidingNumbers, cotsTypeProblem, numberOf } from "@/lib/parts/dataChecks";
 import { and, asc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { COTS_PROCESS } from "@/config/machines";
 import { db, schema } from "@/db";
@@ -54,6 +56,9 @@ export type BomPart = Omit<typeof parts.$inferSelect, "systemId" | ServerOnly> &
   review: boolean; // a suggestion waits in To Review: the card shows ✓ / ✕
   // The state the part was released to fab at (plan/fab-version-lock.md); To Fab shows it.
   fabLock: FabLock | null;
+  // Data checks that only warn (lib/parts/dataChecks.ts, audit 2026-11-20).
+  typeWarning: string | null; // a COTS-typed part that is really made
+  nameCollision: boolean; // its part number is on a different shape in the same system too
 };
 
 export type FabLock = {
@@ -84,7 +89,7 @@ async function load(where: ReturnType<typeof and>, { anySystem = false } = {}): 
   );
   // Files, thumbnail links, groups and the shelf don't depend on each other: one round trip.
   const ids = rows.map((r) => r.part.id);
-  const [files, thumbs, lockedThumbs, labels, groups, shelf, bomAt] = await Promise.all([
+  const [files, thumbs, lockedThumbs, labels, groups, shelf, bomAt, rawStock] = await Promise.all([
     ids.length
       ? db
           .select({ id: partFiles.id, partId: partFiles.partId, type: partFiles.type, filename: partFiles.filename, r2Key: partFiles.r2Key })
@@ -106,7 +111,12 @@ async function load(where: ReturnType<typeof and>, { anySystem = false } = {}): 
     groupsOfParts(ids),
     shelfOfParts(rows.map((r) => r.part)),
     bomStates(rows.map((r) => r.part.systemId)),
+    rows.some((r) => r.part.classification === "cots") ? listRawStock() : [],
   ]);
+  const raw = { ids: new Set(rawStock.map((i) => i.id)), names: new Set(rawStock.map((i) => i.name)) };
+  // Part numbers on two shapes, per system (what Update BOM's check compares).
+  const sysNumber = (p: typeof parts.$inferSelect) => (p.isManual || p.removedFromCadAt || !numberOf(p) ? null : `${p.systemId}|${numberOf(p)}`);
+  const colliding = collidingNumbers(rows.map((r) => r.part), sysNumber, (p) => p.shapeSig);
   const filesOf = new Map<string, PartFileRef[]>();
   for (const { partId, r2Key, ...f } of files) {
     filesOf.set(partId, [...(filesOf.get(partId) ?? []), isOnshapeDrawingKey(r2Key) ? { ...f, onshape: true } : f]);
@@ -129,6 +139,8 @@ async function load(where: ReturnType<typeof and>, { anySystem = false } = {}): 
     shelf: shelf.shelf.get(r.part.id) ?? null,
     shelfSuggestion: shelf.suggestion.get(r.part.id) ?? null,
     fabLock: fabLockOf(r.part, lockedThumbs.get(r.part.id) ?? thumbs.get(r.part.id) ?? null, labels.get(r.part.versionRowId ?? "") ?? null),
+    typeWarning: cotsTypeProblem(r.part, raw),
+    nameCollision: colliding.has(sysNumber(r.part) ?? ""),
   }));
 }
 

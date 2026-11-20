@@ -745,6 +745,7 @@ export type VersionChange = {
   fields: Record<string, { from: unknown; to: unknown }>; // Onshape fields that changed
   geometry: boolean; // the part's shape changed in Onshape
   note?: string; // "Back in CAD", "Re-linked by name"
+  collision?: boolean; // its part number is on another shape in the BOM too (Name collision, warn only)
 };
 
 // The Onshape state a version comes from: the Manufacture document's microversion and, per

@@ -39,6 +39,17 @@ function shown(field: string, value: unknown) {
   return String(value);
 }
 
+// One part number on two different shapes: a warning only, it never blocks the commit or release
+// (Harel, 2026-11-20).
+const COLLISION_HINT = "Another part in this BOM has the same part number but a different shape. Rename one in Onshape.";
+function CollisionBadge() {
+  return (
+    <span className="shrink-0 rounded-full bg-red-600 px-2 py-0.5 text-xs font-semibold text-white" title={COLLISION_HINT}>
+      Name collision
+    </span>
+  );
+}
+
 // A change that is only Onshape fields (material, processes, quantity…) and not the shape.
 const kindOf = (c: VersionChange) => (c.change === "modified" && !c.geometry ? "props" : c.change);
 
@@ -102,6 +113,13 @@ export function CommitWindow({
             </span>
           ))}
         </div>
+
+        {draft.collisions?.length > 0 && (
+          <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-fg" title={COLLISION_HINT}>
+            <span className="font-semibold text-red-600 dark:text-red-400">Name collision:</span> <span className="font-mono tabular-nums">{draft.collisions.join(", ")}</span>{" "}
+            {draft.collisions.length === 1 ? "is" : "are each"} on two different shapes. You can still commit; rename one in Onshape.
+          </p>
+        )}
 
         {canCommit ? (
           <form
@@ -234,6 +252,7 @@ export function ChangeBox({
           {c.partNumber && <span className="block truncate font-mono text-xs text-subtle tabular-nums">{c.partNumber}</span>}
         </span>
         {c.note && <span className="hidden text-xs text-subtle sm:inline">{c.note}</span>}
+        {c.collision && <CollisionBadge />}
         <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${chip.className}`}>{chip.label}</span>
         <Icon name="chevron" className={`h-4 w-4 text-subtle transition-transform ${open ? "rotate-90" : ""}`} />
       </button>

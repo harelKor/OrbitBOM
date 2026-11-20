@@ -21,7 +21,7 @@ import { safeAction } from "@/lib/safeAction";
 import { LocalTime } from "@/components/ui/LocalTime";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { askConfirm } from "@/components/ui/useConfirm";
-import { READY_STATUS, isFabFinished } from "@/lib/fab";
+import { READY_STATUS, fabBatchProblems, isFabFinished } from "@/lib/fab";
 import { type PartChanges } from "@/lib/parts/changes";
 import { computeStatus, isDone } from "@/lib/status";
 import { statusTint, tint } from "@/components/ui/statusTint";
@@ -166,6 +166,15 @@ export function BatchCard({
   const materials = [...new Set(members.map((p) => p.material ?? ""))];
   const material = materials.length === 1 ? materials[0] || "No material" : "Mixed materials";
   const machineName = batch.machine ? (getMachine(batch.machine)?.name ?? batch.machine) : null;
+  // A Shop Fab batch that breaks the batch rules (no material, mixed stock, a part not at its
+  // machine): flagged, never changed for the team (audit 2026-11-20).
+  const problems = pack ? [] : fabBatchProblems(batch.machine, members);
+  const warn = problems.length > 0 && (
+    <div className="flex min-w-0 items-center gap-1 text-xs font-semibold text-red-600 dark:text-red-400" title={problems.join(" · ")}>
+      <span aria-hidden>⚠</span>
+      <span className="min-w-0 truncate">{problems.join(" · ")}</span>
+    </div>
+  );
   // What the batch is called in labels and questions, now that it shows no name.
   const what = cart ? `the ${title} cart` : pack ? (title ? `the ${title} pack` : "the pack") : `the ${[machineName, material].filter(Boolean).join(" ")} batch`;
   const downloads = members.flatMap((p) => {
@@ -632,6 +641,7 @@ export function BatchCard({
             )}
             {edit && <span className="ml-auto">{deleteButton}</span>}
           </div>
+          {warn}
           <div className={list ? "list-stack" : "card-grid"} style={list ? { zoom: 1 } : undefined}>
             {/* A part is never wider than the batch's own card, even when one column fills the strip. */}
             {members.map((p) => (
@@ -692,6 +702,7 @@ export function BatchCard({
               </span>
               <BatchDate at={batch.createdAt} />
             </span>
+            {warn}
             {/* The downloads share this line, so machine and material get the row's full width. Only
                 the controls keep their clicks: the rest of the row opens the batch. */}
             <span className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
@@ -788,6 +799,7 @@ export function BatchCard({
               {!pack && machineName && ` · ${machineName}`}
             </div>
           )}
+          {warn}
           {/* Which parts, always in words: a pale plate's picture on the pale well can look blank. */}
           {members.length > 0 && (
             <div dir="auto" className="-mt-1.5 min-w-0 truncate text-xs text-fg-2" title={members.map(partTitle).join(", ")}>

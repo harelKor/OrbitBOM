@@ -172,6 +172,7 @@ function MadePartCard({
           )}
           {!fabCounter && !post && (canClassify ? <TypeField part={part} save={save} badge /> : <TypeBadge part={part} />)}
           <MergedBadge part={part} />
+          <DataBadges part={part} />
         </div>
         <div className="absolute top-2 right-2 flex max-w-[60%] items-start gap-1.5">
           {!onCheck && !fabCounter && !post && <LinkTag part={part} save={save} />}
@@ -462,6 +463,26 @@ export function DoneCounter({ part, save, slot, count = save }: { part: CardPart
 }
 
 const COUNT_BTN = "press flex h-6 w-6 items-center justify-center rounded-full text-sm font-bold text-muted hover:bg-raised hover:text-fg active:scale-[0.9] disabled:opacity-30 pointer-coarse:h-9 pointer-coarse:w-9 pointer-coarse:text-base";
+
+// Data checks that only warn (audit 2026-11-20): a COTS-typed part that is really made, and a part
+// number on two different shapes (Update BOM's check).
+export function DataBadges({ part }: { part: Pick<CardPart, "typeWarning" | "nameCollision"> }) {
+  if (!part.typeWarning && !part.nameCollision) return null;
+  return (
+    <>
+      {part.typeWarning && (
+        <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[0.6875rem] leading-none font-bold text-slate-950 shadow-sm" title={part.typeWarning}>
+          <span className="py-0.5">Type?</span>
+        </span>
+      )}
+      {part.nameCollision && (
+        <span className="rounded-full bg-red-600 px-2 py-0.5 text-[0.6875rem] leading-none font-bold text-white shadow-sm" title="Another part in this system has the same part number but a different shape. Rename one in Onshape.">
+          <span className="py-0.5">Name collision</span>
+        </span>
+      )}
+    </>
+  );
+}
 
 // The Merged tag: how many BOM rows the card stands for; a click offers Unmerge.
 export function MergedBadge({ part }: { part: CardPart }) {

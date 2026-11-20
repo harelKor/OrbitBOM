@@ -11,6 +11,7 @@ import { AddProcessField, MachineField, MaterialField, StatusField, TypeBadge, T
 import { usePermissions } from "@/components/shell/ModeContext";
 import { usePartDetails } from "./PartDetailsHost";
 import { CardSuggest } from "./CardSuggest";
+import { DataBadges } from "./PartCard";
 import { partIds, partTitle, type CardPart } from "./types";
 
 // A part as one row of the List view: thumbnail, name (a link to the product's page when it has
@@ -74,6 +75,7 @@ export function PartListRow({
             onKeyDown={(e) => e.stopPropagation()}
           >
             {canClassify ? <TypeField part={part} save={save} badge /> : <TypeBadge part={part} />}
+            <DataBadges part={part} />
             {!cots && (
               <>
                 {part.material || part.inventoryItemId ? (
@@ -103,6 +105,7 @@ export function PartListRow({
         ) : (
           <>
             <TypeBadge part={part} />
+            <DataBadges part={part} />
             {!cots && machine && <ListPill>{machine}</ListPill>}
             <ListPill color={statusColor}>{status}</ListPill>
           </>

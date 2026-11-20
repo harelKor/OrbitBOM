@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fabBatchRefusal, fabCounts } from "./fab";
+import { fabBatchProblems, fabBatchRefusal, fabCounts } from "./fab";
 
 const part = {
   classification: "inhouse" as const,
@@ -42,15 +42,33 @@ describe("fabCounts", () => {
 
 describe("fabBatchRefusal", () => {
   const cnc = { id: "cnc", name: "CNC" };
-  const plate = (material: string | null, process1 = "cnc") => ({ process1, addedProcesses: [], material });
-  it("takes parts of one material that all go through the machine", () => {
-    expect(fabBatchRefusal(cnc, [plate("6061"), plate("6061")])).toBeNull();
+  const plate = (material: string | null, process1 = "cnc", more: Partial<typeof part> = {}) => ({ ...part, process1, material, displayName: "Plate", ...more });
+  it("takes parts of one stock at the machine", () => {
+    expect(fabBatchRefusal(cnc, [plate("3mm 6061"), plate("3mm 6061")])).toBeNull();
   });
-  it("refuses a part that skips the machine or a second material", () => {
-    expect(fabBatchRefusal(cnc, [plate("6061"), plate("6061", "laser")])).toBe("Every part in the fab must go through CNC.");
-    expect(fabBatchRefusal(cnc, [plate("6061"), plate("Delrin")])).toBe("A fab can only hold parts of one material.");
+  it("refuses a part at another machine now, even one that goes through it later", () => {
+    expect(fabBatchRefusal(cnc, [plate("3mm 6061"), plate("3mm 6061", "laser")])).toMatch(/is at .* now, not CNC/);
+    expect(fabBatchRefusal(cnc, [plate("3mm 6061", "laser", { addedProcesses: [{ machine: "cnc", done: 0, qa: false }] })])).toMatch(/now, not CNC/);
+  });
+  it("refuses a part with no material and a second stock", () => {
+    expect(fabBatchRefusal(cnc, [plate(null)])).toBe("Plate has no material: give it one before it goes into a batch.");
+    expect(fabBatchRefusal(cnc, [plate("3mm 6061"), plate("5mm 6061")])).toMatch(/one stock/);
+    expect(fabBatchRefusal(cnc, [plate("3mm 6061")], [plate("Delrin")])).toMatch(/one stock/);
   });
   it("lets a factory pack mix materials", () => {
-    expect(fabBatchRefusal({ id: "zivudim", name: "Zivudim" }, [plate("6061", "zivudim"), plate("Delrin", "zivudim")])).toBeNull();
+    expect(fabBatchRefusal({ id: "zivudim", name: "Zivudim" }, [plate("6061", "zivudim"), plate("Delrin", "zivudim"), plate(null, "zivudim")])).toBeNull();
+  });
+});
+
+describe("fabBatchProblems", () => {
+  const plate = (material: string | null, process1 = "cnc", more: Partial<typeof part> = {}) => ({ ...part, process1, material, ...more });
+  it("flags no material, mixed stock and parts not at the batch's machine", () => {
+    expect(fabBatchProblems("cnc", [plate(null), plate(null)])).toEqual(["No material"]);
+    expect(fabBatchProblems("cnc", [plate("3mm 6061"), plate("Box tube")])).toEqual(["Mixed stock: 3mm 6061, Box tube"]);
+    expect(fabBatchProblems("cnc", [plate("Box tube"), plate("Box tube", "laser")])).toEqual(["1 part isn't at CNC"]);
+  });
+  it("leaves a part that moved on to its next process alone", () => {
+    const moved = plate("3mm 6061", "cnc", { doneProcess1: 4, addedProcesses: [{ machine: "laser", done: 0, qa: false }] });
+    expect(fabBatchProblems("cnc", [moved])).toEqual([]);
   });
 });

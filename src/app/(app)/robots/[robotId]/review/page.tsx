@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
+import { partTitle } from "@/components/bom/types";
 import { ReviewView } from "@/components/review/ReviewView";
 import { requireMember } from "@/lib/auth";
 import { listInventoryNames } from "@/lib/data/inventory";
@@ -42,12 +44,35 @@ export default async function ReviewPage({ params }: { params: Promise<{ robotId
     return [{ part, source: r.source, reason: r.reason, changes: named(changes), pending: Object.keys(r.pending), at: r.createdAt.toISOString(), batchId: r.batchId, memberName: r.memberName, aiName: r.aiName }];
   });
 
+  const typeWarnings = parts.filter((p) => p.typeWarning);
+
   return (
     <div className="space-y-5">
       <div>
         <div className="text-xs font-semibold tracking-wide text-subtle uppercase">{data.robot.name}</div>
         <h1 className="display text-3xl text-accent">AI review</h1>
       </div>
+      {typeWarnings.length > 0 && (
+        // A COTS-typed part that is really made (lib/parts/dataChecks.ts): a warning only, fixed
+        // on the part itself (audit 2026-11-20).
+        <section aria-label="Type check" className="space-y-2 rounded-xl border border-amber-400/60 bg-amber-500/5 p-4">
+          <h2 className="flex items-center gap-2 text-lg font-bold text-fg">
+            Type check
+            <span className="rounded-full bg-amber-500 px-2 py-0.5 font-mono text-xs font-semibold text-slate-950 tabular-nums">{typeWarnings.length}</span>
+          </h2>
+          <ul className="space-y-1.5">
+            {typeWarnings.map((p) => (
+              <li key={p.id} className="min-w-0 text-sm">
+                <Link href={`/robots/${data.robot.id}/systems/${p.systemId}#part-${p.id}`} className="font-semibold text-fg hover:text-accent">
+                  {partTitle(p)}
+                </Link>
+                <span className="text-subtle"> · {p.systemName}</span>
+                <p className="text-xs text-fg-2">{p.typeWarning}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       <ReviewView robotId={data.robot.id} systems={data.systems.map((s) => ({ id: s.id, name: s.name }))} items={items} inventory={inventoryReviews} />
     </div>
   );

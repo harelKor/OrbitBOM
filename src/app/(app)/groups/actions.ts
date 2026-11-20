@@ -8,7 +8,7 @@ import { PRIORITIES } from "@/config/priorities";
 import { STATUSES, processStatusOf, type StatusName } from "@/config/statuses";
 import { db, schema } from "@/db";
 import { requireCapability, statusChangeDenied } from "@/lib/mode";
-import { READY_STATUS, READY_STATUSES, fabBatchName, fabBatchRefusal } from "@/lib/fab";
+import { READY_STATUS, READY_STATUSES, fabBatchName, fabBatchRefusal, stockOf } from "@/lib/fab";
 import { analyseMissing } from "@/lib/groups/missing";
 import { applyPartChanges } from "@/lib/parts/apply";
 import { computeStatus } from "@/lib/status";
@@ -246,7 +246,8 @@ export async function recoverMembers(groupId: string): Promise<ActionResult> {
 }
 
 // To Fab's Fab button: the selected parts become a batch on one machine, named after the machine
-// and the day ("Laser 21/10"). Every part must go through that machine and share one material.
+// and the day ("Laser 21/10"). Every part must be at that machine now and have a material; parts of
+// several stocks make one batch each.
 // The batch waits in Ready to Fab (its parts in Released, or Reproduction) unless `status` puts it
 // elsewhere, and is marked as made by whoever created it.
 export async function createFabBatch(
@@ -268,8 +269,17 @@ export async function createFabBatch(
     .innerJoin(systems, eq(systems.id, parts.systemId))
     .where(and(inArray(parts.id, partIds), eq(systems.robotId, robotId)));
   if (!rows.length) return { error: "Pick parts to batch." };
-  const refused = fabBatchRefusal(machine, rows.map(({ part }) => part));
-  if (refused) return { error: refused };
+  // Parts of several stocks make one batch per stock (Harel, 2026-11-20: a batch is one stock).
+  const area = !!areaOfMachine(machine.id);
+  const byStock = new Map<string, typeof rows>();
+  for (const r of rows) {
+    const k = area ? "" : (stockOf(r.part) ?? "");
+    byStock.set(k, [...(byStock.get(k) ?? []), r]);
+  }
+  for (const list of byStock.values()) {
+    const refused = fabBatchRefusal(machine, list.map(({ part }) => part));
+    if (refused) return { error: refused };
+  }
 
   const move = status ? rows : rows.filter(({ part }) => !(READY_STATUSES as string[]).includes(computeStatus(part)));
   const denied = move.length ? await statusChangeDenied(move.map(({ part }) => part.id), { status: status ?? READY_STATUS }) : null;
@@ -291,10 +301,15 @@ export async function createFabBatch(
       .limit(1);
     if (taken.length) return { error: `A part you picked is already in ${taken[0].name}. Refresh and pick again.` };
     const names = new Set((await tx.select({ name: partGroups.name }).from(partGroups).where(eq(partGroups.robotId, robotId))).map((g) => g.name));
-    let name = base;
-    for (let n = 2; names.has(name); n++) name = `${base} (${n})`;
-    const [group] = await tx.insert(partGroups).values({ robotId, name, machine: machine.id, madeBy: areaOfMachine(machine.id) ? null : member.name }).returning({ id: partGroups.id });
-    await tx.insert(groupMembers).values(rows.map(({ part }) => ({ groupId: group.id, partId: part.id, keySnapshot: snapshot(part) })));
+    const made: string[] = [];
+    for (const list of byStock.values()) {
+      let name = base;
+      for (let n = 2; names.has(name); n++) name = `${base} (${n})`;
+      names.add(name);
+      made.push(name);
+      const [group] = await tx.insert(partGroups).values({ robotId, name, machine: machine.id, madeBy: area ? null : member.name }).returning({ id: partGroups.id });
+      await tx.insert(groupMembers).values(list.map(({ part }) => ({ groupId: group.id, partId: part.id, keySnapshot: snapshot(part) })));
+    }
     if (move.length) {
       await applyPartChanges(
         move.map(({ part }) => part.id),
@@ -302,11 +317,12 @@ export async function createFabBatch(
         { memberId: member.id, via: "ui", tx },
       );
     }
-    return { name };
+    return { made };
   });
   if ("error" in result) return result;
   refresh();
-  return { message: `Created ${result.name} with ${rows.length} part${rows.length === 1 ? "" : "s"}.` };
+  const count = `${rows.length} part${rows.length === 1 ? "" : "s"}`;
+  return { message: result.made.length === 1 ? `Created ${result.made[0]} with ${count}.` : `Created ${result.made.length} batches, one per stock, with ${count}.` };
 }
 
 // Dragging cards onto a fab batch on To Fab: they join it (leaving the batch they came from) and
@@ -322,15 +338,19 @@ export async function moveToFabBatch(groupId: string, partIds: string[], fromGro
   const rows = await robotParts(group.robotId, partIds);
   if (!rows.length) return { error: "Choose parts from this robot." };
   const ids = rows.map((p) => p.id);
-  // The same checks as Fab (createFabBatch): the batch's machine, one material with the parts
-  // already in it, and no part in two fab batches.
+  // The same checks as Fab (createFabBatch): each joining part at the batch's machine now, with a
+  // material, one stock with the parts already in it, and no part in two fab batches.
   const already = await db
     .select({ part: parts })
     .from(groupMembers)
     .innerJoin(parts, eq(parts.id, groupMembers.partId))
     .where(and(eq(groupMembers.groupId, groupId), isNull(parts.removedFromCadAt)));
   const joining = await db.select().from(parts).where(inArray(parts.id, ids));
-  const refused = fabBatchRefusal(machine, [...joining, ...already.map((r) => r.part).filter((p) => !ids.includes(p.id))]);
+  const refused = fabBatchRefusal(
+    machine,
+    joining.filter((p) => !already.some((r) => r.part.id === p.id)),
+    already.map((r) => r.part).filter((p) => !ids.includes(p.id)),
+  );
   if (refused) return { error: refused };
   const denied = status ? await statusChangeDenied(ids, { status }) : null;
   if (denied) return { error: denied };
