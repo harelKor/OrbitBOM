@@ -205,8 +205,9 @@ function StationMap({
     return () => ro.disconnect();
   }, []);
   const aspect = size.w && size.h ? size.w / size.h : 4 / 3;
-  // The starting view: the room with about its own size around it, so the rooms next to it show.
-  const home: View = room ? { cx: room.box.cx, cy: room.box.cy, w: Math.max(room.box.w * 2.2, room.box.h * 2.2 * aspect, 220) } : { cx: MAP_W / 2, cy: MAP_H / 2, w: MAP_W };
+  // The starting view: the room close up with a strip of what's around it, enough to know where
+  // it is (Harel, 2026-11-20: closer than the first 2.2×).
+  const home: View = room ? { cx: room.box.cx, cy: room.box.cy, w: Math.max(room.box.w * 1.6, room.box.h * 1.6 * aspect, 160) } : { cx: MAP_W / 2, cy: MAP_H / 2, w: MAP_W };
   const [view, setView] = useState<View | null>(null);
   const [moved, setMoved] = useState(false);
   const v = view ?? home;

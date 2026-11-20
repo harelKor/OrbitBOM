@@ -886,7 +886,7 @@ export const DEFAULT_CATEGORIES: CategorySeed[] = [
     id: "computers-devices",
     group: "tools",
     label: "Computers & Devices",
-    image: "/categories/computers-devices.png",
+    image: "/categories/computers-devices-2.png",
     noun: "",
     match: null,
     fields: [],

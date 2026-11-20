@@ -708,6 +708,13 @@
       "when": 1795169191098,
       "tag": "0100_pc_stations",
       "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1795170680629,
+      "tag": "0101_computers_devices_picture",
+      "breakpoints": true
     }
   ]
 }
