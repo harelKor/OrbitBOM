@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isPanoramaPicture } from "@/lib/inventory/places";
+import { CIRCLE_POINTS, circleOf, circleOfOutline, isPanoramaPicture, type MapPoint } from "@/lib/inventory/places";
 import { clampPano, dragPano, facing, maxFov, mod1, project, unproject, zoomPano } from "./panorama";
 
 const pic = { w: 2000, h: 667 };
@@ -56,5 +56,16 @@ describe("panorama", () => {
   it("faces a group of points across the seam", () => {
     const f = facing([{ u: 0.95, v: 0.5 }, { u: 0.05, v: 0.5 }], pic, box);
     expect(Math.abs(f.u - 0) < 0.01 || Math.abs(f.u - 1) < 0.01).toBe(true);
+  });
+
+  it("turns a 360° zone into a circle of the same area, once", () => {
+    const square: MapPoint[] = [[690, 479], [722, 479], [722, 505], [690, 505]];
+    const circle = circleOf(square);
+    expect(circle).toHaveLength(CIRCLE_POINTS);
+    const { c, r } = circleOfOutline(circle);
+    expect(c[0]).toBeCloseTo(706, 0);
+    expect(c[1]).toBeCloseTo(492, 0);
+    expect(Math.PI * r * r).toBeCloseTo(32 * 26, -1);
+    expect(circleOf(circle)).toBe(circle);
   });
 });

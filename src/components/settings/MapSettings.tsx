@@ -17,7 +17,7 @@ import {
 import { LocationPicker, PlaceTag } from "@/components/inventory/LocationPicker";
 import { MAP_H, MAP_W, WORKSHOP_ROOMS } from "@/config/workshopMap";
 import { STATUSES } from "@/config/statuses";
-import { MIN_SPOT, SPOT_KINDS, bounds, centroid, isPanorama, isPanoramaPicture, kindLabel, spotRect, spotsOf, zoneColor, type MapPoint, type Place, type SpotKind } from "@/lib/inventory/places";
+import { MIN_SPOT, SPOT_KINDS, bounds, centroid, circleOfOutline, circleOutline, isPanorama, isPanoramaPicture, kindLabel, spotRect, spotsOf, zoneColor, type MapPoint, type Place, type SpotKind } from "@/lib/inventory/places";
 import { Notice } from "@/components/ui/Notice";
 import { askConfirm } from "@/components/ui/useConfirm";
 
@@ -101,7 +101,7 @@ function ZoneEditor({ zones, selId, onSelect, run, pending }: { zones: Place[]; 
   // Corners being dragged, shown until the saved outline comes back.
   // Kept against the outline it was dragged from, so the saved one replaces it when it arrives.
   const [moved, setMoved] = useState<Record<string, { from: MapPoint[] | null | undefined; pts: MapPoint[] }>>({});
-  const drag = useRef<{ kind: "pan" | "corner" | "zone"; zone?: string; index?: number; last: MapPoint; travel: number; start: { x: number; y: number }; target: string | null } | null>(null);
+  const drag = useRef<{ kind: "pan" | "corner" | "zone" | "radius"; zone?: string; index?: number; last: MapPoint; travel: number; start: { x: number; y: number }; target: string | null } | null>(null);
   const outlineOf = (z: Place) => (moved[z.id] && moved[z.id].from === z.outline ? moved[z.id].pts : (z.outline ?? null));
 
   const toMap = (cx: number, cy: number): MapPoint => {
@@ -146,9 +146,12 @@ function ZoneEditor({ zones, selId, onSelect, run, pending }: { zones: Place[]; 
   const onDown = (e: React.PointerEvent<SVGSVGElement>) => {
     const t = e.target as Element;
     const corner = t.closest("[data-corner]")?.getAttribute("data-corner");
+    const radius = t.closest("[data-radius]")?.getAttribute("data-radius");
     const zoneId = t.closest("[data-zone]")?.getAttribute("data-zone") ?? null;
     const p = toMap(e.clientX, e.clientY);
-    if (corner) {
+    if (radius) {
+      drag.current = { kind: "radius", zone: radius, last: p, travel: 0, start: { x: e.clientX, y: e.clientY }, target: radius };
+    } else if (corner) {
       const [zid, i] = corner.split(":");
       drag.current = { kind: "corner", zone: zid, index: Number(i), last: p, travel: 0, start: { x: e.clientX, y: e.clientY }, target: zid };
     } else if (zoneId && zoneId === selId && !drawing) {
@@ -172,7 +175,8 @@ function ZoneEditor({ zones, selId, onSelect, run, pending }: { zones: Place[]; 
     const z = zones.find((x) => x.id === d.zone);
     const pts = z && outlineOf(z);
     if (!pts) return;
-    const next = d.kind === "corner" ? pts.map((q, i) => (i === d.index ? p : q)) : pts.map(([x, y]) => [x + p[0] - d.last[0], y + p[1] - d.last[1]] as MapPoint);
+    const next =
+      d.kind === "radius" ? circleOutline(circleOfOutline(pts).c, Math.max(4, Math.hypot(p[0] - circleOfOutline(pts).c[0], p[1] - circleOfOutline(pts).c[1]))) : d.kind === "corner" ? pts.map((q, i) => (i === d.index ? p : q)) : pts.map(([x, y]) => [x + p[0] - d.last[0], y + p[1] - d.last[1]] as MapPoint);
     setMoved((m) => ({ ...m, [z!.id]: { from: z!.outline, pts: next } }));
     d.last = p;
   };
@@ -189,7 +193,7 @@ function ZoneEditor({ zones, selId, onSelect, run, pending }: { zones: Place[]; 
       } else onSelect(d.target);
       return;
     }
-    if ((d.kind === "corner" || d.kind === "zone") && d.zone && moved[d.zone]) {
+    if ((d.kind === "corner" || d.kind === "zone" || d.kind === "radius") && d.zone && moved[d.zone]) {
       const outline = moved[d.zone].pts;
       run(() => updateZone(d.zone!, { outline }));
     }
@@ -217,7 +221,7 @@ function ZoneEditor({ zones, selId, onSelect, run, pending }: { zones: Place[]; 
             <button type="button" className="btn min-h-9 text-xs active:scale-[0.98]" onClick={() => setDrawing([])}>
               + Draw a zone
             </button>
-            <span className="text-xs text-muted">Drag to pan, scroll to zoom. Drag a picked zone or its corners to reshape it.</span>
+            <span className="text-xs text-muted">Drag to pan, scroll to zoom. Drag a picked zone or its corners to reshape it (a 360° zone is a circle: drag its handle to size it).</span>
           </>
         )}
       </div>
@@ -258,7 +262,13 @@ function ZoneEditor({ zones, selId, onSelect, run, pending }: { zones: Place[]; 
                   // Which way the picture looks.
                   <line x1={cx} y1={cy} x2={cx + Math.sin(rad) * arrow} y2={cy - Math.cos(rad) * arrow} stroke="#fff" strokeWidth={2} vectorEffect="non-scaling-stroke" markerEnd="url(#ms-arrow)" pointerEvents="none" />
                 )}
+                {/* A 360° zone is a circle (Harel, 2026-11-20): one handle sets its size. */}
+                {on && isPanorama(z) && (() => {
+                  const c = circleOfOutline(pts);
+                  return <circle data-radius={z.id} cx={c.c[0] + c.r} cy={c.c[1]} r={7 * k} fill="#fff" strokeWidth={2} vectorEffect="non-scaling-stroke" className="cursor-ew-resize" style={{ stroke: color }} />;
+                })()}
                 {on &&
+                  !isPanorama(z) &&
                   pts.map(([x, y], j) => (
                     <circle key={j} data-corner={`${z.id}:${j}`} cx={x} cy={y} r={6 * k} fill="#fff" strokeWidth={2} vectorEffect="non-scaling-stroke" className="cursor-pointer" style={{ stroke: color }} />
                   ))}

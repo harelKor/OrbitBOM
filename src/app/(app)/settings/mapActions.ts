@@ -9,7 +9,7 @@ import { STATUSES } from "@/config/statuses";
 import { MAP_H, MAP_W } from "@/config/workshopMap";
 import { requireCapability } from "@/lib/mode";
 import { isUuid } from "@/lib/uuid";
-import { MIN_SPOT, ZONE_COLORS, nextSpotName, nextZoneName, placeInUseMessage, type MapPoint, type SpotKind } from "@/lib/inventory/places";
+import { MIN_SPOT, ZONE_COLORS, circleOf, isPanoramaPicture, nextSpotName, nextZoneName, placeInUseMessage, type MapPoint, type SpotKind } from "@/lib/inventory/places";
 import { StorageNotConfiguredError, deleteObject, objectExists, presignUpload } from "@/lib/storage/r2";
 
 const { inventoryLocations, inventoryItems, inventoryGroups, inventoryCategories, systems } = schema;
@@ -64,12 +64,15 @@ export async function updateZone(id: string, patch: z.infer<typeof zonePatch>): 
   await requireCapability("manage");
   const parsed = zonePatch.safeParse(patch);
   if (!parsed.success) return { error: "That change isn't valid." };
-  if (!(await zone(id))) return { error: "That zone was deleted." };
+  const z0 = await zone(id);
+  if (!z0) return { error: "That zone was deleted." };
   const v = parsed.data;
+  // Marked as a 360° panorama, the zone becomes a circle of the same area (Harel, 2026-11-20).
+  const outline = v.outline !== undefined ? v.outline : v.panorama === true && z0.outline?.length ? circleOf(z0.outline) : undefined;
   await db
     .update(inventoryLocations)
     .set({
-      ...(v.outline !== undefined && { outline: v.outline ? round(v.outline) : null }),
+      ...(outline !== undefined && { outline: outline ? round(outline) : null }),
       ...(v.color && { color: v.color }),
       ...(v.facing !== undefined && { facing: ((Math.round(v.facing) % 360) + 360) % 360 }),
       ...(v.panorama !== undefined && { panorama: v.panorama }),
@@ -104,7 +107,13 @@ export async function setZoneImage(id: string, key: string | null, size?: { w: n
   }
   await db
     .update(inventoryLocations)
-    .set({ imageKey: key, imageW: key ? Math.round(size!.w) : null, imageH: key ? Math.round(size!.h) : null })
+    .set({
+      imageKey: key,
+      imageW: key ? Math.round(size!.w) : null,
+      imageH: key ? Math.round(size!.h) : null,
+      // A 360° picture (by its shape, unless the zone says otherwise) makes the zone a circle.
+      ...(key && z0.panorama == null && isPanoramaPicture(size!.w, size!.h) && z0.outline?.length && { outline: round(circleOf(z0.outline)) }),
+    })
     .where(eq(inventoryLocations.id, id));
   if (z0.imageKey && z0.imageKey !== key && !z0.imageKey.startsWith("/")) await deleteObject(z0.imageKey).catch(() => {});
   refresh();

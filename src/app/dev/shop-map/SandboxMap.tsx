@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { ShopMap } from "@/components/map/ShopMap";
 import { placeStats } from "@/components/map/stats";
-import type { Place } from "@/lib/inventory/places";
+import { circleOf, type Place } from "@/lib/inventory/places";
 import { MapSettings } from "@/components/settings/MapSettings";
 import { LocationPicker, PlaceTag } from "@/components/inventory/LocationPicker";
 
@@ -45,7 +45,7 @@ export function SandboxMap() {
       zone("B", [[215, 82], [340, 72], [345, 112], [222, 118]], "#F472B6", { imageUrl: shelf, imageW: 1200, imageH: 750 }),
       zone("C", [[210, 175], [255, 195], [245, 230], [205, 212]], "#A3E635"),
       zone("D", [[640, 420], [720, 380], [770, 460], [690, 505]], "#FBBF24", { imageUrl: shelf, imageW: 1200, imageH: 750, facing: 30 }),
-      zone("E", [[500, 330], [560, 330], [560, 370], [500, 370]], "#A78BFA", { imageUrl: url(room()), imageW: 2400, imageH: 800 }),
+      zone("E", circleOf([[500, 330], [560, 330], [560, 370], [500, 370]]), "#A78BFA", { imageUrl: url(room()), imageW: 2400, imageH: 800 }),
     ];
     for (let i = 0; i < 6; i++) ps.push(spot(`E${i}`, "E", (760 + (i % 3) * 140) / 2400, (425 + Math.floor(i / 3) * 110) / 800, "drawer", [120 / 2400, 90 / 800]));
     for (let c = 0; c < 4; c++) for (let r = 0; r < 5; r++) ps.push(spot(`A${c}${r}`, "A", (250 + c * 175) / 1200, (190 + r * 92) / 750, "drawer", [150 / 1200, 72 / 750]));

@@ -116,6 +116,35 @@ export function centroid(points: MapPoint[]): MapPoint {
   return [cx / (3 * a), cy / (3 * a)];
 }
 
+// A 360° zone is a circle on the floor plan (Harel, 2026-11-20): you stand in its middle and look
+// round. Stored as an ordinary outline of CIRCLE_POINTS corners, so everything else reads it as is.
+export const CIRCLE_POINTS = 24;
+export function circleOutline([cx, cy]: MapPoint, r: number): MapPoint[] {
+  return Array.from({ length: CIRCLE_POINTS }, (_, i) => {
+    const a = (i / CIRCLE_POINTS) * 2 * Math.PI;
+    return [Math.round((cx + r * Math.cos(a)) * 10) / 10, Math.round((cy + r * Math.sin(a)) * 10) / 10] as MapPoint;
+  });
+}
+// The circle with a shape's centre and area (a 32 × 26 zone gets r ≈ 16).
+export function circleOf(points: MapPoint[]): MapPoint[] {
+  // Already a circle: kept as it is (ticking again mustn't shrink it).
+  if (points.length === CIRCLE_POINTS) {
+    const { r } = circleOfOutline(points);
+    const c = centroid(points);
+    if (r > 0 && points.every(([x, y]) => Math.abs(Math.hypot(x - c[0], y - c[1]) - r) < r * 0.03 + 0.2)) return points;
+  }
+  let a = 0;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) a += points[j][0] * points[i][1] - points[i][0] * points[j][1];
+  const r = Math.max(Math.sqrt(Math.abs(a / 2) / Math.PI), 4);
+  return circleOutline(centroid(points), r);
+}
+// A circle's centre and radius (the mean distance of its corners).
+export function circleOfOutline(points: MapPoint[]) {
+  const c = centroid(points);
+  const r = points.reduce((s, [x, y]) => s + Math.hypot(x - c[0], y - c[1]), 0) / points.length;
+  return { c, r };
+}
+
 export function pointInPolygon(x: number, y: number, pts: MapPoint[]) {
   let inside = false;
   for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
