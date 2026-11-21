@@ -46,6 +46,7 @@ export async function PanelHome({ robotId, systemId, query, model }: { robotId: 
         {basepart && <Tile href={`/onshape/panel/geometry?${query}&${owner}`} icon="✎" title="Geometry" sub="Choose the sketches the 3D views show" tone="accent" />}
         {!basepart && <Tile href={base} icon="☰" title="View BOM" sub="Opens in a new tab" tone="sky" external />}
         <Tile href={cadHref} icon="◈" title="View CAD" sub="Opens in a new tab" tone="violet" external />
+        <Tile href={`/onshape/panel/insert?${query}&robotId=${robotId}`} icon="⤓" title="Insert" sub="Parts from a robot or the shelf, at a version" tone="sky" />
       </div>
     </div>
   );

@@ -1,4 +1,5 @@
 import { asc, desc, eq } from "drizzle-orm";
+import Link from "next/link";
 import { db, schema } from "@/db";
 import { getMember } from "@/lib/auth";
 import { onshapeUrl, parseOnshapeUrl, type OnshapeRef } from "@/lib/onshape/url";
@@ -25,7 +26,20 @@ const { robots, systems } = schema;
 //   - any other assembly: Sync as system Final (admins: also Sync as robot Final), or Batch Layouts.
 export default async function OnshapePanelPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const place = panelPlace(await searchParams);
-  return <div className="p-4 text-sm">{await panelBody(place.ref, place.query, place.kind)}</div>;
+  const body = await panelBody(place.ref, place.query, place.kind);
+  // Insert (Harel, 2026-11-21) works in any Part Studio or assembly, linked or not; a linked one
+  // has its own Insert tile.
+  const linked = body && typeof body === "object" && "type" in body && body.type === PanelHome;
+  return (
+    <div className="p-4 text-sm">
+      {body}
+      {place.ref?.eid && !linked && (
+        <Link href={`/onshape/panel/insert?${place.query}`} className="btn mt-6 flex min-h-11 w-full items-center justify-center active:scale-[0.98]">
+          ⤓ Insert parts from a robot or the shelf
+        </Link>
+      )}
+    </div>
+  );
 }
 
 const isAt = (url: string | null, ref: OnshapeRef) => {

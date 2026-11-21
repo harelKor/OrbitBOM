@@ -56,7 +56,9 @@ function saveQuality(q: Quality) {
 
 export type QualityTools = {
   quality: () => Quality;
-  setQuality: (q: Quality) => void; // applied at once and remembered on this device
+  // Applied at once and remembered on this device, unless `remember` is false (the Onshape
+  // panel's narrow view starts at Low without changing the device's choice).
+  setQuality: (q: Quality, remember?: boolean) => void;
 };
 
 // Wires a quality to the renderer and the camera controls' start / end (the view moving).
@@ -91,10 +93,10 @@ export function createQuality(
   controls.addEventListener("end", onEnd);
   const tools: QualityTools = {
     quality: () => q,
-    setQuality: (next) => {
+    setQuality: (next, remember = true) => {
       if (!isQuality(next)) return;
       q = next;
-      saveQuality(q);
+      if (remember) saveQuality(q);
       apply();
       render();
     },
