@@ -415,8 +415,8 @@ export function turnDim(d: Dim, xf: ViewXf): Dim {
   const u = minus2(f.P(1, 0), f.P(0, 0));
   const line = xf.fwd(f.P(f.pa, f.at));
   const text = xf.fwd(f.P(f.tc, f.at));
-  const { tx: _tx, ...rest } = d;
-  const out: Dim = { ...rest, dir: "a", a: xf.fwd(d.a), b: xf.fwd(d.b), u: xf.vec(u), at: 0 };
+  const out: Dim = { ...d, dir: "a", a: xf.fwd(d.a), b: xf.fwd(d.b), u: xf.vec(u), at: 0 };
+  delete out.tx;
   out.at = dimFrame(out).local(line)[1];
   const g = dimFrame(out);
   const tx = g.local(text)[0] - g.home;

@@ -258,6 +258,10 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
   menu, undo; every auto note and dimension retyped / hidden / moved). Edits live in
   `part_drawings.edits`, kept against the part (`Ref`: view key + view mm + hole) so they survive
   Regenerate. No hole positions on drawings (Harel, 2026-11-17). Sandbox `/dev/drawing`.
+  Views (2026-11-21): moved / resized / turned like Google Docs pictures (`edits.views`: centre,
+  scale, turn); edits apply on the unturned views, `turnViews` turns them last. The read geometry
+  is kept in R2 (`bodyStore.ts`); Add view (`AddViewWindow`, `extra.ts`): straight = a measured
+  view from it, angled = a browser-drawn picture (`picture.ts`) in R2.
 - To Fab: `src/components/fab/` (`fabModel.ts` rules, `BatchCard`, `MachineFilters`, Auto Layout in
   `BatchLayoutDialog` + `src/lib/fab/layout.ts`, `batchLayout.ts`).
 - Data loaders for pages: `src/lib/data/`. The `(app)` layout must stay light: it runs on every

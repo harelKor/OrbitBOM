@@ -273,7 +273,7 @@ export function DrawingEditor({
   const swallow = useRef(false);
   const [hover, setHover] = useState<Hit | null>(null);
   const [selected, setSelected] = useState<Item | null>(null);
-  const [dragging, setDragging] = useState(false);
+  const [dragging, setDragging] = useState<Part | null>(null); // what a drag in progress holds
   const [pointer, setPointer] = useState<Pt | null>(null);
   const [holeMenu, setHoleMenu] = useState<{ hole: Hole; x: number; y: number } | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null); // a double-clicked item: focus its field
@@ -555,8 +555,7 @@ export function DrawingEditor({
       next = { ...next, s: Math.round(s * k * 1000) / 1000, cx: o[0] + (diag[0] * k) / 2, cy: o[1] + (diag[1] * k) / 2 };
     } else if (d.part === "rotate") {
       const r = snapTurn((Math.atan2(p[1] - xf.c[1], p[0] - xf.c[0]) * 180) / Math.PI + 90, fine);
-      const { r: _r, ...rest } = next;
-      next = r ? { ...rest, r } : rest;
+      next = { cx: next.cx, cy: next.cy, s: next.s, ...(r ? { r } : {}) };
     }
     change({ ...edits, views: { ...edits.views, [v.key]: next } }, { record: false });
   }
@@ -608,7 +607,7 @@ export function DrawingEditor({
     }
     if (!d.moved) {
       d.moved = true;
-      setDragging(true);
+      setDragging(d.part);
       setSelected(d.item);
       change(edits, { from: d.before }); // one undo step for the whole drag
     }
@@ -618,7 +617,7 @@ export function DrawingEditor({
     const d = drag.current;
     if (!d || d.pointer !== e.pointerId) return;
     drag.current = null;
-    setDragging(false);
+    setDragging(null);
     if (d.moved) swallow.current = true;
   }
 
@@ -865,7 +864,7 @@ export function DrawingEditor({
 
   const hoverCursor =
     hover?.part === "move" ? "cursor-move" : hover?.part === "scale" ? (hover.corner! % 2 ? "cursor-nesw-resize" : "cursor-nwse-resize") : hover ? "cursor-grab" : "cursor-default";
-  const cursor = dragging ? (drag.current?.part === "scale" ? hoverCursor : "cursor-grabbing") : busyMode ? "cursor-crosshair" : hoverCursor;
+  const cursor = dragging ? (dragging === "scale" ? hoverCursor : "cursor-grabbing") : busyMode ? "cursor-crosshair" : hoverCursor;
   // The selected view's dotted box, corner handles and turn handle (Google Docs' picture handles).
   const selView = mode.kind === "idle" && selected?.type === "view" ? viewOf(selected.id) : undefined;
   const handles = () => {
