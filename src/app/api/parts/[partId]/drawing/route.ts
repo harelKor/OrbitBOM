@@ -55,6 +55,9 @@ const Edits = z.object({
     )
     .max(100)
     .optional(),
+  views: z
+    .record(z.string().max(20), z.object({ cx: z.number().finite(), cy: z.number().finite(), s: z.number().positive().max(100), r: z.number().finite().optional() }))
+    .optional(),
 });
 
 // Save the member's edits to the drawing's notes (the drawing editor).

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { expect, it } from "vitest";
 import { type Body, type Face, readBodies, type V3 } from "./brep";
-import { applyEdits, dimAt, dimFrame, dimHit, dimOff, dimRect, dimSpan, linkNotes, maxToolText, measure, noteBox, partDrawing, refToSheet, sheetToRef } from "./layout";
+import { applyEdits, dimAt, dimFrame, dimHit, dimOff, dimRect, dimSpan, linkNotes, maxToolText, measure, noteBox, partDrawing, refToSheet, sheetToRef, turnViews, viewXf } from "./layout";
 import { readPart } from "./read";
 import { drawingSvg } from "./svg";
 import { drawingSummary } from "./summary";
@@ -248,4 +248,29 @@ it("draws an aligned dimension between slanted parallel lines, text along them",
   // The line sits 6 mm beside a→b; a point there is on it.
   expect(dimHit(dim, f.P((f.lo + f.hi) / 2, 6))).toBe(true);
   expect(dimHit(dim, f.P((f.lo + f.hi) / 2, 20))).toBe(false);
+});
+
+it("moves, scales and turns a view with its dimensions, notes and points", () => {
+  const flat0 = partDrawing(part("square-tube")!, { name: "Tube" });
+  const end0 = flat0.views.find((v) => v.key === "end")!;
+  const views = { end: { cx: 150, cy: 100, s: end0.s * 2, r: 90 } };
+  const ref = sheetToRef(flat0, [end0.x + 1, end0.y + 1], { view: "end" })!;
+  const flat = applyEdits(partDrawing(part("square-tube")!, { name: "Tube" }, views), { dims: [{ id: "dim:x", a: ref, b: { ...ref, p: [ref.p[0] + 10, ref.p[1]] }, dir: "h", off: -8 }] });
+  const d = turnViews(flat);
+  const end = d.views.find((v) => v.key === "end")!;
+  expect(viewXf(end).c.map(round)).toEqual([150, 100]);
+  expect(end.s).toBe(end0.s * 2);
+  // The width dimension still reads the part's width, now measured upright.
+  const width = d.dims.find((x) => x.id === "dim:width")!;
+  expect(width.text).toBe(flat0.dims.find((x) => x.id === "dim:width")!.text);
+  expect(width.dir).toBe("a");
+  expect(Math.abs(width.u![0])).toBeLessThan(1e-9);
+  // An added dimension keeps its measured length; its points turned a quarter turn about the centre.
+  const added = d.dims.find((x) => x.id === "dim:x")!;
+  expect(added.text).toBe("10");
+  expect(round(Math.abs(added.b[1] - added.a[1]))).toBe(round(10 * end.s));
+  // A point on the turned view maps back to the same place on the part.
+  const back = sheetToRef(d, refToSheet(d, ref)!, { view: "end" })!;
+  expect(back.p.map(round)).toEqual(ref.p.map(round));
+  expect(drawingSvg(d)).toContain("<svg");
 });

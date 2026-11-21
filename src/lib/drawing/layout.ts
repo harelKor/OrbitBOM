@@ -18,7 +18,7 @@ const AREA = { x0: MARGIN + 10, x1: SHEET.w - MARGIN - 12, y0: MARGIN + 22, y1: 
 export const fmt = (n: number) => String(Math.round(n * 100) / 100);
 const near = (a: number, b: number) => Math.abs(a - b) <= HOLE_MATCH_MM;
 
-type Placed = { key: string; view: View; x: number; y: number; s: number }; // top-left corner on the sheet
+type Placed = { key: string; view: View; x: number; y: number; s: number; r?: number }; // top-left corner on the sheet
 const toSheet = (p: Placed, [px, py]: [number, number]): Pt => [p.x + px * p.s, p.y + (p.view.h - py) * p.s];
 const box = (p: Placed) => ({ x0: p.x, y0: p.y, x1: p.x + p.view.w * p.s, y1: p.y + p.view.h * p.s });
 
@@ -50,17 +50,17 @@ function arrange(main: View[], beside: View, besideLeft: boolean, keys: { main: 
 }
 
 function viewLines(p: Placed): Line[] {
-  const lines: Line[] = p.view.lines.map((l) => ({ pts: l.map((pt) => toSheet(p, pt)), stroke: "visible" }));
+  const lines: Line[] = p.view.lines.map((l) => ({ pts: l.map((pt) => toSheet(p, pt)), stroke: "visible", view: p.key }));
   for (const h of p.view.holes) {
     const [cx, cy] = toSheet(p, h.at);
     const r = (h.d / 2) * p.s + 2;
     const stroke = r < 6 ? "thin" : "center"; // a chain line too short to show its dash is drawn plain
-    lines.push({ pts: [[cx - r, cy], [cx + r, cy]], stroke }, { pts: [[cx, cy - r], [cx, cy + r]], stroke });
+    lines.push({ pts: [[cx - r, cy], [cx + r, cy]], stroke, view: p.key }, { pts: [[cx, cy - r], [cx, cy + r]], stroke, view: p.key });
   }
   if (p.view.axis) {
     const b = box(p);
     const y = (b.y0 + b.y1) / 2;
-    lines.push({ pts: [[b.x0 - 3, y], [b.x1 + 3, y]], stroke: "center" });
+    lines.push({ pts: [[b.x0 - 3, y], [b.x1 + 3, y]], stroke: "center", view: p.key });
   }
   return lines;
 }
@@ -97,7 +97,7 @@ export function dimFrame(d: Dim) {
   let local: (p: Pt) => [number, number];
   let pa: number, pb: number, ea: number, eb: number, angle: number;
   if (d.dir === "a") {
-    let [ux, uy] = [d.b[0] - d.a[0], d.b[1] - d.a[1]];
+    let [ux, uy] = d.u ?? [d.b[0] - d.a[0], d.b[1] - d.a[1]];
     const l = Math.hypot(ux, uy) || 1;
     [ux, uy] = [ux / l, uy / l];
     // Text reads left to right, or bottom to top.
@@ -106,8 +106,9 @@ export function dimFrame(d: Dim) {
     const o = d.a;
     P = (along, off) => [o[0] + ux * along + nx * off, o[1] + uy * along + ny * off];
     local = (p) => [(p[0] - o[0]) * ux + (p[1] - o[1]) * uy, (p[0] - o[0]) * nx + (p[1] - o[1]) * ny];
-    [pa, pb] = [0, (d.b[0] - o[0]) * ux + (d.b[1] - o[1]) * uy];
-    [ea, eb] = [0, 0];
+    [pa, pb] = [0, local(d.b)[0]];
+    // b sits off the a→b line only when the dimension measures along `u` (a turned view's).
+    [ea, eb] = [0, local(d.b)[1]];
     angle = (Math.atan2(uy, ux) * 180) / Math.PI;
   } else if (d.dir === "v") {
     P = (along, off) => [off, along];
@@ -218,14 +219,14 @@ function holeNotes(views: Placed[], place: ReturnType<typeof noter>, ends?: Plac
       holes.forEach((h) => seen.add(h.faceId));
       const both = holes.every((h) => h.both) ? (p === ends ? ", both ends" : ", both sides") : "";
       const text = `${holes.length > 1 ? `${holes.length}× ` : ""}${tap.note}${both}`;
-      notes.push({ id: `tap:${tap.drillMm}:${holes[0].faceId}`, kind: "tap", text, ...place(p, holes[0], text) });
+      notes.push({ id: `tap:${tap.drillMm}:${holes[0].faceId}`, kind: "tap", text, view: p.key, ...place(p, holes[0], text) });
     }
     for (const h of p.view.holes) {
       const bearing = BEARINGS.find((b) => near(h.d, b.boreMm));
       if (!bearing || seen.has(h.faceId)) continue;
       seen.add(h.faceId);
       const text = `${DEFAULT_FIT} fit for\n${bearing.name}\nØ${fmt(h.d)}`;
-      notes.push({ id: `fit:${h.faceId}`, kind: "fit", text, ...place(p, h, text) });
+      notes.push({ id: `fit:${h.faceId}`, kind: "fit", text, view: p.key, ...place(p, h, text) });
     }
   }
   return notes;
@@ -243,49 +244,57 @@ const toolNote = (r?: number): Note[] => (r ? [{ id: "tool", kind: "tool", text:
 const across = (id: string, p: Placed, text: string, below = false): Dim => {
   const b = box(p);
   const y = below ? b.y1 : b.y0;
-  return { id, a: [b.x0, y], b: [b.x1, y], at: below ? y + 8 : y - 8, dir: "h", text };
+  return { id, a: [b.x0, y], b: [b.x1, y], at: below ? y + 8 : y - 8, dir: "h", text, view: p.key };
 };
 const down = (id: string, p: Placed, text: string): Dim => {
   const b = box(p);
-  return { id, a: [b.x1, b.y0], b: [b.x1, b.y1], at: b.x1 + 8, dir: "v", text };
+  return { id, a: [b.x1, b.y0], b: [b.x1, b.y1], at: b.x1 + 8, dir: "v", text, view: p.key };
 };
 
-export function partDrawing(part: Part, title: TitleBlock, image?: string): Drawing {
+// `views`: where members put, sized and turned each view (edits.views). The views are laid out
+// there, unturned; turnViews turns them once the edits are on.
+export function partDrawing(part: Part, title: TitleBlock, views?: DrawingEdits["views"], image?: string): Drawing {
   let placed: Placed[];
+  const at = (list: Placed[]) =>
+    list.map((p): Placed => {
+      const o = views?.[p.key];
+      if (!o || !(o.s > 0)) return p;
+      return { ...p, s: o.s, x: o.cx - (p.view.w * o.s) / 2, y: o.cy - (p.view.h * o.s) / 2, ...(o.r ? { r: o.r } : {}) };
+    });
   let dims: Dim[] = [];
   let notes: Note[] = [];
   let stock: string;
 
   if (part.kind === "plate") {
-    placed = arrange([part.front], part.side, true, { main: () => "front", beside: "side" });
+    placed = at(arrange([part.front], part.side, true, { main: () => "front", beside: "side" }));
     const [front, side] = placed;
     dims = [across("dim:thickness", side, fmt(part.thickness))];
     notes = [...holeNotes([front], noter(placed, dims)), ...toolNote(part.minInnerRadius)];
     stock = `${fmt(part.thickness)} mm plate`;
   } else if (part.kind === "square-tube") {
-    placed = arrange(part.long, part.end, false, { main: (i) => `long${i}`, beside: "end" });
+    placed = at(arrange(part.long, part.end, false, { main: (i) => `long${i}`, beside: "end" }));
     const end = placed[placed.length - 1];
     const [x, y] = part.size;
     dims = [across("dim:length", placed[0], fmt(part.length)), across("dim:width", end, fmt(x), true), down("dim:height", end, fmt(y))];
     if (part.wall) {
       const b = box(end);
-      dims.push({ id: "dim:wall", a: [b.x0, b.y0], b: [b.x0 + part.wall * end.s, b.y0], at: b.y0 - 8, dir: "h", text: fmt(part.wall) });
+      dims.push({ id: "dim:wall", a: [b.x0, b.y0], b: [b.x0 + part.wall * end.s, b.y0], at: b.y0 - 8, dir: "h", text: fmt(part.wall), view: end.key });
     }
     notes = [...holeNotes(placed, noter(placed, dims), end), ...toolNote(part.minInnerRadius)];
     stock = `${fmt(x)}×${fmt(y)}${part.wall ? `×${fmt(part.wall)}` : ""} tube, ${fmt(part.length)} long`;
   } else if (part.kind === "hex-shaft") {
-    placed = arrange([part.side], part.end, false, { main: () => "side", beside: "end" });
+    placed = at(arrange([part.side], part.end, false, { main: () => "side", beside: "end" }));
     const [side, end] = placed;
     dims = [across("dim:length", side, fmt(part.length)), down("dim:flats", end, fmt(part.acrossFlats))];
     const bore = end.view.holes[0];
     if (bore) {
       const tap = TAPS.find((t) => near(bore.d, t.drillMm));
       const text = tap ? tap.note : `Ø${fmt(bore.d)}`;
-      notes = [{ id: `bore:${bore.faceId}`, kind: "bore", text, ...noter(placed, dims)(end, bore, text) }];
+      notes = [{ id: `bore:${bore.faceId}`, kind: "bore", text, view: end.key, ...noter(placed, dims)(end, bore, text) }];
     }
     stock = `${fmt(part.acrossFlats)} hex, ${fmt(part.length)} long`;
   } else {
-    placed = arrange([part.side], part.end, false, { main: () => "side", beside: "end" });
+    placed = at(arrange([part.side], part.end, false, { main: () => "side", beside: "end" }));
     const [side, end] = placed;
     const b = box(end);
     const cx = (b.x0 + b.x1) / 2;
@@ -293,8 +302,8 @@ export function partDrawing(part: Part, title: TitleBlock, image?: string): Draw
     dims = [across("dim:length", side, fmt(part.length)), across("dim:od", end, `Ø${fmt(part.od)}`, true)];
     if (part.id) {
       const r = (part.id / 2) * end.s;
-      dims.push({ id: "dim:id", a: [cx - r, cy], b: [cx + r, cy], at: b.y0 - 8, dir: "h", text: `Ø${fmt(part.id)}` });
-      notes = [{ id: "wall", kind: "size", text: `Wall ${fmt((part.od - part.id) / 2)}`, at: [b.x0, b.y1 + 18] }];
+      dims.push({ id: "dim:id", a: [cx - r, cy], b: [cx + r, cy], at: b.y0 - 8, dir: "h", text: `Ø${fmt(part.id)}`, view: end.key });
+      notes = [{ id: "wall", kind: "size", text: `Wall ${fmt((part.od - part.id) / 2)}`, at: [b.x0, b.y1 + 18], view: end.key }];
     }
     stock = `Ø${fmt(part.od)}${part.id ? `×${fmt((part.od - part.id) / 2)}` : ""} tube, ${fmt(part.length)} long`;
   }
@@ -303,7 +312,7 @@ export function partDrawing(part: Part, title: TitleBlock, image?: string): Draw
     kind: part.kind,
     sheet: SHEET,
     lines: placed.flatMap(viewLines),
-    views: placed.map((p): PlacedView => ({ key: p.key, x: p.x, y: p.y, s: p.s, w: p.view.w, h: p.view.h })),
+    views: placed.map((p): PlacedView => ({ key: p.key, x: p.x, y: p.y, s: p.s, w: p.view.w, h: p.view.h, ...(p.r ? { r: p.r } : {}) })),
     holes: placed.flatMap((p) => p.view.holes.map((h) => ({ id: h.faceId, view: p.key, at: toSheet(p, h.at), r: (h.d / 2) * p.s, d: h.d }))),
     ...snapsOf(placed),
     dims,
@@ -346,28 +355,105 @@ function snapsOf(placed: Placed[]): Pick<Drawing, "snaps" | "edges"> {
 
 // A view-relative point on the sheet, or null when its view is gone (the part was read as
 // another kind, or a tube lost a drilled face). On a hole's edge when the hole is still there.
-export function refToSheet(d: Pick<Drawing, "views" | "holes">, ref: Ref): Pt | null {
+// Points on a turned drawing (Drawing.turned) are turned with their view; `ang` is kept unturned.
+export function refToSheet(d: Pick<Drawing, "views" | "holes" | "turned">, ref: Ref): Pt | null {
+  const v = d.views.find((x) => x.key === ref.v);
+  const xf = v && d.turned ? viewXf(v) : null;
   if (ref.hole && ref.ang != null) {
     const h = d.holes.find((x) => x.id === ref.hole);
-    if (h) return [h.at[0] + Math.cos(ref.ang) * h.r, h.at[1] + Math.sin(ref.ang) * h.r];
+    const ang = ref.ang + (xf ? xf.rad : 0);
+    if (h) return [h.at[0] + Math.cos(ang) * h.r, h.at[1] + Math.sin(ang) * h.r];
   }
-  const v = d.views.find((x) => x.key === ref.v);
-  return v ? [v.x + ref.p[0] * v.s, v.y + (v.h - ref.p[1]) * v.s] : null;
+  if (!v) return null;
+  const p: Pt = [v.x + ref.p[0] * v.s, v.y + (v.h - ref.p[1]) * v.s];
+  return xf ? xf.fwd(p) : p;
 }
+
+// A view's turn about its centre: fwd takes an unturned sheet point to where it's drawn, inv
+// back; vec / unvec turn a direction.
+export type ViewXf = { c: Pt; deg: number; rad: number; turned: boolean; fwd: (p: Pt) => Pt; inv: (p: Pt) => Pt; vec: (p: Pt) => Pt; unvec: (p: Pt) => Pt };
+export function viewXf(v: PlacedView): ViewXf {
+  const c: Pt = [v.x + (v.w * v.s) / 2, v.y + (v.h * v.s) / 2];
+  const deg = v.r ?? 0;
+  const rad = (deg * Math.PI) / 180;
+  const [cos, sin] = [Math.cos(rad), Math.sin(rad)];
+  const vec = (p: Pt): Pt => [p[0] * cos - p[1] * sin, p[0] * sin + p[1] * cos];
+  const unvec = (p: Pt): Pt => [p[0] * cos + p[1] * sin, -p[0] * sin + p[1] * cos];
+  const fwd = (p: Pt): Pt => plus(c, vec(minus2(p, c)));
+  const inv = (p: Pt): Pt => plus(c, unvec(minus2(p, c)));
+  return { c, deg, rad, turned: Math.abs(deg % 360) > 1e-9, fwd, inv, vec, unvec };
+}
+// The view's four corners as drawn (top left, top right, bottom right, bottom left).
+export function viewCorners(v: PlacedView): Pt[] {
+  const xf = viewXf(v);
+  const [x1, y1] = [v.x + v.w * v.s, v.y + v.h * v.s];
+  return ([[v.x, v.y], [x1, v.y], [x1, y1], [v.x, y1]] as Pt[]).map(xf.fwd);
+}
+
+// A dimension turned with its view: a horizontal or vertical one becomes aligned, measuring
+// along its turned direction, its line and text the same distance from the part as before.
+export function turnDim(d: Dim, xf: ViewXf): Dim {
+  if (!xf.turned) return d;
+  const f = dimFrame(d);
+  const u = minus2(f.P(1, 0), f.P(0, 0));
+  const line = xf.fwd(f.P(f.pa, f.at));
+  const text = xf.fwd(f.P(f.tc, f.at));
+  const { tx: _tx, ...rest } = d;
+  const out: Dim = { ...rest, dir: "a", a: xf.fwd(d.a), b: xf.fwd(d.b), u: xf.vec(u), at: 0 };
+  out.at = dimFrame(out).local(line)[1];
+  const g = dimFrame(out);
+  const tx = g.local(text)[0] - g.home;
+  return Math.abs(tx) > 1e-6 ? { ...out, tx } : out;
+}
+// A note turned with its view: its arrow tip turns, its text stays level and moves with it.
+export function turnNote(n: Note, xf: ViewXf): Note {
+  if (!xf.turned) return n;
+  const { rect } = noteBox(n.text, n.at);
+  const c: Pt = [(rect.x0 + rect.x1) / 2, (rect.y0 + rect.y1) / 2];
+  return { ...n, at: plus(n.at, minus2(xf.fwd(c), c)), ...(n.leader ? { leader: xf.fwd(n.leader) } : {}) };
+}
+
+// Each view's lines, holes, snaps, notes and dimensions turned with it, for drawing (the edits
+// are applied before, on the unturned views). Lines are matched to views by where they lie.
+export function turnViews(d: Drawing): Drawing {
+  if (d.turned) return d;
+  const xfs = new Map(d.views.filter((v) => v.r && Math.abs(v.r % 360) > 1e-9).map((v) => [v.key, viewXf(v)]));
+  if (!xfs.size) return { ...d, turned: true };
+  const of = (key?: string) => (key ? xfs.get(key) : undefined);
+  return {
+    ...d,
+    turned: true,
+    lines: d.lines.map((l) => {
+      const xf = of(l.view);
+      return xf ? { ...l, pts: l.pts.map(xf.fwd) } : l;
+    }),
+    holes: d.holes.map((h) => (of(h.view) ? { ...h, at: of(h.view)!.fwd(h.at) } : h)),
+    snaps: d.snaps.map((s) => (of(s.view) ? { ...s, at: of(s.view)!.fwd(s.at) } : s)),
+    edges: d.edges.map((e) => (of(e.view) ? { ...e, a: of(e.view)!.fwd(e.a), b: of(e.view)!.fwd(e.b) } : e)),
+    dims: d.dims.map((x) => (of(x.view) ? turnDim(x, of(x.view)!) : x)),
+    notes: d.notes.map((n) => (of(n.view) ? turnNote(n, of(n.view)!) : n)),
+  };
+}
+const minus2 = (a: Pt, b: Pt): Pt => [a[0] - b[0], a[1] - b[1]];
 
 // The view a sheet point is on (or within 15 mm of, for notes placed beside a view), as a Ref.
 // `view` pins it to one view (a dimension's second point).
-export function sheetToRef(d: Pick<Drawing, "views" | "holes">, at: Pt, opts: { view?: string; hole?: string } = {}): Ref | null {
+export function sheetToRef(d: Pick<Drawing, "views" | "holes" | "turned">, at: Pt, opts: { view?: string; hole?: string } = {}): Ref | null {
+  // On a turned drawing, the point as it would sit on each view unturned.
+  const flat = (v: PlacedView) => (d.turned ? viewXf(v).inv(at) : at);
   const dist = (v: PlacedView) => {
-    const dx = Math.max(v.x - at[0], 0, at[0] - (v.x + v.w * v.s));
-    const dy = Math.max(v.y - at[1], 0, at[1] - (v.y + v.h * v.s));
+    const p = flat(v);
+    const dx = Math.max(v.x - p[0], 0, p[0] - (v.x + v.w * v.s));
+    const dy = Math.max(v.y - p[1], 0, p[1] - (v.y + v.h * v.s));
     return Math.hypot(dx, dy);
   };
   const v = opts.view ? d.views.find((x) => x.key === opts.view) : [...d.views].sort((a, b) => dist(a) - dist(b))[0];
   if (!v || (!opts.view && dist(v) > 15)) return null;
-  const ref: Ref = { v: v.key, p: [(at[0] - v.x) / v.s, v.h - (at[1] - v.y) / v.s] };
+  const p = flat(v);
+  const ref: Ref = { v: v.key, p: [(p[0] - v.x) / v.s, v.h - (p[1] - v.y) / v.s] };
   const h = opts.hole ? d.holes.find((x) => x.id === opts.hole) : undefined;
-  return h ? { ...ref, hole: h.id, ang: Math.atan2(at[1] - h.at[1], at[0] - h.at[0]) } : ref;
+  const turn = d.turned ? viewXf(v).rad : 0;
+  return h ? { ...ref, hole: h.id, ang: Math.atan2(at[1] - h.at[1], at[0] - h.at[0]) - turn } : ref;
 }
 
 // A dimension's length in the part's millimetres: the run between two points of one view along
@@ -395,6 +481,8 @@ const plus = (a: Pt, b: Pt): Pt => [a[0] + b[0], a[1] + b[1]];
 // (a note's text and arrow apart), and the notes and dimensions they added. Positions are kept
 // against the part (Ref) or as a shift from where the drawing put them, so they stay put when the
 // drawing is made again at another scale; older saves' sheet positions still work.
+// On the unturned drawing: a shift or an added note's `off` is in its view's own unturned frame,
+// so it turns with the view (turnViews, after).
 export function applyEdits(d: Drawing, e: DrawingEdits): Drawing {
   const hidden = new Set(e.hidden ?? []);
   const notes: Note[] = d.notes
@@ -417,7 +505,7 @@ export function applyEdits(d: Drawing, e: DrawingEdits): Drawing {
     const at = tip && a.off ? plus(tip, a.off) : a.at;
     const hole = a.dia && a.ref?.hole ? d.holes.find((h) => h.id === a.ref!.hole) : undefined;
     const text = a.dia && !a.text.trim() ? (hole ? `Ø${fmt(hole.d)}` : "Ø") : a.text;
-    notes.push({ id: a.id, kind: a.dia ? "dia" : "custom", text, at, added: true, ...(leader ? { leader } : {}), ...(link ? { link } : {}) });
+    notes.push({ id: a.id, kind: a.dia ? "dia" : "custom", text, at, added: true, ...(leader ? { leader } : {}), ...(link ? { link } : {}), ...(tip && a.ref ? { view: a.ref.v } : {}) });
   }
   const dims: Dim[] = d.dims
     .filter((x) => !hidden.has(x.id))
@@ -433,7 +521,7 @@ export function applyEdits(d: Drawing, e: DrawingEdits): Drawing {
     if (!a || !b) continue;
     const text = m.text?.trim() ? m.text : fmt(measure(d, m.a.v, a, b, m.dir));
     const at = m.dir === "a" ? m.off : dimAt(a, b, m.dir, m.off);
-    dims.push({ id: m.id, a, b, dir: m.dir, at, text, added: true, ...(m.tx ? { tx: m.tx } : {}) });
+    dims.push({ id: m.id, a, b, dir: m.dir, at, text, added: true, view: m.a.v, ...(m.tx ? { tx: m.tx } : {}) });
   }
   return { ...d, notes, dims };
 }

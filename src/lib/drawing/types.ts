@@ -5,18 +5,20 @@ import type { Part } from "./read";
 
 export type Pt = [number, number];
 export type Stroke = "visible" | "thin" | "center";
-export type Line = { pts: Pt[]; stroke: Stroke };
+export type Line = { pts: Pt[]; stroke: Stroke; view?: string };
 // A dimension between a and b, its line drawn at y = at (horizontal), x = at (vertical), or `at`
 // mm to the side of the a→b line (aligned: a slanted edge, or two slanted parallel lines). `tx`
 // slides its text along the line from where it would sit (dragged aside, as in Onshape).
 // `added`: placed by a member with the editor's Dimension tool (not made by the drawing).
 export type DimDir = "h" | "v" | "a";
-export type Dim = { id: string; a: Pt; b: Pt; at: number; dir: DimDir; text: string; tx?: number; added?: boolean };
+// `u` (aligned only): the direction it measures along when that isn't a→b, as a horizontal or
+// vertical dimension of a rotated view does. `view`: the view it belongs to (it turns with it).
+export type Dim = { id: string; a: Pt; b: Pt; at: number; dir: DimDir; text: string; tx?: number; added?: boolean; u?: Pt; view?: string };
 // "dia": a hole's diameter dimension, a leader to its edge reading Ø<d> (Onshape draws them so).
 export type NoteKind = "tap" | "fit" | "bore" | "tool" | "size" | "dia" | "custom";
 // What a fit note fits: a BOM part or an inventory item, shown by name on the note's line.
 export type NoteLink = { partId?: string; itemId?: string; name: string };
-export type Note = { id: string; kind: NoteKind; text: string; at: Pt; leader?: Pt; link?: NoteLink; added?: boolean };
+export type Note = { id: string; kind: NoteKind; text: string; at: Pt; leader?: Pt; link?: NoteLink; added?: boolean; view?: string };
 
 // A point on one view, in that view's own millimetres (origin bottom left, y up), so it stays on
 // the same spot of the part when the drawing is laid out again at another scale. `hole` (a hole's
@@ -24,8 +26,9 @@ export type Note = { id: string; kind: NoteKind; text: string; at: Pt; leader?: 
 export type Ref = { v: string; p: Pt; hole?: string; ang?: number };
 
 // One view as placed on the sheet: `key` names it ("front", "side", "end", "long0"…), x / y its
-// top-left corner, s its scale, w / h its size in the view's own mm.
-export type PlacedView = { key: string; x: number; y: number; s: number; w: number; h: number };
+// top-left corner before it's turned, s its scale, w / h its size in the view's own mm, r how far
+// it's turned about its centre (degrees, clockwise on the sheet).
+export type PlacedView = { key: string; x: number; y: number; s: number; w: number; h: number; r?: number };
 
 // The BOM block, bottom right, filled by the caller from the part's BOM row. The name is the
 // part's number too.
@@ -54,4 +57,7 @@ export type Drawing = {
   snaps: { at: Pt; view: string; kind: "vertex" | "center" }[];
   edges: { a: Pt; b: Pt; view: string }[];
   image?: { href: string; x: number; y: number; w: number; h: number }; // the part's 3D thumbnail
+  // Laid out with each view's lines, holes, notes and dimensions turned with it (turnViews).
+  // Before that they sit unturned around the view's centre, where edits are applied.
+  turned?: boolean;
 };

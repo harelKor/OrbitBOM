@@ -450,6 +450,9 @@ export type DrawingEdits = {
   // `off` sheet mm beyond the outer one (aligned, "a": `off` mm beside the a→b line), its text
   // slid `tx` mm along the line, reading the measured length unless `text` is set.
   dims?: { id: string; a: DrawingRef; b: DrawingRef; dir: "h" | "v" | "a"; off: number; tx?: number; text?: string }[];
+  // Views moved, resized or turned like pictures in Google Docs (Harel, 2026-11-21), by view
+  // key: the centre on the sheet (mm), the scale, and the turn (degrees clockwise).
+  views?: Record<string, { cx: number; cy: number; s: number; r?: number }>;
 };
 
 export const partDrawings = pgTable("part_drawings", {

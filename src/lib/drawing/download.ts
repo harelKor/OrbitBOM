@@ -3,7 +3,7 @@
 // landscape page, so no PDF library is needed.
 
 import type { DrawingEdits } from "@/db/schema";
-import { applyEdits, partDrawing } from "./layout";
+import { applyEdits, partDrawing, turnViews } from "./layout";
 import type { Part } from "./read";
 import { drawingSvg } from "./svg";
 import type { TitleBlock } from "./types";
@@ -21,7 +21,7 @@ export async function fetchDrawing(partId: string): Promise<DrawingResponse> {
   return body;
 }
 
-export const drawingFromResponse = (r: DrawingResponse) => applyEdits(partDrawing(r.part, r.title), r.edits);
+export const drawingFromResponse = (r: DrawingResponse) => turnViews(applyEdits(partDrawing(r.part, r.title, r.edits.views), r.edits));
 
 async function canvasOf(svg: string, w: number, h: number) {
   const img = new Image();

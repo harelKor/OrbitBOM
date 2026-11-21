@@ -6,9 +6,9 @@ import { createPortal } from "react-dom";
 import { DEFAULT_FIT, FITS, SCREWS, type Fit } from "@/config/drawings";
 import type { DrawingEdits, DrawingRef } from "@/db/schema";
 import { downloadDrawing, fetchDrawing, type DrawingResponse, type FitPart } from "@/lib/drawing/download";
-import { applyEdits, dimFrame, dimHit, dimLine, dimOff, dimRect, fmt, linkNotes, measure, noteBox, partDrawing, sheetToRef } from "@/lib/drawing/layout";
+import { applyEdits, dimFrame, dimHit, dimLine, dimOff, dimRect, fmt, linkNotes, measure, noteBox, partDrawing, sheetToRef, turnDim, turnViews, viewCorners, viewXf } from "@/lib/drawing/layout";
 import { dimension, drawingSvg, note as noteSvg } from "@/lib/drawing/svg";
-import type { Dim, DimDir, Drawing, Note, Pt } from "@/lib/drawing/types";
+import type { Dim, DimDir, Drawing, Note, PlacedView, Pt } from "@/lib/drawing/types";
 import { Icon } from "@/components/ui/Icon";
 import { ZoomStage } from "./ZoomStage";
 import { FitPicker, linkTargets, useFitItems, useOpenFitLink, type FitTarget } from "./fit";
@@ -18,7 +18,9 @@ import { askConfirm } from "@/components/ui/useConfirm";
 type Hole = Drawing["holes"][number];
 type Snap = { at: Pt; view: string };
 type Edge = Drawing["edges"][number];
-type Item = { id: string; type: "note" | "dim" };
+// A view is picked by its key, like a picture in Google Docs: moved, resized from a corner, turned.
+type Item = { id: string; type: "note" | "dim" | "view" };
+type Part = "text" | "arrow" | "line" | "move" | "scale" | "rotate";
 // What a click on the sheet does next. Notes: where the arrow points, then where the text goes
 // (`preset`: a tap or a diameter picked from a hole's menu instead of the side form). Dimensions,
 // like Onshape's: two points (corners, line ends, hole centres), or a straight edge and then a
@@ -35,7 +37,24 @@ type Mode =
   | { kind: "dimPlace"; a: Snap; b: Snap; dir?: DimDir };
 // A note or dimension being dragged: a note's text, its arrow tip, or a dimension's line. `off`
 // is where it was grabbed, from its anchor. `before`: the edits when the press started (one undo step).
-type Drag = { item: Item; part: "text" | "arrow" | "line"; off: Pt; pointer: number; moved: boolean; before: DrawingEdits };
+// Resizing a view keeps its far corner `o` still; `diag` is the corner grabbed, from o, at scale `s`.
+type Drag = { item: Item; part: Part; off: Pt; pointer: number; moved: boolean; before: DrawingEdits; scale?: { o: Pt; diag: Pt; s: number } };
+type Hit = Item & { part: Part; corner?: number };
+
+const HANDLE = 2.6; // sheet mm around a view's corner or turn handle that grabs it
+// The turn handle: on a short stick above the middle of the view's top edge, as in Google Docs.
+const knob = (v: PlacedView): { from: Pt; at: Pt } => {
+  const xf = viewXf(v);
+  const mid = v.x + (v.w * v.s) / 2;
+  return { from: xf.fwd([mid, v.y]), at: xf.fwd([mid, v.y - 8]) };
+};
+// Free turning snaps to the quarter turns within 5°; Shift snaps every 15° (Harel, 2026-11-21).
+function snapTurn(deg: number, fine: boolean) {
+  const d = ((deg % 360) + 360) % 360;
+  if (fine) return (Math.round(d / 15) * 15) % 360;
+  const q = Math.round(d / 90) * 90;
+  return Math.abs(d - q) <= 5 ? q % 360 : Math.round(d * 10) / 10;
+}
 
 type Draft = { kind: "fit" | "screw" | "none"; fit: Fit; target: FitTarget | null; screw: string; extra: string };
 const NEW_DRAFT: Draft = { kind: "fit", fit: DEFAULT_FIT, target: null, screw: "M5", extra: "" };
@@ -117,6 +136,7 @@ const DIM_LABELS: Record<string, string> = {
   "dim:od": "Outer Ø",
   "dim:id": "Inner Ø",
 };
+const VIEW_LABELS: Record<string, string> = { front: "Front", side: "Side", end: "End", long: "Long side" };
 const NOTE_LABELS: Record<Note["kind"], string> = { tap: "Tap", fit: "Fit", bore: "Bore", tool: "Max tool", size: "Size", dia: "Diameter", custom: "Note" };
 
 // A note's text box on the sheet; the tool note is drawn bigger (svg.ts).
@@ -205,7 +225,7 @@ export function DrawingEditor({
   const frame = useRef<HTMLDialogElement>(null);
   const drag = useRef<Drag | null>(null);
   const swallow = useRef(false);
-  const [hover, setHover] = useState<(Item & { part: Drag["part"] }) | null>(null);
+  const [hover, setHover] = useState<Hit | null>(null);
   const [selected, setSelected] = useState<Item | null>(null);
   const [dragging, setDragging] = useState(false);
   const [pointer, setPointer] = useState<Pt | null>(null);
@@ -227,8 +247,10 @@ export function DrawingEditor({
 
   const items = useFitItems();
   const openFitLink = useOpenFitLink();
-  const base = useMemo(() => (data ? partDrawing(data.part, data.title) : null), [data]);
-  const drawing = useMemo(() => (base ? applyEdits(base, edits) : null), [base, edits]);
+  // The views where members put them; the edits go on unturned (`flat`), then each view turns.
+  const base = useMemo(() => (data ? partDrawing(data.part, data.title, edits.views) : null), [data, edits.views]);
+  const flat = useMemo(() => (base ? applyEdits(base, edits) : null), [base, edits]);
+  const drawing = useMemo(() => (flat ? turnViews(flat) : null), [flat]);
   // Notes linked to a part or item (picked, or matched by name) open its window when clicked.
   const targets = useMemo(() => linkTargets(data?.fitParts ?? [], items), [data, items]);
   const linked = useMemo(() => (drawing ? linkNotes(drawing, targets) : null), [drawing, targets]);
@@ -244,6 +266,20 @@ export function DrawingEditor({
     return [((e.clientX - box.left) / box.width) * drawing.sheet.w, ((e.clientY - box.top) / box.height) * drawing.sheet.h];
   }
   const holeAt = (p: Pt) => drawing?.holes.find((x) => dist(x.at, p) <= x.r + 3);
+  const viewOf = (key?: string) => (key ? drawing?.views.find((v) => v.key === key) : undefined);
+  // A sheet point as it sits on the view unturned, where the edits are kept.
+  const toFlat = (key: string | undefined, p: Pt): Pt => {
+    const v = viewOf(key);
+    return v ? viewXf(v).inv(p) : p;
+  };
+  const flatNote = (id: string) => flat?.notes.find((n) => n.id === id);
+  const flatDim = (id: string) => flat?.dims.find((n) => n.id === id);
+  // Inside a view's (turned) box.
+  const viewAt = (p: Pt) =>
+    [...(drawing?.views ?? [])].reverse().find((v) => {
+      const q = viewXf(v).inv(p);
+      return q[0] >= v.x - 1 && q[0] <= v.x + v.w * v.s + 1 && q[1] >= v.y - 1 && q[1] <= v.y + v.h * v.s + 1;
+    });
   const textCentre = (id: string): Pt | undefined => {
     const n = drawing?.notes.find((x) => x.id === id);
     if (!n) return undefined;
@@ -268,14 +304,23 @@ export function DrawingEditor({
 
   // The note or dimension under a sheet point: arrow tips first (small, often inside a text's
   // reach), then texts, then dimensions.
-  function itemAt(p: Pt): (Item & { part: Drag["part"] }) | null {
+  function itemAt(p: Pt): Hit | null {
     if (!drawing) return null;
+    // The selected view's handles first.
+    const sel = selected?.type === "view" ? viewOf(selected.id) : undefined;
+    if (sel) {
+      if (dist(knob(sel).at, p) <= HANDLE) return { id: sel.key, type: "view", part: "rotate" };
+      const corner = viewCorners(sel).findIndex((c) => dist(c, p) <= HANDLE);
+      if (corner >= 0) return { id: sel.key, type: "view", part: "scale", corner };
+    }
     const tip = drawing.notes.find((n) => n.leader && dist(n.leader, p) <= 2.5);
     if (tip) return { id: tip.id, type: "note", part: "arrow" };
     const box = [...drawing.notes].reverse().find((n) => inside(p, textRect(n)));
     if (box) return { id: box.id, type: "note", part: "text" };
     const dim = [...drawing.dims].reverse().find((d) => dimHit(d, p));
-    return dim ? { id: dim.id, type: "dim", part: "line" } : null;
+    if (dim) return { id: dim.id, type: "dim", part: "line" };
+    const v = viewAt(p);
+    return v ? { id: v.key, type: "view", part: "move" } : null;
   }
 
   const isAddedNote = (id: string) => added.some((a) => a.id === id);
@@ -286,9 +331,10 @@ export function DrawingEditor({
     if (!drawing) return;
     const ref = leader ? sheetToRef(drawing, leader, hole ? { hole: hole.id } : {}) : null;
     const id = `note:${Date.now()}`;
+    const flatAt = ref ? toFlat(ref.v, at) : at;
     change({
       ...edits,
-      added: [...added, { id, text, at, ...(leader ? { leader } : {}), ...(ref ? { ref, off: minus(at, leader!) } : {}), ...extra }],
+      added: [...added, { id, text, at: flatAt, ...(leader ? { leader } : {}), ...(ref ? { ref, off: minus(flatAt, toFlat(ref.v, leader!)) } : {}), ...extra }],
     });
     setSelected({ id, type: "note" });
   }
@@ -303,7 +349,9 @@ export function DrawingEditor({
     setHoleMenu(null);
     if (mode.kind === "idle") {
       const hit = itemAt(at);
-      if (hit) {
+      // A click on a hole inside a view still offers its notes; elsewhere on a view selects it.
+      const overHole = hit?.type === "view" && hit.part === "move" ? holeAt(at) : undefined;
+      if (hit && !overHole) {
         setSelected({ id: hit.id, type: hit.type });
         // A click (not a drag) on a note linked to a part or item opens its window.
         const link = hit.part === "text" ? linked?.notes.find((n) => n.id === hit.id)?.link : undefined;
@@ -354,31 +402,37 @@ export function DrawingEditor({
       if (other) pair = acrossEdges(e, other);
       else if (snap && segDist(snap.at, e.a, e.b) > 0.05) pair = [snap.at, project(snap.at, e.a, e.b).at];
       if (pair) {
-        const dir: DimDir | undefined = axisAligned(pair[0], pair[1]) ? undefined : "a";
+        const dir: DimDir | undefined = axisAligned(toFlat(view, pair[0]), toFlat(view, pair[1])) ? undefined : "a";
         return setMode({ kind: "dimPlace", a: { at: pair[0], view }, b: { at: pair[1], view }, ...(dir ? { dir } : {}) });
       }
       // Nothing to measure to: the edge's own length, placed here.
-      return createDim({ at: e.a, view }, { at: e.b, view }, axisAligned(e.a, e.b) ? chooseDir(e.a, e.b, at) : "a", at);
+      const [fa, fb] = [toFlat(view, e.a), toFlat(view, e.b)];
+      return createDim({ at: e.a, view }, { at: e.b, view }, axisAligned(fa, fb) ? chooseDir(fa, fb, toFlat(view, at)) : "a", at);
     }
     if (mode.kind === "dim2") {
       const snap = snapAt(at, mode.a.view);
       if (snap && dist(snap.at, mode.a.at) > 0.05) setMode({ kind: "dimPlace", a: mode.a, b: snap });
       return;
     }
-    if (mode.kind === "dimPlace") createDim(mode.a, mode.b, mode.dir ?? chooseDir(mode.a.at, mode.b.at, at), at);
+    if (mode.kind === "dimPlace") {
+      const v = mode.a.view;
+      createDim(mode.a, mode.b, mode.dir ?? chooseDir(toFlat(v, mode.a.at), toFlat(v, mode.b.at), toFlat(v, at)), at);
+    }
   }
 
   // Where a dimension's line goes for the pointer at p: y or x for horizontal / vertical, the
   // distance beside the a-b line for aligned (in dimFrame's own sense of beside).
   const lineAtFor = (a: Pt, b: Pt, dir: DimDir, p: Pt) => (dir === "h" ? p[1] : dir === "v" ? p[0] : dimFrame({ id: "", a, b, dir, at: 0, text: "" }).local(p)[1]);
 
+  // `dir` is in the view's own unturned frame, where the dimension is kept.
   function createDim(a: Snap, b: Snap, dir: DimDir, p: Pt) {
     if (!drawing) return;
     const [ra, rb] = [sheetToRef(drawing, a.at, { view: a.view }), sheetToRef(drawing, b.at, { view: a.view })];
     if (!ra || !rb) return;
     const id = `dim:${Date.now()}`;
-    const lineAt = lineAtFor(a.at, b.at, dir, p);
-    const off = dir === "a" ? lineAt : dimOff(a.at, b.at, dir, lineAt);
+    const [fa, fb] = [toFlat(a.view, a.at), toFlat(a.view, b.at)];
+    const lineAt = lineAtFor(fa, fb, dir, toFlat(a.view, p));
+    const off = dir === "a" ? lineAt : dimOff(fa, fb, dir, lineAt);
     change({ ...edits, dims: [...addedDims, { id, a: ra, b: rb, dir, off }] });
     setSelected({ id, type: "dim" });
     setMode({ kind: "dim1" }); // keep dimensioning, as Onshape does, until Esc
@@ -386,13 +440,15 @@ export function DrawingEditor({
 
   // Dragging writes the move as a shift from where the drawing put the item, or for added items
   // against the part, so it survives the drawing being made again.
-  function moveTo(d: Drag, p: Pt) {
+  function moveTo(d: Drag, sheetP: Pt, fine = false) {
     if (!base || !drawing) return;
     const id = d.item.id;
     const opts = { record: false };
+    if (d.item.type === "view") return moveView(d, sheetP, fine);
     if (d.item.type === "dim") {
-      const shown = drawing.dims.find((x) => x.id === id);
+      const shown = flatDim(id);
       if (!shown) return;
+      const p = toFlat(shown.view, sheetP);
       // Across the line moves the line; along it slides the text (back home within 2 mm).
       const f = dimFrame(shown);
       const [along, across] = f.local(p);
@@ -408,27 +464,49 @@ export function DrawingEditor({
       const delta = lineAt - auto.at;
       return change({ ...edits, shift: { ...edits.shift, [id]: shown.dir === "h" ? [tx, delta] : [delta, tx] } }, opts);
     }
+    const fn = flatNote(id);
     if (d.part === "text") {
+      const p = toFlat(fn?.view, sheetP);
       const at: Pt = [p[0] - d.off[0], p[1] - d.off[1]];
       const a = added.find((x) => x.id === id);
-      if (a) return change({ ...edits, added: added.map((x) => (x.id === id ? { ...x, at, ...(x.ref && x.leader ? { off: minus(at, drawing.notes.find((n) => n.id === id)?.leader ?? x.leader) } : {}) } : x)) }, opts);
+      if (a) return change({ ...edits, added: added.map((x) => (x.id === id ? { ...x, at, ...(x.ref && x.leader ? { off: minus(at, fn?.leader ?? x.leader) } : {}) } : x)) }, opts);
       const auto = base.notes.find((x) => x.id === id);
       if (!auto) return;
       return change({ ...edits, moved: without(edits.moved, id), shift: { ...edits.shift, [id]: minus(at, auto.at) } }, opts);
     }
     // The arrow tip, snapped onto a hole's edge when over one.
-    const hole = holeAt(p);
+    const hole = holeAt(sheetP);
     const from = textCentre(id);
-    const tip = hole && from ? onEdge(hole, from) : p;
+    const tip = hole && from ? onEdge(hole, from) : sheetP;
     const ref: DrawingRef | null = sheetToRef(drawing, tip, hole ? { hole: hole.id } : {});
     const a = added.find((x) => x.id === id);
     if (a) {
-      const at = drawing.notes.find((n) => n.id === id)?.at ?? a.at;
-      return change({ ...edits, added: added.map((x) => (x.id === id ? { ...x, leader: tip, at, ...(ref ? { ref, off: minus(at, tip) } : { ref: undefined, off: undefined }) } : x)) }, opts);
+      const at = fn?.at ?? a.at;
+      return change({ ...edits, added: added.map((x) => (x.id === id ? { ...x, leader: tip, at, ...(ref ? { ref, off: minus(at, toFlat(ref.v, tip)) } : { ref: undefined, off: undefined }) } : x)) }, opts);
     }
     const arrows = without(edits.arrows, id);
     if (ref) change({ ...edits, arrows, tips: { ...edits.tips, [id]: ref } }, opts);
     else change({ ...edits, arrows: { ...edits.arrows, [id]: tip } }, opts);
+  }
+
+  // A view dragged by its middle, a corner (resize, proportions kept, the far corner still) or its
+  // turn handle. Its centre, scale and turn are kept by view key (edits.views).
+  function moveView(d: Drag, p: Pt, fine: boolean) {
+    const v = viewOf(d.item.id);
+    if (!v) return;
+    const xf = viewXf(v);
+    let next = { cx: xf.c[0], cy: xf.c[1], s: v.s, ...(v.r ? { r: v.r } : {}) };
+    if (d.part === "move") next = { ...next, cx: p[0] - d.off[0], cy: p[1] - d.off[1] };
+    else if (d.part === "scale" && d.scale) {
+      const { o, diag, s } = d.scale;
+      const k = Math.max(0.05 / s, ((p[0] - o[0]) * diag[0] + (p[1] - o[1]) * diag[1]) / (diag[0] ** 2 + diag[1] ** 2 || 1));
+      next = { ...next, s: Math.round(s * k * 1000) / 1000, cx: o[0] + (diag[0] * k) / 2, cy: o[1] + (diag[1] * k) / 2 };
+    } else if (d.part === "rotate") {
+      const r = snapTurn((Math.atan2(p[1] - xf.c[1], p[0] - xf.c[0]) * 180) / Math.PI + 90, fine);
+      const { r: _r, ...rest } = next;
+      next = r ? { ...rest, r } : rest;
+    }
+    change({ ...edits, views: { ...edits.views, [v.key]: next } }, { record: false });
   }
 
   function onSheetPointerDown(e: React.PointerEvent) {
@@ -442,14 +520,26 @@ export function DrawingEditor({
     e.preventDefault();
     sheet.current?.setPointerCapture(e.pointerId);
     let off: Pt = [0, 0];
-    if (hit.part === "text") off = minus(p, drawing.notes.find((x) => x.id === hit.id)!.at);
+    let scale: Drag["scale"];
+    if (hit.part === "text") {
+      const n = flatNote(hit.id)!;
+      off = minus(toFlat(n.view, p), n.at);
+    }
     if (hit.part === "line") {
       // Where it was grabbed, in the dimension's own frame: along from its text, across from its line.
-      const f = dimFrame(drawing.dims.find((x) => x.id === hit.id)!);
-      const [along, across] = f.local(p);
+      const dm = flatDim(hit.id)!;
+      const f = dimFrame(dm);
+      const [along, across] = f.local(toFlat(dm.view, p));
       off = [along - f.tc, across - f.at];
     }
-    drag.current = { item: { id: hit.id, type: hit.type }, part: hit.part, off, pointer: e.pointerId, moved: false, before: edits };
+    const v = hit.type === "view" ? viewOf(hit.id) : undefined;
+    if (v && hit.part === "move") off = minus(p, viewXf(v).c);
+    if (v && hit.part === "scale") {
+      const cs = viewCorners(v);
+      const o = cs[(hit.corner! + 2) % 4];
+      scale = { o, diag: minus(cs[hit.corner!], o), s: v.s };
+    }
+    drag.current = { item: { id: hit.id, type: hit.type }, part: hit.part, off, pointer: e.pointerId, moved: false, before: edits, ...(scale ? { scale } : {}) };
     setHover(hit);
   }
   function onSheetPointerMove(e: React.PointerEvent) {
@@ -460,7 +550,7 @@ export function DrawingEditor({
       setPointer(p);
       if (mode.kind === "idle" && !e.buttons) {
         const hit = itemAt(p);
-        if (hit?.id !== hover?.id || hit?.part !== hover?.part) setHover(hit);
+        if (hit?.id !== hover?.id || hit?.part !== hover?.part || hit?.corner !== hover?.corner) setHover(hit);
       }
       return;
     }
@@ -470,7 +560,7 @@ export function DrawingEditor({
       setSelected(d.item);
       change(edits, { from: d.before }); // one undo step for the whole drag
     }
-    moveTo(d, p);
+    moveTo(d, p, e.shiftKey);
   }
   function onSheetPointerUp(e: React.PointerEvent) {
     const d = drag.current;
@@ -482,11 +572,13 @@ export function DrawingEditor({
 
   // Hide an automatic item, delete an added one.
   const remove = (it: Item) => {
+    if (it.type === "view") return;
     if (it.type === "dim" && isAddedDim(it.id)) change({ ...edits, dims: addedDims.filter((x) => x.id !== it.id) });
     else if (it.type === "note" && isAddedNote(it.id)) change({ ...edits, added: added.filter((x) => x.id !== it.id) });
     else change({ ...edits, hidden: [...new Set([...(edits.hidden ?? []), it.id])] });
     setSelected(null);
   };
+  const resetView = (key: string) => change({ ...edits, views: without(edits.views, key) });
   const toggle = (id: string) => change({ ...edits, hidden: hidden.has(id) ? [...hidden].filter((x) => x !== id) : [...hidden, id] });
   const retype = (it: Item, t: string) => {
     if (it.type === "note" && isAddedNote(it.id)) change({ ...edits, added: added.map((x) => (x.id === it.id ? { ...x, text: t } : x)) });
@@ -595,13 +687,18 @@ export function DrawingEditor({
     // A first edge alone previews its own length, until the pointer is over something to measure to.
     const fromEdge =
       mode.kind === "dimEdge" && !hoverTarget
-        ? { a: { at: mode.edge.a, view: mode.edge.view }, b: { at: mode.edge.b, view: mode.edge.view }, dir: axisAligned(mode.edge.a, mode.edge.b) ? undefined : ("a" as const) }
+        ? { a: { at: mode.edge.a, view: mode.edge.view }, b: { at: mode.edge.b, view: mode.edge.view }, dir: axisAligned(toFlat(mode.edge.view, mode.edge.a), toFlat(mode.edge.view, mode.edge.b)) ? undefined : ("a" as const) }
         : null;
     const placing = mode.kind === "dimPlace" ? mode : fromEdge;
     if (placing) {
-      const dir = placing.dir ?? chooseDir(placing.a.at, placing.b.at, pointer);
-      const text = fmt(measure(drawing, placing.a.view, placing.a.at, placing.b.at, dir));
-      return dimension({ id: "preview", a: placing.a.at, b: placing.b.at, dir, at: lineAtFor(placing.a.at, placing.b.at, dir, pointer), text });
+      // Worked out on the view unturned, then turned with it.
+      const v = placing.a.view;
+      const [fa, fb, fp] = [toFlat(v, placing.a.at), toFlat(v, placing.b.at), toFlat(v, pointer)];
+      const dir = placing.dir ?? chooseDir(fa, fb, fp);
+      const text = fmt(measure(drawing, v, fa, fb, dir));
+      const dim: Dim = { id: "preview", a: fa, b: fb, dir, at: lineAtFor(fa, fb, dir, fp), text };
+      const pv = viewOf(v);
+      return dimension(pv ? turnDim(dim, viewXf(pv)) : dim);
     }
     if (mode.kind === "text") {
       const leader = mode.hole ? onEdge(mode.hole, pointer) : mode.leader;
@@ -624,6 +721,12 @@ export function DrawingEditor({
 
   const outline = (it: Item | null, strong: boolean) => {
     if (!it || !drawing) return null;
+    if (it.type === "view") {
+      const v = viewOf(it.id);
+      if (!v) return null;
+      const cs = viewCorners(v);
+      return <polygon points={cs.map((c) => c.join(",")).join(" ")} fill="none" stroke={strong ? "#2563EB" : "#38BDF8"} strokeWidth={0.3} strokeDasharray={strong ? "1.2 0.8" : undefined} />;
+    }
     const r = it.type === "note" ? (() => {
       const n = drawing.notes.find((x) => x.id === it.id);
       return n && textRect(n);
@@ -635,7 +738,24 @@ export function DrawingEditor({
     return <rect x={r.x0 - 1} y={r.y0 - 1} width={r.x1 - r.x0 + 2} height={r.y1 - r.y0 + 2} rx={0.8} fill={strong ? "rgba(249,115,22,0.10)" : "rgba(56,189,248,0.10)"} stroke={strong ? "#F97316" : "#38BDF8"} strokeWidth={0.3} />;
   };
 
-  const cursor = dragging ? "cursor-grabbing" : busyMode ? "cursor-crosshair" : hover ? "cursor-grab" : "cursor-default";
+  const hoverCursor =
+    hover?.part === "move" ? "cursor-move" : hover?.part === "scale" ? (hover.corner! % 2 ? "cursor-nesw-resize" : "cursor-nwse-resize") : hover ? "cursor-grab" : "cursor-default";
+  const cursor = dragging ? (drag.current?.part === "scale" ? hoverCursor : "cursor-grabbing") : busyMode ? "cursor-crosshair" : hoverCursor;
+  // The selected view's dotted box, corner handles and turn handle (Google Docs' picture handles).
+  const selView = mode.kind === "idle" && selected?.type === "view" ? viewOf(selected.id) : undefined;
+  const handles = () => {
+    if (!selView) return null;
+    const k = knob(selView);
+    return (
+      <g>
+        <line x1={k.from[0]} y1={k.from[1]} x2={k.at[0]} y2={k.at[1]} stroke="#2563EB" strokeWidth={0.3} />
+        <circle cx={k.at[0]} cy={k.at[1]} r={1.4} fill="#fff" stroke="#2563EB" strokeWidth={0.35} />
+        {viewCorners(selView).map((c, i) => (
+          <rect key={i} x={c[0] - 1.1} y={c[1] - 1.1} width={2.2} height={2.2} fill="#2563EB" stroke="#fff" strokeWidth={0.25} transform={`rotate(${selView.r ?? 0} ${c[0]} ${c[1]})`} />
+        ))}
+      </g>
+    );
+  };
 
   // On document.body: inside the part card, pressing the sheet would scale the card (:active) and
   // pull the fixed editor into it. Clicks still bubble through React, so they stop here. A modal
@@ -747,6 +867,7 @@ export function DrawingEditor({
                   )}
                 {mode.kind === "idle" && hover && hover.id !== selected?.id && outline(hover, false)}
                 {outline(selected, true)}
+                {handles()}
                 {/* The Dimension tool: what it would pick, the points picked, the dimension being placed. */}
                 {mode.kind === "dim2" && <circle cx={mode.a.at[0]} cy={mode.a.at[1]} r={1.2} fill="#F97316" />}
                 {mode.kind === "dimEdge" && <line x1={mode.edge.a[0]} y1={mode.edge.a[1]} x2={mode.edge.b[0]} y2={mode.edge.b[1]} stroke="#F97316" strokeWidth={0.8} strokeLinecap="round" />}
@@ -783,10 +904,26 @@ export function DrawingEditor({
             />
           )}
           <p className="text-xs text-white/50">
-            Click a hole to note it. Drag any note, arrow tip or dimension to move it; double-click to retype it. The wheel or a pinch zooms; drag empty paper to pan.
+            Click a hole to note it. Drag any note, arrow tip or dimension to move it; double-click to retype it. Click a view to select it, then drag it, a corner to resize or the round handle to turn it (Shift: 15° steps). The wheel or a pinch zooms; drag empty paper to pan.
           </p>
           {base && drawing && (
             <>
+              {Object.keys(edits.views ?? {}).length > 0 && (
+                <Section title="Views moved">
+                  {drawing.views
+                    .filter((v) => edits.views?.[v.key])
+                    .map((v) => (
+                      <div key={v.key} className={`flex items-center gap-2 rounded-md border p-2 text-xs ${selected?.id === v.key ? "border-orange-400/70" : "border-white/10"}`} onClick={() => setSelected({ id: v.key, type: "view" })}>
+                        <span className="flex-1 font-medium text-white/70">
+                          {VIEW_LABELS[v.key.replace(/\d+$/, "")] ?? "View"} <span className="tabular-nums text-white/40">{fmt(v.s)}:1{v.r ? ` · ${fmt(v.r)}°` : ""}</span>
+                        </span>
+                        <button className="btn py-0.5 text-xs" onClick={() => resetView(v.key)} title="Back to where the drawing put it">
+                          Reset
+                        </button>
+                      </div>
+                    ))}
+                </Section>
+              )}
               <Section title="Dimensions">
                 {base.dims.map((d) => (
                   <ItemRow
