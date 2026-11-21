@@ -39,7 +39,8 @@ const MAX_SHAPE_TRIANGLES = 400_000;
 // Bumped when measuring learns something new, so parts measured before are measured again.
 // 3: the stock shape (shape.ts). 4: counterbores and steps make a plate pocketed. 5: plates are
 // read before tubes, gears aren't turned spacers. 6: a round part's bore shape (hex-bore spacers).
-const SIZED_VERSION = 6;
+// 7: a round surface lying along a plate isn't a plate (roundAlong).
+const SIZED_VERSION = 7;
 
 // Measures parts from the robot's built 3D model (R2 files only, no Onshape calls) and stores
 // the size in parts.geometry. A part is measured again only when its Part Studio file changed.

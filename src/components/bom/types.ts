@@ -48,6 +48,7 @@ export type CardPart = PartRow & {
   shelf?: Shelf | null;
   shelfSuggestion?: ShelfSuggestion | null;
   review?: boolean; // a suggestion (Suggest, auto-link, a member's Claude) waits in To Review
+  rounded?: boolean; // that suggestion rounded the material to the nearest stock item (≈)
   fabLock?: FabLock | null; // the state it was released to fab at (plan/fab-version-lock.md)
   // Set on To Fab only: the card shows the locked state, downloads it, and tags a newer BOM change.
   fabView?: { changed: boolean };

@@ -37,7 +37,15 @@ export type SetupInput = {
 
 // A Raw Stock inventory item (lib/data/materials.ts listRawStock): `category` is its inventory
 // category id.
-export type StockItem = { id: string; name: string; category: string; specs: Record<string, string> };
+export type StockItem = { id: string; name: string; category: string; specs: Record<string, string>; rounded?: string };
+
+// Nothing in inventory fits exactly: the nearest item within 20% of the part's size, with a note
+// ("40 mm tube (part is 41.59 mm)") that the part window shows in amber until it's approved
+// (Harel, 2026-11-21). Beyond 20%, nothing.
+export const ROUND_TO_NEAREST = 0.2;
+export const ROUNDED_PREFIX = "Rounded to nearest: ";
+const r2 = (n: number) => (Math.round(n * 100) / 100).toString();
+const rounded = (i: StockItem, note: string): StockItem => ({ ...i, rounded: note });
 
 export type SetupChanges = {
   classification?: "inhouse";
@@ -114,7 +122,7 @@ const THICKER_SHEET_MM = 0.5;
 // The plate in inventory category `category` for a part `t` thick: the closest within tolerance,
 // else the thinnest a little thicker. An alloy the part names (7075) wins; otherwise 6061 first
 // for aluminium.
-export function plateFor(category: string, t: number | undefined, stock: StockItem[], alloy?: string) {
+export function plateFor(category: string, t: number | undefined, stock: StockItem[], alloy?: string, round = false) {
   if (t === undefined) return undefined;
   const plates = stock.filter((i) => i.category === category).map((i) => ({ i, ts: itemThicknesses(i) }));
   const rank = (i: StockItem) => (alloy ? (itemText(i).includes(alloy) ? 0 : 1) : /6061/.test(itemText(i)) ? 0 : 1);
@@ -124,10 +132,18 @@ export function plateFor(category: string, t: number | undefined, stock: StockIt
     .sort((a, b) => (alloy ? rank(a.i) - rank(b.i) || a.d - b.d : a.d - b.d || rank(a.i) - rank(b.i)))[0]?.i;
   if (close) return close;
   const extra = THICKER_MM[category] ?? THICKER_SHEET_MM;
-  return plates
+  const thicker = plates
     .map((p) => ({ i: p.i, d: Math.min(...p.ts.map((x) => (x > t ? x - t : Infinity))) }))
     .filter((f) => f.d <= extra)
     .sort((a, b) => a.d - b.d || rank(a.i) - rank(b.i))[0]?.i;
+  if (thicker || !round) return thicker;
+  // Rounded to nearest: the nearest thicker plate (faced down), else the nearest thinner one.
+  const nearest = (side: 1 | -1) =>
+    plates
+      .flatMap((p) => p.ts.filter((x) => side * (x - t) > 0 && Math.abs(x - t) <= t * ROUND_TO_NEAREST).map((x) => ({ i: p.i, x, d: Math.abs(x - t) })))
+      .sort((a, b) => a.d - b.d || rank(a.i) - rank(b.i))[0];
+  const near = nearest(1) ?? nearest(-1);
+  return near && rounded(near.i, `${r2(near.x)} mm plate (part is ${r2(t)} mm)`);
 }
 
 // "25×50×1.5mm", "50x25mm 1.5mm wall", "Aluminum 25x1.5 tube": the numbers in a size.
@@ -155,7 +171,17 @@ function roundDims(i: StockItem): { od: number; wall?: number } | undefined {
 
 // The best tube among `cands` (each with its outside-size gap and wall): the wall measured on
 // the part matches within tolerance; an item that names no wall is the fallback.
-function bestTube<T extends { i: StockItem; gap: number; wall?: number }>(cands: T[], wall: number | undefined) {
+function bestTube<T extends { i: StockItem; gap: number; wall?: number; size: string }>(cands: T[], wall: number | undefined, part?: { size: number; text: string }) {
+  const exact = exactTube(cands, wall);
+  if (exact || !part) return exact;
+  // Rounded to nearest: by the outside size, then the wall.
+  const near = cands
+    .filter((c) => c.gap <= part.size * ROUND_TO_NEAREST)
+    .sort((a, b) => a.gap - b.gap || (wall === undefined ? 0 : Math.abs((a.wall ?? Infinity) - wall) - Math.abs((b.wall ?? Infinity) - wall)))[0];
+  return near && rounded(near.i, `${near.size} tube (part is ${part.text})`);
+}
+
+function exactTube<T extends { i: StockItem; gap: number; wall?: number }>(cands: T[], wall: number | undefined) {
   const scored = cands.flatMap((c) => {
     if (c.gap > TUBE_TOLERANCE_MM) return [];
     if (wall === undefined) return [{ c, s: c.gap + (c.wall === undefined ? 0 : 0.5) }];
@@ -169,18 +195,18 @@ function bestTube<T extends { i: StockItem; gap: number; wall?: number }>(cands:
 export function boxTubeFor(d1: number, d2: number, wall: number | undefined, fam: string, stock: StockItem[]) {
   const cands = stock.flatMap((i) => {
     const d = i.category === "square-tubes" && itemFamily(i) === fam ? boxDims(i) : undefined;
-    return d ? [{ i, gap: Math.max(Math.abs(d.a - d1), Math.abs(d.b - d2)), wall: d.wall }] : [];
+    return d ? [{ i, gap: Math.max(Math.abs(d.a - d1), Math.abs(d.b - d2)), wall: d.wall, size: `${r2(d.a)}×${r2(d.b)} mm` }] : [];
   });
-  return bestTube(cands, wall);
+  return bestTube(cands, wall, { size: Math.max(d1, d2), text: `${r2(d1)}×${r2(d2)} mm` });
 }
 
 // `fam` undefined: any material (a part Onshape gives no material).
 export function roundTubeFor(od: number, wall: number | undefined, fam: string | undefined, stock: StockItem[]) {
   const cands = stock.flatMap((i) => {
     const d = (i.category === "round-tubes" || i.category === "carbon-tubes") && (!fam || itemFamily(i) === fam) ? roundDims(i) : undefined;
-    return d ? [{ i, gap: Math.abs(d.od - od), wall: d.wall }] : [];
+    return d ? [{ i, gap: Math.abs(d.od - od), wall: d.wall, size: `${r2(d.od)} mm` }] : [];
   });
-  return bestTube(cands, wall);
+  return bestTube(cands, wall, { size: od, text: `${r2(od)} mm` });
 }
 
 // The hex shaft item: 3/8" or 1/2" by the flats, ThunderHex when the corners are rounded (or the
@@ -202,7 +228,13 @@ export function cylinderFor(d: number, fam: string | undefined, stock: StockItem
   const sized = cylinders
     .filter((c): c is { i: StockItem; od: number } => c.od !== undefined && c.od >= d - 0.1 && c.od <= d + 10)
     .sort((a, b) => a.od - b.od)[0]?.i;
-  return sized ?? (fam ? cylinders.find((c) => c.od === undefined)?.i : undefined);
+  if (sized) return sized;
+  // Rounded to nearest: the closest sized cylinder within 20%.
+  const near = cylinders
+    .filter((c): c is { i: StockItem; od: number } => c.od !== undefined && Math.abs(c.od - d) <= d * ROUND_TO_NEAREST)
+    .sort((a, b) => Math.abs(a.od - d) - Math.abs(b.od - d))[0];
+  if (near) return rounded(near.i, `Ø${r2(near.od)} mm rod (part is Ø${r2(d)} mm)`);
+  return fam ? cylinders.find((c) => c.od === undefined)?.i : undefined;
 }
 
 // Billet: the smallest block of the part's material it fits in; else the material's block item
@@ -375,7 +407,8 @@ function shapePlan(part: SetupInput, stock: StockItem[], linked: StockItem | und
     if (s.kind === "plate" && s.t && plateFam && PLATE_CATEGORY[plateFam]) {
       const category = PLATE_CATEGORY[plateFam];
       const alloy = ALLOY.exec(text)?.[1];
-      const item = plateFor(category, s.t, stock, alloy);
+      // Rounded to nearest only on a part the shape reader saw as a plate.
+      const item = plateFor(category, s.t, stock, alloy, true);
       const thick = `${fmt(s.t)} mm thick`;
       const what = fam ? om : "no material in Onshape, taken as aluminum";
       if (s.pocketed) return { kind: "plate", item, category, set: { process1: SHAPE_MACHINES.pocketedPlate }, fixed: true, why: `${what}, plate with pockets or steps and ${thick}` };
@@ -424,7 +457,7 @@ function shapePlan(part: SetupInput, stock: StockItem[], linked: StockItem | und
 
   // A solid part as thick as a plate the shop stocks is cut from that plate (10×18×60 from the
   // 10 mm plate), not milled from a block.
-  const solid = s ? (s.kind === "block" && !s.axisymmetric ? s.size : undefined) : box && !isBent(g) ? box : undefined;
+  const solid = s ? (s.kind === "block" && !s.axisymmetric && !s.roundAlong ? s.size : undefined) : box && !isBent(g) ? box : undefined;
   if (solid && fam && PLATE_CATEGORY[fam] && solid[0] <= 13) {
     const category = PLATE_CATEGORY[fam];
     const item = plateFor(category, solid[0], stock, ALLOY.exec(text)?.[1]);
@@ -515,6 +548,7 @@ export function suggestSetup(part: SetupInput, stock: StockItem[]): { changes: S
     changes.material = material;
     changes.inventoryItemId = item.id;
     why.push(`${plan.why}: ${material}`);
+    if (item.rounded) why.push(`${ROUNDED_PREFIX}${item.rounded}`);
   } else if (!settled && plan) {
     why.push(`${plan.why}${plan.category ? " (no matching item in inventory)" : ""}`);
   }

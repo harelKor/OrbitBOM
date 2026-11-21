@@ -54,6 +54,7 @@ export type BomPart = Omit<typeof parts.$inferSelect, "systemId" | ServerOnly> &
   shelf: Shelf | null;
   shelfSuggestion: ShelfSuggestion | null;
   review: boolean; // a suggestion waits in To Review: the card shows ✓ / ✕
+  rounded: boolean; // its material was rounded to the nearest stock item: the card shows ≈
   // The state the part was released to fab at (plan/fab-version-lock.md); To Fab shows it.
   fabLock: FabLock | null;
   // Data checks that only warn (lib/parts/dataChecks.ts, audit 2026-11-20).
@@ -75,7 +76,7 @@ export type FabLock = {
 };
 
 async function load(where: ReturnType<typeof and>, { anySystem = false } = {}): Promise<BomPart[]> {
-  const base = db.select({ part: parts, systemName: systems.name, lastModifiedByName: members.name, drawingOf: partDrawings.partId, drawingRev: partDrawings.rev, reviewOf: partReviews.partId }).from(parts);
+  const base = db.select({ part: parts, systemName: systems.name, lastModifiedByName: members.name, drawingOf: partDrawings.partId, drawingRev: partDrawings.rev, reviewOf: partReviews.partId, reviewRounded: sql<boolean>`coalesce(${partReviews.reason} like '%Rounded to nearest:%', false)` }).from(parts);
   // Kept in memory until one of these tables changes (cache.ts): a BOM page is opened far more
   // often than its parts change.
   const rows = await cachedQuery(
@@ -136,6 +137,7 @@ async function load(where: ReturnType<typeof and>, { anySystem = false } = {}): 
     hasDrawing: r.drawingOf !== null,
     drawingOutdated: r.drawingOf !== null && !!r.part.thumbnailRev && r.drawingRev !== r.part.thumbnailRev,
     review: r.reviewOf !== null,
+    rounded: r.reviewOf !== null && !!r.reviewRounded,
     files: filesOf.get(r.part.id) ?? [],
     shelf: shelf.shelf.get(r.part.id) ?? null,
     shelfSuggestion: shelf.suggestion.get(r.part.id) ?? null,

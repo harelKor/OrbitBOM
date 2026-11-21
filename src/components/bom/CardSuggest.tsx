@@ -84,6 +84,11 @@ export function CardSuggest({ part, variant = "card" }: { part: CardPart; varian
   }
   return (
     <span className="flex items-center gap-1">
+      {part.rounded && (
+        <span className="rounded-full bg-amber-400/90 px-1.5 text-xs font-bold text-amber-950 shadow-sm" title="Rounded to nearest: no stock item fits exactly (see the part window)">
+          ≈
+        </span>
+      )}
       <button
         type="button"
         onClick={(e) => run(e, "approve")}

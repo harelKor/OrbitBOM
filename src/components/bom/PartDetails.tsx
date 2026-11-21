@@ -227,7 +227,7 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
               <Row label="Status" was={was("status")}>
                 <StatusField part={part} save={save} />
               </Row>
-              {cots ? <CotsRows part={part} save={save} was={was} /> : <MadeRows part={part} save={save} was={was} />}
+              {cots ? <CotsRows part={part} save={save} was={was} /> : <MadeRows part={part} save={save} was={was} rounded={suggest.rounded} />}
               <Row label="Last edited">
                 <span className="text-muted">
                   <span className="font-mono tabular-nums">{part.lastModifiedAt.toISOString().slice(0, 10)}</span>
@@ -292,11 +292,12 @@ function MoreMenu({ children }: { children: React.ReactNode }) {
 
 // One property. `was` is its value before a suggestion waiting in To Review changed it: the row
 // then shows the old value struck through, an arrow, and the new value glowing.
-function Row({ label, was, children }: { label: string; was?: string; children: React.ReactNode }) {
+function Row({ label, was, note, children }: { label: string; was?: string; note?: string | null; children: React.ReactNode }) {
   return (
     <>
       <dt className="shrink-0 text-xs text-muted sm:w-28 sm:text-sm">{label}</dt>
       <dd className="min-w-0 py-0 text-sm font-medium break-words text-fg sm:py-0.5 sm:text-base">
+        {note && <span className="mb-0.5 block text-xs font-medium text-amber-600 dark:text-amber-400">{note}</span>}
         {was === undefined ? (
           children
         ) : (
@@ -641,6 +642,7 @@ function useSuggest(part: CardPart, enabled: boolean): {
   actions: React.ReactNode;
   was: Record<string, string>;
   inventory: InventoryDiff;
+  rounded: string | null;
 } {
   const review = useCan("review") && enabled;
   const [state, setState] = useState<PartReviewState | undefined>(undefined);
@@ -657,7 +659,7 @@ function useSuggest(part: CardPart, enabled: boolean): {
       cancelled = true;
     };
   }, [review, part.id, version, tick]);
-  if (!review) return { suggestButton: null, message: null, actions: null, was: {}, inventory: null };
+  if (!review) return { suggestButton: null, message: null, actions: null, was: {}, inventory: null, rounded: null };
 
   const run = async (kind: "suggest" | "approve" | "reject") => {
     setBusy(kind);
@@ -719,16 +721,19 @@ function useSuggest(part: CardPart, enabled: boolean): {
   ) : note ? (
     <p className="text-sm text-muted">{note}</p>
   ) : null;
-  return { suggestButton, message, actions, was, inventory };
+  // Suggest's "Rounded to nearest: 40 mm tube (part is 41.59 mm)" (rules.ts), shown in amber above
+  // the material while the suggestion waits (Harel, 2026-11-21).
+  const rounded = waiting ? (/Rounded to nearest: .*?\(part is [^)]*\)/.exec(state?.reason ?? "")?.[0] ?? null) : null;
+  return { suggestButton, message, actions, was, inventory, rounded };
 }
 
 // Material and each machine with how many are done there.
 type Was = (field: string) => string | undefined;
 
-function MadeRows({ part, save, was }: { part: CardPart; save: SaveFn; was: Was }) {
+function MadeRows({ part, save, was, rounded }: { part: CardPart; save: SaveFn; was: Was; rounded: string | null }) {
   return (
     <>
-      <Row label="Material" was={was("material")}>
+      <Row label="Material" was={was("material")} note={rounded}>
         <MaterialField part={part} save={save} />
       </Row>
       {machineSlotsShown(part).map((slot, i, all) => {

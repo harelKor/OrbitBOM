@@ -38,6 +38,18 @@ describe("suggestSetup", () => {
     expect(s?.changes).toMatchObject({ material: '1/2" Hex shaft', process1: "lathe", classification: "inhouse" });
     expect(s?.reason).toContain("partly turned");
   });
+  it("rounds to the nearest stock item within 20%, and says so (1691-26-422-05A)", () => {
+    const stock = [...STOCK, item("Aluminum tube 40x2", "round-tubes", { od: "40", wall: "2" }), item("Aluminum tube 25x1.5", "round-tubes", { od: "25", wall: "1.5" })];
+    const tube = suggest(part({ classification: "undefined", geometry: { shape: { kind: "round-tube", d1: 41.59, d2: 41.59, length: 600, wall: 2 } } }), stock);
+    expect(tube?.changes).toMatchObject({ material: "Aluminum tube 40x2" });
+    expect(tube?.reason).toContain("Rounded to nearest: 40 mm tube (part is 41.59 mm)");
+    expect(suggest(part({ classification: "undefined", geometry: { shape: { kind: "round-tube", d1: 52, d2: 52, length: 600, wall: 2 } } }), stock)?.changes.material).toBeUndefined();
+    // Plates: the nearest thicker one first.
+    // Plates: the nearest thicker one first, else the nearest thinner (3.6 mm: no thicker within 20%).
+    const plate = suggestSetup(part({ geometry: { onshapeMaterial: "Aluminum - 6061", shape: { kind: "plate", t: 3.6, d1: 100, d2: 200 } } }));
+    expect(plate?.changes.material).toBe("Aluminum plate 6061 3mm");
+    expect(plate?.reason).toContain("Rounded to nearest: 3 mm plate (part is 3.6 mm)");
+  });
   it("tells 6.35 mm from 6.7 mm plates", () => {
     const s = suggestSetup(part({ geometry: { onshapeMaterial: "Aluminum - 6061", bbox: [6.7, 50, 80] } }));
     expect(s?.changes.material).toBe("Aluminum plate 6061 6.7mm");

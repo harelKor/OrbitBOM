@@ -58,7 +58,13 @@ const setupInput = z.object({
     ),
   process_1: z.string().nullable().optional().describe("Machine name or id, or null."),
   process_2: z.string().nullable().optional().describe("The first added process's machine (name or id), or null."),
-  reason: z.string().min(1).max(500).describe("One short sentence for the designer: why this material and these processes."),
+  reason: z
+    .string()
+    .min(1)
+    .max(500)
+    .describe(
+      'One short sentence for the designer: why this material and these processes. When no stock item fits the part exactly and you pick the nearest (within 20% of its size; plates: the nearest thicker, else thinner), add "Rounded to nearest: <item size> (part is <part size>)", e.g. "Rounded to nearest: 40 mm tube (part is 41.59 mm)": the part window shows it in amber and the card an ≈ until approved. site_guess does the same.',
+    ),
 });
 
 write(

@@ -26,6 +26,9 @@ export type Shape = {
   thunder?: boolean; // a hex with rounded corners (ThunderHex)
   axisymmetric?: boolean; // round about some axis: a lathe can make it
   size?: [number, number, number]; // the part's own-frame box, mm, smallest first (blocks)
+  // A round outer surface whose axis lies across its thinnest direction (a turned end, a rod's
+  // side): never cut from plate (Harel, 2026-11-21: "plates can never have such circular shape").
+  roundAlong?: boolean;
 };
 
 type V = [number, number, number];
@@ -241,6 +244,19 @@ function radialShare(tris: Tri[], axis: V, sec: { u: V; v: V; centre2: number[] 
   }
   return side ? radial / side : 0;
 }
+// How much of the surface curves around an axis lying across `thin` (its normals sweep between
+// facing along `thin` and facing across it). A plate's faces, edges and holes all face exactly
+// along or across its thickness; a cylinder lying in it doesn't.
+function curvedAcross(tris: Tri[], thin: V, total: number) {
+  let curved = 0;
+  for (const t of tris) {
+    const a = Math.abs(dot(t.n, thin));
+    if (a > 0.2 && a < 0.98) curved += t.area;
+  }
+  return curved / total;
+}
+const ROUND_ALONG_SHARE = 0.2;
+
 // Turned parts measure 1.0 (cross holes bring it down a little); gears and pulleys 0.35–0.65.
 const TURNED_SHARE = 0.8;
 
@@ -281,7 +297,7 @@ export function analyzeShape(positions: ArrayLike<number>, indices: ArrayLike<nu
     const discRound = across.d2 / across.d1 < 1.05 && across.widest / across.d1 < 1.05;
     // A round part thick for its size (spacer, bushing, pulley) is turned; a thin disc is a plate.
     const spacer = discRound && t >= across.d1 / 6 && radialShare(tris, N, across) >= TURNED_SHARE;
-    const plate = t >= 0.5 && t <= 13 && across.d1 > 2.2 * t && planar / total > 0.2;
+    const plate = t >= 0.5 && t <= 13 && across.d1 > 2.2 * t && planar / total > 0.2 && curvedAcross(tris, N, total) < ROUND_ALONG_SHARE;
     const floors = parallel.reduce((s, tr) => {
       const z = dot(tr.c, N) - ex.lo;
       return s + (z > 0.2 && z < t - 0.2 ? tr.area : 0);
@@ -358,5 +374,7 @@ export function analyzeShape(positions: ArrayLike<number>, indices: ArrayLike<nu
   }
 
   const size = [sec.d1, sec.d2, len].map(r2).sort((a, b) => a - b) as [number, number, number];
-  return { kind: "block", ...base, size, axisymmetric: round };
+  const thin = [sec.u, sec.v, L].map((d) => ({ d, len: extent(points, d).len })).sort((a, b) => a.len - b.len)[0].d;
+  const roundAlong = curvedAcross(tris, thin, total) >= ROUND_ALONG_SHARE;
+  return { kind: "block", ...base, size, axisymmetric: round, ...(roundAlong && { roundAlong }) };
 }
