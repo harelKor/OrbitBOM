@@ -53,8 +53,9 @@ export function slotsOf(part: Pick<CardPart, "process1" | "doneProcess1" | "adde
 }
 
 // The process the part is at now (highlighted on the card and in the part window), or null once done.
+// A part with only Process 1 has nothing to tell apart: no highlight, no "Now" (Harel, 2026-11-21).
 export function currentSlotN(part: CardPart): number | null {
-  if (part.classification === "cots" || isDone(part)) return null;
+  if (part.classification === "cots" || isDone(part) || !part.addedProcesses?.length) return null;
   return stageOf(part).index + 1;
 }
 
