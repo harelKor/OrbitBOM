@@ -9,14 +9,23 @@ import { listObjects, storageConfigured } from "@/lib/storage/r2";
 // small query or one R2 list, so they're cheap to run every few minutes.
 
 // What this bundle's drizzle/ expects against what the database has applied. drizzle stores each
-// migration's journal `when` as created_at.
+// migration's journal `when` as created_at. Compared in the database so one row comes back, not
+// every applied migration: the monitor and /api/ready ask every 5 minutes (egress, 2026-11-21).
 export async function migrationState() {
-  const { rows } = await db.execute<{ created_at: string }>(sql`select created_at from drizzle.__drizzle_migrations`);
-  const applied = new Set(rows.map((r) => Number(r.created_at)));
-  const expected = new Set(journal.entries.map((e) => e.when));
-  const missing = journal.entries.filter((e) => !applied.has(e.when)).map((e) => e.tag);
-  const ahead = [...applied].filter((w) => !expected.has(w)).length;
-  return { expected: expected.size, applied: applied.size, missing, ahead, inSync: !missing.length && !ahead };
+  const whens = journal.entries.map((e) => String(e.when));
+  const list = sql`${`{${whens.join(",")}}`}::bigint[]`;
+  const { rows } = await db.execute<{ applied: number; missing: string[]; ahead: number }>(sql`
+    select
+      (select count(distinct created_at)::int from drizzle.__drizzle_migrations) as applied,
+      (select coalesce(array_agg(w::text), '{}') from unnest(${list}) w
+         where not exists (select 1 from drizzle.__drizzle_migrations m where m.created_at = w)) as missing,
+      (select count(distinct created_at)::int from drizzle.__drizzle_migrations m where m.created_at <> all(${list})) as ahead
+  `);
+  const r = rows[0];
+  const gone = new Set(r.missing.map(Number));
+  const missing = journal.entries.filter((e) => gone.has(e.when)).map((e) => e.tag);
+  const expected = new Set(journal.entries.map((e) => e.when)).size;
+  return { expected, applied: r.applied, missing, ahead: r.ahead, inSync: !missing.length && !r.ahead };
 }
 
 // /api/ready, which deploy/release.sh waits for before keeping a new release: the database answers

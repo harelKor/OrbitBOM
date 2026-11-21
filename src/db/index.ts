@@ -26,16 +26,25 @@ function connectionConfig(raw: string): { connectionString: string; ssl?: { reje
 // instance keeps its own pool and drops connections that stall. A page and the layout run about
 // 20 queries side by side, and the transaction pooler shares its server connections, so each
 // instance may hold 12 (5 queued a page's queries in rounds).
+// Connections stay open 10 minutes idle and are renewed every 30: each new one costs a TLS
+// handshake and sign-in (about 5 KB of Supabase egress), and with 20 s / 10 min the server opened
+// about 1,850 a day, one for nearly every page view and every 5-minute health check (egress,
+// 2026-11-21). An idle client of the transaction pooler holds no database connection.
 const globalForDb = globalThis as unknown as { pg?: Pool };
-const client =
-  globalForDb.pg ??
-  new Pool({
+function createPool() {
+  const pool = new Pool({
     ...connectionConfig(process.env.DATABASE_URL!),
     max: 12,
     connectionTimeoutMillis: 10_000,
-    idleTimeoutMillis: 20_000,
-    maxLifetimeSeconds: 600,
+    idleTimeoutMillis: 10 * 60_000,
+    maxLifetimeSeconds: 30 * 60,
   });
+  // An idle connection the pooler drops (a restart, a network blip) is removed from the pool and
+  // the next query opens a new one; without a listener the error would stop the server.
+  pool.on("error", (err) => console.error("database: idle connection closed:", err.message));
+  return pool;
+}
+const client = globalForDb.pg ?? createPool();
 if (process.env.NODE_ENV !== "production") globalForDb.pg = client;
 
 export const db = drizzle(client, { schema });

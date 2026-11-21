@@ -282,6 +282,10 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
   Never cache inside a transaction (`exec === db` only) or anything with signed URLs.
 - Supabase's transaction pooler (6543): node-postgres, no prepared statements, don't add pool
   startup options without testing them there.
+- Sign-in is checked with `getClaims()` (`src/lib/auth.ts`, `src/lib/supabase/proxy.ts`): the project
+  signs sessions with ES256 keys, so it verifies locally. Don't call `getUser()` per request (a Supabase
+  Auth round trip). The pool keeps connections 10 min idle (`src/db/index.ts`): each new one is
+  ~5 KB of egress (2026-11-21).
 - Absolute URLs to our own site (OAuth redirect_uri, redirects built from an origin): use
   `publicOrigin(request)` (`src/lib/origin.ts`). Behind Caddy `request.nextUrl.origin` is
   `https://localhost:3000`, so build redirects as `new URL(path, publicOrigin(request))`. Only
