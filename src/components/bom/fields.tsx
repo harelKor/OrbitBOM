@@ -461,7 +461,8 @@ export function MachineField({ part, save, slot, placeholder, className }: Props
   );
 }
 
-// "+ Add process": a machine for a new process after the last one (Harel, 2026-11-20).
+// "+ Add process": a machine for a new process after the last one (Harel, 2026-11-20). Only in the
+// part window (and Bulk edit), not on cards or rows (Harel, 2026-11-21).
 export function AddProcessField({ part, save, className, label = "+ Add process" }: Props & { className?: string; label?: string }) {
   const locked = !useCan("work");
   if (locked) return null;

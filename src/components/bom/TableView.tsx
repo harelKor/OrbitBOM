@@ -7,7 +7,6 @@ import {
   MaterialField,
   NoteField,
   QuantityField,
-  AddProcessField,
   slotsOf,
   StatusField,
   TypeField,
@@ -88,7 +87,6 @@ export function TableView({
                     {slotsOf(p).slice(1).map((s) => (
                       <MachineField key={s.n} part={p} save={save} slot={s} />
                     ))}
-                    <AddProcessField part={p} save={save} label="+" />
                   </span>
                 </td>
                 <td><StatusField part={p} save={save} /></td>

@@ -7,7 +7,7 @@ import { computeStatus } from "@/lib/status";
 import { ListPill, ListRow } from "@/components/ui/ListRow";
 import { statusTint } from "@/components/ui/statusTint";
 import { ShelfCoversPrompt } from "@/components/cots/ShelfPill";
-import { AddProcessField, MachineField, MaterialField, StatusField, TypeBadge, TypeField, currentSlotN, slotsOf, type SaveFn } from "./fields";
+import { MachineField, MaterialField, StatusField, TypeBadge, TypeField, currentSlotN, slotsOf, type SaveFn } from "./fields";
 import { usePermissions } from "@/components/shell/ModeContext";
 import { usePartDetails } from "./PartDetailsHost";
 import { CardSuggest } from "./CardSuggest";
@@ -96,7 +96,6 @@ export function PartListRow({
                     <MachineField part={part} save={save} slot={slot} className={`${pill} ${slot.n === atN ? "border-accent/60 bg-accent/10 font-semibold text-accent" : ""}`} />
                   </span>
                 ))}
-                {slots.length > 0 && work && <AddProcessField part={part} save={save} label="+" className={`${pill} border-dashed`} />}
               </>
             )}
             <StatusField part={part} save={save} size="sm" />

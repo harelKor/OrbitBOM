@@ -16,7 +16,7 @@ import { StatusPill } from "@/components/ui/StatusPill";
 import { VersionTag } from "@/components/versions/VersionTag";
 import { useBom } from "./BomContext";
 import { PART_FILE_TYPES } from "@/config/fileTypes";
-import { AddProcessField, MachineField, MaterialField, NameField, QuantityField, StatusField, TypeBadge, TypeField, currentSlotN, slotsOf, type SaveFn, type Slot } from "./fields";
+import { MachineField, MaterialField, NameField, QuantityField, StatusField, TypeBadge, TypeField, currentSlotN, slotsOf, type SaveFn, type Slot } from "./fields";
 import { useMoveToQa } from "./MoveToQa";
 import { Popover } from "./Popover";
 import { ownerPartId, partIds, partTitle, type CardPart } from "./types";
@@ -294,7 +294,6 @@ function MadePartCard({
                 <MachineField part={part} save={save} slot={slot} className={`${pill} ${slot.n === at ? "border-accent/60 bg-accent/10 font-semibold text-accent" : ""}`} />
               </span>
             ))}
-            {!post && !qa && work && machines.length > 0 && <AddProcessField part={part} save={save} label="+" className={`${pill} border-dashed`} />}
           </div>}
         </div>
       )}
