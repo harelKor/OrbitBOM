@@ -114,7 +114,9 @@ export function RobotViewer({
     if (bulk) {
       const part = key ? partByKey.get(key) : undefined;
       if (part) window.dispatchEvent(new CustomEvent<BulkToggleDetail>(BULK_TOGGLE_EVENT, { detail: { partId: part.id } }));
-      else if (!key && !large) openLarge();
+      // Only a real click: turning Bulk edit on drops the measure picks, which reports an empty
+      // pick, and that opened the view large by itself (Harel, 2026-11-21).
+      else if (!key && !large && performance.now() - lastTap.current < 500) openLarge();
       return;
     }
     if (!key && !selected && !large && performance.now() - lastTap.current < 500) openLarge();

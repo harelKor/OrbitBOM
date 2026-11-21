@@ -219,20 +219,6 @@ export function PartModel({
         />
       )}
       {onExpand ? <MeasureBox measured={picks.measured} compact className="bottom-12 sm:bottom-14" /> : <MeasureBox measured={picks.measured} />}
-      {onExpand && model && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onExpand();
-          }}
-          aria-label="Open the 3D view big"
-          title="Open the 3D view big"
-          className="btn absolute bottom-2 left-1/2 z-10 h-7 -translate-x-1/2 bg-surface/95 px-2 shadow-sm active:scale-[0.98] sm:bottom-3 sm:h-8 pointer-coarse:size-10 pointer-coarse:justify-center pointer-coarse:p-0"
-        >
-          <Icon name="expand" className="h-3.5 w-3.5" />
-        </button>
-      )}
       {(error || !model || missing) && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">
           {error ??
@@ -245,8 +231,23 @@ export function PartModel({
                   : "Loading the robot…")}
         </div>
       )}
-      {((locateButton && robotId && modelKey) || flat) && (
+      {((locateButton && robotId && modelKey) || flat || (onExpand && model)) && (
         <div className={`absolute z-10 flex flex-wrap gap-1.5 ${onExpand ? "top-2 left-2 sm:top-3 sm:left-3" : "top-3 left-3"}`}>
+          {onExpand && model && (
+            // Top left of the small preview (Harel, 2026-11-21), clear of the measure box (right).
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onExpand();
+              }}
+              aria-label="Open the 3D view big"
+              title="Open the 3D view big"
+              className="btn h-7 bg-surface/95 px-2 shadow-sm active:scale-[0.98] sm:h-8 pointer-coarse:size-10 pointer-coarse:justify-center pointer-coarse:p-0"
+            >
+              <Icon name="expand" className="h-3.5 w-3.5" />
+            </button>
+          )}
           {flat && view !== "locate" && (
             // Top left of the preview (Harel, 2026-11-17): the flat pattern, then back to the part.
             <button
