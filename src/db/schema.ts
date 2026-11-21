@@ -227,6 +227,9 @@ export const onshapeInserts = pgTable(
     sourceEid: text("source_eid").notNull(),
     partIds: text("part_ids").array().notNull(),
     versionId: text("version_id").notNull(),
+    // A system's insert: the version of the system's own document it was shown at (V12), which
+    // "Newer: V13" compares with; `versionId` is the Part Studio's (a linked one's own version).
+    systemVersionId: text("system_version_id"),
     // What it says in the panel: "400 · Final · V12".
     label: text("label").notNull(),
     systemId: uuid("system_id").references(() => systems.id, { onDelete: "set null" }),

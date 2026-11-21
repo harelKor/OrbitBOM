@@ -1,12 +1,12 @@
 import "server-only";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { ModelKind } from "@/db/schema";
 import { flattenAssembly, partKey, type AssemblyDefinition } from "@/lib/model/assembly";
 import type { OnshapeClient } from "@/lib/onshape/client";
 import type { OnshapeRef } from "@/lib/onshape/url";
 import { keptDocVersions } from "@/lib/versions/docVersions";
-import { derivedFeature, groupParts, type InsertPart } from "./insertPlan";
+import { derivedFeature, groupParts, type InsertGroup, type InsertPart } from "./insertPlan";
 
 // Insert from the Onshape panel (Harel, 2026-11-21, like FRCDesignLib): parts go into the open
 // Part Studio as one Derived feature per source Part Studio and version (Harel's choice), or into
@@ -15,7 +15,7 @@ import { derivedFeature, groupParts, type InsertPart } from "./insertPlan";
 // member's own onshapeClient and counts against the budget.
 
 export type InsertTarget = OnshapeRef & { eid: string; kind: "partstudio" | "assembly" };
-export type InsertMeta = { label: string; featureName: string; systemId?: string | null; itemId?: string | null; model?: ModelKind | null; memberId: string };
+export type InsertMeta = { label: string; featureName: string; systemId?: string | null; systemVersionId?: string | null; itemId?: string | null; model?: ModelKind | null; memberId: string };
 export type InsertResult = { inserted: number; skipped: string[] };
 
 // The parts behind model keys (did:eid:partId) of a system shown at one Onshape version of its
@@ -48,7 +48,7 @@ export async function resolveSystemParts(client: OnshapeClient, source: { did: s
 }
 
 // The element's microversion at a version: the Derived feature's reference names it.
-async function elementMicroversion(client: OnshapeClient, did: string, vid: string, eid: string): Promise<string> {
+export async function elementMicroversion(client: OnshapeClient, did: string, vid: string, eid: string): Promise<string> {
   const els = await client.json<{ id: string; microversionId?: string }[]>(`documents/d/${did}/v/${vid}/elements?elementId=${eid}`);
   const mv = els.find((e) => e.id === eid)?.microversionId;
   if (!mv) throw new Error("Onshape didn't give that Part Studio's state at this version.");
@@ -70,7 +70,7 @@ export async function insertParts(client: OnshapeClient, target: InsertTarget, p
     return false;
   });
   const groups = groupParts(usable);
-  const base = { targetDid: target.did, targetWid: target.wvmid, targetEid: target.eid, targetKind: target.kind, label: meta.label, systemId: meta.systemId ?? null, itemId: meta.itemId ?? null, model: meta.model ?? null, memberId: meta.memberId };
+  const base = { targetDid: target.did, targetWid: target.wvmid, targetEid: target.eid, targetKind: target.kind, label: meta.label, systemId: meta.systemId ?? null, systemVersionId: meta.systemVersionId ?? null, itemId: meta.itemId ?? null, model: meta.model ?? null, memberId: meta.memberId };
   let inserted = 0;
   if (target.kind === "partstudio") {
     for (const g of groups) {
@@ -117,3 +117,37 @@ export async function versionName(did: string, versionId: string): Promise<{ nam
   return kept ? { name: kept.name, cadUpdate: null } : null;
 }
 
+
+// Update on a Derived feature: the same feature at another version of its Part Studio.
+export async function updateDerived(client: OnshapeClient, target: { did: string; wid: string; eid: string }, featureId: string, name: string, g: InsertGroup) {
+  const mv = await elementMicroversion(client, g.did, g.versionId, g.eid);
+  const body = derivedFeature(name, { ...g, microversion: mv });
+  await client.json(`partstudios/d/${target.did}/w/${target.wid}/e/${target.eid}/features/featureid/${featureId}`, { method: "POST", body: JSON.stringify({ ...body, feature: { ...body.feature, featureId } }) });
+}
+
+// The systems' newest CAD-updated Onshape version each (only CAD updates that made a version).
+export async function newestCadVersionsOf(where: { robotId: string } | { systemIds: string[] }, model: ModelKind) {
+  const { cadUpdates, systems } = schema;
+  if ("systemIds" in where && !where.systemIds.length) return new Map<string, { versionId: string; label: string; at: Date }>();
+  const rows = await db
+    .selectDistinctOn([cadUpdates.systemId], { systemId: cadUpdates.systemId, versionId: cadUpdates.onshapeVersionId, label: cadUpdates.label, at: cadUpdates.createdAt })
+    .from(cadUpdates)
+    .innerJoin(systems, eq(systems.id, cadUpdates.systemId))
+    .where(and("robotId" in where ? eq(systems.robotId, where.robotId) : inArray(systems.id, where.systemIds), eq(cadUpdates.model, model), isNotNull(cadUpdates.onshapeVersionId)))
+    .orderBy(cadUpdates.systemId, desc(cadUpdates.createdAt));
+  return new Map(rows.map((r) => [r.systemId!, { versionId: r.versionId!, label: r.label, at: r.at }]));
+}
+
+export type InsertedRow = { id: string; label: string; parts: number; kind: "partstudio" | "assembly"; at: string; newer: string | null; fromShelf: boolean };
+
+// "Inserted here": what went into this tab, newest first, with each system insert's newer CAD update.
+export async function insertedHere(did: string, eid: string): Promise<InsertedRow[]> {
+  const { onshapeInserts } = schema;
+  const rows = await db.select().from(onshapeInserts).where(and(eq(onshapeInserts.targetDid, did), eq(onshapeInserts.targetEid, eid))).orderBy(desc(onshapeInserts.createdAt));
+  const ids = (model: ModelKind) => [...new Set(rows.flatMap((r) => (r.systemId && (r.model ?? "final") === model ? [r.systemId] : [])))];
+  const [final, basepart] = await Promise.all([newestCadVersionsOf({ systemIds: ids("final") }, "final"), newestCadVersionsOf({ systemIds: ids("basepart") }, "basepart")]);
+  return rows.map((r) => {
+    const n = r.systemId ? (r.model === "basepart" ? basepart : final).get(r.systemId) : undefined;
+    return { id: r.id, label: r.label, parts: r.partIds.length, kind: r.targetKind, at: r.updatedAt.toISOString(), newer: n && r.systemVersionId && n.versionId !== r.systemVersionId ? n.label : null, fromShelf: !!r.itemId };
+  });
+}

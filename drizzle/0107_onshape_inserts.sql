@@ -9,6 +9,7 @@ CREATE TABLE "onshape_inserts" (
 	"source_eid" text NOT NULL,
 	"part_ids" text[] NOT NULL,
 	"version_id" text NOT NULL,
+	"system_version_id" text,
 	"label" text NOT NULL,
 	"system_id" uuid,
 	"item_id" uuid,

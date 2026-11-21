@@ -5,17 +5,27 @@ import { getMember } from "@/lib/auth";
 import { loadRobotReview } from "@/lib/data/cadReview";
 import { modelPartsOfRobot } from "@/lib/data/parts";
 import { robotModelsBuiltAt } from "@/lib/model/build";
+import { insertedHere } from "@/lib/onshape/insert";
 import { isUuid } from "@/lib/uuid";
 import { newestCadVersions } from "../insert-actions";
 import { PanelSignIn } from "../PanelSignIn";
 import { panelPlace } from "../place";
+import { InsertedHere } from "./InsertedHere";
 import { InsertFromRobot } from "./InsertFromRobot";
+import { ShelfTab } from "./ShelfTab";
 
 const { robots } = schema;
 
-// Insert from robot (Harel, 2026-11-21, like FRCDesignLib): a light 3D view of a robot in the
-// Onshape panel; parts picked there go into the open Part Studio or assembly at the version shown.
-// Reads the database only; Insert itself is the only Onshape call.
+type Tab = "robot" | "shelf" | "here";
+const TABS: [Tab, string][] = [
+  ["robot", "From robot"],
+  ["shelf", "From shelf"],
+  ["here", "Inserted here"],
+];
+
+// Insert (Harel, 2026-11-21, like FRCDesignLib): parts of a robot's systems or the shelf's library
+// parts go into the open Part Studio or assembly at a fixed version. "Inserted here" lists what
+// went into this tab. Reads the database only; Insert and Update are the only Onshape calls.
 export default async function PanelInsertPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const params = await searchParams;
   const { ref, query, kind } = panelPlace(params);
@@ -27,16 +37,41 @@ export default async function PanelInsertPage({ searchParams }: { searchParams: 
       </div>
     );
   if (!ref?.eid) return <p className="p-4 text-sm text-muted">Open this panel from an Onshape Part Studio or assembly.</p>;
+  const tab: Tab = params.tab === "shelf" || params.tab === "here" ? params.tab : "robot";
+  const robotParam = params.robotId && isUuid(params.robotId) ? params.robotId : null;
+  const href = (t: Tab) => `/onshape/panel/insert?${query}${robotParam ? `&robotId=${robotParam}` : ""}${t === "robot" ? "" : `&tab=${t}`}`;
+  return (
+    <div className="flex min-h-dvh flex-col text-sm">
+      <div className="flex items-center gap-1 border-b border-border px-3 pt-3">
+        <Link href={`/onshape/panel?${query}`} className="mr-1 pb-2 text-xs text-accent">
+          ←
+        </Link>
+        {TABS.map(([t, label]) => (
+          <Link key={t} href={href(t)} className={`-mb-px border-b-2 px-2 pb-2 text-xs font-semibold ${t === tab ? "border-accent text-fg" : "border-transparent text-muted hover:text-fg"}`} aria-current={t === tab ? "page" : undefined}>
+            {label}
+          </Link>
+        ))}
+      </div>
+      {tab === "here" ? (
+        <div className="p-3">
+          <InsertedHere query={query} rows={await insertedHere(ref.did, ref.eid)} />
+        </div>
+      ) : tab === "shelf" ? (
+        <ShelfTab query={query} readOnly={ref.wvm !== "w"} />
+      ) : (
+        await robotTab(query, kind, ref.wvm !== "w", robotParam)
+      )}
+    </div>
+  );
+}
+
+async function robotTab(query: string, kind: "partstudio" | "assembly", readOnly: boolean, robotParam: string | null) {
   const active = await db.select({ id: robots.id, name: robots.name }).from(robots).where(eq(robots.archived, false)).orderBy(desc(robots.year), asc(robots.name));
-  const robotId = params.robotId && isUuid(params.robotId) ? params.robotId : active.length === 1 ? active[0].id : null;
-  const back = `/onshape/panel?${query}`;
+  const robotId = robotParam ?? (active.length === 1 ? active[0].id : null);
   if (!robotId)
     return (
-      <div className="space-y-3 p-4 text-sm">
-        <Link href={back} className="text-xs text-accent">
-          ← Back
-        </Link>
-        <h1 className="text-xl font-bold text-fg">Insert from robot</h1>
+      <div className="space-y-2 p-3">
+        <h1 className="text-lg font-bold text-fg">Which robot?</h1>
         {active.map((r) => (
           <Link key={r.id} href={`/onshape/panel/insert?${query}&robotId=${r.id}`} className="btn flex min-h-11 w-full items-center active:scale-[0.98]">
             {r.name}
@@ -49,11 +84,10 @@ export default async function PanelInsertPage({ searchParams }: { searchParams: 
   return (
     <InsertFromRobot
       query={query}
-      back={back}
       robotId={robotId}
       robotName={robot?.name ?? "Robot"}
       target={kind}
-      readOnly={ref.wvm !== "w"}
+      readOnly={readOnly}
       builtAt={builtAt}
       names={Object.fromEntries(parts.map((p) => [p.key, p.name]))}
       newest={{ final: finalAt, basepart: baseAt }}

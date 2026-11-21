@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ModelCanvas, type PageMenu, type SceneTools, type ViewerModel } from "@/components/dashboard/ModelCanvas";
 import { ModelToggle, type ModelKind } from "@/components/dashboard/ModelToggle";
@@ -22,7 +21,6 @@ const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month
 // picked by click, Shift/Ctrl-click or a box; right-click → Insert puts them in at the version shown.
 export function InsertFromRobot({
   query,
-  back,
   robotId,
   robotName,
   target,
@@ -33,7 +31,6 @@ export function InsertFromRobot({
   systems,
 }: {
   query: string;
-  back: string;
   robotId: string;
   robotName: string;
   target: "partstudio" | "assembly";
@@ -148,10 +145,7 @@ export function InsertFromRobot({
   return (
     <VersionContext.Provider value={{ target: vt, show, kind, robotId, canDelete: false }}>
       <div className="flex min-h-dvh flex-col gap-2 p-3 text-sm">
-        <div className="flex items-center justify-between gap-2">
-          <Link href={back} className="text-xs text-accent">
-            ← Back
-          </Link>
+        <div className="flex items-center justify-end gap-2">
           <a href={cadHref} target="_blank" rel="noopener" className="btn min-h-9 px-2 text-xs active:scale-[0.98]">
             Open CAD page ↗
           </a>

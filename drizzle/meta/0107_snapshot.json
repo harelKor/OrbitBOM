@@ -1,5 +1,5 @@
 {
-  "id": "ef044b50-09c5-4e24-b386-d68332733ef6",
+  "id": "d7e79f25-63f3-437a-9469-d4c1ba7411a9",
   "prevId": "69b11e1d-f197-4747-907a-0d180672f85e",
   "version": "7",
   "dialect": "postgresql",
@@ -3860,6 +3860,12 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "system_version_id": {
+          "name": "system_version_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "label": {
           "name": "label",
