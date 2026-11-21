@@ -323,6 +323,14 @@ function shapePlan(part: SetupInput, stock: StockItem[], linked: StockItem | und
       const machine = s.turned ? SHAPE_MACHINES.turned : SHAPE_MACHINES.hexShaft;
       return { kind: "hex", item, set: { process1: machine }, fixed: true, why: `hex shaft, ${fmt(s.d1)} mm across flats${s.turned ? " with turned ends" : ""}` };
     }
+    // A short hex partly turned round (1691-26-421-05A, 12.7×14.7×16 mm) isn't read as a prism:
+    // 1/2" or 3/8" across the flats and 1.15× that across the corners is hex stock, turned on the
+    // lathe; never a plate (Harel, 2026-11-21).
+    const partHex = s.kind === "block" && s.size ? hexFromBox(s.size) : undefined;
+    if (partHex) {
+      const item = hexShaftFor(partHex.flats, partHex.thunder || /thunder/i.test(name), stock);
+      return { kind: "hex", item, set: { process1: SHAPE_MACHINES.turned }, fixed: true, why: `hex shaft, ${fmt(partHex.flats)} mm across flats, partly turned` };
+    }
     // Rule 3: box and round tubes.
     if (s.kind === "box-tube" && s.d1 && s.d2 && fam !== "poly" && fam !== "wood") {
       const item = boxTubeFor(s.d1, s.d2, s.wall, fam === "carbon" ? "carbon" : "aluminum", stock);

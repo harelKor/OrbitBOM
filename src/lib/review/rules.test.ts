@@ -32,6 +32,12 @@ describe("suggestSetup", () => {
     expect(s?.reason).toContain("3 mm thick");
   });
 
+  it("reads a short, partly turned 1/2 inch hex as hex stock on the lathe, not plate (1691-26-421-05A)", () => {
+    const stock = [...STOCK, item("Aluminum plate 6061 12.7mm", "aluminum-plates", { thickness: "12.7" }), item('1/2" Hex shaft', "shafts", { profile: '1/2" Hex' })];
+    const s = suggest(part({ classification: "undefined", geometry: { onshapeMaterial: "Aluminum - 7075", shape: { kind: "block", size: [12.7, 14.7, 16] } } }), stock);
+    expect(s?.changes).toMatchObject({ material: '1/2" Hex shaft', process1: "lathe", classification: "inhouse" });
+    expect(s?.reason).toContain("partly turned");
+  });
   it("tells 6.35 mm from 6.7 mm plates", () => {
     const s = suggestSetup(part({ geometry: { onshapeMaterial: "Aluminum - 6061", bbox: [6.7, 50, 80] } }));
     expect(s?.changes.material).toBe("Aluminum plate 6061 6.7mm");

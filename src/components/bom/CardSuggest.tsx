@@ -25,6 +25,12 @@ const setOverride = (id: string, on: boolean | null, server = false) => {
   listeners.forEach((l) => l());
 };
 
+// Whether a part's suggestion still waits, as this browser knows it (its ✓ / ✕ just now count).
+export function useReviewWaiting(part: Pick<CardPart, "id" | "review">) {
+  const override = useSyncExternalStore(subscribe, () => overrides.get(part.id)?.on, () => undefined);
+  return override ?? !!part.review;
+}
+
 // Suggest and its ✓ / ✕, at a card thumbnail's bottom-right and a List row's right end. A part
 // with a suggestion waiting in To Review (from here, the Suggest bar, Suggest setup, auto-link or a
 // member's Claude) shows ✓ (Approve) and ✕ (Reject: the old values come back); an Undefined part

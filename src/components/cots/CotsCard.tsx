@@ -5,6 +5,7 @@ import { COTS_IN_STOCK, COTS_ORDERED, COTS_RELEASED, ORDER_STATUSES, getCotsStat
 import { Dialog } from "@/components/Dialog";
 import { statusTint } from "@/components/ui/statusTint";
 import { useBom } from "@/components/bom/BomContext";
+import { CardSuggest, useReviewWaiting } from "@/components/bom/CardSuggest";
 import { EditMenu, MergedBadge, NoteCloud, isCardBodyClick } from "@/components/bom/PartCard";
 import { usePartDetails } from "@/components/bom/PartDetailsHost";
 import { QuantityField, StatusField, TypeBadge, TypeField, type SaveFn } from "@/components/bom/fields";
@@ -77,6 +78,9 @@ export function CotsCard({
   const { versions } = useBom();
   const showDetails = usePartDetails(part, save);
   const order = variant === "order";
+  // A suggestion waiting in To Review (type, material, inventory link) gets ✓ / ✕ first, like a
+  // made part's card; − / + and "In Stock?" only once it's approved (Harel, 2026-11-21).
+  const waiting = useReviewWaiting(part) && !order;
   const links = part.cotsLinks ?? [];
   const title = line?.title ?? partTitle(part);
   // Its order status: an arrived part waiting for CAD's QA is still In Stock here.
@@ -174,8 +178,8 @@ export function CotsCard({
               ⧉ {group.systems} systems
             </span>
           )}
-          {!struck && <ShelfCoversPrompt part={part} shelf={shelf} save={save} overlay />}
-          {!order && <LinkTag part={part} save={save} />}
+          {!struck && !waiting && <ShelfCoversPrompt part={part} shelf={shelf} save={save} overlay />}
+          {!order && !(waiting && part.shelfSuggestion?.pending) && <LinkTag part={part} save={save} />}
           {sentBack && (
             <span className="max-w-full truncate rounded-md bg-rose-600 px-2 py-0.5 text-[0.6875rem] font-bold text-white shadow-md" title={`Sent back: ${part.cotsSentBack}`}>
               ↩ {part.cotsSentBack}
@@ -193,7 +197,12 @@ export function CotsCard({
             <VersionTag partId={part.id} tags={versions} manual={part.isManual} />
           </div>
         )}
-        {!order && (
+        {waiting && (
+          <div className="absolute right-2 bottom-2">
+            <CardSuggest part={part} />
+          </div>
+        )}
+        {!order && !waiting && (
           <>
             {work && <button
               type="button"
