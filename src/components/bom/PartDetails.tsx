@@ -124,7 +124,7 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
         )}
         <div className="grid gap-3 sm:gap-5 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
           <div className="space-y-2 sm:space-y-3">
-            <div className={`relative h-36 overflow-hidden rounded-xl sm:h-auto sm:aspect-[4/3] ${stage === "thumb" ? "border border-line" : "stage-frame stage-glow cursor-pointer"}`}>
+            <div className={`relative h-36 overflow-hidden rounded-xl sm:h-auto sm:aspect-[4/3] ${stage === "thumb" ? "border border-line" : "stage-frame stage-glow"}`}>
               {stage === "thumb" ? (
                 <div className={`thumb-well flex h-full w-full items-center justify-center ${cots ? "thumb-cots" : "thumb-made"}`}>
                   {part.thumbUrl ? (

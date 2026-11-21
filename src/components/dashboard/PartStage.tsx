@@ -99,15 +99,15 @@ export function PartModel({
   const error = errors[view];
   const [robotParts, setRobotParts] = useState<Map<string, ModelPart>>(() => new Map());
   const router = useRouter();
-  // A small preview (onExpand: the part window's) opens big with a click; the big ones pick.
-  const picks = useMeasurePicks(!onExpand);
+  // Every view measures, the part window's small preview too (Harel, 2026-11-21): a click picks a
+  // face, edge or corner; that preview opens big from its expand button.
+  const picks = useMeasurePicks();
   const { picked, clear: clearPicks } = picks;
   // Its window opens on top; the picks clear so Esc there closes that window, not the picks here.
   const openPicked = (p: ModelPart) => {
     clearPicks();
     void import("@/components/bom/PartDetailsHost").then((m) => m.openPartWindow(p.id));
   };
-  const onPick = () => onExpand?.();
   const pageMenu: PageMenu = (keys) => {
     if (view !== "locate") return [];
     const found = [...new Set(keys)].flatMap((k) => robotParts.get(k) ?? []);
@@ -209,15 +209,30 @@ export function PartModel({
           mode="cad"
           locateKey={view === "locate" ? modelKey : null}
           onLocated={onLocated}
-          onPick={onPick}
-          {...(!onExpand && { onTools: picks.setTools, onMeasure: picks.setMeasured, menu: pageMenu })}
+          onTools={picks.setTools}
+          onMeasure={picks.setMeasured}
+          {...(!onExpand && { menu: pageMenu })}
           // The view cube, as on CAD's pages (Harel, 2026-11-11); not on the small preview in the
           // part details window, which opens big with a click.
           cube={!onExpand}
           {...(view === "locate" && { names: new Map([...robotParts].map(([k, p]) => [k, p.name])) })}
         />
       )}
-      {!onExpand && <MeasureBox measured={picks.measured} />}
+      {onExpand ? <MeasureBox measured={picks.measured} compact className="bottom-12 sm:bottom-14" /> : <MeasureBox measured={picks.measured} />}
+      {onExpand && model && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onExpand();
+          }}
+          aria-label="Open the 3D view big"
+          title="Open the 3D view big"
+          className="btn absolute bottom-2 left-1/2 z-10 h-7 -translate-x-1/2 bg-surface/95 px-2 shadow-sm active:scale-[0.98] sm:bottom-3 sm:h-8 pointer-coarse:size-10 pointer-coarse:justify-center pointer-coarse:p-0"
+        >
+          <Icon name="expand" className="h-3.5 w-3.5" />
+        </button>
+      )}
       {(error || !model || missing) && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">
           {error ??

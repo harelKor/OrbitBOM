@@ -11,9 +11,30 @@ import { UnitsSwitch, useUnits } from "./units";
 // CAD page and the /dev/viewer sandbox; `className` places it (above + Add comment on a phone).
 // Lengths in mm or inches (the switch at the top, kept per browser, like Onshape's units; S9).
 // `onClear`: a ✕ on phones, where there's no Esc (Harel, 2026-11-19).
-export function MeasureBox({ measured, className = "bottom-3", onClear }: { measured: MeasureInfo; className?: string; onClear?: () => void }) {
+// `compact`: the part window's small preview (Harel, 2026-11-21): just the values, small, so the
+// part stays in sight; a tap on empty space or Esc clears it.
+export function MeasureBox({ measured, className = "bottom-3", onClear, compact = false }: { measured: MeasureInfo; className?: string; onClear?: () => void; compact?: boolean }) {
   const units = useUnits();
   if (!measured.picks.length) return null;
+  if (compact)
+    return (
+      <div className={`pointer-events-none absolute right-2 z-[15] max-w-[calc(100%-1rem)] animate-pop rounded-md border border-line bg-surface/95 px-2 py-1 text-xs shadow-md backdrop-blur sm:right-3 ${className}`}>
+        {measured.rows.length ? (
+          <table className="tabular-nums">
+            <tbody>
+              {measured.rows.slice(0, 3).map((r) => (
+                <tr key={r.label}>
+                  <td className="pr-2 text-muted">{r.label}</td>
+                  <td className="text-right font-semibold whitespace-nowrap text-fg">{formatRow(r, units)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="truncate text-fg-2">{measured.picks[0]}</p>
+        )}
+      </div>
+    );
   // The number as shown, without the "≈" that marks a value read off the tessellation.
   const copy = (label: string, value: string) =>
     void navigator.clipboard.writeText(value.replace(/^≈\s*/, "")).then(
