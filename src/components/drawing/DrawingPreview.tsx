@@ -31,7 +31,7 @@ const PDF = /\.pdf$/i;
 // A part's drawing as a big picture, to read at the machine: the drawing made in the app, and the
 // drawing file (uploaded, or pulled from an Onshape drawing tab), in one window with a switch when
 // it has both. The file opens first: it's the official one. Pictures and the app's drawing fit the
-// window with Ctrl + wheel zoom and drag to pan; a PDF uses the browser's own viewer.
+// window with wheel zoom and drag to pan; a PDF uses the browser's own viewer.
 // On document.body so a press inside doesn't scale the card it was opened from; clicks stop here
 // for the same reason. A fit note linked to a part or inventory item lights up on hover and opens
 // its window on top of this one, which stays open underneath.
@@ -201,7 +201,7 @@ export function DrawingPreview({
         {source === "file" && file ? (
           <FileView key={file.id} file={file} title={title} />
         ) : source === "app" && svg && drawing ? (
-          // The whole sheet fits the window; Ctrl + wheel zooms, drag pans.
+          // The whole sheet fits the window; the wheel zooms, drag pans.
           <ZoomStage aspect={drawing.sheet.w / drawing.sheet.h} className="h-[calc(100dvh-9rem)] rounded-md">
             <div
               role="img"

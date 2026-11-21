@@ -6,8 +6,8 @@ const MIN = 0.5;
 const MAX = 6;
 type View = { z: number; x: number; y: number }; // zoom, then pan in px from the fitted place
 
-// The drawing sheet fitted whole inside its box (no scrollbars), with Ctrl + wheel zoom toward the
-// cursor (0.5× to 4×) and drag to pan: middle mouse or Space + drag always, a plain left drag
+// The drawing sheet fitted whole inside its box (no scrollbars), with wheel zoom toward the
+// cursor (0.5× to 6×, no Ctrl needed: Harel, 2026-11-21) and drag to pan: middle mouse or Space + drag always, a plain left drag
 // when zoomed in and `leftPan` allows it. On a phone, two fingers pinch to zoom and move to pan
 // (the shop reads drawings on phones). A drag that pans doesn't count as a click on the sheet.
 // A child that handles its own press (a note being dragged) stops the pointerdown from reaching here.
@@ -40,13 +40,12 @@ export function ZoomStage({ aspect, leftPan = true, className = "", children }: 
     return () => ro.disconnect();
   }, [aspect]);
 
-  // Ctrl + wheel (and a trackpad pinch, which arrives as one) zooms toward the cursor. Native and
-  // not passive, so the page itself doesn't zoom.
+  // The wheel (and a trackpad pinch, which arrives as Ctrl + wheel) zooms toward the cursor.
+  // Native and not passive, so the page itself doesn't scroll or zoom.
   useEffect(() => {
     const el = box.current;
     if (!el || !fit) return;
     const onWheel = (e: WheelEvent) => {
-      if (!e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
       const r = el.getBoundingClientRect();
       // The cursor relative to where the unzoomed sheet sits (centred in the box).

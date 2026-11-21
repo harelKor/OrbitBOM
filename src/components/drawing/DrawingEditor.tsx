@@ -708,8 +708,8 @@ export function DrawingEditor({
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
         {drawing ? (
-          // The whole sheet fits without scrollbars; Ctrl + wheel or a pinch zooms, drag pans when zoomed in.
-          <ZoomStage aspect={drawing.sheet.w / drawing.sheet.h} leftPan={mode.kind === "idle"} className="min-h-[55dvh] flex-1 rounded-lg lg:h-[calc(100dvh-9rem)] lg:min-h-0">
+          // The whole sheet fits without scrollbars; the wheel or a pinch zooms, dragging empty paper pans when zoomed in.
+          <ZoomStage aspect={drawing.sheet.w / drawing.sheet.h} className="min-h-[55dvh] flex-1 rounded-lg lg:h-[calc(100dvh-9rem)] lg:min-h-0">
             <div
               ref={sheet}
               onClick={onSheetClick}
@@ -783,7 +783,7 @@ export function DrawingEditor({
             />
           )}
           <p className="text-xs text-white/50">
-            Click a hole to note it. Drag any note, arrow tip or dimension to move it; double-click to retype it. Ctrl + wheel or a pinch zooms.
+            Click a hole to note it. Drag any note, arrow tip or dimension to move it; double-click to retype it. The wheel or a pinch zooms; drag empty paper to pan.
           </p>
           {base && drawing && (
             <>
