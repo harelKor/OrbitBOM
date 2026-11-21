@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ModelCanvas, type PageMenu, type SceneTools, type ViewerModel } from "@/components/dashboard/ModelCanvas";
 import { ModelToggle, type ModelKind } from "@/components/dashboard/ModelToggle";
 import { VersionTree } from "@/components/review/VersionTree";
@@ -18,7 +18,7 @@ const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month
 // Insert from robot in the Onshape panel (Harel, 2026-11-21): the robot's 3D view with no
 // comments, review or design check, at Low quality (the panel is narrow). Each system shows at its
 // newest CAD update; with a system isolated, its version tree shows another version. Parts are
-// picked by click, Shift/Ctrl-click or a box; right-click → Insert puts them in at the version shown.
+// picked by click (each click adds or drops one) or a box; right-click → Insert puts them in at the version shown.
 export function InsertFromRobot({
   query,
   robotId,
@@ -26,7 +26,7 @@ export function InsertFromRobot({
   target,
   readOnly,
   builtAt,
-  names,
+  info,
   newest,
   systems,
 }: {
@@ -36,7 +36,7 @@ export function InsertFromRobot({
   target: "partstudio" | "assembly";
   readOnly: boolean;
   builtAt: Record<ModelKind, string | null>;
-  names: Record<string, string>;
+  info: Record<string, { name: string; thumb: string | null }>;
   newest: Record<ModelKind, Newest>;
   systems: Sys[];
 }) {
@@ -49,8 +49,14 @@ export function InsertFromRobot({
   const [tools, setTools] = useState<SceneTools | null>(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string; skipped?: string[] } | null>(null);
-  const multi = useRef(false);
-  const nameMap = useMemo(() => new Map(Object.entries(names)), [names]);
+  const nameMap = useMemo(() => new Map(Object.entries(info).map(([k, v]) => [k, v.name])), [info]);
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setChosen([]);
+    };
+    window.addEventListener("keydown", esc);
+    return () => window.removeEventListener("keydown", esc);
+  }, []);
 
   useEffect(() => {
     if (!builtAt[kind]) return;
@@ -126,9 +132,19 @@ export function InsertFromRobot({
     setIsolated(sid);
     setVt(null);
   };
+  // A click adds the part, a click on a picked one drops it, no Ctrl or Shift needed; a click on
+  // empty space clears (Harel, 2026-11-21).
   const onPick = (key: string | null) => {
-    if (!key) return multi.current ? undefined : setChosen([]);
-    setChosen((c) => (multi.current ? (c.includes(key) ? c.filter((k) => k !== key) : [...c, key]) : [key]));
+    if (!key) return setChosen([]);
+    setChosen((c) => (c.includes(key) ? c.filter((k) => k !== key) : [...c, key]));
+  };
+  const versionLabel = (sid: string): { ok: boolean; text: string } => {
+    if (vt) {
+      const e = vt.a.entries.find((x) => x.owner === sid);
+      return e && e.ref.wvm === "v" ? { ok: true, text: vt.a.label } : { ok: false, text: e ? `${vt.a.label} (sub-version: can't insert)` : "not in this version" };
+    }
+    const n = newest[kind][sid];
+    return n ? { ok: true, text: `${n.label} (CAD update ${day(n.at)})` } : { ok: false, text: "no CAD update yet" };
   };
   const onBox = (keys: string[], drop: boolean) => setChosen((c) => (drop ? c.filter((k) => !keys.includes(k)) : [...new Set([...c, ...keys])]));
 
@@ -178,12 +194,7 @@ export function InsertFromRobot({
         <p className="text-xs text-muted">
           Showing: <span className="font-semibold text-fg">{shownLabel}</span>
         </p>
-        <div
-          className="relative h-[55dvh] min-h-64 overflow-hidden rounded-lg border border-border bg-surface"
-          onPointerDownCapture={(e) => {
-            multi.current = e.shiftKey || e.ctrlKey || e.metaKey;
-          }}
-        >
+        <div className="relative h-[55dvh] min-h-64 overflow-hidden rounded-lg border border-border bg-surface">
           {shown ? (
             <ModelCanvas
               key={vt ? `v:${vt.a.key}` : `live:${kind}`}
@@ -206,12 +217,51 @@ export function InsertFromRobot({
             </div>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <span className="flex-1 text-xs text-muted tabular-nums">{chosen.length ? `${chosen.length} part${chosen.length === 1 ? "" : "s"} picked` : "Click, Shift/Ctrl-click or drag a box to pick parts; right-click → Insert."}</span>
+        {/* Each picked part below the view (Harel, 2026-11-21): picture, name, system, the version
+            it would go in at, × to drop it; Insert sits with the list. */}
+        <div className="rounded-lg border border-border bg-surface">
+          <div className="flex items-center gap-2 p-1.5">
+            <span className="flex-1 pl-1 text-xs text-muted tabular-nums">{chosen.length ? `${chosen.length} part${chosen.length === 1 ? "" : "s"} picked` : "Click parts to pick them (click again to drop one), or drag a box; Esc clears."}</span>
+            {chosen.length > 0 && (
+              <>
+                <button type="button" className="btn min-h-9 px-2 text-xs active:scale-[0.98]" onClick={() => setChosen([])}>
+                  Clear
+                </button>
+                <button type="button" className="btn btn-primary min-h-9 active:scale-[0.98] disabled:cursor-wait" disabled={busy || readOnly} onClick={() => void insert(chosen)}>
+                  {busy ? "Inserting…" : "Insert"}
+                </button>
+              </>
+            )}
+          </div>
           {chosen.length > 0 && (
-            <button type="button" className="btn btn-primary min-h-9 active:scale-[0.98] disabled:cursor-wait" disabled={busy || readOnly} onClick={() => void insert(chosen)}>
-              {busy ? "Inserting…" : "Insert"}
-            </button>
+            <ul className="max-h-56 divide-y divide-border overflow-y-auto border-t border-border">
+              {chosen.map((k) => {
+                const sid = systemOf.get(k);
+                const v = sid ? versionLabel(sid) : null;
+                const name = (vload?.state === "ready" ? vload.names[k] : undefined) ?? info[k]?.name ?? k.split(":")[2] ?? k;
+                const thumb = info[k]?.thumb;
+                return (
+                  <li key={k} className="flex items-center gap-2 px-1.5 py-1">
+                    {thumb ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={thumb} alt="" className="h-8 w-8 shrink-0 rounded bg-white object-contain" loading="lazy" />
+                    ) : (
+                      <span className="h-8 w-8 shrink-0 rounded bg-raised" aria-hidden />
+                    )}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-xs font-medium text-fg">{name}</span>
+                      <span className={`block truncate text-[0.6875rem] ${v?.ok === false ? "text-amber-500" : "text-muted"}`}>
+                        {sid ? sysName(sid) : "No system"}
+                        {v ? ` · ${v.text}` : ""}
+                      </span>
+                    </span>
+                    <button type="button" className="press flex h-8 w-8 shrink-0 items-center justify-center rounded text-muted hover:bg-raised hover:text-fg active:scale-[0.98] pointer-coarse:h-9 pointer-coarse:w-9" onClick={() => setChosen((c) => c.filter((x) => x !== k))} aria-label={`Drop ${name}`}>
+                      ×
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </div>
         {readOnly && <p className="text-xs text-amber-500">This tab is a version: open the workspace to insert.</p>}

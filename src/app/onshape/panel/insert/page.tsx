@@ -1,4 +1,4 @@
-import { asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull } from "drizzle-orm";
 import Link from "next/link";
 import { db, schema } from "@/db";
 import { getMember } from "@/lib/auth";
@@ -6,6 +6,8 @@ import { loadRobotReview } from "@/lib/data/cadReview";
 import { modelPartsOfRobot } from "@/lib/data/parts";
 import { robotModelsBuiltAt } from "@/lib/model/build";
 import { insertedHere } from "@/lib/onshape/insert";
+import { thumbKey } from "@/lib/onshape/thumbnails";
+import { imageUrl } from "@/lib/storage/r2";
 import { isUuid } from "@/lib/uuid";
 import { newestCadVersions } from "../insert-actions";
 import { PanelSignIn } from "../PanelSignIn";
@@ -81,6 +83,10 @@ async function robotTab(query: string, kind: "partstudio" | "assembly", readOnly
     );
   const [review, parts, builtAt, finalAt, baseAt] = await Promise.all([loadRobotReview(robotId), modelPartsOfRobot(robotId), robotModelsBuiltAt(robotId), newestCadVersions(robotId, "final"), newestCadVersions(robotId, "basepart")]);
   const robot = active.find((r) => r.id === robotId);
+  // The picked parts' pictures in the list below the view (signed links, never cached).
+  const ids = [...new Set(parts.map((p) => p.id))];
+  const revs = ids.length ? await db.select({ id: schema.parts.id, rev: schema.parts.thumbnailRev }).from(schema.parts).where(and(inArray(schema.parts.id, ids), isNotNull(schema.parts.thumbnailRev))) : [];
+  const thumbs = new Map(await Promise.all(revs.map(async (r) => [r.id, await imageUrl(thumbKey(r.id, r.rev!))] as const)));
   return (
     <InsertFromRobot
       query={query}
@@ -89,7 +95,7 @@ async function robotTab(query: string, kind: "partstudio" | "assembly", readOnly
       target={kind}
       readOnly={readOnly}
       builtAt={builtAt}
-      names={Object.fromEntries(parts.map((p) => [p.key, p.name]))}
+      info={Object.fromEntries(parts.map((p) => [p.key, { name: p.name, thumb: thumbs.get(p.id) ?? null }]))}
       newest={{ final: finalAt, basepart: baseAt }}
       systems={review.systems.map((s) => ({ id: s.id, name: s.name, tree: s.tree, modelRef: s.modelRef, basepartTree: s.basepart?.tree ?? [], basepartRef: s.basepart?.modelRef ?? null }))}
     />
