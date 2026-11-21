@@ -10,11 +10,12 @@ export type Hole = { faceId: string; at: [number, number]; d: number; both?: boo
 export type View = { w: number; h: number; lines: [number, number][][]; holes: Hole[]; axis?: boolean };
 
 // Bumped when the reader changes, so drawings made by an older one are made again.
-export const READER = 3;
+export const READER = 4;
 
 export type Part = { reader?: number } & (
   | { kind: "plate"; thickness: number; front: View; side: View; minInnerRadius?: number }
-  | { kind: "square-tube"; size: [number, number]; wall?: number; length: number; long: View[]; end: View; minInnerRadius?: number }
+  // `solid`: a square bar (no inner walls), drawn from its real outline.
+  | { kind: "square-tube"; size: [number, number]; wall?: number; solid?: boolean; length: number; long: View[]; end: View; minInnerRadius?: number }
   | { kind: "hex-shaft"; acrossFlats: number; length: number; bore?: number; side: View; end: View }
   | { kind: "round-tube"; od: number; id?: number; length: number; side: View; end: View }
 );
@@ -41,8 +42,9 @@ function range(body: Body, a: V3): [number, number] {
 // face (all a prismatic part needs: what's behind it is hidden); "flat" draws every edge that
 // lies flat in the view at any depth (a plate's outline even where it steps or thins); `box`
 // adds the silhouette. Holes on the near half are drawn, marked `both` when the far half has
-// one in the same place.
-function view(body: Body, w: V3, h: V3, opts: { near?: boolean; flat?: boolean; box?: boolean; holes?: Face[]; axis?: boolean }): View {
+// one in the same place. `nearLoops` (with flat): a closed edge (a hole's rim) only on the
+// nearest face, so a hole on the far side isn't drawn as if it were seen.
+function view(body: Body, w: V3, h: V3, opts: { near?: boolean; flat?: boolean; nearLoops?: boolean; box?: boolean; holes?: Face[]; axis?: boolean }): View {
   const v = cross(w, h);
   const [h0, h1] = range(body, h);
   const [v0, v1] = range(body, v);
@@ -52,7 +54,10 @@ function view(body: Body, w: V3, h: V3, opts: { near?: boolean; flat?: boolean; 
   const drawn = new Set<string>();
   for (const e of body.edges) {
     const depth = dot(e[0], w);
-    const keep = opts.flat ? e.every((p) => Math.abs(dot(p, w) - depth) < EPS) : opts.near && e.every((p) => Math.abs(dot(p, w) - d1) < EPS);
+    const closed = e.length > 2 && Math.hypot(...sub(e[0], e[e.length - 1])) < EPS;
+    const keep = opts.flat
+      ? e.every((p) => Math.abs(dot(p, w) - depth) < EPS) && !(opts.nearLoops && closed && Math.abs(depth - d1) > EPS)
+      : opts.near && e.every((p) => Math.abs(dot(p, w) - d1) < EPS);
     if (!keep) continue;
     const line = e.map(at);
     // Edges at different depths often land on the same line (a plate's top and bottom outline).
@@ -222,6 +227,12 @@ function readSquare(body: Body, axis: V3, sides: Face[]): Part {
     if (t > 0 && (wall === undefined || t < wall)) wall = t;
   }
   const { holes, minInnerRadius } = holesAndCorners(body, (f) => perp(f.dir!, axis));
+  // A tube's long views are its near face and its outline box (the inner walls behind stay
+  // hidden). A solid bar has no inner walls, so every edge lying flat in the view is its real
+  // outline: a rounded or stepped end shows as it is, not boxed in. An end view is every edge
+  // lying flat too: the nearest end alone isn't the outline when that end is rounded or cut.
+  const solid = wall === undefined;
+  const longOpts = solid ? { flat: true, nearLoops: true, holes } : { near: true, box: true, holes };
   // One long view per drilled face, the face with the most holes first. A face whose holes all
   // go through to a face already shown needs no view of its own.
   const faces: { w: V3; holes: Face[] }[] = [];
@@ -238,9 +249,9 @@ function readSquare(body: Body, axis: V3, sides: Face[]): Part {
     const opposite = shown.find((w) => same(w, [-f.w[0], -f.w[1], -f.w[2]]));
     if (opposite && view(body, opposite, axis, { holes }).holes.filter((h) => h.both).length >= f.holes.length) continue;
     shown.push(f.w);
-    long.push(view(body, f.w, axis, { near: true, box: true, holes }));
+    long.push(view(body, f.w, axis, longOpts));
   }
-  if (!long.length) long.push(view(body, d1, axis, { near: true, box: true, holes }));
+  if (!long.length) long.push(view(body, d1, axis, longOpts));
   // Holes along the axis (tapped ends) show on the end view, looking at the end that has them.
   const ends = cylinders(body).filter((f) => f.concave && f.loops >= 2 && parallel(f.dir!, axis));
   const atFar = ends.filter((f) => dot(f.center, axis) < (a0 + a1) / 2).length;
@@ -248,10 +259,10 @@ function readSquare(body: Body, axis: V3, sides: Face[]): Part {
   return {
     kind: "square-tube",
     size: [r1[1] - r1[0], r2[1] - r2[0]],
-    ...(wall ? { wall } : {}),
+    ...(wall ? { wall } : { solid: true }),
     length: a1 - a0,
     long,
-    end: view(body, endW, d1, { near: true, holes: ends }),
+    end: view(body, endW, d1, { flat: true, nearLoops: true, holes: ends }),
     ...(minInnerRadius ? { minInnerRadius } : {}),
   };
 }

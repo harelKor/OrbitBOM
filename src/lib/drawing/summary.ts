@@ -18,7 +18,7 @@ export function drawingSummary(part: Part, edits: DrawingEdits, title: TitleBloc
     part.kind === "plate"
       ? { thickness_mm: mm(part.thickness), outline_mm: [mm(part.front.w), mm(part.front.h)], max_tool_mm: mm(part.minInnerRadius && 2 * part.minInnerRadius) }
       : part.kind === "square-tube"
-        ? { size_mm: part.size.map(mm), wall_mm: mm(part.wall), length_mm: mm(part.length), max_tool_mm: mm(part.minInnerRadius && 2 * part.minInnerRadius) }
+        ? { size_mm: part.size.map(mm), wall_mm: mm(part.wall), solid: !!part.solid, length_mm: mm(part.length), max_tool_mm: mm(part.minInnerRadius && 2 * part.minInnerRadius) }
         : part.kind === "hex-shaft"
           ? { across_flats_mm: mm(part.acrossFlats), bore_mm: mm(part.bore), length_mm: mm(part.length) }
           : { od_mm: mm(part.od), id_mm: mm(part.id), length_mm: mm(part.length) };

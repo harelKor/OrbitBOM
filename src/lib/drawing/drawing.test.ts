@@ -301,3 +301,63 @@ it("makes added straight views from the kept geometry, measured and snappable", 
   expect(d.snaps.some((s) => s.view === "add1")).toBe(true);
   expect(d.edges.some((e) => e.view === "add1")).toBe(true);
 });
+
+// A solid 10×10 bar, 100 long along x, one end's top edge rounded (R3), an M5 tap drill on two
+// adjacent faces: like 1691-26-411-13A (Harel, 2026-11-21).
+function roundedBar(): Body {
+  const arc = (y: number): V3[] => Array.from({ length: 9 }, (_, i) => [97 + 3 * Math.sin((i * Math.PI) / 16), y, 7 + 3 * Math.cos((i * Math.PI) / 16)]);
+  const ring = (c: V3, n: V3): V3[] =>
+    Array.from({ length: 25 }, (_, i) => {
+      const t = (i * 2 * Math.PI) / 24;
+      const [u, v]: [V3, V3] = n[1] ? [[1, 0, 0], [0, 0, 1]] : [[1, 0, 0], [0, 1, 0]];
+      return [0, 1, 2].map((k) => c[k] + 2.1 * (Math.cos(t) * u[k] + Math.sin(t) * v[k])) as V3;
+    });
+  const plane = (id: string, out: V3, center: V3, area: number): Face => ({ id, type: "PLANE", area, concave: false, dir: out, out, loops: 1, center });
+  const hole = (id: string, dir: V3, center: V3): Face => ({ id, type: "CYLINDER", area: 50, concave: true, dir, radius: 2.1, loops: 2, center });
+  return {
+    id: "bar",
+    name: "bar",
+    faces: [
+      plane("bottom", [0, 0, -1], [50, 5, 0], 1000),
+      plane("top", [0, 0, 1], [48.5, 5, 10], 970),
+      plane("front", [0, -1, 0], [50, 0, 5], 998),
+      plane("back", [0, 1, 0], [50, 10, 5], 998),
+      plane("end0", [-1, 0, 0], [0, 5, 5], 100),
+      plane("end1", [1, 0, 0], [100, 5, 3.5], 70),
+      { id: "round", type: "CYLINDER", area: 47, concave: false, dir: [0, 1, 0], radius: 3, loops: 1, center: [98.5, 5, 8.5] },
+      hole("h1", [0, 1, 0], [30, 4, 5]),
+      hole("h2", [0, 0, 1], [60, 5, 4]),
+    ],
+    edges: [
+      [[0, 0, 0], [100, 0, 0]], [[0, 10, 0], [100, 10, 0]], [[0, 0, 10], [97, 0, 10]], [[0, 10, 10], [97, 10, 10]],
+      [[0, 0, 0], [0, 10, 0]], [[0, 10, 0], [0, 10, 10]], [[0, 10, 10], [0, 0, 10]], [[0, 0, 10], [0, 0, 0]],
+      [[100, 0, 0], [100, 10, 0]], [[100, 0, 0], [100, 0, 7]], [[100, 10, 0], [100, 10, 7]], [[100, 0, 7], [100, 10, 7]],
+      [[97, 0, 10], [97, 10, 10]], arc(0), arc(10),
+      ring([30, 0, 5], [0, 1, 0]), ring([30, 8, 5], [0, 1, 0]), ring([60, 5, 0], [0, 0, 1]), ring([60, 5, 8], [0, 0, 1]),
+    ],
+  };
+}
+
+it("draws a solid square bar to its real outline, as a bar or plate stock", () => {
+  const p = readPart(roundedBar());
+  if (p?.kind !== "square-tube") throw new Error(`bar read as ${p?.kind}`);
+  expect(p.solid).toBe(true);
+  // The end view is the whole 10×10 section, not only the rounded end's smaller face.
+  const span = (v: { lines: [number, number][][] }, i: 0 | 1) => {
+    const xs = v.lines.flat().map((q) => q[i]);
+    return round(Math.max(...xs) - Math.min(...xs));
+  };
+  expect([round(p.end.w), round(p.end.h), span(p.end, 0), span(p.end, 1)]).toEqual([10, 10, 10, 10]);
+  // Long views: the rounded corner at one end only, no outline box over it; the far side's hole rim isn't drawn.
+  for (const v of p.long) {
+    const corners = v.lines.flat().filter((q) => (Math.abs(q[0]) < 0.01 || Math.abs(q[0] - 100) < 0.01) && (Math.abs(q[1]) < 0.01 || Math.abs(q[1] - 10) < 0.01));
+    expect(corners.length).toBeGreaterThan(0);
+    expect(v.lines.filter((l) => l.length > 20).length).toBeLessThanOrEqual(1);
+  }
+  const rounded = p.long.find((v) => v.lines.some((l) => l.length === 9));
+  expect(rounded).toBeTruthy();
+  expect(rounded!.lines.flat().some((q) => Math.abs(q[0] - 100) < 0.01 && Math.abs(q[1] - 10) < 0.01)).toBe(false); // no sharp corner there
+  expect(partDrawing(p, { name: "Bar" }).stock).toBe("10×10 bar, 100 long");
+  expect(partDrawing(p, { name: "Bar", material: "10mm Aluminum plate" }).stock).toBe("10 mm plate, 10×100");
+  expect(partDrawing(p, { name: "Bar" }).dims.map((d) => d.id)).not.toContain("dim:wall");
+});

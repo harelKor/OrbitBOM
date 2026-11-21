@@ -283,7 +283,13 @@ export function partDrawing(part: Part, title: TitleBlock, views?: DrawingEdits[
       dims.push({ id: "dim:wall", a: [b.x0, b.y0], b: [b.x0 + part.wall * end.s, b.y0], at: b.y0 - 8, dir: "h", text: fmt(part.wall), view: end.key });
     }
     notes = [...holeNotes(placed, noter(placed, dims), end), ...toolNote(part.minInnerRadius)];
-    stock = `${fmt(x)}×${fmt(y)}${part.wall ? `×${fmt(part.wall)}` : ""} tube, ${fmt(part.length)} long`;
+    // A solid bar is a bar, or plate stock when its BOM material is a plate (CNC'd from it).
+    const [thin, wide] = [Math.min(x, y), Math.max(x, y)];
+    stock = !part.solid
+      ? `${fmt(x)}×${fmt(y)}${part.wall ? `×${fmt(part.wall)}` : ""} tube, ${fmt(part.length)} long`
+      : /plate/i.test(title.material ?? "")
+        ? `${fmt(thin)} mm plate, ${fmt(wide)}×${fmt(part.length)}`
+        : `${fmt(x)}×${fmt(y)} bar, ${fmt(part.length)} long`;
   } else if (part.kind === "hex-shaft") {
     placed = at(arrange([part.side], part.end, false, { main: () => "side", beside: "end" }));
     const [side, end] = placed;
