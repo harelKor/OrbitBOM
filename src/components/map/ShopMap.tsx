@@ -122,6 +122,7 @@ export function ShopMap({
     setCamState(c);
   }, []);
   const [sel, setSel] = useState<Sel>(null);
+  const [hover, setHover] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
   // The zones walked through, newest last: Back walks to where you were, looking where you looked
   // (Harel, 2026-11-20). Leaving to the floor plan or a Find flight forgets them.
@@ -343,7 +344,16 @@ export function ShopMap({
   };
   const onMove = (ev: React.PointerEvent<HTMLDivElement>) => {
     const prev = pointers.current.get(ev.pointerId);
-    if (!prev) return;
+    if (!prev) {
+      // A mouse over a zone lights it a little (Harel, 2026-11-21); touch has no hover.
+      if (ev.pointerType === "mouse") {
+        const t = ev.target as Element;
+        const z = t.closest("[data-ui]") ? null : (t.closest("[data-zone]")?.getAttribute("data-zone") ?? null);
+        if (z !== hover) setHover(z);
+      }
+      return;
+    }
+    if (hover) setHover(null);
     const g = gesture.current;
     const dx = ev.clientX - prev.x;
     const dy = ev.clientY - prev.y;
@@ -392,13 +402,14 @@ export function ShopMap({
     const zf = zoneFit(z, aspect);
     if (zf) glideTo({ plan: zf, zone: null, dive: 0, scene: FULL_SCENE });
   };
-  const stepInside = (z: Place) => {
+  const stepInside = (z: Place, ms = 750) => {
     const zf = zoneFit(z, aspect);
     if (!zf || !z.imageUrl) return;
     setSel(null);
+    setHover(null);
     const c = camRef.current;
     setCam({ ...c, zone: z.id });
-    glideTo({ plan: c.plan, zone: z.id, dive: 1, scene: FULL_SCENE }, 750);
+    glideTo({ plan: c.plan, zone: z.id, dive: 1, scene: FULL_SCENE }, ms);
   };
   const stepOut = () => {
     const c = camRef.current;
@@ -486,6 +497,9 @@ export function ShopMap({
       return;
     }
     if (mode === "pick" && !p.imageUrl && !spotsIn(p.id).length) return onPick?.(p.id);
+    // A zone with a first-person picture sweeps straight into it (Harel, 2026-11-21); the rest
+    // still fly to the zone and show its bar.
+    if (p.imageUrl && zoneFit(p, aspect)) return stepInside(p, 1100);
     setSel(t);
     goToZone(p);
   };
@@ -617,6 +631,7 @@ export function ShopMap({
       onPointerMove={onMove}
       onPointerUp={onUp}
       onPointerCancel={onUp}
+      onPointerLeave={() => setHover(null)}
       role="application"
       aria-label="Shop map"
     >
@@ -738,6 +753,7 @@ export function ShopMap({
 
             {drawn.map((z) => {
               const on = lit.has(z.id);
+              const hovered = !on && hover === z.id;
               const pts = z.outline!.map((p) => p.join(",")).join(" ");
               return (
                 <g
@@ -755,8 +771,8 @@ export function ShopMap({
                   }}
                 >
                   {/* Rounded lots in the one Orbit tint: a filled pad and a bright rim. */}
-                  <polygon points={pts} strokeLinejoin="round" strokeWidth={9} style={{ fill: ACCENT, stroke: ACCENT, fillOpacity: on ? 0.4 : 0.3, strokeOpacity: on ? 0.4 : 0.3 }} />
-                  <polygon points={pts} fill="none" strokeLinejoin="round" strokeWidth={on ? 2.6 : 1.5} vectorEffect="non-scaling-stroke" style={{ stroke: tint(45, "#ffffff"), strokeOpacity: on ? 1 : 0.8 }} />
+                  <polygon points={pts} strokeLinejoin="round" strokeWidth={9} style={{ fill: ACCENT, stroke: ACCENT, fillOpacity: on ? 0.4 : hovered ? 0.36 : 0.3, strokeOpacity: on ? 0.4 : hovered ? 0.36 : 0.3, transition: "fill-opacity 150ms, stroke-opacity 150ms" }} />
+                  <polygon points={pts} fill="none" strokeLinejoin="round" strokeWidth={on ? 2.6 : hovered ? 2 : 1.5} vectorEffect="non-scaling-stroke" style={{ stroke: tint(45, "#ffffff"), strokeOpacity: on || hovered ? 1 : 0.8 }} />
                   {on && (
                     <polygon points={pts} fill="none" strokeLinejoin="round" strokeWidth={2} vectorEffect="non-scaling-stroke" style={{ stroke: tint(40, "#ffffff") }}>
                       <animate attributeName="stroke-opacity" values="0.9;0;0.9" dur="1.8s" repeatCount="indefinite" />
