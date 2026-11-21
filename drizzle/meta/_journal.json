@@ -750,6 +750,13 @@
       "when": 1795207523069,
       "tag": "0106_zone_doors",
       "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1795272747044,
+      "tag": "0107_onshape_inserts",
+      "breakpoints": true
     }
   ]
 }

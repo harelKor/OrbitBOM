@@ -209,6 +209,36 @@ export const modelSnapshots = pgTable(
   (t) => [index("model_snapshots_robot_idx").on(t.robotId)],
 );
 
+// Insert from the Onshape panel (Harel, 2026-11-21, like FRCDesignLib): parts of a system (or a
+// shelf item's library part) put into another Part Studio or assembly at a fixed Onshape version,
+// so systems never reference each other's workspaces. One row per Derived feature (all chosen
+// parts of one Part Studio at one version) or per assembly instance. `createdIds`: the feature id,
+// or the instance ids. The panel's "Inserted here" list and its Update read these.
+export const onshapeInserts = pgTable(
+  "onshape_inserts",
+  {
+    id: id(),
+    targetDid: text("target_did").notNull(),
+    targetWid: text("target_wid").notNull(),
+    targetEid: text("target_eid").notNull(),
+    targetKind: text("target_kind").$type<"partstudio" | "assembly">().notNull(),
+    createdIds: text("created_ids").array().notNull(),
+    sourceDid: text("source_did").notNull(),
+    sourceEid: text("source_eid").notNull(),
+    partIds: text("part_ids").array().notNull(),
+    versionId: text("version_id").notNull(),
+    // What it says in the panel: "400 · Final · V12".
+    label: text("label").notNull(),
+    systemId: uuid("system_id").references(() => systems.id, { onDelete: "set null" }),
+    itemId: uuid("item_id").references((): AnyPgColumn => inventoryItems.id, { onDelete: "set null" }),
+    model: text("model").$type<ModelKind>(),
+    memberId: uuid("member_id").references(() => members.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("onshape_inserts_target_idx").on(t.targetDid, t.targetEid)],
+);
+
 // Onshape versions deleted from OrbitParts (Onshape can't delete versions; Harel, 2026-11-17): left
 // out of every version tree of that document.
 export const deletedVersions = pgTable(
