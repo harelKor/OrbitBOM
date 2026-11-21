@@ -28,7 +28,8 @@ export type Ref = { v: string; p: Pt; hole?: string; ang?: number };
 // One view as placed on the sheet: `key` names it ("front", "side", "end", "long0"…), x / y its
 // top-left corner before it's turned, s its scale, w / h its size in the view's own mm, r how far
 // it's turned about its centre (degrees, clockwise on the sheet).
-export type PlacedView = { key: string; x: number; y: number; s: number; w: number; h: number; r?: number };
+// `href`: an added angled view, a picture filling its box (no lines of its own).
+export type PlacedView = { key: string; x: number; y: number; s: number; w: number; h: number; r?: number; href?: string };
 
 // The BOM block, bottom right, filled by the caller from the part's BOM row. The name is the
 // part's number too.

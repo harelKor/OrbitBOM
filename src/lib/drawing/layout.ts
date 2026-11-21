@@ -3,6 +3,7 @@
 
 import { BEARINGS, DEFAULT_FIT, HOLE_MATCH_MM, TAPS, TOOLS } from "@/config/drawings";
 import type { DrawingEdits } from "@/db/schema";
+import type { ExtraView } from "./extra";
 import type { Hole, Part, View } from "./read";
 import type { Dim, DimDir, Drawing, Line, Note, PlacedView, Pt, Ref, TitleBlock } from "./types";
 
@@ -18,7 +19,7 @@ const AREA = { x0: MARGIN + 10, x1: SHEET.w - MARGIN - 12, y0: MARGIN + 22, y1: 
 export const fmt = (n: number) => String(Math.round(n * 100) / 100);
 const near = (a: number, b: number) => Math.abs(a - b) <= HOLE_MATCH_MM;
 
-type Placed = { key: string; view: View; x: number; y: number; s: number; r?: number }; // top-left corner on the sheet
+type Placed = { key: string; view: View; x: number; y: number; s: number; r?: number; href?: string }; // top-left corner on the sheet
 const toSheet = (p: Placed, [px, py]: [number, number]): Pt => [p.x + px * p.s, p.y + (p.view.h - py) * p.s];
 const box = (p: Placed) => ({ x0: p.x, y0: p.y, x1: p.x + p.view.w * p.s, y1: p.y + p.view.h * p.s });
 
@@ -253,7 +254,8 @@ const down = (id: string, p: Placed, text: string): Dim => {
 
 // `views`: where members put, sized and turned each view (edits.views). The views are laid out
 // there, unturned; turnViews turns them once the edits are on.
-export function partDrawing(part: Part, title: TitleBlock, views?: DrawingEdits["views"], image?: string): Drawing {
+// `extras`: views added with Add view (extra.ts), placed where `views` puts them.
+export function partDrawing(part: Part, title: TitleBlock, views?: DrawingEdits["views"], extras: ExtraView[] = [], image?: string): Drawing {
   let placed: Placed[];
   const at = (list: Placed[]) =>
     list.map((p): Placed => {
@@ -308,11 +310,26 @@ export function partDrawing(part: Part, title: TitleBlock, views?: DrawingEdits[
     stock = `Ø${fmt(part.od)}${part.id ? `×${fmt((part.od - part.id) / 2)}` : ""} tube, ${fmt(part.length)} long`;
   }
 
+  // Added views: where they were put, else in the middle at the main view's scale.
+  placed = [
+    ...placed,
+    ...at(
+      extras.map((x) => ({
+        key: x.key,
+        view: x.view,
+        s: placed[0].s,
+        x: (AREA.x0 + AREA.x1) / 2 - (x.view.w * placed[0].s) / 2,
+        y: (AREA.y0 + AREA.y1) / 2 - (x.view.h * placed[0].s) / 2,
+        ...(x.href ? { href: x.href } : {}),
+      })),
+    ),
+  ];
+
   return {
     kind: part.kind,
     sheet: SHEET,
     lines: placed.flatMap(viewLines),
-    views: placed.map((p): PlacedView => ({ key: p.key, x: p.x, y: p.y, s: p.s, w: p.view.w, h: p.view.h, ...(p.r ? { r: p.r } : {}) })),
+    views: placed.map((p): PlacedView => ({ key: p.key, x: p.x, y: p.y, s: p.s, w: p.view.w, h: p.view.h, ...(p.r ? { r: p.r } : {}), ...(p.href ? { href: p.href } : {}) })),
     holes: placed.flatMap((p) => p.view.holes.map((h) => ({ id: h.faceId, view: p.key, at: toSheet(p, h.at), r: (h.d / 2) * p.s, d: h.d }))),
     ...snapsOf(placed),
     dims,

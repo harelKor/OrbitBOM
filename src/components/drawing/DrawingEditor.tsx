@@ -11,6 +11,13 @@ import { dimension, drawingSvg, note as noteSvg } from "@/lib/drawing/svg";
 import type { Dim, DimDir, Drawing, Note, PlacedView, Pt } from "@/lib/drawing/types";
 import { Icon } from "@/components/ui/Icon";
 import { ZoomStage } from "./ZoomStage";
+import { AddViewWindow } from "./AddViewWindow";
+import { drawPicture } from "./picture";
+import type { ViewerModel } from "@/components/dashboard/ModelCanvas";
+import type { Body, V3 } from "@/lib/drawing/brep";
+import { unpackBody } from "@/lib/drawing/bodyPack";
+import { extraView, type Extra, type ExtraView } from "@/lib/drawing/extra";
+import { decodeMeshes, type Mesh } from "@/lib/model/mesh";
 import { FitPicker, linkTargets, useFitItems, useOpenFitLink, type FitTarget } from "./fit";
 import { Notice } from "@/components/ui/Notice";
 import { askConfirm } from "@/components/ui/useConfirm";
@@ -193,6 +200,36 @@ function useHistory() {
   return { edits, change, undo, redo, reset, canUndo: past.length > 0, canRedo: future.length > 0, dirty, setDirty };
 }
 
+async function fetchBody(partId: string): Promise<Body> {
+  const res = await fetch(`/api/parts/${partId}/drawing/body`);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error ?? "Couldn't load the part's geometry.");
+  return unpackBody(body);
+}
+async function fetchModel(partId: string): Promise<ViewerModel> {
+  const res = await fetch(`/api/parts/${partId}/model`, { method: "POST" });
+  const body = (await res.json().catch(() => ({}))) as { model?: ViewerModel; error?: string };
+  if (!body.model) throw new Error(body.error ?? `The 3D view failed (${res.status}).`);
+  return body.model;
+}
+async function uploadPicture(partId: string, key: string, blob: Blob): Promise<string> {
+  const res = await fetch(`/api/parts/${partId}/drawing/picture?key=${key}`, { method: "PUT", headers: { "content-type": "image/png" }, body: blob });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error ?? "Couldn't keep the view's picture.");
+  return body.href;
+}
+// The part's own mesh from its 3D model's file (the file the 3D window just loaded).
+async function meshOf(model: ViewerModel): Promise<Mesh> {
+  const k = model.placements[0]?.k ?? "";
+  const partId = k.slice(k.lastIndexOf(":") + 1);
+  const res = await fetch(model.studios[0] ?? "");
+  if (!res.ok || !res.body) throw new Error(`The part's 3D file failed (${res.status}).`);
+  const buf = await new Response(res.body.pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
+  const mesh = decodeMeshes(buf).find((m) => m.partId === partId);
+  if (!mesh) throw new Error("The part isn't in its 3D file.");
+  return mesh;
+}
+
 // The drawing editor (plan/auto-drawings.md): small on purpose. Every automatic note and
 // dimension can be retyped, hidden or moved; members add notes (a fit, a tapped screw, plain
 // words) and dimensions (Onshape-style: points or an edge, or a hole's Ø). Nothing else.
@@ -202,11 +239,18 @@ export function DrawingEditor({
   onClose,
   load = fetchDrawing,
   store,
+  loadBody = fetchBody,
+  loadModel = fetchModel,
+  savePicture = uploadPicture,
 }: {
   partId: string;
   onClose: () => void;
   load?: (partId: string) => Promise<DrawingResponse>;
   store?: (edits: DrawingEdits) => Promise<void>;
+  // Add view's geometry, 3D model and picture upload; /dev/drawing passes stand-ins.
+  loadBody?: (partId: string) => Promise<Body>;
+  loadModel?: (partId: string) => Promise<ViewerModel>;
+  savePicture?: (partId: string, key: string, blob: Blob) => Promise<string>;
 }) {
   const [data, setData] = useState<DrawingResponse | null>(null);
   const h = useHistory();
@@ -231,6 +275,10 @@ export function DrawingEditor({
   const [pointer, setPointer] = useState<Pt | null>(null);
   const [holeMenu, setHoleMenu] = useState<{ hole: Hole; x: number; y: number } | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null); // a double-clicked item: focus its field
+  // Added views as made (from the response, then as they're added); edits.extra says which show.
+  const [extras, setExtras] = useState<ExtraView[]>([]);
+  const [adding, setAdding] = useState<{ model: ViewerModel; body: Body } | null>(null);
+  const [addBusy, setAddBusy] = useState(false);
   useEffect(() => frame.current?.showModal(), []);
   const router = useRouter();
 
@@ -239,6 +287,7 @@ export function DrawingEditor({
     load(partId)
       .then((r) => {
         setData(r);
+        setExtras(r.extraViews ?? []);
         reset(r.edits ?? {});
       })
       .catch((e: Error) => setError(e.message));
@@ -248,7 +297,8 @@ export function DrawingEditor({
   const items = useFitItems();
   const openFitLink = useOpenFitLink();
   // The views where members put them; the edits go on unturned (`flat`), then each view turns.
-  const base = useMemo(() => (data ? partDrawing(data.part, data.title, edits.views) : null), [data, edits.views]);
+  const shownExtras = useMemo(() => extras.filter((x) => edits.extra?.some((e) => e.key === x.key)), [extras, edits.extra]);
+  const base = useMemo(() => (data ? partDrawing(data.part, data.title, edits.views, shownExtras) : null), [data, edits.views, shownExtras]);
   const flat = useMemo(() => (base ? applyEdits(base, edits) : null), [base, edits]);
   const drawing = useMemo(() => (flat ? turnViews(flat) : null), [flat]);
   // Notes linked to a part or item (picked, or matched by name) open its window when clicked.
@@ -571,8 +621,16 @@ export function DrawingEditor({
   }
 
   // Hide an automatic item, delete an added one.
+  const isExtra = (key: string) => !!edits.extra?.some((x) => x.key === key);
   const remove = (it: Item) => {
-    if (it.type === "view") return;
+    // An added view goes (its dimensions and notes with it); the drawing's own views stay.
+    if (it.type === "view") {
+      if (isExtra(it.id)) {
+        change({ ...edits, extra: edits.extra!.filter((x) => x.key !== it.id), views: without(edits.views, it.id) });
+        setSelected(null);
+      }
+      return;
+    }
     if (it.type === "dim" && isAddedDim(it.id)) change({ ...edits, dims: addedDims.filter((x) => x.id !== it.id) });
     else if (it.type === "note" && isAddedNote(it.id)) change({ ...edits, added: added.filter((x) => x.id !== it.id) });
     else change({ ...edits, hidden: [...new Set([...(edits.hidden ?? []), it.id])] });
@@ -591,6 +649,71 @@ export function DrawingEditor({
     change({ ...edits, text: strip(edits.text), shift: strip(edits.shift), moved: strip(edits.moved), arrows: strip(edits.arrows), tips: strip(edits.tips) });
   };
   const edited = (id: string) => [edits.text, edits.shift, edits.moved, edits.arrows, edits.tips].some((m) => m && id in m);
+
+  // Add view: the part's kept geometry and its 3D model, then the window.
+  async function openAddView() {
+    setAddBusy(true);
+    setError(null);
+    try {
+      const [body, model] = await Promise.all([loadBody(partId), loadModel(partId)]);
+      setAdding({ body, model });
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setAddBusy(false);
+    }
+  }
+  // A straight view is made from the geometry; an angled one drawn as a picture and kept.
+  async function addView(dir: V3, right: V3) {
+    if (!adding || !base) return;
+    setAddBusy(true);
+    setError(null);
+    try {
+      const key = `add${Date.now().toString(36)}`;
+      const s = base.views[0]?.s ?? 1;
+      let x: Extra = { key, dir, right };
+      let shown = extraView(adding.body, x);
+      if (!shown) {
+        const pic = await drawPicture(await meshOf(adding.model), adding.body, dir, right, s);
+        const href = await savePicture(partId, key, pic.blob);
+        x = { ...x, pic: { w: pic.w, h: pic.h, rev: data?.rev ?? null } };
+        shown = { key, view: { w: pic.w, h: pic.h, lines: [], holes: [] }, href };
+      }
+      const view = shown;
+      setExtras((list) => [...list, view]);
+      change({ ...edits, extra: [...(edits.extra ?? []), x], views: { ...edits.views, [key]: { cx: base.sheet.w / 2, cy: base.sheet.h / 2 - 10, s } } });
+      setSelected({ id: key, type: "view" });
+      setAdding(null);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setAddBusy(false);
+    }
+  }
+  // Angled views drawn from an older version of the part: drawn again from the same angle.
+  const stalePictures = (edits.extra ?? []).filter((x) => x.pic && data?.rev && x.pic.rev !== data.rev);
+  async function redrawPictures() {
+    if (!base) return;
+    setAddBusy(true);
+    setError(null);
+    try {
+      const [body, model] = await Promise.all([loadBody(partId), loadModel(partId)]);
+      const mesh = await meshOf(model);
+      const redrawn = new Map<string, { x: Extra; view: ExtraView }>();
+      for (const x of stalePictures) {
+        const s = edits.views?.[x.key]?.s ?? base.views[0]?.s ?? 1;
+        const pic = await drawPicture(mesh, body, x.dir, x.right, s);
+        const href = await savePicture(partId, x.key, pic.blob);
+        redrawn.set(x.key, { x: { ...x, pic: { w: pic.w, h: pic.h, rev: data?.rev ?? null } }, view: { key: x.key, view: { w: pic.w, h: pic.h, lines: [], holes: [] }, href } });
+      }
+      setExtras((list) => list.map((v) => redrawn.get(v.key)?.view ?? v));
+      change({ ...edits, extra: (edits.extra ?? []).map((x) => redrawn.get(x.key)?.x ?? x) });
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setAddBusy(false);
+    }
+  }
 
   async function save() {
     setSaving(true);
@@ -746,8 +869,16 @@ export function DrawingEditor({
   const handles = () => {
     if (!selView) return null;
     const k = knob(selView);
+    const corner = viewCorners(selView)[1];
     return (
       <g>
+        {isExtra(selView.key) && (
+          <g className="pointer-events-auto cursor-pointer" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => (e.stopPropagation(), remove({ id: selView.key, type: "view" }))}>
+            <title>Delete this view</title>
+            <circle cx={corner[0] + 3.2} cy={corner[1] - 3.2} r={2} fill="#E11D48" />
+            <path d={`M${corner[0] + 2.3} ${corner[1] - 4.1}l1.8 1.8m0 -1.8l-1.8 1.8`} stroke="#fff" strokeWidth={0.4} strokeLinecap="round" />
+          </g>
+        )}
         <line x1={k.from[0]} y1={k.from[1]} x2={k.at[0]} y2={k.at[1]} stroke="#2563EB" strokeWidth={0.3} />
         <circle cx={k.at[0]} cy={k.at[1]} r={1.4} fill="#fff" stroke="#2563EB" strokeWidth={0.35} />
         {viewCorners(selView).map((c, i) => (
@@ -802,6 +933,14 @@ export function DrawingEditor({
         <ToolButton on={composing || mode.kind === "arrow" || (mode.kind === "text" && !mode.preset)} onClick={() => (setComposing(true), setMode({ kind: "idle" }))} title="Note (N)">
           Note
         </ToolButton>
+        <button className="btn h-8" onClick={openAddView} disabled={!drawing || addBusy || busyMode} title="Add a view of the part from any side">
+          {addBusy && !adding ? "Loading…" : "Add view"}
+        </button>
+        {selected?.type === "view" && isExtra(selected.id) && (
+          <button className="btn h-8 text-rose-500" onClick={() => remove(selected)} title="Delete this added view (Delete)">
+            Delete view
+          </button>
+        )}
         <span className="mx-1 h-5 w-px bg-white/15" />
         <button className="btn h-8 px-2" onClick={h.undo} disabled={!h.canUndo} title="Undo (Ctrl+Z)" aria-label="Undo">
           ↶
@@ -825,6 +964,14 @@ export function DrawingEditor({
       </div>
       {error && <Notice tone="error" className="mb-2">{error}</Notice>}
       {data?.outdated && <Notice tone="warning" className="mb-2">The part changed in Onshape since this drawing was made. Regenerate it to update.</Notice>}
+      {!data?.outdated && stalePictures.length > 0 && (
+        <Notice tone="warning" className="mb-2">
+          {stalePictures.length > 1 ? "Some angled views show" : "An angled view shows"} an older version of the part.{" "}
+          <button className="underline" onClick={redrawPictures} disabled={addBusy}>
+            {addBusy ? "Drawing…" : "Draw again"}
+          </button>
+        </Notice>
+      )}
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
         {drawing ? (
@@ -915,7 +1062,7 @@ export function DrawingEditor({
                     .map((v) => (
                       <div key={v.key} className={`flex items-center gap-2 rounded-md border p-2 text-xs ${selected?.id === v.key ? "border-orange-400/70" : "border-white/10"}`} onClick={() => setSelected({ id: v.key, type: "view" })}>
                         <span className="flex-1 font-medium text-white/70">
-                          {VIEW_LABELS[v.key.replace(/\d+$/, "")] ?? "View"} <span className="tabular-nums text-white/40">{fmt(v.s)}:1{v.r ? ` · ${fmt(v.r)}°` : ""}</span>
+                          {VIEW_LABELS[v.key.replace(/\d+$/, "")] ?? (v.href ? "Angled view" : "Added view")} <span className="tabular-nums text-white/40">{fmt(v.s)}:1{v.r ? ` · ${fmt(v.r)}°` : ""}</span>
                         </span>
                         <button className="btn py-0.5 text-xs" onClick={() => resetView(v.key)} title="Back to where the drawing put it">
                           Reset
@@ -1010,6 +1157,7 @@ export function DrawingEditor({
         </aside>
       </div>
 
+      {adding && <AddViewWindow model={adding.model} busy={addBusy} onAdd={addView} onClose={() => setAdding(null)} />}
       {holeMenu && (
         <HoleMenu
           hole={holeMenu.hole}

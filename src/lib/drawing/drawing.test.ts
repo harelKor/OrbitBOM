@@ -5,6 +5,7 @@ import { type Body, type Face, readBodies, type V3 } from "./brep";
 import { applyEdits, dimAt, dimFrame, dimHit, dimOff, dimRect, dimSpan, linkNotes, maxToolText, measure, noteBox, partDrawing, refToSheet, sheetToRef, turnViews, viewXf } from "./layout";
 import { readPart } from "./read";
 import { packBody, unpackBody } from "./bodyPack";
+import { extraViews, isStraight } from "./extra";
 import { drawingSvg } from "./svg";
 import { drawingSummary } from "./summary";
 
@@ -282,4 +283,21 @@ it("keeps a part's geometry compactly and reads the same drawing back from it", 
     const back = unpackBody(JSON.parse(JSON.stringify(packBody(body))));
     expect(partDrawing(readPart(back)!, { name }).dims.map((d) => d.text)).toEqual(partDrawing(readPart(body)!, { name }).dims.map((d) => d.text));
   }
+});
+
+it("makes added straight views from the kept geometry, measured and snappable", () => {
+  const body = readBodies(fixture("square-tube", "bodydetails"), fixture("square-tube", "tessellatededges"))[0];
+  expect(isStraight([0, 0, 1], [1, 0, 0])).toBe(true);
+  expect(isStraight([1, 1, 1], [1, -1, 0])).toBe(false);
+  const extras = extraViews(body, [
+    { key: "add1", dir: [0, 0, 1], right: [1, 0, 0] },
+    { key: "add2", dir: [1, 1, 1], right: [1, -1, 0], pic: { w: 50, h: 40 } }, // no picture file: left out
+  ]);
+  expect(extras.map((x) => x.key)).toEqual(["add1"]);
+  const d = partDrawing(readPart(body)!, { name: "Tube" }, { add1: { cx: 150, cy: 100, s: 0.5 } }, extras);
+  const v = d.views.find((x) => x.key === "add1")!;
+  expect(v.s).toBe(0.5);
+  expect(v.w).toBeGreaterThan(0);
+  expect(d.snaps.some((s) => s.view === "add1")).toBe(true);
+  expect(d.edges.some((e) => e.view === "add1")).toBe(true);
 });

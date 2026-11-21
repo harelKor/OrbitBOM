@@ -3,6 +3,7 @@
 // landscape page, so no PDF library is needed.
 
 import type { DrawingEdits } from "@/db/schema";
+import type { ExtraView } from "./extra";
 import { applyEdits, partDrawing, turnViews } from "./layout";
 import type { Part } from "./read";
 import { drawingSvg } from "./svg";
@@ -12,7 +13,9 @@ const DPI = 300;
 const PX_PER_MM = DPI / 25.4;
 
 export type FitPart = { id: string; name: string; thumbUrl: string | null };
-export type DrawingResponse = { part: Part; edits: DrawingEdits; title: TitleBlock; outdated: boolean; others: string[]; fitParts: FitPart[] };
+// `extraViews`: the added views made from the kept geometry and pictures (extra.ts); `rev` the
+// drawing's, which an angled view's picture was drawn from.
+export type DrawingResponse = { part: Part; edits: DrawingEdits; title: TitleBlock; outdated: boolean; others: string[]; fitParts: FitPart[]; extraViews?: ExtraView[]; rev?: string | null };
 
 export async function fetchDrawing(partId: string): Promise<DrawingResponse> {
   const res = await fetch(`/api/parts/${partId}/drawing`);
@@ -21,7 +24,7 @@ export async function fetchDrawing(partId: string): Promise<DrawingResponse> {
   return body;
 }
 
-export const drawingFromResponse = (r: DrawingResponse) => turnViews(applyEdits(partDrawing(r.part, r.title, r.edits.views), r.edits));
+export const drawingFromResponse = (r: DrawingResponse) => turnViews(applyEdits(partDrawing(r.part, r.title, r.edits.views, r.extraViews), r.edits));
 
 async function canvasOf(svg: string, w: number, h: number) {
   const img = new Image();
@@ -71,9 +74,22 @@ export function pdfWithJpeg(jpeg: Uint8Array, px: [number, number], pt: [number,
   return new Blob(chunks as BlobPart[], { type: "application/pdf" });
 }
 
+async function dataUrl(href: string): Promise<string> {
+  if (href.startsWith("data:")) return href;
+  const blob = await (await fetch(href)).blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("Couldn't load a view's picture."));
+    reader.readAsDataURL(blob);
+  });
+}
+
 export async function downloadDrawing(partId: string, format: "png" | "pdf") {
   const r = await fetchDrawing(partId);
-  const d = drawingFromResponse(r);
+  const drawn = drawingFromResponse(r);
+  // An SVG painted as an image loads nothing from outside: added views' pictures go in as data.
+  const d = { ...drawn, views: await Promise.all(drawn.views.map(async (v) => (v.href ? { ...v, href: await dataUrl(v.href) } : v))) };
   const canvas = await canvasOf(drawingSvg(d), d.sheet.w, d.sheet.h);
   const blob =
     format === "png"

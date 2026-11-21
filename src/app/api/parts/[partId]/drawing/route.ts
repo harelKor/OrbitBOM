@@ -5,6 +5,10 @@ import { db, schema } from "@/db";
 import { getMember } from "@/lib/auth";
 import { DENIED, hasCapability } from "@/lib/mode";
 import { loadDrawing, makeDrawings } from "@/lib/drawing/make";
+import { loadBody } from "@/lib/drawing/bodyStore";
+import { unpackBody } from "@/lib/drawing/bodyPack";
+import { extraViews as extraViews_, pictureKey } from "@/lib/drawing/extra";
+import { imageUrl } from "@/lib/storage/r2";
 import { OnshapeError } from "@/lib/onshape/client";
 import { isUuid } from "@/lib/uuid";
 import { z } from "zod";
@@ -22,7 +26,15 @@ export async function GET(_: Request, { params }: { params: Promise<{ partId: st
   const loaded = await loadDrawing(partId);
   if (!loaded) return NextResponse.json({ error: "This part has no drawing yet." }, { status: 404 });
   const { drawing, title, others, outdated } = loaded;
-  return NextResponse.json({ part: drawing.part, edits: drawing.edits, title, others, fitParts: await loaded.fitParts(), outdated });
+  // Added views: straight ones made from the kept geometry (one R2 read, only when there are
+  // any), angled ones as their pictures' signed links. No Onshape calls.
+  const extra = drawing.edits.extra ?? [];
+  const [body, hrefs] = await Promise.all([
+    extra.some((x) => !x.pic) ? loadBody(partId).catch(() => null) : null,
+    Promise.all(extra.filter((x) => x.pic).map(async (x) => [x.key, await imageUrl(pictureKey(partId, x.key)).catch(() => null)] as const)),
+  ]);
+  const extraViews = extraViews_(body ? unpackBody(body) : null, extra, Object.fromEntries(hrefs));
+  return NextResponse.json({ part: drawing.part, edits: drawing.edits, title, others, fitParts: await loaded.fitParts(), outdated, extraViews, rev: drawing.rev });
 }
 
 const Pt = z.tuple([z.number(), z.number()]);
@@ -54,6 +66,17 @@ const Edits = z.object({
       }),
     )
     .max(100)
+    .optional(),
+  extra: z
+    .array(
+      z.object({
+        key: z.string().regex(/^add[a-z0-9]{1,16}$/),
+        dir: z.tuple([z.number().finite(), z.number().finite(), z.number().finite()]),
+        right: z.tuple([z.number().finite(), z.number().finite(), z.number().finite()]),
+        pic: z.object({ w: z.number().positive().max(5000), h: z.number().positive().max(5000), rev: z.string().max(100).nullable().optional() }).optional(),
+      }),
+    )
+    .max(20)
     .optional(),
   views: z
     .record(z.string().max(20), z.object({ cx: z.number().finite(), cy: z.number().finite(), s: z.number().positive().max(100), r: z.number().finite().optional() }))

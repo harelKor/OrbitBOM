@@ -256,6 +256,17 @@ function readSquare(body: Body, axis: V3, sides: Face[]): Part {
   };
 }
 
+// A view added in the drawing editor, looking straight down -w with h to the right (one of the
+// view cube's six faces, at any quarter turn): a plate seen face on draws every edge lying flat in
+// the view (as its front view does); anything else the near face's edges and its outline. Holes
+// across the view are drawn, so the Dimension tool, hole notes and Ø leaders work on it.
+export function straightView(body: Body, w: V3, h: V3): View {
+  const holes = cylinders(body).filter((f) => f.concave && f.loops >= 2);
+  const big = planes(body).reduce<Face | undefined>((a, b) => (!a || b.area > a.area ? b : a), undefined);
+  const faceOn = !!big && parallel(big.dir!, w);
+  return view(body, unit(w), unit(h), faceOn ? { flat: true, holes } : { near: true, box: true, holes });
+}
+
 export function readPart(body: Body): Part | null {
   const part = readKind(body);
   return part && { ...part, reader: READER };

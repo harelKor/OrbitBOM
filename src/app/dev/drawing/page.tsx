@@ -4,6 +4,7 @@ import { gunzipSync } from "node:zlib";
 import { notFound } from "next/navigation";
 import { readBodies } from "@/lib/drawing/brep";
 import { readPart } from "@/lib/drawing/read";
+import { packBody } from "@/lib/drawing/bodyPack";
 import { SandboxDrawing } from "./SandboxDrawing";
 
 const KINDS = ["plate", "square-tube", "hex-shaft", "round-tube"] as const;
@@ -14,6 +15,9 @@ export default function DevDrawingPage() {
   if (process.env.NODE_ENV === "production") notFound();
   const dir = join(process.cwd(), "src/lib/drawing/fixtures");
   const fixture = (name: string, kind: string) => JSON.parse(gunzipSync(readFileSync(join(dir, `${name}.${kind}.json.gz`))).toString());
-  const parts = KINDS.map((k) => ({ key: k, part: readPart(readBodies(fixture(k, "bodydetails"), fixture(k, "tessellatededges"))[0])! }));
+  const parts = KINDS.map((k) => {
+    const body = readBodies(fixture(k, "bodydetails"), fixture(k, "tessellatededges"))[0];
+    return { key: k, part: readPart(body)!, body: packBody(body) };
+  });
   return <SandboxDrawing parts={parts} />;
 }

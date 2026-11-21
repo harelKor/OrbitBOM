@@ -95,6 +95,13 @@ export function drawingSvg(d: Drawing, { live = false }: { live?: boolean } = {}
     `<rect x="${MARGIN}" y="${MARGIN}" width="${w - 2 * MARGIN}" height="${h - 2 * MARGIN}" fill="none" stroke="#000" stroke-width="0.7"/>`,
   ];
   if (live) out.push(LIVE_STYLE);
+  // Added angled views: their picture, turned with the view about its centre.
+  for (const v of d.views) {
+    if (!v.href) continue;
+    const [w, h] = [v.w * v.s, v.h * v.s];
+    const turn = v.r ? ` transform="rotate(${n(v.r)} ${n(v.x + w / 2)} ${n(v.y + h / 2)})"` : "";
+    out.push(`<image href="${esc(v.href)}" x="${n(v.x)}" y="${n(v.y)}" width="${n(w)}" height="${n(h)}" preserveAspectRatio="none"${turn}/>`);
+  }
   if (d.image) out.push(`<image href="${esc(d.image.href)}" x="${d.image.x}" y="${d.image.y}" width="${d.image.w}" height="${d.image.h}" preserveAspectRatio="xMidYMid meet"/>`);
   out.push('<g fill="none" stroke-linecap="round" stroke-linejoin="round">');
   for (const l of d.lines) out.push(`<path d="${path(l.pts)}" ${STROKES[l.stroke]}/>`);

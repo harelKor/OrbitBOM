@@ -453,6 +453,11 @@ export type DrawingEdits = {
   // Views moved, resized or turned like pictures in Google Docs (Harel, 2026-11-21), by view
   // key: the centre on the sheet (mm), the scale, and the turn (degrees clockwise).
   views?: Record<string, { cx: number; cy: number; s: number; r?: number }>;
+  // Views added with Add view (src/lib/drawing/extra.ts), each placed through `views`: the camera's
+  // direction (target → camera) and its right, in the Part Studio's axes. Straight ones are made
+  // from the part's kept geometry (measured); angled ones are a picture in R2 (`pic`: its size in
+  // view mm, and the drawing's rev it was drawn from).
+  extra?: { key: string; dir: [number, number, number]; right: [number, number, number]; pic?: { w: number; h: number; rev?: string | null } }[];
 };
 
 export const partDrawings = pgTable("part_drawings", {
