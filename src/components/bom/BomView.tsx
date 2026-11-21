@@ -24,6 +24,10 @@ import type { VersionTags } from "@/lib/versions/tags";
 import { BomProvider, type InventoryName } from "./BomContext";
 import { matchesPills, matchesTopBar } from "./filter";
 import { FilterPills } from "./FilterPills";
+import { GroupCards } from "./GroupCards";
+import { OptionList, Popover } from "./Popover";
+import { useMaterials } from "@/components/shell/MaterialColors";
+import { anySetUp, findGroup, groupParts, matchesType, type PartType } from "@/lib/parts/bomGroups";
 import { KanbanView } from "./KanbanView";
 import { PartCard } from "./PartCard";
 import { PartList, PartListRow } from "./PartListRow";
@@ -46,9 +50,9 @@ function bySystem(parts: CardPart[]): [string, CardPart[]][] {
 
 type View = "card" | "list" | "table" | "kanban";
 const LOOKS = ["card", "list"] as const; // the views every mode has, remembered by this browser
-type Chip = "all" | "cots" | "inhouse" | "review";
+const TYPE_LABELS: Record<PartType, string> = { all: "All", cots: "COTS", inhouse: "In-house", factory: "In Factory" };
 
-// The BOM page body (ref §3): the top bar's search, Material and Process pills, type chips, a Status select,
+// The BOM page body (ref §3): the top bar's search, Material and Process pills, the Type dropdown, a Status select,
 // the Cards / List / Table / Kanban views, and (Edit mode) Bulk edit and Merge. Edits show at once and
 // roll back if the save fails.
 export function BomView({
@@ -156,7 +160,9 @@ export function BomView({
   const saveFor = (id: string) => (changes: PartChanges) => save([id], changes);
 
   const { filters } = useFilters();
-  const [chip, setChip] = useState<Chip>("all");
+  const [type, setType] = useState<PartType>("all");
+  const [reviewOnly, setReviewOnly] = useState(false);
+  const [groupKey, setGroupKey] = useState<string | null>(null);
   const [status, setStatus] = useState("");
   const [chosenMode, setMode] = useState<"bulk" | "merge" | "drawings" | "release" | "suggest" | null>(null);
   // Leaving Edit mode ends Bulk edit and Merge; Release works in both modes.
@@ -168,17 +174,32 @@ export function BomView({
     setSelected(new Set());
   });
 
-  const shown = useMemo(
+  // Every filter but the group cards; the cards are drawn from these parts, so a card counts
+  // what the Type, process and status filters leave and an empty one hides.
+  const filtered = useMemo(
     () =>
       optimistic.filter((p) => {
-        if (chip === "cots" && p.classification !== "cots") return false;
-        if (chip === "inhouse" && p.classification !== "inhouse") return false;
-        if (chip === "review" && !p.review) return false;
+        if (!matchesType(p, type)) return false;
+        if (reviewOnly && !p.review) return false;
         if (status && computeStatus(p) !== status) return false;
         return matchesTopBar(p, filters) && matchesPills(p, filters);
       }),
-    [optimistic, filters, chip, status],
+    [optimistic, filters, type, reviewOnly, status],
   );
+  // The group cards are a system page's (mergeSystemId), grouped by the parts' inventory items.
+  const materials = useMaterials();
+  const groups = useMemo(() => {
+    if (!mergeSystemId) return [];
+    const items = materials.flatMap((g) => g.items.map((i) => ({ id: i.id, name: i.name, category: g.id, raw: g.raw, specs: i.specs })));
+    return groupParts(filtered, items);
+  }, [mergeSystemId, materials, filtered]);
+  const shown = useMemo(() => {
+    // A picked group the other filters emptied (its card is gone) stops filtering.
+    const group = groupKey ? findGroup(groups, groupKey) : undefined;
+    if (!group) return filtered;
+    const ids = new Set(group.parts.map((p) => p.id));
+    return filtered.filter((p) => ids.has(p.id));
+  }, [filtered, groups, groupKey]);
   // Cards and rows drawn so far: the first ones with the page, the rest right after (useProgressive).
   const drawn = useProgressive(shown.length);
 
@@ -283,12 +304,10 @@ export function BomView({
   // A system page's To review chip: the parts whose suggestion waits for approval, each with its
   // ✓ / ✕ (CardSuggest), for whoever can review (Harel, 2026-11-07).
   const toReview = canReview && mergeSystemId ? optimistic.filter((p) => p.review).length : 0;
-  const chips: { id: Chip; label: string }[] = [
-    { id: "all", label: "All" },
-    { id: "cots", label: "COTS" },
-    { id: "inhouse", label: "In-house" },
-    ...(canReview && mergeSystemId ? [{ id: "review" as const, label: `To review ${toReview}` }] : []),
-  ];
+  // All / COTS / In-house / In Factory as one dropdown, with each type's count (Harel, 2026-11-21).
+  const typeCount = (t: PartType) => optimistic.filter((p) => matchesType(p, t)).length;
+  const chipClass = (on: boolean) =>
+    `press rounded-full border px-3 py-1 text-xs font-medium ${on ? "border-accent bg-accent text-white hover:text-white" : "border-line-strong text-fg-2 hover:border-accent/50 hover:bg-raised hover:text-fg"}`;
 
   return (
     <BomProvider value={{ inventory, isAdmin, robotId, versions }}>
@@ -303,18 +322,32 @@ export function BomView({
             : ""
         }`}
       >
-        <div className="flex flex-wrap gap-1.5">
-          {chips.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => setChip(c.id)}
-              className={`press rounded-full border px-3 py-1 text-xs font-medium ${
-                chip === c.id ? "border-accent bg-accent text-white" : "border-line-strong text-fg-2 hover:border-accent/50 hover:bg-raised hover:text-fg"
-              }`}
-            >
-              {c.label}
+        <div className="flex gap-1.5">
+          <Popover
+            triggerClassName={chipClass(type !== "all")}
+            trigger={
+              <span className="tabular-nums">
+                Type: {TYPE_LABELS[type]} <span className="opacity-70">{typeCount(type)}</span>
+              </span>
+            }
+          >
+            {(close) => (
+              <OptionList
+                options={(Object.keys(TYPE_LABELS) as PartType[]).map((t) => ({ value: t, label: TYPE_LABELS[t], hint: String(typeCount(t)) }))}
+                value={type}
+                placeholder="Search types…"
+                onPick={(v) => {
+                  setType((v as PartType | null) ?? "all");
+                  close();
+                }}
+              />
+            )}
+          </Popover>
+          {canReview && mergeSystemId && (
+            <button onClick={() => setReviewOnly((r) => !r)} className={chipClass(reviewOnly)}>
+              To review <span className="tabular-nums">{toReview}</span>
             </button>
-          ))}
+          )}
         </div>
           <FilterPills parts={optimisticParts} />
           <select value={status} onChange={(e) => setStatus(e.target.value)} className="input w-auto rounded-full py-1 text-xs" aria-label="Status">
@@ -364,6 +397,7 @@ export function BomView({
           </div>
       </div>
 
+      {(groupKey || anySetUp(groups)) && <GroupCards groups={groups} picked={groupKey} onPick={setGroupKey} />}
 
       <div className="text-xs text-subtle tabular-nums">
         {shown.length === optimistic.length ? `${optimistic.length} parts` : `${shown.length} of ${optimistic.length} parts`}

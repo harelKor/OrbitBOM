@@ -232,6 +232,11 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
   `useBoxSelect` (`src/components/ui/useBoxSelect.ts`): long press then drag, or a mouse drag;
   rows carry `[id^=part-]`, `[data-item]` or `[data-box-key]`. 3D: `picking.ts` (hold then drag on
   touch; `onBox` on `ModelCanvas` for Bulk edit).
+- System page group cards (2026-11-21): `src/lib/parts/bomGroups.ts` sorts a system's parts into
+  Bearings / Gears / Belts / Screws (by thread when big) / COTS / 3D prints / Shafts / Tubes / Box
+  tubes / one per sheet (by material when > 3) / Not set up, and holds the Type dropdown's
+  `matchesType` (All, COTS, In-house, In Factory); UI `src/components/bom/GroupCards.tsx`, sandbox
+  `/dev/bom-groups`.
 - Files: `src/lib/storage/r2.ts`; backups and restore: `src/lib/storage/backup.ts`, `restore.ts`.
 - Work the user needn't wait for: `afterResponse` (`src/lib/later.ts`).
 - Installed app / offline (2026-11-13): `public/sw.js` (plain JS, production only, registered by
