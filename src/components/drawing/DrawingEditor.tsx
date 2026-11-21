@@ -48,7 +48,9 @@ type Mode =
 type Drag = { item: Item; part: Part; off: Pt; pointer: number; moved: boolean; before: DrawingEdits; scale?: { o: Pt; diag: Pt; s: number } };
 type Hit = Item & { part: Part; corner?: number };
 
-const HANDLE = 2.6; // sheet mm around a view's corner or turn handle that grabs it
+// Sheet mm around a view's corner or turn handle that grabs it: more on a phone, where the whole
+// sheet is a few hundred pixels wide.
+const HANDLE = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches ? 7 : 2.6;
 // The turn handle: on a short stick above the middle of the view's top edge, as in Google Docs.
 const knob = (v: PlacedView): { from: Pt; at: Pt } => {
   const xf = viewXf(v);
@@ -767,7 +769,7 @@ export function DrawingEditor({
       if (h.dirty && !saving) void save();
       return;
     }
-    if (typing) return;
+    if (typing || adding) return; // Add view's window has its own keys
     if (mod && e.key.toLowerCase() === "z") {
       e.preventDefault();
       if (e.shiftKey) h.redo();
