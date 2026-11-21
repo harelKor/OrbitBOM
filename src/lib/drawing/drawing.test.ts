@@ -4,6 +4,7 @@ import { expect, it } from "vitest";
 import { type Body, type Face, readBodies, type V3 } from "./brep";
 import { applyEdits, dimAt, dimFrame, dimHit, dimOff, dimRect, dimSpan, linkNotes, maxToolText, measure, noteBox, partDrawing, refToSheet, sheetToRef, turnViews, viewXf } from "./layout";
 import { readPart } from "./read";
+import { packBody, unpackBody } from "./bodyPack";
 import { drawingSvg } from "./svg";
 import { drawingSummary } from "./summary";
 
@@ -273,4 +274,12 @@ it("moves, scales and turns a view with its dimensions, notes and points", () =>
   const back = sheetToRef(d, refToSheet(d, ref)!, { view: "end" })!;
   expect(back.p.map(round)).toEqual(ref.p.map(round));
   expect(drawingSvg(d)).toContain("<svg");
+});
+
+it("keeps a part's geometry compactly and reads the same drawing back from it", () => {
+  for (const name of ["plate", "square-tube"]) {
+    const body = readBodies(fixture(name, "bodydetails"), fixture(name, "tessellatededges"))[0];
+    const back = unpackBody(JSON.parse(JSON.stringify(packBody(body))));
+    expect(partDrawing(readPart(back)!, { name }).dims.map((d) => d.text)).toEqual(partDrawing(readPart(body)!, { name }).dims.map((d) => d.text));
+  }
 });

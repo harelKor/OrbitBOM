@@ -8,8 +8,9 @@ import { parseOnshapeUrl } from "@/lib/onshape/url";
 import { versionLabel } from "@/lib/versions/label";
 import { thumbKey } from "@/lib/onshape/thumbnails";
 import { imageUrl } from "@/lib/storage/r2";
-import { type BodyDetails, readBodies, type TessellatedEdges } from "./brep";
+import { type Body, type BodyDetails, readBodies, type TessellatedEdges } from "./brep";
 import { READER, readPart } from "./read";
+import { saveBody } from "./bodyStore";
 import type { TitleBlock } from "./types";
 
 const { parts, systems, partDrawings } = schema;
@@ -67,12 +68,19 @@ export async function makeDrawings(systemId: string, partIds: string[], memberId
     let bodies = await fetchBodies(true);
     if (wanted.some((id) => !bodies.some((b) => b.id === id && b.faces.length && b.edges.length))) bodies = await fetchBodies(false);
     const rowsToSave: (typeof partDrawings.$inferInsert)[] = [];
+    const kept: [string, Body][] = [];
     for (const r of group) {
       const body = bodies.find((b) => b.id === r.part.onshapePartId);
       const read = body && readPart(body);
       if (!read) summary.skipped.push({ id: r.part.id, reason: body ? "Not a plate, tube or shaft" : "Not found in its Part Studio" });
-      else rowsToSave.push({ partId: r.part.id, rev: r.part.thumbnailRev, part: read, updatedBy: memberId, updatedAt: new Date() });
+      else {
+        rowsToSave.push({ partId: r.part.id, rev: r.part.thumbnailRev, part: read, updatedBy: memberId, updatedAt: new Date() });
+        kept.push([r.part.id, body]);
+      }
     }
+    // The geometry goes to R2 beside the drawing, so the editor's added views need no Onshape call.
+    // A failed upload only means Add view asks for a Regenerate.
+    await Promise.all(kept.map(([id, body]) => saveBody(id, body).catch((err) => console.error("Drawing body upload failed", id, err))));
     if (rowsToSave.length) {
       // One write for the studio's parts; edits already saved are left as they are.
       await db
