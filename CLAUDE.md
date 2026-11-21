@@ -38,7 +38,7 @@ last full audit and what's still open: `plan/audit-2026-11-14.md` §0.
   sheet one), not `DEFAULT_CATEGORIES`: a test needing a category creates it.
 - Schema: edit `src/db/schema.ts`, `npm run db:generate`, rename the file to a readable name
   (and its `tag` in `drizzle/meta/_journal.json`), add `ALTER TABLE "x" ENABLE ROW LEVEL SECURITY;`
-  for a new table, commit. Next migration: 0107. Migrations reach production before the code and
+  for a new table, commit. Next migration: 0108. Migrations reach production before the code and
   a rollback runs old code on the new schema, so expand → contract: add columns/tables in one
   push; drop or rename one only in a later push, once no deployed code reads it.
 - Local site: README "Local development" (local Supabase in Docker, "Dev sign-in" button; Onshape
@@ -237,6 +237,10 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
   tubes / one per sheet (by material when > 3) / Not set up, and holds the Type dropdown's
   `matchesType` (All, COTS, In-house, In Factory); UI `src/components/bom/GroupCards.tsx`, sandbox
   `/dev/bom-groups`.
+- Insert (2026-11-21, like FRCDesignLib): the Onshape panel's `/onshape/panel/insert` (From robot
+  3D view, From shelf, Inserted here) puts parts into the open Part Studio (one Derived feature per
+  source Part Studio and version) or assembly (instances), always at an Onshape version
+  (`src/lib/onshape/insert.ts`, actions `panel/insert-actions.ts`, table `onshape_inserts`).
 - Files: `src/lib/storage/r2.ts`; backups and restore: `src/lib/storage/backup.ts`, `restore.ts`.
 - Work the user needn't wait for: `afterResponse` (`src/lib/later.ts`).
 - Installed app / offline (2026-11-13): `public/sw.js` (plain JS, production only, registered by
