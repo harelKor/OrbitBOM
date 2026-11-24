@@ -89,12 +89,12 @@ describe("the amount to order", () => {
 
 describe("stock sizes in order names", () => {
   it("names a plate's sheet and a tube's length", () => {
-    expect(stockSize({ category: "aluminum-plates", specs: { size: "900x500" }, name: "10 mm Aluminum plate" })).toBe("500×900");
+    expect(stockSize({ category: "aluminum-plates", specs: { size: "500x900" }, name: "10 mm Aluminum plate" })).toBe("900×500");
     expect(stockSize({ category: "square-tubes", specs: { length: "1000" }, name: "25x25x1.5 box tube" })).toBe("1000 long");
     expect(stockSize({ category: "square-tubes", specs: {}, name: "40x20 box tube" })).toBeNull();
     expect(stockSize({ category: "bearings", specs: { size: "500x900" }, name: "x" })).toBeNull();
-    expect(withStockSize("10 mm Aluminum plate", "500×900")).toBe("10 mm Aluminum plate · 500×900");
-    expect(withStockSize("Aluminum plate 500x900", "500×900")).toBe("Aluminum plate 500x900");
+    expect(withStockSize("10 mm Aluminum plate", "900×500")).toBe("10 mm Aluminum plate · 900×500");
+    expect(withStockSize("Aluminum plate 500x900", "900×500")).toBe("Aluminum plate 500x900");
   });
   it("copies a cart as a plain list", () => {
     expect(copyListText("Plates", [{ name: "10 mm Aluminum plate · 500×900", amount: 2 }])).toBe("Plates\n2 × 10 mm Aluminum plate · 500×900");

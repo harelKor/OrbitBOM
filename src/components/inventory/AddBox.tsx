@@ -11,7 +11,8 @@ import { Icon } from "@/components/ui/Icon";
 import { peekProps, usePeek } from "@/components/ui/longPress";
 import { usePhone } from "@/components/ui/usePhone";
 import { guessCategory } from "@/config/inventory";
-import { buildName, getCategory } from "@/lib/inventory/categories";
+import { buildName, getCategory, sizeOrderProblem } from "@/lib/inventory/categories";
+import { showProblem } from "@/components/ui/useConfirm";
 import type { Offer, ProductGroup } from "@/lib/inventory/productGroups";
 import { parseQuick } from "@/lib/inventory/quick";
 import { formatStock, parseStock } from "@/lib/inventory/stock";
@@ -112,7 +113,7 @@ export function AddBox({
   const quickName = quickCat && quick && Object.keys(quick.specs).length ? buildName(quickCat, quick.specs) : "";
   const quickWhole = !!quickName && quick!.left.length === 0;
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const onShelf = query && !link ? items.filter((i) => words.every((w) => `${i.name} ${Object.values(i.specs).join(" ")}`.toLowerCase().includes(w))).slice(0, 4) : [];
+  const onShelf = query && !link ? items.filter((i) => words.every((w) => `${i.name} ${Object.values(i.specs).join(" ")}`.toLowerCase().includes(w))).slice(0, 40) : [];
 
   // Stores are asked only after a pause in typing, never while the page renders. A search still
   // running is dropped when the typing changes or an item is added.
@@ -184,6 +185,9 @@ export function AddBox({
   // Adding is instant: the results close, the box clears and the item shows at the top of the list
   // with its glow while it saves; a failed save puts the form back with the error.
   const add = (input: ItemInput, draft: Draft, retry: Draft | null) => {
+    // Raw Stock sizes go X then Y, Y no bigger (Harel, 2026-11-24): a popup says so, nothing saves.
+    const sizeProblem = sizeOrderProblem(getCategory(categories, input.category ?? null), input.specs ?? {});
+    if (sizeProblem) return void showProblem("Y can't be bigger than X", sizeProblem);
     stopSearch();
     setReadError(null);
     setDraft(null);
@@ -299,11 +303,17 @@ export function AddBox({
         </div>
       )}
 
-      {onShelf.length > 0 && (
-        <Section title={onPick ? "On the shelf · click to link" : "Already on the shelf"}>
-          {onShelf.map((i) => (
-            <Row key={i.id} onClick={() => (onPick ? onPick(i.id) : openItem(i.id, i))} img={i.thumbUrl} icon="box" title={i.name} detail={`${formatStock(i.inStock, i.sheet)} ${i.sheet ? "sheets" : "in stock"}`} />
-          ))}
+      {/* A fixed height that scrolls inside (Harel, 2026-11-24): however many shelf items match as
+          you type, the products below stay where they are. */}
+      {query && !link && (
+        <Section title={onPick ? "On the shelf · click to link" : "Already on the shelf"} bodyClassName="h-52 overflow-y-auto overscroll-contain rounded-xl border border-line">
+          {onShelf.length ? (
+            onShelf.map((i) => (
+              <Row key={i.id} onClick={() => (onPick ? onPick(i.id) : openItem(i.id, i))} img={i.thumbUrl} icon="box" title={i.name} detail={`${formatStock(i.inStock, i.sheet)} ${i.sheet ? "sheets" : "in stock"}`} />
+            ))
+          ) : (
+            <p className="px-2 py-3 text-xs text-muted">Nothing on the shelf matches.</p>
+          )}
         </Section>
       )}
 
@@ -594,11 +604,11 @@ export function haloItem(el: Element) {
 
 export const bestOffer = (g: ProductGroup) => g.offers.filter((o) => o.price != null).sort((a, b) => a.price! - b.price!)[0] ?? g.offers[0];
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children, bodyClassName = "" }: { title: string; children: React.ReactNode; bodyClassName?: string }) {
   return (
     <div>
       <div className="px-2 pb-1 text-[0.6875rem] font-semibold tracking-wide text-subtle uppercase">{title}</div>
-      <div className="space-y-0.5">{children}</div>
+      <div className={`space-y-0.5 ${bodyClassName}`}>{children}</div>
     </div>
   );
 }

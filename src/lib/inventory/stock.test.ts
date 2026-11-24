@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatStock, formatStockExact, parseStock, snapStock } from "./stock";
-import { applyPieceOp, canTakePiece, fractionText, parseSize, pieceBase, pieceLabel, stepStock } from "./stock";
+import { applyPieceOp, canTakePiece, fractionText, parseSize, pieceBase, pieceLabel, pieceRows, sortedRows, stepStock } from "./stock";
 
 it("keeps sheets in twelfths and counts in whole units", () => {
   expect(snapStock(1 / 3 + 2 / 3, true)).toBe(1);
@@ -58,5 +58,23 @@ describe("pieces", () => {
     expect(pieceLabel("f6", pieceBase({}, "Ø25mm 2mm wall Round Tube"))).toEqual({ primary: "½", sub: "" });
     expect(parseSize("500 x 450", pieceBase({ size: "500x900" }))).toBe("p500x450");
     expect(parseSize("450", pieceBase({ length: "900" }))).toBe("m450");
+  });
+});
+
+// Harel, 2026-11-24: length stock's quick lengths are ¼, ½, ¾ and all of its Length, else of 2000 mm.
+describe("length stock's quick lengths", () => {
+  const lengths = (specs: Record<string, string>, name: string, category: string) => {
+    const base = pieceBase(specs, name, category);
+    return sortedRows(pieceRows(0, {}, base), base).map((r) => pieceLabel(r.size, base).primary);
+  };
+  it("splits the typed length in quarters", () => {
+    expect(lengths({ length: "1200" }, "25x25 box tube", "square-tubes")).toEqual(["1200mm", "900mm", "600mm", "300mm"]);
+    expect(lengths({ length: "2000" }, '1/2" hex shaft', "shafts")).toEqual(["2000mm", "1500mm", "1000mm", "500mm"]);
+  });
+  it("uses 2000 mm with no length, without filling it in", () => {
+    const specs = {};
+    expect(lengths(specs, "25x25 box tube", "square-tubes")).toEqual(["2000mm", "1500mm", "1000mm", "500mm"]);
+    expect(specs).toEqual({});
+    expect(pieceBase({}, "PLA filament", "filament")).toEqual({ kind: "none" });
   });
 });

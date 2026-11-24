@@ -36,7 +36,7 @@ export async function editPieces(tx: Tx, itemId: string, op: PieceOp, ctx: MoveC
 async function changeStock(
   tx: Tx,
   itemId: string,
-  next: (item: { inStock: number; sheet: boolean; pieces: StoredPieces; specs: Record<string, string>; name: string }) => { inStock: number; pieces?: PieceRow[] },
+  next: (item: { inStock: number; sheet: boolean; pieces: StoredPieces; specs: Record<string, string>; name: string; category?: string | null }) => { inStock: number; pieces?: PieceRow[] },
   reason: StockReason,
   partId: string | null,
   ctx: MoveCtx,
@@ -47,7 +47,7 @@ async function changeStock(
   const cats = ctx.cats ?? (await listCategories(tx));
   const cat = getCategory(cats, categoryOf(item, cats));
   const sheet = !!cat?.sheet;
-  const after = next({ inStock: item.inStock, sheet, pieces: item.pieces, specs: item.specs, name: item.name });
+  const after = next({ inStock: item.inStock, sheet, pieces: item.pieces, specs: item.specs, name: item.name, category: cat?.id });
   // A fraction item's stock is its pieces' sum (a custom size can be any share), so it isn't snapped.
   const to = sheet ? Math.max(0, after.inStock) : snapStock(after.inStock, sheet);
   if (item.station) await fitDevices(tx, item.id, to, deviceId, item.station);

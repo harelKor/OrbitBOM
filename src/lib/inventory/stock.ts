@@ -72,6 +72,13 @@ export type StoredPieces = PieceRow[] | Record<string, number> | null | undefine
 export type PieceBase = { kind: "mm"; length: number } | { kind: "xy"; x: number; y: number } | { kind: "none" };
 
 export const PRESET_TWELFTHS = [12, 9, 8, 6, 4, 3];
+// Length stock's quick lengths (Harel, 2026-11-24): ¼, ½, ¾ and all of the full piece.
+const LENGTH_TWELFTHS = [12, 9, 6, 3];
+// Tubes, box tubes and shafts: stock bought by length. With no Length typed (nor one in the name)
+// their full piece counts as 2000 mm, so the quick lengths are 500 / 1000 / 1500 / 2000; the
+// spec itself stays empty (nothing fills the length in).
+export const LENGTH_STOCK = new Set(["square-tubes", "round-tubes", "shafts"]);
+const DEFAULT_LENGTH = 2000;
 export const SIZE_KEY = /^(f\d{1,3}|m\d{1,5}|p\d{1,5}x\d{1,5})$/;
 const EPS = 1e-3;
 
@@ -85,8 +92,9 @@ const num = (text: string | undefined) => {
 const SIZE_RE = /(\d+(?:\.\d+)?)\s*[x×*]\s*(\d+(?:\.\d+)?)/i;
 
 // The full piece from the item's specs or name: its Length spec, else a sheet size (both sides at
-// least 100mm, so a tube's "40x20" cross-section doesn't count), else a length in the name.
-export function pieceBase(specs: Record<string, string>, name = ""): PieceBase {
+// least 100mm, so a tube's "40x20" cross-section doesn't count), else a length in the name, else
+// for length stock (`category`) 2000 mm.
+export function pieceBase(specs: Record<string, string>, name = "", category?: string | null): PieceBase {
   const length = num(specs.length);
   if (length) return { kind: "mm", length };
   const s = SIZE_RE.exec(specs.size ?? "") ?? SIZE_RE.exec(name);
@@ -96,7 +104,8 @@ export function pieceBase(specs: Record<string, string>, name = ""): PieceBase {
   }
   // "… 900mm" in the name, but not a diameter, a wall or a cross-section like "40x20mm".
   const hits = [...name.matchAll(/(?<![Ø\d.x×]\s*)(\d+(?:\.\d+)?)\s*mm(?!\s*wall)/gi)].map((m) => Number(m[1])).filter((n) => n >= 100);
-  return hits.length ? { kind: "mm", length: hits.at(-1)! } : { kind: "none" };
+  if (hits.length) return { kind: "mm", length: hits.at(-1)! };
+  return category && LENGTH_STOCK.has(category) ? { kind: "mm", length: DEFAULT_LENGTH } : { kind: "none" };
 }
 
 // A size's share of a full piece. A length or plate the base can't measure counts as one.
@@ -137,7 +146,7 @@ export function pieceLabel(size: string, base: PieceBase): { primary: string; su
 
 const sumRows = (rows: PieceRow[], base: PieceBase) => Math.round(rows.reduce((t, r) => t + r.count * pieceRatio(r.size, base), 0) * 1e4) / 1e4;
 
-function readRows(stored: StoredPieces): PieceRow[] {
+function readRows(stored: StoredPieces, base?: PieceBase): PieceRow[] {
   const rows: PieceRow[] = [];
   const put = (size: string, count: number) => {
     if (!SIZE_KEY.test(size) || !(Number(size.slice(1).split("x")[0]) > 0)) return;
@@ -149,7 +158,7 @@ function readRows(stored: StoredPieces): PieceRow[] {
   if (Array.isArray(stored)) stored.forEach((r) => r && typeof r.size === "string" && put(r.size, r.count));
   else {
     // Nothing yet, or the first { twelfths: count } map: the presets, with what was counted.
-    PRESET_TWELFTHS.forEach((t) => put(`f${t}`, 0));
+    (base?.kind === "mm" ? LENGTH_TWELFTHS : PRESET_TWELFTHS).forEach((t) => put(`f${t}`, 0));
     for (const [k, n] of Object.entries(stored ?? {})) if (/^\d+$/.test(k)) put(`f${k}`, n);
   }
   return rows;
@@ -208,7 +217,7 @@ function takeAmount(rows: PieceRow[], amount: number, base: PieceBase) {
 
 // The rows, made to add up to the stock (older items, a typed count, a move from elsewhere).
 export function pieceRows(inStock: number, stored: StoredPieces, base: PieceBase): PieceRow[] {
-  const rows = readRows(stored);
+  const rows = readRows(stored, base);
   const diff = Math.max(0, inStock) - sumRows(rows, base);
   if (diff > EPS) addAmount(rows, diff, base);
   if (diff < -EPS) takeAmount(rows, -diff, base);
@@ -220,7 +229,7 @@ export function sortedRows(rows: PieceRow[], base: PieceBase): PieceRow[] {
   return [...rows].sort((a, b) => pieceRatio(b.size, base) - pieceRatio(a.size, base));
 }
 
-type Stocked = { inStock: number; sheet: boolean; pieces?: StoredPieces; specs: Record<string, string>; name: string };
+type Stocked = { inStock: number; sheet: boolean; pieces?: StoredPieces; specs: Record<string, string>; name: string; category?: string | null };
 type Result = { inStock: number; pieces?: PieceRow[] };
 const done = (rows: PieceRow[], base: PieceBase): { inStock: number; pieces: PieceRow[] } => ({ inStock: sumRows(rows, base), pieces: rows });
 
@@ -229,7 +238,7 @@ const done = (rows: PieceRow[], base: PieceBase): { inStock: number; pieces: Pie
 // takes a full piece (no full left: the biggest). Any other amount adds full pieces or takes material.
 export function stepStock(item: Stocked, delta: number, size?: string): Result {
   if (!item.sheet) return { inStock: snapStock(item.inStock + delta, false) };
-  const base = pieceBase(item.specs, item.name);
+  const base = pieceBase(item.specs, item.name, item.category);
   const rows = pieceRows(item.inStock, item.pieces, base);
   if (size || Math.abs(delta) === 1) {
     const row = size ? (rows.find((r) => r.size === size) ?? rowFor(rows, pieceRatio(size, base), base)) : rowFor(rows, 1, base);
@@ -251,7 +260,7 @@ function canTake(rows: PieceRow[], size: string, base: PieceBase) {
 
 // Can one piece of this size come off the shelf: one there, or a bigger one to cut it from.
 export function canTakePiece(item: Stocked, size: string): boolean {
-  const base = pieceBase(item.specs, item.name);
+  const base = pieceBase(item.specs, item.name, item.category);
   return canTake(pieceRows(item.inStock, item.pieces, base), size, base);
 }
 
@@ -259,7 +268,7 @@ export function canTakePiece(item: Stocked, size: string): boolean {
 export function countPieces(item: Stocked, amount: number): Result {
   const inStock = snapStock(amount, item.sheet);
   if (!item.sheet) return { inStock };
-  const base = pieceBase(item.specs, item.name);
+  const base = pieceBase(item.specs, item.name, item.category);
   return done(pieceRows(inStock, pieceRows(item.inStock, item.pieces, base), base), base);
 }
 
@@ -272,7 +281,7 @@ export type PieceOp =
   | { kind: "add"; size: string };
 
 export function applyPieceOp(item: Stocked, op: PieceOp): Result {
-  const base = pieceBase(item.specs, item.name);
+  const base = pieceBase(item.specs, item.name, item.category);
   let rows = pieceRows(item.inStock, item.pieces, base);
   const row = rows.find((r) => r.size === op.size);
   if (op.kind === "count") {

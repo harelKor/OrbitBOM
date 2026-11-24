@@ -406,11 +406,11 @@ export function CountBox({ item, onCount, big = false }: { item: Pick<Item, "inS
 
 // A fraction item's pieces: every size it has (presets and custom ones) with how many are on the
 // shelf, − takes one, + adds one; a new length or plate size adds one piece of it.
-export function PieceStepper({ item, onStep }: { item: Pick<Item, "inStock" | "pieces" | "specs" | "name">; onStep: (delta: number, size?: string) => void }) {
+export function PieceStepper({ item, onStep }: { item: Pick<Item, "inStock" | "pieces" | "specs" | "name" | "category">; onStep: (delta: number, size?: string) => void }) {
   const work = useCan("work");
   if (!work) return null;
   const stocked = { ...item, sheet: true };
-  const base = pieceBase(item.specs, item.name);
+  const base = pieceBase(item.specs, item.name, item.category);
   const rows = sortedRows(pieceRows(item.inStock, item.pieces, base), base);
   return (
     <Popover

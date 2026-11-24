@@ -123,7 +123,8 @@ const SIZED = new Set(["aluminum-plates", "polycarbonate", "wood-composites", "s
 const SIZE_RE = /(\d+(?:\.\d+)?)\s*[x×*]\s*(\d+(?:\.\d+)?)/i;
 const LENGTH_RE = /(\d+(?:\.\d+)?)/;
 
-// A raw-stock item's piece size: "500×900" for a plate, "1000 long" for a tube or shaft.
+// A raw-stock item's piece size: "900×500" for a plate (X then Y, the bigger side first, as
+// Inventory writes sizes since 2026-11-24), "1000 long" for a tube or shaft.
 export function stockSize(item: { category: string; specs: Record<string, string>; name: string } | null | undefined): string | null {
   if (!item || !SIZED.has(item.category)) return null;
   const length = LENGTH_RE.exec(item.specs.length ?? "");
@@ -131,18 +132,20 @@ export function stockSize(item: { category: string; specs: Record<string, string
   const s = SIZE_RE.exec(item.specs.size ?? "") ?? SIZE_RE.exec(item.name);
   // A plate's sheet: both sides at least 100 mm, so a tube's "40x20" isn't taken for one.
   if (s && Number(s[1]) >= 100 && Number(s[2]) >= 100) {
-    const [x, y] = [Number(s[1]), Number(s[2])].sort((a, b) => a - b);
+    const [x, y] = [Number(s[1]), Number(s[2])].sort((a, b) => b - a);
     return `${x}×${y}`;
   }
   return null;
 }
 
 // An order line's name with its stock size, on the order pages only: "10 mm Aluminum plate ·
-// 500×900". A name that already says the size stays as it is.
+// 900×500". A name that already says the size (either way round) stays as it is.
 export function withStockSize(title: string, size: string | null): string {
   if (!size) return title;
   const flat = (t: string) => t.toLowerCase().replace(/[x×*]/g, "x").replace(/\s+/g, "");
-  return flat(title).includes(flat(size.replace(" long", ""))) ? title : `${title} · ${size}`;
+  const bare = size.replace(" long", "");
+  const turned = bare.split("×").reverse().join("×");
+  return flat(title).includes(flat(bare)) || flat(title).includes(flat(turned)) ? title : `${title} · ${size}`;
 }
 
 // Copy list (a cart of parts with no product link): a plain list to paste into WhatsApp or email.

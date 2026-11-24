@@ -222,3 +222,24 @@ export const slugify = (s: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 40) || "category";
+
+// Raw Stock sizes go X then Y with Y no bigger than X (Harel, 2026-11-24), so 50×20 and 20×50
+// never become two items for the same stock: a size field's "50x20" (box tubes, plates), and an
+// X / Y pair of fields (blocks, or any Raw Stock category given both in Settings). Null when fine.
+const XY = /(\d+(?:\.\d+)?)\s*[x×*]\s*(\d+(?:\.\d+)?)/i;
+const isAxis = (axis: "x" | "y") => (f: CategoryField) => f.id === axis || new RegExp(`^${axis}\b`, "i").test(f.label.trim());
+export function sizeOrderProblem(cat: Pick<InvCategory, "group" | "fields"> | undefined, specs: Record<string, string>): string | null {
+  if (!cat || cat.group !== "consumables") return null;
+  const x = cat.fields.find(isAxis("x"));
+  const y = cat.fields.find(isAxis("y"));
+  if (x && y) {
+    const [a, b] = [parseFloat(specs[x.id] ?? ""), parseFloat(specs[y.id] ?? "")];
+    if (a > 0 && b > a) return `Y (${b}) can't be bigger than X (${a}). Put the bigger side in X: X ${b}, Y ${a}.`;
+  }
+  for (const f of cat.fields) {
+    if (f.kind !== "text" || f === x || f === y) continue;
+    const m = XY.exec(specs[f.id] ?? "");
+    if (m && Number(m[2]) > Number(m[1])) return `${f.label}: ${m[1]}×${m[2]} has Y bigger than X. Write the bigger side first: ${m[2]}×${m[1]}.`;
+  }
+  return null;
+}

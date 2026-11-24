@@ -119,7 +119,7 @@ function autoStock(row: RawPartRow): { key: string; title: string; kind: StockKi
 
 // The item's kind: a sheet size or a length on it, else what its category's name says.
 function itemKind(item: RawItemRow, cat: InvCategory | undefined): StockKind {
-  const base = pieceBase(item.specs, item.name);
+  const base = pieceBase(item.specs, item.name, item.category);
   if (base.kind === "xy") return "plate";
   if (base.kind === "mm") return "length";
   return isSheetGoods(cat?.label ?? item.name) ? "plate" : "length";
@@ -129,7 +129,7 @@ function shelfSizes(item: RawItemRow | null, kind: StockKind): RawSize[] {
   const presets = kind === "plate" ? PLATE_PRESETS : LENGTH_PRESETS;
   const out: RawSize[] = [];
   if (item) {
-    const base = pieceBase(item.specs, item.name);
+    const base = pieceBase(item.specs, item.name, item.category);
     // The full piece first (its sheet size or length), then the pieces on the shelf.
     const full = base.kind === "xy" && kind === "plate" ? `p${base.x}x${base.y}` : base.kind === "mm" && kind === "length" ? `m${base.length}` : null;
     if (full) out.push({ size: full, label: sizeLabel(full), onShelf: 0 });

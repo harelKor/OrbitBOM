@@ -248,7 +248,7 @@ function Stepper({
   pieces = true,
   children,
 }: {
-  item: Pick<Item, "inStock" | "sheet" | "pieces" | "specs" | "name">;
+  item: Pick<Item, "inStock" | "sheet" | "pieces" | "specs" | "name" | "category">;
   onStep: (d: number, size?: string) => void;
   onCount?: (n: number) => void;
   big?: boolean;
@@ -358,7 +358,7 @@ function SeasonBox({ item, onChange, onError }: { item: Item; onChange: ChangeIt
 function SpreadPanel({ item, onOp, onStep }: { item: Item; onOp: (op: PieceOp) => void; onStep: (size: string, delta: 1 | -1) => void }) {
   const work = useCan("work");
   const [editing, setEditing] = useState<string | null>(null);
-  const base = pieceBase(item.specs, item.name);
+  const base = pieceBase(item.specs, item.name, item.category);
   const rows = sortedRows(pieceRows(item.inStock, item.pieces, base), base);
   return (
     <div className="w-full max-w-md rounded-lg border border-line bg-raised p-2">

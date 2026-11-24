@@ -11,6 +11,7 @@ export type ConfirmOptions = {
   confirm?: string; // the yes button's word: "Delete", "Revert"…
   cancel?: string;
   danger?: boolean; // a red yes button, for something that removes or overwrites
+  alert?: boolean; // only the OK button: something to read, not a question
 };
 
 type Ask = ConfirmOptions & { answer: (yes: boolean) => void };
@@ -24,6 +25,11 @@ export function askConfirm(options: ConfirmOptions | string): Promise<boolean> {
   const o = typeof options === "string" ? { title: options } : options;
   if (!hosted) return Promise.resolve(window.confirm(o.body && typeof o.body === "string" ? `${o.title}\n\n${o.body}` : o.title));
   return new Promise((answer) => window.dispatchEvent(new CustomEvent<Ask>(CONFIRM_EVENT, { detail: { ...o, answer } })));
+}
+
+// An error to read before going on, in the same window (only OK).
+export function showProblem(title: string, body: string): Promise<boolean> {
+  return askConfirm({ title, body, confirm: "OK", alert: true });
 }
 
 export function useConfirm() {
@@ -62,9 +68,11 @@ export function ConfirmHost() {
     <Dialog open={!!ask} onClose={() => done(false)} title={ask?.title ?? ""}>
       {ask?.body && <div className="text-sm text-fg-2">{ask.body}</div>}
       <div className={`flex justify-end gap-2 ${ask?.body ? "mt-5" : ""}`}>
-        <button type="button" className="btn min-h-10" onClick={() => done(false)}>
-          {ask?.cancel ?? "Cancel"}
-        </button>
+        {!ask?.alert && (
+          <button type="button" className="btn min-h-10" onClick={() => done(false)}>
+            {ask?.cancel ?? "Cancel"}
+          </button>
+        )}
         <button ref={yes} type="button" className={`${ask?.danger ? "btn-danger" : "btn-primary"} min-h-10`} onClick={() => done(true)}>
           {ask?.confirm ?? "OK"}
         </button>
