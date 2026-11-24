@@ -13,6 +13,7 @@ import { computeUsage, type ItemUsage, type UsagePart } from "@/lib/inventory/us
 import { newestOpenOrders, type OpenOrder } from "@/lib/inventory/season";
 import { thumbKey } from "@/lib/onshape/thumbnails";
 import { imageUrl } from "@/lib/storage/r2";
+import { robotNotOld } from "@/lib/robotFolders";
 
 const { inventoryItems, inventoryLinkRejections, partReviews, inventoryGroups, inventoryConditions, inventoryMoves, inventoryItemHistory, members, parts, systems, robots } = schema;
 
@@ -60,7 +61,7 @@ async function usageParts(exec: Exec = db, filter: { robotId?: string; itemIds?:
         isNull(parts.removedFromCadAt),
         // A card Inventory sent to refill the shelf orders stock; no robot uses it.
         eq(parts.restock, false),
-        or(isNull(robots.id), eq(robots.archived, false)),
+        or(isNull(robots.id), robotNotOld),
         filter.robotId ? eq(robots.id, filter.robotId) : undefined,
         filter.itemIds ? inArray(parts.inventoryItemId, filter.itemIds) : undefined,
       ),
@@ -232,7 +233,7 @@ export async function inventoryItemDetail(itemId: string) {
       .from(parts)
       .innerJoin(systems, eq(systems.id, parts.systemId))
       .innerJoin(robots, eq(robots.id, systems.robotId))
-      .where(and(isNull(parts.inventoryItemId), isNull(parts.removedFromCadAt), eq(parts.classification, "cots"), eq(robots.archived, false))),
+      .where(and(isNull(parts.inventoryItemId), isNull(parts.removedFromCadAt), eq(parts.classification, "cots"), robotNotOld)),
     itemHistory(itemId, item.inStock),
   ]);
   const matches = candidates.flatMap((c) => {
@@ -382,7 +383,7 @@ export async function shelfOfParts(rows: ShelfPart[]) {
       sheet: isSheet(item, cats),
       inStock: item.inStock,
       need: u?.need ?? 0,
-      // A part on an archived robot isn't in the usage; it shows the stock but covers nothing.
+      // A part on an Old-folder robot isn't in the usage; it shows the stock but covers nothing.
       covered: u?.coveredOf.get(p.id) ?? 0,
       free: u ? u.free : item.inStock,
       total,

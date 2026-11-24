@@ -11,6 +11,7 @@ import { categoryOf, getCategory } from "./categories";
 import { bestLinks, type LinkItem, type LinkPart } from "./linkScore";
 import { fastenerMatch, itemFastener, partFastener } from "./fastener";
 import { onshapeKeyOf } from "./match";
+import { robotNotOld } from "@/lib/robotFolders";
 
 const { parts, systems, robots, inventoryItems, partReviews, inventoryLinkRejections } = schema;
 
@@ -57,7 +58,7 @@ export async function findLinks(scope: { partIds?: string[]; itemIds?: string[] 
           isNull(parts.inventoryItemId),
           isNull(parts.removedFromCadAt),
           ne(parts.classification, "inhouse"),
-          eq(robots.archived, false),
+          robotNotOld,
           scope.partIds ? inArray(parts.id, scope.partIds) : undefined,
         ),
       ),

@@ -9,6 +9,7 @@ import { imageUrl } from "@/lib/storage/r2";
 import { cachedQuery } from "./cache";
 import { listCategories } from "./categories";
 import { itemThumbs } from "./inventory";
+import { robotNotOld } from "@/lib/robotFolders";
 
 const { parts, systems, robots, inventoryItems } = schema;
 
@@ -64,7 +65,7 @@ export async function globalSearch(q: string): Promise<SearchResults> {
         .from(parts)
         .innerJoin(systems, eq(systems.id, parts.systemId))
         .innerJoin(robots, eq(robots.id, systems.robotId))
-        .where(and(isNull(parts.removedFromCadAt), eq(robots.archived, false))),
+        .where(and(isNull(parts.removedFromCadAt), robotNotOld)),
       ["parts", "systems", "robots"],
     ),
     cachedQuery(

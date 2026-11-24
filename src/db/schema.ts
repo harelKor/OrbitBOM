@@ -105,7 +105,10 @@ export const robots = pgTable("robots", {
   mainAssemblyUrl: text("main_assembly_url"),
   schematicPath: text("schematic_path"),
   thumbnailPath: text("thumbnail_path"),
+  // No longer read (Harel, 2026-11-24): replaced by `folder` = "old"; dropped in a later push.
   archived: boolean("archived").notNull().default(false),
+  // The Robots panel's folder: "rebuilt" | "practice" | "old" (config/robotFolders.ts); null = none.
+  folder: text("folder"),
   // The Onshape document where this robot's Fab batch layout assemblies are made (Harel,
   // 2026-10-31), with its default workspace. Unset: the batch's system document.
   layoutsDocumentUrl: text("layouts_document_url"),

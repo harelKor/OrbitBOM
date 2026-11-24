@@ -15,7 +15,7 @@ else
 
     const me = `Tester ${randomUUID().slice(0, 8)}`;
     const [robot] = await db.insert(schema.robots).values({ name: "Mine bot", year: 2027 }).returning();
-    const [old] = await db.insert(schema.robots).values({ name: "Old bot", year: 2026, archived: true }).returning();
+    const [old] = await db.insert(schema.robots).values({ name: "Old bot", year: 2026, folder: "old" }).returning();
     const [system] = await db.insert(schema.systems).values({ robotId: robot.id, name: "Arm" }).returning();
     const [oldSystem] = await db.insert(schema.systems).values({ robotId: old.id, name: "Arm" }).returning();
     await db.insert(schema.parts).values([

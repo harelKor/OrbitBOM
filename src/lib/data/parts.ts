@@ -21,6 +21,7 @@ import { versionLabel } from "@/lib/versions/label";
 import { fabChanged } from "@/lib/versions/release";
 import { imageUrl } from "@/lib/storage/r2";
 import { cachedQuery } from "./cache";
+import { robotNotOld } from "@/lib/robotFolders";
 
 const { parts, partVersions, systems, systemVersions, robots, members, partFiles, merges, mergeMembers, partDrawings, inventoryItems, partReviews } = schema;
 
@@ -219,7 +220,7 @@ export async function listMyParts(memberName: string) {
     .select({ id: systems.id, name: systems.name, robotName: robots.name })
     .from(systems)
     .innerJoin(robots, eq(robots.id, systems.robotId))
-    .where(eq(robots.archived, false));
+    .where(robotNotOld);
   if (!systemRows.length) return [];
   const label = new Map(systemRows.map((s) => [s.id, `${s.robotName} › ${s.name}`]));
   const rows = await load(
@@ -290,8 +291,8 @@ const boughtParts = or(eq(parts.classification, "cots"), and(eq(parts.process1, 
 // General section, added on the COTS page for no robot); robots newest first.
 export async function listCotsParts(): Promise<{ robots: { id: string; name: string }[]; parts: CotsPart[]; categories: InvCategory[] }> {
   const [robotRows, systemRows] = await Promise.all([
-    db.select({ id: robots.id, name: robots.name }).from(robots).where(eq(robots.archived, false)).orderBy(sql`${robots.year} desc`, asc(robots.name)),
-    db.select({ id: systems.id, robotId: systems.robotId }).from(systems).innerJoin(robots, eq(robots.id, systems.robotId)).where(eq(robots.archived, false)),
+    db.select({ id: robots.id, name: robots.name }).from(robots).where(robotNotOld).orderBy(sql`${robots.year} desc`, asc(robots.name)),
+    db.select({ id: systems.id, robotId: systems.robotId }).from(systems).innerJoin(robots, eq(robots.id, systems.robotId)).where(robotNotOld),
   ]);
   const robotOfSystem = new Map(systemRows.map((s) => [s.id, s.robotId]));
   const nameOf = new Map(robotRows.map((r) => [r.id, r.name]));
@@ -306,7 +307,7 @@ export async function listCotsParts(): Promise<{ robots: { id: string; name: str
     categories,
     parts: rows.flatMap((p) => {
       const robotId = p.systemId ? robotOfSystem.get(p.systemId)! : p.robotId;
-      // A system-less card of an archived robot stays with that robot.
+      // A system-less card of an Old-folder robot stays with that robot.
       if (robotId && !nameOf.has(robotId)) return [];
       return [{ ...p, robotId, robotName: robotId ? nameOf.get(robotId)! : null, category: of.get(p.id)! }];
     }),
@@ -321,7 +322,7 @@ export async function countCotsStatuses(): Promise<Map<string, number>> {
     .leftJoin(systems, eq(systems.id, parts.systemId))
     .leftJoin(robots, eq(robots.id, sql`coalesce(${systems.robotId}, ${parts.robotId})`))
     // General cards (no system, no robot) count too.
-    .where(and(or(isNull(robots.id), eq(robots.archived, false)), isNull(parts.removedFromCadAt), boughtParts));
+    .where(and(or(isNull(robots.id), robotNotOld), isNull(parts.removedFromCadAt), boughtParts));
   const counts = new Map<string, number>();
   for (const r of rows) counts.set(orderStatus(r), (counts.get(orderStatus(r)) ?? 0) + 1);
   return counts;

@@ -4,19 +4,20 @@ import { useActionState } from "react";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { Popover } from "@/components/bom/Popover";
 import { Icon } from "@/components/ui/Icon";
-import { deleteRobot, setRobotArchived, updateRobot, type FormState } from "../actions";
+import { ROBOT_FOLDERS, type RobotFolder } from "@/config/robotFolders";
+import { deleteRobot, setRobotFolder, updateRobot, type FormState } from "../actions";
 
 // The small gear in the corner of a robot card or system tile in the side panel.
 export const GEAR_SMALL = "flex h-6 w-6 items-center justify-center rounded-md bg-surface/90 text-muted shadow-sm hover:text-fg";
 
 // Edit mode's gear menu on a robot card: name, year, code, main assembly (the 3D model's
-// source when no system is linked), archive and delete.
+// source when no system is linked), folder and delete.
 export function RobotSettings({
   robot,
   isAdmin,
   small = false,
 }: {
-  robot: { id: string; name: string; year: number; code: string | null; mainAssemblyUrl: string | null; archived: boolean };
+  robot: { id: string; name: string; year: number; code: string | null; mainAssemblyUrl: string | null; folder: RobotFolder | null };
   isAdmin: boolean;
   small?: boolean;
 }) {
@@ -57,9 +58,18 @@ export function RobotSettings({
             <OnshapeLinkField id="robot-assembly" name="mainAssemblyUrl" label="Main assembly (3D view if no system is linked)" value={robot.mainAssemblyUrl} />
             <SaveRow pending={pending} state={state} />
           </form>
-          <form action={setRobotArchived.bind(null, robot.id, !robot.archived)}>
-            <button className="btn w-full justify-center">{robot.archived ? "Unarchive robot" : "Archive robot"}</button>
-          </form>
+          <div>
+            <div className="label">Move to folder</div>
+            <div className="grid grid-cols-2 gap-1">
+              {[...ROBOT_FOLDERS, { key: null, label: "No folder" }].map((f) => (
+                <form key={f.key ?? "none"} action={setRobotFolder.bind(null, robot.id, f.key)}>
+                  <button className="btn h-9 w-full justify-center text-xs" disabled={robot.folder === f.key} aria-pressed={robot.folder === f.key}>
+                    {f.label}
+                  </button>
+                </form>
+              ))}
+            </div>
+          </div>
           {isAdmin && (
             <ConfirmButton
               action={deleteRobot.bind(null, robot.id)}

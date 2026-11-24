@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, asc, desc, inArray, isNotNull } from "drizzle-orm";
 import Link from "next/link";
 import { db, schema } from "@/db";
 import { getMember } from "@/lib/auth";
@@ -15,6 +15,7 @@ import { panelPlace } from "../place";
 import { InsertedHere } from "./InsertedHere";
 import { InsertFromRobot } from "./InsertFromRobot";
 import { ShelfTab } from "./ShelfTab";
+import { robotNotOld } from "@/lib/robotFolders";
 
 const { robots } = schema;
 
@@ -68,7 +69,7 @@ export default async function PanelInsertPage({ searchParams }: { searchParams: 
 }
 
 async function robotTab(query: string, kind: "partstudio" | "assembly", readOnly: boolean, robotParam: string | null) {
-  const active = await db.select({ id: robots.id, name: robots.name }).from(robots).where(eq(robots.archived, false)).orderBy(desc(robots.year), asc(robots.name));
+  const active = await db.select({ id: robots.id, name: robots.name }).from(robots).where(robotNotOld).orderBy(desc(robots.year), asc(robots.name));
   const robotId = robotParam ?? (active.length === 1 ? active[0].id : null);
   if (!robotId)
     return (

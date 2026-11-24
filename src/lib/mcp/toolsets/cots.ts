@@ -11,6 +11,7 @@ import { planPartUpdate } from "@/lib/parts/changes";
 import { applySuggestions } from "@/lib/review/review";
 import { orderStatus } from "@/lib/status";
 import { uuid, read, write, ToolError, nameOf, normaliseChanges, readable } from "../registry";
+import { robotNotOld } from "@/lib/robotFolders";
 
 const { parts, systems } = schema;
 
@@ -32,7 +33,7 @@ read(
     limit: z.number().int().min(1).max(500).optional(),
   }),
   async ({ robot_id, include_done, limit = 100 }) => {
-    const where = [isNull(parts.removedFromCadAt), eq(parts.classification, "cots"), eq(schema.robots.archived, false)];
+    const where = [isNull(parts.removedFromCadAt), eq(parts.classification, "cots"), robotNotOld];
     if (robot_id) where.push(eq(systems.robotId, robot_id));
     const rows = (
       await db

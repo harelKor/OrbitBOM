@@ -1,4 +1,4 @@
-import { asc, desc, eq } from "drizzle-orm";
+import { asc, desc, eq, sql } from "drizzle-orm";
 import Link from "next/link";
 import { db, schema } from "@/db";
 import { getMember } from "@/lib/auth";
@@ -63,16 +63,16 @@ async function panelBody(ref: ReturnType<typeof parseOnshapeUrl>, query: string,
         basepartUrl: systems.basepartUrl,
         basepartKind: systems.basepartKind,
         basepartStudioUrl: systems.basepartStudioUrl,
-        archived: robots.archived,
+        folder: robots.folder,
       })
       .from(systems)
       .innerJoin(robots, eq(robots.id, systems.robotId))
-      .orderBy(asc(robots.archived), desc(robots.year), asc(systems.name)),
+      .orderBy(sql`${robots.folder} is not distinct from 'old'`, desc(robots.year), asc(systems.name)),
     db
       .select({
         id: robots.id,
         name: robots.name,
-        archived: robots.archived,
+        folder: robots.folder,
         mainAssemblyUrl: robots.mainAssemblyUrl,
         basepartUrl: robots.basepartUrl,
         basepartKind: robots.basepartKind,
@@ -80,7 +80,7 @@ async function panelBody(ref: ReturnType<typeof parseOnshapeUrl>, query: string,
         layoutsDid: robots.layoutsDocumentId,
       })
       .from(robots)
-      .orderBy(asc(robots.archived), desc(robots.year), asc(robots.name)),
+      .orderBy(sql`${robots.folder} is not distinct from 'old'`, desc(robots.year), asc(robots.name)),
   ]);
 
   // Linked already: a system's or the robot's Final, or its Basepart (the Part Studio stays linked
@@ -98,7 +98,7 @@ async function panelBody(ref: ReturnType<typeof parseOnshapeUrl>, query: string,
   // Linking keeps the element's workspace, which a version view doesn't give.
   if (ref.wvm !== "w") return <p className="text-muted">This {what} isn&apos;t linked yet. Open the document&apos;s workspace (not a version) to link it to a robot.</p>;
 
-  const active = robotRows.filter((r) => !r.archived);
+  const active = robotRows.filter((r) => r.folder !== "old");
   const activeIds = new Set(active.map((r) => r.id));
   const robotChoices = active.map(({ id, name }) => ({ id, name }));
   const url = onshapeUrl(ref);

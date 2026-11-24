@@ -10,6 +10,7 @@ import { backupInfo } from "@/lib/storage/backup";
 import { RESTORE_SCOPES } from "@/lib/storage/restore";
 import { KEEP_DAYS, listTrash } from "@/lib/trash";
 import { SettingsView } from "./SettingsView";
+import { robotNotOld } from "@/lib/robotFolders";
 
 const { inventoryItems, inventoryConditions } = schema;
 
@@ -39,7 +40,7 @@ export default async function SettingsPage() {
     db
       .select({ id: schema.robots.id, name: schema.robots.name, year: schema.robots.year, url: schema.robots.layoutsDocumentUrl })
       .from(schema.robots)
-      .where(eq(schema.robots.archived, false))
+      .where(robotNotOld)
       .orderBy(desc(schema.robots.year), asc(schema.robots.name)),
     listTrash(),
   ]);
@@ -48,7 +49,7 @@ export default async function SettingsPage() {
     .select({ id: schema.systems.id, name: schema.systems.name, robot: schema.robots.name, drawers: schema.systems.drawers })
     .from(schema.systems)
     .innerJoin(schema.robots, eq(schema.robots.id, schema.systems.robotId))
-    .where(eq(schema.robots.archived, false))
+    .where(robotNotOld)
     .orderBy(desc(schema.robots.year), asc(schema.robots.name), asc(schema.systems.name));
 
   return (

@@ -764,6 +764,13 @@
       "when": 1795510305489,
       "tag": "0108_order_amount_cart_name",
       "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1795514805879,
+      "tag": "0109_robot_folders",
+      "breakpoints": true
     }
   ]
 }

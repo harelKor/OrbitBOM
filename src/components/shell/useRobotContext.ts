@@ -45,7 +45,7 @@ export function useRobotContext(robots: ShellRobot[], lastRobotId: string | null
   const pickId = pick && (!fromPath || fromPath === pick.pagePath || fromPath === pick.id) ? pick.id : null;
   const robotId =
     [pickId, fromPath, lastRobotId].find((id) => id && robots.some((r) => r.id === id)) ??
-    robots.find((r) => !r.archived)?.id ??
+    robots.find((r) => r.folder !== "old")?.id ??
     null;
 
   useEffect(() => {

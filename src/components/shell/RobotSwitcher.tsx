@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { FastLink } from "@/components/ui/FastLink";
+import { Icon } from "@/components/ui/Icon";
+import { ROBOT_FOLDERS, type RobotFolder } from "@/config/robotFolders";
 import { NewSystemButton } from "@/app/(app)/robots/[robotId]/NewSystemButton";
 import { RobotSettings } from "@/app/(app)/robots/[robotId]/RobotSettings";
 import { SystemSettings } from "@/app/(app)/robots/[robotId]/systems/[systemId]/SystemSettings";
@@ -24,9 +26,19 @@ export function RobotSwitcher({ robots, lastRobotId, isAdmin }: { robots: ShellR
   const page = pathname.match(ROBOT_PAGE);
   // The same page for another robot, or null where the page stays and only the pick changes.
   const samePage = (id: string) => (page ? `/robots/${id}${page[1]}${query ? `?${query}` : ""}` : null);
-  const active = robots.filter((r) => !r.archived);
-  const archived = robots.filter((r) => r.archived);
+  const loose = robots.filter((r) => !r.folder);
   const expanded = current;
+  const card = (r: ShellRobot) => (
+    <RobotCard
+      key={r.id}
+      robot={r}
+      current={r.id === current?.id}
+      overview={r.id === current?.id && !systemId && !pathname.includes("/fab") && !pathname.includes("/factory") && !pathname.includes("/printing") && !pathname.includes("/review")}
+      isAdmin={isAdmin}
+      samePage={samePage(r.id)}
+      onSelect={() => selectRobot(r.id)}
+    />
+  );
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
@@ -39,20 +51,9 @@ export function RobotSwitcher({ robots, lastRobotId, isAdmin }: { robots: ShellR
         </EditOnly>
       </div>
       <div className="space-y-2 p-2">
-        {active.length === 0 && <p className="px-2 py-4 text-sm text-subtle">No robots yet.</p>}
-        {active.map((r) => (
-          <RobotCard
-            key={r.id}
-            robot={r}
-            current={r.id === current?.id}
-            overview={r.id === current?.id && !systemId && !pathname.includes("/fab") && !pathname.includes("/factory") && !pathname.includes("/printing") && !pathname.includes("/review")}
-            isAdmin={isAdmin}
-            samePage={samePage(r.id)}
-            onSelect={() => selectRobot(r.id)}
-          />
-        ))}
+        {robots.length === 0 && <p className="px-2 py-4 text-sm text-subtle">No robots yet.</p>}
+        {loose.map((r) => card(r))}
       </div>
-
       {expanded && (
         <div className="border-t border-line p-2">
           <div className="flex items-center justify-between gap-2 px-1 pt-1 pb-2">
@@ -70,27 +71,50 @@ export function RobotSwitcher({ robots, lastRobotId, isAdmin }: { robots: ShellR
         </div>
       )}
 
-      {archived.length > 0 && (
-        <details className="border-t border-line p-2 text-sm">
-          <summary className="cursor-pointer px-2 py-1 text-xs text-subtle">Archived ({archived.length})</summary>
-          <div className="mt-2 space-y-2">
-            {archived.map((r) => (
-              <RobotCard
-                key={r.id}
-                robot={r}
-                current={r.id === current?.id}
-                overview={false}
-                isAdmin={isAdmin}
-                samePage={samePage(r.id)}
-                onSelect={() => selectRobot(r.id)}
-              />
-            ))}
-          </div>
-        </details>
-      )}
+      {ROBOT_FOLDERS.map((f) => {
+        const inside = robots.filter((r) => r.folder === f.key);
+        return inside.length > 0 ? (
+          <FolderSection key={f.key} folder={f.key} label={f.label} count={inside.length} holdsCurrent={inside.some((r) => r.id === current?.id)}>
+            {inside.map((r) => card(r))}
+          </FolderSection>
+        ) : null;
+      })}
+
       <div className="mt-auto">
         <AppearanceControls />
       </div>
+    </div>
+  );
+}
+
+// A folder of robots that folds open and closed; each browser remembers which are open (Harel,
+// 2026-11-24). Until it has read that, a folder holding the selected robot is open and the rest are not.
+const FOLDERS_KEY = "orbit-robot-folders";
+function FolderSection({ folder, label, count, holdsCurrent, children }: { folder: RobotFolder; label: string; count: number; holdsCurrent: boolean; children: React.ReactNode }) {
+  const [saved, setSaved] = useState<boolean | null>(null);
+  useEffect(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem(FOLDERS_KEY) ?? "{}")[folder];
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- browser-only memory
+      if (typeof v === "boolean") setSaved(v);
+    } catch {}
+  }, [folder]);
+  const open = saved ?? holdsCurrent;
+  const toggle = () => {
+    setSaved(!open);
+    try {
+      const all = JSON.parse(localStorage.getItem(FOLDERS_KEY) ?? "{}");
+      localStorage.setItem(FOLDERS_KEY, JSON.stringify({ ...all, [folder]: !open }));
+    } catch {}
+  };
+  return (
+    <div className="border-t border-line p-2">
+      <button type="button" onClick={toggle} aria-expanded={open} className="press flex min-h-9 w-full items-center gap-1.5 rounded-md px-2 text-left text-xs font-semibold text-muted hover:text-fg active:scale-[0.98]">
+        <Icon name="chevron" className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-90" : ""}`} />
+        <span className="flex-1">{label}</span>
+        <span className="font-normal tabular-nums text-subtle">{count}</span>
+      </button>
+      {open && <div className="mt-2 space-y-2">{children}</div>}
     </div>
   );
 }

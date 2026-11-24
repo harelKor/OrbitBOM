@@ -6,6 +6,7 @@ import { thumbKey } from "@/lib/onshape/thumbnails";
 import { imageUrl } from "@/lib/storage/r2";
 import { areaQueue, fabStage, machinesOf } from "@/lib/fab";
 import { statusBreakdown } from "@/lib/stats";
+import { isRobotFolder, type RobotFolder } from "@/config/robotFolders";
 import { listSystemSync, type SystemSync } from "@/lib/versions/sync";
 import { countInventoryReviews } from "@/lib/review/inventory";
 import { cachedQuery } from "./cache";
@@ -19,7 +20,7 @@ export type ShellRobot = {
   year: number;
   code: string | null;
   mainAssemblyUrl: string | null;
-  archived: boolean;
+  folder: RobotFolder | null;
   percent: number;
   thumbUrl: string | null;
   systems: ShellSystem[];
@@ -137,13 +138,13 @@ async function loadShellRobots(): Promise<ShellRobot[]> {
         fab,
         factory,
         print,
-        review: own.reduce((n, s) => n + (reviewsOf.get(s.id) ?? 0), 0) + (r.archived ? 0 : inventoryReviews),
+        review: own.reduce((n, s) => n + (reviewsOf.get(s.id) ?? 0), 0) + (r.folder === "old" ? 0 : inventoryReviews),
         id: r.id,
         name: r.name,
         year: r.year,
         code: r.code,
         mainAssemblyUrl: r.mainAssemblyUrl,
-        archived: r.archived,
+        folder: isRobotFolder(r.folder) ? r.folder : null,
         percent: statusBreakdown(rows).percent,
         thumbUrl: r.thumbnailPath ? await imageUrl(r.thumbnailPath) : (own.find((s) => s.thumbUrl)?.thumbUrl ?? null),
         systems: own.map((s) => ({ id: s.id, name: s.name, assemblyUrl: s.assemblyUrl, followVersions: s.followVersions, percent: s.percent, total: s.total, thumbUrl: s.thumbUrl, sync: s.sync })),

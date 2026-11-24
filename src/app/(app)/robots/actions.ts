@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { requireAdmin } from "@/lib/auth";
+import { isRobotFolder, type RobotFolder } from "@/config/robotFolders";
 import { requireCapability } from "@/lib/mode";
 import { fileKeysFor } from "@/lib/storage/cleanup";
 import { deleteToTrash } from "@/lib/trash";
@@ -68,9 +69,12 @@ export async function updateRobot(robotId: string, formData: FormData): Promise<
   return { saved: true };
 }
 
-export async function setRobotArchived(robotId: string, archived: boolean) {
+// Moves a robot into a Robots-panel folder (ReBuilt / Practice / Old) or out of all of them (null).
+// "Old" robots are left out of pickers and background jobs (Harel, 2026-11-24).
+export async function setRobotFolder(robotId: string, folder: RobotFolder | null) {
   await requireCapability("manage");
-  await db.update(schema.robots).set({ archived }).where(eq(schema.robots.id, robotId));
+  if (folder !== null && !isRobotFolder(folder)) return;
+  await db.update(schema.robots).set({ folder }).where(eq(schema.robots.id, robotId));
   revalidatePath("/", "layout");
 }
 

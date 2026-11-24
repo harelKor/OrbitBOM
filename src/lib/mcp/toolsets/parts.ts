@@ -31,7 +31,7 @@ read("list_robots", "member", "Robots with their completion.", z.object({}), asy
     id: r.id,
     name: r.name,
     year: r.year,
-    archived: r.archived,
+    folder: r.folder,
     done: r.breakdown.done,
     total: r.breakdown.total,
     percent: r.breakdown.percent,

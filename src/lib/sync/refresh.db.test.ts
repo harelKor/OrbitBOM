@@ -141,8 +141,8 @@ else
       }
     });
 
-    it("skips archived robots", async () => {
-      await db.update(schema.robots).set({ archived: true }).where(eq(schema.robots.id, robot.id));
+    it("skips robots in the Old folder", async () => {
+      await db.update(schema.robots).set({ folder: "old" }).where(eq(schema.robots.id, robot.id));
       await db.update(schema.systems).set({ lastCheckedAt: null }).where(eq(schema.systems.id, system.id));
       const results = await refreshDueSystems(later);
       expect(results.find((r) => r.systemId === system.id)).toBeUndefined();

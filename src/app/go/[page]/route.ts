@@ -18,10 +18,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (!sub) return to("/");
   if (!(await getMember())) return to(`/login?next=${encodeURIComponent(`/go/${page}`)}`);
   const [robots, jar] = await Promise.all([
-    db.select({ id: schema.robots.id, archived: schema.robots.archived }).from(schema.robots).orderBy(desc(schema.robots.year), asc(schema.robots.name)),
+    db.select({ id: schema.robots.id, folder: schema.robots.folder }).from(schema.robots).orderBy(desc(schema.robots.year), asc(schema.robots.name)),
     cookies(),
   ]);
   const last = jar.get(ROBOT_COOKIE)?.value;
-  const robot = robots.find((r) => r.id === last) ?? robots.find((r) => !r.archived);
+  const robot = robots.find((r) => r.id === last) ?? robots.find((r) => r.folder !== "old");
   return to(robot ? `/robots/${robot.id}/${sub}` : "/robots/new");
 }

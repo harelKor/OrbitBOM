@@ -14,7 +14,7 @@ export default async function HomePage() {
   // this render, from the server's memory), not a read of their own.
   const [robots, jar] = await Promise.all([listShellRobots(), cookies()]);
   const last = jar.get(ROBOT_COOKIE)?.value;
-  const robot = robots.find((r) => r.id === last) ?? robots.find((r) => !r.archived) ?? null;
+  const robot = robots.find((r) => r.id === last) ?? robots.find((r) => r.folder !== "old") ?? null;
   const waiting = await waitingOnYou(member, robot?.id ?? null);
 
   const tiles = [

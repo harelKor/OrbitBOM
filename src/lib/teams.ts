@@ -3,6 +3,7 @@ import { asc, desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { isTeam, type Team } from "@/config/teams";
 import { isUuid } from "@/lib/uuid";
+import { robotNotOld } from "@/lib/robotFolders";
 
 export type TeamSystem = { id: string; name: string; robotName: string };
 
@@ -12,7 +13,7 @@ export async function listTeamSystems(): Promise<TeamSystem[]> {
     .select({ id: schema.systems.id, name: schema.systems.name, robotName: schema.robots.name })
     .from(schema.systems)
     .innerJoin(schema.robots, eq(schema.robots.id, schema.systems.robotId))
-    .where(eq(schema.robots.archived, false))
+    .where(robotNotOld)
     .orderBy(desc(schema.robots.year), asc(schema.robots.name), asc(schema.systems.name));
 }
 

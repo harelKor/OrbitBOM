@@ -5,6 +5,7 @@ import { refreshIntervalMinutes } from "@/config/refresh";
 import { NotConnectedError, OnshapeError, QuotaError, RateLimitError, TeamBudgetError } from "@/lib/onshape/client";
 import { refreshPartData } from "@/lib/onshape/thumbnails";
 import { checkSystem } from "@/lib/versions/detect";
+import { robotNotOld } from "@/lib/robotFolders";
 
 const { robots, syncJobs, systems } = schema;
 
@@ -65,7 +66,7 @@ export async function refreshDueSystems(deadline: number): Promise<RefreshResult
     .innerJoin(robots, eq(robots.id, systems.robotId))
     .where(
       and(
-        eq(robots.archived, false),
+        robotNotOld,
         isNotNull(systems.assemblyUrl),
         // Checked on the account of the member who last ran Update BOM; systems without one
         // (nobody pulled them yet, or that member left) wait for a member's next Update BOM.

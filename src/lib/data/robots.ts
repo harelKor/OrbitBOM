@@ -4,6 +4,7 @@ import { db, schema } from "@/db";
 import { statusBreakdown, type Breakdown } from "@/lib/stats";
 import { isUuid } from "@/lib/uuid";
 import { cachedQuery } from "./cache";
+import { robotNotOld } from "@/lib/robotFolders";
 
 const { robots, systems, parts } = schema;
 
@@ -88,7 +89,7 @@ export async function listBomTargets() {
     .select({ robotId: robots.id, robotName: robots.name, systemId: systems.id, systemName: systems.name })
     .from(robots)
     .innerJoin(systems, eq(systems.robotId, robots.id))
-    .where(eq(robots.archived, false))
+    .where(robotNotOld)
     .orderBy(desc(robots.year), asc(robots.name), asc(systems.name));
   const out: { id: string; name: string; systems: { id: string; name: string }[] }[] = [];
   for (const r of rows) {

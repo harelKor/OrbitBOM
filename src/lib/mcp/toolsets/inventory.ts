@@ -19,6 +19,7 @@ import { moveStock } from "@/lib/inventory/moves";
 import { statusChangeDeniedFor } from "@/lib/mode";
 import { applyEachPartChanges } from "@/lib/parts/apply";
 import { uuid, read, write, ToolError, nameOf } from "../registry";
+import { robotNotOld } from "@/lib/robotFolders";
 
 const { parts, systems, robots, inventoryItems, inventoryLocations } = schema;
 
@@ -100,7 +101,7 @@ read(
         .from(parts)
         .innerJoin(systems, eq(systems.id, parts.systemId))
         .innerJoin(robots, eq(robots.id, systems.robotId))
-        .where(and(isNull(parts.inventoryItemId), isNull(parts.removedFromCadAt), eq(parts.classification, "cots"), eq(robots.archived, false), robot_id ? eq(robots.id, robot_id) : undefined)),
+        .where(and(isNull(parts.inventoryItemId), isNull(parts.removedFromCadAt), eq(parts.classification, "cots"), robotNotOld, robot_id ? eq(robots.id, robot_id) : undefined)),
       listInventory().then((r) => r.items),
     ]);
     const { found } = await findLinks({ partIds: rows.slice(0, limit).map((r) => r.part.id) });
