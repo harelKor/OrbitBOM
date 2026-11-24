@@ -20,6 +20,7 @@ export type Shelf = {
   restock: boolean;
   met: boolean;
   thumbUrl: string | null; // the item's picture
+  categoryThumb?: boolean; // thumbUrl is its category's picture (order pages), shown fainter
 };
 // `pending`: auto-link (or a member's Claude) suggested it and it waits in To Review; else the
 // card's own guess from the part's name, Onshape part or product page.

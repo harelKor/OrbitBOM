@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Collage } from "@/components/bom/GroupCards";
 import type { CardPart } from "@/components/bom/types";
 import { Icon } from "@/components/ui/Icon";
+import { orderPicture } from "./CotsCard";
 import { findGroup, groupParts, type BomGroup, type GroupItem } from "@/lib/parts/bomGroups";
 
 // The order pages' parts with no vendor, by stock kind (Harel, 2026-11-24): the system page's
@@ -25,7 +26,7 @@ export function StockKinds<R extends { key: string; part: CardPart }>({ rows, it
   const groups = useMemo(
     () =>
       groupParts(
-        rows.map((r) => ({ ...r.part, id: r.key, thumbUrl: (!r.part.isManual && r.part.thumbUrl) || r.part.shelf?.thumbUrl || null })),
+        rows.map((r) => ({ ...r.part, id: r.key, thumbUrl: orderPicture(r.part) })),
         items,
         { stock: true },
       ),

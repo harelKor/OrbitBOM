@@ -302,6 +302,12 @@ export async function listCotsParts(): Promise<{ robots: { id: string; name: str
   ];
   const rows = await load(and(or(...own), isNull(parts.removedFromCadAt), boughtParts), { anySystem: true });
   const { categories, of } = await cotsCategories(rows);
+  // An item with no picture of its own shows its category's, as on Inventory (Harel, 2026-11-24).
+  const catImage = new Map(categories.map((c) => [c.id, c.imageUrl ?? null]));
+  const withCategoryPicture = (p: (typeof rows)[number], category: string) => {
+    const url = p.shelf && !p.shelf.thumbUrl ? catImage.get(category) : null;
+    return url ? { shelf: { ...p.shelf!, thumbUrl: url, categoryThumb: true } } : {};
+  };
   return {
     robots: robotRows,
     categories,
@@ -309,7 +315,8 @@ export async function listCotsParts(): Promise<{ robots: { id: string; name: str
       const robotId = p.systemId ? robotOfSystem.get(p.systemId)! : p.robotId;
       // A system-less card of an Old-folder robot stays with that robot.
       if (robotId && !nameOf.has(robotId)) return [];
-      return [{ ...p, robotId, robotName: robotId ? nameOf.get(robotId)! : null, category: of.get(p.id)! }];
+      const category = of.get(p.id)!;
+      return [{ ...p, ...withCategoryPicture(p, category), robotId, robotName: robotId ? nameOf.get(robotId)! : null, category }];
     }),
   };
 }

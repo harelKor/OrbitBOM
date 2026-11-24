@@ -58,6 +58,7 @@ export function PartListRow({
       data-part={partIds(part)}
       style={statusTint(status)}
       picture={part.thumbUrl ?? (cots ? (part.shelf?.thumbUrl ?? null) : null)}
+      dimPicture={!part.thumbUrl && cots && !!part.shelf?.categoryThumb}
       placeholder={<span className="px-1 text-center text-[0.625rem] leading-tight text-slate-500">{part.isManual && !order?.item ? "Manual" : "No picture"}</span>}
       title={title ?? partTitle(part)}
       href={part.cotsLinks?.[0]?.url}

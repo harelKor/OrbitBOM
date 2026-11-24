@@ -129,10 +129,10 @@ export function CotsCard({
     else if (onOpen) onOpen();
     else showDetails();
   };
-  const picture = (!part.isManual && part.thumbUrl) || shelf?.thumbUrl || null;
+  const picture = orderPicture(part);
   const thumb = picture ? (
     // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
-    <img src={picture} alt="" loading="lazy" className="h-full w-full object-contain p-3" />
+    <img src={picture} alt="" loading="lazy" className={`h-full w-full object-contain p-3 ${dimPicture(part) ? "opacity-60" : ""}`} />
   ) : (
     <span className="text-xs text-muted">{asItem ? "No picture" : part.isManual ? "Manual part" : "No thumbnail yet"}</span>
   );
@@ -482,3 +482,8 @@ export function OrderStatusButton({ part, save, compact = false }: { part: CardP
     </>
   );
 }
+
+// An order card's or row's picture: the part's own, else its item's, else (order pages) the item's
+// category picture, which shows fainter as on Inventory.
+export const orderPicture = (p: CardPart) => (!p.isManual && p.thumbUrl) || p.shelf?.thumbUrl || null;
+export const dimPicture = (p: CardPart) => !(!p.isManual && p.thumbUrl) && !!p.shelf?.categoryThumb;

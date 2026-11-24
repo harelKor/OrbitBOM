@@ -1,7 +1,7 @@
 import type { CardPart } from "./types";
 
 // The small part image in table rows and Kanban cards.
-export function Thumb({ part, size = 32 }: { part: Pick<CardPart, "thumbUrl">; size?: number }) {
+export function Thumb({ part, size = 32, dim = false }: { part: Pick<CardPart, "thumbUrl">; size?: number; dim?: boolean }) {
   return (
     <span
       className="inline-flex shrink-0 items-center justify-center overflow-hidden rounded bg-raised/60"
@@ -9,7 +9,7 @@ export function Thumb({ part, size = 32 }: { part: Pick<CardPart, "thumbUrl">; s
     >
       {part.thumbUrl && (
         // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
-        <img src={part.thumbUrl} alt="" loading="lazy" className="h-full w-full object-contain" />
+        <img src={part.thumbUrl} alt="" loading="lazy" className={`h-full w-full object-contain ${dim ? "opacity-60" : ""}`} />
       )}
     </span>
   );

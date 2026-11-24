@@ -35,7 +35,7 @@ import { orderStatus } from "@/lib/status";
 import type { CotsCart } from "@/lib/data/cotsCarts";
 import { OpenBatchContext } from "@/components/fab/BatchCard";
 import { CartButton, CartCard, CartStatus, cartTitle, type CartLine } from "./CartCard";
-import { CotsCard, OrderStatusButton } from "./CotsCard";
+import { CotsCard, dimPicture, orderPicture, OrderStatusButton } from "./CotsCard";
 import { useArrivalHalo } from "@/components/shell/Arrivals";
 import { arrivalPage } from "@/lib/seen";
 import { PartList, PartListRow } from "@/components/bom/PartListRow";
@@ -354,7 +354,7 @@ export function CotsView({
       merged: merged
         ? {
             count: row.members.length,
-            thumbs: row.members.map((m) => (!m.isManual && m.thumbUrl) || m.shelf?.thumbUrl || null),
+            thumbs: row.members.map(orderPicture),
             onUnmerge: work ? () => unmerge(row) : undefined,
           }
         : undefined,
@@ -1106,7 +1106,7 @@ function GroupBox({ row, line, onClose, children, ...drag }: { row: Row; line: O
     <div {...drag} style={{ gridColumn: "1 / -1", ...statusTint(orderStatus(p)) }} className="card-interactive flex flex-col ring-2 ring-amber-400/70 ring-offset-2 ring-offset-ink">
       <button type="button" onClick={onClose} aria-expanded className="press flex items-center gap-3 p-3 text-left">
         <span className="thumb-well thumb-cots flex h-14 w-20 shrink-0 items-center justify-center rounded-md">
-          <Thumb part={p} size={52} />
+          <Thumb part={{ thumbUrl: orderPicture(p) }} dim={dimPicture(p)} size={52} />
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-base font-semibold text-fg">{line.title}</span>
@@ -1272,7 +1272,7 @@ function ThumbLocate({ part }: { part: CardPart }) {
   return (
     <>
       <button type="button" onClick={() => setStage(robotId ? "locate" : "part")} className="press block cursor-zoom-in" aria-label={`Locate ${partTitle(part)} in the robot`}>
-        <Thumb part={part} size={44} />
+        <Thumb part={{ thumbUrl: orderPicture(part) }} dim={dimPicture(part)} size={44} />
       </button>
       {stage && (
         <PartStage
