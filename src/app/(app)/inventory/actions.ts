@@ -22,7 +22,7 @@ import type { ImportRow } from "@/lib/inventory/import";
 import { pushItemToCards } from "@/lib/inventory/cotsSync";
 import { recordItemChanges } from "@/lib/inventory/history";
 import { editPieces, editVariants, moveStock, setStock } from "@/lib/inventory/moves";
-import type { VariantOp } from "@/lib/inventory/variants";
+import { storedVariants, type VariantOp } from "@/lib/inventory/variants";
 import { readProduct, saveProductPhoto, toUsd } from "@/lib/inventory/product";
 import { missing, newestOpenOrders, orderHref } from "@/lib/inventory/season";
 import { type PieceOp, SIZE_KEY, parseStock, snapStock } from "@/lib/inventory/stock";
@@ -515,20 +515,22 @@ export async function setItemNote(itemId: string, note: string): Promise<ActionR
 }
 
 // The item window's "Needed for season": blank or 0 clears it (the item leaves the Season view).
-export async function setSeasonNeed(itemId: string, text: string): Promise<ActionResult> {
+// `seasonNeedNew`: how many of it must be New, only on an item with variants (Harel, 2026-11-24).
+export async function setSeasonNeed(itemId: string, text: string, field: "seasonNeed" | "seasonNeedNew" = "seasonNeed"): Promise<ActionResult> {
   const member = await requireCapability("work");
-  if (!isUuid(itemId)) return { error: "Unknown item." };
+  if (!isUuid(itemId) || (field !== "seasonNeed" && field !== "seasonNeedNew")) return { error: "Unknown item." };
   const [item] = await db.select().from(inventoryItems).where(eq(inventoryItems.id, itemId));
   if (!item) return { error: "That item was deleted." };
   const cats = await listCategories();
   const sheet = !!getCategory(cats, categoryOf(item, cats))?.sheet;
   const n = parseStock(text, sheet);
   if (n === null) return { error: sheet ? 'Needed for season is sheets, like "2" or "1 3/4".' : "Needed for season is a whole number." };
-  const seasonNeed = n > 0 ? n : null;
-  if (seasonNeed === item.seasonNeed) return {};
+  const need = n > 0 ? n : null;
+  if (field === "seasonNeedNew" && need !== null && (sheet || !storedVariants(item.variants).length)) return { error: "Only an item with variants has a New season need." };
+  if (need === item[field]) return {};
   await db.transaction(async (tx) => {
-    await tx.update(inventoryItems).set({ seasonNeed }).where(eq(inventoryItems.id, itemId));
-    await recordItemChanges(tx, itemId, item, { seasonNeed }, { memberId: member.id, via: "ui" });
+    await tx.update(inventoryItems).set({ [field]: need }).where(eq(inventoryItems.id, itemId));
+    await recordItemChanges(tx, itemId, item, { [field]: need }, { memberId: member.id, via: "ui" });
   });
   refresh();
   return {};

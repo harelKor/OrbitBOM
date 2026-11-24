@@ -127,6 +127,15 @@ export function variantMoves(before: ItemVariant[], after: ItemVariant[], uncoun
 // The conditions whose stock counts toward nothing, from a conditions list (the page's lookups).
 export const uncountedOf = (conditions: { id: string; uncounted?: boolean }[]) => new Set(conditions.filter((c) => c.uncounted).map((c) => c.id));
 
+// The New condition, and how many of an item's variants are in it: a season need can ask for
+// some of them New (inventory_items.season_need_new, Harel 2026-11-24).
+export const newIdOf = (conditions: { id: string; label: string }[]) => conditions.find((c) => c.label.trim().toLowerCase() === "new")?.id ?? null;
+export const newStockOf = (variants: unknown, newId: string | null) => (newId ? storedVariants(variants).reduce((s, v) => s + (v.conditionId === newId ? v.count : 0), 0) : 0);
+
+// What the page's optimistic stock changes need to know about the conditions.
+export type VariantConds = { uncounted: Set<string>; newId: string | null };
+export const variantConds = (conditions: { id: string; label: string; uncounted?: boolean }[]): VariantConds => ({ uncounted: uncountedOf(conditions), newId: newIdOf(conditions) });
+
 // Whether an item is in a condition: its own, or any of its variants' (filters, condition pages).
 export const inCondition = (item: { conditionId: string | null; variants?: ItemVariant[] }, conditionId: string) =>
   item.variants?.length ? item.variants.some((v) => v.conditionId === conditionId) : item.conditionId === conditionId;

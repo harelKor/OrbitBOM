@@ -115,6 +115,7 @@ export function ItemHistory({
             conditionId: "Condition",
             price: "Price",
             seasonNeed: "Needed for season",
+            seasonNeedNew: "Needed for season, New",
             note: "Note",
             seasonTag: "Season",
           }[e.field] ?? e.field;

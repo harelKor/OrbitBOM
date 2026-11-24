@@ -778,6 +778,13 @@
       "when": 1795516265234,
       "tag": "0110_item_variants",
       "breakpoints": true
+    },
+    {
+      "idx": 111,
+      "version": "7",
+      "when": 1795543770749,
+      "tag": "0111_season_need_new",
+      "breakpoints": true
     }
   ]
 }

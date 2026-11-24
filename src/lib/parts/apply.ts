@@ -3,8 +3,7 @@ import { randomUUID } from "node:crypto";
 import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { COTS_IN_STOCK, ORDER_STATUSES, cotsStatusOf } from "@/config/cots";
-import { usageOf } from "@/lib/data/inventory";
-import { shortOf } from "@/lib/cots";
+import { restockShort, usageOf } from "@/lib/data/inventory";
 import { isAreaInStock, isFabFinished } from "@/lib/fab";
 import { arrives } from "@/lib/seen";
 import { fillCardFromItem, pushCardToItem } from "@/lib/inventory/cotsSync";
@@ -113,13 +112,13 @@ export async function applyEachPartChanges(
         const { usage, items } = await usageOf([after.inventoryItemId], tx);
         // What was ordered arrives (orderAmount in lib/cots.ts): the amount typed on the order
         // pages, else for a card Inventory sent to refill the shelf what the item still misses of
-        // its whole need (the bigger of its season count and the robots'), else what the shelf
+        // its whole need (the bigger of its season count and the robots', or of its New need),
+        // else what the shelf
         // was missing for the part.
         if (after.orderQty != null) received = after.orderQty;
         else if (after.restock) {
           const item = items[0];
-          const total = Math.max(item?.seasonNeed ?? 0, usage.get(after.inventoryItemId)?.need ?? 0);
-          received = item ? shortOf(total, item.inStock) : 0;
+          received = item ? restockShort(item, usage.get(after.inventoryItemId)?.need ?? 0) : 0;
         } else received = Math.max(0, after.quantity - (usage.get(after.inventoryItemId)?.coveredOf.get(row.id) ?? 0));
       }
       const values = {

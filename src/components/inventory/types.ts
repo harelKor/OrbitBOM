@@ -23,6 +23,9 @@ export type Item = {
   inStock: number;
   pieces: StoredPieces; // a fraction item's piece sizes and counts (lib/inventory/stock.ts)
   seasonNeed: number | null;
+  // How many of the season need must be New, and its New variants' count (Harel, 2026-11-24).
+  seasonNeedNew: number | null;
+  newStock: number;
   note: string | null;
   seasonTag: "2026" | "2027"; // red 2026: last season's list; green 2027: checked for this season
   price: number | null;

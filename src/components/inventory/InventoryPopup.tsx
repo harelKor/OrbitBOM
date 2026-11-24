@@ -32,7 +32,7 @@ import { Icon } from "@/components/ui/Icon";
 import { GoToButton } from "@/components/ui/GoToButton";
 import { materialCategory } from "@/config/materials";
 import { activeFields, getCategory } from "@/lib/inventory/categories";
-import { hasSeasonNeed, missing, orderHref } from "@/lib/inventory/season";
+import { missing, orderHref } from "@/lib/inventory/season";
 import type { PartChanges } from "@/lib/parts/changes";
 import { type PieceOp, applyPieceOp, formatStock, formatStockExact, isSheetGoods, parseStock, pieceBase, pieceLabel, pieceRows, snapStock, sortedRows, stepStock } from "@/lib/inventory/stock";
 import { ProductSearch } from "./ProductSearch";
@@ -47,7 +47,7 @@ import { LocationPicker } from "./LocationPicker";
 import { SeasonTag } from "./SeasonTag";
 import { UsedIn } from "./UsedIn";
 import { VariantDots, VariantsSection } from "./Variants";
-import { conditionsFor, uncountedOf } from "@/lib/inventory/variants";
+import { conditionsFor, variantConds } from "@/lib/inventory/variants";
 import { countItem, stepItem } from "@/lib/inventory/variantStock";
 import { FindButton } from "@/components/map/FindButton";
 import type { Condition, InvCategory, Item, Location } from "./types";
@@ -184,7 +184,7 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
       if (r.error) after(r);
     });
   };
-  const uncounted = uncountedOf(state?.kind === "item" ? (state.data?.conditions ?? []) : []);
+  const uncounted = variantConds(state?.kind === "item" ? (state.data?.conditions ?? []) : []);
   const step = (itemId: string, delta: number, size?: string) => saveNow(itemId, (i) => stepItem(i, delta, size, undefined, uncounted), () => adjustStock(itemId, delta, size));
   const count = (itemId: string, amount: number) => saveNow(itemId, (i) => countItem(i, amount, uncounted), () => countStock(itemId, amount));
 
@@ -320,40 +320,76 @@ function ItemNotesBox({ item, onSaved, onError }: { item: Item; onSaved: () => v
 }
 
 // "Season needs": how many the team wants on the shelf for the season, typed in place under
-// the count. Blank or 0 clears it. Saves on Enter or when the box loses focus.
+// the count. Blank or 0 clears it. Saves on Enter or when the box loses focus. An item with
+// variants also has "New": how many of them must be New (Harel, 2026-11-24); the shelf is short
+// by whichever misses more.
 function SeasonBox({ item, onChange, onError }: { item: Item; onChange: ChangeItem; onError: (m: string | null) => void }) {
   const work = useCan("work");
-  const current = hasSeasonNeed(item) ? formatStockExact(item.seasonNeed!, item.sheet) : "";
+  const withNew = !item.sheet && (item.variants?.length ?? 0) > 0;
+  return (
+    <div className="flex min-w-40 flex-1 items-center justify-between gap-2 rounded-xl border border-line bg-raised px-3 py-1.5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]">
+      <span className="text-xs leading-tight font-semibold tracking-wide text-subtle uppercase">Season needs</span>
+      <span className="flex items-center gap-2">
+        <NeedInput item={item} field="seasonNeed" label="Season needs" work={work} onChange={onChange} onError={onError} />
+        {withNew && (
+          <label className="flex items-center gap-1.5">
+            <span className="text-xs font-semibold text-subtle" title="How many of the season need must be New">
+              New
+            </span>
+            <NeedInput item={item} field="seasonNeedNew" label="Season needs New" work={work} onChange={onChange} onError={onError} small />
+          </label>
+        )}
+      </span>
+    </div>
+  );
+}
+
+function NeedInput({
+  item,
+  field,
+  label,
+  work,
+  onChange,
+  onError,
+  small,
+}: {
+  item: Item;
+  field: "seasonNeed" | "seasonNeedNew";
+  label: string;
+  work: boolean;
+  onChange: ChangeItem;
+  onError: (m: string | null) => void;
+  small?: boolean;
+}) {
+  const value = item[field];
+  const current = value != null && value > 0 ? formatStockExact(value, item.sheet) : "";
   const [text, setText] = useState<string | null>(null);
   // The new need shows at once ("Season needs 10 · 7 short"); the save follows.
   const save = () => {
     if (text === null || text.trim() === current) return setText(null);
-    const value = text;
-    const n = parseStock(value, item.sheet);
+    const typed = text;
+    const n = parseStock(typed, item.sheet);
     setText(null);
     if (n === null) return onError(item.sheet ? 'Needed for season is a number or fraction, like "2" or "1 3/4".' : "Needed for season is a whole number.");
     onError(null);
-    const seasonNeed = n > 0 ? snapStock(n, item.sheet) : null;
-    onChange(() => ({ seasonNeed }), () => setSeasonNeed(item.id, value));
+    const need = n > 0 ? snapStock(n, item.sheet) : null;
+    onChange(() => ({ [field]: need }), () => setSeasonNeed(item.id, typed, field));
   };
   return (
-    <label className="flex min-w-40 flex-1 items-center justify-between gap-2 rounded-xl border border-line bg-raised px-3 py-1.5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]">
-      <span className="text-xs leading-tight font-semibold tracking-wide text-subtle uppercase">Season needs</span>
-      <input
-        value={text ?? current}
-        onChange={(e) => setText(e.target.value)}
-        onBlur={save}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") e.currentTarget.blur();
-          if (e.key === "Escape") setText(null);
-        }}
-        disabled={!work}
-        inputMode={item.sheet ? "text" : "numeric"}
-        placeholder="—"
-        aria-label="Season needs"
-        className="min-h-9 w-20 rounded-md border border-line-strong bg-surface px-1 py-1 text-center font-mono text-xl font-semibold tabular-nums outline-none focus:border-sky-400"
-      />
-    </label>
+    <input
+      value={text ?? current}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={save}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+        if (e.key === "Escape") setText(null);
+      }}
+      disabled={!work}
+      inputMode={item.sheet ? "text" : "numeric"}
+      placeholder="—"
+      aria-label={label}
+      className={`min-h-9 rounded-md border border-line-strong bg-surface px-1 py-1 text-center font-mono font-semibold tabular-nums outline-none focus:border-sky-400 ${small ? "w-14 text-base" : "w-20 text-xl"}`}
+    />
   );
 }
 

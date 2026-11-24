@@ -27,6 +27,20 @@ describe("season needs", () => {
     expect(missing(item(1.25, 2, 0, { sheet: true }), "season")).toBe(1);
   });
 
+  it("is short by whichever misses more: the whole season need or its New part", () => {
+    const v = [{}, {}];
+    // 10 in stock, 2 of them New; the season wants 8, 5 of them New.
+    const i = { ...item(10, 8), seasonNeedNew: 5, newStock: 2, variants: v };
+    expect(missing(i, "season")).toBe(3);
+    expect(missing(i, "any")).toBe(3);
+    expect(missing(i, "robots")).toBe(0);
+    expect(standing(i, "season")).toBe("short");
+    // The whole need misses more than the New one.
+    expect(missing({ ...item(4, 8), seasonNeedNew: 3, newStock: 2, variants: v }, "season")).toBe(4);
+    // Without variants the New need counts for nothing.
+    expect(missing({ ...item(10, 8), seasonNeedNew: 5, newStock: 0, variants: [] }, "season")).toBe(0);
+  });
+
   it("colours red short, orange on order, green covered", () => {
     expect(standing(item(1, 3), "season")).toBe("short");
     expect(standing(item(3, 3), "season")).toBe("ok");

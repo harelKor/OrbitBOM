@@ -10,7 +10,9 @@ import { listPlaces } from "./places";
 import type { Shelf, ShelfSuggestion } from "@/components/bom/types";
 import { itemMatcher, suggestItem } from "@/lib/inventory/match";
 import { computeUsage, type ItemUsage, type UsagePart } from "@/lib/inventory/usage";
-import { newestOpenOrders, type OpenOrder } from "@/lib/inventory/season";
+import { hasNewNeed, newMissing, newestOpenOrders, type OpenOrder } from "@/lib/inventory/season";
+import { newIdOf, newStockOf } from "@/lib/inventory/variants";
+import { shortOf } from "@/lib/cots";
 import { thumbKey } from "@/lib/onshape/thumbnails";
 import { imageUrl } from "@/lib/storage/r2";
 import { robotNotOld } from "@/lib/robotFolders";
@@ -22,6 +24,7 @@ const { inventoryItems, inventoryLinkRejections, partReviews, inventoryGroups, i
 export type InventoryItem = Omit<typeof inventoryItems.$inferSelect, "category"> & {
   category: string;
   categorySet: string | null; // the category someone picked, if any
+  newStock: number; // its New variants' count (a New season need)
   usage: ItemUsage | null;
   openOrder: OpenOrder | null; // the newest COTS card on its way for it
   sheet: boolean;
@@ -87,15 +90,26 @@ const isSheet = (i: Omit<Named, "id">, cats: InvCategory[]) => !!getCategory(cat
 const sheetSet = (items: Named[], cats: InvCategory[]) => new Set(items.filter((i) => isSheet(i, cats)).map((i) => i.id));
 
 // Usage of some items across every active robot (the shared shelf).
+// Each item carries `newStock`, its New variants' count, for a New season need.
 export async function usageOf(itemIds: string[], exec: Exec = db) {
   if (!itemIds.length) return { items: [], cats: await listCategories(), usage: new Map<string, ItemUsage>() };
-  const [items, used, cats] = await Promise.all([
+  const conds = db.select({ id: inventoryConditions.id, label: inventoryConditions.label }).from(inventoryConditions);
+  const [rows, used, cats, conditions] = await Promise.all([
     exec.select().from(inventoryItems).where(inArray(inventoryItems.id, itemIds)),
     usageParts(exec, { itemIds }),
     listCategories(),
+    exec === db ? cachedQuery(conds, ["inventory_conditions"]) : conds,
   ]);
+  const newId = newIdOf(conditions);
+  const items = rows.map((i) => ({ ...i, newStock: newStockOf(i.variants, newId) }));
   return { items, cats, usage: computeUsage(new Map(items.map((i) => [i.id, i.inStock])), used, sheetSet(items, cats)) };
 }
+
+// What a card Inventory sent to refill the shelf orders: what the item misses of its whole need
+// (the bigger of Needed for Season and the robots'), or of its New need when that's more
+// (Harel, 2026-11-24).
+export const restockShort = (item: { inStock: number; seasonNeed: number | null; seasonNeedNew: number | null; variants: unknown[]; newStock: number }, robotsNeed: number) =>
+  Math.max(shortOf(Math.max(item.seasonNeed ?? 0, robotsNeed), item.inStock), newMissing(item));
 
 // The shelf, or with `itemIds` only those items (an item's page or window reads just its own
 // usage, order and picture, not the whole shop's).
@@ -117,6 +131,7 @@ export async function listInventory({ itemIds }: { itemIds?: string[] } = {}) {
     openOrders(itemIds),
   ]);
   const sheets = sheetSet(items, categories);
+  const newId = newIdOf(conditions);
   const usage = computeUsage(new Map(items.map((i) => [i.id, i.inStock])), used, sheets);
   const [thumbs, catUrls] = await Promise.all([itemThumbs(items, categories), Promise.all(categories.map((c) => categoryImageUrl(c.image)))]);
   categories.forEach((c, i) => (c.imageUrl = catUrls[i]));
@@ -129,6 +144,7 @@ export async function listInventory({ itemIds }: { itemIds?: string[] } = {}) {
       openOrder: orders.get(i.id) ?? null,
       sheet: sheets.has(i.id),
       thumbUrl: thumbs.get(i.id) ?? null,
+      newStock: newStockOf(i.variants, newId),
     })) as InventoryItem[],
     groups,
     conditions,
@@ -377,6 +393,7 @@ export async function shelfOfParts(rows: ShelfPart[]) {
     if (!item) continue;
     const u = usage.get(item.id);
     const total = Math.max(u?.need ?? 0, item.seasonNeed ?? 0);
+    const newShort = newMissing(item);
     shelf.set(p.id, {
       itemId: item.id,
       itemName: item.name,
@@ -388,7 +405,8 @@ export async function shelfOfParts(rows: ShelfPart[]) {
       free: u ? u.free : item.inStock,
       total,
       restock: p.restock,
-      met: total > 0 && item.inStock + 1e-9 >= total,
+      newShort,
+      met: (total > 0 || hasNewNeed(item)) && item.inStock + 1e-9 >= total && !newShort,
       thumbUrl: thumbs.get(item.id) ?? null,
     });
   }

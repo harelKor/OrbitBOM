@@ -3,8 +3,8 @@ import { and, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import type { db } from "@/db";
 import { schema } from "@/db";
 import { cotsStatusOf } from "@/config/cots";
-import { shortOf, siteOf } from "@/lib/cots";
-import { usageOf } from "@/lib/data/inventory";
+import { siteOf } from "@/lib/cots";
+import { restockShort, usageOf } from "@/lib/data/inventory";
 import { isBought, orderStatus } from "@/lib/status";
 
 // The COTS Order History cards (Harel, 2026-11-02). A COTS part's status move records its order:
@@ -107,9 +107,10 @@ export async function recordOrderHistory(tx: Tx, before: Part, after: Part) {
   if (open && within(open.inRouteAt, now)) await tx.delete(cotsOrderHistory).where(eq(cotsOrderHistory.id, open.id));
 }
 
-// What an item still misses of its whole need (the bigger of Needed for Season and the robots').
+// What an item still misses of its whole need (the bigger of Needed for Season and the robots'),
+// or of its New need when that's more.
 async function restockAmount(tx: Tx, itemId: string) {
   const { items, usage } = await usageOf([itemId], tx);
   const item = items[0];
-  return item ? shortOf(Math.max(item.seasonNeed ?? 0, usage.get(itemId)?.need ?? 0), item.inStock) : 0;
+  return item ? restockShort(item, usage.get(itemId)?.need ?? 0) : 0;
 }

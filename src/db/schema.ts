@@ -1216,6 +1216,8 @@ export const inventoryItems = pgTable("inventory_items", {
   // How many the team wants on the shelf for the season, whatever the robots use (Harel,
   // 2026-10-27). Null: no season need. Sheet items take pieces like in_stock.
   seasonNeed: doublePrecision("season_need"),
+  // How many of the season need must be New (only on items with variants; Harel, 2026-11-24).
+  seasonNeedNew: doublePrecision("season_need_new"),
   // A remark for whoever takes or orders it, shown as a cloud on the card (Harel, 2026-10-28).
   note: text("note"),
   // "2026": still from last season's list; "2027": checked for the 2027 season. Only the card's,

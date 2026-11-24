@@ -38,7 +38,7 @@ last full audit and what's still open: `plan/audit-2026-11-14.md` §0.
   sheet one), not `DEFAULT_CATEGORIES`: a test needing a category creates it.
 - Schema: edit `src/db/schema.ts`, `npm run db:generate`, rename the file to a readable name
   (and its `tag` in `drizzle/meta/_journal.json`), add `ALTER TABLE "x" ENABLE ROW LEVEL SECURITY;`
-  for a new table, commit. Next migration: 0111. Migrations reach production before the code and
+  for a new table, commit. Next migration: 0112. Migrations reach production before the code and
   a rollback runs old code on the new schema, so expand → contract: add columns/tables in one
   push; drop or rename one only in a later push, once no deployed code reads it.
 - Local site: README "Local development" (local Supabase in Docker, "Dev sign-in" button; Onshape

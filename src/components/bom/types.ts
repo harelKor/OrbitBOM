@@ -15,6 +15,7 @@ export type Shelf = {
   inStock: number;
   need: number;
   total: number;
+  newShort?: number; // New ones the item misses of its New season need (lib/inventory/season.ts)
   covered: number;
   free: number;
   restock: boolean;

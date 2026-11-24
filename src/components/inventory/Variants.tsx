@@ -6,8 +6,8 @@ import { StepButton } from "@/components/ui/Stepper";
 import { askConfirm } from "@/components/ui/useConfirm";
 import { useCan } from "@/components/shell/ModeContext";
 import { textOn } from "@/components/bom/options";
-import { type ItemVariant, type VariantOp, applyVariantOp, conditionsFor, countingSum, countingVariants, counts, uncountedOf, variantsAllowed } from "@/lib/inventory/variants";
-import { stepItem } from "@/lib/inventory/variantStock";
+import { type ItemVariant, type VariantOp, applyVariantOp, conditionsFor, countingVariants, counts, uncountedOf, variantConds, variantsAllowed } from "@/lib/inventory/variants";
+import { stepItem, withVariants } from "@/lib/inventory/variantStock";
 import { adjustStock, editItemVariants } from "@/app/(app)/inventory/actions";
 import { CountBox, conditionColor } from "./ItemCard";
 import { ConditionSelect } from "./ConditionSelect";
@@ -118,20 +118,18 @@ export function VariantsSection({
   const work = useCan("work");
   const variants = item.variants ?? [];
   if (item.station || !variantsAllowed(cat) || (!work && !variants.length)) return null;
-  const unc = uncountedOf(conditions);
+  const conds = variantConds(conditions);
+  const unc = conds.uncounted;
   const set = (op: VariantOp) =>
     onChange(
-      (i) => {
-        const out = applyVariantOp(i, op, () => "new");
-        return { variants: out.variants, inStock: countingSum(out.variants, unc) };
-      },
+      (i) => withVariants(applyVariantOp(i, op, () => "new").variants, conds),
       () => editItemVariants(item.id, op),
     );
   // A counting variant's − / + is a stock move (a step, so two phones tapping both count); a
   // Defective one's just sets its count.
   const step = (v: ItemVariant, delta: number) =>
     counts(v, unc)
-      ? onChange((i) => stepItem(i, delta, undefined, v.id, unc), () => adjustStock(item.id, delta, undefined, v.id))
+      ? onChange((i) => stepItem(i, delta, undefined, v.id, conds), () => adjustStock(item.id, delta, undefined, v.id))
       : set({ set: { id: v.id, count: Math.max(0, v.count + delta) } });
   const add = () => {
     const used = new Set(variants.map((v) => v.conditionId));

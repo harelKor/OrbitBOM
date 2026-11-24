@@ -12,7 +12,7 @@ import { Icon } from "@/components/ui/Icon";
 import { Dialog } from "@/components/Dialog";
 import { activeFields, getCategory, specLine } from "@/lib/inventory/categories";
 import { VariantDots, useVariantStep } from "./Variants";
-import { uncountedOf } from "@/lib/inventory/variants";
+import { variantConds } from "@/lib/inventory/variants";
 import { stepItem } from "@/lib/inventory/variantStock";
 import type { ItemHistoryEntry } from "@/lib/data/inventory";
 import { formatStock, isSheetGoods } from "@/lib/inventory/stock";
@@ -52,7 +52,7 @@ export function ItemPage({
 }) {
   const work = useCan("work");
   const router = useRouter();
-  const uncounted = uncountedOf(conditions);
+  const uncounted = variantConds(conditions);
   const [item, step] = useOptimistic(initial, (s, [d, b, v]: [number, string | undefined, string | undefined]) => ({ ...s, ...stepItem(s, d, b, v, uncounted) }));
   const [pending, startTransition] = useTransition();
   const [open, setOpen] = useState<"edit" | "toBom" | null>(null);

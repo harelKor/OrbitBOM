@@ -46,7 +46,7 @@ import {
 import { matchesSearch } from "@/lib/inventory/searchWords";
 import { keepPicks, matchesPicks, specGroups, type SpecGroup, type SpecPicks } from "@/lib/inventory/specFilters";
 import { countItem, stepItem } from "@/lib/inventory/variantStock";
-import { inCondition, uncountedOf } from "@/lib/inventory/variants";
+import { inCondition, variantConds } from "@/lib/inventory/variants";
 import { safeAction } from "@/lib/safeAction";
 import { AddBox, haloItem, type AddBoxHandle } from "./AddBox";
 import { ImportDialog } from "./ImportDialog";
@@ -176,7 +176,7 @@ export function InventoryView({
   const [moveLoc, setMoveLoc] = useState(""); // "" keep, "none" clear, else a location id
   const selecting = tidy ? picking : null;
 
-  const uncounted = uncountedOf(lookups.conditions);
+  const uncounted = variantConds(lookups.conditions);
   // Stock steps, and an item being added (on top, glowing, until its save comes back).
   const [optimistic, addOptimistic] = useOptimistic(
     items,

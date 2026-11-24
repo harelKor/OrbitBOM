@@ -96,18 +96,19 @@ type Amountable = {
   restock?: boolean;
   quantity: number;
   stockCount: number;
-  shelf?: { sheet: boolean; covered: number; inStock: number; total: number } | null;
+  shelf?: { sheet: boolean; covered: number; inStock: number; total: number; newShort?: number } | null;
 };
 
 // How many to order for one card: the amount a member typed on the order pages, else for a card
 // Inventory sent (restock), what its item still misses of its whole need right now (the bigger of
-// Needed for Season and the robots'), so changing the season need changes it; else the part's
+// Needed for Season and the robots', or what it misses of its New season need when that's more),
+// so changing the season need changes it; else the part's
 // quantity less what the shelf (or its own count) covers. The vendor cart, Copy list, the item
 // window's Ordering and receiving into stock all read this.
 export function orderAmount(p: Amountable): number {
   if (p.orderQty != null) return p.orderQty;
   const s = p.shelf;
-  if (p.restock && s) return shortOf(s.total, s.inStock);
+  if (p.restock && s) return Math.max(shortOf(s.total, s.inStock), s.newShort ?? 0);
   return Math.max(0, p.quantity - (s && !s.sheet ? s.covered : p.stockCount));
 }
 

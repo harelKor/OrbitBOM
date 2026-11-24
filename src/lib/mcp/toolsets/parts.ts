@@ -7,7 +7,7 @@ import { db, schema } from "@/db";
 import { listInventory } from "@/lib/data/inventory";
 import { devicesOf } from "@/lib/inventory/devices";
 import { searchProducts } from "@/lib/inventory/search";
-import { hasSeasonNeed, missing } from "@/lib/inventory/season";
+import { hasNewNeed, hasSeasonNeed, missing } from "@/lib/inventory/season";
 import { formatStockExact as formatStock } from "@/lib/inventory/stock";
 import { listRobots } from "@/lib/data/robots";
 import { OnshapeError } from "@/lib/onshape/client";
@@ -158,7 +158,7 @@ read("system_stats", "member", "A system's completion and count per status.", z.
 read(
   "search_inventory",
   "member",
-  "Inventory items with stock, category and specs (use them to match BOM parts to items when setting up parts: pass the id to set_up_parts as inventory_item_id). All active robots share one shelf: need is what every robot's linked parts need together, short what the stock doesn't cover, free what no part needs. Sheet items (plates) count sheets and pieces (2.75 = 2 ¾ sheets) and have no need. season_need is a separate shelf target for the season (season_short what the stock is under it); on_order is the status of a COTS card already ordering it. The PC stations (Scouting PC, CAD PC, Build PC) count their PCs, listed under pcs with each one's name, GPU, CPU, RAM, condition (1-5) and note. An item with variants (the same item in several conditions) lists them under variants: each one's id, condition, count, note and whether it counts (Defective ones count toward nothing, so in_stock is the counting ones' sum); pass a variant to adjust_stock.",
+  "Inventory items with stock, category and specs (use them to match BOM parts to items when setting up parts: pass the id to set_up_parts as inventory_item_id). All active robots share one shelf: need is what every robot's linked parts need together, short what the stock doesn't cover, free what no part needs. Sheet items (plates) count sheets and pieces (2.75 = 2 ¾ sheets) and have no need. season_need is a separate shelf target for the season, season_need_new how many of it must be New (items with variants), and season_short what the shelf misses of either, whichever is more; on_order is the status of a COTS card already ordering it. The PC stations (Scouting PC, CAD PC, Build PC) count their PCs, listed under pcs with each one's name, GPU, CPU, RAM, condition (1-5) and note. An item with variants (the same item in several conditions) lists them under variants: each one's id, condition, count, note and whether it counts (Defective ones count toward nothing, so in_stock is the counting ones' sum); pass a variant to adjust_stock.",
   z.object({ text: z.string().optional(), limit: z.number().int().min(1).max(500).optional().describe("At most this many items (default 200).") }),
   async ({ text, limit = 200 }) => {
     const { items, conditions } = await listInventory();
@@ -178,7 +178,8 @@ read(
         need: i.usage?.need ?? 0,
         short: i.usage?.short ?? 0,
         season_need: i.seasonNeed,
-        season_short: hasSeasonNeed(i) ? missing(i, "season") : 0,
+        ...(i.variants.length ? { season_need_new: i.seasonNeedNew } : {}),
+        season_short: hasSeasonNeed(i) || hasNewNeed(i) ? missing(i, "season") : 0,
         on_order: i.openOrder?.status ?? null,
         free: i.usage?.free ?? i.inStock,
         category: i.category,

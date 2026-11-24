@@ -10,11 +10,29 @@ export type NeedView = "season" | "robots" | "any";
 export type Standing = "short" | "ordered" | "ok";
 export type OpenOrder = { partId: string; status: string };
 
-type Needs = { inStock: number; seasonNeed: number | null; sheet: boolean; usage: { need: number } | null; openOrder: OpenOrder | null };
+// `seasonNeedNew` (Harel, 2026-11-24): how many of the season need must be New, on an item with
+// variants; `newStock` its New variants' count (lib/inventory/variants.ts newStockOf).
+type Needs = {
+  inStock: number;
+  seasonNeed: number | null;
+  sheet: boolean;
+  usage: { need: number } | null;
+  openOrder: OpenOrder | null;
+  seasonNeedNew?: number | null;
+  newStock?: number;
+  variants?: unknown[];
+};
 
 const ORDERING = ORDER_STATUSES.filter((s) => s !== COTS_IN_STOCK) as string[];
 
 export const hasSeasonNeed = (i: Pick<Needs, "seasonNeed">) => (i.seasonNeed ?? 0) > 0;
+export const hasNewNeed = (i: Pick<Needs, "seasonNeedNew" | "variants">) => (i.variants?.length ?? 0) > 0 && (i.seasonNeedNew ?? 0) > 0;
+// How many New ones the shelf misses of the New need (0 without one).
+export function newMissing(i: Pick<Needs, "seasonNeedNew" | "variants" | "newStock">): number {
+  if (!hasNewNeed(i)) return 0;
+  const gap = i.seasonNeedNew! - (i.newStock ?? 0);
+  return gap > 1e-9 ? Math.ceil(gap - 1e-9) : 0;
+}
 export const usedByRobots = (i: { usage: { parts: unknown[] } | null }) => (i.usage?.parts.length ?? 0) > 0;
 
 // Y in the card's "X / Y": the view's need; null when nothing is needed.
@@ -25,12 +43,13 @@ export function neededFor(i: Needs, view: NeedView): number | null {
   return y > 0 ? y : null;
 }
 
-// How many more the shelf needs for that view. Sheets round up to whole sheets.
+// How many more the shelf needs for that view. Sheets round up to whole sheets. The season's
+// shortfall is the bigger of the whole stock's and the New stock's (Harel, 2026-11-24).
 export function missing(i: Needs, view: NeedView): number {
   const y = neededFor(i, view);
-  if (y == null) return 0;
-  const gap = y - i.inStock;
-  return gap > 1e-9 ? (i.sheet ? Math.ceil(gap - 1e-9) : Math.ceil(gap)) : 0;
+  const gap = y == null ? 0 : y - i.inStock;
+  const whole = gap > 1e-9 ? (i.sheet ? Math.ceil(gap - 1e-9) : Math.ceil(gap)) : 0;
+  return view === "robots" ? whole : Math.max(whole, newMissing(i));
 }
 
 // The card's colour in the Short views: green as soon as the shelf has what's needed (even with
