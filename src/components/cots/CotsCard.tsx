@@ -33,9 +33,8 @@ import { OrderAmount, type AmountProps } from "./OrderAmount";
 // the status with a $ / ₪ switch. No download, material or process: the part is bought, not made.
 // On the Order List (`variant="order"`) the card is pared down to the name, the quantity, the price
 // and a big status button. A part the Order List sent back carries a red tag with the reason.
-// On Released (`origin`) the thumbnail says where the part came from (General: sent from the
-// inventory or added for no robot; Robot: a robot's BOM) and the count is the whole shelf against
-// the item's whole need ("7 / 20 on shelf"). A part with no picture of its own shows its item's.
+// On Released (`origin`) the count is the whole shelf against the item's whole need ("7 / 20 on
+// shelf"); the order pages show no Inventory / General / Robot tag (Harel, 2026-11-24). A part with no picture of its own shows its item's.
 // An item Inventory sent to orders (`restock`) shows as the item itself (Harel, 2026-11-24): its
 // picture, name and shelf stock, no COTS-part tags, and a ⋮ (`menu`: Change name, Add / Change link, Remove from orders). On the
 // order pages `amount` is the bright amount to order, typed right on the card.
@@ -164,12 +163,10 @@ export function CotsCard({
 
       <div className="thumb-well thumb-cots relative flex aspect-[4/3] items-center justify-center">
         <div className="flex h-full w-full items-center justify-center">{line?.merged ? <OrderCollage thumbs={line.merged.thumbs} /> : thumb}</div>
-        <div className="absolute top-2 left-2 flex items-center gap-1">
-          {asItem ? (
-            <span className="rounded-full bg-sky-500 px-2 py-0.5 text-[0.6875rem] font-bold text-white shadow-sm" title="An inventory item sent to orders from Inventory">
-              Inventory
-            </span>
-          ) : (
+        <div className="absolute top-2 left-2 flex max-w-[60%] flex-wrap items-center gap-1">
+          {/* The order pages: the amount to order leads, typed right here (Harel, 2026-11-24). */}
+          {amount && <OrderAmount {...amount} />}
+          {!asItem && (
             <span className={`rounded-full bg-[#111318]/85 font-bold text-white tabular-nums ${order ? "px-3 py-1 text-base" : "px-2 py-0.5 text-[0.6875rem]"}`}>
               {work && !order && !amount ? <QuantityField part={part} save={save} /> : `×${part.quantity}`}
             </span>
@@ -181,14 +178,6 @@ export function CotsCard({
         </div>
         <div className="absolute top-2 right-2 flex max-w-[55%] flex-col items-end gap-1">
           {menu}
-          {origin && !asItem && (
-            <span
-              className={`rounded-full px-2 py-0.5 text-[0.6875rem] font-bold shadow-sm ${origin === "General" ? "bg-[#0D111A]/85 text-amber-300" : "bg-sky-500 text-white"}`}
-              title={origin === "General" ? "Sent from the inventory, or added for no robot" : "From a robot's BOM"}
-            >
-              {origin}
-            </span>
-          )}
           {group && !line?.merged && (
             <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[0.6875rem] font-bold text-amber-950 shadow-sm" title="Click to see each system's part">
               ⧉ {group.systems} systems
@@ -308,11 +297,6 @@ export function CotsCard({
             <div className="-mt-1.5 truncate text-xs text-subtle">{part.systemName}</div>
           ))}
 
-        {amount && (
-          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-            <OrderAmount {...amount} />
-          </div>
-        )}
         <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
           <div className="flex min-w-0 max-w-full grow">{order ? <OrderStatusButton part={part} save={save} /> : <StatusField part={part} save={save} />}</div>
           <Price part={part} big={order} amount={amount?.value} />
