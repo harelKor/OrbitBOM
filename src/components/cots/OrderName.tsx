@@ -38,7 +38,7 @@ export function OrderNameEdit({ line }: { line: OrderLine }) {
   );
 }
 
-function RenameForm({ line, rename, onDone }: { line: OrderLine; rename: (name: string | null) => void; onDone: () => void }) {
+export function RenameForm({ line, rename, onDone }: { line: OrderLine; rename: (name: string | null) => void; onDone: () => void }) {
   const [v, setV] = useState(line.title);
   const save = (name: string | null) => {
     rename(name);

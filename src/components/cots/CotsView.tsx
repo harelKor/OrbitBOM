@@ -36,6 +36,7 @@ import type { CotsCart } from "@/lib/data/cotsCarts";
 import { OpenBatchContext } from "@/components/fab/BatchCard";
 import { CartButton, CartCard, CartStatus, cartTitle, type CartLine } from "./CartCard";
 import { CotsCard, dimPicture, orderPicture, OrderStatusButton } from "./CotsCard";
+import { ItemOrderMenu } from "./ItemOrderMenu";
 import { useArrivalHalo } from "@/components/shell/Arrivals";
 import { arrivalPage } from "@/lib/seen";
 import { PartList, PartListRow } from "@/components/bom/PartListRow";
@@ -322,6 +323,11 @@ export function CotsView({
     onChange: work ? (n) => save(row.members.map((m, i) => ({ id: m.id, changes: { orderQty: n === null ? null : i === 0 ? n : 0 } }))) : undefined,
   });
   const single = (p: CardPart): Row => ({ key: p.id, part: p, members: [p] });
+  // An inventory item's ⋮: Change name, Add / Change link, Remove from orders (Harel, 2026-11-24).
+  const itemMenu = (row: Row, overlay = false) =>
+    row.part.restock && work ? (
+      <ItemOrderMenu part={row.part} title={lineOf(row).title} bomName={bomTitle(row.part)} onRename={(name) => saveRow(row)({ orderName: name })} onRemove={removeItem(row.part)} overlay={overlay} />
+    ) : null;
   // Copy list's line for one part.
   const cartLine = (p: CardPart): CartLine => ({ name: nameOf(p), amount: orderAmount(p) });
   // A line in the List view: the amount to order, and for an inventory item its shelf, not the
@@ -335,11 +341,7 @@ export function CotsView({
       extra: (
         <>
           <OrderAmount {...amountProps(row)} size="sm" />
-          {p.restock && work && (
-            <button type="button" onClick={removeItem(p)} className="press min-h-7 rounded-md px-1.5 text-[0.6875rem] font-semibold text-muted hover:text-rose-500 pointer-coarse:min-h-9">
-              Remove from orders
-            </button>
-          )}
+          {itemMenu(row)}
         </>
       ),
     };
@@ -417,7 +419,7 @@ export function CotsView({
     const clearable = canClear && work;
     return (
     view === "table" ? (
-      <CotsTable groups={tableGroups(rows)} titleOf={(row) => lineOf(row).title} amountOf={amountProps} saveRow={saveRow} struck={struck} orderList={list === "order" && !small} onClear={clearable ? clear : undefined} />
+      <CotsTable groups={tableGroups(rows)} titleOf={(row) => lineOf(row).title} amountOf={amountProps} menuOf={itemMenu} saveRow={saveRow} struck={struck} orderList={list === "order" && !small} onClear={clearable ? clear : undefined} />
     ) : view === "list" ? (
       <PartList>
         {rows.map((row) => {
@@ -469,7 +471,7 @@ export function CotsView({
                 selected={selected.has(row.key)}
                 onToggleSelect={pick(row)}
                 amount={amountProps(row)}
-                onRemove={work && row.part.restock ? removeItem(row.part) : undefined}
+                menu={itemMenu(row, true)}
               />
               {clearable && <ClearButton name={partTitle(row.part)} onClick={() => clear(ids)} />}
             </div>
@@ -581,7 +583,7 @@ export function CotsView({
     return cartLayout === "list" ? (
       <PartListRow part={p} save={saveRow(row)} onOpen={openRow(row)} title={nameOf(p)} order={listOrder(row)} />
     ) : (
-      <CotsCard part={p} save={saveRow(row)} onOpen={openRow(row)} variant="order" shelfOnThumb struck={struck.has(p.id)} line={{ title: nameOf(p), bomName: bomTitle(p), renamed: !!p.orderName }} amount={amountProps(row)} onRemove={work && p.restock ? removeItem(p) : undefined} />
+      <CotsCard part={p} save={saveRow(row)} onOpen={openRow(row)} variant="order" shelfOnThumb struck={struck.has(p.id)} line={{ title: nameOf(p), bomName: bomTitle(p), renamed: !!p.orderName }} amount={amountProps(row)} menu={itemMenu(row, true)} />
     );
   };
   const removeFromCart = (cartId: string) => (ids: string[]) =>
@@ -792,6 +794,7 @@ export function CotsView({
                 }))}
                 titleOf={(row) => nameOf(row.part)}
                 amountOf={amountProps}
+                menuOf={itemMenu}
                 saveRow={saveRow}
                 struck={struck}
                 orderList
@@ -834,6 +837,7 @@ export function CotsView({
                     groups={kindsOf(rows, items).map((k) => ({ ...k, sub: `${k.rows.length} to order`, foldable: true }))}
                     titleOf={(row) => lineOf(row).title}
                     amountOf={amountProps}
+                    menuOf={itemMenu}
                     saveRow={saveRow}
                     struck={struck}
                     orderList={list === "order"}
@@ -1139,12 +1143,14 @@ function CotsTable({
   groups,
   titleOf,
   amountOf,
+  menuOf,
   saveRow,
   struck,
   orderList,
   onClear,
 }: {
   groups: TableGroup[];
+  menuOf?: (row: Row) => React.ReactNode; // an inventory item's ⋮
   titleOf: (row: Row) => string; // the order line's name, with its stock size
   amountOf: (row: Row) => AmountProps;
   saveRow: (row: Row) => (changes: PartChanges) => void;
@@ -1170,13 +1176,16 @@ function CotsTable({
           <ThumbLocate part={p} />
         </td>
         <td className={`sheet-name font-semibold ${crossed ? "line-through" : ""} ${row.members.length > 1 ? "text-amber-500" : ""}`}>
-          {link ? (
-            <a href={link.url} target="_blank" rel="noreferrer" className="text-sky-500 underline-offset-2 hover:underline dark:text-sky-400">
-              {titleOf(row)}
-            </a>
-          ) : (
-            titleOf(row)
-          )}
+          <span className="flex items-center justify-between gap-1">
+            {link ? (
+              <a href={link.url} target="_blank" rel="noreferrer" className="min-w-0 truncate text-sky-500 underline-offset-2 hover:underline dark:text-sky-400">
+                {titleOf(row)}
+              </a>
+            ) : (
+              <span className="min-w-0 truncate">{titleOf(row)}</span>
+            )}
+            {menuOf?.(row)}
+          </span>
         </td>
         <td className="text-muted">{item ? "Inventory" : p.systemName}</td>
         <td className="text-right font-mono tabular-nums" title={item && s ? "Needed for the season or the robots" : undefined}>

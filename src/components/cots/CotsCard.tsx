@@ -37,7 +37,7 @@ import { OrderAmount, type AmountProps } from "./OrderAmount";
 // inventory or added for no robot; Robot: a robot's BOM) and the count is the whole shelf against
 // the item's whole need ("7 / 20 on shelf"). A part with no picture of its own shows its item's.
 // An item Inventory sent to orders (`restock`) shows as the item itself (Harel, 2026-11-24): its
-// picture, name and shelf stock, no COTS-part tags, and "Remove from orders" (`onRemove`). On the
+// picture, name and shelf stock, no COTS-part tags, and a ⋮ (`menu`: Change name, Add / Change link, Remove from orders). On the
 // order pages `amount` is the bright amount to order, typed right on the card.
 export function CotsCard({
   part,
@@ -55,7 +55,7 @@ export function CotsCard({
   onOpen,
   line,
   amount,
-  onRemove,
+  menu,
 }: {
   part: CardPart;
   save: SaveFn;
@@ -78,7 +78,7 @@ export function CotsCard({
   // pencil on Released, and a merged line's tag and pictures (Harel, 2026-11-20).
   line?: OrderLine;
   amount?: AmountProps;
-  onRemove?: () => void;
+  menu?: React.ReactNode; // an inventory item's ⋮ (ItemOrderMenu), top right of the picture
 }) {
   const edit = useManage();
   const work = useCan("work");
@@ -180,6 +180,7 @@ export function CotsCard({
           {line?.merged && <OrderMergedTag count={line.merged.count} />}
         </div>
         <div className="absolute top-2 right-2 flex max-w-[55%] flex-col items-end gap-1">
+          {menu}
           {origin && !asItem && (
             <span
               className={`rounded-full px-2 py-0.5 text-[0.6875rem] font-bold shadow-sm ${origin === "General" ? "bg-[#0D111A]/85 text-amber-300" : "bg-sky-500 text-white"}`}
@@ -296,7 +297,7 @@ export function CotsCard({
               <span className="text-fg">{title}</span>
             )}
           </div>
-          {line && <OrderNameEdit line={line} />}
+          {line && !menu && <OrderNameEdit line={line} />}
           {links.length > 1 && <LinksMenu links={links} />}
           {edit && !order && !group && !asItem && <EditMenu part={part} />}
         </div>
@@ -307,19 +308,9 @@ export function CotsCard({
             <div className="-mt-1.5 truncate text-xs text-subtle">{part.systemName}</div>
           ))}
 
-        {(amount || (asItem && onRemove)) && (
+        {amount && (
           <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-            {amount && <OrderAmount {...amount} />}
-            {asItem && onRemove && (
-              <button
-                type="button"
-                onClick={onRemove}
-                className="press ml-auto min-h-8 rounded-lg px-2 text-xs font-semibold text-muted hover:bg-raised hover:text-rose-500 active:scale-[0.98] pointer-coarse:min-h-9"
-                title="Take it off the order pages; Inventory stays as it is"
-              >
-                Remove from orders
-              </button>
-            )}
+            <OrderAmount {...amount} />
           </div>
         )}
         <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
