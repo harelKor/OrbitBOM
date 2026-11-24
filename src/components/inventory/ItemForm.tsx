@@ -4,7 +4,7 @@ import { StepButton } from "@/components/ui/Stepper";
 import { useState, useTransition } from "react";
 import { saveItem, type ItemInput } from "@/app/(app)/inventory/actions";
 import { CATEGORY_GROUPS, type CategoryGroupId } from "@/config/inventory";
-import { activeFields, buildName, dropInactive, getCategory, sizeOrderProblem } from "@/lib/inventory/categories";
+import { activeFields, buildName, dropInactive, getCategory, rawSizeProblem } from "@/lib/inventory/categories";
 import { formatStockExact as formatStock, isSheetGoods, parseStock } from "@/lib/inventory/stock";
 import { useCan } from "@/components/shell/ModeContext";
 import { askConfirm, showProblem, type ConfirmOptions } from "@/components/ui/useConfirm";
@@ -141,9 +141,10 @@ export function ItemForm({
     return true;
   };
   const submit = () => {
-    // Raw Stock sizes go X then Y, Y no bigger (Harel, 2026-11-24): a popup says so, nothing saves.
-    const sizeProblem = sizeOrderProblem(cat, d.specs);
-    if (sizeProblem) return void showProblem("Y can't be bigger than X", sizeProblem);
+    // Raw Stock sizes: X, Y and the wall filled in, Y no bigger than X (Harel, 2026-11-24): a popup
+    // says what's wrong, nothing saves.
+    const sizeProblem = rawSizeProblem(cat, d.specs);
+    if (sizeProblem) return void showProblem("Check the size", sizeProblem);
     const input: ItemInput = {
       name: name.trim(),
       category: d.category,

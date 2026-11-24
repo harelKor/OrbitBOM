@@ -7,7 +7,7 @@ import { db, schema } from "@/db";
 import { vendorOfUrl } from "@/config/vendors";
 import { listInventory } from "@/lib/data/inventory";
 import { autoLink, fastenerLinkProblems, findLinks, writePendingLinks } from "@/lib/inventory/autolink";
-import { checkSpecs, fieldChoices, getCategory, sizeOrderProblem, slugify, type InvCategory } from "@/lib/inventory/categories";
+import { checkSpecs, fieldChoices, getCategory, rawSizeProblem, slugify, type InvCategory } from "@/lib/inventory/categories";
 import { recordItemChanges } from "@/lib/inventory/history";
 import { pushItemToCards } from "@/lib/inventory/cotsSync";
 import { readProduct, saveProductPhoto } from "@/lib/inventory/product";
@@ -212,10 +212,11 @@ function checkItemInfo(info: z.infer<typeof itemInfo>, current: { category: stri
     if (!cat) throw new ToolError("Specs need a category.");
     const checked = checkSpecs(cat, info.specs);
     if ("error" in checked) throw new ToolError(checked.error);
-    const sizeProblem = sizeOrderProblem(cat, checked.values);
-    if (sizeProblem) throw new ToolError(sizeProblem);
     specs = checked.values;
   }
+  // Raw Stock sizes (rawSizeProblem): a new item, or new specs, need X, Y and the wall.
+  const sizeProblem = cat && (specs || !current) ? rawSizeProblem(cat, specs ?? {}) : null;
+  if (sizeProblem) throw new ToolError(sizeProblem);
   const links = current?.cotsLinks ?? [];
   return {
     ...(info.category ? { category: info.category } : {}),

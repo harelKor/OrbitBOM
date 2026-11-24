@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { categoryOf, sizeOrderProblem, type InvCategory } from "./categories";
+import { categoryOf, rawSizeProblem, type InvCategory } from "./categories";
 
 const cat = (id: string, sheet = false): InvCategory => ({ id, label: id, noun: id, group: "consumables", sheet, image: null, defaultLocationId: null, fields: [] });
 
@@ -20,18 +20,46 @@ describe("categoryOf", () => {
   });
 });
 
-// Harel, 2026-11-24: 50×20 and 20×50 are one size, written with the bigger side (X) first.
-describe("sizeOrderProblem", () => {
-  const tube: InvCategory = { ...cat("square-tubes", true), fields: [{ id: "size", label: "Size (mm)", kind: "text" }] };
-  const block: InvCategory = { ...cat("blocks", true), fields: [{ id: "x", label: "X (mm)", kind: "number" }, { id: "y", label: "Y (mm)", kind: "number" }] };
+// Harel, 2026-11-24: X, Y and the wall are filled in, and 50×20 and 20×50 are one size, written
+// with the bigger side (X) first.
+describe("rawSizeProblem", () => {
+  const tube: InvCategory = {
+    ...cat("square-tubes", true),
+    fields: [
+      { id: "size", label: "Size (mm)", kind: "text" },
+      { id: "wall", label: "Wall (mm)", kind: "text" },
+      { id: "length", label: "Length (mm)", kind: "number" },
+    ],
+  };
+  const blocks: InvCategory = {
+    ...cat("cylinders-blocks", true),
+    fields: [
+      { id: "shape", label: "Shape", kind: "options", options: ["Cylinder", "Block"] },
+      { id: "x", label: "X (mm)", kind: "number", when: "Block" },
+      { id: "y", label: "Y (mm)", kind: "number", when: "Block" },
+    ],
+  };
+  it("needs X, Y and the wall", () => {
+    expect(rawSizeProblem(tube, {})).toContain("Size (mm) as X×Y");
+    expect(rawSizeProblem(tube, { size: "50", wall: "2" })).toContain("Size (mm)");
+    expect(rawSizeProblem(tube, { size: "50x20" })).toContain("Wall (mm)");
+    expect(rawSizeProblem(blocks, { shape: "Block", x: "20" })).toContain("Y (mm)");
+  });
   it("refuses Y bigger than X", () => {
-    expect(sizeOrderProblem(tube, { size: "20x50" })).toContain("50×20");
-    expect(sizeOrderProblem(block, { x: "20", y: "50" })).toContain("X 50, Y 20");
+    expect(rawSizeProblem(tube, { size: "20x50", wall: "2" })).toContain("50×20");
+    expect(rawSizeProblem(blocks, { shape: "Block", x: "20", y: "50" })).toContain("X 50, Y 20");
   });
-  it("takes X ≥ Y, a missing side, and categories outside Raw Stock", () => {
-    expect(sizeOrderProblem(tube, { size: "50x20" })).toBeNull();
-    expect(sizeOrderProblem(tube, { size: "25x25x1.5" })).toBeNull();
-    expect(sizeOrderProblem(block, { x: "20" })).toBeNull();
-    expect(sizeOrderProblem({ ...tube, group: "cots" }, { size: "8x22" })).toBeNull();
+  it("takes a full size, no length, a sub-type without X / Y, and categories outside Raw Stock", () => {
+    expect(rawSizeProblem(tube, { size: "50x20", wall: "2" })).toBeNull();
+    expect(rawSizeProblem(tube, { size: "25x25x1.5", wall: "1.5" })).toBeNull();
+    expect(rawSizeProblem(blocks, { shape: "Cylinder" })).toBeNull();
+    expect(rawSizeProblem({ ...tube, group: "cots" }, { size: "8x22" })).toBeNull();
   });
+});
+
+it("finds X / Y and wall fields by their labels too", () => {
+  const custom: InvCategory = { ...cat("bars", true), fields: [{ id: "bx", label: "X (mm)", kind: "number" }, { id: "by", label: "Y (mm)", kind: "number" }, { id: "w", label: "Wall thickness", kind: "text" }] };
+  expect(rawSizeProblem(custom, { bx: "40" })).toBe("Fill in Y (mm) and Wall thickness: a Raw Stock item needs its X, Y and wall.");
+  expect(rawSizeProblem(custom, { bx: "40", by: "20", w: "2" })).toBeNull();
+  expect(rawSizeProblem({ ...custom, fields: [{ id: "xl", label: "XL size", kind: "options", options: ["a"] }] }, {})).toBeNull();
 });

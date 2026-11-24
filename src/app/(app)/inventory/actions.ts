@@ -17,7 +17,7 @@ import { listBores } from "@/lib/data/bores";
 import { listCategories } from "@/lib/data/categories";
 import { inventoryItemWithLists, itemHistory, itemOrderHistory, listFitTargets, listInventory, robotInventory, usageOf } from "@/lib/data/inventory";
 import { autoLink } from "@/lib/inventory/autolink";
-import { categoryOf, getCategory, sizeOrderProblem, slugify, storedBoreField, type InvCategory } from "@/lib/inventory/categories";
+import { categoryOf, getCategory, rawSizeProblem, slugify, storedBoreField, type InvCategory } from "@/lib/inventory/categories";
 import type { ImportRow } from "@/lib/inventory/import";
 import { pushItemToCards } from "@/lib/inventory/cotsSync";
 import { recordItemChanges } from "@/lib/inventory/history";
@@ -92,7 +92,7 @@ export async function saveItem(itemId: string | null, input: ItemInput): Promise
   if (d.category && !cat) return { error: "Unknown category." };
   const ids = new Set(cat?.fields.map((f) => f.id) ?? []);
   const specs = Object.fromEntries(Object.entries(d.specs).flatMap(([k, v]) => (ids.has(k) && v.trim() ? [[k, v.trim()]] : [])));
-  const sizeProblem = sizeOrderProblem(cat, specs);
+  const sizeProblem = rawSizeProblem(cat, specs);
   if (sizeProblem) return { error: sizeProblem };
   const sheet = !!getCategory(cats, categoryOf({ category: d.category, name: d.name }, cats))?.sheet;
   const inStock = d.inStock === undefined ? undefined : parseStock(d.inStock, sheet);
@@ -293,9 +293,9 @@ export async function setItemSpecs(itemId: string, specs: Record<string, string>
   const member = await requireCapability("work");
   if (!isUuid(itemId)) return { error: "Unknown item." };
   const cats = await listCategories();
-  // Raw Stock sizes: X then Y, Y no bigger (sizeOrderProblem).
+  // Raw Stock sizes: X, Y and wall filled in, Y no bigger than X (rawSizeProblem).
   const [item] = await db.select({ category: inventoryItems.category, name: inventoryItems.name }).from(inventoryItems).where(eq(inventoryItems.id, itemId));
-  const sizeProblem = item && sizeOrderProblem(getCategory(cats, categoryOf(item, cats)), specs);
+  const sizeProblem = item && rawSizeProblem(getCategory(cats, categoryOf(item, cats)), specs);
   if (sizeProblem) return { error: sizeProblem };
   return saveFields(
     itemId,

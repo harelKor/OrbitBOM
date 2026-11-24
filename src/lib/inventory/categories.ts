@@ -223,20 +223,38 @@ export const slugify = (s: string) =>
     .replace(/^-|-$/g, "")
     .slice(0, 40) || "category";
 
-// Raw Stock sizes go X then Y with Y no bigger than X (Harel, 2026-11-24), so 50×20 and 20×50
-// never become two items for the same stock: a size field's "50x20" (box tubes, plates), and an
-// X / Y pair of fields (blocks, or any Raw Stock category given both in Settings). Null when fine.
+// Raw Stock sizes (Harel, 2026-11-24): X, Y and the wall are always filled in, and Y is no bigger
+// than X, so 50×20 and 20×50 never become two items for the same stock. A size field holds "X×Y"
+// (box tubes' Size, plates' Sheet size); X / Y can also be a pair of fields (blocks, or any Raw
+// Stock category given both in Settings). Only the fields the item's sub-type shows count. Null
+// when fine; the item form and the add window show it in a popup, the server refuses the save.
 const XY = /(\d+(?:\.\d+)?)\s*[x×*]\s*(\d+(?:\.\d+)?)/i;
-const isAxis = (axis: "x" | "y") => (f: CategoryField) => f.id === axis || new RegExp(`^${axis}\b`, "i").test(f.label.trim());
-export function sizeOrderProblem(cat: Pick<InvCategory, "group" | "fields"> | undefined, specs: Record<string, string>): string | null {
+const AXIS = { x: /^x\b/i, y: /^y\b/i };
+const isAxis = (axis: "x" | "y") => (f: CategoryField) => f.id === axis || AXIS[axis].test(f.label.trim());
+const isSizeField = (f: CategoryField) => f.kind === "text" && (f.id === "size" || /size/i.test(f.label));
+const isWallField = (f: CategoryField) => f.id === "wall" || /^wall\b/i.test(f.label.trim());
+const listOf = (words: string[]) => (words.length > 1 ? `${words.slice(0, -1).join(", ")} and ${words.at(-1)}` : words[0]);
+
+export function rawSizeProblem(cat: InvCategory | undefined, specs: Record<string, string>): string | null {
   if (!cat || cat.group !== "consumables") return null;
-  const x = cat.fields.find(isAxis("x"));
-  const y = cat.fields.find(isAxis("y"));
+  const fields = activeFields(cat, specs);
+  const filled = (f: CategoryField) => !!specs[f.id]?.trim();
+  const x = fields.find(isAxis("x"));
+  const y = fields.find(isAxis("y"));
+  const missing: string[] = [];
+  if (x && !filled(x)) missing.push(x.label);
+  if (y && !filled(y)) missing.push(y.label);
+  for (const f of fields) {
+    if (f === x || f === y) continue;
+    if (isSizeField(f) && !XY.test(specs[f.id] ?? "")) missing.push(`${f.label} as X×Y (like 50x20)`);
+    else if (isWallField(f) && !filled(f)) missing.push(f.label);
+  }
+  if (missing.length) return `Fill in ${listOf(missing)}: a Raw Stock item needs its X, Y and wall.`;
   if (x && y) {
     const [a, b] = [parseFloat(specs[x.id] ?? ""), parseFloat(specs[y.id] ?? "")];
     if (a > 0 && b > a) return `Y (${b}) can't be bigger than X (${a}). Put the bigger side in X: X ${b}, Y ${a}.`;
   }
-  for (const f of cat.fields) {
+  for (const f of fields) {
     if (f.kind !== "text" || f === x || f === y) continue;
     const m = XY.exec(specs[f.id] ?? "");
     if (m && Number(m[2]) > Number(m[1])) return `${f.label}: ${m[1]}×${m[2]} has Y bigger than X. Write the bigger side first: ${m[2]}×${m[1]}.`;

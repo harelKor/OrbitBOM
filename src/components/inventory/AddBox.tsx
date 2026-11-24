@@ -11,7 +11,7 @@ import { Icon } from "@/components/ui/Icon";
 import { peekProps, usePeek } from "@/components/ui/longPress";
 import { usePhone } from "@/components/ui/usePhone";
 import { guessCategory } from "@/config/inventory";
-import { buildName, getCategory, sizeOrderProblem } from "@/lib/inventory/categories";
+import { buildName, getCategory, rawSizeProblem } from "@/lib/inventory/categories";
 import { showProblem } from "@/components/ui/useConfirm";
 import type { Offer, ProductGroup } from "@/lib/inventory/productGroups";
 import { parseQuick } from "@/lib/inventory/quick";
@@ -185,9 +185,10 @@ export function AddBox({
   // Adding is instant: the results close, the box clears and the item shows at the top of the list
   // with its glow while it saves; a failed save puts the form back with the error.
   const add = (input: ItemInput, draft: Draft, retry: Draft | null) => {
-    // Raw Stock sizes go X then Y, Y no bigger (Harel, 2026-11-24): a popup says so, nothing saves.
-    const sizeProblem = sizeOrderProblem(getCategory(categories, input.category ?? null), input.specs ?? {});
-    if (sizeProblem) return void showProblem("Y can't be bigger than X", sizeProblem);
+    // Raw Stock sizes: X, Y and the wall filled in, Y no bigger than X (Harel, 2026-11-24): a popup
+    // says what's wrong, nothing saves.
+    const sizeProblem = rawSizeProblem(getCategory(categories, input.category ?? null), input.specs ?? {});
+    if (sizeProblem) return void showProblem("Check the size", sizeProblem);
     stopSearch();
     setReadError(null);
     setDraft(null);
