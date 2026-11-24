@@ -4,6 +4,7 @@
 import { sql } from "drizzle-orm";
 import type { Part as DrawingPart } from "../lib/drawing/read";
 import type { PieceRow } from "../lib/inventory/stock";
+import type { ConditionScope, ItemVariant } from "../lib/inventory/variants";
 import type { Shape } from "../lib/review/shape";
 import type { ViewState } from "../components/viewer/viewState";
 import type { CheckLimits, CheckResults } from "../lib/check/types";
@@ -1114,6 +1115,12 @@ export const inventoryConditions = pgTable("inventory_conditions", {
   id: id(),
   label: text("label").notNull().unique(),
   color: text("color").notNull(),
+  // "Only for" these category groups and / or categories (Harel, 2026-11-24): pickers offer the
+  // condition only on items there. Null = everywhere.
+  onlyFor: jsonb("only_for").$type<ConditionScope>(),
+  // Stock in this condition is shown but counts toward nothing (stock, season need, shortage,
+  // ordering): Defective (lib/inventory/variants.ts).
+  uncounted: boolean("uncounted").notNull().default(false),
 });
 
 // The team's base materials (Aluminum, 6061-T6, Polycarbonate...), edited on the Settings page.
@@ -1203,6 +1210,9 @@ export const inventoryItems = pgTable("inventory_items", {
   // A fraction item's piece sizes and counts ({ size: "f6" | "m450" | "p500x450", count }[]); they
   // sum to in_stock. Older rows hold {} or a { twelfths: count } map (lib/inventory/stock.ts).
   pieces: jsonb("pieces").$type<PieceRow[] | Record<string, number>>().notNull().default({}),
+  // The item in several conditions, each with its own count and note (lib/inventory/variants.ts,
+  // Harel 2026-11-24). Empty: one stock in condition_id. Otherwise in_stock is the counting ones' sum.
+  variants: jsonb("variants").$type<ItemVariant[]>().notNull().default([]),
   // How many the team wants on the shelf for the season, whatever the robots use (Harel,
   // 2026-10-27). Null: no season need. Sheet items take pieces like in_stock.
   seasonNeed: doublePrecision("season_need"),
@@ -1243,6 +1253,8 @@ export const inventoryMoves = pgTable(
     // The page visit a change on the site was made in, and its path (Inventory's Recent actions).
     visitId: uuid("visit_id"),
     page: text("page"),
+    // The item's variant the move landed on (inventory_items.variants), so an undo puts it back there.
+    variantId: text("variant_id"),
     at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

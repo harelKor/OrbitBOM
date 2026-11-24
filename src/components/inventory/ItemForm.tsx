@@ -9,6 +9,7 @@ import { formatStockExact as formatStock, isSheetGoods, parseStock } from "@/lib
 import { useCan } from "@/components/shell/ModeContext";
 import { askConfirm, showProblem, type ConfirmOptions } from "@/components/ui/useConfirm";
 import { FieldInput } from "./fields";
+import { conditionsFor } from "@/lib/inventory/variants";
 import { hostOf } from "./ItemCard";
 import { LocationPicker, PlaceTag } from "./LocationPicker";
 import { PhotoButtons } from "./photo";
@@ -30,6 +31,7 @@ export type Draft = {
   price: number | null;
   imageUrl: string | null;
   photo?: { key: string; preview: string } | null; // a photo the member took or uploaded
+  variants?: boolean; // the item has variants: each carries its own condition (lib/inventory/variants.ts)
 };
 
 export const emptyDraft = (over: Partial<Draft> = {}): Draft => ({
@@ -60,6 +62,7 @@ export const draftOf = (item: Item): Draft => ({
   links: item.cotsLinks,
   price: item.price,
   imageUrl: null,
+  variants: item.variants.length > 0,
 });
 
 // Where a category's items go: the location set in the category settings, else the shelf where
@@ -237,19 +240,19 @@ export function ItemForm({
             <PlaceTag place={locations.find((l) => l.id === d.locationId)} places={locations} /> <span className="ml-auto text-subtle">▾</span>
           </LocationPicker>
         </div>
-        <div className="min-w-36">
+        {!d.variants && <div className="min-w-36">
           <label className="label" htmlFor="item-condition">
             Condition
           </label>
           <select id="item-condition" value={d.conditionId ?? ""} onChange={(e) => setDraft({ ...d, conditionId: e.target.value || null })} className="input min-h-11">
             <option value="">Not set</option>
-            {conditions.map((c) => (
+            {conditionsFor(conditions, cat, [d.conditionId]).map((c) => (
               <option key={c.id} value={c.id}>
                 {c.label}
               </option>
             ))}
           </select>
-        </div>
+        </div>}
       </div>
 
       <div className="space-y-2">

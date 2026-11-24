@@ -9,6 +9,9 @@ import { BackupsSettings, type ScopeInfo } from "@/components/settings/BackupsSe
 import { RecentlyDeleted, type DeletedEntry } from "@/components/settings/RecentlyDeleted";
 import { LayoutsDocumentSettings, type RobotLayoutsDoc } from "@/components/settings/LayoutsDocumentSettings";
 import type { Condition, InvCategory, Location } from "@/components/inventory/types";
+import type { ConditionScope } from "@/lib/inventory/variants";
+import { CATEGORY_GROUPS } from "@/config/inventory";
+import { Popover } from "@/components/bom/Popover";
 import { pushQuery } from "@/components/ui/CategoryBoxes";
 import { Notice } from "@/components/ui/Notice";
 import { askConfirm } from "@/components/ui/useConfirm";
@@ -83,7 +86,7 @@ export function SettingsView({
       {tab === "materials" && <MaterialsSettings materials={materials} />}
       {tab === "bores" && <BoresSettings bores={bores} />}
       {tab === "map" && <MapSettings places={locations} systems={drawerSystems} />}
-      {tab === "conditions" && <ConditionsSettings conditions={conditions} />}
+      {tab === "conditions" && <ConditionsSettings conditions={conditions} categories={categories} />}
       {tab === "layouts" && <LayoutsDocumentSettings robots={robots} />}
       {tab === "backups" && <BackupsSettings backups={backups} scopes={restoreScopes} isAdmin={isAdmin} />}
       {tab === "deleted" && <RecentlyDeleted entries={deleted} isAdmin={isAdmin} keepDays={keepDays} />}
@@ -214,19 +217,22 @@ function BoresSettings({ bores }: { bores: BaseMaterial[] }) {
 
 // ---------- Conditions ----------
 
-function ConditionsSettings({ conditions }: { conditions: Condition[] }) {
+function ConditionsSettings({ conditions, categories }: { conditions: Condition[]; categories: InvCategory[] }) {
   const { run, pending, banner } = useRun();
   const [label, setLabel] = useState("");
   const [color, setColor] = useState("#22c55e");
   return (
     <div className="space-y-4">
-      <p className="max-w-3xl text-sm text-muted">What state an item is in. The colour marks it on cards and in the table.</p>
+      <p className="max-w-3xl text-sm text-muted">
+        What state an item is in. The colour marks it on cards and in the table. &ldquo;Only for&rdquo; offers a condition on some categories only; items that already carry it keep it.
+      </p>
       {banner}
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {conditions.map((c) => (
-          <div key={c.id} className="panel flex items-center gap-2 p-2 transition-colors duration-150 hover:border-sky-400/40">
+          <div key={c.id} className="panel flex flex-wrap items-center gap-2 p-2 transition-colors duration-150 hover:border-sky-400/40">
             <ConditionColor color={c.color} label={c.label} onSave={(v) => run(() => updateCondition(c.id, { color: v }))} />
             <InlineName value={c.label} label="Condition name" onSave={(v) => run(() => updateCondition(c.id, { label: v }))} />
+            <ConditionScopeButton condition={c} categories={categories} onSave={(onlyFor) => run(() => updateCondition(c.id, { onlyFor }))} />
             <SmallButton
               label={`Delete ${c.label}`}
               danger
@@ -254,6 +260,52 @@ function ConditionsSettings({ conditions }: { conditions: Condition[] }) {
         </button>
       </form>
     </div>
+  );
+}
+
+// A condition's "Only for" (lib/inventory/variants.ts): category groups and / or categories; none
+// ticked = everywhere. A group's tick covers all its categories.
+function ConditionScopeButton({ condition, categories, onSave }: { condition: Condition; categories: InvCategory[]; onSave: (v: ConditionScope) => void }) {
+  const groups = condition.onlyFor?.groups ?? [];
+  const cats = condition.onlyFor?.categories ?? [];
+  const names = [...CATEGORY_GROUPS.filter((g) => groups.includes(g.id)).map((g) => g.short), ...categories.filter((c) => cats.includes(c.id)).map((c) => c.label)];
+  const toggle = (list: string[], id: string) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
+  return (
+    <Popover
+      hideCaret
+      width={300}
+      triggerClassName={`press min-h-8 max-w-full truncate rounded-full border px-2.5 text-xs font-semibold active:scale-[0.98] pointer-coarse:min-h-9 ${names.length ? "border-sky-400/50 text-accent" : "border-dashed border-line-strong text-muted"}`}
+      trigger={<span title={names.length ? `Only for ${names.join(", ")}` : "Offered everywhere"}>{names.length ? `Only for ${names.join(", ")}` : "Everywhere"}</span>}
+    >
+      {() => (
+        <div className="max-h-[60vh] space-y-2 overflow-y-auto p-2 text-sm">
+          <p className="text-xs text-muted">Offer &ldquo;{condition.label}&rdquo; only on items in:</p>
+          {CATEGORY_GROUPS.map((g) => (
+            <div key={g.id} className="space-y-1">
+              <label className="flex min-h-8 cursor-pointer items-center gap-2 font-semibold">
+                <input type="checkbox" checked={groups.includes(g.id)} onChange={() => onSave({ groups: toggle(groups, g.id), categories: cats })} />
+                {g.label}
+              </label>
+              <div className="ml-6 flex flex-wrap gap-x-3">
+                {categories
+                  .filter((c) => c.group === g.id)
+                  .map((c) => (
+                    <label key={c.id} className={`flex min-h-8 cursor-pointer items-center gap-1.5 text-xs ${groups.includes(g.id) ? "opacity-50" : ""}`}>
+                      <input type="checkbox" checked={cats.includes(c.id) || groups.includes(g.id)} disabled={groups.includes(g.id)} onChange={() => onSave({ groups, categories: toggle(cats, c.id) })} />
+                      {c.label}
+                    </label>
+                  ))}
+              </div>
+            </div>
+          ))}
+          {names.length > 0 && (
+            <button type="button" className="btn min-h-9 text-xs active:scale-[0.98]" onClick={() => onSave(null)}>
+              Offer everywhere
+            </button>
+          )}
+        </div>
+      )}
+    </Popover>
   );
 }
 

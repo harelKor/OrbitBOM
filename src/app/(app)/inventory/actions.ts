@@ -21,7 +21,8 @@ import { categoryOf, getCategory, rawSizeProblem, slugify, storedBoreField, type
 import type { ImportRow } from "@/lib/inventory/import";
 import { pushItemToCards } from "@/lib/inventory/cotsSync";
 import { recordItemChanges } from "@/lib/inventory/history";
-import { editPieces, moveStock, setStock } from "@/lib/inventory/moves";
+import { editPieces, editVariants, moveStock, setStock } from "@/lib/inventory/moves";
+import type { VariantOp } from "@/lib/inventory/variants";
 import { readProduct, saveProductPhoto, toUsd } from "@/lib/inventory/product";
 import { missing, newestOpenOrders, orderHref } from "@/lib/inventory/season";
 import { type PieceOp, SIZE_KEY, parseStock, snapStock } from "@/lib/inventory/stock";
@@ -109,6 +110,7 @@ export async function saveItem(itemId: string | null, input: ItemInput): Promise
     ...(d.note !== undefined && { note: d.note?.trim() || null }),
   };
   const ctx = { memberId: member.id, via: "ui" as const };
+  const defective = await isUncounted(d.conditionId);
   const id = await db.transaction(async (tx) => {
     let id = itemId;
     if (id) {
@@ -128,6 +130,7 @@ export async function saveItem(itemId: string | null, input: ItemInput): Promise
     } else {
       id = await createItem(tx, values, inStock ?? 0, ctx);
     }
+    if (defective) await editVariants(tx, id!, { whole: d.conditionId! }, ctx);
     return id!;
   });
   if (!id) return { error: "That item was deleted." };
@@ -278,7 +281,19 @@ export async function setItemLocation(itemId: string, locationId: string | null)
 export async function setItemCondition(itemId: string, conditionId: string | null): Promise<ActionResult> {
   const member = await requireCapability("work");
   if (!isUuid(itemId) || (conditionId !== null && !isUuid(conditionId))) return { error: "Unknown condition." };
-  return saveFields(itemId, () => ({ conditionId }), member.id);
+  const out = await saveFields(itemId, () => ({ conditionId }), member.id);
+  if (!out.error && (await isUncounted(conditionId))) {
+    await db.transaction((tx) => editVariants(tx, itemId, { whole: conditionId! }, { memberId: member.id, via: "ui" }));
+  }
+  return out;
+}
+
+// Defective (lib/inventory/variants.ts): an item put in it holds its stock as one Defective
+// variant, so it counts toward nothing.
+async function isUncounted(conditionId: string | null) {
+  if (!conditionId) return false;
+  const [c] = await db.select({ uncounted: inventoryConditions.uncounted }).from(inventoryConditions).where(eq(inventoryConditions.id, conditionId));
+  return !!c?.uncounted;
 }
 
 // The 2026 / 2027 season tag on the card, table and item window: flips it, or sets nextTag.
@@ -377,12 +392,14 @@ export async function linkItemToProduct(itemId: string, product: z.input<typeof 
 }
 
 // The − / + stepper (a fraction item also steps one piece of a size: "f6", "m450", "p500x450").
-export async function adjustStock(itemId: string, delta: number, size?: string): Promise<ActionResult> {
+// `variantId`: the variant an item with variants steps (the card asks which).
+export async function adjustStock(itemId: string, delta: number, size?: string, variantId?: string): Promise<ActionResult> {
   const member = await requireCapability("work");
   if (!isUuid(itemId) || !Number.isFinite(delta) || !delta) return { error: "Unknown item." };
   if (size !== undefined && !SIZE_KEY.test(size)) return { error: "Unknown piece size." };
+  if (variantId !== undefined && !isUuid(variantId)) return { error: "Unknown variant." };
   const cats = await listCategories(); // cached, read before the transaction
-  await db.transaction((tx) => moveStock(tx, { itemId, delta, reason: delta > 0 ? "received" : "used", size }, { memberId: member.id, via: "ui", cats }));
+  await db.transaction((tx) => moveStock(tx, { itemId, delta, reason: delta > 0 ? "received" : "used", size, variantId }, { memberId: member.id, via: "ui", cats }));
   refresh();
   return {};
 }
@@ -448,6 +465,26 @@ export async function countStock(itemId: string, amount: number): Promise<Action
   if (!isUuid(itemId) || !Number.isFinite(amount) || amount < 0) return { error: "Type a count of 0 or more." };
   const cats = await listCategories();
   await db.transaction((tx) => setStock(tx, itemId, amount, { memberId: member.id, via: "ui", cats }));
+  refresh();
+  return {};
+}
+
+const uuidStr = z.string().refine(isUuid);
+const variantOp = z.union([
+  z.object({ add: z.object({ conditionId: uuidStr.nullable(), count: z.number().int().min(0).max(100000), note: z.string().max(200).nullable().optional() }) }),
+  z.object({ set: z.object({ id: uuidStr, conditionId: uuidStr.nullable().optional(), count: z.number().int().min(0).max(100000).optional(), note: z.string().max(200).nullable().optional() }) }),
+  z.object({ remove: uuidStr }),
+]);
+
+// The item window's variants (Harel, 2026-11-24): + Add variant, a variant's condition, count and
+// note, ✕. Stock changes are moves (lib/inventory/moves.ts); Raw Stock has no variants.
+export async function editItemVariants(itemId: string, op: VariantOp): Promise<ActionResult> {
+  const member = await requireCapability("work");
+  const parsed = variantOp.safeParse(op);
+  if (!isUuid(itemId) || !parsed.success) return { error: "Unknown variant." };
+  const cats = await listCategories();
+  const done = await db.transaction((tx) => editVariants(tx, itemId, parsed.data as VariantOp, { memberId: member.id, via: "ui", cats }));
+  if (!done) return { error: "That item was deleted." };
   refresh();
   return {};
 }

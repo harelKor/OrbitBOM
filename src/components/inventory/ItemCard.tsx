@@ -24,7 +24,8 @@ import { LocationPicker } from "./LocationPicker";
 import { FindButton } from "@/components/map/FindButton";
 import type { PlaceStats } from "@/components/map/ShopMap";
 import { SeasonTag } from "./SeasonTag";
-import type { InvCategory, Item, Location } from "./types";
+import type { Condition, InvCategory, Item, Location } from "./types";
+import { VariantDots, useVariantStep } from "./Variants";
 
 // Seeded conditions carry a colour name (FRCBOM's); ones added since carry a hex colour.
 const NAMED: Record<string, string> = { emerald: "#10b981", amber: "#f59e0b", rose: "#f43f5e", sky: "#0ea5e9", slate: "#64748b", violet: "#8b5cf6" };
@@ -100,6 +101,7 @@ export function ItemCard({
   item,
   categories,
   condition,
+  conditions,
   location,
   locations,
   placeStats,
@@ -121,11 +123,13 @@ export function ItemCard({
   view?: NeedView;
   categories: InvCategory[];
   condition?: { id: string; label: string; color: string };
+  // Every condition: an item with variants shows their dots and asks which one − / + moves.
+  conditions?: Condition[];
   location?: { id: string; name: string };
   // With every place, the card's map icon opens the shop map and flies to it.
   locations?: Location[];
   placeStats?: PlaceStats;
-  onStep: (delta: number, size?: string) => void;
+  onStep: (delta: number, size?: string, variantId?: string) => void;
   onCount: (amount: number) => void;
 }) {
   const work = useCan("work");
@@ -136,10 +140,12 @@ export function ItemCard({
   const needed = neededFor(item, view);
   const gap = missing(item, view);
   const tinted = standingTint(item, view);
-  const color = condition ? conditionColor(condition.color) : undefined;
+  const variants = item.variants?.length ? item.variants : null;
+  const color = condition && !variants ? conditionColor(condition.color) : undefined;
   const picture = item.thumbUrl ?? category?.imageUrl ?? null;
   const stop = (e: React.SyntheticEvent) => e.stopPropagation();
   const [movingLocation, startLocation] = useTransition();
+  const variantStep = useVariantStep(item, conditions, onStep);
 
   return (
     <div
@@ -185,7 +191,9 @@ export function ItemCard({
             {category.label}
           </Link>
         )}
-        {condition && (
+        {variants ? (
+          <VariantDots variants={variants} conditions={conditions ?? []} />
+        ) : condition && (
           <Link
             href={`/inventory/condition/${condition.id}`}
             onClick={stop}
@@ -255,10 +263,11 @@ export function ItemCard({
             {item.inStock} {item.inStock === 1 ? "PC" : "PCs"}
           </span>
         ) : (<>
+        {variantStep.chooser}
         {work && (<StepButton
           step={-1}
           size="lg"
-          onClick={() => onStep(-1)}
+          onClick={(e) => variantStep.step(-1, e)}
           disabled={item.sheet ? item.inStock <= 0 : item.inStock < 1}
           className="z-10"
           label={item.sheet && isSheetGoods(category?.label ?? item.name) ? "One sheet less" : "One less"}
@@ -273,7 +282,7 @@ export function ItemCard({
         {work && (<StepButton
           step={1}
           size="lg"
-          onClick={() => onStep(1)}
+          onClick={(e) => variantStep.step(1, e)}
           className="z-10"
           label={item.sheet && isSheetGoods(category?.label ?? item.name) ? "One sheet more" : "One more"}
         />)}

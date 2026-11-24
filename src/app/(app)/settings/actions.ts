@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { db, schema } from "@/db";
 import { requireCapability } from "@/lib/mode";
 import { isUuid } from "@/lib/uuid";
+import type { ConditionScope } from "@/lib/inventory/variants";
 
 const { baseMaterials, bores, inventoryCategories, inventoryConditions, inventoryItems, inventoryLocations } = schema;
 
@@ -29,10 +30,18 @@ export async function renameLocation(id: string, name: string): Promise<ActionRe
   return {};
 }
 
-export async function updateCondition(id: string, values: { label?: string; color?: string }): Promise<ActionResult> {
+// `onlyFor`: the category groups and categories the condition is offered on (null = everywhere).
+// Items that already carry it elsewhere keep it.
+export async function updateCondition(id: string, values: { label?: string; color?: string; onlyFor?: ConditionScope }): Promise<ActionResult> {
   await requireCapability("manage");
   if (!isUuid(id)) return { error: "Unknown condition." };
-  const set: { label?: string; color?: string } = {};
+  const set: { label?: string; color?: string; onlyFor?: ConditionScope } = {};
+  if (values.onlyFor !== undefined) {
+    const ids = (v: unknown) => (Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === "string" && /^[\w-]{1,80}$/.test(x)))].slice(0, 100) : []);
+    const groups = ids(values.onlyFor?.groups);
+    const categories = ids(values.onlyFor?.categories);
+    set.onlyFor = groups.length || categories.length ? { groups, categories } : null;
+  }
   if (values.label !== undefined) {
     const label = cleanName(values.label);
     if (!label) return { error: "Condition name is required." };

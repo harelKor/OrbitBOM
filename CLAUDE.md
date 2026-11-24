@@ -38,7 +38,7 @@ last full audit and what's still open: `plan/audit-2026-11-14.md` §0.
   sheet one), not `DEFAULT_CATEGORIES`: a test needing a category creates it.
 - Schema: edit `src/db/schema.ts`, `npm run db:generate`, rename the file to a readable name
   (and its `tag` in `drizzle/meta/_journal.json`), add `ALTER TABLE "x" ENABLE ROW LEVEL SECURITY;`
-  for a new table, commit. Next migration: 0109. Migrations reach production before the code and
+  for a new table, commit. Next migration: 0111. Migrations reach production before the code and
   a rollback runs old code on the new schema, so expand → contract: add columns/tables in one
   push; drop or rename one only in a later push, once no deployed code reads it.
 - Local site: README "Local development" (local Supabase in Docker, "Dev sign-in" button; Onshape
@@ -118,8 +118,12 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
   `applyPartChanges` (`src/lib/parts/apply.ts`): locks the rows, writes `part_history` under one
   batch (undo, Recent actions, AI log revert depend on it). Pass `tx` to join a transaction.
   Counters send `add: { field: ±n }`, never a total.
-- Stock: `moveStock` / `setStock` / `editPieces` (`src/lib/inventory/moves.ts`, row locked, move
-  logged). New items: `createItem` (`src/lib/inventory/create.ts`).
+- Stock: `moveStock` / `setStock` / `editPieces` / `editVariants` (`src/lib/inventory/moves.ts`,
+  row locked, move logged). New items: `createItem` (`src/lib/inventory/create.ts`).
+  Variants (2026-11-24): `inventory_items.variants` (jsonb, maths in `src/lib/inventory/variants.ts`)
+  = the item in several conditions; `in_stock` is the counting ones' sum (a condition with
+  `uncounted`, Defective, counts toward nothing); moves carry `variant_id`. None on Raw Stock or PC
+  stations. Conditions' `only_for` (groups / categories) limits pickers (`conditionsFor`).
 - Deleting a robot, system, manual part or item: `deleteToTrash` (`src/lib/trash.ts`) so it shows
   in Settings → Recently deleted for 30 days.
 - Onshape: `onshapeClient(memberId, baseUrl, { background })` (`src/lib/onshape/client.ts`) counts

@@ -45,7 +45,8 @@ import {
 } from "@/lib/inventory/season";
 import { matchesSearch } from "@/lib/inventory/searchWords";
 import { keepPicks, matchesPicks, specGroups, type SpecGroup, type SpecPicks } from "@/lib/inventory/specFilters";
-import { countPieces, stepStock } from "@/lib/inventory/stock";
+import { countItem, stepItem } from "@/lib/inventory/variantStock";
+import { inCondition, uncountedOf } from "@/lib/inventory/variants";
 import { safeAction } from "@/lib/safeAction";
 import { AddBox, haloItem, type AddBoxHandle } from "./AddBox";
 import { ImportDialog } from "./ImportDialog";
@@ -175,25 +176,27 @@ export function InventoryView({
   const [moveLoc, setMoveLoc] = useState(""); // "" keep, "none" clear, else a location id
   const selecting = tidy ? picking : null;
 
+  const uncounted = uncountedOf(lookups.conditions);
   // Stock steps, and an item being added (on top, glowing, until its save comes back).
   const [optimistic, addOptimistic] = useOptimistic(
     items,
-    (state, change: { id: string; delta: number; size?: string } | { id: string; count: number } | { add: Item }) =>
+    (state, change: { id: string; delta: number; size?: string; variantId?: string } | { id: string; count: number } | { add: Item }) =>
       "add" in change
         ? [change.add, ...state]
         : state.map((i) =>
             i.id === change.id
-              ? { ...i, ...("count" in change ? countPieces(i, change.count) : stepStock(i, change.delta, change.size)) }
+              ? { ...i, ...("count" in change ? countItem(i, change.count, uncounted) : stepItem(i, change.delta, change.size, change.variantId, uncounted)) }
               : i,
           ),
   );
   const [busy, startTransition] = useTransition();
-  const step = (id: string, delta: number, size?: string) =>
+  // `variantId`: the variant of an item with variants the card's popup picked.
+  const step = (id: string, delta: number, size?: string, variantId?: string) =>
     startTransition(async () => {
       setError(null);
-      addOptimistic({ id, delta, size });
+      addOptimistic({ id, delta, size, variantId });
       // A failed save or an offline tap says so; the optimistic step drops with the transition.
-      const result = await safeAction(() => adjustStock(id, delta, size));
+      const result = await safeAction(() => adjustStock(id, delta, size, variantId));
       if (result.error) setError(result.error);
     });
 
@@ -269,7 +272,7 @@ export function InventoryView({
       : scope.kind === "location"
         ? inPlace(locationOf(i), scope.id, placeById)
         : scope.kind === "condition"
-          ? i.conditionId === scope.id
+          ? inCondition(i, scope.id)
           : true;
 
   // Home's place, kept in the URL: the Short toggle, and the group and category boxes.
@@ -328,7 +331,7 @@ export function InventoryView({
         inBox(i) &&
         inSub(i) &&
         matches(i) &&
-        (!conditionId || i.conditionId === conditionId) &&
+        (!conditionId || inCondition(i, conditionId)) &&
         inLocation(i),
     )
     .sort((a, b) =>
@@ -349,7 +352,7 @@ export function InventoryView({
           inView(i) &&
           inBox(i) &&
           !mainIds.has(i.id) &&
-          (!conditionId || i.conditionId === conditionId) &&
+          (!conditionId || inCondition(i, conditionId)) &&
           inLocation(i),
       )
     : [];
@@ -409,7 +412,7 @@ export function InventoryView({
           conditions,
           value: conditionId,
           counts: (focusCat ? catItems : optimistic).reduce<Record<string, number>>((m, i) => {
-            if (i.conditionId) m[i.conditionId] = (m[i.conditionId] ?? 0) + 1;
+            for (const id of new Set(i.variants?.length ? i.variants.map((v) => v.conditionId) : [i.conditionId])) if (id) m[id] = (m[id] ?? 0) + 1;
             return m;
           }, {}),
           onChange: setConditionId,
@@ -583,7 +586,7 @@ export function InventoryView({
             location={locations.find((l) => l.id === locationOf(item))}
             conditions={conditions}
             locations={locations}
-            onStep={(d, b) => step(item.id, d, b)}
+            onStep={(d, b, v) => step(item.id, d, b, v)}
             onCount={(n) => count(item.id, n)}
             view={cardView}
             hideCategory={scope.kind === "category" || !!cat}
@@ -605,11 +608,12 @@ export function InventoryView({
             item={item}
             categories={categories}
             condition={conditions.find((c) => c.id === item.conditionId)}
+            conditions={conditions}
             location={locations.find((l) => l.id === locationOf(item))}
             locations={locations}
             placeStats={mapStats}
             view={cardView}
-            onStep={(d, b) => step(item.id, d, b)}
+            onStep={(d, b, v) => step(item.id, d, b, v)}
             onCount={(n) => count(item.id, n)}
             hideCategory={scope.kind === "category" || !!cat}
             hideSeason={hideSeason}
@@ -896,7 +900,7 @@ export function InventoryView({
               {grid(
                 allItems.filter(
                   (i) =>
-                    (!conditionId || i.conditionId === conditionId) &&
+                    (!conditionId || inCondition(i, conditionId)) &&
                     (!season || i.seasonTag === season) &&
                     inLocation(i),
                 ),

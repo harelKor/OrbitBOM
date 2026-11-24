@@ -199,6 +199,7 @@ export function AddBox({
     startSave(async () => {
       onAdding?.({
         id: `new:${Date.now()}`,
+        variants: [],
         name: input.name,
         groupId: null,
         pieces: {},

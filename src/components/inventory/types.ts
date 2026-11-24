@@ -3,6 +3,7 @@ import type { Place } from "@/lib/inventory/places";
 import type { OpenOrder } from "@/lib/inventory/season";
 import type { ItemUsage } from "@/lib/inventory/usage";
 import type { StoredPieces } from "@/lib/inventory/stock";
+import type { ConditionScope, ItemVariant } from "@/lib/inventory/variants";
 
 export type { InvCategory };
 
@@ -16,6 +17,8 @@ export type Item = {
   specs: Record<string, string>;
   cotsLinks: { url: string; site?: string; priceUsd?: number }[];
   conditionId: string | null;
+  // The item in several conditions (lib/inventory/variants.ts); empty: one stock in conditionId.
+  variants: ItemVariant[];
   locationId: string | null;
   inStock: number;
   pieces: StoredPieces; // a fraction item's piece sizes and counts (lib/inventory/stock.ts)
@@ -30,7 +33,9 @@ export type Item = {
   station?: string | null; // one of the three PC stations (config/stations.ts)
 };
 export type Group = { id: string; name: string; parentId: string | null; templateId: string | null; locationId: string | null };
-export type Condition = { id: string; label: string; color: string };
+// `onlyFor`: offered only on items in these category groups / categories; `uncounted`: its stock
+// counts toward nothing (Defective). lib/inventory/variants.ts.
+export type Condition = { id: string; label: string; color: string; onlyFor?: ConditionScope; uncounted?: boolean };
 // A zone or a drawer / shelf on the shop map (lib/inventory/places.ts).
 export type Location = Place;
 export type BomTarget = { id: string; name: string; systems: { id: string; name: string }[] };

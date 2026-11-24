@@ -771,6 +771,13 @@
       "when": 1795514805879,
       "tag": "0109_robot_folders",
       "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1795516265234,
+      "tag": "0110_item_variants",
+      "breakpoints": true
     }
   ]
 }

@@ -12,6 +12,8 @@ import { getCategory, specLine } from "@/lib/inventory/categories";
 import { hasSeasonNeed, missing, neededFor, standing, type NeedView } from "@/lib/inventory/season";
 import { formatStock, isSheetGoods } from "@/lib/inventory/stock";
 import { CountBox, PieceStepper, conditionColor, standingTint } from "./ItemCard";
+import { VariantDots, useVariantStep } from "./Variants";
+import { conditionsFor } from "@/lib/inventory/variants";
 import { ConditionSelect } from "./ConditionSelect";
 import { Icon } from "@/components/ui/Icon";
 import { LocationPicker, PlaceTag } from "./LocationPicker";
@@ -49,7 +51,7 @@ export function ItemListRow({
   item: Item;
   conditions?: Condition[];
   locations?: Location[];
-  onStep?: (delta: number, size?: string) => void;
+  onStep?: (delta: number, size?: string, variantId?: string) => void;
   onCount?: (amount: number) => void;
   categories: InvCategory[];
   condition?: { id: string; label: string; color: string };
@@ -75,7 +77,9 @@ export function ItemListRow({
   // While selecting, the pills stay plain so a tap selects the row.
   const editable = work && !onToggleSelect;
   const stepper = editable && onStep && onCount;
+  const variants = item.variants?.length ? item.variants : null;
   const color = condition ? conditionColor(condition.color) : undefined;
+  const variantStep = useVariantStep(item, conditions, onStep ?? (() => {}));
   const sheetWord = item.sheet && isSheetGoods(category?.label ?? item.name);
   // Raw stock rows go without the picture and the 📍 pill (Harel, 2026-11-02).
   const rawStock = item.sheet || category?.group === "consumables";
@@ -109,9 +113,10 @@ export function ItemListRow({
           <span className="contents" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
             {stepper && !item.station && (
               <span className="inline-flex items-center gap-1">
+                {variantStep.chooser}
                 <StepButton
                   step={-1}
-                  onClick={() => onStep(-1)}
+                  onClick={(e) => variantStep.step(-1, e)}
                   disabled={item.sheet ? item.inStock <= 0 : item.inStock < 1}
                   label={sheetWord ? "One sheet less" : "One less"}
                 />
@@ -122,7 +127,7 @@ export function ItemListRow({
                   {needed != null && <span className="text-white/70">/ {formatStock(needed, item.sheet)}</span>}
                   {item.sheet && <PieceStepper item={item} onStep={onStep} />}
                 </span>
-                <StepButton step={1} onClick={() => onStep(1)} label={sheetWord ? "One sheet more" : "One more"} />
+                <StepButton step={1} onClick={(e) => variantStep.step(1, e)} label={sheetWord ? "One sheet more" : "One more"} />
               </span>
             )}
             {locations && !rawStock && (
@@ -144,9 +149,11 @@ export function ItemListRow({
                 <PlaceTag place={location ? locations.find((l) => l.id === location.id) : null} places={locations} />
               </LocationPicker>
             )}
-            {conditions && (
+            {variants ? (
+              <VariantDots variants={variants} conditions={conditions ?? []} />
+            ) : conditions && (
               <ConditionSelect
-                conditions={conditions}
+                conditions={conditionsFor(conditions, category, [item.conditionId])}
                 value={item.conditionId}
                 disabled={saving}
                 onChange={(conditionId) =>
@@ -168,7 +175,7 @@ export function ItemListRow({
         ) : (
           <>
             {location && !rawStock && <ListPill><Icon name="map" className="inline h-3.5 w-3.5" /></ListPill>}
-            {condition && <ListPill color={conditionColor(condition.color)}>{condition.label}</ListPill>}
+            {variants ? <VariantDots variants={variants} conditions={conditions ?? []} /> : condition && <ListPill color={conditionColor(condition.color)}>{condition.label}</ListPill>}
             {!hideSeason && !item.station && <SeasonTag itemId={item.id} tag={item.seasonTag} className="rounded-full border border-transparent px-2.5 py-0.5 text-[0.6875rem]" />}
             {showStanding && state !== "ok" && <ListPill color={STANDING[state].color}>{STANDING[state].label(formatStock(gap, item.sheet))}</ListPill>}
           </>

@@ -49,6 +49,49 @@ else
       if (plates.length) await db.delete(schema.inventoryCategories).where(eq(schema.inventoryCategories.id, "aluminum-plates"));
     });
 
+    it("keeps an item's variants and its stock in step, Defective counting toward nothing", async () => {
+      const { editVariants, setStock, undoMoves } = await import("./moves");
+      const [defective] = await db.select().from(schema.inventoryConditions).where(eq(schema.inventoryConditions.label, "Defective"));
+      expect(defective).toMatchObject({ uncounted: true, onlyFor: { groups: ["electrical"], categories: ["computers-devices"] } });
+      const [worn] = await db.insert(schema.inventoryConditions).values({ label: `Worn ${userId}`, color: "#f59e0b" }).returning();
+      const [motor] = await db.insert(schema.inventoryItems).values({ name: "Test motor", inStock: 4 }).returning();
+      const row = async () => (await db.select().from(schema.inventoryItems).where(eq(schema.inventoryItems.id, motor.id)))[0];
+      const moves = async () => db.select().from(schema.inventoryMoves).where(eq(schema.inventoryMoves.itemId, motor.id));
+      try {
+        // The first variant added keeps today's 4 as a variant in the item's condition.
+        await db.transaction((tx) => editVariants(tx, motor.id, { add: { conditionId: worn.id, count: 2 } }, ctx));
+        let m = await row();
+        expect(m.inStock).toBe(6);
+        expect(m.variants.map((v) => v.count)).toEqual([4, 2]);
+        const [first, second] = m.variants;
+        expect((await moves()).map((x) => [x.delta, x.variantId])).toEqual([[2, second.id]]);
+        // A − on the Worn one, then a batch's + undone.
+        await db.transaction((tx) => moveStock(tx, { itemId: motor.id, delta: -1, reason: "used", variantId: second.id }, ctx));
+        const batchId = randomUUID();
+        await db.transaction((tx) => moveStock(tx, { itemId: motor.id, delta: 3, reason: "received", variantId: second.id }, { ...ctx, batchId }));
+        await db.transaction((tx) => undoMoves(tx, batchId, ctx));
+        m = await row();
+        expect([m.inStock, m.variants.find((v) => v.id === second.id)!.count]).toEqual([5, 1]);
+        // Marked Defective: out of the stock as broken, still listed.
+        await db.transaction((tx) => editVariants(tx, motor.id, { set: { id: first.id, conditionId: defective.id } }, ctx));
+        m = await row();
+        expect(m.inStock).toBe(1);
+        expect((await moves()).some((x) => x.reason === "broke" && x.delta === -4)).toBe(true);
+        // A counted total lands on the counting variant.
+        await db.transaction((tx) => setStock(tx, motor.id, 3, ctx));
+        m = await row();
+        expect([m.inStock, m.variants.find((v) => v.id === second.id)!.count, m.variants.find((v) => v.id === first.id)!.count]).toEqual([3, 3, 4]);
+        // The last variant removed folds back into plain stock and condition.
+        await db.transaction((tx) => editVariants(tx, motor.id, { remove: first.id }, ctx));
+        await db.transaction((tx) => editVariants(tx, motor.id, { remove: second.id }, ctx));
+        m = await row();
+        expect([m.inStock, m.variants, m.conditionId]).toEqual([3, [], worn.id]);
+      } finally {
+        await db.delete(schema.inventoryItems).where(eq(schema.inventoryItems.id, motor.id));
+        await db.delete(schema.inventoryConditions).where(eq(schema.inventoryConditions.id, worn.id));
+      }
+    });
+
     it("shares the shelf between the robots", async () => {
       const u = (await usageOf([item.id])).usage.get(item.id)!;
       expect(u).toMatchObject({ need: 16, covered: 6, short: 10 });

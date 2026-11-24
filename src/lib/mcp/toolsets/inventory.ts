@@ -16,31 +16,49 @@ import { addCategoryForReview, applyItemEdits } from "@/lib/review/inventory";
 import { createItem } from "@/lib/inventory/create";
 import { listCategories } from "@/lib/data/categories";
 import { moveStock } from "@/lib/inventory/moves";
+import { storedVariants } from "@/lib/inventory/variants";
 import { statusChangeDeniedFor } from "@/lib/mode";
 import { applyEachPartChanges } from "@/lib/parts/apply";
 import { uuid, read, write, ToolError, nameOf } from "../registry";
 import { robotNotOld } from "@/lib/robotFolders";
 
-const { parts, systems, robots, inventoryItems, inventoryLocations } = schema;
+const { parts, systems, robots, inventoryConditions, inventoryItems, inventoryLocations } = schema;
 
 // The shared inventory: stock, items, links to BOM parts, specs, products and categories.
 
 write(
   "adjust_stock",
   { cap: "work", destructive: true },
-  "Add to or take from an inventory item's stock (delta can be negative; sheet items take pieces such as 0.25, 1/3 = 0.3333). Say why: received (an order came), used, broke, counted (a recount), returned.",
-  z.object({ item_id: uuid, delta: z.number(), reason: z.enum(["received", "used", "broke", "counted", "returned"]).optional() }),
-  async ({ item_id, delta, reason }, { member, aiName }) => {
+  "Add to or take from an inventory item's stock (delta can be negative; sheet items take pieces such as 0.25, 1/3 = 0.3333). Say why: received (an order came), used, broke, counted (a recount), returned. An item with variants (list_inventory's variants: the same item in several conditions) moves the variant named, else its first one that counts; Defective variants count toward nothing and aren't moved here.",
+  z.object({
+    item_id: uuid,
+    delta: z.number(),
+    reason: z.enum(["received", "used", "broke", "counted", "returned"]).optional(),
+    variant: z.string().trim().max(80).optional().describe("An item with variants: the variant's id or its condition's name, from list_inventory."),
+  }),
+  async ({ item_id, delta, reason, variant }, { member, aiName }) => {
     const [item] = await db.select().from(inventoryItems).where(eq(inventoryItems.id, item_id));
     if (!item) throw new ToolError("No such inventory item.");
+    const variants = storedVariants(item.variants);
+    let variantId: string | undefined;
+    let variantName: string | undefined;
+    if (variant && variants.length) {
+      const conditions = await db.select().from(inventoryConditions);
+      const label = (id: string | null) => conditions.find((c) => c.id === id)?.label ?? "No condition";
+      const hit = variants.find((v) => v.id === variant) ?? variants.find((v) => label(v.conditionId).toLowerCase() === variant.toLowerCase());
+      if (!hit) throw new ToolError(`No variant "${variant}" on ${item.name}. Its variants: ${variants.map((v) => `${label(v.conditionId)} (${v.id})`).join(", ")}.`);
+      if (conditions.find((c) => c.id === hit.conditionId)?.uncounted) throw new ToolError(`The ${label(hit.conditionId)} variant counts toward nothing; change it in the item's window.`);
+      variantId = hit.id;
+      variantName = label(hit.conditionId);
+    }
     const to = Math.max(0, item.inStock + delta);
     return {
       count: to === item.inStock ? 0 : 1,
-      preview: { item: item.name, in_stock: { from: item.inStock, to } },
+      preview: { item: item.name, in_stock: { from: item.inStock, to }, ...(variantName && { variant: variantName }) },
       apply: async () => {
         const batchId = randomUUID();
         const moved = await db.transaction((tx) =>
-          moveStock(tx, { itemId: item_id, delta, reason: reason ?? (delta > 0 ? "received" : "used") }, { memberId: member.id, via: "mcp", aiName, batchId }),
+          moveStock(tx, { itemId: item_id, delta, reason: reason ?? (delta > 0 ? "received" : "used"), variantId }, { memberId: member.id, via: "mcp", aiName, batchId }),
         );
         return { item: item.name, in_stock: moved?.to, batch_id: batchId };
       },

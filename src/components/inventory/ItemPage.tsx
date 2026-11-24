@@ -11,8 +11,11 @@ import { EditOnly, useCan } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
 import { Dialog } from "@/components/Dialog";
 import { activeFields, getCategory, specLine } from "@/lib/inventory/categories";
+import { VariantDots, useVariantStep } from "./Variants";
+import { uncountedOf } from "@/lib/inventory/variants";
+import { stepItem } from "@/lib/inventory/variantStock";
 import type { ItemHistoryEntry } from "@/lib/data/inventory";
-import { formatStock, isSheetGoods, stepStock } from "@/lib/inventory/stock";
+import { formatStock, isSheetGoods } from "@/lib/inventory/stock";
 import { PieceStepper, ProductName, conditionColor, hostOf } from "./ItemCard";
 import { ItemForm, draftOf } from "./ItemForm";
 import { ItemHistory } from "./ItemHistory";
@@ -49,16 +52,17 @@ export function ItemPage({
 }) {
   const work = useCan("work");
   const router = useRouter();
-  const [item, step] = useOptimistic(initial, (s, [d, b]: [number, string | undefined]) => ({ ...s, ...stepStock(s, d, b) }));
+  const uncounted = uncountedOf(conditions);
+  const [item, step] = useOptimistic(initial, (s, [d, b, v]: [number, string | undefined, string | undefined]) => ({ ...s, ...stepItem(s, d, b, v, uncounted) }));
   const [pending, startTransition] = useTransition();
   const [open, setOpen] = useState<"edit" | "toBom" | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [result, setResult] = useState<{ error?: string; message?: string } | null>(null);
 
-  const onStep = (d: number, b?: string) =>
+  const onStep = (d: number, b?: string, v?: string) =>
     startTransition(async () => {
-      step([d, b]);
-      const r = await adjustStock(item.id, d, b);
+      step([d, b, v]);
+      const r = await adjustStock(item.id, d, b, v);
       if (r.error) setResult(r);
     });
   const link = (ids: string[]) =>
@@ -68,7 +72,8 @@ export function ItemPage({
     });
 
   const category = getCategory(categories, item.category);
-  const condition = conditions.find((c) => c.id === item.conditionId);
+  const variantStep = useVariantStep(item, conditions, onStep);
+  const condition = item.variants?.length ? undefined : conditions.find((c) => c.id === item.conditionId);
   const color = condition ? conditionColor(condition.color) : undefined;
   const location = locations.find((l) => l.id === (item.locationId ?? groups.find((g) => g.id === item.groupId)?.locationId));
   const spec = specLine(category, item.specs);
@@ -87,6 +92,7 @@ export function ItemPage({
           )}
           <div className="absolute top-3 left-3 flex flex-wrap gap-1">
             {category && <span className="rounded-full bg-[#111318]/85 px-2.5 py-0.5 text-xs font-semibold text-white">{category.label}</span>}
+            {!!item.variants?.length && <VariantDots variants={item.variants} conditions={conditions} />}
             {condition && (
               <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold" style={{ background: color, color: textOn(color!) }}>
                 {condition.label}
@@ -107,7 +113,8 @@ export function ItemPage({
             {spec && <div className="font-mono text-sm text-muted tabular-nums">{spec}</div>}
           </div>
           <div className="flex items-center gap-3">
-            {work && <StepButton step={-1} size="xl" onClick={() => onStep(-1)} disabled={item.inStock < 1} />}
+            {variantStep.chooser}
+            {work && <StepButton step={-1} size="xl" onClick={(e) => variantStep.step(-1, e)} disabled={item.inStock < 1} />}
             <div className="min-w-0 flex-1 text-center">
               <div className="display font-mono text-5xl text-fg tabular-nums">{formatStock(item.inStock, item.sheet)}</div>
               <div className="text-xs text-muted">
@@ -115,7 +122,7 @@ export function ItemPage({
                 {!!usage?.short && <span className="font-semibold text-amber-600"> · {usage.short} short</span>}
               </div>
             </div>
-            {work && <StepButton step={1} size="xl" onClick={() => onStep(1)} />}
+            {work && <StepButton step={1} size="xl" onClick={(e) => variantStep.step(1, e)} />}
           </div>
           {item.sheet && (
             <div className="flex justify-center">

@@ -158,11 +158,12 @@ read("system_stats", "member", "A system's completion and count per status.", z.
 read(
   "search_inventory",
   "member",
-  "Inventory items with stock, category and specs (use them to match BOM parts to items when setting up parts: pass the id to set_up_parts as inventory_item_id). All active robots share one shelf: need is what every robot's linked parts need together, short what the stock doesn't cover, free what no part needs. Sheet items (plates) count sheets and pieces (2.75 = 2 ¾ sheets) and have no need. season_need is a separate shelf target for the season (season_short what the stock is under it); on_order is the status of a COTS card already ordering it. The PC stations (Scouting PC, CAD PC, Build PC) count their PCs, listed under pcs with each one's name, GPU, CPU, RAM, condition (1-5) and note.",
+  "Inventory items with stock, category and specs (use them to match BOM parts to items when setting up parts: pass the id to set_up_parts as inventory_item_id). All active robots share one shelf: need is what every robot's linked parts need together, short what the stock doesn't cover, free what no part needs. Sheet items (plates) count sheets and pieces (2.75 = 2 ¾ sheets) and have no need. season_need is a separate shelf target for the season (season_short what the stock is under it); on_order is the status of a COTS card already ordering it. The PC stations (Scouting PC, CAD PC, Build PC) count their PCs, listed under pcs with each one's name, GPU, CPU, RAM, condition (1-5) and note. An item with variants (the same item in several conditions) lists them under variants: each one's id, condition, count, note and whether it counts (Defective ones count toward nothing, so in_stock is the counting ones' sum); pass a variant to adjust_stock.",
   z.object({ text: z.string().optional(), limit: z.number().int().min(1).max(500).optional().describe("At most this many items (default 200).") }),
   async ({ text, limit = 200 }) => {
-    const { items } = await listInventory();
+    const { items, conditions } = await listInventory();
     const found = items.filter((i) => !text || i.name.toLowerCase().includes(text.toLowerCase()));
+    const condition = (id: string | null) => conditions.find((c) => c.id === id);
     // The PC stations list their PCs (read only here).
     const devices = await devicesOf(found.slice(0, limit).filter((i) => i.station).map((i) => i.id));
     return {
@@ -186,6 +187,8 @@ read(
         has_image: Boolean(i.imagePath),
         image_path: i.imagePath,
         per_robot: i.usage?.robots.map((r) => ({ robot: r.robotName, needed: r.needed, covered: r.allocated })) ?? [],
+        condition: i.variants.length ? undefined : (condition(i.conditionId)?.label ?? null),
+        ...(i.variants.length ? { variants: i.variants.map((v) => ({ id: v.id, condition: condition(v.conditionId)?.label ?? null, count: v.count, note: v.note, counts: !condition(v.conditionId)?.uncounted })) } : {}),
         ...(devices.has(i.id) ? { pcs: devices.get(i.id)!.map((d, n) => ({ number: n + 1, name: d.name ?? `PC ${n + 1}`, gpu: d.gpu, cpu: d.cpu, ram: d.ram, condition_out_of_5: d.condition, note: d.note })) } : {}),
       })),
     };

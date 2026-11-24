@@ -27,6 +27,7 @@ import {
 import { useInventoryPopup } from "./InventoryPopup";
 import { LocationPicker, PlaceTag } from "./LocationPicker";
 import { SeasonTag } from "./SeasonTag";
+import { VariantDots, useVariantStep } from "./Variants";
 import type { Condition, InvCategory, Item, Location } from "./types";
 import { SheetViewport } from "@/components/ui/SheetViewport";
 
@@ -58,7 +59,7 @@ export function ItemTable({
   view: NeedView;
   hideCategory: boolean;
   hideSeason?: boolean; // filtered to one season: the tag would be the same on every row
-  onStep: (id: string, delta: number, size?: string) => void;
+  onStep: (id: string, delta: number, size?: string, variantId?: string) => void;
   onCount: (id: string, amount: number) => void;
   selected: Set<string>;
   onToggleSelect?: (id: string) => void;
@@ -127,7 +128,9 @@ export function ItemTable({
                       )}
                     </span>
                     <span className="flex min-w-0 items-center gap-2">
-                      {condition && (
+                      {item.variants?.length ? (
+                        <VariantDots variants={item.variants} conditions={conditions} />
+                      ) : condition && (
                         <span
                           className="h-2.5 w-2.5 shrink-0 rounded-full"
                           style={{
@@ -158,12 +161,7 @@ export function ItemTable({
                 )}
                 <td onClick={stop}>
                   <span className="flex items-center justify-center gap-1.5">
-                    {work && !item.station && (<StepButton
-                      step={-1}
-                      onClick={() => onStep(item.id, -1)}
-                      disabled={item.sheet ? item.inStock <= 0 : item.inStock < 1}
-                      label={`One less ${item.name}`}
-                    />)}
+                    <VariantSteps item={item} conditions={conditions} show={work && !item.station} onStep={(d, b, v) => onStep(item.id, d, b, v)}>
                     <span
                       className={`min-w-10 text-center font-mono font-semibold tabular-nums ${gap > 0 ? "text-rose-500" : ""}`}
                     >
@@ -184,11 +182,7 @@ export function ItemTable({
                         onStep={(d, b) => onStep(item.id, d, b)}
                       />
                     )}
-                    {work && !item.station && (<StepButton
-                      step={1}
-                      onClick={() => onStep(item.id, 1)}
-                      label={`One more ${item.name}`}
-                    />)}
+                    </VariantSteps>
                   </span>
                 </td>
                 <td>
@@ -329,5 +323,18 @@ function NoteButton({ note }: { note: string }) {
         )}
       </Popover>
     </span>
+  );
+}
+
+// The row's − count +: an item with variants asks which one moves (components/inventory/Variants.tsx).
+function VariantSteps({ item, conditions, show, onStep, children }: { item: Item; conditions: Condition[]; show: boolean; onStep: (delta: number, size?: string, variantId?: string) => void; children: React.ReactNode }) {
+  const steps = useVariantStep(item, conditions, onStep);
+  return (
+    <>
+      {steps.chooser}
+      {show && <StepButton step={-1} onClick={(e) => steps.step(-1, e)} disabled={item.sheet ? item.inStock <= 0 : item.inStock < 1} label={`One less ${item.name}`} />}
+      {children}
+      {show && <StepButton step={1} onClick={(e) => steps.step(1, e)} label={`One more ${item.name}`} />}
+    </>
   );
 }

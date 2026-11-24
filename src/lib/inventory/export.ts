@@ -83,7 +83,8 @@ export function inventoryWorkbook(
       i.usage?.need || null,
       missing(i, "any") || null,
       STANDING[standing(i, "any")],
-      conditionLabel.get(i.conditionId ?? "") ?? null,
+      // An item with variants: each one's count and condition ("3 New, 2 Worn").
+      i.variants?.length ? i.variants.map((v) => `${v.count} ${conditionLabel.get(v.conditionId ?? "") ?? "no condition"}`).join(", ") : (conditionLabel.get(i.conditionId ?? "") ?? null),
       locationName.get(locationOf(i) ?? "") ?? null,
       i.price,
       link ? (link.site ?? null) : null,

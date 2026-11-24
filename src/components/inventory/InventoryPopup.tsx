@@ -34,7 +34,7 @@ import { materialCategory } from "@/config/materials";
 import { activeFields, getCategory } from "@/lib/inventory/categories";
 import { hasSeasonNeed, missing, orderHref } from "@/lib/inventory/season";
 import type { PartChanges } from "@/lib/parts/changes";
-import { type PieceOp, applyPieceOp, countPieces, formatStock, formatStockExact, isSheetGoods, parseStock, pieceBase, pieceLabel, pieceRows, snapStock, sortedRows, stepStock } from "@/lib/inventory/stock";
+import { type PieceOp, applyPieceOp, formatStock, formatStockExact, isSheetGoods, parseStock, pieceBase, pieceLabel, pieceRows, snapStock, sortedRows, stepStock } from "@/lib/inventory/stock";
 import { ProductSearch } from "./ProductSearch";
 import { CartButton, CountBox, ItemPrice, NewSize, PieceStepper, conditionColor, hostOf } from "./ItemCard";
 import { ItemForm, draftOf } from "./ItemForm";
@@ -46,6 +46,9 @@ import { usePhotoPicker } from "./photo";
 import { LocationPicker, PlaceTag } from "./LocationPicker";
 import { SeasonTag } from "./SeasonTag";
 import { UsedIn } from "./UsedIn";
+import { VariantDots, VariantsSection } from "./Variants";
+import { conditionsFor, uncountedOf } from "@/lib/inventory/variants";
+import { countItem, stepItem } from "@/lib/inventory/variantStock";
 import { FindButton } from "@/components/map/FindButton";
 import type { Condition, InvCategory, Item, Location } from "./types";
 
@@ -181,8 +184,9 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
       if (r.error) after(r);
     });
   };
-  const step = (itemId: string, delta: number, size?: string) => saveNow(itemId, (i) => stepStock(i, delta, size), () => adjustStock(itemId, delta, size));
-  const count = (itemId: string, amount: number) => saveNow(itemId, (i) => countPieces(i, amount), () => countStock(itemId, amount));
+  const uncounted = uncountedOf(state?.kind === "item" ? (state.data?.conditions ?? []) : []);
+  const step = (itemId: string, delta: number, size?: string) => saveNow(itemId, (i) => stepItem(i, delta, size, undefined, uncounted), () => adjustStock(itemId, delta, size));
+  const count = (itemId: string, amount: number) => saveNow(itemId, (i) => countItem(i, amount, uncounted), () => countStock(itemId, amount));
 
   const item = state?.kind === "item" ? (state.data?.item ?? state.preview) : null;
   // Every item has a picture box (its photo or its category's drawing), so the title is the same for all.
@@ -248,19 +252,20 @@ function Stepper({
   pieces = true,
   children,
 }: {
-  item: Pick<Item, "inStock" | "sheet" | "pieces" | "specs" | "name" | "category">;
+  item: Pick<Item, "inStock" | "sheet" | "pieces" | "specs" | "name" | "category"> & { variants?: Item["variants"] };
   onStep: (d: number, size?: string) => void;
   onCount?: (n: number) => void;
   big?: boolean;
   pieces?: boolean; // the item window has Spread instead of pieces ▾
   children?: React.ReactNode;
 }) {
-  const work = useCan("work");
+  // An item with variants is counted on its variants (below the count); the total only shows.
+  const work = useCan("work") && !item.variants?.length;
   return (
     <div className="flex items-center gap-2">
       {work && <StepButton step={-1} size="lg" onClick={() => onStep(-1)} disabled={item.sheet ? item.inStock <= 0 : item.inStock < 1} />}
       <span className={`text-center font-mono font-semibold tabular-nums ${big ? "display min-w-10 text-3xl sm:text-4xl" : "min-w-14 text-xl"}`}>
-        {onCount ? <CountBox item={item} onCount={onCount} big={big} /> : formatStock(item.inStock, item.sheet)}
+        {onCount && work ? <CountBox item={item} onCount={onCount} big={big} /> : <span className={big ? "text-3xl sm:text-4xl" : ""}>{formatStock(item.inStock, item.sheet)}</span>}
       </span>
       {work && <StepButton step={1} size="lg" onClick={() => onStep(1)} />}
       {item.sheet && pieces && (
@@ -607,13 +612,34 @@ function ItemBody({
         </Link>
       )}
       <SeasonTag itemId={item.id} tag={item.seasonTag} className={tag} />
-      {work && data ? (
+      {item.variants?.length ? (
+        // Its variants' summary takes the condition's place; they're edited under the count.
+        <>
+          <VariantDots variants={item.variants} conditions={conditions} className="max-sm:py-1" />
+          {work && data && (
+            <LocationPicker
+              locations={locations}
+              value={item.locationId}
+              onChange={(id) => onChange(() => ({ locationId: id }), () => setItemLocation(item.id, id))}
+              className={`${tag} press flex items-center gap-1.5 border bg-transparent hover:border-sky-400/40 active:scale-[0.98] disabled:opacity-60 ${location ? "border-line text-fg-2" : "border-dashed border-line-strong text-muted"}`}
+            >
+              <PlaceTag place={location} places={locations} />
+            </LocationPicker>
+          )}
+          <FindButton places={locations} placeId={location?.id} onFilter={(id) => { onClose(); router.push(`/inventory?loc=${id}`); }} />
+        </>
+      ) : work && data ? (
         // Condition and location pills are menus that save at once.
         <>
           <ConditionSelect
-            conditions={conditions}
+            conditions={conditionsFor(conditions, cat, [item.conditionId])}
             value={item.conditionId}
-            onChange={(conditionId) => onChange(() => ({ conditionId }), () => setItemCondition(item.id, conditionId))}
+            // Defective takes the whole stock out of the count (as one Defective variant): reload.
+            onChange={(conditionId) =>
+              conditions.find((c) => c.id === conditionId)?.uncounted
+                ? save(() => setItemCondition(item.id, conditionId))
+                : onChange(() => ({ conditionId }), () => setItemCondition(item.id, conditionId))
+            }
             emptyLabel="Condition"
             className={`${tag} press cursor-pointer appearance-none border pr-5 disabled:opacity-60 ${condition ? "border-transparent hover:brightness-110" : "border-dashed border-line-strong bg-transparent text-muted hover:border-sky-400/40"}`}
             style={condition ? { ...caretOf(textOn(color!)), backgroundColor: color, color: textOn(color!) } : caretOf("currentColor")}
@@ -745,6 +771,11 @@ function ItemBody({
             </Stepper>
             <SeasonBox item={item} onChange={onChange} onError={setMessage} />
           </div>
+          {data && (
+            <div className={wide}>
+              <VariantsSection item={item} cat={cat} conditions={conditions} onChange={onChange} onSave={save} />
+            </div>
+          )}
           {item.sheet && spreadOpen && (
             <div className={wide}>
               <SpreadPanel
