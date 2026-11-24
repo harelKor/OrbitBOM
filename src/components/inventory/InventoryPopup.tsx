@@ -43,7 +43,7 @@ import { DevicesPanel } from "./DevicesPanel";
 import { CotsOrderBox, showsOrder, type CotsOrderInfo } from "./CotsOrderBox";
 import { ItemHistory } from "./ItemHistory";
 import { usePhotoPicker } from "./photo";
-import { LocationPicker, PlaceTag } from "./LocationPicker";
+import { LocationPicker } from "./LocationPicker";
 import { SeasonTag } from "./SeasonTag";
 import { UsedIn } from "./UsedIn";
 import { VariantDots, VariantsSection } from "./Variants";
@@ -603,6 +603,34 @@ function ItemBody({
       }}
     />
   );
+  // The place is only the map icon (Harel, 2026-11-24: no "Zone" tag beside it); the map it opens
+  // moves the item, like a card's. Without a place, the pencil's form sets one.
+  const place = (
+    <FindButton
+      places={locations}
+      placeId={location?.id}
+      onFilter={(id) => {
+        onClose();
+        router.push(`/inventory?loc=${id}`);
+      }}
+      footer={(close) =>
+        work && data ? (
+          <LocationPicker
+            locations={locations}
+            value={item.locationId}
+            onChange={(id) => {
+              close();
+              onChange(() => ({ locationId: id }), () => setItemLocation(item.id, id));
+            }}
+            ariaLabel="Move to another place"
+            className="btn min-h-9 text-xs active:scale-[0.98]"
+          >
+            Move to another place
+          </LocationPicker>
+        ) : null
+      }
+    />
+  );
   // The category, season tag, condition and place pills.
   const chips = (
     <div className="flex items-center gap-1.5 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:[scrollbar-width:none] sm:flex-wrap sm:gap-1">
@@ -616,20 +644,10 @@ function ItemBody({
         // Its variants' summary takes the condition's place; they're edited under the count.
         <>
           <VariantDots variants={item.variants} conditions={conditions} className="max-sm:py-1" />
-          {work && data && (
-            <LocationPicker
-              locations={locations}
-              value={item.locationId}
-              onChange={(id) => onChange(() => ({ locationId: id }), () => setItemLocation(item.id, id))}
-              className={`${tag} press flex items-center gap-1.5 border bg-transparent hover:border-sky-400/40 active:scale-[0.98] disabled:opacity-60 ${location ? "border-line text-fg-2" : "border-dashed border-line-strong text-muted"}`}
-            >
-              <PlaceTag place={location} places={locations} />
-            </LocationPicker>
-          )}
-          <FindButton places={locations} placeId={location?.id} onFilter={(id) => { onClose(); router.push(`/inventory?loc=${id}`); }} />
+          {place}
         </>
       ) : work && data ? (
-        // Condition and location pills are menus that save at once.
+        // The condition pill is a menu that saves at once.
         <>
           <ConditionSelect
             conditions={conditionsFor(conditions, cat, [item.conditionId])}
@@ -644,15 +662,7 @@ function ItemBody({
             className={`${tag} press cursor-pointer appearance-none border pr-5 disabled:opacity-60 ${condition ? "border-transparent hover:brightness-110" : "border-dashed border-line-strong bg-transparent text-muted hover:border-sky-400/40"}`}
             style={condition ? { ...caretOf(textOn(color!)), backgroundColor: color, color: textOn(color!) } : caretOf("currentColor")}
           />
-          <LocationPicker
-            locations={locations}
-            value={item.locationId}
-            onChange={(id) => onChange(() => ({ locationId: id }), () => setItemLocation(item.id, id))}
-            className={`${tag} press flex items-center gap-1.5 border bg-transparent hover:border-sky-400/40 active:scale-[0.98] disabled:opacity-60 ${location ? "border-line text-fg-2" : "border-dashed border-line-strong text-muted"}`}
-          >
-            <PlaceTag place={location} places={locations} />
-          </LocationPicker>
-          <FindButton places={locations} placeId={location?.id} onFilter={(id) => { onClose(); router.push(`/inventory?loc=${id}`); }} />
+          {place}
         </>
       ) : (
         <>
@@ -661,7 +671,7 @@ function ItemBody({
               {condition.label}
             </Link>
           )}
-          <FindButton places={locations} placeId={location?.id} onFilter={(id) => { onClose(); router.push(`/inventory?loc=${id}`); }} />
+          {place}
         </>
       )}
     </div>
