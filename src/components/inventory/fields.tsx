@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { focusIfMouse } from "@/components/bom/Popover";
 import { fieldChoices, type CategoryField } from "@/lib/inventory/categories";
+import { LENGTH_STOCK } from "@/lib/inventory/stock";
 
 // The add form's field controls: up to 6 choices are chips, more are a dropdown you type into
 // (it filters as you type, arrows and Enter pick, recent picks first), and free values are a
@@ -284,7 +285,12 @@ function TypeCombo({
 }
 
 // One category field, as chips, a dropdown or a small box.
+// Length stock's Length is always a free number, left empty when it isn't known, whatever choices
+// Settings lists for it (Harel, 2026-11-24: Box tubes offered only "1000").
+const isStockLength = (field: CategoryField, categoryId: string) => LENGTH_STOCK.has(categoryId) && (field.id === "length" || /^length\b/i.test(field.label.trim()));
+
 export function FieldInput({ field, categoryId, value, onChange, autoFocus }: { field: CategoryField; categoryId: string; value: string; onChange: (v: string) => void; autoFocus?: boolean }) {
+  if (isStockLength(field, categoryId)) return <SmallBox field={{ ...field, kind: "number", options: undefined }} value={value} onChange={onChange} autoFocus={autoFocus} />;
   const choices = fieldChoices(field);
   if (choices.length && choices.length <= CHIP_MAX && field.kind === "options") return <Chips options={choices} value={value} onPick={onChange} recentKey={`${categoryId}:${field.id}`} />;
   if (choices.length) return <Combo options={choices} value={value} onPick={onChange} recentKey={`${categoryId}:${field.id}`} ariaLabel={field.label} autoFocus={autoFocus} />;
