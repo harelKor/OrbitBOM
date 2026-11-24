@@ -116,7 +116,8 @@ function group<P extends GroupPart>(key: string, name: string, parts: P[], child
   return { key, name, parts, pieces: parts.reduce((n, p) => n + Math.max(p.quantity, 0), 0), ...(children ? { children } : {}) };
 }
 
-// `stock`: the order pages' kinds (Harel, 2026-11-24): bought raw stock sorts by its kind too.
+// `stock`: the order pages' kinds (Harel, 2026-11-24): bought raw stock sorts by its kind too, and
+// every kind is one level (a sheet material's card holds all its thicknesses, screws all threads).
 export function groupParts<P extends GroupPart>(parts: P[], items: GroupItem[], { stock = false }: { stock?: boolean } = {}): BomGroup<P>[] {
   const itemById = new Map(items.map((i) => [i.id, i]));
   const itemByName = new Map<string, GroupItem>();
@@ -133,7 +134,8 @@ export function groupParts<P extends GroupPart>(parts: P[], items: GroupItem[], 
 
   const out: BomGroup<P>[] = [];
   const sheets = [...tops.values()].filter((t) => t.place.sheet);
-  const nestSheets = sheets.length > SHEET_NEST;
+  // The order pages keep one card per sheet material, all its thicknesses inside (Harel, 2026-11-24).
+  const nestSheets = stock || sheets.length > SHEET_NEST;
   const sheetByMaterial = new Map<string, typeof sheets>();
   for (const [key, { place, parts: list }] of tops) {
     if (place.sheet && nestSheets) {
@@ -141,7 +143,7 @@ export function groupParts<P extends GroupPart>(parts: P[], items: GroupItem[], 
       sheetByMaterial.set(m, [...(sheetByMaterial.get(m) ?? []), { place, parts: list }]);
       continue;
     }
-    if (key === "Screws" && list.length > SCREW_SPLIT) {
+    if (!stock && key === "Screws" && list.length > SCREW_SPLIT) {
       const byThread = new Map<string, P[]>();
       for (const p of list) {
         const t = places.get(p.id)!.thread ?? "Other";
@@ -160,7 +162,7 @@ export function groupParts<P extends GroupPart>(parts: P[], items: GroupItem[], 
       .sort((a, b) => parseFloat(a.place.sheet!.thickness ?? "999") - parseFloat(b.place.sheet!.thickness ?? "999"))
       // Under its material's ‹ back, a thickness card needs only the thickness.
       .map((t) => group(t.place.top, t.place.sheet!.thickness ?? t.place.name, t.parts));
-    out.push(group(`sheets:${material}`, material, list.flatMap((t) => t.parts), children.length > 1 ? children : undefined));
+    out.push(group(`sheets:${material}`, material, list.flatMap((t) => t.parts), children.length > 1 && !stock ? children : undefined));
   }
   // Sheets by material, then thinnest first.
   const sheetOf = (g: BomGroup<P>) => tops.get(g.key)?.place.sheet;

@@ -56,7 +56,10 @@ describe("groupParts", () => {
   it("sorts bought raw stock by its kind on the order pages", () => {
     const bought = [part({ classification: "cots", inventoryItemId: "al6" }), part({ classification: "cots", inventoryItemId: "box" }), part({ classification: "cots", inventoryItemId: "bearing" })];
     expect(names(groupParts(bought, ITEMS))).toEqual(["Bearings", "COTS"]);
-    expect(names(groupParts(bought, ITEMS, { stock: true }))).toEqual(["Bearings", "Box tubes", "6 mm Aluminum"]);
+    const kinds = groupParts([...bought, part({ classification: "cots", inventoryItemId: "al3" })], ITEMS, { stock: true });
+    expect(names(kinds)).toEqual(["Bearings", "Box tubes", "Aluminum"]);
+    expect(kinds[2].parts).toHaveLength(2);
+    expect(kinds[2].children).toBeUndefined();
   });
 
   it("nests sheets under their material past 3 sheet groups", () => {

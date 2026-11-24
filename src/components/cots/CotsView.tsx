@@ -28,7 +28,7 @@ import { toast } from "@/components/ui/Toaster";
 import { formatStock } from "@/lib/inventory/stock";
 import type { GroupItem } from "@/lib/parts/bomGroups";
 import { OrderAmount, type AmountProps } from "./OrderAmount";
-import { StockKinds } from "./StockKinds";
+import { StockKinds, kindsOf } from "./StockKinds";
 import type { OrderLine } from "./OrderName";
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { orderStatus } from "@/lib/status";
@@ -407,7 +407,7 @@ export function CotsView({
     };
     return [...bySection]
       .sort(([a], [b]) => rank(a) - rank(b))
-      .map(([g, list]) => ({ key: g, label: isCategoryGroup(g) ? groupLabel(g) : "Other", rows: list }));
+      .map(([g, list]) => ({ key: g, label: isCategoryGroup(g) ? groupLabel(g) : "Other", sub: String(list.length), rows: list, foldable: true }));
   };
 
   const renderRows = (
@@ -828,7 +828,17 @@ export function CotsView({
             const rows = rowsOf(ps);
             return (
               <Section key={v} title={v} count={rows.length}>
-                {v === NO_VENDOR ? (
+                {v === NO_VENDOR && view === "table" ? (
+                  // Table view: each kind a header row that folds, like a cart's (Harel, 2026-11-24).
+                  <CotsTable
+                    groups={kindsOf(rows, items).map((k) => ({ ...k, sub: `${k.rows.length} to order`, foldable: true }))}
+                    titleOf={(row) => lineOf(row).title}
+                    amountOf={amountProps}
+                    saveRow={saveRow}
+                    struck={struck}
+                    orderList={list === "order"}
+                  />
+                ) : v === NO_VENDOR ? (
                   // By stock kind, big and simple (Harel, 2026-11-24).
                   <StockKinds rows={rows} items={items}>
                     {(kind) => {

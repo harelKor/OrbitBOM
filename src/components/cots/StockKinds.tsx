@@ -7,10 +7,20 @@ import { Icon } from "@/components/ui/Icon";
 import { findGroup, groupParts, type BomGroup, type GroupItem } from "@/lib/parts/bomGroups";
 
 // The order pages' parts with no vendor, by stock kind (Harel, 2026-11-24): the system page's
-// automatic groups (lib/parts/bomGroups.ts: plates by thickness and material, tubes, box tubes,
-// shafts, bearings, screws...), one level deeper when a kind has many (Aluminum plates → 3 / 6 /
-// 10 mm). Made for anyone in the shop: big cards with a big name and count, one tap opens one, and
-// a big ‹ goes back.
+// automatic groups (lib/parts/bomGroups.ts: plates by material with every thickness inside, tubes,
+// box tubes, shafts, bearings, screws...), one level only. Made for anyone in the shop: big cards
+// with a big name and count, one tap opens one, and a big ‹ goes back. The table view shows the
+// same kinds as header rows that fold (`kindsOf`).
+// The kinds as named sections of rows, for the table view's header rows.
+export function kindsOf<R extends { key: string; part: CardPart }>(rows: R[], items: GroupItem[]): { key: string; label: string; rows: R[] }[] {
+  const byKey = new Map(rows.map((r) => [r.key, r]));
+  return groupParts(rows.map((r) => ({ ...r.part, id: r.key })), items, { stock: true }).map((g) => ({
+    key: g.key,
+    label: kindName(g),
+    rows: g.parts.map((p) => byKey.get(p.id)!).filter(Boolean),
+  }));
+}
+
 export function StockKinds<R extends { key: string; part: CardPart }>({ rows, items, children }: { rows: R[]; items: GroupItem[]; children: (rows: R[]) => React.ReactNode }) {
   const groups = useMemo(
     () =>

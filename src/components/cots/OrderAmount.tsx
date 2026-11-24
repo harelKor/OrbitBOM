@@ -15,7 +15,8 @@ export function OrderAmount({ value, typed, onChange, size = "md" }: AmountProps
     setText(null);
     if (text === "") return typed && onChange?.(null);
     const n = Math.min(100000, Math.max(0, Math.round(Number(text))));
-    if (Number.isFinite(n) && (n !== value || !typed)) onChange?.(n);
+    // Opened and left as it was: nothing changes, so it stays worked out (no ↺).
+    if (Number.isFinite(n) && n !== value) onChange?.(n);
   };
   const sm = size === "sm";
   const box = `inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-amber-300 font-bold text-amber-950 shadow-[0_0_14px_-3px_rgba(251,191,36,0.75)] ring-1 ring-amber-500/70 ${
