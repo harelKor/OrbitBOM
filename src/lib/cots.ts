@@ -82,3 +82,70 @@ export const bomTitle = (p: { displayName: string | null; onshapeName: string | 
 // Released's Merge only joins parts of one inventory item (or none).
 export const MERGE_ITEMS_DIFFER = "These parts are linked to different inventory items, so they can't be one order.";
 export const sameItemForMerge = (parts: { inventoryItemId: string | null }[]) => new Set(parts.map((p) => p.inventoryItemId).filter(Boolean)).size <= 1;
+
+// ---------- The amount to order (Harel, 2026-11-24) ----------
+
+// What the shelf still misses of a need, in whole units (sheets round up to whole sheets).
+export const shortOf = (need: number, inStock: number) => {
+  const gap = need - inStock;
+  return gap > 1e-9 ? Math.ceil(gap - 1e-9) : 0;
+};
+
+type Amountable = {
+  orderQty?: number | null;
+  restock?: boolean;
+  quantity: number;
+  stockCount: number;
+  shelf?: { sheet: boolean; covered: number; inStock: number; total: number } | null;
+};
+
+// How many to order for one card: the amount a member typed on the order pages, else for a card
+// Inventory sent (restock), what its item still misses of its whole need right now (the bigger of
+// Needed for Season and the robots'), so changing the season need changes it; else the part's
+// quantity less what the shelf (or its own count) covers. The vendor cart, Copy list, the item
+// window's Ordering and receiving into stock all read this.
+export function orderAmount(p: Amountable): number {
+  if (p.orderQty != null) return p.orderQty;
+  const s = p.shelf;
+  if (p.restock && s) return shortOf(s.total, s.inStock);
+  return Math.max(0, p.quantity - (s && !s.sheet ? s.covered : p.stockCount));
+}
+
+// A price for the amount being ordered (one's price while nothing is left to order).
+export const orderTotal = (p: { unitPrice: number | null }, amount: number) => (p.unitPrice == null ? null : p.unitPrice * Math.max(amount, 1));
+
+// ---------- Stock sizes in order names (Harel, 2026-11-24) ----------
+
+// The Raw Stock categories whose pieces have a size worth naming when ordering (plates, tubes, box
+// tubes, shafts); filament and blocks don't (config/rawStock.ts NOT_LAID_OUT).
+const SIZED = new Set(["aluminum-plates", "polycarbonate", "wood-composites", "square-tubes", "round-tubes", "shafts"]);
+
+const SIZE_RE = /(\d+(?:\.\d+)?)\s*[x×*]\s*(\d+(?:\.\d+)?)/i;
+const LENGTH_RE = /(\d+(?:\.\d+)?)/;
+
+// A raw-stock item's piece size: "500×900" for a plate, "1000 long" for a tube or shaft.
+export function stockSize(item: { category: string; specs: Record<string, string>; name: string } | null | undefined): string | null {
+  if (!item || !SIZED.has(item.category)) return null;
+  const length = LENGTH_RE.exec(item.specs.length ?? "");
+  if (length && Number(length[1])) return `${Number(length[1])} long`;
+  const s = SIZE_RE.exec(item.specs.size ?? "") ?? SIZE_RE.exec(item.name);
+  // A plate's sheet: both sides at least 100 mm, so a tube's "40x20" isn't taken for one.
+  if (s && Number(s[1]) >= 100 && Number(s[2]) >= 100) {
+    const [x, y] = [Number(s[1]), Number(s[2])].sort((a, b) => a - b);
+    return `${x}×${y}`;
+  }
+  return null;
+}
+
+// An order line's name with its stock size, on the order pages only: "10 mm Aluminum plate ·
+// 500×900". A name that already says the size stays as it is.
+export function withStockSize(title: string, size: string | null): string {
+  if (!size) return title;
+  const flat = (t: string) => t.toLowerCase().replace(/[x×*]/g, "x").replace(/\s+/g, "");
+  return flat(title).includes(flat(size.replace(" long", ""))) ? title : `${title} · ${size}`;
+}
+
+// Copy list (a cart of parts with no product link): a plain list to paste into WhatsApp or email.
+export function copyListText(title: string, lines: { name: string; amount: number }[]): string {
+  return [title, ...lines.map((l) => `${l.amount} × ${l.name}`)].join("\n");
+}

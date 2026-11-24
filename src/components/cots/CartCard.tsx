@@ -9,7 +9,9 @@ import type { FabLayout } from "@/components/fab/fabModel";
 import { useCan, useMode } from "@/components/shell/ModeContext";
 import { statusDenied } from "@/components/shell/mode";
 import { Icon } from "@/components/ui/Icon";
+import { copyListText } from "@/lib/cots";
 import { cartKind } from "@/lib/cotsCart";
+import { toast } from "@/components/ui/Toaster";
 import type { CotsCart } from "@/lib/data/cotsCarts";
 import type { PartChanges } from "@/lib/parts/changes";
 import { cotsLinkDenied } from "@/lib/parts/cotsLink";
@@ -17,15 +19,23 @@ import { orderStatus } from "@/lib/status";
 import { OrderStatusButton } from "./CotsCard";
 import { useOverdue } from "./overdue";
 
+// A cart's name: the one its member gave it (parts with no product link), else its vendor.
+export const cartTitle = (cart: Pick<CotsCart, "name" | "vendor">) => cart.name ?? (cart.vendor || "Cart");
+
+// An order line as Copy list writes it: its name with its stock size, and how many to order.
+export type CartLine = { name: string; amount: number };
+
 // An Order List cart: a Factory pack's card (the same collage, date, and strip that opens under its
 // row, Harel 2026-11-04) named by its vendor, with the cart button, which opens the vendor's site
-// with a cart of these parts (src/app/api/cots/carts).
+// with a cart of these parts (src/app/api/cots/carts). A cart of parts with no product link carries
+// its member-given name and Copy list instead (Harel, 2026-11-24).
 export function CartCard({
   cart,
   members,
   save,
   card,
   onRemove,
+  lineOf,
   layout = "cards",
 }: {
   cart: CotsCart;
@@ -33,16 +43,18 @@ export function CartCard({
   save: (ids: string[], changes: PartChanges) => void;
   card: (p: CardPart) => React.ReactNode;
   onRemove: (partIds: string[]) => void;
+  lineOf: (p: CardPart) => CartLine;
   layout?: FabLayout;
 }) {
+  const title = cartTitle(cart);
   const [, startTransition] = useTransition();
   const work = useCan("work");
   const { mode } = useMode();
   const ids = members.map((p) => p.id);
-  // One status for the whole cart, shown as its least advanced part's; a pick sets every part.
+  // The least advanced part, for the delivery pill.
   const order = (p: CardPart) => (ORDER_STATUSES as readonly string[]).indexOf(orderStatus(p));
   const lowest = members.reduce((a, p) => (order(p) < order(a) ? p : a), members[0]);
-  const status = <OrderStatusButton part={{ ...lowest, displayName: `the ${cart.vendor} cart` }} save={(changes) => save(ids, changes)} compact={layout === "list"} />;
+  const status = <CartStatus cart={cart} members={members} save={save} compact={layout === "list"} />;
   const dates = [...new Set(members.map((p) => p.cotsDeliveryDate).filter((d): d is string => !!d))];
   const delivery = (
     <DeliveryPill
@@ -63,13 +75,72 @@ export function CartCard({
       }}
     />
   );
-  const fillable = members.some((p) => cartKind(p.cotsLinks?.[0]?.url));
+  const button = <CartButton cart={cart} members={members} lineOf={lineOf} />;
+  // The collage shows the parts' own pictures, or their shelf item's.
+  const pictured = members.map((p) => ({ ...p, thumbUrl: (!p.isManual && p.thumbUrl) || p.shelf?.thumbUrl || null }));
+  return (
+    <BatchCard
+      pack
+      title={title}
+      batch={{ id: cart.id, name: title, machine: null, madeBy: null, priority: "normal", gcode: null, createdAt: cart.createdAt }}
+      members={pictured}
+      save={save}
+      card={(p) => card(members.find((m) => m.id === p.id) ?? p)}
+      layout={layout}
+      draggable={false}
+      memberNames={[]}
+      me=""
+      cart={{ button, status, delivery, onDelete: () => startTransition(() => void deleteCotsCart(cart.id)), onRemove: (id) => onRemove([id]) }}
+    />
+  );
+}
+
+// One status for the whole cart, shown as its least advanced part's; a pick sets every part.
+export function CartStatus({ cart, members, save, compact = false }: { cart: CotsCart; members: CardPart[]; save: (ids: string[], changes: PartChanges) => void; compact?: boolean }) {
+  const order = (p: CardPart) => (ORDER_STATUSES as readonly string[]).indexOf(orderStatus(p));
+  const lowest = members.reduce((a, p) => (order(p) < order(a) ? p : a), members[0]);
+  return <OrderStatusButton part={{ ...lowest, displayName: `the ${cartTitle(cart)} cart` }} save={(changes) => save(members.map((p) => p.id), changes)} compact={compact} />;
+}
+
+// The cart's button: a vendor's cart opens its site with the parts in its cart; a cart of parts
+// with no product link copies them as a plain list for WhatsApp or email.
+export function CartButton({ cart, members, lineOf }: { cart: CotsCart; members: CardPart[]; lineOf: (p: CardPart) => CartLine }) {
   const count = `${members.length} part${members.length === 1 ? "" : "s"}`;
-  const button = fillable ? (
+  if (!cart.vendor) {
+    const copy = async () => {
+      const lines = members.map(lineOf);
+      const buying = lines.filter((l) => l.amount > 0);
+      const text = copyListText(cartTitle(cart), buying.length ? buying : lines.map((l) => ({ ...l, amount: Math.max(l.amount, 1) })));
+      try {
+        await navigator.clipboard.writeText(text);
+        toast("Copied: paste the list into WhatsApp or an email");
+      } catch {
+        toast("This browser didn't let the list be copied.", true);
+      }
+    };
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          void copy();
+        }}
+        title="Copy the parts and how many as a plain list"
+        aria-label={`Copy ${cartTitle(cart)}'s list of ${count}`}
+        className="press flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-amber-400 px-3 text-sm font-bold whitespace-nowrap text-slate-950 shadow-md shadow-amber-400/30 hover:bg-amber-300 active:scale-[0.98]"
+      >
+        <Icon name="note" className="h-4.5 w-4.5" />
+        Copy list
+      </button>
+    );
+  }
+  const fillable = members.some((p) => cartKind(p.cotsLinks?.[0]?.url));
+  return fillable ? (
     <a
       href={`/api/cots/carts/${cart.id}`}
       target="_blank"
       rel="noreferrer"
+      onClick={(e) => e.stopPropagation()}
       title={`Open a ${cart.vendor} cart with these parts`}
       aria-label={`Open a ${cart.vendor} cart with ${count}`}
       className="press flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-amber-400 px-3 text-sm font-bold text-slate-950 shadow-md shadow-amber-400/30 hover:bg-amber-300 active:scale-[0.98]"
@@ -85,23 +156,6 @@ export function CartCard({
       <Icon name="cart" className="h-4.5 w-4.5" />
       Cart
     </span>
-  );
-  // The collage shows the parts' own pictures, or their shelf item's.
-  const pictured = members.map((p) => ({ ...p, thumbUrl: (!p.isManual && p.thumbUrl) || p.shelf?.thumbUrl || null }));
-  return (
-    <BatchCard
-      pack
-      title={cart.vendor}
-      batch={{ id: cart.id, name: cart.vendor, machine: null, madeBy: null, priority: "normal", gcode: null, createdAt: cart.createdAt }}
-      members={pictured}
-      save={save}
-      card={(p) => card(members.find((m) => m.id === p.id) ?? p)}
-      layout={layout}
-      draggable={false}
-      memberNames={[]}
-      me=""
-      cart={{ button, status, delivery, onDelete: () => startTransition(() => void deleteCotsCart(cart.id)), onRemove: (id) => onRemove([id]) }}
-    />
   );
 }
 

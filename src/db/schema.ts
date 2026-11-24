@@ -387,6 +387,9 @@ export const parts = pgTable(
     // cut to several lengths, bought as one stock).
     orderName: text("order_name"),
     orderMerge: uuid("order_merge"),
+    // The amount to order a member typed on the order pages (Harel, 2026-11-24); null: worked out
+    // (orderAmount in lib/cots.ts). Ordering, the vendor cart, Copy list and receiving follow it.
+    orderQty: integer("order_qty"),
     // When the COTS part reached In Stock (null while it isn't), and when someone cleared it from
     // the COTS page's In Stock sections (they also drop it a week after it arrived).
     cotsInStockAt: timestamp("cots_in_stock_at", { withTimezone: true }),
@@ -610,7 +613,10 @@ export const groupMembers = pgTable(
 // the vendor's site with them in it (Harel, 2026-11-04). Not per robot, since the Order List isn't.
 export const cotsCarts = pgTable("cots_carts", {
   id: id(),
-  vendor: text("vendor").notNull(), // the parts' vendor as the Order List names it (siteOf their first link)
+  vendor: text("vendor").notNull(), // the parts' vendor as the Order List names it (siteOf their first link); "" for parts with no link
+  // The name a member gave a cart of parts with no product link ("Plates – mentor's supplier",
+  // Harel 2026-11-24); null on a vendor's cart, which shows its vendor.
+  name: text("name"),
   createdBy: uuid("created_by").references(() => members.id, { onDelete: "set null" }),
   createdAt: createdAt(),
 });

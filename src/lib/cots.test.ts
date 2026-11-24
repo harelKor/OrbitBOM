@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_CATEGORIES } from "@/config/inventory";
-import { cotsCategoryOf, groupSameCots, orderTitle, sameItemForMerge, spreadCotsChanges } from "./cots";
+import { copyListText, cotsCategoryOf, groupSameCots, orderAmount, orderTitle, sameItemForMerge, spreadCotsChanges, stockSize, withStockSize } from "./cots";
 import { computeStatus } from "./status";
 
 const IDS = DEFAULT_CATEGORIES.map((c) => c.id);
@@ -68,5 +68,35 @@ describe("COTS", () => {
     expect(computeStatus({ ...base, classification: "cots", designState: "In Route" })).toBe("In Route");
     expect(computeStatus({ ...base, classification: "cots", designState: "Gcoded" })).toBe("Not Started");
     expect(computeStatus({ ...base, classification: "inhouse", designState: "In Route" })).toBe("Not Started");
+  });
+});
+
+describe("the amount to order", () => {
+  const card = { quantity: 5, stockCount: 0, orderQty: null, restock: false, shelf: null };
+  const shelf = { sheet: false, covered: 2, inStock: 3, total: 10 };
+  it("follows the item's whole need on a card Inventory sent, so a new season need changes it", () => {
+    expect(orderAmount({ ...card, restock: true, shelf })).toBe(7);
+    expect(orderAmount({ ...card, restock: true, shelf: { ...shelf, total: 4 } })).toBe(1);
+    expect(orderAmount({ ...card, restock: true, shelf: { ...shelf, total: 2 } })).toBe(0);
+  });
+  it("is the quantity less what the shelf covers on a BOM part, unless a member typed one", () => {
+    expect(orderAmount({ ...card, shelf })).toBe(3);
+    expect(orderAmount({ ...card, stockCount: 1 })).toBe(4);
+    expect(orderAmount({ ...card, shelf, orderQty: 9 })).toBe(9);
+    expect(orderAmount({ ...card, restock: true, shelf, orderQty: 0 })).toBe(0);
+  });
+});
+
+describe("stock sizes in order names", () => {
+  it("names a plate's sheet and a tube's length", () => {
+    expect(stockSize({ category: "aluminum-plates", specs: { size: "900x500" }, name: "10 mm Aluminum plate" })).toBe("500×900");
+    expect(stockSize({ category: "square-tubes", specs: { length: "1000" }, name: "25x25x1.5 box tube" })).toBe("1000 long");
+    expect(stockSize({ category: "square-tubes", specs: {}, name: "40x20 box tube" })).toBeNull();
+    expect(stockSize({ category: "bearings", specs: { size: "500x900" }, name: "x" })).toBeNull();
+    expect(withStockSize("10 mm Aluminum plate", "500×900")).toBe("10 mm Aluminum plate · 500×900");
+    expect(withStockSize("Aluminum plate 500x900", "500×900")).toBe("Aluminum plate 500x900");
+  });
+  it("copies a cart as a plain list", () => {
+    expect(copyListText("Plates", [{ name: "10 mm Aluminum plate · 500×900", amount: 2 }])).toBe("Plates\n2 × 10 mm Aluminum plate · 500×900");
   });
 });

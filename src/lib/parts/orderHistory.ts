@@ -3,7 +3,8 @@ import { and, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import type { db } from "@/db";
 import { schema } from "@/db";
 import { cotsStatusOf } from "@/config/cots";
-import { siteOf } from "@/lib/cots";
+import { shortOf, siteOf } from "@/lib/cots";
+import { usageOf } from "@/lib/data/inventory";
 import { isBought, orderStatus } from "@/lib/status";
 
 // The COTS Order History cards (Harel, 2026-11-02). A COTS part's status move records its order:
@@ -52,6 +53,9 @@ export async function recordOrderHistory(tx: Tx, before: Part, after: Part) {
   // The name the order pages show (Harel, 2026-11-20): its own there, else its item's, else the part's.
   const itemId = after.classification === "cots" ? after.inventoryItemId : null;
   const itemName = !after.orderName && itemId ? (await tx.select({ name: schema.inventoryItems.name }).from(schema.inventoryItems).where(eq(schema.inventoryItems.id, itemId)))[0]?.name : undefined;
+  // What was ordered (orderAmount in lib/cots.ts): the amount typed on the order pages, else a
+  // card Inventory sent orders what its item misses now, else the part's quantity.
+  const amount = after.orderQty ?? (after.restock && itemId ? await restockAmount(tx, itemId) : after.quantity);
   const card = (inRouteAt: Date | null, arrivedAt: Date | null) => {
     const link = after.cotsLinks[0];
     return {
@@ -59,7 +63,7 @@ export async function recordOrderHistory(tx: Tx, before: Part, after: Part) {
       inventoryItemId: itemId,
       partId: after.id,
       name: after.orderName ?? itemName ?? after.displayName ?? after.onshapeName ?? "Unnamed part",
-      quantity: after.quantity,
+      quantity: amount,
       unitPrice: after.unitPrice,
       vendor: link ? siteOf(link) : null,
       productUrl: link?.url ?? null,
@@ -101,4 +105,11 @@ export async function recordOrderHistory(tx: Tx, before: Part, after: Part) {
   // from === "route", to === "lower": an order sent by mistake goes away within a day.
   const open = await openCard();
   if (open && within(open.inRouteAt, now)) await tx.delete(cotsOrderHistory).where(eq(cotsOrderHistory.id, open.id));
+}
+
+// What an item still misses of its whole need (the bigger of Needed for Season and the robots').
+async function restockAmount(tx: Tx, itemId: string) {
+  const { items, usage } = await usageOf([itemId], tx);
+  const item = items[0];
+  return item ? shortOf(Math.max(item.seasonNeed ?? 0, usage.get(itemId)?.need ?? 0), item.inStock) : 0;
 }

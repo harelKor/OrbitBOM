@@ -11,7 +11,7 @@ else
   describe("Inventory (database)", async () => {
     process.env.DATABASE_URL = url;
     const { db, schema } = await import("@/db");
-    const { eq } = await import("drizzle-orm");
+    const { eq, inArray } = await import("drizzle-orm");
     const { applyPartChanges } = await import("@/lib/parts/apply");
     const { moveStock } = await import("./moves");
     const { robotInventory, shelfOfParts, usageOf } = await import("@/lib/data/inventory");
@@ -147,5 +147,21 @@ else
       await db.delete(schema.parts).where(eq(schema.parts.id, again.id));
       await db.delete(schema.parts).where(eq(schema.parts.id, card.id));
       await db.delete(schema.inventoryItems).where(eq(schema.inventoryItems.id, screw.id));
+    });
+    // Harel, 2026-11-24: a season need changed after the item was sent changes what's ordered,
+    // and an amount typed on the order pages is what arrives.
+    it("receives what a restock card's item misses now, or the amount typed on the order pages", async () => {
+      const [nut] = await db.insert(schema.inventoryItems).values({ name: "Restock need test item", inStock: 1, seasonNeed: 3 }).returning();
+      const card = { systemId: null, robotId: null, isManual: true, displayName: nut.name, classification: "cots" as const, inventoryItemId: nut.id, restock: true, designState: "In Order List" };
+      const [sent] = await db.insert(schema.parts).values({ ...card, quantity: 2 }).returning();
+      await db.update(schema.inventoryItems).set({ seasonNeed: 6 }).where(eq(schema.inventoryItems.id, nut.id));
+      await applyPartChanges([sent.id], { status: "In Stock" }, ctx);
+      expect(await stock(nut.id)).toBe(6);
+      const [typed] = await db.insert(schema.parts).values({ ...card, quantity: 1 }).returning();
+      await applyPartChanges([typed.id], { orderQty: 2 }, ctx);
+      await applyPartChanges([typed.id], { status: "In Stock" }, ctx);
+      expect(await stock(nut.id)).toBe(8);
+      await db.delete(schema.parts).where(inArray(schema.parts.id, [sent.id, typed.id]));
+      await db.delete(schema.inventoryItems).where(eq(schema.inventoryItems.id, nut.id));
     });
   });

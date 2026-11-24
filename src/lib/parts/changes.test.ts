@@ -32,6 +32,7 @@ const part: PartRow = {
   cotsDeliveryDate: null,
   orderName: null,
   orderMerge: null,
+  orderQty: null,
   overriddenFields: [],
 };
 

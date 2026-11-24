@@ -68,7 +68,7 @@ export function GroupCards({ groups, picked, onPick }: { groups: BomGroup<CardPa
 }
 
 // Up to four of the group's own part pictures, 2×2 (one picture fills the square).
-function Collage({ parts }: { parts: CardPart[] }) {
+export function Collage({ parts, className = "h-14 w-14" }: { parts: { thumbUrl: string | null }[]; className?: string }) {
   const seen = new Set<string>();
   const pics: string[] = [];
   for (const p of parts) {
@@ -80,7 +80,7 @@ function Collage({ parts }: { parts: CardPart[] }) {
   }
   const one = pics.length === 1;
   return (
-    <span className={`thumb-well grid h-14 w-14 shrink-0 gap-px rounded-lg ${one ? "" : "grid-cols-2 grid-rows-2"}`}>
+    <span className={`thumb-well grid ${className} shrink-0 gap-px rounded-lg ${one ? "" : "grid-cols-2 grid-rows-2"}`}>
       {(one ? pics : [0, 1, 2, 3].map((i) => pics[i])).map((src, i) =>
         src ? (
           // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable

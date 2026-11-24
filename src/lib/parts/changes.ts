@@ -83,6 +83,8 @@ export const partChangesSchema = z
     orderName: text,
     // Merged into one order line with the other parts that share it (mergeOrderRows checks them).
     orderMerge: z.uuid().nullable(),
+    // The amount to order, typed on the order pages; null goes back to the worked-out amount.
+    orderQty: count.nullable(),
     // Counts one more (or takes one back) from the saved count rather than the page's copy, so
     // two people counting the same part at once never lose a piece (resolveCounterAdds).
     add: z.partialRecord(z.enum(["doneProcess1", "postDone", "stockCount"]), delta),
@@ -147,6 +149,7 @@ export type PartRow = {
   cotsDeliveryDate: string | null;
   orderName: string | null;
   orderMerge: string | null;
+  orderQty: number | null;
   overriddenFields: string[];
 };
 

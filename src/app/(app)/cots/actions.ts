@@ -11,6 +11,7 @@ import { requireCapability, statusChangeDenied } from "@/lib/mode";
 import { applyEachPartChanges } from "@/lib/parts/apply";
 import { partChangesSchema, type PartChanges } from "@/lib/parts/changes";
 import { MERGE_ITEMS_DIFFER, sameItemForMerge, siteOf } from "@/lib/cots";
+import { deleteToTrash } from "@/lib/trash";
 import { isUuid } from "@/lib/uuid";
 import type { ActionResult } from "../parts-actions";
 
@@ -102,28 +103,33 @@ export async function setOrderHistoryDateText(id: string, side: "inRoute" | "arr
   return {};
 }
 
-// The Order List's 🛒 Cart: the picked parts, all from one vendor, become a cart, or join one of
-// that vendor's carts. A part already in another cart moves.
-export async function saveCotsCart(cartId: string | null, partIds: string[]): Promise<ActionResult> {
+// The Order List's 🛒 Cart: the picked parts become a cart, or join one. A cart is one vendor's
+// parts (by their first product link), or parts with no link at all under a name the member gives
+// it ("Plates – mentor's supplier", Harel 2026-11-24), which gets Copy list instead of the vendor's
+// site. A part already in another cart moves.
+export async function saveCotsCart(cartId: string | null, partIds: string[], name?: string): Promise<ActionResult> {
   const member = await requireCapability("work");
   if (!partIds.length || partIds.some((id) => !isUuid(id)) || (cartId !== null && !isUuid(cartId))) return { error: "Unknown part." };
   const rows = await db
     .select({ id: schema.parts.id, links: schema.parts.cotsLinks })
     .from(schema.parts)
     .where(and(inArray(schema.parts.id, partIds), eq(schema.parts.classification, "cots")));
-  const vendors = new Set(rows.map((p) => (p.links[0] ? siteOf(p.links[0]) : null)));
-  if (rows.length !== new Set(partIds).size || vendors.has(null)) return { error: "Only parts with a product link can go in a cart." };
-  if (vendors.size !== 1) return { error: "A cart's parts all come from one vendor." };
+  if (rows.length !== new Set(partIds).size) return { error: "Unknown part." };
+  // "" stands for no product link.
+  const vendors = new Set(rows.map((p) => (p.links[0] ? siteOf(p.links[0]) : "")));
+  if (vendors.size !== 1) return { error: vendors.has("") ? "A cart takes parts with a product link or parts without one, not both." : "A cart's parts all come from one vendor." };
   const [vendor] = vendors as Set<string>;
+  const title = (name ?? "").trim().slice(0, 120) || null;
+  if (!vendor && !cartId && !title) return { error: "Give the cart a name, like \"Plates – mentor's supplier\"." };
   const ids = rows.map((p) => p.id);
   const message = await db.transaction(async (tx) => {
     let id = cartId;
     if (id) {
       const [cart] = await tx.select().from(schema.cotsCarts).where(eq(schema.cotsCarts.id, id));
       if (!cart) return "That cart was deleted.";
-      if (cart.vendor !== vendor) return `That cart is for ${cart.vendor}.`;
+      if (cart.vendor !== vendor) return cart.vendor ? `That cart is for ${cart.vendor}.` : "That cart is for parts with no product link.";
     } else {
-      [{ id }] = await tx.insert(schema.cotsCarts).values({ vendor, createdBy: member.id }).returning({ id: schema.cotsCarts.id });
+      [{ id }] = await tx.insert(schema.cotsCarts).values({ vendor, name: vendor ? null : title, createdBy: member.id }).returning({ id: schema.cotsCarts.id });
     }
     await tx.delete(schema.cotsCartMembers).where(inArray(schema.cotsCartMembers.partId, ids));
     await tx.insert(schema.cotsCartMembers).values(ids.map((partId) => ({ cartId: id!, partId })));
@@ -132,6 +138,21 @@ export async function saveCotsCart(cartId: string | null, partIds: string[]): Pr
   if (message) return { error: message };
   revalidatePath("/cots", "layout");
   return {};
+}
+
+// "Remove from orders" on an inventory item's card (one Inventory sent to orders): the card leaves
+// the order pages; the item and its stock stay as they are. Kept in Recently deleted for 30 days.
+export async function removeFromOrders(partId: string): Promise<ActionResult> {
+  const member = await requireCapability("work");
+  if (!isUuid(partId)) return { error: "Unknown item." };
+  const where = and(eq(schema.parts.id, partId), eq(schema.parts.restock, true), eq(schema.parts.isManual, true))!;
+  const [card] = await db.select({ name: schema.parts.displayName }).from(schema.parts).where(where);
+  if (!card) return { error: "Only an item Inventory sent to orders can be removed here." };
+  const label = `${card.name ?? "Item"} (order)`;
+  await db.transaction((tx) => deleteToTrash(tx, { kind: "part", label, root: schema.parts, where, memberId: member.id }));
+  revalidatePath("/cots", "layout");
+  revalidatePath("/inventory");
+  return { message: `Removed ${card.name ?? "the item"} from orders.` };
 }
 
 // A cart's "Remove from cart" (one part) and "Delete cart": the parts stay on the Order List.

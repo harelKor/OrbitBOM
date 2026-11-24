@@ -8,5 +8,12 @@ import { listMaterialGroups } from "@/lib/data/materials";
 export async function GET() {
   if (!(await getMember())) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
   const groups = await listMaterialGroups();
-  return NextResponse.json(groups.map((g) => ({ ...g, items: g.items.map((i) => ({ ...i, specs: {} })) })));
+  // Specs stay on the server, but a Raw Stock item's size: the order pages name its stock size
+  // and sort plates by thickness (Harel, 2026-11-24).
+  return NextResponse.json(groups.map((g) => ({ ...g, items: g.items.map((i) => ({ ...i, specs: g.raw ? sizeSpecs(i.specs) : {} })) })));
+}
+
+const SIZE_SPECS = ["thickness", "size", "length"];
+function sizeSpecs(specs: Record<string, string>) {
+  return Object.fromEntries(Object.entries(specs).filter(([k, v]) => SIZE_SPECS.includes(k) && v));
 }

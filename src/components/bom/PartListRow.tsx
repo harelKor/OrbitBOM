@@ -26,6 +26,7 @@ export function PartListRow({
   onToggleSelect,
   onOpen,
   title,
+  order,
 }: {
   part: CardPart;
   save: SaveFn;
@@ -33,6 +34,9 @@ export function PartListRow({
   onToggleSelect?: () => void;
   onOpen?: () => void; // instead of the part window (COTS opens the inventory item window)
   title?: string; // the order pages: the order line's name
+  // The order pages (Harel, 2026-11-24): the row's detail line, what's added after its pills (the
+  // amount to order), and `item` for an inventory item sent there (no COTS type pill).
+  order?: { detail?: React.ReactNode; extra?: React.ReactNode; item?: boolean };
 }) {
   const open = usePartDetails(part, save);
   const status = computeStatus(part);
@@ -54,11 +58,11 @@ export function PartListRow({
       data-part={partIds(part)}
       style={statusTint(status)}
       picture={part.thumbUrl ?? (cots ? (part.shelf?.thumbUrl ?? null) : null)}
-      placeholder={<span className="px-1 text-center text-[0.625rem] leading-tight text-slate-500">{part.isManual ? "Manual" : "No picture"}</span>}
+      placeholder={<span className="px-1 text-center text-[0.625rem] leading-tight text-slate-500">{part.isManual && !order?.item ? "Manual" : "No picture"}</span>}
       title={title ?? partTitle(part)}
       href={part.cotsLinks?.[0]?.url}
       detail={
-        <span className="tabular-nums">
+        order?.detail ?? <span className="tabular-nums">
           Qty: <span className="font-mono">{part.quantity}</span>
           {what && (cots || !editable) && ` · ${what}`}
         </span>
@@ -74,8 +78,8 @@ export function PartListRow({
             onMouseDown={(e) => e.stopPropagation()}
             onKeyDown={(e) => e.stopPropagation()}
           >
-            {canClassify ? <TypeField part={part} save={save} badge /> : <TypeBadge part={part} />}
-            <DataBadges part={part} />
+            {!order?.item && (canClassify ? <TypeField part={part} save={save} badge /> : <TypeBadge part={part} />)}
+            {!order?.item && <DataBadges part={part} />}
             {!cots && (
               <>
                 {part.material || part.inventoryItemId ? (
@@ -100,13 +104,15 @@ export function PartListRow({
             )}
             <StatusField part={part} save={save} size="sm" />
             {cots && <ShelfCoversPrompt part={part} shelf={part.shelf ?? null} save={save} />}
+            {order?.extra}
           </span>
         ) : (
           <>
-            <TypeBadge part={part} />
-            <DataBadges part={part} />
+            {!order?.item && <TypeBadge part={part} />}
+            {!order?.item && <DataBadges part={part} />}
             {!cots && machine && <ListPill>{machine}</ListPill>}
             <ListPill color={statusColor}>{status}</ListPill>
+            {order?.extra}
           </>
         )
       }

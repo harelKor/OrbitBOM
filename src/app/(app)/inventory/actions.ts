@@ -878,7 +878,10 @@ export async function itemPopup(itemId: string) {
   const [detail, targets] = await Promise.all([inventoryItemWithLists(itemId), listBomTargets()]);
   if (!detail) return null;
   const [devices, panorama] = detail.item.station ? await Promise.all([itemDevices(itemId), stationPanorama(detail.item.station)]) : [null, null];
-  return { ...detail, targets, devices, panorama, order: detail.item.openOrder ? await openOrderPart(detail.item.openOrder.partId) : null };
+  const order = detail.item.openOrder ? await openOrderPart(detail.item.openOrder.partId) : null;
+  // Ordering shows the amount to order (orderAmount in lib/cots.ts): typed on the order pages, else
+  // for a card Inventory sent what the item misses now, so it follows Needed for season.
+  return { ...detail, targets, devices, panorama, order: order && { ...order, quantity: order.orderQty ?? (order.restock ? missing(detail.item, "any") : order.quantity) } };
 }
 
 // The COTS card on its way for an item, for the window's Need to Order box and order status.
@@ -893,10 +896,12 @@ async function openOrderPart(partId: string) {
       cotsSentBack: schema.parts.cotsSentBack,
       cotsDeliveryDate: schema.parts.cotsDeliveryDate,
       systemId: schema.parts.systemId,
+      restock: schema.parts.restock,
+      orderQty: schema.parts.orderQty,
     })
     .from(schema.parts)
     .where(eq(schema.parts.id, partId));
-  return p ? { id: p.id, quantity: p.quantity, status: cotsStatusOf(p.designState), links: p.cotsLinks, unitPrice: p.unitPrice, sentBack: p.cotsSentBack, deliveryDate: p.cotsDeliveryDate, fromBom: p.systemId !== null } : null;
+  return p ? { id: p.id, quantity: p.quantity, restock: p.restock, orderQty: p.orderQty, status: cotsStatusOf(p.designState), links: p.cotsLinks, unitPrice: p.unitPrice, sentBack: p.cotsSentBack, deliveryDate: p.cotsDeliveryDate, fromBom: p.systemId !== null } : null;
 }
 
 export async function loadItemHistory(itemId: string) {

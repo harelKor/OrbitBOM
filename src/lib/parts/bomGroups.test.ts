@@ -52,6 +52,13 @@ describe("groupParts", () => {
     expect(findGroup(groups, "Not set up")?.parts).toHaveLength(2);
   });
 
+  // The order pages (Harel, 2026-11-24): bought plates, tubes and shafts go by their stock kind.
+  it("sorts bought raw stock by its kind on the order pages", () => {
+    const bought = [part({ classification: "cots", inventoryItemId: "al6" }), part({ classification: "cots", inventoryItemId: "box" }), part({ classification: "cots", inventoryItemId: "bearing" })];
+    expect(names(groupParts(bought, ITEMS))).toEqual(["Bearings", "COTS"]);
+    expect(names(groupParts(bought, ITEMS, { stock: true }))).toEqual(["Bearings", "Box tubes", "6 mm Aluminum"]);
+  });
+
   it("nests sheets under their material past 3 sheet groups", () => {
     const sheets = ["al4", "al6", "al3", "pc2"].map((id) => part({ inventoryItemId: id }));
     expect(names(groupParts(sheets.slice(0, 3), ITEMS))).toEqual(["3 mm Aluminum", "4 mm Aluminum", "6 mm Aluminum"]);

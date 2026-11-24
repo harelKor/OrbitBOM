@@ -54,6 +54,7 @@ export type CardPart = PartRow & {
   fabView?: { changed: boolean };
   typeWarning?: string | null; // a COTS-typed part that is really made (lib/parts/dataChecks.ts)
   nameCollision?: boolean; // its part number is on a different shape in its system too
+  restock?: boolean; // a card Inventory sent to orders: the order pages show it as the item itself
 };
 
 // The real part behind a row: a merged row's files and exports belong to its first member.

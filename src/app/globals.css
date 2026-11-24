@@ -530,6 +530,28 @@ body {
   .data-table.cots-table td + td {
     @apply border-l-line-strong;
   }
+  /* The order pages' table reads like Google Sheets (Harel, 2026-11-24): a line round every cell,
+     a shaded header row (sticky in its SheetViewport) and slightly bolder text. */
+  .data-table.cots-table {
+    @apply border border-line-strong font-medium;
+  }
+  .data-table.cots-table :is(th, td) {
+    @apply border-b border-line-strong;
+  }
+  .data-table.cots-table :is(th, td) + :is(th, td) {
+    @apply border-l border-l-line-strong;
+  }
+  .data-table.cots-table > thead th {
+    @apply border-b-2 text-fg-2;
+    background-color: color-mix(in srgb, var(--color-line-strong) 45%, var(--color-raised));
+  }
+  .data-table.cots-table td {
+    @apply py-2;
+  }
+  /* A section's or a cart's name across the table. */
+  .data-table.cots-table tr.cots-group > th {
+    @apply bg-raised py-2 text-left text-sm font-bold tracking-normal text-fg normal-case;
+  }
   /* Inventory rows: a full grid of strong lines, so long lists of look-alike items read row by row
      and column by column. */
   .data-table.inv-table :is(th, td) {

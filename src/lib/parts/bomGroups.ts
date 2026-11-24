@@ -79,9 +79,11 @@ function sheetMaterial(item: GroupItem): string {
   return SHEET_MATERIAL[item.category] ?? item.category.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase());
 }
 
-function placeOf(p: GroupPart, itemById: Map<string, GroupItem>, itemByName: Map<string, GroupItem>): Place {
+function placeOf(p: GroupPart, itemById: Map<string, GroupItem>, itemByName: Map<string, GroupItem>, stock: boolean): Place {
   const item = itemById.get(p.inventoryItemId ?? p.shelf?.itemId ?? "") ?? (p.material ? itemByName.get(p.material) : undefined);
-  if (p.classification === "cots") {
+  // The order pages (`stock`): a bought plate, tube or shaft goes with its stock kind, not COTS.
+  const boughtStock = stock && !!item && (!!RAW_GROUPS[item.category] || !!SHEET_MATERIAL[item.category] || (item.raw && !!thicknessOf(item)));
+  if (p.classification === "cots" && !boughtStock) {
     const names = [p.displayName, p.onshapeName, p.shelf?.itemName, item?.name];
     const cat = item?.category;
     if (cat && COTS_GROUPS[cat]) return { top: COTS_GROUPS[cat], name: COTS_GROUPS[cat] };
@@ -96,7 +98,7 @@ function placeOf(p: GroupPart, itemById: Map<string, GroupItem>, itemByName: Map
     return { top: "COTS", name: "COTS" };
   }
   if (p.classification === "undefined") return { top: NOT_SET_UP, name: NOT_SET_UP };
-  if (processMachines(p).some((m) => getMachine(m)?.kind === "print")) return { top: "3D prints", name: "3D prints" };
+  if (!boughtStock && processMachines(p).some((m) => getMachine(m)?.kind === "print")) return { top: "3D prints", name: "3D prints" };
   if (!item) return { top: NOT_SET_UP, name: NOT_SET_UP };
   if (RAW_GROUPS[item.category]) return { top: RAW_GROUPS[item.category], name: RAW_GROUPS[item.category] };
   if (SHEET_MATERIAL[item.category] || (item.raw && thicknessOf(item))) {
@@ -114,12 +116,13 @@ function group<P extends GroupPart>(key: string, name: string, parts: P[], child
   return { key, name, parts, pieces: parts.reduce((n, p) => n + Math.max(p.quantity, 0), 0), ...(children ? { children } : {}) };
 }
 
-export function groupParts<P extends GroupPart>(parts: P[], items: GroupItem[]): BomGroup<P>[] {
+// `stock`: the order pages' kinds (Harel, 2026-11-24): bought raw stock sorts by its kind too.
+export function groupParts<P extends GroupPart>(parts: P[], items: GroupItem[], { stock = false }: { stock?: boolean } = {}): BomGroup<P>[] {
   const itemById = new Map(items.map((i) => [i.id, i]));
   const itemByName = new Map<string, GroupItem>();
   for (const i of items) if (!itemByName.has(i.name)) itemByName.set(i.name, i);
 
-  const places = new Map(parts.map((p) => [p.id, placeOf(p, itemById, itemByName)]));
+  const places = new Map(parts.map((p) => [p.id, placeOf(p, itemById, itemByName, stock)]));
   const tops = new Map<string, { place: Place; parts: P[] }>();
   for (const p of parts) {
     const place = places.get(p.id)!;

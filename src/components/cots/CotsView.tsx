@@ -1,10 +1,10 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useEffect, useOptimistic, useState, useTransition } from "react";
+import { useEffect, useMemo, useOptimistic, useState, useTransition } from "react";
 import { COTS_ARRIVED, COTS_IN_STOCK, COTS_ORDERED, COTS_RELEASED, IN_STOCK_SHOWN_DAYS, ORDER_STATUSES, getCotsStatus } from "@/config/cots";
 import { CATEGORY_GROUPS, groupOf, isCategoryGroup, type CategoryGroupId } from "@/config/inventory";
-import { addCotsFromItem, clearInStock, mergeOrderRows, removeFromCotsCart, saveCotsCart, unmergeOrderRows, updateCotsParts } from "@/app/(app)/cots/actions";
+import { addCotsFromItem, clearInStock, mergeOrderRows, removeFromCotsCart, removeFromOrders, saveCotsCart, unmergeOrderRows, updateCotsParts } from "@/app/(app)/cots/actions";
 import { BomProvider, useBom } from "@/components/bom/BomContext";
 import { PartStage, type StageView } from "@/components/dashboard/PartStage";
 import { AddBox } from "@/components/inventory/AddBox";
@@ -22,13 +22,19 @@ import { CategoryBoxes, pushQuery } from "@/components/ui/CategoryBoxes";
 import { Chevron } from "@/components/ui/Chevron";
 import { Icon } from "@/components/ui/Icon";
 import { ViewPicker } from "@/components/ui/ViewPicker";
-import { MERGE_ITEMS_DIFFER, bomTitle, cotsTotal, groupSameCots, orderTitle, sameItemForMerge, siteOf, spreadCotsChanges } from "@/lib/cots";
+import { MERGE_ITEMS_DIFFER, bomTitle, groupSameCots, orderAmount, orderTitle, orderTotal, sameItemForMerge, siteOf, spreadCotsChanges, stockSize, withStockSize } from "@/lib/cots";
+import { useMaterials } from "@/components/shell/MaterialColors";
+import { toast } from "@/components/ui/Toaster";
+import { formatStock } from "@/lib/inventory/stock";
+import type { GroupItem } from "@/lib/parts/bomGroups";
+import { OrderAmount, type AmountProps } from "./OrderAmount";
+import { StockKinds } from "./StockKinds";
 import type { OrderLine } from "./OrderName";
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { orderStatus } from "@/lib/status";
 import type { CotsCart } from "@/lib/data/cotsCarts";
 import { OpenBatchContext } from "@/components/fab/BatchCard";
-import { CartCard } from "./CartCard";
+import { CartButton, CartCard, CartStatus, cartTitle, type CartLine } from "./CartCard";
 import { CotsCard, OrderStatusButton } from "./CotsCard";
 import { useArrivalHalo } from "@/components/shell/Arrivals";
 import { arrivalPage } from "@/lib/seen";
@@ -130,7 +136,8 @@ export function CotsView({
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   // Cards, List (rows, made for phones) or Table, remembered by this browser.
   const [view, setView] = useStoredChoice("orbit-cots-view", ["cards", "list", "table"] as const, "cards");
-  const [byVendor, setByVendor] = useState(false);
+  // On the Order List the vendor sections are on at first (Harel, 2026-11-24).
+  const [byVendor, setByVendor] = useState(list === "order");
   // Vendors: a box per vendor on top; a box shows only that vendor's section (Harel, 2026-11-04).
   const [vendorPick, setVendorPick] = useState<string | null>(null);
   // Picking cards: "order" (Released's Send to order), "status" (set one status on all of them) or
@@ -143,6 +150,15 @@ export function CotsView({
   const [addTo, setAddTo] = useState<string>(""); // "" = General, else a robot id
   const [cartTarget, setCartTarget] = useState(""); // "" = a new cart, else a cart id
   const [openCart, setOpenCart] = useState<string | null>(null); // one open cart, as with packs
+  const [cartName, setCartName] = useState(""); // a new cart of parts with no product link
+  // Inventory items taken off the order pages on this visit, gone before the server answers.
+  const [removed, setRemoved] = useState<Set<string>>(new Set());
+  // The inventory items (the material picker's list): stock kinds and stock sizes come from them.
+  const materials = useMaterials();
+  const items = useMemo<GroupItem[]>(() => materials.flatMap((g) => g.items.map((i) => ({ id: i.id, name: i.name, category: g.id, raw: g.raw, specs: i.specs }))), [materials]);
+  const itemById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
+  // An order line's name with its stock size, on the order pages only (Harel, 2026-11-24).
+  const nameOf = (p: CardPart) => withStockSize(orderTitle(p), stockSize(itemById.get(p.shelf?.itemId ?? p.inventoryItemId ?? "")));
 
   const places: Place[] = [{ robotId: null, name: "General" }, ...robots.map((r) => ({ robotId: r.id, name: r.name }))];
 
@@ -186,7 +202,7 @@ export function CotsView({
     return () =>
       openItem(itemId, undefined, {
         cotsOrder: {
-          info: { quantity: p.quantity, status: orderStatus(p), links: p.cotsLinks ?? [], unitPrice: p.unitPrice, sentBack: p.cotsSentBack ?? null, deliveryDate: p.cotsDeliveryDate ?? null, grouped: row.members.length > 1 },
+          info: { quantity: amountOf(row), status: orderStatus(p), links: p.cotsLinks ?? [], unitPrice: p.unitPrice, sentBack: p.cotsSentBack ?? null, deliveryDate: p.cotsDeliveryDate ?? null, grouped: row.members.length > 1 },
           save: saveRow(row),
         },
       });
@@ -199,6 +215,17 @@ export function CotsView({
         setError(r.error);
         setCleared((s) => new Set([...s].filter((id) => !ids.includes(id))));
       }
+    });
+  };
+  // "Remove from orders" on an inventory item's card: Inventory keeps the item as it is.
+  const removeItem = (p: CardPart) => () => {
+    setRemoved((s) => new Set(s).add(p.id));
+    startTransition(async () => {
+      const r = await removeFromOrders(p.id);
+      if (r.error) {
+        setError(r.error);
+        setRemoved((s) => new Set([...s].filter((id) => id !== p.id)));
+      } else if (r.message) toast(r.message);
     });
   };
   const addItem = (itemId: string) => {
@@ -219,7 +246,7 @@ export function CotsView({
     orderStatus(p) === COTS_IN_STOCK && !p.cotsClearedAt && !cleared.has(p.id) && (!p.cotsInStockAt || now - new Date(p.cotsInStockAt).getTime() < SHOWN_MS);
   const ofCategory = (p: CotsViewPart) => (!group || groupOf(groupOfCat.get(p.category)) === group) && (!category || p.category === category);
   const ofStatus = (p: CardPart) => list !== "order" || !statusFilter || orderStatus(p) === statusFilter || struck.has(p.id);
-  const listed = optimistic.filter(inList);
+  const listed = optimistic.filter((p) => inList(p) && !removed.has(p.id));
   const cartOf = new Map<string, CotsCart>();
   for (const c of list === "order" ? carts : []) for (const id of c.partIds) cartOf.set(id, c);
   // Arrived parts (and ones set In Stock from there on this visit) sit in the Order List's Arrived section.
@@ -230,7 +257,7 @@ export function CotsView({
   const shownCarts = (list === "order" ? carts : [])
     .map((cart) => ({ cart, members: listed.filter((p) => cartOf.get(p.id)?.id === cart.id) }))
     .filter((c) => c.members.some((p) => ofCategory(p) && ofStatus(p)));
-  const inStock = optimistic.filter((p) => shownInStock(p) && !struck.has(p.id) && ofCategory(p));
+  const inStock = optimistic.filter((p) => shownInStock(p) && !struck.has(p.id) && !removed.has(p.id) && ofCategory(p));
   const counts = new Map<string, { count: number }>();
   for (const p of listed)
     for (const key of [p.category, groupOf(groupOfCat.get(p.category))]) counts.set(key, { count: (counts.get(key)?.count ?? 0) + 1 });
@@ -254,8 +281,13 @@ export function CotsView({
   const statusCounts = new Map<string, number>();
   for (const p of listed) if (ofCategory(p)) statusCounts.set(orderStatus(p), (statusCounts.get(orderStatus(p)) ?? 0) + 1);
 
+  // An inventory item sent to orders is its own line: it never joins a BOM part of the same name.
+  const linesOf = (ps: CotsViewPart[]) => {
+    const at = new Map(ps.map((p, i) => [p.id, i]));
+    return [...groupSameCots(ps.filter((p) => !p.restock)), ...ps.filter((p) => p.restock).map((p) => [p])].sort((a, b) => at.get(a[0].id)! - at.get(b[0].id)!);
+  };
   const rowsOf = (ps: CotsViewPart[]): Row[] =>
-    groupSameCots(ps).map((members) => {
+    linesOf(ps).map((members) => {
       if (members.length === 1) return { key: members[0].id, part: members[0], members };
       const [first] = members;
       const sum = (f: "quantity" | "stockCount") => members.reduce((n, m) => n + m[f], 0);
@@ -281,10 +313,41 @@ export function CotsView({
   // The order line a row shows (Harel, 2026-11-20): its own name, else its inventory item's, else
   // the part's; on Released a pencil renames it for the order pages only. A merged line (parts
   // merged on Released) is tagged Merged with its parts' pictures together.
+  // The amount to order (Harel, 2026-11-24): each part's (orderAmount), summed over a grouped line.
+  // Typed on a grouped line, the first part takes it all and the others none, so the sum is it.
+  const amountOf = (row: Row) => row.members.reduce((n, m) => n + orderAmount(m), 0);
+  const amountProps = (row: Row): AmountProps => ({
+    value: amountOf(row),
+    typed: row.members.some((m) => m.orderQty != null),
+    onChange: work ? (n) => save(row.members.map((m, i) => ({ id: m.id, changes: { orderQty: n === null ? null : i === 0 ? n : 0 } }))) : undefined,
+  });
+  const single = (p: CardPart): Row => ({ key: p.id, part: p, members: [p] });
+  // Copy list's line for one part.
+  const cartLine = (p: CardPart): CartLine => ({ name: nameOf(p), amount: orderAmount(p) });
+  // A line in the List view: the amount to order, and for an inventory item its shelf, not the
+  // part's quantity, and Remove from orders.
+  const listOrder = (row: Row) => {
+    const p = row.part;
+    const s = p.shelf;
+    return {
+      item: p.restock,
+      detail: p.restock && s ? <span className="tabular-nums">{formatStock(s.inStock, s.sheet)} in stock{s.total > 0 ? ` · need ${formatStock(s.total, s.sheet)}` : ""}</span> : undefined,
+      extra: (
+        <>
+          <OrderAmount {...amountProps(row)} size="sm" />
+          {p.restock && work && (
+            <button type="button" onClick={removeItem(p)} className="press min-h-7 rounded-md px-1.5 text-[0.6875rem] font-semibold text-muted hover:text-rose-500 pointer-coarse:min-h-9">
+              Remove from orders
+            </button>
+          )}
+        </>
+      ),
+    };
+  };
   const lineOf = (row: Row): OrderLine => {
     const merged = row.members.some((m) => m.orderMerge);
     return {
-      title: orderTitle(row.part),
+      title: nameOf(row.part),
       bomName: bomTitle(row.members[0]),
       renamed: !!row.part.orderName,
       onRename: list === "released" && work ? (name) => saveRow(row)({ orderName: name }) : undefined,
@@ -328,6 +391,25 @@ export function CotsView({
     save(load.ids.map((id) => ({ id, changes: to === "ordered" ? { status: COTS_ORDERED, cotsSentBack: null } : { status: COTS_RELEASED } })));
   };
 
+  // Table view (Harel, 2026-11-24): not filtered to one group, the rows come in sections under
+  // their category group's name.
+  const tableGroups = (rows: Row[]): TableGroup[] => {
+    if (group) return [{ key: "all", rows }];
+    const bySection = new Map<string, Row[]>();
+    for (const row of rows) {
+      const g = groupOf(groupOfCat.get((row.part as CotsViewPart).category));
+      bySection.set(g, [...(bySection.get(g) ?? []), row]);
+    }
+    if (bySection.size < 2) return [{ key: "all", rows }];
+    const rank = (g: string) => {
+      const i = CATEGORY_GROUPS.findIndex((x) => x.id === g);
+      return i < 0 ? CATEGORY_GROUPS.length : i;
+    };
+    return [...bySection]
+      .sort(([a], [b]) => rank(a) - rank(b))
+      .map(([g, list]) => ({ key: g, label: isCategoryGroup(g) ? groupLabel(g) : "Other", rows: list }));
+  };
+
   const renderRows = (
     rows: Row[],
     { small = false, from = "list", clearable: canClear = false }: { small?: boolean; from?: DragLoad["from"]; clearable?: boolean } = {},
@@ -335,7 +417,7 @@ export function CotsView({
     const clearable = canClear && work;
     return (
     view === "table" ? (
-      <CotsTable rows={rows} titleOf={(row) => lineOf(row).title} saveRow={saveRow} struck={struck} orderList={list === "order" && !small} onClear={clearable ? clear : undefined} />
+      <CotsTable groups={tableGroups(rows)} titleOf={(row) => lineOf(row).title} amountOf={amountProps} saveRow={saveRow} struck={struck} orderList={list === "order" && !small} onClear={clearable ? clear : undefined} />
     ) : view === "list" ? (
       <PartList>
         {rows.map((row) => {
@@ -349,6 +431,7 @@ export function CotsView({
                 selected={selected.has(row.key)}
                 onToggleSelect={pick(row)}
                 onOpen={openRow(row)}
+                order={listOrder(row)}
               />
               {clearable && <ClearButton name={partTitle(row.part)} onClick={() => clear(ids)} />}
             </div>
@@ -367,7 +450,7 @@ export function CotsView({
               <GroupBox key={row.key} row={row} line={lineOf(row)} onClose={() => setOpen((s) => toggle(s, row.key))} {...dragProps(ids, from)}>
                 {row.members.map((m) => (
                   <div key={m.id} {...dragProps([m.id], from)}>
-                    <CotsCard part={m} save={saveRow({ key: m.id, part: m, members: [m] })} onOpen={openRow({ key: m.id, part: m, members: [m] })} showSystem highlightSystem variant={variant} shelfOnThumb struck={struck.has(m.id)} />
+                    <CotsCard part={m} save={saveRow(single(m))} onOpen={openRow(single(m))} showSystem highlightSystem variant={variant} shelfOnThumb struck={struck.has(m.id)} amount={amountProps(single(m))} />
                   </div>
                 ))}
               </GroupBox>
@@ -385,6 +468,8 @@ export function CotsView({
                 group={grouped && !ordering ? { systems: new Set(row.members.map((m) => m.systemId)).size, onOpen: () => setOpen((s) => toggle(s, row.key)) } : undefined}
                 selected={selected.has(row.key)}
                 onToggleSelect={pick(row)}
+                amount={amountProps(row)}
+                onRemove={work && row.part.restock ? removeItem(row.part) : undefined}
               />
               {clearable && <ClearButton name={partTitle(row.part)} onClick={() => clear(ids)} />}
             </div>
@@ -416,8 +501,9 @@ export function CotsView({
   const cartVendor = cartPick && vendorOf(cartPick.part);
   // Only the list's own cards: a cart's are picked from (and moved by) the list.
   const listKeys = new Set(allRows.map((r) => r.key));
+  // Parts with no product link make a cart of their own too, under a name (Harel, 2026-11-24).
   const pickable = (row: Row) =>
-    selecting !== "cart" || (listKeys.has(row.key) && !row.members.some((m) => cartOf.has(m.id)) && vendorOf(row.part) !== NO_VENDOR && (!cartVendor || vendorOf(row.part) === cartVendor));
+    selecting !== "cart" || (listKeys.has(row.key) && !row.members.some((m) => cartOf.has(m.id)) && (!cartVendor || vendorOf(row.part) === cartVendor));
   const pick = (row: Row) => (ordering && pickable(row) ? () => setSelected((s) => toggle(s, row.key)) : undefined);
   const dim = (row: Row) => (ordering && !pickable(row) ? "opacity-40" : "");
   // While picking, a long press (or a mouse drag) draws a box; the cards it crosses join by the
@@ -432,7 +518,7 @@ export function CotsView({
       for (const key of keys) {
         const row = allRows.find((r) => r.key === key);
         if (!row || next.has(key)) continue;
-        if (selecting === "cart" && (!listKeys.has(key) || row.members.some((m) => cartOf.has(m.id)) || vendorOf(row.part) === NO_VENDOR || (vendor && vendorOf(row.part) !== vendor))) continue;
+        if (selecting === "cart" && (!listKeys.has(key) || row.members.some((m) => cartOf.has(m.id)) || (vendor && vendorOf(row.part) !== vendor))) continue;
         vendor ??= vendorOf(row.part);
         next.add(key);
       }
@@ -459,6 +545,7 @@ export function CotsView({
     setMergeName("");
     setSelected(new Set());
     setCartTarget("");
+    setCartName("");
   };
   // Released's Merge: the picked lines' parts become one order line, if they share one inventory
   // item (or have none) (Harel, 2026-11-20).
@@ -474,13 +561,15 @@ export function CotsView({
       else toggleSelecting("merge");
     });
   };
-  const vendorCarts = cartVendor ? shownCarts.filter((c) => c.cart.vendor === cartVendor) : [];
+  // A cart with no vendor ("") holds parts with no product link.
+  const noLink = cartVendor === NO_VENDOR;
+  const vendorCarts = cartVendor ? shownCarts.filter((c) => c.cart.vendor === (noLink ? "" : cartVendor)) : [];
   const targetCart = vendorCarts.find((c) => c.cart.id === cartTarget)?.cart ?? null;
   const submitCart = () => {
     const ids = allRows.filter((r) => selected.has(r.key)).flatMap((r) => r.members.map((m) => m.id));
     setError(null);
     startTransition(async () => {
-      const r = await saveCotsCart(targetCart?.id ?? null, ids);
+      const r = await saveCotsCart(targetCart?.id ?? null, ids, noLink && !targetCart ? cartName : undefined);
       if (r.error) setError(r.error);
       else toggleSelecting("cart");
     });
@@ -488,11 +577,11 @@ export function CotsView({
   const cartLayout = view === "list" ? "list" : "cards";
   // A part inside an open cart: the Order List's own card, or its row in the List view.
   const cartMember = (p: CardPart) => {
-    const row: Row = { key: p.id, part: p, members: [p] };
+    const row = single(p);
     return cartLayout === "list" ? (
-      <PartListRow part={p} save={saveRow(row)} onOpen={openRow(row)} />
+      <PartListRow part={p} save={saveRow(row)} onOpen={openRow(row)} title={nameOf(p)} order={listOrder(row)} />
     ) : (
-      <CotsCard part={p} save={saveRow(row)} onOpen={openRow(row)} variant="order" shelfOnThumb struck={struck.has(p.id)} line={{ title: orderTitle(p), bomName: bomTitle(p), renamed: !!p.orderName }} />
+      <CotsCard part={p} save={saveRow(row)} onOpen={openRow(row)} variant="order" shelfOnThumb struck={struck.has(p.id)} line={{ title: nameOf(p), bomName: bomTitle(p), renamed: !!p.orderName }} amount={amountProps(row)} onRemove={work && p.restock ? removeItem(p) : undefined} />
     );
   };
   const removeFromCart = (cartId: string) => (ids: string[]) =>
@@ -684,22 +773,48 @@ export function CotsView({
       {shownCarts.length > 0 && (
         <Section title="Carts" count={shownCarts.length}>
           <BomProvider value={{ inventory: [], isAdmin: false }}>
-            <OpenBatchContext.Provider value={{ id: openCart, set: setOpenCart }}>
-              {/* Like Factory Fab's packs: cards, or rows in the List view (Table shows cards). */}
-              <div className={cartLayout === "list" ? "list-stack fab-grid" : "card-grid fab-grid"} style={{ "--card-min": "220px" } as React.CSSProperties}>
-                {shownCarts.map(({ cart, members }) => (
-                  <CartCard
-                    key={cart.id}
-                    cart={cart}
-                    members={members}
-                    layout={cartLayout}
-                    save={(ids, changes) => save(ids.map((id) => ({ id, changes })))}
-                    card={cartMember}
-                    onRemove={removeFromCart(cart.id)}
-                  />
-                ))}
-              </div>
-            </OpenBatchContext.Provider>
+            {view === "table" ? (
+              // Table view: the carts as one table, each cart a header row whose ▾ folds its parts
+              // (Harel, 2026-11-24).
+              <CotsTable
+                groups={shownCarts.map(({ cart, members }) => ({
+                  key: cart.id,
+                  label: cartTitle(cart),
+                  sub: `${members.length} part${members.length === 1 ? "" : "s"}`,
+                  foldable: true,
+                  right: (
+                    <>
+                      <CartStatus cart={cart} members={members} save={(ids, changes) => save(ids.map((id) => ({ id, changes })))} compact />
+                      <CartButton cart={cart} members={members} lineOf={cartLine} />
+                    </>
+                  ),
+                  rows: members.map(single),
+                }))}
+                titleOf={(row) => nameOf(row.part)}
+                amountOf={amountProps}
+                saveRow={saveRow}
+                struck={struck}
+                orderList
+              />
+            ) : (
+              <OpenBatchContext.Provider value={{ id: openCart, set: setOpenCart }}>
+                {/* Like Factory Fab's packs: cards, or rows in the List view. */}
+                <div className={cartLayout === "list" ? "list-stack fab-grid" : "card-grid fab-grid"} style={{ "--card-min": "220px" } as React.CSSProperties}>
+                  {shownCarts.map(({ cart, members }) => (
+                    <CartCard
+                      key={cart.id}
+                      cart={cart}
+                      members={members}
+                      layout={cartLayout}
+                      save={(ids, changes) => save(ids.map((id) => ({ id, changes })))}
+                      card={cartMember}
+                      onRemove={removeFromCart(cart.id)}
+                      lineOf={cartLine}
+                    />
+                  ))}
+                </div>
+              </OpenBatchContext.Provider>
+            )}
           </BomProvider>
         </Section>
       )}
@@ -710,9 +825,20 @@ export function CotsView({
         ) : (
           vendors.filter((v) => !vendorPick || !vendors.includes(vendorPick) || v === vendorPick).map((v) => {
             const ps = main.filter((p) => vendorOf(p) === v);
+            const rows = rowsOf(ps);
             return (
-              <Section key={v} title={v} count={rowsOf(ps).length}>
-                {byPlace(ps)}
+              <Section key={v} title={v} count={rows.length}>
+                {v === NO_VENDOR ? (
+                  // By stock kind, big and simple (Harel, 2026-11-24).
+                  <StockKinds rows={rows} items={items}>
+                    {(kind) => {
+                      const ids = new Set(kind.flatMap((r) => r.members.map((m) => m.id)));
+                      return byPlace(ps.filter((p) => ids.has(p.id)));
+                    }}
+                  </StockKinds>
+                ) : (
+                  byPlace(ps)
+                )}
               </Section>
             );
           })
@@ -795,19 +921,32 @@ export function CotsView({
         <div className="sticky bottom-3 z-30 rounded-xl border border-line-strong bg-surface/95 p-3 shadow-lg backdrop-blur">
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span className="font-semibold tabular-nums">{selected.size} selected</span>
-            <span className="text-subtle">{cartVendor ? `From ${cartVendor}: tap more of its parts.` : "Tap the parts to buy together, all from one vendor."}</span>
+            <span className="text-subtle">
+              {noLink ? "No product link: tap more parts without one." : cartVendor ? `From ${cartVendor}: tap more of its parts.` : "Tap the parts to buy together, all from one vendor (or all with no link)."}
+            </span>
             <span className="ml-auto" />
             {vendorCarts.length > 0 && (
               <select className="input w-auto py-1" value={targetCart?.id ?? ""} onChange={(e) => setCartTarget(e.target.value)} aria-label="Cart to add to">
                 <option value="">New cart</option>
                 {vendorCarts.map(({ cart, members }) => (
                   <option key={cart.id} value={cart.id}>
-                    {`${new Date(cart.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })} · ${members.length} part${members.length === 1 ? "" : "s"}`}
+                    {`${cart.name ?? new Date(cart.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })} · ${members.length} part${members.length === 1 ? "" : "s"}`}
                   </option>
                 ))}
               </select>
             )}
-            <button className="btn-primary active:scale-[0.98]" disabled={pending || selected.size === 0} onClick={submitCart}>
+            {noLink && !targetCart && (
+              // A cart of parts with no link is named by whoever makes it (Harel, 2026-11-24).
+              <input
+                value={cartName}
+                onChange={(e) => setCartName(e.target.value)}
+                placeholder="Name the cart, e.g. Plates – mentor's supplier"
+                aria-label="Name of the cart"
+                maxLength={120}
+                className="input w-full min-w-0 py-1 sm:w-72"
+              />
+            )}
+            <button className="btn-primary active:scale-[0.98]" disabled={pending || selected.size === 0 || (noLink && !targetCart && !cartName.trim())} onClick={submitCart}>
               {targetCart ? "✓ Add to cart" : "✓ Create cart"}
             </button>
             <button className="btn active:scale-[0.98]" onClick={() => setSelected(new Set())} disabled={selected.size === 0}>
@@ -981,23 +1120,85 @@ function GroupBox({ row, line, onClose, children, ...drag }: { row: Row; line: O
   );
 }
 
-// The table ("chart") view of the same cards.
+// The table ("chart") view of the same cards, lined like Google Sheets (globals.css .cots-table).
+// `groups`: sections of rows, each under a header row with its name when it has one; a cart's
+// header row (`foldable`) has a ▸ / ▾ that folds its rows, and its status and button on the right.
+type TableGroup = { key: string; label?: string; sub?: string; right?: React.ReactNode; foldable?: boolean; rows: Row[] };
+
 function CotsTable({
-  rows,
+  groups,
   titleOf,
+  amountOf,
   saveRow,
   struck,
   orderList,
   onClear,
 }: {
-  rows: Row[];
-  titleOf: (row: Row) => string; // the order line's name
+  groups: TableGroup[];
+  titleOf: (row: Row) => string; // the order line's name, with its stock size
+  amountOf: (row: Row) => AmountProps;
   saveRow: (row: Row) => (changes: PartChanges) => void;
   struck: Set<string>;
   orderList: boolean;
   onClear?: (ids: string[]) => void;
 }) {
   const currency = useCurrency();
+  const [folded, setFolded] = useState<Set<string>>(new Set());
+  const columns = onClear ? 11 : 10;
+  const row = (row: Row) => {
+    const p = row.part;
+    const link = p.cotsLinks?.[0];
+    const amount = amountOf(row);
+    const total = orderTotal(p, amount.value);
+    const crossed = row.members.every((m) => struck.has(m.id));
+    const s = p.shelf;
+    // An inventory item sent to orders: its shelf, not a part's quantity (Harel, 2026-11-24).
+    const item = p.restock;
+    return (
+      <tr key={row.key} className={crossed ? "opacity-60" : undefined} style={statusTint(orderStatus(p))}>
+        <td>
+          <ThumbLocate part={p} />
+        </td>
+        <td className={`sheet-name font-semibold ${crossed ? "line-through" : ""} ${row.members.length > 1 ? "text-amber-500" : ""}`}>
+          {link ? (
+            <a href={link.url} target="_blank" rel="noreferrer" className="text-sky-500 underline-offset-2 hover:underline dark:text-sky-400">
+              {titleOf(row)}
+            </a>
+          ) : (
+            titleOf(row)
+          )}
+        </td>
+        <td className="text-muted">{item ? "Inventory" : p.systemName}</td>
+        <td className="text-right font-mono tabular-nums" title={item && s ? "Needed for the season or the robots" : undefined}>
+          {item ? (s && s.total > 0 ? formatStock(s.total, s.sheet) : "—") : p.quantity}
+        </td>
+        <td className="text-right font-mono tabular-nums" title={s && !s.sheet ? `${s.itemName} on the shelf` : undefined}>
+          {item && s ? formatStock(s.inStock, s.sheet) : s && !s.sheet ? s.covered : p.stockCount}
+        </td>
+        <td className="text-right">
+          <OrderAmount {...amount} size="sm" />
+        </td>
+        <td className="text-right font-mono text-emerald-500 tabular-nums">{p.unitPrice == null ? "—" : formatPrice(p.unitPrice, currency)}</td>
+        <td className="text-right font-mono font-semibold text-emerald-500 tabular-nums">{total == null ? "—" : formatPrice(total, currency)}</td>
+        <td className="text-xs">
+          {(p.cotsLinks ?? []).map((l, i) => (
+            <a key={l.url} href={l.url} target="_blank" rel="noreferrer" className="text-accent hover:underline">
+              {i > 0 && ", "}
+              {siteOf(l)}
+            </a>
+          ))}
+        </td>
+        <td>{orderList ? <OrderStatusButton part={p} save={saveRow(row)} compact /> : <StatusField part={p} save={saveRow(row)} />}</td>
+        {onClear && (
+          <td>
+            <button type="button" onClick={() => onClear(row.members.map((m) => m.id))} className="press rounded p-1 text-subtle hover:text-fg" aria-label={`Clear ${partTitle(p)} from In stock`}>
+              <Icon name="close" className="h-4 w-4" />
+            </button>
+          </td>
+        )}
+      </tr>
+    );
+  };
   return (
     <SheetViewport id={orderList ? "cots-order" : "cots"}>
       <table className="data-table cots-table">
@@ -1017,53 +1218,36 @@ function CotsTable({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => {
-            const p = row.part;
-            const link = p.cotsLinks?.[0];
-            const total = cotsTotal(p);
-            const crossed = row.members.every((m) => struck.has(m.id));
-            return (
-              <tr key={row.key} className={crossed ? "opacity-60" : undefined} style={statusTint(orderStatus(p))}>
-                <td>
-                  <ThumbLocate part={p} />
-                </td>
-                <td className={`sheet-name font-semibold ${crossed ? "line-through" : ""} ${row.members.length > 1 ? "text-amber-500" : ""}`}>
-                  {link ? (
-                    <a href={link.url} target="_blank" rel="noreferrer" className="text-sky-500 underline-offset-2 hover:underline dark:text-sky-400">
-                      {titleOf(row)}
-                    </a>
-                  ) : (
-                    titleOf(row)
-                  )}
-                </td>
-                <td className="text-muted">{p.systemName}</td>
-                <td className="text-right font-mono tabular-nums">{p.quantity}</td>
-                <td className="text-right font-mono tabular-nums" title={p.shelf && !p.shelf.sheet ? `Covered by ${p.shelf.itemName} on the shelf` : undefined}>
-                  {p.shelf && !p.shelf.sheet ? p.shelf.covered : p.stockCount}
-                </td>
-                <td className="text-right font-mono tabular-nums">{Math.max(0, p.quantity - (p.shelf && !p.shelf.sheet ? p.shelf.covered : p.stockCount)) || "—"}</td>
-                <td className="text-right font-mono text-emerald-500 tabular-nums">{p.unitPrice == null ? "—" : formatPrice(p.unitPrice, currency)}</td>
-                <td className="text-right font-mono font-semibold text-emerald-500 tabular-nums">{total == null ? "—" : formatPrice(total, currency)}</td>
-                <td className="text-xs">
-                  {(p.cotsLinks ?? []).map((l, i) => (
-                    <a key={l.url} href={l.url} target="_blank" rel="noreferrer" className="text-accent hover:underline">
-                      {i > 0 && ", "}
-                      {siteOf(l)}
-                    </a>
-                  ))}
-                </td>
-                <td>
-                  {orderList ? <OrderStatusButton part={p} save={saveRow(row)} compact /> : <StatusField part={p} save={saveRow(row)} />}
-                </td>
-                {onClear && (
-                  <td>
-                    <button type="button" onClick={() => onClear(row.members.map((m) => m.id))} className="press rounded p-1 text-subtle hover:text-fg" aria-label={`Clear ${partTitle(p)} from In stock`}>
-                      <Icon name="close" className="h-4 w-4" />
-                    </button>
-                  </td>
-                )}
+          {groups.flatMap((g) => {
+            const shut = g.foldable && folded.has(g.key);
+            const head = g.label ? (
+              <tr key={`head:${g.key}`} className="cots-group">
+                <th colSpan={columns}>
+                  <div className="flex flex-wrap items-center gap-3">
+                    {g.foldable ? (
+                      <button
+                        type="button"
+                        onClick={() => setFolded((f) => (f.has(g.key) ? new Set([...f].filter((k) => k !== g.key)) : new Set(f).add(g.key)))}
+                        aria-expanded={!shut}
+                        className="press flex min-h-9 items-center gap-2 rounded-md pr-2 text-left text-base font-bold text-fg hover:text-accent"
+                      >
+                        <span className="w-5 text-xl leading-none text-accent">{shut ? "▸" : "▾"}</span>
+                        {g.label}
+                        {g.sub && <span className="text-xs font-semibold text-subtle">{g.sub}</span>}
+                      </button>
+                    ) : (
+                      <span className="text-base font-bold text-fg">
+                        {g.label}
+                        {g.sub && <span className="ml-2 text-xs font-semibold text-subtle">{g.sub}</span>}
+                        <span className="ml-2 font-mono text-xs text-subtle tabular-nums">{g.rows.length}</span>
+                      </span>
+                    )}
+                    {g.right && <span className="ml-auto flex items-center gap-2">{g.right}</span>}
+                  </div>
+                </th>
               </tr>
-            );
+            ) : null;
+            return [head, ...(shut ? [] : g.rows.map(row))];
           })}
         </tbody>
       </table>

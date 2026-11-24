@@ -38,7 +38,7 @@ last full audit and what's still open: `plan/audit-2026-11-14.md` §0.
   sheet one), not `DEFAULT_CATEGORIES`: a test needing a category creates it.
 - Schema: edit `src/db/schema.ts`, `npm run db:generate`, rename the file to a readable name
   (and its `tag` in `drizzle/meta/_journal.json`), add `ALTER TABLE "x" ENABLE ROW LEVEL SECURITY;`
-  for a new table, commit. Next migration: 0108. Migrations reach production before the code and
+  for a new table, commit. Next migration: 0109. Migrations reach production before the code and
   a rollback runs old code on the new schema, so expand → contract: add columns/tables in one
   push; drop or rename one only in a later push, once no deployed code reads it.
 - Local site: README "Local development" (local Supabase in Docker, "Dev sign-in" button; Onshape
@@ -241,6 +241,14 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
   3D view, From shelf, Inserted here) puts parts into the open Part Studio (one Derived feature per
   source Part Studio and version) or assembly (instances), always at an Onshape version
   (`src/lib/onshape/insert.ts`, actions `panel/insert-actions.ts`, table `onshape_inserts`).
+- Order pages (`/cots/released`, `/cots/order-list`, 2026-11-24): an item Inventory sent there
+  (`parts.restock`) shows as the item itself (picture, name, shelf stock, Remove from orders →
+  trash). The amount to order is `orderAmount` (`src/lib/cots.ts`): `parts.order_qty` typed on a
+  card / row / cell (`OrderAmount.tsx`), else a restock card's item's live shortfall, else
+  quantity − covered; the vendor cart, Copy list, the item window's Ordering, order history and
+  receiving read it. Raw-stock names carry their size there only (`stockSize`). No-vendor parts by
+  stock kind (`StockKinds.tsx`, `groupParts(…, { stock: true })`); carts of parts with no link have
+  a member-given `cots_carts.name` and Copy list.
 - Files: `src/lib/storage/r2.ts`; backups and restore: `src/lib/storage/backup.ts`, `restore.ts`.
 - Work the user needn't wait for: `afterResponse` (`src/lib/later.ts`).
 - Installed app / offline (2026-11-13): `public/sw.js` (plain JS, production only, registered by

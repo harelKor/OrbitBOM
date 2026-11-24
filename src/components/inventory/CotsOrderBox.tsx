@@ -47,11 +47,12 @@ export function CotsOrderBox({ info, onSave, editable, onLeave }: { info: CotsOr
   const canCount = editable && work && !info.grouped;
 
   const setCount = (n: number) => {
-    const next = Math.max(1, Math.min(100000, Math.round(n)));
+    const next = Math.max(0, Math.min(100000, Math.round(n)));
     setTyped(null);
     if (next === qty) return;
     setQty(next);
-    onSave({ quantity: next });
+    // The amount to order, apart from the part's quantity and the season need (Harel, 2026-11-24).
+    onSave({ orderQty: next });
   };
   const pick = (s: string) => {
     if (s === status) return;

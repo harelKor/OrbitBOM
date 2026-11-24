@@ -342,7 +342,10 @@ export function CartButton({ item, gap, onLeave, onSent }: { item: Item; gap: nu
           setError(null);
           const r = await sendItemToReleased(item.id);
           if (r.error) setError(r.error);
-          else onSent?.();
+          else {
+            toast(`Sent to orders: ${item.name}`);
+            onSent?.();
+          }
         });
       }}
       title={error ?? label}

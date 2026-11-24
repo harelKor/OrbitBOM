@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { COTS_ARRIVED, COTS_IN_STOCK, ORDER_STATUSES } from "@/config/cots";
 import { db, schema } from "@/db";
 import { getMember } from "@/lib/auth";
+import { orderAmount } from "@/lib/cots";
 import { cartKind, cartUrl, linkVariant, type CartLine } from "@/lib/cotsCart";
 import { shelfOfParts } from "@/lib/data/inventory";
 import { shopifyVariantId } from "@/lib/inventory/product";
@@ -15,7 +16,7 @@ export const maxDuration = 30;
 const BUYING = new Set<string>(ORDER_STATUSES.filter((s) => s !== COTS_IN_STOCK && s !== COTS_ARRIVED));
 
 // A cart's cart button: sends the browser to the vendor's cart with the cart's parts in it, each
-// as many as are still to order (its quantity less what the shelf, or its own count, covers).
+// as many as are still to order (orderAmount: typed on the Order List, else worked out).
 // A Shopify link with no ?variant= has its product's .json read for the variant; those reads run
 // side by side (the store's own servers, not Onshape).
 export async function GET(_request: Request, { params }: { params: Promise<{ cartId: string }> }) {
@@ -33,10 +34,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ car
   if (!parts.length) return new NextResponse(`None of this cart's parts has a ${cart.vendor} product link that can go in a cart.`, { status: 400 });
 
   const { shelf } = await shelfOfParts(parts.filter((p) => p.inventoryItemId));
-  const toOrder = (p: (typeof parts)[number]) => {
-    const s = shelf.get(p.id);
-    return Math.max(0, p.quantity - (s && !s.sheet ? s.covered : p.stockCount));
-  };
+  // The amount to order as the Order List shows it (typed there, or worked out: lib/cots.ts).
+  const toOrder = (p: (typeof parts)[number]) => orderAmount({ ...p, shelf: shelf.get(p.id) ?? null });
   // Parts the shelf already covers stay out, unless that's all of them.
   const short = parts.filter((p) => toOrder(p) > 0);
   const lines: CartLine[] = await Promise.all(

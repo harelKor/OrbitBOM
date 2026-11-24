@@ -16,7 +16,7 @@ import { VersionTag } from "@/components/versions/VersionTag";
 import { useCan, useManage, useMode } from "@/components/shell/ModeContext";
 import { CheckBadge } from "@/components/ui/CheckBadge";
 import { Icon } from "@/components/ui/Icon";
-import { cotsTotal, siteOf } from "@/lib/cots";
+import { cotsTotal, orderTotal, siteOf } from "@/lib/cots";
 import { formatStock } from "@/lib/inventory/stock";
 import { orderStatus } from "@/lib/status";
 import { stepShelfStock } from "@/app/(app)/inventory/actions";
@@ -24,6 +24,7 @@ import { toast } from "@/components/ui/Toaster";
 import { LinkTag, ShelfCoversPrompt, ShelfPill } from "./ShelfPill";
 import { OrderCollage, OrderMergedTag, OrderNameEdit, type OrderLine } from "./OrderName";
 import { formatPrice, setCurrency, useCurrency } from "./currency";
+import { OrderAmount, type AmountProps } from "./OrderAmount";
 
 // A COTS part's card, on every page, washed in its status colour: the light-blue name links to the
 // product page (a dropdown when there are several), a small pencil edits the name, links and
@@ -35,6 +36,9 @@ import { formatPrice, setCurrency, useCurrency } from "./currency";
 // On Released (`origin`) the thumbnail says where the part came from (General: sent from the
 // inventory or added for no robot; Robot: a robot's BOM) and the count is the whole shelf against
 // the item's whole need ("7 / 20 on shelf"). A part with no picture of its own shows its item's.
+// An item Inventory sent to orders (`restock`) shows as the item itself (Harel, 2026-11-24): its
+// picture, name and shelf stock, no COTS-part tags, and "Remove from orders" (`onRemove`). On the
+// order pages `amount` is the bright amount to order, typed right on the card.
 export function CotsCard({
   part,
   save,
@@ -50,6 +54,8 @@ export function CotsCard({
   origin,
   onOpen,
   line,
+  amount,
+  onRemove,
 }: {
   part: CardPart;
   save: SaveFn;
@@ -71,6 +77,8 @@ export function CotsCard({
   // On the order pages: the order line's name (its own, the item's or the part's), its rename
   // pencil on Released, and a merged line's tag and pictures (Harel, 2026-11-20).
   line?: OrderLine;
+  amount?: AmountProps;
+  onRemove?: () => void;
 }) {
   const edit = useManage();
   const work = useCan("work");
@@ -78,6 +86,7 @@ export function CotsCard({
   const { versions } = useBom();
   const showDetails = usePartDetails(part, save);
   const order = variant === "order";
+  const asItem = part.restock;
   // A suggestion waiting in To Review (type, material, inventory link) gets ✓ / ✕ first, like a
   // made part's card; − / + and "In Stock?" only once it's approved (Harel, 2026-11-21).
   const waiting = useReviewWaiting(part) && !order;
@@ -94,7 +103,7 @@ export function CotsCard({
   const [, startShelf] = useTransition();
   const onShelf = !!shelf && !shelf.sheet;
   // A suggested item shows as the Link tag on the thumbnail (the pill only for those who can't link).
-  const hasShelfTag = !!shelf || (!work && !!part.shelfSuggestion);
+  const hasShelfTag = !asItem && (!!shelf || (!work && !!part.shelfSuggestion));
   const stock = onShelf ? shelf.covered : (part.stockCount ?? 0);
   const addStock = (d: number) => {
     if (onShelf) {
@@ -125,7 +134,7 @@ export function CotsCard({
     // eslint-disable-next-line @next/next/no-img-element -- short-lived R2 links, not optimisable
     <img src={picture} alt="" loading="lazy" className="h-full w-full object-contain p-3" />
   ) : (
-    <span className="text-xs text-muted">{part.isManual ? "Manual part" : "No thumbnail yet"}</span>
+    <span className="text-xs text-muted">{asItem ? "No picture" : part.isManual ? "Manual part" : "No thumbnail yet"}</span>
   );
   // Released: the whole shelf against the item's whole need.
   const wholeShelf = !!origin && onShelf;
@@ -156,16 +165,22 @@ export function CotsCard({
       <div className="thumb-well thumb-cots relative flex aspect-[4/3] items-center justify-center">
         <div className="flex h-full w-full items-center justify-center">{line?.merged ? <OrderCollage thumbs={line.merged.thumbs} /> : thumb}</div>
         <div className="absolute top-2 left-2 flex items-center gap-1">
-          <span className={`rounded-full bg-[#111318]/85 font-bold text-white tabular-nums ${order ? "px-3 py-1 text-base" : "px-2 py-0.5 text-[0.6875rem]"}`}>
-            {work && !order ? <QuantityField part={part} save={save} /> : `×${part.quantity}`}
-          </span>
+          {asItem ? (
+            <span className="rounded-full bg-sky-500 px-2 py-0.5 text-[0.6875rem] font-bold text-white shadow-sm" title="An inventory item sent to orders from Inventory">
+              Inventory
+            </span>
+          ) : (
+            <span className={`rounded-full bg-[#111318]/85 font-bold text-white tabular-nums ${order ? "px-3 py-1 text-base" : "px-2 py-0.5 text-[0.6875rem]"}`}>
+              {work && !order && !amount ? <QuantityField part={part} save={save} /> : `×${part.quantity}`}
+            </span>
+          )}
           {/* Every card on the COTS pages is COTS: the tag only shows on a BOM page. */}
           {!order && !shelfOnThumb && (classify ? <TypeField part={part} save={save} badge /> : <TypeBadge part={part} />)}
           {!group && <MergedBadge part={part} />}
           {line?.merged && <OrderMergedTag count={line.merged.count} />}
         </div>
         <div className="absolute top-2 right-2 flex max-w-[55%] flex-col items-end gap-1">
-          {origin && (
+          {origin && !asItem && (
             <span
               className={`rounded-full px-2 py-0.5 text-[0.6875rem] font-bold shadow-sm ${origin === "General" ? "bg-[#0D111A]/85 text-amber-300" : "bg-sky-500 text-white"}`}
               title={origin === "General" ? "Sent from the inventory, or added for no robot" : "From a robot's BOM"}
@@ -179,7 +194,7 @@ export function CotsCard({
             </span>
           )}
           {!struck && !waiting && <ShelfCoversPrompt part={part} shelf={shelf} save={save} overlay />}
-          {!order && !(waiting && part.shelfSuggestion?.pending) && <LinkTag part={part} save={save} />}
+          {!order && !asItem && !(waiting && part.shelfSuggestion?.pending) && <LinkTag part={part} save={save} />}
           {sentBack && (
             <span className="max-w-full truncate rounded-md bg-rose-600 px-2 py-0.5 text-[0.6875rem] font-bold text-white shadow-md" title={`Sent back: ${part.cotsSentBack}`}>
               ↩ {part.cotsSentBack}
@@ -202,7 +217,38 @@ export function CotsCard({
             <CardSuggest part={part} />
           </div>
         )}
-        {!order && !waiting && (
+        {asItem && shelf && (
+          <>
+            {!order && work && !shelf.sheet && (
+              <button
+                type="button"
+                onClick={() => addStock(-1)}
+                disabled={shelf.inStock === 0}
+                className="press absolute bottom-2 left-2 flex h-9 w-9 items-center justify-center rounded-md bg-rose-500 text-lg font-bold text-white shadow-sm hover:bg-rose-400 disabled:opacity-30"
+                aria-label="One less on the shelf"
+              >
+                −
+              </button>
+            )}
+            <span
+              className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-[#111318]/80 px-2.5 py-0.5 font-mono text-xs font-semibold whitespace-nowrap text-white tabular-nums"
+              title={`${shelf.itemName}: on the shelf / needed`}
+            >
+              {formatStock(shelf.inStock, shelf.sheet)} in stock{shelf.total > 0 ? ` · need ${formatStock(shelf.total, shelf.sheet)}` : ""}
+            </span>
+            {!order && work && !shelf.sheet && (
+              <button
+                type="button"
+                onClick={() => addStock(1)}
+                className="press absolute right-2 bottom-2 flex h-9 w-9 items-center justify-center rounded-md bg-emerald-500 text-lg font-bold text-white shadow-sm hover:bg-emerald-400"
+                aria-label="One more on the shelf"
+              >
+                +
+              </button>
+            )}
+          </>
+        )}
+        {!order && !waiting && !asItem && (
           <>
             {work && <button
               type="button"
@@ -252,7 +298,7 @@ export function CotsCard({
           </div>
           {line && <OrderNameEdit line={line} />}
           {links.length > 1 && <LinksMenu links={links} />}
-          {edit && !order && !group && <EditMenu part={part} />}
+          {edit && !order && !group && !asItem && <EditMenu part={part} />}
         </div>
         {showSystem &&
           (highlightSystem ? (
@@ -261,9 +307,24 @@ export function CotsCard({
             <div className="-mt-1.5 truncate text-xs text-subtle">{part.systemName}</div>
           ))}
 
+        {(amount || (asItem && onRemove)) && (
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+            {amount && <OrderAmount {...amount} />}
+            {asItem && onRemove && (
+              <button
+                type="button"
+                onClick={onRemove}
+                className="press ml-auto min-h-8 rounded-lg px-2 text-xs font-semibold text-muted hover:bg-raised hover:text-rose-500 active:scale-[0.98] pointer-coarse:min-h-9"
+                title="Take it off the order pages; Inventory stays as it is"
+              >
+                Remove from orders
+              </button>
+            )}
+          </div>
+        )}
         <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
           <div className="flex min-w-0 max-w-full grow">{order ? <OrderStatusButton part={part} save={save} /> : <StatusField part={part} save={save} />}</div>
-          <Price part={part} big={order} />
+          <Price part={part} big={order} amount={amount?.value} />
         </div>
 
       </div>
@@ -291,9 +352,10 @@ function LinksMenu({ links }: { links: CardPart["cotsLinks"] }) {
 }
 
 // The part's price for the quantity needed, in green, with the $ / ₪ switch.
-function Price({ part, big }: { part: CardPart; big: boolean }) {
+function Price({ part, big, amount }: { part: CardPart; big: boolean; amount?: number }) {
   const currency = useCurrency();
-  const total = cotsTotal(part);
+  // On the order pages: what the amount being ordered costs.
+  const total = amount === undefined ? cotsTotal(part) : orderTotal(part, amount);
   return (
     <div className="ml-auto flex shrink-0 items-center gap-1.5">
       {total == null ? (
@@ -301,7 +363,7 @@ function Price({ part, big }: { part: CardPart; big: boolean }) {
       ) : (
         <span
           className={`font-mono font-bold text-emerald-500 tabular-nums ${big ? "text-lg sm:text-xl" : "text-sm sm:text-base"}`}
-          title={part.quantity > 1 ? `${formatPrice(part.unitPrice!, currency)} each` : undefined}
+          title={(amount ?? part.quantity) > 1 ? `${formatPrice(part.unitPrice!, currency)} each` : undefined}
         >
           {formatPrice(total, currency)}
         </span>
