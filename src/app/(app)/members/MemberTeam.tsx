@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import { SystemSelect, type TeamSystemOption } from "@/components/teams/SystemSelect";
 import { TEAMS, isTeam, type Team } from "@/config/teams";
 import { setMemberTeam } from "./actions";
+import { toast } from "@/components/ui/Toaster";
+import { safeAction } from "@/lib/safeAction";
 
 // Admins set any member's team and, for CAD Team, their subsystem.
 export function MemberTeam({
@@ -21,8 +23,15 @@ export function MemberTeam({
   const [pending, startTransition] = useTransition();
 
   function save(next: Team | null, nextSystem: string | null) {
+    const before = current;
     setCurrent({ team: next, systemId: next === "cad" ? nextSystem : null });
-    startTransition(() => setMemberTeam(memberId, next, nextSystem));
+    startTransition(async () => {
+      const r = await safeAction(async (): Promise<{ error?: string }> => { await setMemberTeam(memberId, next, nextSystem); return {}; });
+      if (r.error) {
+        setCurrent(before);
+        toast(r.error, true);
+      }
+    });
   }
 
   return (

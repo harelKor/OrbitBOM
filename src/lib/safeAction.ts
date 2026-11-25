@@ -1,11 +1,12 @@
 // A server action called from a tap: a thrown error (offline, a dropped connection, a refused
 // permission) comes back as `{ error }` instead of crashing the page, so the caller shows "Not
-// saved" and its optimistic change drops when the transition ends.
-export async function safeAction<T extends { error?: string }>(run: () => Promise<T>): Promise<T | { error: string }> {
+// saved" and its optimistic change drops when the transition ends. The failure keeps the answer's
+// shape (its other fields unset), so callers read `r.url` or `r.id` as they would on the action's own.
+export async function safeAction<T extends { error?: string }>(run: () => Promise<T>): Promise<T | (Partial<T> & { error: string })> {
   try {
     return await run();
   } catch (err) {
-    return { error: notSavedMessage(err) };
+    return { error: notSavedMessage(err) } as Partial<T> & { error: string };
   }
 }
 

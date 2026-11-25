@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import { Notice } from "@/components/ui/Notice";
 import { askConfirm } from "@/components/ui/useConfirm";
 import { createMcpTokenAction, revokeMcpToken } from "./actions";
+import { toast } from "@/components/ui/Toaster";
+import { safeAction } from "@/lib/safeAction";
 
 type Token = { id: string; label: string | null; createdAt: Date; lastUsedAt: Date | null };
 
@@ -45,7 +47,9 @@ export function McpTokens({ tokens, origin }: { tokens: Token[]; origin: string 
           onSubmit={(e) => {
             e.preventDefault();
             startTransition(async () => {
-              const { token } = await createMcpTokenAction(label);
+              const r = await safeAction((): Promise<{ token?: string; error?: string }> => createMcpTokenAction(label));
+              if (r.error || !r.token) return toast(r.error ?? "Couldn't make the link. Try again.", true);
+              const token = r.token;
               setLink(`${origin}/api/mcp/${token}`);
               setLabel("");
               setCopied(false);
@@ -70,7 +74,10 @@ export function McpTokens({ tokens, origin }: { tokens: Token[]; origin: string 
               <button
                 className="text-xs text-rose-700 hover:text-rose-700"
                 onClick={async () => {
-                  if (await askConfirm({ title: "Revoke this link?", body: "Claude stops working with it at once.", confirm: "Revoke", danger: true })) startTransition(() => revokeMcpToken(t.id));
+                  if (await askConfirm({ title: "Revoke this link?", body: "Claude stops working with it at once.", confirm: "Revoke", danger: true })) startTransition(async () => {
+                      const r = await safeAction(async (): Promise<{ error?: string }> => { await revokeMcpToken(t.id); return {}; });
+                      if (r.error) toast(r.error, true);
+                    });
                 }}
               >
                 Revoke

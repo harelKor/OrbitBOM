@@ -60,7 +60,8 @@ export function currentSlotN(part: CardPart): number | null {
 }
 
 // The added processes as an edit sends them (each keeps its count while its machine stays).
-const addedList = (part: CardPart) => (part.addedProcesses ?? []).map((p) => ({ machine: p.machine, qa: p.qa }));
+// Each entry says which saved process it is, so removing one keeps the others' counts (BOM-6).
+const addedList = (part: CardPart) => (part.addedProcesses ?? []).map((p, from) => ({ machine: p.machine, qa: p.qa, from }));
 
 export function Empty({ text = "—" }: { text?: string }) {
   return <span className="text-subtle">{text}</span>;

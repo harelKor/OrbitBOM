@@ -56,6 +56,15 @@ else
       await expect(saveStep(robot.id, member.id, { ...base, subCode: "42", title: "X", partKeys: [], stepRefs: [b.id] })).rejects.toThrow("isn't in this column");
       await deleteStep(robot.id, c.id);
       expect(await order()).toEqual(["A2", "B"]);
+
+      // Deleting a step another brings in: the ref goes too, and a stale one is left out (ASM-4).
+      await tickStep(robot.id, member.id, a.id, true);
+      await deleteStep(robot.id, b.id);
+      expect((await loadAssembly(robot.id)).steps.find((s) => s.id === a.id)?.stepRefs).toEqual([]);
+      await saveStep(robot.id, member.id, { ...base, id: a.id, title: "A3", partKeys: ["d:e:P1"], stepRefs: [b.id] });
+      const a3 = (await loadAssembly(robot.id)).steps.find((s) => s.id === a.id)!;
+      expect(a3.stepRefs).toEqual([]);
+      expect(a3.tick?.by).toBe("Noa");
     });
 
     it("groups parts by sub-assembly, keeps names, and checks the robot", async () => {

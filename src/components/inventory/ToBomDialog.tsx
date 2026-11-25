@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { Dialog } from "@/components/Dialog";
 import { addItemToBom } from "@/app/(app)/inventory/actions";
 import type { BomTarget, Item } from "./types";
+import { safeAction } from "@/lib/safeAction";
 
 // "Add to a BOM" (ref §5, screenshot 12).
 export function ToBomDialog({ item, targets, onClose }: { item: Item | null; targets: BomTarget[]; onClose: () => void }) {
@@ -22,7 +23,7 @@ export function ToBomDialog({ item, targets, onClose }: { item: Item | null; tar
           onSubmit={(e) => {
             e.preventDefault();
             startTransition(async () => {
-              const r = await addItemToBom(item.id, systemId, quantity);
+              const r = await safeAction(() => addItemToBom(item.id, systemId, quantity));
               setResult(r);
             });
           }}

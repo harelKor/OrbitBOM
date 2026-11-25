@@ -15,6 +15,7 @@ import { LocationPicker, PlaceTag } from "./LocationPicker";
 import { PhotoButtons } from "./photo";
 import { ProductPicker, type ChosenProduct } from "./ProductSearch";
 import type { Condition, InvCategory, Item, Location } from "./types";
+import { safeAction } from "@/lib/safeAction";
 
 export type Draft = {
   category: string | null;
@@ -165,7 +166,7 @@ export function ItemForm({
     if (onSubmit) return onSubmit(input);
     startTransition(async () => {
       setError(null);
-      const r = await saveItem(itemId, input);
+      const r = await safeAction(() => saveItem(itemId, input));
       if (r.error || !r.id) setError(r.error ?? "Couldn't save.");
       else onSaved(r.id, r.message);
     });

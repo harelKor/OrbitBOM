@@ -21,6 +21,7 @@ import { statusChangeDeniedFor } from "@/lib/mode";
 import { applyEachPartChanges } from "@/lib/parts/apply";
 import { uuid, read, write, ToolError, nameOf } from "../registry";
 import { robotNotOld } from "@/lib/robotFolders";
+import { DOOR_HOLDS_NOTHING, isDoor } from "@/lib/inventory/places";
 
 const { parts, systems, robots, inventoryConditions, inventoryItems, inventoryLocations } = schema;
 
@@ -260,12 +261,15 @@ write(
       apply: async () => {
         const batchId = randomUUID();
         const ids = await db.transaction(async (tx) => {
-          const locations = new Map((await tx.select().from(inventoryLocations)).map((l) => [l.name.toLowerCase(), l.id]));
+          const places = await tx.select().from(inventoryLocations);
+          const locations = new Map(places.map((l) => [l.name.toLowerCase(), l.id]));
+          const doors = new Set(places.filter(isDoor).map((l) => l.id));
           const out: string[] = [];
           for (const p of planned) {
             let locationId: string | null = null;
             if (p.input.location) {
               locationId = locations.get(p.input.location.toLowerCase()) ?? null;
+              if (locationId && doors.has(locationId)) throw new ToolError(`${p.input.location}: ${DOOR_HOLDS_NOTHING}`);
               if (!locationId) {
                 [{ id: locationId }] = await tx.insert(inventoryLocations).values({ name: p.input.location }).returning({ id: inventoryLocations.id });
                 locations.set(p.input.location.toLowerCase(), locationId);
@@ -366,6 +370,7 @@ write(
     ]);
     const locationId = new Map(locs.map((l) => [l.name.toLowerCase(), l.id]));
     const locationName = new Map(locs.map((l) => [l.id, l.name]));
+    const doors = new Set(locs.filter(isDoor).map((l) => l.id));
     const planned = items.map((i) => {
       const row = rows.find((r) => r.id === i.item_id);
       if (!row) throw new ToolError(`No inventory item ${i.item_id}.`);
@@ -382,6 +387,7 @@ write(
       if (values.specs) values.specs = { ...row.specs, ...(values.specs as Record<string, string>) };
       if (i.name && i.name !== row.name) values.name = i.name;
       const loc = i.location ? (locationId.get(i.location.toLowerCase()) ?? null) : undefined;
+      if (loc && doors.has(loc)) throw new ToolError(`${i.location}: ${DOOR_HOLDS_NOTHING}`);
       const newLocation = i.location && loc === null ? i.location : null;
       if (loc && loc !== row.locationId) values.locationId = loc;
       // Product link and price skip To Review; the rest waits there.

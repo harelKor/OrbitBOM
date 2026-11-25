@@ -7,6 +7,7 @@ import { openPartWindow } from "@/components/bom/PartDetailsHost";
 import { placePoint, type Pt } from "@/lib/fab/layout";
 import { parseCustomSize, planGroup, sizeLabel, type RawGroup, type RawPart, type RawPlan } from "@/lib/fab/rawStock";
 import { useFlatOutlines, type Flat } from "./useFlatOutlines";
+import { safeAction } from "@/lib/safeAction";
 
 // The robot's Raw stock planner (Harel, 2026-11-07): a card per stock group showing its layout,
 // opening a window where the piece size can be switched and the count follows. Parts are coloured
@@ -27,7 +28,7 @@ export function RawStockPlanner({ robotId, groups, canEdit }: { robotId: string;
     if (!g.sizes.some((s) => s.size === size)) setExtra((e) => ({ ...e, [g.key]: [...new Set([...(e[g.key] ?? []), size])] }));
     if (!canEdit) return;
     startTransition(async () => {
-      const res = await setRawStockSize(robotId, g.key, size);
+      const res = await safeAction(() => setRawStockSize(robotId, g.key, size));
       setError(res.error ?? null);
     });
   };

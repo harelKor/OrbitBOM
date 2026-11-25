@@ -168,6 +168,18 @@ describe("added processes (Harel, 2026-11-20)", () => {
     const back = planPartUpdate({ ...two, doneProcess1: 2, addedProcesses: [{ ...bend, qaDone: true }] }, { qa: "reopen" }, "ui");
     expect(back.set.addedProcesses).toEqual([bend]);
   });
+  it("keeps the later processes' counts when one is taken out (BOM-6)", () => {
+    const cnc = { machine: "cnc", done: 2, qa: true, qaDone: true };
+    const saved = { ...two, doneProcess1: 2, addedProcesses: [cnc, { ...bend, done: 1 }] };
+    // CNC removed: Bending keeps its 1 (by position it was matched with CNC and lost it).
+    const removed = planPartUpdate(saved, { addedProcesses: [{ machine: "bending", qa: true, from: 1 }] }, "ui");
+    expect(removed.set.addedProcesses).toEqual([{ ...bend, done: 1 }]);
+    // Two CNC steps, the first taken out: the second keeps its own count and QA, not the first's.
+    const twice = { ...saved, addedProcesses: [cnc, { ...cnc, done: 0, qaDone: false }] };
+    const second = planPartUpdate(twice, { addedProcesses: [{ machine: "cnc", qa: true, from: 1 }] }, "ui");
+    expect(second.set.addedProcesses).toEqual([{ ...cnc, done: 0, qaDone: false }]);
+    expect(partChangesSchema.parse({ addedProcesses: [{ machine: "cnc", qa: false, from: 1 }] })).toEqual({ addedProcesses: [{ machine: "cnc", qa: false, from: 1 }] });
+  });
   it("approves the final QA into In Stock", () => {
     expect(planPartUpdate({ ...part, designState: null, doneProcess1: 2 }, { qa: "approve" }, "ui").set.designState).toBe("In Stock");
   });

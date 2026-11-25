@@ -30,6 +30,7 @@ import type { InventoryReview } from "@/lib/review/inventory";
 import { Notice } from "@/components/ui/Notice";
 import { askConfirm } from "@/components/ui/useConfirm";
 import { toast } from "@/components/ui/Toaster";
+import { safeAction } from "@/lib/safeAction";
 
 export type ReviewItem = {
   part: CardPart;
@@ -136,7 +137,7 @@ function useDecisions(decided: Set<string>, listed: string[], send: (ids: string
     setGone((g) => new Set([...g, ...ids]));
     startDecide(async () => {
       try {
-        const r = await send(ids, approve);
+        const r = await safeAction(() => send(ids, approve));
         if (r.error) restore(ids);
         if (r.error || r.message) onNote(r);
       } catch {
@@ -197,7 +198,7 @@ export function ReviewView({
   const systems = groupItems(matching);
   const suggest = (systemId?: string) => {
     setNote(null);
-    startTransition(async () => setNote(await suggestSetup(robotId, systemId)));
+    startTransition(async () => setNote(await safeAction(() => suggestSetup(robotId, systemId))));
   };
   const ALL = "all";
   const suggestOptions = [
@@ -439,7 +440,7 @@ function ReviewCard({ item, disabled, onDecide }: { item: ReviewItem; disabled: 
   const [, startSave] = useTransition();
   const save = (changes: PartChanges) =>
     startSave(async () => {
-      const r = await updatePart(part.id, changes);
+      const r = await safeAction(() => updatePart(part.id, changes));
       if (r.error) toast(r.error, true);
     });
   const showDetails = usePartDetails(part, save);

@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { toggleItemSeasonTag } from "@/app/(app)/inventory/actions";
 import { useCan } from "@/components/shell/ModeContext";
+import { safeAction } from "@/lib/safeAction";
 
 type Tag = "2026" | "2027";
 
@@ -32,7 +33,7 @@ export function SeasonTag({ itemId, tag, className = "rounded-full px-2 py-0.5 t
         const next: Tag = shown === "2027" ? "2026" : "2027";
         setShown(next);
         start(async () => {
-          const r = await toggleItemSeasonTag(itemId, next);
+          const r = await safeAction(() => toggleItemSeasonTag(itemId, next));
           if (r.error) setShown(shown);
         });
       }}

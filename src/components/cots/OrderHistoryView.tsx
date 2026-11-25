@@ -13,6 +13,7 @@ import { useStoredChoice } from "@/components/ui/useStoredChoice";
 import { toast } from "@/components/ui/Toaster";
 import type { OrderHistoryCard } from "@/lib/data/inventory";
 import { formatPrice, setCurrency, useCurrency } from "./currency";
+import { safeAction } from "@/lib/safeAction";
 
 type Side = "inRoute" | "arrived";
 type Change = { id: string; dismiss?: true; side?: Side; text?: string | null };
@@ -37,7 +38,7 @@ export function OrderHistoryView({ cards: initial }: { cards: OrderHistoryCard[]
   const run = (c: Change, action: () => Promise<{ error?: string }>) =>
     start(async () => {
       apply(c);
-      const res = await action();
+      const res = await safeAction(() => action());
       if (res.error) toast(res.error, true);
     });
   const dismiss = (id: string) => run({ id, dismiss: true }, () => dismissOrderHistory(id));

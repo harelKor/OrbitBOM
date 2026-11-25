@@ -8,6 +8,7 @@ import { useManage } from "@/components/shell/ModeContext";
 import { Popover } from "./Popover";
 import { ownerPartId, type CardPart } from "./types";
 import { askConfirm } from "@/components/ui/useConfirm";
+import { notSavedMessage } from "@/lib/safeAction";
 
 const COLORS: Record<string, string> = {
   drawing: "text-accent border-accent/40",
@@ -105,7 +106,7 @@ function FileRow({
   async function run(task: () => Promise<string | null>) {
     setBusy(true);
     setError(null);
-    setError(await task());
+    setError(await task().catch(notSavedMessage)); // a dropped connection mustn't leave it busy
     setBusy(false);
   }
 

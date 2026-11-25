@@ -11,6 +11,8 @@ import { useCan } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
 import { formatStock } from "@/lib/inventory/stock";
 import { orderStatus } from "@/lib/status";
+import { safeAction } from "@/lib/safeAction";
+import { toast } from "@/components/ui/Toaster";
 
 const pill = "press inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[0.6875rem] font-semibold";
 const REASONS = { onshape: "the same Onshape part", link: "the same product page", name: "the same name", review: "a link waiting in AI review" } as const;
@@ -147,7 +149,7 @@ export function LinkTag({ part, save }: { part: CardPart; save: SaveFn }) {
         onClick={() => {
           setGone(true);
           save({ inventoryItemId: s.itemId });
-          if (s.pending) startTransition(() => void settleLinkSuggestion(ids, s.itemId, true));
+          if (s.pending) startTransition(async () => { const r = await safeAction(() => settleLinkSuggestion(ids, s.itemId, true)); if (r.error) toast(r.error, true); });
         }}
         className="press flex min-w-0 items-center gap-1 py-0.5 pr-1 pl-2 hover:bg-accent hover:text-white"
         title={`Link to ${s.itemName} (${formatStock(s.inStock, s.sheet)} on the shelf). ${why}.`}
@@ -160,7 +162,13 @@ export function LinkTag({ part, save }: { part: CardPart; save: SaveFn }) {
         type="button"
         onClick={() => {
           setGone(true);
-          startTransition(() => void settleLinkSuggestion(ids, s.itemId, false));
+          startTransition(async () => {
+            const r = await safeAction(() => settleLinkSuggestion(ids, s.itemId, false));
+            if (r.error) {
+              setGone(false);
+              toast(r.error, true);
+            }
+          });
         }}
         className="press flex shrink-0 items-center self-stretch border-l border-accent/40 px-1 text-subtle hover:bg-rose-600 hover:text-white"
         title={`Not ${s.itemName}: don't suggest it again`}

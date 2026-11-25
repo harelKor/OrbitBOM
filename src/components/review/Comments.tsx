@@ -14,6 +14,7 @@ import type { DesignReview } from "@/lib/reviews/designReviews";
 import { AddToReviewWindow, removeFromReview, ReviewTag } from "./DesignReviews";
 import { CommentSnip, SnipPicture, uploadSnip, type SnipDraft } from "./Snip";
 import { askConfirm } from "@/components/ui/useConfirm";
+import { safeAction } from "@/lib/safeAction";
 
 // Who is looking, for the status pills, and the comment window the version tree opens (Harel,
 // 2026-11-13). Set by the CAD page and the Onshape panel.
@@ -52,7 +53,7 @@ function useCommentAction() {
   const run = (fn: () => Promise<CommentResult>, after?: () => void) =>
     start(async () => {
       setError(null);
-      const r = await fn();
+      const r = await safeAction(() => fn());
       if (r.error) return setError(r.error);
       after?.();
     });

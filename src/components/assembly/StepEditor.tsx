@@ -12,6 +12,7 @@ import type { AssemblyData, AssemblyStep } from "@/lib/data/assembly";
 import { NEW_PART, OLD_PART, REST_PART } from "./colors";
 import { PartSearch, Thumb } from "./PartSearch";
 import { StepCanvas } from "./StepCanvas";
+import { safeAction } from "@/lib/safeAction";
 
 export type EditorTarget = { kind: "step" | "sub"; step?: AssemblyStep; before?: string };
 
@@ -68,7 +69,8 @@ export function StepEditor({
   const rest = useMemo(() => (isSub ? [] : systemKeys.filter((k) => !ownSet.has(k) && !before.includes(k))), [isSub, systemKeys, ownSet, before]);
 
   // Earlier steps brought in whole, each drawn in one colour (Harel, 2026-11-10).
-  const [refs, setRefs] = useState<string[]>(step?.stepRefs ?? []);
+  // A ref to a step deleted since is dropped, so it can't block the save (ASM-4).
+  const [refs, setRefs] = useState<string[]>(() => (step?.stepRefs ?? []).filter((id) => list.some((s) => s.id === id)));
   const earlier = list.slice(0, index).filter((s) => s.id !== step?.id);
   const refInfo = useMemo(() => stepRefsOf(book, list, { ...(step ?? list[0]), id: step?.id ?? "new", stepRefs: refs }), [book, list, step, refs]);
   const toggleRef = (id: string) => setRefs((r) => (r.includes(id) ? r.filter((x) => x !== id) : [...r, id]));
@@ -138,7 +140,7 @@ export function StepEditor({
       const uploaded = shot && (await uploadStill(shot.dataUrl));
       if (uploaded) imageKey = uploaded;
     }
-    const r = await saveAssemblyStep(robotId, {
+    const r = await safeAction(() => saveAssemblyStep(robotId, {
       id: step?.id ?? null,
       systemId: place.systemId,
       subCode: place.sub,
@@ -152,7 +154,7 @@ export function StepEditor({
       camera,
       imageKey,
       before: step ? null : (target.before ?? null),
-    });
+    }));
     setBusy(false);
     if (r.error) return toast(r.error, true);
     // The action's reply already carries the page drawn again (it revalidates).

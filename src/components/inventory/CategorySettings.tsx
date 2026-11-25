@@ -8,6 +8,7 @@ import { DEFAULT_NAME, withBoreList, type CategoryField } from "@/lib/inventory/
 import type { InvCategory, Item, Location } from "./types";
 import { LocationPicker, PlaceTag } from "./LocationPicker";
 import { askConfirm } from "@/components/ui/useConfirm";
+import { safeAction } from "@/lib/safeAction";
 
 const KINDS: { id: CategoryField["kind"]; label: string }[] = [
   { id: "number", label: "Number" },
@@ -53,7 +54,7 @@ export function CategorySettings({
     timer.current = setTimeout(
       () =>
         startTransition(async () => {
-          const r = await saveCategory(next);
+          const r = await safeAction(() => saveCategory(next));
           setStatus(r.error ? { error: r.error } : { saved: true });
         }),
       600,
@@ -78,7 +79,7 @@ export function CategorySettings({
   };
   const run = (fn: () => Promise<{ error?: string; id?: string }>, then?: (id?: string) => void) =>
     startTransition(async () => {
-      const r = await fn();
+      const r = await safeAction(fn);
       if (r.error) setStatus({ error: r.error });
       else then?.(r.id);
     });

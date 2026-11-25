@@ -22,6 +22,7 @@ import {
 } from "@/lib/fab/layout";
 import { downloadExport } from "@/components/bom/downloadExport";
 import { OnshapeLayoutButton } from "./OnshapeLayoutButton";
+import { safeAction } from "@/lib/safeAction";
 
 // three.js loads only when a part's 3D preview opens.
 const PartFaceViewer = dynamic(() => import("./PartFaceViewer").then((m) => m.PartFaceViewer), { ssr: false });
@@ -222,7 +223,7 @@ export function BatchLayoutDialog({ groupId, name, machine = null, open, onClose
   const setFace = async (partId: string, down: [number, number, number] | null) => {
     setFaceBusy(true);
     setFaceError(null);
-    const r = await setPartFace(groupId, partId, down);
+    const r = await safeAction(() => setPartFace(groupId, partId, down));
     if (r.error) {
       setFaceError(r.error);
       setFaceBusy(false);

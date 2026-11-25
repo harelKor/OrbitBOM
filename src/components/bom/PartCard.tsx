@@ -28,6 +28,7 @@ import { NoteCloud } from "./NoteCloud";
 import { downloadExport } from "./downloadExport";
 import { LinkTag } from "@/components/cots/ShelfPill";
 import { CardSuggest } from "./CardSuggest";
+import { safeAction } from "@/lib/safeAction";
 
 export { NoteCloud };
 
@@ -96,7 +97,7 @@ function MadePartCard({
   nameNote?: string; // Factory Fab (Zivudim): the material, beside the name
 }) {
   // Edit: name, type and the manual part menu. Work (any team): status, amount, material, counters.
-  const { canManage: edit, canWork: work, canClassify } = usePermissions();
+  const { canManage: edit, canWork: work, canClassify, canReview } = usePermissions();
   const { versions } = useBom();
   const { count, prompt: qaPrompt } = useMoveToQa(part, save);
   const { machines, current, at: working, gate, counted, finished, made, takeBack, addOne } = fabSteps(part, save, count);
@@ -119,6 +120,8 @@ function MadePartCard({
   // Ready for QA (the check without Post Processing's counts): the drawing to check against and
   // only the machines, no material (Harel, 2026-11-08).
   const qa = !!onCheck && !post;
+  // Approving QA is CAD's review; Post Processing's check is any team's work (Harel, 2026-11-20).
+  const canCheck = qa ? canReview : work;
 
   return (
     <div id={`part-${part.id}`} data-selected={!!selected} data-part={partIds(part)} style={style ?? statusTint(computeStatus(part))} onClick={openDetails} className={`card-interactive part-card group flex w-full max-w-full min-w-0 overflow-hidden scroll-mt-20 cursor-pointer flex-col text-sm target:border-accent target:ring-2 target:ring-accent ${checked ? "opacity-60" : ""}`}>
@@ -176,7 +179,7 @@ function MadePartCard({
         </div>
         <div className="absolute top-2 right-2 flex max-w-[60%] items-start gap-1.5">
           {!onCheck && !fabCounter && !post && <LinkTag part={part} save={save} />}
-          {onCheck && work ? (
+          {onCheck && canCheck ? (
             <button
               type="button"
               onClick={onCheck}
@@ -191,6 +194,7 @@ function MadePartCard({
             </button>
           ) : (
             <>
+              {qa && work && <span className="rounded-full bg-[#111318]/85 px-2 py-1 text-[0.6875rem] font-bold text-white">Waiting for CAD&apos;s QA</span>}
               {download && <span className={bottomDownload ? "dl-wide" : "contents"}><DownloadMenu part={part} format={format} /></span>}
             </>
           )}
@@ -512,7 +516,8 @@ export function MergedBadge({ part }: { part: CardPart }) {
             className="btn w-full justify-center"
             onClick={() =>
               startTransition(async () => {
-                await unmergeParts(part.id);
+                const r = await safeAction(() => unmergeParts(part.id));
+                if (r.error) toast(r.error, true);
                 close();
               })
             }
@@ -536,7 +541,7 @@ export function EditMenu({ part }: { part: CardPart }) {
             className="block w-full rounded px-2 py-1.5 text-left text-rose-700 hover:bg-raised dark:text-rose-300 pointer-coarse:py-2.5"
             onClick={async () => {
               close();
-              if (await askConfirm({ title: `Delete "${partTitle(part)}"?`, body: "It stays in Settings → Recently deleted for 30 days.", confirm: "Delete", danger: true })) startTransition(() => void deleteManualPart(part.id));
+              if (await askConfirm({ title: `Delete "${partTitle(part)}"?`, body: "It stays in Settings → Recently deleted for 30 days.", confirm: "Delete", danger: true })) startTransition(async () => { const r = await safeAction(() => deleteManualPart(part.id)); if (r.error) toast(r.error, true); });
             }}
           >
             Delete part

@@ -13,6 +13,7 @@ import {
   type ImportColumn,
 } from "@/lib/inventory/import";
 import { importItems } from "@/app/(app)/inventory/actions";
+import { safeAction } from "@/lib/safeAction";
 
 const TEMPLATE =
   "Item,Size / spec,Quantity,Location,Category,Condition,Material\n" +
@@ -155,7 +156,7 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
             disabled={pending || map.item === undefined || parsed.length === 0 || !!result?.message}
             onClick={() =>
               startTransition(async () => {
-                const r = await importItems(parsed);
+                const r = await safeAction(() => importItems(parsed));
                 setResult(r);
                 if (!r.error) setRows(null);
               })

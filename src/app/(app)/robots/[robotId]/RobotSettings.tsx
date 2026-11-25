@@ -6,6 +6,7 @@ import { Popover } from "@/components/bom/Popover";
 import { Icon } from "@/components/ui/Icon";
 import { ROBOT_FOLDERS, type RobotFolder } from "@/config/robotFolders";
 import { deleteRobot, setRobotFolder, updateRobot, type FormState } from "../actions";
+import { safeAction } from "@/lib/safeAction";
 
 // The small gear in the corner of a robot card or system tile in the side panel.
 export const GEAR_SMALL = "flex h-6 w-6 items-center justify-center rounded-md bg-surface/90 text-muted shadow-sm hover:text-fg";
@@ -21,7 +22,7 @@ export function RobotSettings({
   isAdmin: boolean;
   small?: boolean;
 }) {
-  const [state, update, pending] = useActionState((_: FormState, formData: FormData) => updateRobot(robot.id, formData), undefined);
+  const [state, update, pending] = useActionState((_: FormState, formData: FormData): Promise<FormState> => safeAction(async () => (await updateRobot(robot.id, formData)) ?? {}), undefined);
   return (
     <Popover
       align="right"

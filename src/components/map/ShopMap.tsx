@@ -1040,6 +1040,7 @@ export function ShopMap({
         sel={sel}
         place={selPlace}
         stat={sel ? stats?.get(sel.id) : undefined}
+        counted={!!stats}
         inScene={inScene}
         hasInside={!!selPlace?.imageUrl}
         zoneInScene={inScene ? zone : undefined}
@@ -1068,6 +1069,7 @@ function Bar({
   sel,
   place,
   stat,
+  counted,
   inScene,
   hasInside,
   zoneInScene,
@@ -1080,6 +1082,7 @@ function Bar({
   sel: Sel;
   place: Place | undefined;
   stat: PlaceStat | undefined;
+  counted: boolean; // the page passed its places' counts (the item window and others don't)
   inScene: boolean;
   hasInside: boolean;
   zoneInScene: Place | undefined;
@@ -1107,17 +1110,20 @@ function Bar({
     <div data-ui className="absolute inset-x-2 bottom-2 animate-[modal-fade_140ms_ease-out] rounded-2xl border border-white/10 bg-[#0b0e18]/80 p-2 pl-3 text-xs text-slate-200 shadow-[0_8px_24px_rgba(0,0,0,0.5)] backdrop-blur-xl">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-semibold text-white">{what}</span>
-        <span className="tabular-nums text-slate-400">
-          {count} item{count === 1 ? "" : "s"}
-          {stat?.short ? <span className="text-rose-400"> · {stat.short} short</span> : null}
-        </span>
+        {/* No counts given: no "0 items" for a drawer that has some (MAP-1). */}
+        {counted && (
+          <span className="tabular-nums text-slate-400">
+            {count} item{count === 1 ? "" : "s"}
+            {stat?.short ? <span className="text-rose-400"> · {stat.short} short</span> : null}
+          </span>
+        )}
         <span className="flex-1" />
         {mode === "pick" && (
           <button type="button" className={`${BAR_BTN} bg-accent text-white hover:bg-accent-hover`} onClick={() => onPick?.(place.id)}>
             {sel.kind === "zone" ? "Anywhere in this zone" : `Choose this ${what.toLowerCase()}`}
           </button>
         )}
-        {mode === "browse" && onFilter && count > 0 && (
+        {mode === "browse" && onFilter && (count > 0 || !counted) && (
           <button type="button" className={`${BAR_BTN} bg-accent text-white hover:bg-accent-hover`} onClick={() => onFilter(place.id)}>
             Show these items
           </button>

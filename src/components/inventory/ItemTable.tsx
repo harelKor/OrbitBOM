@@ -30,6 +30,7 @@ import { SeasonTag } from "./SeasonTag";
 import { VariantDots, useVariantStep } from "./Variants";
 import type { Condition, InvCategory, Item, Location } from "./types";
 import { SheetViewport } from "@/components/ui/SheetViewport";
+import { safeAction } from "@/lib/safeAction";
 
 // The Table side of the Cards | Table switch (Harel, 2026-10-27): one row per item, for long
 // lists of screws, belts, gears and drills. The count ("3 / 6", like a card), − / +, Needed for
@@ -247,7 +248,7 @@ function LocationCell({
       onChange={(id) => {
         setValue(id ?? "");
         start(async () => {
-          const r = await setItemLocation(item.id, id);
+          const r = await safeAction(() => setItemLocation(item.id, id));
           setError(r.error ?? null);
           setValue(null);
         });
@@ -277,7 +278,7 @@ function SeasonCell({ item }: { item: Item }) {
     if (text === null || text.trim() === current) return setText(null);
     const value = text;
     start(async () => {
-      const r = await setSeasonNeed(item.id, value);
+      const r = await safeAction(() => setSeasonNeed(item.id, value));
       setError(r.error ?? null);
       setText(null);
     });

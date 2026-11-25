@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { setLayoutsDocument } from "@/app/(app)/robots/actions";
+import { safeAction } from "@/lib/safeAction";
 
 export type RobotLayoutsDoc = { id: string; name: string; year: number; url: string | null };
 
@@ -32,7 +33,7 @@ function RobotRow({ robot }: { robot: RobotLayoutsDoc }) {
   const [pending, startTransition] = useTransition();
   const [note, setNote] = useState<{ error?: string; saved?: boolean } | undefined>();
   const changed = link.trim() !== (robot.url ?? "");
-  const save = () => startTransition(async () => setNote(await setLayoutsDocument(robot.id, link)));
+  const save = () => startTransition(async () => setNote(await safeAction(async () => (await setLayoutsDocument(robot.id, link)) ?? {})));
   return (
     <li className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center">
       <div className="w-40 shrink-0 font-semibold">

@@ -13,6 +13,7 @@ import type { ReviewComment } from "@/lib/data/cadReview";
 import type { ModelKind } from "@/db/schema";
 import type { PanelPlace, PanelVersion } from "@/lib/reviews/panelVersion";
 import { SnipPaste, type Shot } from "./PanelSnip";
+import { safeAction } from "@/lib/safeAction";
 
 type Part = { key: string; name: string; systemId: string };
 
@@ -98,7 +99,7 @@ export function PanelComments({
         if ("error" in up) return setError(up.error);
         shotUp = up.snip;
       }
-      const r = await addReviewComment(robotId, systemId, body, part && { key: part.key, name: part.name }, v, shotUp, null, model);
+      const r = await safeAction(() => addReviewComment(robotId, systemId, body, part && { key: part.key, name: part.name }, v, shotUp, null, model));
       if (r.error) return setError(r.error);
       reset();
       router.refresh();

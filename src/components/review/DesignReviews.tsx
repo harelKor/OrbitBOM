@@ -9,6 +9,7 @@ import { LocalTime } from "@/components/ui/LocalTime";
 import { toast } from "@/components/ui/Toaster";
 import type { ReviewComment } from "@/lib/data/cadReview";
 import type { DesignReview } from "@/lib/reviews/designReviews";
+import { safeAction } from "@/lib/safeAction";
 
 // Design Reviews on the CAD page (plan/cad-design-review.md, Harel 2026-11-18): Start DR / Finish DR
 // beside the robot's name (admins), the DR tag on a comment, the DR's filter on the comments
@@ -55,7 +56,7 @@ function StartWindow({ robotId, systems, onClose }: { robotId: string; systems: 
           e.preventDefault();
           start(async () => {
             setError(null);
-            const r = await startReviewAction(robotId, { wholeRobot: whole, systemIds: whole ? [] : [...chosen], state });
+            const r = await safeAction(() => startReviewAction(robotId, { wholeRobot: whole, systemIds: whole ? [] : [...chosen], state }));
             if (r.error) return setError(r.error);
             toast("Design Review started");
             router.refresh();
@@ -137,7 +138,7 @@ function FinishWindow({ robotId, dr, nextVersion, onClose }: { robotId: string; 
           e.preventDefault();
           start(async () => {
             setError(null);
-            const r = await finishReviewAction(robotId, make ? name : null);
+            const r = await safeAction(() => finishReviewAction(robotId, make ? name : null));
             if (r.error) return setError(r.error);
             toast(`${dr.name} finished`);
             router.refresh();
@@ -303,7 +304,7 @@ export function AddToReviewWindow({ c, list, onClose }: { c: ReviewComment; list
                 disabled={pending}
                 onClick={() =>
                   start(async () => {
-                    const r = await setCommentReviewAction(c.id, d.id);
+                    const r = await safeAction(() => setCommentReviewAction(c.id, d.id));
                     if (r.error) return setError(r.error);
                     toast(`Added to ${d.name}`);
                     router.refresh();
@@ -329,7 +330,7 @@ export function AddToReviewWindow({ c, list, onClose }: { c: ReviewComment; list
 }
 
 export async function removeFromReview(c: ReviewComment) {
-  const r = await setCommentReviewAction(c.id, null);
+  const r = await safeAction(() => setCommentReviewAction(c.id, null));
   if (r.error) toast(r.error, true);
   else toast(`Taken out of ${c.designReview?.name ?? "the Design Review"}`);
 }

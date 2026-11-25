@@ -32,6 +32,14 @@ export async function requireCapability(cap: Capability): Promise<Member> {
   return member;
 }
 
+// The same as an answer instead of a throw, for actions that return `{ error }`: production hides a
+// thrown message, so the member would read "Check the connection" instead of why it was refused.
+export async function checkCapability(cap: Capability): Promise<{ member: Member; error?: undefined } | { member?: undefined; error: string }> {
+  const member = await requireMember();
+  if (!can(effectiveMode(member, (await cookies()).get(MODE_COOKIE)?.value), cap)) return { error: DENIED[cap] };
+  return { member };
+}
+
 export const DENIED: Record<Capability, string> = {
   work: "Ask an admin to put you on a team (Build or CAD) to make changes.",
   draw: "Only the CAD Team can make drawings.",

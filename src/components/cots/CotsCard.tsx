@@ -25,6 +25,7 @@ import { LinkTag, ShelfCoversPrompt, ShelfPill } from "./ShelfPill";
 import { OrderCollage, OrderMergedTag, OrderNameEdit, type OrderLine } from "./OrderName";
 import { formatPrice, setCurrency, useCurrency } from "./currency";
 import { OrderAmount, type AmountProps } from "./OrderAmount";
+import { safeAction } from "@/lib/safeAction";
 
 // A COTS part's card, on every page, washed in its status colour: the light-blue name links to the
 // product page (a dropdown when there are several), a small pencil edits the name, links and
@@ -109,7 +110,7 @@ export function CotsCard({
       startShelf(async () => {
         stepShelf(d);
         // The optimistic count goes back by itself when the transition ends; say why.
-        const r = await stepShelfStock(part.memberIds ?? [part.id], d);
+        const r = await safeAction(() => stepShelfStock(part.memberIds ?? [part.id], d));
         if (r.error) toast(`Couldn't change the stock: ${r.error}`, true);
       });
       return;

@@ -10,6 +10,7 @@ import { linkItemToProduct, readProductLink } from "@/app/(app)/inventory/action
 import { Icon } from "@/components/ui/Icon";
 import type { Offer, ProductGroup } from "@/lib/inventory/productGroups";
 import { bestOffer, isLink, searchStores } from "./AddBox";
+import { safeAction } from "@/lib/safeAction";
 
 export type ChosenProduct = { url: string; site?: string; price?: number | null; imageUrl?: string | null };
 
@@ -32,7 +33,7 @@ export function ProductSearch({
       initial={initial}
       autoFocus={autoFocus}
       onChoose={async (p, note) => {
-        const r = await linkItemToProduct(itemId, p);
+        const r = await safeAction(() => linkItemToProduct(itemId, p));
         if (r.error) {
           onMessage(r.error);
           return false;
@@ -93,7 +94,7 @@ export function ProductPicker({
     });
   const readLink = () =>
     startLink(async () => {
-      const r = await readProductLink(query);
+      const r = await safeAction(() => readProductLink(query));
       const p = r.product;
       if (await onChoose(p ? { url: p.url, site: p.site, price: p.price, imageUrl: p.image } : { url: query }, r.error)) setQ("");
     });

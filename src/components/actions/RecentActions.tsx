@@ -15,6 +15,7 @@ import { Icon } from "@/components/ui/Icon";
 import type { RecentAction } from "@/lib/data/actions";
 import { focusPart } from "./focusPart";
 import { askConfirm } from "@/components/ui/useConfirm";
+import { safeAction } from "@/lib/safeAction";
 
 const TILE_REM = 6; // one thumbnail on a dashboard action box
 
@@ -60,7 +61,7 @@ export function RecentActions({
 
   const close = (visitId: string) => {
     setClosed((c) => new Set(c).add(visitId));
-    void dismissAction(visitId);
+    dismissAction(visitId).catch(() => {}); // a failed dismissal only comes back on the next load
   };
   const linkProps = (a: RecentAction) => ({
     href: `${a.page}#part-${a.firstPartId}`,
@@ -306,14 +307,14 @@ function RevertButton({ a, className }: { a: RecentAction; className: string }) 
         : `${a.memberName ?? "This"} change in ${a.pageName}: ${a.fields.join(", ")} on ${a.partCount} ${a.partCount === 1 ? "part" : "parts"}`;
     if (!(await askConfirm({ title: "Revert this change?", body: `${what}.`, confirm: "Revert", danger: true }))) return;
     start(async () => {
-      const r = await revertAction(a.kind ?? "edit", a.visitId);
+      const r = await safeAction(() => revertAction(a.kind ?? "edit", a.visitId));
       // A revert that changed nothing (everything edited again since) leaves nothing to redo.
       done(r, a.kind === "system" || r.batchId ? { batchId: r.batchId ?? null } : null);
     });
   };
   const reapply = () =>
     start(async () => {
-      done(await reapplyAction(a.kind ?? "edit", a.visitId, reverted?.batchId ?? null), null);
+      done(await safeAction(() => reapplyAction(a.kind ?? "edit", a.visitId, reverted?.batchId ?? null)), null);
     });
   return (
     <button

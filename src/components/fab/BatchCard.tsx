@@ -17,7 +17,7 @@ import { pickableStatuses } from "@/components/shell/mode";
 import { Chevron } from "@/components/ui/Chevron";
 import { Icon } from "@/components/ui/Icon";
 import { toast } from "@/components/ui/Toaster";
-import { safeAction } from "@/lib/safeAction";
+import { notSavedMessage, safeAction } from "@/lib/safeAction";
 import { LocalTime } from "@/components/ui/LocalTime";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { askConfirm } from "@/components/ui/useConfirm";
@@ -509,7 +509,11 @@ export function BatchCard({
         const yes = await askConfirm({ title: `Delete ${what}?`, body: cart ? "Its parts stay on the Order List." : "Its parts stay on the BOM with their status.", confirm: "Delete", danger: true });
         if (!yes) return;
         if (cart) cart.onDelete();
-        else startTransition(() => void deleteGroup(batch.id));
+        else
+          startTransition(async () => {
+            const r = await safeAction(async (): Promise<{ error?: string }> => { await deleteGroup(batch.id); return {}; });
+            if (r.error) toast(r.error, true);
+          });
       }}
     >
       {cart ? "Delete cart" : pack ? "Delete pack" : "Delete fab"}
@@ -517,7 +521,10 @@ export function BatchCard({
   );
   const removeButton = (p: CardPart) =>
     edit && (
-      <button className={`press self-start ${TEXT_BTN}`} onClick={() => (cart ? cart.onRemove(p.id) : startTransition(() => void removeFromGroup(batch.id, p.id)))}>
+      <button className={`press self-start ${TEXT_BTN}`} onClick={() => (cart ? cart.onRemove(p.id) : startTransition(async () => {
+                const r = await safeAction(async (): Promise<{ error?: string }> => { await removeFromGroup(batch.id, p.id); return {}; });
+                if (r.error) toast(r.error, true);
+              }))}>
         {cart ? "Remove from cart" : pack ? "Remove from pack" : "Remove from batch"}
       </button>
     );
@@ -834,7 +841,7 @@ export function GcodeRow({ batch }: { batch: Batch }) {
   const run = async (task: () => Promise<string | null>) => {
     setBusy(true);
     setError(null);
-    setError(await task());
+    setError(await task().catch(notSavedMessage)); // a dropped connection mustn't leave it busy
     setBusy(false);
   };
   const btn = "press rounded-md border border-line-strong px-2 py-1 text-xs font-semibold text-fg-2 hover:border-accent hover:text-accent disabled:opacity-50 pointer-coarse:min-h-10 pointer-coarse:px-3";

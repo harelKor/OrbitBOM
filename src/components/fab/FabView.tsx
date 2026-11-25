@@ -32,6 +32,7 @@ import { askConfirm } from "@/components/ui/useConfirm";
 import { MachineBox, MobileMachines, MaterialFilters } from "./MachineFilters";
 import { OpenBatchContext, BatchCard } from "./BatchCard";
 import { Notice } from "@/components/ui/Notice";
+import { safeAction } from "@/lib/safeAction";
 
 // To Fab: machine boxes, then To Post Process (batches with parts in Post Processing), Released
 // (loose parts), Ready to Fab (batches), In process and Finished (batches first, then parts), and
@@ -76,7 +77,7 @@ export function FabView({
     setError(null);
     startTransition(async () => {
       addOptimistic({ ids, changes });
-      const r = ids.length === 1 ? await updatePart(ids[0], changes) : await updateParts(ids, changes);
+      const r = ids.length === 1 ? await safeAction(() => updatePart(ids[0], changes)) : await safeAction(() => updateParts(ids, changes));
       if (r.error) setError(r.error);
     });
   };
@@ -84,7 +85,7 @@ export function FabView({
   const run = (task: () => Promise<{ error?: string }>) => {
     setError(null);
     startTransition(async () => {
-      const r = await task();
+      const r = await safeAction(() => task());
       if (r.error) setError(r.error);
     });
   };
@@ -285,8 +286,8 @@ export function FabView({
   const submitFab = () =>
     startTransition(async () => {
       let r: { error?: string };
-      if (targetBatch) r = await moveToFabBatch(targetBatch.id, [...selected], null, batchStatus(targetBatch.members));
-      else r = await createFabBatch(robotId, [...selected], fabMachine!);
+      if (targetBatch) r = await safeAction(() => moveToFabBatch(targetBatch.id, [...selected], null, batchStatus(targetBatch.members)));
+      else r = await safeAction(() => createFabBatch(robotId, [...selected], fabMachine!));
       setError(r.error ?? null);
       if (!r.error) startFab(false);
     });
@@ -402,7 +403,7 @@ export function FabView({
     startTransition(async () => {
       const color = b.members.flatMap((p) => p.groups).find((g) => g.id === b.id)?.color ?? null;
       addOptimistic({ ids: load.ids, changes: status ? atProcess(status) : {}, to: { id: b.id, name: b.name, color }, from: load.batch });
-      const r = await moveToFabBatch(b.id, load.ids, load.batch, status);
+      const r = await safeAction(() => moveToFabBatch(b.id, load.ids, load.batch, status));
       if (r.error) setError(r.error);
     });
   };
@@ -437,8 +438,9 @@ export function FabView({
         setError(null);
         startTransition(async () => {
           addOptimistic({ ids: load.ids, changes: atProcess(status), from });
-          await removeFromGroup(from, load.ids[0]);
-          const r = load.ids.length === 1 ? await updatePart(load.ids[0], atProcess(status)) : await updateParts(load.ids, atProcess(status));
+          const out = await safeAction(async (): Promise<{ error?: string }> => { await removeFromGroup(from, load.ids[0]); return {}; });
+          if (out.error) return setError(out.error);
+          const r = load.ids.length === 1 ? await safeAction(() => updatePart(load.ids[0], atProcess(status))) : await safeAction(() => updateParts(load.ids, atProcess(status)));
           if (r.error) setError(r.error);
         });
       } else if (load.from !== "ready") save(load.ids, atProcess(status));

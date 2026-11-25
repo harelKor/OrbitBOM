@@ -40,6 +40,8 @@ describe("part type", () => {
     expect(partChangesCapability({ classification: "inhouse", material: "PLA" })).toBe("classify");
     expect(partChangesCapability({ classification: "undefined" })).toBe("classify");
     expect(partChangesCapability({ classification: "external" })).toBe("manage");
+    // The order card's "In Stock?" is any team's (ORD-1).
+    expect(partChangesCapability({ status: "In Stock", fromShelfPrompt: true })).toBe("work");
     expect(can("cad", "classify")).toBe(true);
     expect(can("edit", "classify")).toBe(true);
     expect(can("build", "classify")).toBe(false);

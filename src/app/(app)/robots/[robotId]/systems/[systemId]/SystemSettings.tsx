@@ -7,6 +7,7 @@ import { Checkbox } from "@/components/ui/Checkbox";
 import { Icon } from "@/components/ui/Icon";
 import { deleteSystem, updateSystem, type FormState } from "../../../actions";
 import { GEAR_SMALL, OnshapeLinkField, SaveRow } from "../../RobotSettings";
+import { safeAction } from "@/lib/safeAction";
 
 // Edit mode's gear menu on a system tile: name, Onshape assembly, follow its versions, delete.
 export function SystemSettings({
@@ -21,7 +22,7 @@ export function SystemSettings({
   small?: boolean;
 }) {
   const [state, update, pending] = useActionState(
-    (prev: FormState, formData: FormData) => updateSystem(system.id, prev, formData),
+    (prev: FormState, formData: FormData): Promise<FormState> => safeAction(async () => (await updateSystem(system.id, prev, formData)) ?? {}),
     undefined,
   );
   const [follow, setFollow] = useState(!!system.followVersions);

@@ -16,6 +16,7 @@ import { UpdateSystem } from "@/components/versions/UpdateSystem";
 import type { RobotReview } from "@/lib/data/cadReview";
 import type { Draft } from "@/lib/versions/detect";
 import { rememberModel, startModel, type ModelKind } from "@/components/dashboard/ModelToggle";
+import { safeAction } from "@/lib/safeAction";
 
 export type IsolatedExtras = {
   systemId: string;
@@ -330,7 +331,7 @@ function CreateRobotVersion({ robotId, next }: { robotId: string; next: number }
           onSubmit={async (e) => {
             e.preventDefault();
             setBusy(true);
-            const r = await makeRobotVersion(robotId, name, note);
+            const r = await safeAction(() => makeRobotVersion(robotId, name, note));
             setBusy(false);
             if (r.error) return toast(r.error, true);
             toast(`${r.label} created`);

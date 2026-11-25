@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { restoreDeleted } from "@/app/(app)/storage-actions";
 import { LocalTime } from "@/components/ui/LocalTime";
 import { Notice } from "@/components/ui/Notice";
+import { safeAction } from "@/lib/safeAction";
 
 export type DeletedEntry = { id: string; kind: "robot" | "system" | "part" | "item"; label: string; deletedAt: string; by: string | null; rows: number };
 
@@ -18,7 +19,7 @@ export function RecentlyDeleted({ entries, isAdmin, keepDays }: { entries: Delet
   const bringBack = (id: string) => {
     setBusy(id);
     start(async () => {
-      const r = await restoreDeleted(id);
+      const r = await safeAction(() => restoreDeleted(id));
       setResult(r);
       setBusy(null);
     });

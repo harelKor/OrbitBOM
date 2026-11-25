@@ -37,6 +37,7 @@ import { GoToButton } from "@/components/ui/GoToButton";
 import { ProductName } from "@/components/ui/ProductName";
 import { askConfirm } from "@/components/ui/useConfirm";
 import { toast } from "@/components/ui/Toaster";
+import { safeAction } from "@/lib/safeAction";
 
 type Stage = StageView | "thumb";
 
@@ -182,7 +183,10 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
                   onClick={async () => {
                     if (!(await askConfirm({ title: `Delete "${title}"?`, body: "It stays in Settings → Recently deleted for 30 days.", confirm: "Delete", danger: true }))) return;
                     onClose();
-                    startTransition(() => void deleteManualPart(part.id));
+                    startTransition(async () => {
+                      const r = await safeAction(() => deleteManualPart(part.id));
+                      if (r.error) toast(r.error, true);
+                    });
                   }}
                 >
                   Delete part
@@ -665,7 +669,7 @@ function useSuggest(part: CardPart, enabled: boolean): {
   const run = async (kind: "suggest" | "approve" | "reject") => {
     setBusy(kind);
     setNote(null);
-    const r = kind === "suggest" ? await suggestPart(part.id) : kind === "approve" ? await approveParts([part.id]) : await rejectParts([part.id]);
+    const r = kind === "suggest" ? await safeAction(() => suggestPart(part.id)) : kind === "approve" ? await safeAction(() => approveParts([part.id])) : await safeAction(() => rejectParts([part.id]));
     setBusy(null);
     if (r.error) return toast(r.error, true);
     setNote(r.message ?? null);

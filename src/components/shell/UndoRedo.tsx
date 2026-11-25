@@ -5,6 +5,7 @@ import { redoAction, undoAction } from "@/app/(app)/undo-actions";
 import { Icon } from "@/components/ui/Icon";
 import { toast } from "@/components/ui/Toaster";
 import { useCan } from "./ModeContext";
+import { safeAction } from "@/lib/safeAction";
 
 const KEY = "orbit-undo";
 type Stacks = { exclude: string[]; redo: string[] };
@@ -51,7 +52,7 @@ export function UndoRedo() {
     setBusy(true);
     try {
       if (kind === "undo") {
-        const r = await undoAction(s.exclude);
+        const r = await safeAction(() => undoAction(s.exclude));
         if (r.error) return toast(r.error, true);
         if (r.undone) s.exclude.push(r.undone);
         if (r.batchId) {
@@ -61,7 +62,7 @@ export function UndoRedo() {
         toast(r.message ?? "Undone.");
       } else {
         const id = s.redo.pop()!;
-        const r = await redoAction(id);
+        const r = await safeAction(() => redoAction(id));
         if (r.error) return toast(r.error, true);
         toast(r.message ?? "Redone.");
       }
@@ -82,6 +83,9 @@ export function UndoRedo() {
       if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
       const key = e.key.toLowerCase();
       if (key !== "z" && key !== "y") return;
+      // Not when something on the page already used the key (the drawing editor's own undo), nor
+      // while a window is open: one Ctrl+Z undid the drawing edit and the last BOM edit (DRW-2).
+      if (e.defaultPrevented || document.querySelector("dialog[open]")) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName))) return;
       e.preventDefault();

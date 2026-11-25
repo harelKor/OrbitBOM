@@ -15,6 +15,7 @@ import type { TreeNode } from "@/lib/reviews/tree";
 import { flatVersions, onshapeUrlOf, previousOf, type OnshapeLink, type VersionItem } from "@/lib/reviews/versionList";
 import type { Draft } from "@/lib/versions/detect";
 import { VersionContext, type Entry, type VersionPick } from "./versionView";
+import { safeAction } from "@/lib/safeAction";
 
 // Whose tree it is: a system's (its Final or Basepart), the robot's own Basepart, or the whole
 // robot's own versions (Create version: each node is every system at that moment).
@@ -182,7 +183,7 @@ function VersionMenu({ item, pick, list, owner, did, onshape, current, bomVersio
   const commit =
     bomVersionId && systemId && ctx.kind === "final"
       ? async () => {
-          const r = await versionDraft(systemId, bomVersionId);
+          const r = await safeAction(() => versionDraft(systemId, bomVersionId));
           if (r.error || !r.draft) return toast(r.error ?? "That version is gone.", true);
           setBom(r.draft);
         }
@@ -195,16 +196,18 @@ function VersionMenu({ item, pick, list, owner, did, onshape, current, bomVersio
         if (!(await askConfirm({ title: `Delete ${item.label}?`, body: `It goes from OrbitParts only (Onshape keeps its own versions).${what} This can't be undone.`, confirm: "Delete", danger: true }))) return;
         const r =
           "robot" in owner
-            ? await removeRobotVersion(robotId, item.key.replace(/^rv:/, ""))
-            : await deleteTreeVersion(robotId, {
-                owner: systemId ? { systemId } : { robotId },
-                kind: ctx.kind,
-                did: item.vid ? did : null,
-                vid: item.vid,
-                bomIds: item.bomIds,
-                subIds: item.subId ? [item.subId] : subIds,
-                ref: item.ref,
-              });
+            ? await safeAction(() => removeRobotVersion(robotId, item.key.replace(/^rv:/, "")))
+            : await safeAction(() =>
+                deleteTreeVersion(robotId, {
+                  owner: systemId ? { systemId } : { robotId },
+                  kind: ctx.kind,
+                  did: item.vid ? did : null,
+                  vid: item.vid,
+                  bomIds: item.bomIds,
+                  subIds: item.subId ? [item.subId] : subIds,
+                  ref: item.ref,
+                }),
+              );
         if (r.error) return toast(r.error, true);
         if (ctx.target && (ctx.target.a.key === item.key || ctx.target.b?.key === item.key)) ctx.show(null);
         toast(`${item.label} deleted`);

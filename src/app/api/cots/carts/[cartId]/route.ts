@@ -1,6 +1,6 @@
 import { eq, inArray } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { COTS_ARRIVED, COTS_IN_STOCK, ORDER_STATUSES } from "@/config/cots";
+import { BEFORE_IN_ROUTE } from "@/config/cots";
 import { db, schema } from "@/db";
 import { getMember } from "@/lib/auth";
 import { orderAmount } from "@/lib/cots";
@@ -12,8 +12,10 @@ import { isUuid } from "@/lib/uuid";
 
 export const maxDuration = 30;
 
-// Still to buy: the cart's parts not yet Arrived or In Stock.
-const BUYING = new Set<string>(ORDER_STATUSES.filter((s) => s !== COTS_IN_STOCK && s !== COTS_ARRIVED));
+// Still to buy: the cart's parts not yet bought (In Order List, Seen). In Route ones were ordered
+// already, so a cart pressed again after new parts joined it doesn't buy them twice (ORD-12);
+// all the cart's parts go in only when none is left to buy.
+const BUYING = new Set<string>(BEFORE_IN_ROUTE);
 
 // A cart's cart button: sends the browser to the vendor's cart with the cart's parts in it, each
 // as many as are still to order (orderAmount: typed on the Order List, else worked out).

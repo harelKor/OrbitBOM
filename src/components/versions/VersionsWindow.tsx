@@ -11,6 +11,7 @@ import { afterPartsUpdate } from "./afterUpdate";
 import { ChangeBox } from "./CommitWindow";
 import { CHECK_SYSTEM_EVENT, OPEN_VERSIONS_EVENT } from "./events";
 import { askConfirm } from "@/components/ui/useConfirm";
+import { safeAction } from "@/lib/safeAction";
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—");
 
@@ -47,7 +48,7 @@ export function VersionsWindow({ systemId, list, thumbs }: { systemId: string; l
     if (!(await askConfirm({ title: `Revert this system to ${v.label}?`, body: "Its parts go back to how they were in that version; Onshape isn't changed.", confirm: "Revert", danger: true }))) return;
     start(async () => {
       setMessage(null);
-      const r = await revertToVersion(systemId, v.id);
+      const r = await safeAction(() => revertToVersion(systemId, v.id));
       setMessage(r.error ? { text: r.error, error: true } : { text: r.message ?? "Reverted." });
       if (!r.error) afterPartsUpdate(systemId, router);
     });

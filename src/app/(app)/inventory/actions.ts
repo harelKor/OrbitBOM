@@ -30,6 +30,7 @@ import { applyEachPartChanges } from "@/lib/parts/apply";
 import { StorageNotConfiguredError, deleteObject, objectExists, presignUpload } from "@/lib/storage/r2";
 import { deleteToTrash } from "@/lib/trash";
 import { createItem } from "@/lib/inventory/create";
+import { DOOR_HOLDS_NOTHING, isDoor } from "@/lib/inventory/places";
 import { itemDevices, stationPanorama } from "@/lib/inventory/devices";
 import { isUuid } from "@/lib/uuid";
 
@@ -252,6 +253,11 @@ async function moveItems(member: { id: string }, itemIds: string[], target: { ca
   }
   if (target.locationId !== undefined) {
     if (target.locationId !== null && !isUuid(target.locationId)) return { error: "Unknown location." };
+    if (target.locationId !== null) {
+      const [place] = await db.select({ kind: schema.inventoryLocations.kind }).from(schema.inventoryLocations).where(eq(schema.inventoryLocations.id, target.locationId));
+      if (!place) return { error: "That place was deleted." };
+      if (isDoor(place)) return { error: DOOR_HOLDS_NOTHING };
+    }
     values.locationId = target.locationId;
   }
   if (!Object.keys(values).length) return { error: "Pick a category or a location." };
@@ -421,9 +427,20 @@ export async function removeDevice(itemId: string, deviceId: string): Promise<Ac
   const member = await requireCapability("work");
   if (!isUuid(itemId) || !isUuid(deviceId)) return { error: "Unknown device." };
   const cats = await listCategories();
-  await db.transaction((tx) => moveStock(tx, { itemId, delta: -1, reason: "counted", deviceId }, { memberId: member.id, via: "ui", cats }));
+  const gone = await db.transaction(async (tx) => {
+    // Item row first (as every stock move locks it), then the PC: a second phone deleting the same
+    // PC waits here and finds it gone, instead of dropping the stock and the newest PC (MAP-2).
+    await tx.select({ id: schema.inventoryItems.id }).from(schema.inventoryItems).where(eq(schema.inventoryItems.id, itemId)).for("update");
+    const [device] = await tx
+      .select({ id: schema.inventoryDevices.id })
+      .from(schema.inventoryDevices)
+      .where(and(eq(schema.inventoryDevices.id, deviceId), eq(schema.inventoryDevices.itemId, itemId)));
+    if (!device) return true;
+    await moveStock(tx, { itemId, delta: -1, reason: "counted", deviceId }, { memberId: member.id, via: "ui", cats });
+    return false;
+  });
   refresh();
-  return {};
+  return gone ? { error: "That PC was already deleted." } : {};
 }
 
 const devicePatch = z

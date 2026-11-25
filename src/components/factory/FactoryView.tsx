@@ -23,6 +23,7 @@ import { FactoryStatusButton } from "./FactoryStatusButton";
 import { useArrivalHalo } from "@/components/shell/Arrivals";
 import { arrivalPage } from "@/lib/seen";
 import { Notice } from "@/components/ui/Notice";
+import { safeAction } from "@/lib/safeAction";
 
 const IN_STOCK_MS = FACTORY_IN_STOCK_DAYS * 24 * 60 * 60 * 1000;
 const inStock = (p: CardPart) => computeStatus(p) === "In Stock";
@@ -68,7 +69,7 @@ export function FactoryView({
     setError(null);
     startTransition(async () => {
       addOptimistic({ ids, changes });
-      const r = ids.length === 1 ? await updatePart(ids[0], changes) : await updateParts(ids, changes);
+      const r = ids.length === 1 ? await safeAction(() => updatePart(ids[0], changes)) : await safeAction(() => updateParts(ids, changes));
       if (r.error) setError(r.error);
     });
   };
@@ -133,7 +134,7 @@ export function FactoryView({
     `${new Date(b.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })} · ${b.members.length} part${b.members.length === 1 ? "" : "s"}`;
   const submitPack = () =>
     startTransition(async () => {
-      const r = targetPack ? await moveToFabBatch(targetPack.id, [...selected], null, batchStatus(targetPack.members)) : await createFabBatch(robotId, [...selected], factory);
+      const r = targetPack ? await safeAction(() => moveToFabBatch(targetPack.id, [...selected], null, batchStatus(targetPack.members))) : await safeAction(() => createFabBatch(robotId, [...selected], factory));
       setError(r.error ?? null);
       if (!r.error) startPack(false);
     });

@@ -44,6 +44,8 @@ import { useStoredChoice } from "@/components/ui/useStoredChoice";
 import { formatPrice, useCurrency } from "./currency";
 import { SheetViewport } from "@/components/ui/SheetViewport";
 import { Notice } from "@/components/ui/Notice";
+import { Checkbox } from "@/components/ui/Checkbox";
+import { safeAction } from "@/lib/safeAction";
 
 // robotId null: the General section (a card added on the COTS page for no robot).
 export type CotsViewPart = CardPart & { robotId: string | null; robotName: string | null; cotsInStockAt: Date | null; cotsClearedAt: Date | null; category: string };
@@ -181,7 +183,7 @@ export function CotsView({
     }
     startTransition(async () => {
       addOptimistic(edits);
-      const r = await updateCotsParts(edits);
+      const r = await safeAction(() => updateCotsParts(edits));
       if (r.error) {
         setError(r.error);
         // Nothing saved: the cards it crossed out come back as they were.
@@ -211,7 +213,7 @@ export function CotsView({
   const clear = (ids: string[]) => {
     setCleared((s) => new Set([...s, ...ids]));
     startTransition(async () => {
-      const r = await clearInStock(ids);
+      const r = await safeAction(() => clearInStock(ids));
       if (r.error) {
         setError(r.error);
         setCleared((s) => new Set([...s].filter((id) => !ids.includes(id))));
@@ -222,7 +224,7 @@ export function CotsView({
   const removeItem = (p: CardPart) => () => {
     setRemoved((s) => new Set(s).add(p.id));
     startTransition(async () => {
-      const r = await removeFromOrders(p.id);
+      const r = await safeAction(() => removeFromOrders(p.id));
       if (r.error) {
         setError(r.error);
         setRemoved((s) => new Set([...s].filter((id) => id !== p.id)));
@@ -233,7 +235,7 @@ export function CotsView({
     setError(null);
     setNotice(null);
     startTransition(async () => {
-      const r = await addCotsFromItem(itemId, addTo || null);
+      const r = await safeAction(() => addCotsFromItem(itemId, addTo || null));
       if (r.error) setError(r.error);
       else setNotice(r.message ?? null);
     });
@@ -365,7 +367,7 @@ export function CotsView({
   const unmerge = (row: Row) =>
     startTransition(async () => {
       setError(null);
-      const r = await unmergeOrderRows(row.members.filter((m) => m.orderMerge).map((m) => m.id));
+      const r = await safeAction(() => unmergeOrderRows(row.members.filter((m) => m.orderMerge).map((m) => m.id)));
       if (r.error) setError(r.error);
     });
 
@@ -419,7 +421,7 @@ export function CotsView({
     const clearable = canClear && work;
     return (
     view === "table" ? (
-      <CotsTable groups={tableGroups(rows)} titleOf={(row) => lineOf(row).title} amountOf={amountProps} menuOf={itemMenu} saveRow={saveRow} struck={struck} orderList={list === "order" && !small} onClear={clearable ? clear : undefined} />
+      <CotsTable groups={tableGroups(rows)} titleOf={(row) => lineOf(row).title} amountOf={amountProps} menuOf={itemMenu} saveRow={saveRow} struck={struck} orderList={list === "order" && !small} onClear={clearable ? clear : undefined} picking={ordering ? { selected, pick, dim } : undefined} />
     ) : view === "list" ? (
       <PartList>
         {rows.map((row) => {
@@ -558,7 +560,7 @@ export function CotsView({
     const name = mergeName.trim() || (mergeRows[0] ? orderTitle(mergeRows[0].part) : "");
     setError(null);
     startTransition(async () => {
-      const r = await mergeOrderRows(mergeParts.map((m) => m.id), name);
+      const r = await safeAction(() => mergeOrderRows(mergeParts.map((m) => m.id), name));
       if (r.error) setError(r.error);
       else toggleSelecting("merge");
     });
@@ -571,7 +573,7 @@ export function CotsView({
     const ids = allRows.filter((r) => selected.has(r.key)).flatMap((r) => r.members.map((m) => m.id));
     setError(null);
     startTransition(async () => {
-      const r = await saveCotsCart(targetCart?.id ?? null, ids, noLink && !targetCart ? cartName : undefined);
+      const r = await safeAction(() => saveCotsCart(targetCart?.id ?? null, ids, noLink && !targetCart ? cartName : undefined));
       if (r.error) setError(r.error);
       else toggleSelecting("cart");
     });
@@ -588,7 +590,7 @@ export function CotsView({
   };
   const removeFromCart = (cartId: string) => (ids: string[]) =>
     startTransition(async () => {
-      const r = await removeFromCotsCart(cartId, ids);
+      const r = await safeAction(() => removeFromCotsCart(cartId, ids));
       if (r.error) setError(r.error);
     });
   useEscape(ordering, () => {
@@ -1148,6 +1150,7 @@ function CotsTable({
   struck,
   orderList,
   onClear,
+  picking,
 }: {
   groups: TableGroup[];
   menuOf?: (row: Row) => React.ReactNode; // an inventory item's ⋮
@@ -1157,10 +1160,13 @@ function CotsTable({
   struck: Set<string>;
   orderList: boolean;
   onClear?: (ids: string[]) => void;
+  // Send to order, Cart, Merge and Status pick rows here too: a checkbox per row, and the box
+  // drag finds the rows by data-box-key (ORD-15).
+  picking?: { selected: Set<string>; pick: (row: Row) => (() => void) | undefined; dim: (row: Row) => string };
 }) {
   const currency = useCurrency();
   const [folded, setFolded] = useState<Set<string>>(new Set());
-  const columns = onClear ? 11 : 10;
+  const columns = (onClear ? 11 : 10) + (picking ? 1 : 0);
   const row = (row: Row) => {
     const p = row.part;
     const link = p.cotsLinks?.[0];
@@ -1170,8 +1176,15 @@ function CotsTable({
     const s = p.shelf;
     // An inventory item sent to orders: its shelf, not a part's quantity (Harel, 2026-11-24).
     const item = p.restock;
+    const toggle = picking?.pick(row);
+    const picked = !!picking?.selected.has(row.key);
     return (
-      <tr key={row.key} className={crossed ? "opacity-60" : undefined} style={statusTint(orderStatus(p))}>
+      <tr key={row.key} data-box-key={picking ? row.key : undefined} data-selected={picked || undefined} className={`${crossed ? "opacity-60" : ""} ${picking?.dim(row) ?? ""} ${picked ? "outline-2 -outline-offset-2 outline-accent" : ""}`} style={statusTint(orderStatus(p))}>
+        {picking && (
+          <td>
+            {toggle && <Checkbox checked={picked} onChange={toggle} label={`Pick ${titleOf(row)}`} />}
+          </td>
+        )}
         <td>
           <ThumbLocate part={p} />
         </td>
@@ -1223,6 +1236,7 @@ function CotsTable({
       <table className="data-table cots-table">
         <thead>
           <tr>
+            {picking && <th />}
             <th />
             <th className="sheet-name">Part</th>
             <th>Systems</th>

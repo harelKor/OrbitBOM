@@ -308,7 +308,7 @@ function ItemNotesBox({ item, onSaved, onError }: { item: Item; onSaved: () => v
           if (text.trim() === (item.note ?? "").trim()) return;
           const value = text;
           start(async () => {
-            const r = await setItemNote(item.id, value);
+            const r = await safeAction(() => setItemNote(item.id, value));
             onError(r.error ?? null);
             if (!r.error) onSaved();
           });
@@ -534,7 +534,7 @@ function ItemBody({
   // A link's Unlink saves, then the window reloads.
   const save = (run: () => Promise<{ error?: string }>) =>
     startMove(async () => {
-      const r = await run();
+      const r = await safeAction(() => run());
       setMessage(r.error ?? null);
       if (!r.error) onSaved();
     });
@@ -553,15 +553,17 @@ function ItemBody({
   const onPhoto = (p: { key: string; preview: string }) =>
     startPhoto(async () => {
       setPhoto(p.preview);
-      const r = await setItemPhoto(item.id, p.key);
-      if (r.error) setMessage(r.error);
-      else onSaved();
+      const r = await safeAction(() => setItemPhoto(item.id, p.key));
+      if (r.error) {
+        setPhoto(null); // the preview goes: the photo wasn't saved
+        setMessage(r.error);
+      } else onSaved();
     });
   const picker = usePhotoPicker(onPhoto);
   const deletePhoto = async () => {
     if (!(await askConfirm({ title: `Delete the photo of "${item.name}"?`, confirm: "Delete", danger: true }))) return;
     startPhoto(async () => {
-      const r = await removeItemPhoto(item.id);
+      const r = await safeAction(() => removeItemPhoto(item.id));
       setMessage(r.error ?? r.message ?? null);
       if (!r.error) {
         setPhoto(null);

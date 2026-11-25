@@ -20,6 +20,7 @@ import { STATUSES } from "@/config/statuses";
 import { MIN_SPOT, bounds, spotKindsFor, centroid, circleOfOutline, circleOutline, isPanorama, isPanoramaPicture, kindLabel, spotRect, spotsOf, zoneColor, type MapPoint, type Place, type SpotKind } from "@/lib/inventory/places";
 import { Notice } from "@/components/ui/Notice";
 import { askConfirm } from "@/components/ui/useConfirm";
+import { safeAction } from "@/lib/safeAction";
 
 // Settings → Map (Harel, 2026-11-14): draw the zones on the floor plan, give each its
 // first-person picture and pin its drawers / shelves on it, and choose each system's drawer for
@@ -43,7 +44,7 @@ function useRun() {
   const [error, setError] = useState<string | null>(null);
   const run = (fn: () => Promise<MapResult | void>, then?: (r: MapResult) => void) =>
     start(async () => {
-      const r = (await fn()) ?? {};
+      const r = await safeAction(async (): Promise<MapResult> => (await fn()) ?? {});
       setError(r.error ?? null);
       if (!r.error) then?.(r);
     });

@@ -14,6 +14,7 @@ import type { CheckData } from "@/lib/check/store";
 import { pairKey, type CheckLimits, type CheckResults, type Clash, type DesignFinding, type FindingKind, type WeightPart } from "@/lib/check/types";
 import { reweigh } from "@/lib/check/weight";
 import { modelSig, runCheck } from "./runCheck";
+import { safeAction } from "@/lib/safeAction";
 
 // What a finding hands the page to show it, or to start a comment about it.
 export type Finding = { keys: string[]; body: string; key: string | null; name: string | null; systemId: string | null; pin: [number, number, number] | null };
@@ -113,7 +114,7 @@ export function DesignCheck({
 
   // A part's weight set by hand: the totals change at once and the saved run with them.
   const setWeight = async (key: string, grams: number | null) => {
-    const r = sandbox ? {} : await savePartWeight(key, grams);
+    const r = sandbox ? {} : await safeAction(() => savePartWeight(key, grams));
     if (r.error) return toast(r.error, true);
     if (!data) return;
     const facts = { ...data.facts, [key]: { ...(data.facts[key] ?? { material: null, onshapeMaterial: null, printed: false }), setG: grams } };
@@ -121,19 +122,20 @@ export function DesignCheck({
     if (results) {
       const next = { ...results, weight: reweigh(results.weight, key, grams, facts[key]) };
       setResults(next);
-      if (data.latest && !sandbox) void saveDesignCheck(robotId, kind, data.latest.sig, next);
+      const sig = data.latest?.sig;
+      if (sig && !sandbox) void safeAction(() => saveDesignCheck(robotId, kind, sig, next));
     }
   };
 
   const setFindingFine = async (id: string, fine: boolean) => {
-    const r = sandbox ? {} : await setFindingIgnored(robotId, id, fine);
+    const r = sandbox ? {} : await safeAction(() => setFindingIgnored(robotId, id, fine));
     if (r.error) return toast(r.error, true);
     if (!data) return;
     setData({ ...data, ignored: fine ? [...data.ignored, id] : data.ignored.filter((x) => x !== id) });
   };
 
   const setFine = async (c: Clash, fine: boolean) => {
-    const r = sandbox ? {} : await setOverlapIgnored(robotId, c.a, c.b, fine);
+    const r = sandbox ? {} : await safeAction(() => setOverlapIgnored(robotId, c.a, c.b, fine));
     if (r.error) return toast(r.error, true);
     if (!data) return;
     const k = pairKey(c.a, c.b);
@@ -173,7 +175,7 @@ Likely fix: ${ai.fixes[id]}` : text);
   const writeUp = async () => {
     if (!results || !data) return;
     setWriting(true);
-    const r = await aiReviewCheck(robotId, kind);
+    const r = await safeAction(() => aiReviewCheck(robotId, kind));
     setWriting(false);
     if (r.error || !r.ai) return toast(r.error ?? "The AI didn't answer. Try again.", true);
     setResults({ ...results, ai: r.ai });
@@ -369,7 +371,7 @@ Likely fix: ${ai.fixes[id]}` : text);
                   const holes = stress.plate.inner.flatMap((l, i) => (l.circle ? [{ i, x: l.circle.cx - x0, y: l.circle.cy - y0, d: l.circle.r * 2 }] : []));
                   const sys = pickSystem(systemsOf, stress.key, onlySystem);
                   const mat = materialOf(data?.facts[stress.key]?.onshapeMaterial, data?.facts[stress.key]?.material) ?? DEFAULT_MATERIAL;
-                  const r = await aiSuggestLoads({ name: stress.name, system: sys ? (sysName.get(sys) ?? null) : null, material: mat.name, t: stress.plate.t, size: [Math.max(...xs) - x0, Math.max(...ys) - y0], holes });
+                  const r = await safeAction(() => aiSuggestLoads({ name: stress.name, system: sys ? (sysName.get(sys) ?? null) : null, material: mat.name, t: stress.plate.t, size: [Math.max(...xs) - x0, Math.max(...ys) - y0], holes }));
                   if (r.error || !r.guess) {
                     toast(r.error ?? "The AI didn't answer.", true);
                     return null;
@@ -386,7 +388,7 @@ Likely fix: ${ai.fixes[id]}` : text);
           systems={systems}
           onClose={() => setLimitsOpen(false)}
           onSave={async (l) => {
-            const r = sandbox ? { limits: l } : await saveCheckLimits(robotId, l);
+            const r = sandbox ? { limits: l } : await safeAction(() => saveCheckLimits(robotId, l));
             if (r.error || !r.limits) return toast(r.error ?? "Couldn't save the limits.", true);
             setData({ ...data, limits: r.limits });
             setLimitsOpen(false);

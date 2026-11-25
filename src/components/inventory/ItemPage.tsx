@@ -23,6 +23,7 @@ import { ToBomDialog } from "./ToBomDialog";
 import { UsedIn } from "./UsedIn";
 import type { BomTarget, Condition, Group, InvCategory, Item, Location } from "./types";
 import { askConfirm } from "@/components/ui/useConfirm";
+import { safeAction } from "@/lib/safeAction";
 
 type Match = { partId: string; name: string; quantity: number; robotName: string; systemName: string; reason: "onshape" | "link" | "name" };
 
@@ -62,12 +63,12 @@ export function ItemPage({
   const onStep = (d: number, b?: string, v?: string) =>
     startTransition(async () => {
       step([d, b, v]);
-      const r = await adjustStock(item.id, d, b, v);
+      const r = await safeAction(() => adjustStock(item.id, d, b, v));
       if (r.error) setResult(r);
     });
   const link = (ids: string[]) =>
     startTransition(async () => {
-      setResult(await linkPartsToItem(item.id, ids));
+      setResult(await safeAction(() => linkPartsToItem(item.id, ids)));
       setPicked(new Set());
     });
 
@@ -179,7 +180,7 @@ export function ItemPage({
                   const warn = usage?.parts.length ? `${usage.parts.length} BOM parts will no longer draw from it. ` : "";
                   if (!(await askConfirm({ title: `Delete "${item.name}" from the inventory?`, body: `${warn}It stays in Settings → Recently deleted for 30 days.`, confirm: "Delete", danger: true }))) return;
                   startTransition(async () => {
-                    const r = await deleteItem(item.id);
+                    const r = await safeAction(() => deleteItem(item.id));
                     if (r.error) return setResult(r);
                     router.push("/inventory");
                   });

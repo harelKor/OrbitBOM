@@ -12,6 +12,7 @@ import { Icon } from "@/components/ui/Icon";
 import type { OutdatedTag as OutdatedInfo, PartVersionTag, VersionTags } from "@/lib/versions/tags";
 import { afterPartsUpdate } from "./afterUpdate";
 import { OPEN_COMMIT_EVENT, OPEN_VERSIONS_EVENT } from "./events";
+import { safeAction } from "@/lib/safeAction";
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—");
 const versionLabel = (t: PartVersionTag) => `${t.label}${t.name && t.name !== t.label ? ` · ${t.name}` : ""}`;
@@ -76,11 +77,12 @@ function OutdatedTag({ partId, tag, tags, outdated }: { partId: string; tag: Par
   const update = () =>
     start(async () => {
       setError(null);
+      const draft = tags.draft;
       const r = outdated.key
-        ? tags.draft
-          ? await commitChanges(tags.systemId, tags.draft.id, tags.draft.detectedAt, "", outdated.key)
+        ? draft
+          ? await safeAction(() => commitChanges(tags.systemId, draft.id, draft.detectedAt, "", outdated.key))
           : { error: "These changes were already committed. Reload the page." }
-        : await updateToLatest(tags.systemId, partId);
+        : await safeAction(() => updateToLatest(tags.systemId, partId));
       if (r.error) return setError(r.error);
       setOpen(false);
       afterPartsUpdate(tags.systemId, router);

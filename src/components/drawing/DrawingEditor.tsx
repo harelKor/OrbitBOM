@@ -21,6 +21,7 @@ import { decodeMeshes, type Mesh } from "@/lib/model/mesh";
 import { FitPicker, linkTargets, useFitItems, useOpenFitLink, type FitTarget } from "./fit";
 import { Notice } from "@/components/ui/Notice";
 import { askConfirm } from "@/components/ui/useConfirm";
+import { notSavedMessage } from "@/lib/safeAction";
 
 type Hole = Drawing["holes"][number];
 type Snap = { at: Pt; view: string };
@@ -716,18 +717,23 @@ export function DrawingEditor({
     }
   }
 
+  // A dropped connection says so and frees the buttons (and Ctrl+S) again.
   async function save() {
     setSaving(true);
     setError(null);
-    if (store) {
-      await store(edits);
+    try {
+      if (store) {
+        await store(edits);
+        return h.setDirty(false);
+      }
+      const res = await fetch(`/api/parts/${partId}/drawing`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(edits) });
+      if (!res.ok) setError((await res.json().catch(() => ({}))).error ?? "Couldn't save.");
+      else h.setDirty(false);
+    } catch (e) {
+      setError(notSavedMessage(e));
+    } finally {
       setSaving(false);
-      return h.setDirty(false);
     }
-    const res = await fetch(`/api/parts/${partId}/drawing`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(edits) });
-    setSaving(false);
-    if (!res.ok) setError((await res.json().catch(() => ({}))).error ?? "Couldn't save.");
-    else h.setDirty(false);
   }
 
   // Make the drawing again from Onshape. Saved edits are kept; unsaved ones are lost.
@@ -735,22 +741,32 @@ export function DrawingEditor({
     if (h.dirty && !(await askConfirm({ title: "Regenerate without saving your changes?", body: "Your unsaved edits are lost.", confirm: "Regenerate", danger: true }))) return;
     setBusy("regenerate");
     setError(null);
-    const res = await fetch(`/api/parts/${partId}/drawing`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ force: true }) });
-    setBusy(null);
-    if (!res.ok) return setError((await res.json().catch(() => ({}))).error ?? "Couldn't regenerate the drawing.");
-    setLoads((n) => n + 1);
-    router.refresh();
+    try {
+      const res = await fetch(`/api/parts/${partId}/drawing`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ force: true }) });
+      if (!res.ok) return setError((await res.json().catch(() => ({}))).error ?? "Couldn't regenerate the drawing.");
+      setLoads((n) => n + 1);
+      router.refresh();
+    } catch {
+      setError("Couldn't regenerate the drawing. Check the connection and try again.");
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function deleteDrawing() {
     if (!(await askConfirm({ title: "Delete this drawing and its notes?", confirm: "Delete", danger: true }))) return;
     setBusy("delete");
     setError(null);
-    const res = await fetch(`/api/parts/${partId}/drawing`, { method: "DELETE" });
-    setBusy(null);
-    if (!res.ok) return setError((await res.json().catch(() => ({}))).error ?? "Couldn't delete the drawing.");
-    router.refresh();
-    onClose();
+    try {
+      const res = await fetch(`/api/parts/${partId}/drawing`, { method: "DELETE" });
+      if (!res.ok) return setError((await res.json().catch(() => ({}))).error ?? "Couldn't delete the drawing.");
+      router.refresh();
+      onClose();
+    } catch {
+      setError("Couldn't delete the drawing. Check the connection and try again.");
+    } finally {
+      setBusy(null);
+    }
   }
 
   const close = async () => {

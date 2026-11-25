@@ -8,6 +8,7 @@ import { LocalTime } from "@/components/ui/LocalTime";
 import { BACKUP_DAYS } from "@/config/storage";
 import type { BackupFile } from "@/lib/storage/backup";
 import { Notice } from "@/components/ui/Notice";
+import { safeAction } from "@/lib/safeAction";
 
 export type ScopeInfo = { id: string; label: string; text: string };
 
@@ -24,7 +25,7 @@ export function BackupsSettings({ backups, scopes, isAdmin }: { backups: BackupF
   const [restoring, setRestoring] = useState<BackupFile | null>(null);
   const run = (fn: () => Promise<{ message?: string; error?: string }>, then?: () => void) =>
     start(async () => {
-      const r = await fn();
+      const r = await safeAction(() => fn());
       setResult(r);
       if (!r.error) {
         then?.();
@@ -69,7 +70,7 @@ export function BackupsSettings({ backups, scopes, isAdmin }: { backups: BackupF
               disabled={pending}
               onClick={() =>
                 start(async () => {
-                  const r = await downloadBackup(b.key);
+                  const r = await safeAction(() => downloadBackup(b.key));
                   if (r.url) window.location.assign(r.url);
                   else setResult({ error: r.error });
                 })

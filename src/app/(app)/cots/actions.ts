@@ -7,7 +7,7 @@ import { COTS_RELEASED } from "@/config/cots";
 import { db, schema } from "@/db";
 import { requireMember } from "@/lib/auth";
 import { partChangesCapability } from "@/components/shell/mode";
-import { requireCapability, statusChangeDenied } from "@/lib/mode";
+import { checkCapability, requireCapability, statusChangeDenied } from "@/lib/mode";
 import { applyEachPartChanges } from "@/lib/parts/apply";
 import { partChangesSchema, type PartChanges } from "@/lib/parts/changes";
 import { MERGE_ITEMS_DIFFER, sameItemForMerge, siteOf } from "@/lib/cots";
@@ -27,7 +27,8 @@ export async function updateCotsParts(edits: { id: string; changes: unknown }[])
     parsed.push({ id: e.id, changes: r.data });
   }
   for (const e of parsed) {
-    await requireCapability(partChangesCapability(e.changes));
+    const { error } = await checkCapability(partChangesCapability(e.changes));
+    if (error !== undefined) return { error };
     const denied = await statusChangeDenied([e.id], e.changes);
     if (denied) return { error: denied };
   }

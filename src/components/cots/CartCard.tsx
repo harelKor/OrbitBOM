@@ -12,6 +12,7 @@ import { Icon } from "@/components/ui/Icon";
 import { copyListText } from "@/lib/cots";
 import { cartKind } from "@/lib/cotsCart";
 import { toast } from "@/components/ui/Toaster";
+import { safeAction } from "@/lib/safeAction";
 import type { CotsCart } from "@/lib/data/cotsCarts";
 import type { PartChanges } from "@/lib/parts/changes";
 import { cotsLinkDenied } from "@/lib/parts/cotsLink";
@@ -90,7 +91,7 @@ export function CartCard({
       draggable={false}
       memberNames={[]}
       me=""
-      cart={{ button, status, delivery, onDelete: () => startTransition(() => void deleteCotsCart(cart.id)), onRemove: (id) => onRemove([id]) }}
+      cart={{ button, status, delivery, onDelete: () => startTransition(async () => { const r = await safeAction(() => deleteCotsCart(cart.id)); if (r.error) toast(r.error, true); }), onRemove: (id) => onRemove([id]) }}
     />
   );
 }

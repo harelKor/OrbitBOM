@@ -4,7 +4,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
 import { useProgressive } from "@/components/ui/useProgressive";
 import { STATUSES } from "@/config/statuses";
-import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
+import { planPartUpdate, resolveCounterAdds, type PartChanges } from "@/lib/parts/changes";
 import { computeStatus } from "@/lib/status";
 import { updatePart, updateParts } from "@/app/(app)/parts-actions";
 import { BulkEditBar } from "./BulkEditBar";
@@ -40,6 +40,7 @@ import { partTitle, type CardPart } from "./types";
 import { toast } from "@/components/ui/Toaster";
 import { Icon } from "@/components/ui/Icon";
 import { SuggestIcon } from "@/components/ui/SuggestIcon";
+import { safeAction } from "@/lib/safeAction";
 
 // Parts grouped by system, systems in name order.
 function bySystem(parts: CardPart[]): [string, CardPart[]][] {
@@ -115,7 +116,9 @@ export function BomView({
         if (!merge) perPart.set(id, changes);
         else {
           const members = merge.partIds.map((pid) => state.find((p) => p.id === pid)).filter((p) => !!p);
-          for (const pm of fanOutChanges(members, changes).perMember) perPart.set(pm.id, pm.changes);
+          // One counted piece is one piece for the row, spread over its members (as the server does).
+          const resolved = members.length && (changes.add || changes.addAt) ? resolveCounterAdds(mergedRow(merge, members), changes) : changes;
+          for (const pm of fanOutChanges(members, resolved).perMember) perPart.set(pm.id, pm.changes);
         }
       }
       return state.map((p) => (perPart.has(p.id) ? { ...p, ...planPartUpdate(p, perPart.get(p.id)!, "ui").set } : p));
@@ -150,7 +153,7 @@ export function BomView({
   function save(ids: string[], changes: PartChanges) {
     startTransition(async () => {
       addOptimistic({ ids, changes });
-      const result = ids.length === 1 ? await updatePart(ids[0], changes) : await updateParts(ids, changes);
+      const result = ids.length === 1 ? await safeAction(() => updatePart(ids[0], changes)) : await safeAction(() => updateParts(ids, changes));
       if (result.error) {
         const part = ids.length === 1 ? parts.find((p) => p.id === ids[0]) : undefined;
         toast(`Couldn't save ${part ? partTitle(part) : `${ids.length} parts`}: ${result.error}`, true);

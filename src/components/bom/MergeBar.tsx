@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { mergeParts } from "@/app/(app)/parts-actions";
 import { Dialog } from "@/components/Dialog";
 import { partTitle, type CardPart } from "./types";
+import { safeAction } from "@/lib/safeAction";
 
 export type MergeInfo = { id: string; name: string; partIds: string[] };
 
@@ -21,7 +22,7 @@ export function MergeBar({ systemId, selected, onDone }: { systemId: string; sel
 
   const merge = () =>
     startTransition(async () => {
-      const r = await mergeParts(systemId, name.trim() || suggested, selected.map((p) => p.id));
+      const r = await safeAction(() => mergeParts(systemId, name.trim() || suggested, selected.map((p) => p.id)));
       setError(r.error ?? null);
       setWarn(false);
       if (!r.error) onDone();

@@ -349,7 +349,7 @@ export function CartButton({ item, gap, onLeave, onSent }: { item: Item; gap: nu
         }
         start(async () => {
           setError(null);
-          const r = await sendItemToReleased(item.id);
+          const r = await safeAction(() => sendItemToReleased(item.id));
           if (r.error) setError(r.error);
           else {
             toast(`Sent to orders: ${item.name}`);

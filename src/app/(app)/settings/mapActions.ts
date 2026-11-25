@@ -192,6 +192,17 @@ export async function updateSpot(id: string, patch: { x?: number; y?: number; w?
   const badSize = (["w", "h"] as const).some((k) => patch[k] !== undefined && !size.safeParse(patch[k]).success);
   if (off || badSize) return { error: "That spot is off the picture." };
   if (patch.kind !== undefined && !kindSchema.safeParse(patch.kind).success) return { error: "Unknown kind." };
+  // A drawer becomes a door only when empty and on a 360° picture, as addSpot asks (MAP-3).
+  if (patch.kind === "zone") {
+    const [spot] = await db.select({ parentId: inventoryLocations.parentId, kind: inventoryLocations.kind }).from(inventoryLocations).where(eq(inventoryLocations.id, id));
+    if (!spot?.parentId) return { error: "That spot was deleted." };
+    if (spot.kind !== "zone") {
+      const z0 = await zone(spot.parentId);
+      if (!z0 || !isPanorama({ id: z0.id, name: z0.name, imageUrl: z0.imageKey, imageW: z0.imageW, imageH: z0.imageH, panorama: z0.panorama })) return { error: "Zone doors go on a 360° picture." };
+      const held = await stillHolds([id], "This spot");
+      if (held) return { error: held };
+    }
+  }
   if (patch.linkId != null) {
     // A door leads to another zone, never to its own.
     const [[spot], [to]] = await Promise.all([

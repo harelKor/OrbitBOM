@@ -8,6 +8,7 @@ import { useManage } from "@/components/shell/ModeContext";
 import { Icon } from "@/components/ui/Icon";
 import { BACKUP_DAYS, DATABASE_LIMIT, STORAGE_CLEAN_UP, STORAGE_CLEAN_UP_TO, STORAGE_LIMIT, STORAGE_WARN } from "@/config/storage";
 import type { StorageUsage } from "@/lib/storage/usage";
+import { safeAction } from "@/lib/safeAction";
 
 const GB = 1024 ** 3;
 const size = (n: number) => (n >= GB ? `${(n / GB).toFixed(2)} GB` : n >= 1024 ** 2 ? `${(n / 1024 ** 2).toFixed(1)} MB` : `${Math.round(n / 1024)} KB`);
@@ -84,9 +85,9 @@ function StorageWindow({ onClose }: { onClose: () => void }) {
 
   const run = (fn: () => Promise<{ message?: string; error?: string }>) =>
     start(async () => {
-      const r = await fn();
+      const r = await safeAction(() => fn());
       setMessage(r.error ? { text: r.error, error: true } : { text: r.message ?? "Done." });
-      setUsage(await loadStorage());
+      await loadStorage().then(setUsage, () => {}); // the old numbers stay when the reload fails
       router.refresh();
     });
 
@@ -145,7 +146,7 @@ function StorageWindow({ onClose }: { onClose: () => void }) {
               disabled={pending || !usage.backups.latest}
               onClick={() =>
                 start(async () => {
-                  const r = await downloadLatestBackup();
+                  const r = await safeAction(() => downloadLatestBackup());
                   if (r.url) window.location.assign(r.url);
                   else setMessage({ text: r.error ?? "No backup yet.", error: true });
                 })

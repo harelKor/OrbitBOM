@@ -7,6 +7,7 @@ import { Dialog } from "@/components/Dialog";
 import type { SnipStroke } from "@/db/schema";
 import type { ReviewComment } from "@/lib/data/cadReview";
 import { SNIP_COLORS } from "@/lib/reviews/snipStrokes";
+import { safeAction } from "@/lib/safeAction";
 
 // Snip (Harel, 2026-11-10): a rectangle cut from the 3D view, drawn on with a pen of any size and
 // colour, an eraser and undo. Anyone draws on a comment's snip; its author erases any line, the
@@ -23,7 +24,8 @@ export async function uploadSnip(snip: SnipDraft): Promise<{ snip: { path: strin
   const blob = await (await fetch(snip.dataUrl)).blob();
   const form = new FormData();
   form.append("file", blob, "snip.jpg");
-  const res = await fetch("/api/review-snips", { method: "POST", body: form });
+  const res = await fetch("/api/review-snips", { method: "POST", body: form }).catch(() => null);
+  if (!res) return { error: "The snip didn't upload. Check the connection and try again." };
   const r = (await res.json().catch(() => ({ error: "The snip didn't upload." }))) as { path?: string; error?: string };
   if (!r.path) return { error: r.error ?? "The snip didn't upload." };
   return { snip: { path: r.path, w: snip.w, h: snip.h, strokes: snip.strokes } };
@@ -317,7 +319,7 @@ export function CommentSnip({ c, small = false }: { c: ReviewComment; small?: bo
               setError(null);
               const own = lines.filter((l) => l.by === me).map(({ c: color, s, p }) => ({ c: color, s, p }));
               const keep = lines.filter((l) => l.by !== me && l.from !== undefined).map((l) => l.from!);
-              const r = await saveReviewSnip(c.id, own, keep);
+              const r = await safeAction(() => saveReviewSnip(c.id, own, keep));
               if (r.error) return setError(r.error);
               setOpen(false);
               router.refresh();

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { renameSelf } from "./actions";
+import { safeAction } from "@/lib/safeAction";
 
 // The profile heading: the member's name, with Rename to change how the team sees it.
 export function NameForm({ name }: { name: string }) {
@@ -24,7 +25,7 @@ export function NameForm({ name }: { name: string }) {
       className="flex flex-wrap items-center gap-2"
       action={(data) =>
         startTransition(async () => {
-          const result = await renameSelf(String(data.get("name") ?? ""));
+          const result = await safeAction(() => renameSelf(String(data.get("name") ?? "")));
           if (result.error) setError(result.error);
           else {
             setError(null);

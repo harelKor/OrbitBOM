@@ -9,6 +9,7 @@ import { toast } from "@/components/ui/Toaster";
 import type { FabLock } from "@/lib/data/parts";
 import type { PartVersionEntry } from "@/lib/versions/history";
 import { ChangeBox } from "./CommitWindow";
+import { safeAction } from "@/lib/safeAction";
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—");
 
@@ -64,7 +65,7 @@ export function PartVersionsButton({ partId, lock, released }: { partId: string;
 
   const relock = () =>
     start(async () => {
-      const r = await updateFabVersion(partId);
+      const r = await safeAction(() => updateFabVersion(partId));
       toast(r.error ?? r.message ?? "Updated.", !!r.error);
     });
 

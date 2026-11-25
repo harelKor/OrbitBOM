@@ -17,6 +17,7 @@ import { Progress } from "./Progress";
 import { StepCanvas } from "./StepCanvas";
 import { StepEditor, type EditorTarget } from "./StepEditor";
 import { askConfirm } from "@/components/ui/useConfirm";
+import { safeAction } from "@/lib/safeAction";
 
 // A system's or sub-assembly's steps as slides down the page (Harel, 2026-11-10). Each has a done
 // box; steps already done when the page opened sit in a folded Finished section on top, ones ticked
@@ -58,7 +59,7 @@ export function StepSlides({
   const [showFinished, setShowFinished] = useState(false);
   const tick = async (s: AssemblyStep, done: boolean) => {
     setTicks((t) => ({ ...t, [s.id]: done }));
-    const r = await tickAssemblyStep(robotId, s.id, done);
+    const r = await safeAction(() => tickAssemblyStep(robotId, s.id, done));
     if (r.error) {
       setTicks((t) => ({ ...t, [s.id]: !done }));
       toast(r.error, true);
@@ -72,21 +73,22 @@ export function StepSlides({
     const j = i + by;
     if (j < 0 || j >= ids.length) return;
     [ids[i], ids[j]] = [ids[j], ids[i]];
-    const r = await reorderAssemblySteps(robotId, place.systemId, place.sub, ids);
+    const r = await safeAction(() => reorderAssemblySteps(robotId, place.systemId, place.sub, ids));
     // The action's reply already carries the page drawn again (it revalidates).
     if (r.error) toast(r.error, true);
   };
   const remove = async (s: AssemblyStep) => {
     if (!(await askConfirm({ title: `Delete step "${s.title || "Sub-assembly"}"?`, body: "This can't be undone.", confirm: "Delete", danger: true }))) return;
-    const r = await deleteAssemblyStep(robotId, s.id);
+    const r = await safeAction(() => deleteAssemblyStep(robotId, s.id));
     // The action's reply already carries the page drawn again (it revalidates).
     if (r.error) toast(r.error, true);
   };
   const rename = async () => {
-    if (!place.sub) return;
+    const sub = place.sub;
+    if (!sub) return;
     const name = prompt("Sub-assembly name (blank for the default):", title);
     if (name === null) return;
-    const r = await nameAssemblySub(robotId, place.systemId, place.sub, name);
+    const r = await safeAction(() => nameAssemblySub(robotId, place.systemId, sub, name));
     // The action's reply already carries the page drawn again (it revalidates).
     if (r.error) toast(r.error, true);
   };

@@ -41,7 +41,9 @@ export const partChangesSchema = z
     // (null takes that process away). Later added processes and the QA ticks stay.
     process2: z.enum(machineIds).nullable(),
     // The processes after Process 1, in order. Each keeps its count while its machine stays.
-    addedProcesses: z.array(z.object({ machine: z.enum(machineIds), qa: z.boolean() })).max(MAX_ADDED_PROCESSES),
+    // `from`: the saved entry it continues (its index), so taking one out doesn't hand the next
+    // one's count to another (BOM-6); without it, entries match by position.
+    addedProcesses: z.array(z.object({ machine: z.enum(machineIds), qa: z.boolean(), from: z.number().int().min(0).max(MAX_ADDED_PROCESSES - 1).optional() })).max(MAX_ADDED_PROCESSES),
     // Bulk edit's "+ Add process": one more process after the part's last one.
     appendProcess: z.object({ machine: z.enum(machineIds), qa: z.boolean() }),
     status: z.string().refine((s) => isPickableStatus(s) || isCotsStatusName(s), "Unknown status"),
@@ -216,7 +218,7 @@ export function planPartUpdate(
   // The list of added processes: an entry keeps its count and QA while its machine stays.
   if (addedProcesses) {
     next.addedProcesses = addedProcesses.map((p, i) => {
-      const was = part.addedProcesses[i];
+      const was = part.addedProcesses[p.from ?? i];
       return was && was.machine === p.machine ? { ...was, qa: p.qa } : { machine: p.machine, qa: p.qa, done: 0, qaDone: false };
     });
   }

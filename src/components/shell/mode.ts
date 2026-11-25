@@ -64,6 +64,7 @@ const WORK_PART_FIELDS = new Set([
   "fromStock",
   "atProcess",
   "ifUnreleased",
+  "fromShelfPrompt", // the order card's "In Stock?": the shelf already covers the part
   "cotsSentBack",
   "cotsDeliveryDate",
   "orderName",

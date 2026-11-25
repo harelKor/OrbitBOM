@@ -58,10 +58,12 @@ export async function saveStep(robotId: string, memberId: string, input: StepInp
   if (input.kind === "step" && !title) throw new StepError("Give the step a title.");
   const partKeys = [...new Set((Array.isArray(input.partKeys) ? input.partKeys : []).filter((k): k is string => typeof k === "string" && k.length < 300))].slice(0, MAX_PARTS);
   if (input.imageKey !== null && !STILL_PATH.test(input.imageKey)) throw new StepError("That picture didn't upload.");
-  const stepRefs = [...new Set((Array.isArray(input.stepRefs) ? input.stepRefs : []).filter((id): id is string => typeof id === "string" && UUID.test(id) && id !== input.id))].slice(0, 50);
+  let stepRefs = [...new Set((Array.isArray(input.stepRefs) ? input.stepRefs : []).filter((id): id is string => typeof id === "string" && UUID.test(id) && id !== input.id))].slice(0, 50);
   if (stepRefs.length) {
-    const found = await db.select({ id: assemblySteps.id }).from(assemblySteps).where(and(inArray(assemblySteps.id, stepRefs), sameColumn(input.systemId, input.subCode)));
-    if (found.length !== stepRefs.length) throw new StepError("A step it brings in isn't in this column any more. Reload the page.");
+    const found = await db.select({ id: assemblySteps.id, systemId: assemblySteps.systemId, subCode: assemblySteps.subCode }).from(assemblySteps).where(inArray(assemblySteps.id, stepRefs));
+    if (found.some((s) => s.systemId !== input.systemId || s.subCode !== input.subCode)) throw new StepError("A step it brings in isn't in this column any more. Reload the page.");
+    // A brought-in step deleted since is left out: refused, the step could never be saved again (ASM-4).
+    stepRefs = stepRefs.filter((id) => found.some((s) => s.id === id));
   }
   const values = {
     kind: input.kind,
@@ -83,7 +85,9 @@ export async function saveStep(robotId: string, memberId: string, input: StepInp
       await tx.update(assemblySteps).set(values).where(eq(assemblySteps.id, old.id));
       // New parts make it a different step: it isn't built any more (Harel, 2026-11-10).
       const same = (a: string[], b: string[]) => [...a].sort().join("\n") === [...b].sort().join("\n");
-      if (!same(old.partKeys, partKeys) || !same(old.stepRefs, stepRefs)) await tx.delete(assemblyTicks).where(eq(assemblyTicks.stepId, old.id));
+      // A ref to a step deleted since doesn't count as a change.
+      const alive = old.stepRefs.length ? new Set((await tx.select({ id: assemblySteps.id }).from(assemblySteps).where(inArray(assemblySteps.id, old.stepRefs))).map((r) => r.id)) : new Set<string>();
+      if (!same(old.partKeys, partKeys) || !same(old.stepRefs.filter((r) => alive.has(r)), stepRefs)) await tx.delete(assemblyTicks).where(eq(assemblyTicks.stepId, old.id));
       if (old.imageKey && old.imageKey !== values.imageKey) await deleteObject(old.imageKey).catch(() => {});
       return { id: old.id };
     });
@@ -130,7 +134,14 @@ export async function deleteStep(robotId: string, id: string) {
     .innerJoin(systems, eq(systems.id, assemblySteps.systemId))
     .where(and(eq(assemblySteps.id, id), eq(systems.robotId, robotId)));
   if (!s) return;
-  await db.delete(assemblySteps).where(eq(assemblySteps.id, s.id));
+  await db.transaction(async (tx) => {
+    await tx.delete(assemblySteps).where(eq(assemblySteps.id, s.id));
+    // Later steps that brought it in let go of it, so they can still be saved (ASM-4).
+    await tx
+      .update(assemblySteps)
+      .set({ stepRefs: sql`array_remove(${assemblySteps.stepRefs}, ${s.id}::uuid)` })
+      .where(sql`${s.id}::uuid = any(${assemblySteps.stepRefs})`);
+  });
   if (s.imageKey) await deleteObject(s.imageKey).catch(() => {});
 }
 

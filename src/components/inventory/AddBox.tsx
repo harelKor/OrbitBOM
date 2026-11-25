@@ -19,6 +19,7 @@ import { formatStock, parseStock } from "@/lib/inventory/stock";
 import { useInventoryPopup } from "./InventoryPopup";
 import { ItemForm, categoryLocation, emptyDraft, type Draft } from "./ItemForm";
 import type { Condition, InvCategory, Item, Location } from "./types";
+import { safeAction } from "@/lib/safeAction";
 
 // Opens the add form from outside the box: the phone's Scan fills it with what it recognised.
 export type AddBoxHandle = { start: (over: Partial<Draft>) => void };
@@ -173,7 +174,7 @@ export function AddBox({
   const readLink = () =>
     startRead(async () => {
       setReadError(null);
-      const r = await readProductLink(query);
+      const r = await safeAction(() => readProductLink(query));
       if (r.product) {
         const p = r.product;
         fromOffer({ title: p.title, image: p.image, offers: [] }, { vendor: p.site, url: p.url, title: p.title, image: p.image, price: p.price });
@@ -221,7 +222,7 @@ export function AddBox({
         sheet,
         thumbUrl: draft.photo?.preview ?? input.imageUrl ?? null,
       });
-      const r = await saveItem(null, input);
+      const r = await safeAction(() => saveItem(null, input));
       if (r.error || !r.id) {
         setReadError(r.error ?? "Couldn't save.");
         if (retry) setDraft(retry);

@@ -11,6 +11,7 @@ import { PARTS_UPDATING_EVENT, afterPartsUpdate } from "./afterUpdate";
 import { CommitWindow, type CommitComment } from "./CommitWindow";
 import { RebuildDialog } from "./RebuildDialog";
 import { CHECK_SYSTEM_EVENT, OPEN_COMMIT_EVENT } from "./events";
+import { safeAction } from "@/lib/safeAction";
 
 // Update System (plan/system-versioning.md §4, §7): checks the Manufacture assembly for
 // changes and opens the Commit window when there are any. Changes found by the background
@@ -59,7 +60,7 @@ export function UpdateSystem({
       if (!latest) return;
       setMessage(null);
       setError(null);
-      const r = await revertToVersion(systemId, latest.id);
+      const r = await safeAction(() => revertToVersion(systemId, latest.id));
       if (r.error) return setError(r.error);
       setMessage(`Back on ${latest.label}.`);
       afterPartsUpdate(systemId, router);
@@ -76,7 +77,7 @@ export function UpdateSystem({
     startCheck(async () => {
       setMessage(null);
       setError(null);
-      const r = await checkForChanges(systemId, quick);
+      const r = await safeAction(() => checkForChanges(systemId, quick));
       if (r.error) return setError(r.error);
       setDraft(r.draft ?? null);
       if (r.applied) afterPartsUpdate(systemId, router);
@@ -95,7 +96,7 @@ export function UpdateSystem({
     startCheck(async () => {
       setMessage(null);
       setError(null);
-      const r = await rebuildSystemModel(systemId);
+      const r = await safeAction(() => rebuildSystemModel(systemId));
       if (r.error || !r.robotId) return setError(r.error ?? "The rebuild failed.");
       afterPartsUpdate(systemId, router, { rebuild: r.robotId });
     });
@@ -134,7 +135,7 @@ export function UpdateSystem({
     startCommit(async () => {
       if (!draft) return;
       setCommitError(null);
-      const r = await commitChanges(systemId, draft.id, new Date(draft.detectedAt).toISOString(), name, only, tick, update3d);
+      const r = await safeAction(() => commitChanges(systemId, draft.id, new Date(draft.detectedAt).toISOString(), name, only, tick, update3d));
       if (r.error) return setCommitError(r.error);
       const rest = only ? draft.changes.filter((c) => c.key !== only) : [];
       if (!rest.length) {

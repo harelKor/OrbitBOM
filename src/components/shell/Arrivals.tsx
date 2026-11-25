@@ -38,7 +38,7 @@ export function MarkSeen({ page }: { page: string }) {
   const { seeNow } = useContext(ArrivalsCtx);
   useEffect(() => {
     seeNow(page);
-    void markPageSeen(page);
+    markPageSeen(page).catch(() => {}); // offline: marked on the next visit
   }, [page, seeNow]);
   return null;
 }

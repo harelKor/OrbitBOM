@@ -12,6 +12,7 @@ import { FINISHED_STATUS } from "@/lib/fab";
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
 import { POST_PROCESSING, fabState } from "./fabModel";
 import { Notice } from "@/components/ui/Notice";
+import { safeAction } from "@/lib/safeAction";
 
 // The robot dashboard's Post Process box. A click opens every part in Post Processing in a window,
 // with To Fab's − / + and check, and a To Fab button (Harel, 2026-11-07). `glow`: Build Team,
@@ -34,7 +35,7 @@ export function PostProcessBox({ robotId, parts, inventory, isAdmin, glow = fals
     setError(null);
     startTransition(async () => {
       addOptimistic({ id, changes });
-      const r = await updatePart(id, changes);
+      const r = await safeAction(() => updatePart(id, changes));
       if (r.error) setError(r.error);
     });
   };

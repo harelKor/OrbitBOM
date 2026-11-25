@@ -17,6 +17,7 @@ import { Notice } from "@/components/ui/Notice";
 import { askConfirm } from "@/components/ui/useConfirm";
 import type { BackupFile } from "@/lib/storage/backup";
 import { addBaseMaterial, addBore, deleteBaseMaterial, deleteBore, renameBaseMaterial, renameBore, updateCondition, type ActionResult } from "./actions";
+import { safeAction } from "@/lib/safeAction";
 
 const TABS = [
   { id: "categories", label: "Inventory categories" },
@@ -100,7 +101,7 @@ function useRun() {
   const [result, setResult] = useState<ActionResult>({});
   const run = (fn: () => Promise<ActionResult | void>, then?: () => void) =>
     startTransition(async () => {
-      const r = (await fn()) ?? {};
+      const r = await safeAction(async (): Promise<ActionResult> => (await fn()) ?? {});
       setResult(r);
       if (!r.error) then?.();
     });

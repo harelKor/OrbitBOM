@@ -7,6 +7,7 @@ import { openPartWindow } from "@/components/bom/PartDetailsHost";
 import { useInventoryPopup } from "@/components/inventory/InventoryPopup";
 import type { RobotShelfItem } from "@/lib/data/inventory";
 import { formatStock } from "@/lib/inventory/stock";
+import { safeAction } from "@/lib/safeAction";
 
 // The robot's inventory page: what its parts draw from the shared shelf, item by item, with what
 // the shelf covers and what is short, and one button that sends the short COTS parts to the
@@ -63,7 +64,7 @@ export function RobotInventory({ robotId, items }: { robotId: string; items: Rob
             disabled={pending || !short.length}
             onClick={() =>
               startTransition(async () => {
-                setResult(await sendShortagesToOrder(robotId));
+                setResult(await safeAction(() => sendShortagesToOrder(robotId)));
               })
             }
           >

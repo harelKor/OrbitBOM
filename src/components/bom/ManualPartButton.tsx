@@ -7,6 +7,7 @@ import { useMaterials } from "@/components/shell/MaterialColors";
 import { addManualPart } from "@/app/(app)/parts-actions";
 import { MaterialPicker } from "./fields";
 import { pickMaterial } from "./options";
+import { safeAction } from "@/lib/safeAction";
 
 // FRCBOM's "Add Manual Part" dialog (ref §2b).
 export function ManualPartButton({ systemId }: { systemId: string }) {
@@ -17,7 +18,7 @@ export function ManualPartButton({ systemId }: { systemId: string }) {
   const picked = pickMaterial(materials, material);
   const [state, action, pending] = useActionState(
     async (prev: { error?: string } | undefined, formData: FormData) => {
-      const result = await addManualPart(systemId, prev, formData);
+      const result = await safeAction(() => addManualPart(systemId, prev, formData));
       if (!result.error) {
         setOpen(false);
         setFormKey((k) => k + 1);

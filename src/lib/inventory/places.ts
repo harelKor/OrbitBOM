@@ -38,7 +38,8 @@ export const SPOT_KINDS: { id: SpotKind; label: string }[] = [
 // What a zone's picture offers: drawers, shelves and bins, and on a 360° one zone doors too.
 export const spotKindsFor = (zone: Place | null | undefined) => SPOT_KINDS.filter((k) => k.id !== "zone" || isPanorama(zone));
 // A door to another zone holds no items: never a place to choose for them.
-export const isDoor = (p: Place | null | undefined) => p?.kind === "zone";
+export const isDoor = (p: Pick<Place, "kind"> | null | undefined) => p?.kind === "zone";
+export const DOOR_HOLDS_NOTHING = "That's a door to another zone, not a place for items: pick a drawer, shelf or bin.";
 
 // Bright, apart from each other on the dark map and on white.
 export const ZONE_COLORS = ["#38BDF8", "#F472B6", "#A3E635", "#FBBF24", "#A78BFA", "#34D399", "#FB7185", "#60A5FA", "#F97316", "#2DD4BF", "#E879F9", "#FACC15"];

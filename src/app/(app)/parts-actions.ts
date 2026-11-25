@@ -8,7 +8,7 @@ import { COTS_PROCESS, MACHINES } from "@/config/machines";
 import { db, schema } from "@/db";
 import { requireMember } from "@/lib/auth";
 import { partChangesCapability } from "@/components/shell/mode";
-import { requireCapability, statusChangeDenied } from "@/lib/mode";
+import { checkCapability, requireCapability, statusChangeDenied } from "@/lib/mode";
 import { OnshapeError } from "@/lib/onshape/client";
 import { MERGE_PREFIX, fanOutChanges, isMergeId, mergedRow } from "@/lib/merges/merge";
 import { applyEachPartChanges, applyPartChanges } from "@/lib/parts/apply";
@@ -39,7 +39,8 @@ export async function updatePart(partId: string, changes: unknown): Promise<Acti
   const parsed = partChangesSchema.safeParse(changes);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   // Status, machines, material and counts are any team's; other fields need Edit mode.
-  const member = await requireCapability(partChangesCapability(parsed.data));
+  const { member, error } = await checkCapability(partChangesCapability(parsed.data));
+  if (error !== undefined) return { error };
   const denied = await statusChangeDenied(isMergeId(partId) ? await expandMerges([partId]) : [partId], parsed.data);
   if (denied) return { error: denied };
   if (isMergeId(partId)) return updateMergedRow(partId.slice(MERGE_PREFIX.length), parsed.data, member.id);
@@ -181,7 +182,8 @@ export async function updateParts(ids: string[], changes: unknown): Promise<Acti
   if (!partIds.length || partIds.some((id) => !isUuid(id))) return { error: "Unknown part." };
   const parsed = partChangesSchema.safeParse(changes);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
-  const member = await requireCapability(partChangesCapability(parsed.data));
+  const { member, error } = await checkCapability(partChangesCapability(parsed.data));
+  if (error !== undefined) return { error };
   const denied = await statusChangeDenied(partIds, parsed.data);
   if (denied) return { error: denied };
   await applyPartChanges(partIds, parsed.data, { memberId: member.id, via: "ui" });
@@ -236,8 +238,9 @@ async function expandMerges(ids: string[]) {
 async function updateMergedRow(mergeId: string, changes: PartChanges, memberId: string): Promise<ActionResult> {
   const members = await mergeMemberRows(mergeId);
   if (!members.length) return { error: "Unknown merged part." };
-  // A counted piece on a merged row is added to the members' saved counts.
-  if (changes.add) {
+  // A counted piece on a merged row (Process 1 or an added process) is added to the members' saved
+  // counts once, then spread over them; sent as is, each member took the piece (BOM-5).
+  if (changes.add || changes.addAt) {
     const rows = await db.select().from(schema.parts).where(inArray(schema.parts.id, members.map((m) => m.id)));
     const ordered = members.map((m) => rows.find((r) => r.id === m.id)!).filter(Boolean);
     changes = resolveCounterAdds(mergedRow({ id: mergeId, name: "" }, ordered), changes);
