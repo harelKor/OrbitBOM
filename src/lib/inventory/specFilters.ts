@@ -1,10 +1,12 @@
 // A category page's spec filters: one labeled row of pills per field (Bearings: ID, OD,
 // Thick, Type), each value once however it was typed ("8mm", "8 mm"), in a sensible order (inch
 // sizes, then metric smallest first, then words), and only the values the other picks leave.
+// Several values can be picked in a row (any of them) and across rows (all of them); a Raw Stock
+// category's X and Y are one Size row of the pairs that exist, "500 × 300" (Harel, 2026-11-25).
 
-import { activeFields, typeFieldOf, type CategoryField, type InvCategory } from "./categories";
+import { activeFields, typeFieldOf, xyFieldsOf, type CategoryField, type InvCategory } from "./categories";
 
-export type SpecPicks = Record<string, string>; // field id → the picked value's key
+export type SpecPicks = Record<string, string[]>; // field id → the picked values' keys
 export type SpecValue = { key: string; label: string; count: number };
 export type SpecGroup = { field: CategoryField; label: string; values: SpecValue[] };
 
@@ -64,37 +66,69 @@ export function sortValues(f: CategoryField, values: SpecValue[]): SpecValue[] {
 
 // The fields that can filter: not hidden, and (for conditional ones) fit for the picked sub-type.
 // Without a picked sub-type only the fields every sub-type has show.
+// With two sub-types picked only the fields both have show.
 function filterFields(cat: InvCategory, picks: SpecPicks): CategoryField[] {
   const type = typeFieldOf(cat);
-  const typeValue = type && picks[type.id] ? ((type.options ?? []).find((o) => specKey(o) === picks[type.id]) ?? "") : "";
+  const typeKeys = type ? (picks[type.id] ?? []) : [];
+  const typeValue = type && typeKeys.length === 1 ? ((type.options ?? []).find((o) => specKey(o) === typeKeys[0]) ?? "") : "";
   return activeFields(cat, type ? { [type.id]: typeValue } : {});
 }
 
+// The Size row of a Raw Stock X / Y pair: its id names both fields, so matching needs no category.
+const XY_ID = "xy:";
+const xyId = (x: CategoryField, y: CategoryField) => `${XY_ID}${x.id}:${y.id}`;
+const xyOf = (id: string) => (id.startsWith(XY_ID) ? id.slice(XY_ID.length).split(":") : null);
+const keyOf = (item: Specs, id: string) => {
+  const xy = xyOf(id);
+  if (!xy) return specKey(item.specs[id]);
+  const [x, y] = xy.map((f) => specKey(item.specs[f]));
+  return x && y ? `${x}x${y}` : "";
+};
+
 export const matchesPicks = (item: Specs, picks: SpecPicks, except?: string) =>
-  Object.entries(picks).every(([id, key]) => id === except || specKey(item.specs[id]) === key);
+  Object.entries(picks).every(([id, keys]) => id === except || !keys.length || keys.includes(keyOf(item, id)));
 
 // One group per field with at least two values among the items the other picks leave (or with a
 // pick of its own, so it can be cleared). A field with too many values to scan is left out.
 export function specGroups(cat: InvCategory, items: Specs[], picks: SpecPicks, max = 40): SpecGroup[] {
-  return filterFields(cat, picks).flatMap((field) => {
-    const seen = new Map<string, SpecValue>();
+  const fields = filterFields(cat, picks);
+  const xy = xyFieldsOf(cat, fields);
+  return fields.flatMap((field) => {
+    if (xy && field === xy.y) return [];
+    const row: CategoryField = xy && field === xy.x ? { id: xyId(xy.x, xy.y), label: "Size", kind: "text" } : field;
+    const seen = new Map<string, SpecValue & { at: number[] }>();
     for (const item of items) {
-      const raw = item.specs[field.id];
-      const key = specKey(raw);
-      if (!key || !matchesPicks(item, picks, field.id)) continue;
+      const key = keyOf(item, row.id);
+      if (!key || !matchesPicks(item, picks, row.id)) continue;
       const v = seen.get(key);
       if (v) v.count++;
-      else seen.set(key, { key, label: pillLabel(field, raw!), count: 1 });
+      else if (row === field) seen.set(key, { key, label: pillLabel(field, item.specs[field.id]!), count: 1, at: [] });
+      else {
+        const [x, y] = [item.specs[xy!.x.id]!, item.specs[xy!.y.id]!];
+        seen.set(key, { key, label: `${x.trim()} × ${y.trim()}`, count: 1, at: [parseFloat(x), parseFloat(y)] });
+      }
     }
-    const values = sortValues(field, [...seen.values()]);
-    const picked = !!picks[field.id];
+    // Sizes by X, then Y, smallest first.
+    const values: SpecValue[] =
+      row === field
+        ? sortValues(field, [...seen.values()])
+        : [...seen.values()].sort((a, b) => (a.at[0] || 0) - (b.at[0] || 0) || (a.at[1] || 0) - (b.at[1] || 0) || a.label.localeCompare(b.label));
+    const picked = !!picks[row.id]?.length;
     if ((values.length < 2 && !picked) || values.length > max) return [];
-    return [{ field, label: filterLabel(field), values }];
+    return [{ field: row, label: filterLabel(row), values: values.map(({ key, label, count }) => ({ key, label, count })) }];
   });
 }
 
 // Picks still valid for the category: a sub-type change drops the picks of fields it doesn't have.
 export function keepPicks(cat: InvCategory, picks: SpecPicks): SpecPicks {
-  const ids = new Set(filterFields(cat, picks).map((f) => f.id));
-  return Object.fromEntries(Object.entries(picks).filter(([id]) => ids.has(id)));
+  const fields = filterFields(cat, picks);
+  const xy = xyFieldsOf(cat, fields);
+  const ids = new Set([...fields.map((f) => f.id), ...(xy ? [xyId(xy.x, xy.y)] : [])]);
+  return Object.fromEntries(Object.entries(picks).filter(([id, keys]) => ids.has(id) && keys.length));
+}
+
+// A value picked or unpicked in a row: the others stay picked.
+export function togglePickIn(picks: SpecPicks, id: string, key: string): SpecPicks {
+  const keys = picks[id] ?? [];
+  return { ...picks, [id]: keys.includes(key) ? keys.filter((k) => k !== key) : [...keys, key] };
 }

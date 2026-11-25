@@ -63,3 +63,10 @@ it("finds X / Y and wall fields by their labels too", () => {
   expect(rawSizeProblem(custom, { bx: "40", by: "20", w: "2" })).toBeNull();
   expect(rawSizeProblem({ ...custom, fields: [{ id: "xl", label: "XL size", kind: "options", options: ["a"] }] }, {})).toBeNull();
 });
+
+it("reads Settings' Size X / Size Y text fields as X and Y, not as an X×Y size", () => {
+  const box: InvCategory = { ...cat("bars", true), fields: [{ id: "field-2", label: "Size X", kind: "text" }, { id: "field-3", label: "Size Y", kind: "text" }, { id: "wall", label: "Wall", kind: "text" }] };
+  expect(rawSizeProblem(box, { "field-2": "40", "field-3": "20", wall: "2" })).toBeNull();
+  expect(rawSizeProblem(box, { "field-2": "20", "field-3": "40", wall: "2" })).toContain("X 40, Y 20");
+  expect(rawSizeProblem(box, { "field-2": "40", wall: "2" })).toContain("Fill in Size Y");
+});

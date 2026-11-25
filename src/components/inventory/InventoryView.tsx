@@ -44,7 +44,7 @@ import {
   type NeedView,
 } from "@/lib/inventory/season";
 import { matchesSearch } from "@/lib/inventory/searchWords";
-import { keepPicks, matchesPicks, specGroups, type SpecGroup, type SpecPicks } from "@/lib/inventory/specFilters";
+import { keepPicks, matchesPicks, specGroups, togglePickIn, type SpecGroup, type SpecPicks } from "@/lib/inventory/specFilters";
 import { countItem, stepItem } from "@/lib/inventory/variantStock";
 import { inCondition, variantConds } from "@/lib/inventory/variants";
 import { safeAction } from "@/lib/safeAction";
@@ -308,10 +308,7 @@ export function InventoryView({
   const specRows = focusCat ? specGroups(focusCat, catItems, picks) : [];
   const togglePick = (fieldId: string, key: string) => {
     if (!focusCat) return;
-    const next = { ...picks };
-    if (next[fieldId] === key) delete next[fieldId];
-    else next[fieldId] = key;
-    setSpecPick({ cat: focusCat.id, picks: keepPicks(focusCat, next) });
+    setSpecPick({ cat: focusCat.id, picks: keepPicks(focusCat, togglePickIn(picks, fieldId, key)) });
   };
   // The rows fold behind a Filters toggle, closed at first, so the cards start near the top.
   const [filtersOpen, toggleFilters] = useFold("spec-filters", false);
@@ -1182,10 +1179,7 @@ function SpecFilterBar({
   onPick: (fieldId: string, key: string) => void;
   onClear: () => void;
 }) {
-  const active = rows.flatMap((g) => {
-    const v = g.values.find((x) => x.key === picks[g.field.id]);
-    return v ? [{ g, v }] : [];
-  });
+  const active = rows.flatMap((g) => g.values.filter((x) => picks[g.field.id]?.includes(x.key)).map((v) => ({ g, v })));
   const activeCond = cond?.conditions.find((c) => c.id === cond.value);
   const total = active.length + (activeCond ? 1 : 0);
   return (
@@ -1203,7 +1197,7 @@ function SpecFilterBar({
       {!open &&
         active.map(({ g, v }) => (
           <button
-            key={g.field.id}
+            key={`${g.field.id}:${v.key}`}
             type="button"
             onClick={() => onPick(g.field.id, v.key)}
             title={`Remove ${g.label}: ${v.label}`}
@@ -1263,7 +1257,7 @@ function SpecFilterRows({ rows, picks, cond, onPick }: { rows: SpecGroup[]; pick
       {rows.map((g) => {
         const long = g.values.length > ROW_MAX;
         const all = !long || wide.has(g.field.id);
-        const shown = all ? g.values : g.values.filter((v, i) => i < ROW_MAX || v.key === picks[g.field.id]);
+        const shown = all ? g.values : g.values.filter((v, i) => i < ROW_MAX || !!picks[g.field.id]?.includes(v.key));
         return (
           <div key={g.field.id} className="flex flex-wrap items-center gap-1.5">
             {long ? (
@@ -1280,7 +1274,7 @@ function SpecFilterRows({ rows, picks, cond, onPick }: { rows: SpecGroup[]; pick
               <span className="w-full shrink-0 text-[0.625rem] font-semibold tracking-wider text-subtle uppercase sm:w-20">{g.label}</span>
             )}
             {shown.map((v) => (
-              <SubPill key={v.key} on={picks[g.field.id] === v.key} onClick={() => onPick(g.field.id, v.key)}>
+              <SubPill key={v.key} on={!!picks[g.field.id]?.includes(v.key)} onClick={() => onPick(g.field.id, v.key)}>
                 {v.label}
                 <span className="ml-1.5 font-mono text-[0.625rem] tabular-nums opacity-60">{v.count}</span>
               </SubPill>

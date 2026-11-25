@@ -229,9 +229,20 @@ export const slugify = (s: string) =>
 // Stock category given both in Settings). Only the fields the item's sub-type shows count. Null
 // when fine; the item form and the add window show it in a popup, the server refuses the save.
 const XY = /(\d+(?:\.\d+)?)\s*[x×*]\s*(\d+(?:\.\d+)?)/i;
-const AXIS = { x: /^x\b/i, y: /^y\b/i };
-const isAxis = (axis: "x" | "y") => (f: CategoryField) => f.id === axis || AXIS[axis].test(f.label.trim());
-const isSizeField = (f: CategoryField) => f.kind === "text" && (f.id === "size" || /size/i.test(f.label));
+// "X (mm)", "X", "Size X" (Box tubes' fields made in Settings, 2026-11-25).
+const AXIS = { x: /^(size\s*)?x$/i, y: /^(size\s*)?y$/i };
+const bareLabel = (f: CategoryField) => f.label.replace(/\s*\([^)]*\)\s*$/, "").trim();
+const isAxis = (axis: "x" | "y") => (f: CategoryField) => f.id === axis || AXIS[axis].test(bareLabel(f));
+const isSizeField = (f: CategoryField) => f.kind === "text" && !isAxis("x")(f) && !isAxis("y")(f) && (f.id === "size" || /size/i.test(f.label));
+
+// A Raw Stock category's X / Y pair of fields among `fields`, if it has both (the Inventory
+// filters show them as one Size row).
+export function xyFieldsOf(cat: InvCategory, fields: CategoryField[]): { x: CategoryField; y: CategoryField } | null {
+  if (cat.group !== "consumables") return null;
+  const x = fields.find(isAxis("x"));
+  const y = fields.find(isAxis("y"));
+  return x && y ? { x, y } : null;
+}
 const isWallField = (f: CategoryField) => f.id === "wall" || /^wall\b/i.test(f.label.trim());
 const listOf = (words: string[]) => (words.length > 1 ? `${words.slice(0, -1).join(", ")} and ${words.at(-1)}` : words[0]);
 
