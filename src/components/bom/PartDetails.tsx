@@ -34,6 +34,7 @@ import { processMachines } from "@/lib/status";
 import { DownloadMenu, MergedBadge, cadFormat } from "./PartCard";
 import { ownerPartId, partTitle, type CardPart } from "./types";
 import { GoToButton } from "@/components/ui/GoToButton";
+import { ProductName } from "@/components/ui/ProductName";
 import { askConfirm } from "@/components/ui/useConfirm";
 import { toast } from "@/components/ui/Toaster";
 
@@ -88,7 +89,7 @@ export function PartDetails({ part, save, onClose }: { part: CardPart; save: Sav
       onClose={onClose}
       title={
         <span className="inline-flex min-w-0 max-w-full items-center gap-2 align-middle">
-          <span className="min-w-0 truncate">{title}</span>
+          <ProductName name={title} url={part.cotsLinks?.[0]?.url} />
           {/* Beside the name at the top: takes you to the part on its system page (Harel, 2026-11-04). */}
           {place && <GoToButton href={place} partId={part.id} label="Go to this part in its system" onGo={onClose} />}
           {part.fabLock && !cots && <FabVersionBadge lock={part.fabLock} />}

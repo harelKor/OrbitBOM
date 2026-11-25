@@ -50,6 +50,7 @@ import { VariantDots, VariantsSection } from "./Variants";
 import { conditionsFor, variantConds } from "@/lib/inventory/variants";
 import { countItem, stepItem } from "@/lib/inventory/variantStock";
 import { FindButton } from "@/components/map/FindButton";
+import { ProductName } from "@/components/ui/ProductName";
 import type { Condition, InvCategory, Item, Location } from "./types";
 
 // Anything connected to the inventory (a part card's material or inventory pill, a robot's
@@ -196,7 +197,7 @@ export function InventoryPopupProvider({ children }: { children: React.ReactNode
   const title =
     item?.category && state?.kind === "item" && !state.missing ? (
       <span className="flex min-w-0 items-center gap-2">
-        <span className="min-w-0 truncate">{name}</span>
+        <ProductName name={name} url={item.cotsLinks?.[0]?.url} />
         <GoToButton href={`/inventory/c/${encodeURIComponent(item.category)}?goto=${encodeURIComponent(item.id)}`} label="Go to this item in the inventory" onGo={() => setState(null)} />
       </span>
     ) : (
