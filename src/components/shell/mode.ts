@@ -62,6 +62,8 @@ const WORK_PART_FIELDS = new Set([
   "actualMinutes",
   "stockCount",
   "fromStock",
+  "atProcess",
+  "ifUnreleased",
   "cotsSentBack",
   "cotsDeliveryDate",
   "orderName",

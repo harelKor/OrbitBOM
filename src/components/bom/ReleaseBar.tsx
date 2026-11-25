@@ -7,6 +7,7 @@ import { Icon } from "@/components/ui/Icon";
 import { Thumb } from "./Thumb";
 import { COTS_LINK_REQUIRED } from "@/lib/parts/cotsLink";
 import { FAB_SETUP_REQUIRED, missingFabSetup } from "@/lib/parts/fabSetup";
+import { isUnreleased } from "@/lib/status";
 import { openPartWindow } from "./PartDetailsHost";
 import type { CardPart } from "./types";
 
@@ -21,8 +22,12 @@ export const unlinkedCots = (p: CardPart) => p.classification === "cots" && !p.i
 // A made part with no fabrication drawing yet (made on the system page's Drawings, or uploaded).
 export const missingDrawing = (p: CardPart) => p.classification !== "cots" && !p.hasDrawing && !p.files.some((f) => f.type === "drawing");
 
-// Why a selected part is left out of the release, or null.
-const heldBack = (p: CardPart) => (unlinkedCots(p) ? "Not linked" : missingFabSetup(p) ? "No machine or material" : null);
+// Why a selected part is left out of the release, or null. A part released already (in process,
+// finished, ordered) keeps its status and counts: Select all → Release used to send it back to
+// Released (audit 2026-11-25, BOM-4).
+const ALREADY = "Already released";
+// A status menu's own Released (one part, picked on purpose) isn't held back as already released.
+const heldBack = (p: CardPart, bar = true) => (bar && !isUnreleased(p) ? ALREADY : unlinkedCots(p) ? "Not linked" : missingFabSetup(p) ? "No machine or material" : null);
 
 // What the releasing member confirms first, every box ticked (Harel, 2026-10-30).
 const CHECKS = [
@@ -53,6 +58,14 @@ function NoDrawingWarning({ count }: { count: number }) {
   );
 }
 
+function AlreadyNote({ count }: { count: number }) {
+  return (
+    <p className="flex items-center gap-2 rounded-md border border-line-strong bg-raised/60 px-3 py-2 text-sm text-muted">
+      <span className="font-mono tabular-nums">{count}</span> selected {count === 1 ? "part is" : "parts are"} released already and stay{count === 1 ? "s" : ""} as {count === 1 ? "it is" : "they are"}.
+    </p>
+  );
+}
+
 function UnlinkedWarning({ count }: { count: number }) {
   return (
     <p role="alert" className="flex items-center gap-2 rounded-md border border-rose-500/50 bg-rose-500/10 px-3 py-2 text-sm font-medium text-rose-500">
@@ -69,15 +82,18 @@ function UnlinkedWarning({ count }: { count: number }) {
 // inventory item are left out (onRelease gets the ids that may be released); the server refuses
 // them too (statusChangeDenied, Harel 2026-11-13).
 export function ReleaseBar({ count, selected, total, onRelease, onRemove, onSelectAll, onDone }: { count: number; selected: CardPart[]; total: number; onRelease: (ids: string[]) => void; onRemove: (id: string) => void; onSelectAll: () => void; onDone: () => void }) {
-  const unplaced = selected.filter(missingFabSetup).length;
-  const unlinked = selected.filter(unlinkedCots).length;
+  const fresh = selected.filter(isUnreleased);
+  const already = selected.length - fresh.length;
+  const unplaced = fresh.filter(missingFabSetup).length;
+  const unlinked = fresh.filter(unlinkedCots).length;
   const releasable = selected.filter((p) => !heldBack(p));
   const releaseCount = releasable.length;
   const [confirming, setConfirming] = useState(false);
   return (
     <div className="fixed bottom-0 left-[var(--shell-left)] right-[var(--shell-right)] z-40 border-t border-line-strong bg-surface/95 p-3 backdrop-blur">
-      {(unplaced > 0 || unlinked > 0) && (
+      {(unplaced > 0 || unlinked > 0 || already > 0) && (
         <div className="mx-auto mb-2 flex max-w-5xl flex-col gap-2">
+          {already > 0 && <AlreadyNote count={already} />}
           {unlinked > 0 && <UnlinkedWarning count={unlinked} />}
           {unplaced > 0 && <UnplacedWarning count={unplaced} />}
         </div>
@@ -98,6 +114,7 @@ export function ReleaseBar({ count, selected, total, onRelease, onRemove, onSele
         <ReleaseChecklist
           count={releaseCount}
           parts={selected}
+          bar
           onRemove={(id) => {
             if (selected.length === 1) setConfirming(false);
             onRemove(id);
@@ -108,6 +125,7 @@ export function ReleaseBar({ count, selected, total, onRelease, onRemove, onSele
             onRelease(releasable.map((p) => p.id));
           }}
         >
+          {already > 0 && <AlreadyNote count={already} />}
           {unlinked > 0 && <UnlinkedWarning count={unlinked} />}
           {unplaced > 0 && <UnplacedWarning count={unplaced} />}
         </ReleaseChecklist>
@@ -121,9 +139,9 @@ export function ReleaseBar({ count, selected, total, onRelease, onRemove, onSele
 // `parts`: the selected parts, each a thumbnail and name that opens the part's window, with an X
 // that takes it out of the release (only with `onRemove`), tagged when it has no drawing or is held
 // back (Harel, 2026-11-13).
-export function ReleaseChecklist({ count, parts, onRemove, onClose, onConfirm, children }: { count: number; parts?: CardPart[]; onRemove?: (id: string) => void; onClose: () => void; onConfirm: () => void; children?: React.ReactNode }) {
+export function ReleaseChecklist({ count, parts, bar = false, onRemove, onClose, onConfirm, children }: { count: number; parts?: CardPart[]; bar?: boolean; onRemove?: (id: string) => void; onClose: () => void; onConfirm: () => void; children?: React.ReactNode }) {
   const [ticked, setTicked] = useState<boolean[]>(() => CHECKS.map(() => false));
-  const noDrawing = parts?.filter((p) => !heldBack(p) && missingDrawing(p)).length ?? 0;
+  const noDrawing = parts?.filter((p) => !heldBack(p, bar) && missingDrawing(p)).length ?? 0;
   return (
     <Dialog
       open
@@ -141,10 +159,11 @@ export function ReleaseChecklist({ count, parts, onRemove, onClose, onConfirm, c
           <ul className="grid max-h-64 grid-cols-[repeat(auto-fill,minmax(7.5rem,1fr))] gap-2 overflow-y-auto">
             {parts.map((p) => {
               const name = p.displayName ?? p.onshapeName ?? "Unnamed part";
-              const held = heldBack(p);
+              const held = heldBack(p, bar);
               const tag = held ?? (missingDrawing(p) ? "No drawing" : null);
+              const tagColor = held === ALREADY ? "text-muted" : held ? "text-rose-500" : "text-amber-500";
               return (
-                <li key={p.id} className={`relative rounded-lg border bg-raised/40 ${held ? "border-rose-500/50 opacity-60" : "border-line"}`}>
+                <li key={p.id} className={`relative rounded-lg border bg-raised/40 ${held === ALREADY ? "border-line opacity-60" : held ? "border-rose-500/50 opacity-60" : "border-line"}`}>
                   {/* Opens the part's window on top; this one stays open under it. */}
                   <button
                     type="button"
@@ -154,7 +173,7 @@ export function ReleaseChecklist({ count, parts, onRemove, onClose, onConfirm, c
                   >
                     <Thumb part={p} size={72} />
                     <span className="w-full truncate text-center text-xs font-medium">{name}</span>
-                    {tag && <span className={`text-[0.6875rem] font-semibold ${held ? "text-rose-500" : "text-amber-500"}`}>{tag}</span>}
+                    {tag && <span className={`text-[0.6875rem] font-semibold ${tagColor}`}>{tag}</span>}
                   </button>
                   {onRemove && (
                     <button

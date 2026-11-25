@@ -27,7 +27,8 @@ import { arrivalPage } from "@/lib/seen";
 // Cards (the default) or List: horizontal rows, batches folding open below their row.
 const LAYOUTS = ["cards", "list"] as const;
 
-import { type FabLayout, DRAG_TYPE, SECTION_STATUS, partStage, batchStage, POST_PROCESSING, isPostProcessing, fabTint, common, materialKeyOf, inheritFromBatch, fabState, batchStatus, type Batch, type Stage, type DragLoad } from "./fabModel";
+import { type FabLayout, DRAG_TYPE, SECTION_STATUS, partStage, batchStage, POST_PROCESSING, isPostProcessing, fabTint, common, materialKeyOf, inheritFromBatch, fabState, batchStatus, atProcess, canBatch, countsCleared, type Batch, type Stage, type DragLoad } from "./fabModel";
+import { askConfirm } from "@/components/ui/useConfirm";
 import { MachineBox, MobileMachines, MaterialFilters } from "./MachineFilters";
 import { OpenBatchContext, BatchCard } from "./BatchCard";
 import { Notice } from "@/components/ui/Notice";
@@ -249,6 +250,7 @@ export function FabView({
   const canPick = (p: CardPart) =>
     selected.has(p.id) ||
     (!batchOf(p) &&
+      canBatch(p) &&
       (targetBatch
         ? fitsBatch(p, targetBatch)
         : !!stockOf(p) && atNow(p).some((m) => (picked.length ? sharedMachines : machine ? [machine] : MACHINES.map((x) => x.id as string)).includes(m))));
@@ -263,7 +265,7 @@ export function FabView({
       const acc = [...picked];
       for (const id of ids) {
         const p = optimistic.find((x) => x.id === id);
-        if (!p || selected.has(id) || acc.includes(p) || batchOf(p)) continue;
+        if (!p || selected.has(id) || acc.includes(p) || batchOf(p) || !canBatch(p)) continue;
         const machines = machine ? [machine] : acc.length ? common(acc.map(atNow)) : MACHINES.map((x) => x.id as string);
         const fits = targetBatch ? fitsBatch(p, targetBatch) : !!stockOf(p) && atNow(p).some((m) => machines.includes(m));
         if (fits) acc.push(p);
@@ -382,12 +384,24 @@ export function FabView({
     );
   };
   // Parts dropped on a batch show in it straight away; a failed save puts them back.
-  const moveInto = (b: Batch & { members: CardPart[] }, load: DragLoad) => {
+  // A drag that would take counted pieces away asks first (audit 2026-11-25, FAB-2).
+  const askIfClearing = async (ids: string[], changes: PartChanges) => {
+    const n = countsCleared(optimistic.filter((p) => ids.includes(p.id)), changes);
+    if (!n) return true;
+    return askConfirm({
+      title: n === 1 ? "Clear the pieces counted?" : `Clear the pieces counted on ${n} parts?`,
+      body: "Moving here starts the process over: the pieces counted at it go back to 0.",
+      confirm: "Move",
+      danger: true,
+    });
+  };
+  const moveInto = async (b: Batch & { members: CardPart[] }, load: DragLoad) => {
     const status = batchStatus(b.members);
+    if (status && !(await askIfClearing(load.ids, atProcess(status)))) return;
     setError(null);
     startTransition(async () => {
       const color = b.members.flatMap((p) => p.groups).find((g) => g.id === b.id)?.color ?? null;
-      addOptimistic({ ids: load.ids, changes: status ? { status } : {}, to: { id: b.id, name: b.name, color }, from: load.batch });
+      addOptimistic({ ids: load.ids, changes: status ? atProcess(status) : {}, to: { id: b.id, name: b.name, color }, from: load.batch });
       const r = await moveToFabBatch(b.id, load.ids, load.batch, status);
       if (r.error) setError(r.error);
     });
@@ -403,16 +417,17 @@ export function FabView({
       draggable={!fab && work}
       memberNames={memberNames}
       me={me}
-      onDropParts={fab || !work ? undefined : (load) => moveInto(b, load)}
+      onDropParts={fab || !work ? undefined : (load) => void moveInto(b, load)}
       arrival={b.members.some(arrived)}
     />
   );
   const machinesWithParts = MACHINES.filter((m) => counts.byMachine.has(m.id));
   // The machine a loose part is batched on: the one it's at now.
   const batchMachine = (p: CardPart) => statusMachine(p);
-  const drop = (stage: Stage) => (load: DragLoad) => {
+  const drop = (stage: Stage) => async (load: DragLoad) => {
     if (!load.ids.length) return;
     const status = SECTION_STATUS[stage];
+    if (!(stage === "ready" && load.whole) && load.from !== stage && !(await askIfClearing(load.ids, atProcess(status)))) return;
     if (stage === "ready") {
       // Released takes loose parts only: a part dragged out of a batch leaves it.
       if (load.whole) return;
@@ -421,12 +436,12 @@ export function FabView({
         const from = load.batch;
         setError(null);
         startTransition(async () => {
-          addOptimistic({ ids: load.ids, changes: { status }, from });
+          addOptimistic({ ids: load.ids, changes: atProcess(status), from });
           await removeFromGroup(from, load.ids[0]);
-          const r = load.ids.length === 1 ? await updatePart(load.ids[0], { status }) : await updateParts(load.ids, { status });
+          const r = load.ids.length === 1 ? await updatePart(load.ids[0], atProcess(status)) : await updateParts(load.ids, atProcess(status));
           if (r.error) setError(r.error);
         });
-      } else if (load.from !== "ready") save(load.ids, { status });
+      } else if (load.from !== "ready") save(load.ids, atProcess(status));
       return;
     }
     // A loose part moved out of Released, or onto Ready to Fab, gets a new batch of its own.
@@ -435,13 +450,13 @@ export function FabView({
       const m = p && batchMachine(p);
       if (!p || !m || !stockOf(p)) {
         if (stage === "readyToFab") setError(p && m ? `${partTitle(p)} has no material: give it one before it goes into a batch.` : "Give the part a machine before it goes into a batch.");
-        else save(load.ids, { status });
+        else save(load.ids, atProcess(status));
         return;
       }
       run(() => createFabBatch(robotId, load.ids, m, stage === "readyToFab" ? undefined : status));
       return;
     }
-    if (load.from !== stage) save(load.ids, { status });
+    if (load.from !== stage) save(load.ids, atProcess(status));
   };
 
   return (

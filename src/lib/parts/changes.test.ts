@@ -129,8 +129,38 @@ describe("added processes (Harel, 2026-11-20)", () => {
   const bend = { machine: "bending", done: 0, qa: true, qaDone: false };
   const two: PartRow = { ...part, designState: null, addedProcesses: [bend] };
   it("counts at an added process from the saved count", () => {
-    const plan = planPartUpdate({ ...two, doneProcess1: 2 }, { addAt: { process: 2, delta: 1 } }, "ui");
-    expect(plan.set.addedProcesses).toEqual([{ ...bend, done: 1 }]);
+    const approved = { ...bend, qaDone: true };
+    const plan = planPartUpdate({ ...two, doneProcess1: 2, addedProcesses: [approved] }, { addAt: { process: 2, delta: 1 } }, "ui");
+    expect(plan.set.addedProcesses).toEqual([{ ...approved, done: 1 }]);
+  });
+  // Audit 2026-11-25, BOM-1: a "+" at a process waiting for QA would have skipped the QA.
+  it("counts nothing at a process still waiting for QA", () => {
+    const waiting = { ...two, doneProcess1: 2 };
+    expect(planPartUpdate(waiting, { addAt: { process: 2, delta: 1 } }, "ui").set.addedProcesses).toBeUndefined();
+    expect(planPartUpdate({ ...waiting, qaHeld: true }, { addedDone: [1] }, "ui").set.addedProcesses).toBeUndefined();
+    // Taking back the process before still works.
+    expect(planPartUpdate(waiting, { add: { doneProcess1: -1 } }, "ui").set.doneProcess1).toBe(1);
+  });
+  // Audit 2026-11-25, FAB-1/FAB-2: To Fab's Released / In Process 1 land on the part's own process.
+  it("takes a To Fab status at the process the part is at", () => {
+    const laserCnc: PartRow = { ...part, process1: "laser", designState: null, doneProcess1: 2, addedProcesses: [{ machine: "cnc", done: 1, qa: true, qaDone: true }] };
+    const released = planPartUpdate(laserCnc, { status: "Released", atProcess: true }, "ui").set;
+    // The laser's count stays as it is (not in the change), the CNC starts over with its QA kept.
+    expect(released).toEqual({ designState: "Released P2", addedProcesses: [{ machine: "cnc", done: 0, qa: true, qaDone: true }] });
+    expect(planPartUpdate(laserCnc, { status: "In Process 1", atProcess: true }, "ui").set.designState).toBe("In Process 2");
+    // Waiting for QA before CNC: still at the laser, and the QA isn't approved by a drag.
+    const atQa: PartRow = { ...laserCnc, addedProcesses: [{ machine: "cnc", done: 0, qa: true, qaDone: false }] };
+    expect(planPartUpdate(atQa, { status: "Released", atProcess: true }, "ui").set).toMatchObject({ designState: "Released", doneProcess1: 0 });
+    // A single-process part resets as FRCBOM does.
+    expect(planPartUpdate({ ...part, designState: null, doneProcess1: 1 }, { status: "Released", atProcess: true }, "ui").set).toMatchObject({ designState: "Released", doneProcess1: 0 });
+    // Without the flag (a status picked in the BOM) nothing changes from before.
+    expect(planPartUpdate(laserCnc, { status: "Released" }, "ui").set).toMatchObject({ designState: "Released", doneProcess1: 0 });
+  });
+  // Audit 2026-11-25, BOM-4.
+  it("Release's bar releases only parts not released yet", () => {
+    expect(planPartUpdate({ ...part, designState: "Not Started" }, { status: "Released", ifUnreleased: true }, "ui").set.designState).toBe("Released");
+    expect(planPartUpdate({ ...part, designState: null, doneProcess1: 1 }, { status: "Released", ifUnreleased: true }, "ui").set).toEqual({});
+    expect(planPartUpdate({ ...part, designState: "In Stock" }, { status: "Released", ifUnreleased: true }, "ui").set).toEqual({});
   });
   it("approves a mid-way QA into the next process", () => {
     const plan = planPartUpdate({ ...two, doneProcess1: 2 }, { qa: "approve" }, "ui");

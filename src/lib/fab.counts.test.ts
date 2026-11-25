@@ -38,6 +38,21 @@ describe("fabCounts", () => {
     expect(fabCounts({ ...part, quantity: 1, designState: "Ready for QA" }).takeBack).toEqual({ status: "In Process 1" });
     expect(fabCounts({ ...part, doneProcess1: 1, designState: null }).takeBack).toEqual({ status: "Released" });
   });
+
+  // Audit 2026-11-25, BOM-1: no "+" at a process that waits for CAD's QA, held or not.
+  it("offers no + while the next process waits for QA", () => {
+    const cnc = { machine: "laser", done: 0, qa: true, qaDone: false };
+    const waiting = { ...part, doneProcess1: 4, addedProcesses: [cnc] };
+    for (const p of [waiting, { ...waiting, qaHeld: true }]) {
+      const c = fabCounts(p);
+      expect(c.gate).toBe(2);
+      expect(c.addOne).toBeNull();
+      expect(c.takeBack).toEqual({ add: { doneProcess1: -1 } });
+    }
+    const approved = fabCounts({ ...waiting, addedProcesses: [{ ...cnc, qaDone: true }] });
+    expect(approved.gate).toBeNull();
+    expect(approved.addOne).toEqual({ addAt: { process: 2, delta: 1 } });
+  });
 });
 
 describe("fabBatchRefusal", () => {

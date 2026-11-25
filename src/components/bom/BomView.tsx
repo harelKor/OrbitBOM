@@ -444,7 +444,8 @@ export function BomView({
           selected={shown.filter((p) => selected.has(p.id))}
           total={shown.length}
           onRelease={(ids) => {
-            save(ids, { status: RELEASED_STATUS });
+            // The server too releases only parts not released yet (audit 2026-11-25, BOM-4).
+            save(ids, { status: RELEASED_STATUS, ifUnreleased: true });
             setMode(null);
             setSelected(new Set());
           }}

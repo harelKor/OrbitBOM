@@ -124,6 +124,37 @@ export function numberedFor(part: StatusInput, status: string): string | null {
   return processStatusName(status, n);
 }
 
+// The status To Fab's batch menu, section drops and Fab give a part at the process it is at
+// (audit 2026-11-25, FAB-1/FAB-2): Released and In Process 1 (or the grouped names) become Released
+// P{n} / In Process {n} past Process 1, so the earlier processes keep their counts and QA. A part
+// waiting for QA before its next process is still at the one before (no QA is skipped). Factory
+// and printer parts keep their place through applyStatus; other statuses go as they are.
+export function statusAtProcess(part: StatusInput, status: string): string {
+  const plain = status === RELEASED_LATER ? "Released" : status === IN_PROCESS_LATER ? "In Process 1" : status;
+  if ((plain !== "Released" && plain !== "In Process 1") || part.classification === "cots" || areaOf(part) || !part.addedProcesses?.length) return plain;
+  const stage = stageOf(part);
+  const index = Math.min(stage.midQa ? stage.index - 1 : stage.index, part.addedProcesses.length);
+  return index < 1 ? plain : processStatusName(plain === "Released" ? RELEASED_LATER : IN_PROCESS_LATER, index + 1);
+}
+
+// The process (1 = Process 1) that waits for CAD's QA before it may start, or null: nothing is
+// counted there until the QA is approved (audit 2026-11-25, BOM-1). Both a part in a mid-way
+// Ready for QA and one held at its process after "No" to "Move to QA?" have one.
+export function qaGate(part: StatusInput): number | null {
+  if (part.classification === "cots" || !hasProgress(part)) return null;
+  const procs = processesOf(part);
+  const needed = Math.max(part.quantity, 1);
+  const c = procs.findIndex((p) => p.machine && p.done < needed);
+  if (c < 1) return null;
+  const p = procs[c];
+  return p.qa && !p.qaDone && p.done === 0 ? c + 1 : null;
+}
+
+// Not released yet: Release (and its Select all) leaves every other part as it is (audit
+// 2026-11-25, BOM-4).
+export const UNRELEASED: string[] = ["Not Started", "Secondary Production"];
+export const isUnreleased = (part: StatusInput) => UNRELEASED.includes(computeStatus(part));
+
 // The machine of the process a made part is at now (its last once all are done), else its first.
 export function statusMachine(part: StatusInput): string | null {
   if (part.classification === "cots") return null;

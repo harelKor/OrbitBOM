@@ -5,10 +5,10 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { areaOfMachine, getMachine } from "@/config/machines";
 import { PRIORITIES } from "@/config/priorities";
-import { STATUSES, processStatusOf, type StatusName } from "@/config/statuses";
+import { IN_PROCESS_LATER, RELEASED_LATER, STATUSES, processStatusOf, type StatusName } from "@/config/statuses";
 import { db, schema } from "@/db";
 import { requireCapability, statusChangeDenied } from "@/lib/mode";
-import { READY_STATUS, READY_STATUSES, fabBatchName, fabBatchRefusal, stockOf } from "@/lib/fab";
+import { READY_STATUS, READY_STATUSES, fabBatchName, fabBatchRefusal, fabStage, stockOf } from "@/lib/fab";
 import { analyseMissing } from "@/lib/groups/missing";
 import { applyPartChanges } from "@/lib/parts/apply";
 import { computeStatus } from "@/lib/status";
@@ -172,21 +172,39 @@ export async function deleteGroup(groupId: string) {
 
 // Released P2+ / In Process 2+ are each part's own numbered status, not one for a whole group.
 const statusNames = STATUSES.map((s) => s.name).filter((s) => !processStatusOf(s)) as string[];
+// A batch's status as To Fab shows it may be grouped (a CNC batch is "Released P2+"): each part
+// takes it at the process it is at (`atProcess`, statusAtProcess), so Released and In Process 1
+// stand for them here (audit 2026-11-25, FAB-2).
+const plainStatus = (s: string): StatusName | null =>
+  s === RELEASED_LATER ? READY_STATUS : s === IN_PROCESS_LATER ? "In Process 1" : statusNames.includes(s) ? (s as StatusName) : null;
+// Why a Shop Fab part can't be batched as it is now (audit 2026-11-25, FAB-3): a batch starts from
+// parts waiting under Released; parts already in process may move between batches; finished parts
+// and parts not released yet stay out.
+function notBatchable(list: (typeof parts.$inferSelect)[], inProcessToo: boolean): string | null {
+  const off = list.find((p) => {
+    const stage = fabStage(p);
+    return stage !== "ready" && !(inProcessToo && stage === "inProcess");
+  });
+  if (!off) return null;
+  const name = off.displayName ?? off.onshapeName ?? "A part";
+  return inProcessToo ? `${name} is finished or not released yet: it can't join a batch.` : `${name} isn't waiting under Released: only Released parts start a batch.`;
+}
 
 // "Set status for all": every member still on the BOM, in one history batch.
 export async function setGroupStatus(groupId: string, status: string): Promise<ActionResult> {
   const member = await requireCapability("work");
-  if (!isUuid(groupId) || !statusNames.includes(status)) return { error: "Unknown status." };
+  const plain = plainStatus(status);
+  if (!isUuid(groupId) || !plain) return { error: "Unknown status." };
   const rows = await db
     .select({ id: parts.id })
     .from(groupMembers)
     .innerJoin(parts, eq(parts.id, groupMembers.partId))
     .where(and(eq(groupMembers.groupId, groupId), isNull(parts.removedFromCadAt)));
-  const denied = await statusChangeDenied(rows.map((r) => r.id), { status });
+  const denied = await statusChangeDenied(rows.map((r) => r.id), { status: plain });
   if (denied) return { error: denied };
   const { changed } = await applyPartChanges(
     rows.map((r) => r.id),
-    { status: status as (typeof STATUSES)[number]["name"] },
+    { status: plain, atProcess: true },
     { memberId: member.id, via: "ui" },
   );
   refresh();
@@ -254,10 +272,11 @@ export async function createFabBatch(
   robotId: string,
   partIds: string[],
   machineId: string,
-  status?: StatusName,
+  picked?: string,
   customName?: string,
 ): Promise<ActionResult> {
-  if (status && !statusNames.includes(status)) return { error: "Unknown status." };
+  const status = picked ? plainStatus(picked) : undefined;
+  if (status === null) return { error: "Unknown status." };
   const member = await requireCapability("work");
   if (!isUuid(robotId)) return { error: "Unknown robot." };
   const machine = getMachine(machineId);
@@ -277,11 +296,13 @@ export async function createFabBatch(
     byStock.set(k, [...(byStock.get(k) ?? []), r]);
   }
   for (const list of byStock.values()) {
-    const refused = fabBatchRefusal(machine, list.map(({ part }) => part));
+    const refused = fabBatchRefusal(machine, list.map(({ part }) => part)) ?? (area ? null : notBatchable(list.map(({ part }) => part), !!status));
     if (refused) return { error: refused };
   }
 
-  const move = status ? rows : rows.filter(({ part }) => !(READY_STATUSES as string[]).includes(computeStatus(part)));
+  // A Shop Fab part waiting under Released stays as it is: a part approved at QA for its next
+  // process is Released P2+ there and keeps its earlier processes (audit 2026-11-25, FAB-1).
+  const move = status ? rows : rows.filter(({ part }) => (area ? !(READY_STATUSES as string[]).includes(computeStatus(part)) : fabStage(part) !== "ready"));
   const denied = move.length ? await statusChangeDenied(move.map(({ part }) => part.id), { status: status ?? READY_STATUS }) : null;
   if (denied) return { error: denied };
 
@@ -313,7 +334,7 @@ export async function createFabBatch(
     if (move.length) {
       await applyPartChanges(
         move.map(({ part }) => part.id),
-        { status: status ?? READY_STATUS },
+        { status: status ?? READY_STATUS, atProcess: true },
         { memberId: member.id, via: "ui", tx },
       );
     }
@@ -327,10 +348,11 @@ export async function createFabBatch(
 
 // Dragging cards onto a fab batch on To Fab: they join it (leaving the batch they came from) and
 // take its status.
-export async function moveToFabBatch(groupId: string, partIds: string[], fromGroupId: string | null, status: StatusName | null): Promise<ActionResult> {
+export async function moveToFabBatch(groupId: string, partIds: string[], fromGroupId: string | null, picked: string | null): Promise<ActionResult> {
   const member = await requireCapability("work");
   if (!isUuid(groupId) || (fromGroupId && !isUuid(fromGroupId))) return { error: "Unknown fab." };
-  if (status && !statusNames.includes(status)) return { error: "Unknown status." };
+  const status = picked ? plainStatus(picked) : null;
+  if (picked && !status) return { error: "Unknown status." };
   const [group] = await db.select().from(partGroups).where(eq(partGroups.id, groupId));
   if (!group) return { error: "Unknown fab." };
   const machine = group.machine ? getMachine(group.machine) : null;
@@ -346,11 +368,13 @@ export async function moveToFabBatch(groupId: string, partIds: string[], fromGro
     .innerJoin(parts, eq(parts.id, groupMembers.partId))
     .where(and(eq(groupMembers.groupId, groupId), isNull(parts.removedFromCadAt)));
   const joining = await db.select().from(parts).where(inArray(parts.id, ids));
-  const refused = fabBatchRefusal(
-    machine,
-    joining.filter((p) => !already.some((r) => r.part.id === p.id)),
-    already.map((r) => r.part).filter((p) => !ids.includes(p.id)),
-  );
+  const newcomers = joining.filter((p) => !already.some((r) => r.part.id === p.id));
+  const refused =
+    fabBatchRefusal(
+      machine,
+      newcomers,
+      already.map((r) => r.part).filter((p) => !ids.includes(p.id)),
+    ) ?? (areaOfMachine(machine.id) ? null : notBatchable(newcomers, true));
   if (refused) return { error: refused };
   const denied = status ? await statusChangeDenied(ids, { status }) : null;
   if (denied) return { error: denied };
@@ -378,7 +402,7 @@ export async function moveToFabBatch(groupId: string, partIds: string[], fromGro
       .insert(groupMembers)
       .values(rows.map((p) => ({ groupId, partId: p.id, keySnapshot: snapshot(p) })))
       .onConflictDoNothing();
-    if (status) await applyPartChanges(ids, { status }, { memberId: member.id, via: "ui", tx });
+    if (status) await applyPartChanges(ids, { status, atProcess: true }, { memberId: member.id, via: "ui", tx });
     return null;
   });
   if (result) return result;

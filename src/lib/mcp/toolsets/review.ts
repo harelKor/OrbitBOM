@@ -273,10 +273,13 @@ write(
 write(
   "set_group_status",
   { cap: "work", destructive: true },
-  "Set one status on every member of a part group that is still on the BOM.",
+  "Set one status on every member of a part group that is still on the BOM. Released and In Process 1 (or Released P2+ / In Process 2+) land on each part's own process, keeping the processes before it.",
   z.object({ group_id: uuid, status: z.string() }),
   async ({ group_id, status }, { member }) => {
-    const normal = normaliseChanges({ status });
+    // Each part takes the status at the process it is at, as To Fab's batch menu does (audit
+    // 2026-11-25, FAB-2): a CNC batch's "Released" keeps the laser's count and the QA.
+    const plain = status === "Released P2+" ? "Released" : status === "In Process 2+" ? "In Process 1" : status;
+    const normal = { ...normaliseChanges({ status: plain }), atProcess: true as const };
     const rows = await db
       .select({ part: parts })
       .from(groupMembers)
@@ -291,7 +294,7 @@ write(
     const changing = rows.filter((r) => planPartUpdate(r.part, normal, "mcp").history.length);
     return {
       count: changing.length,
-      preview: changing.map((r) => ({ part: nameOf(r.part), from: computeStatus(r.part), to: normal.status })),
+      preview: changing.map((r) => ({ part: nameOf(r.part), from: computeStatus(r.part), to: computeStatus({ ...r.part, ...planPartUpdate(r.part, normal, "mcp").set }) })),
       apply: async () => {
         const { batchId, changed } = await applyPartChanges(
           rows.map((r) => r.part.id),

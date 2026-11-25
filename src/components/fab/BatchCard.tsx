@@ -360,7 +360,8 @@ export function BatchCard({
           value={shared}
           placeholder="Set status for all…"
           onPick={(v) => {
-            if (v) save(statusTargets, { status: v as StatusName });
+            // Each part at its own process: a CNC batch's Released keeps the laser's count (audit 2026-11-25, FAB-2).
+            if (v) save(statusTargets, { status: v as StatusName, atProcess: true });
             close();
           }}
         />

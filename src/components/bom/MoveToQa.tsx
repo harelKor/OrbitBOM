@@ -3,6 +3,8 @@
 // "+" no longer jumps to QA (Harel, 2026-11-20): when a member's "+" finishes a step that would
 // move the part to Ready for QA, the card asks "Move to QA?" first. Yes moves it; No keeps the
 // count but leaves the part at its process (parts.qa_held), and the card offers the move again.
+// The count saves at once, held, before the question (audit 2026-11-25, BOM-7): a piece counted by
+// someone who walks away, or a card that re-mounts, is never lost; Yes then moves it to QA.
 
 import { useState } from "react";
 import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
@@ -26,18 +28,29 @@ export const heldForQa = (part: CardPart) => part.classification !== "cots" && p
 // is the small question to put on the card while it asks.
 // `place`: on a card's picture, or over the end of a list row.
 export function useMoveToQa(part: CardPart, save: SaveFn, place: "card" | "row" = "card") {
-  const [asking, setAsking] = useState<PartChanges | null>(null);
+  const [asking, setAsking] = useState(false);
   const count = (changes: PartChanges) => {
-    if (wouldGoToQa(part, changes)) setAsking(changes);
-    else save(changes);
+    if (wouldGoToQa(part, changes)) {
+      save({ ...changes, qaHeld: true });
+      setAsking(true);
+    } else save(changes);
   };
   const answer = (move: boolean) => {
-    if (asking) save({ ...asking, qaHeld: !move });
-    setAsking(null);
+    if (move) save({ qaHeld: false });
+    setAsking(false);
   };
   const at = place === "row" ? ROW : CARD;
   const prompt = asking ? <MoveToQaPrompt at={at} onAnswer={answer} /> : heldForQa(part) ? <MoveToQaOffer at={at} onMove={() => save({ qaHeld: false })} /> : null;
   return { count, prompt };
+}
+
+// Why a part's "+" is gone: its next process waits for CAD's QA (audit 2026-11-25, BOM-1).
+export function QaGateChip({ n }: { n: number }) {
+  return (
+    <span className="rounded-full border border-amber-500/50 bg-amber-400/15 px-2 py-0.5 text-[0.6875rem] font-semibold whitespace-nowrap text-amber-700 dark:text-amber-300" title={`Process ${n} starts once CAD approves the QA`}>
+      QA before P{n}
+    </span>
+  );
 }
 
 const CARD = "inset-x-2 bottom-12";

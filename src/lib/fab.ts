@@ -5,7 +5,7 @@
 import { COTS_PROCESS, areaOfMachine, getMachine, type FabArea } from "@/config/machines";
 import type { StatusName } from "@/config/statuses";
 import type { PartChanges } from "@/lib/parts/changes";
-import { areaOf, computeStatus, factoryOf, isCotsProcess, isDone, isMidQa, printerOf, processesOf, releasedAfterQa, stageOf, statusMachine, type StatusInput } from "@/lib/status";
+import { areaOf, computeStatus, factoryOf, isCotsProcess, isDone, isMidQa, printerOf, processesOf, qaGate, releasedAfterQa, stageOf, statusMachine, type StatusInput } from "@/lib/status";
 
 // Released P2+ stays with In process, as Ready for Process 2 did: its batch is still being worked.
 export const IN_PROCESS_STATUSES: StatusName[] = ["Gcoded", "In Process 1", "Released P2+", "In Process 2+", "Post Processing"];
@@ -95,7 +95,9 @@ export function fabCounts(part: StatusInput) {
   // A status picked at a later process (Released P3): the processes before it are made.
   const at = progress === 0 && !finished ? stageOf(part).index + 1 : 1;
   const done = (s: FabSlot) => (allMade || s.n < at ? full : s.done);
-  const current = slots.find((s) => done(s) < full);
+  // A process waiting for CAD's QA takes no "+" until it is approved (audit 2026-11-25, BOM-1).
+  const gate = qaGate(part);
+  const current = gate ? undefined : slots.find((s) => done(s) < full);
   const counted = slots.slice(0, current ? slots.indexOf(current) + 1 : slots.length).reverse().find((s) => done(s) > 0);
   const made = current ? done(current) : part.quantity;
   let takeBack: PartChanges;
@@ -110,7 +112,7 @@ export function fabCounts(part: StatusInput) {
     };
   } else takeBack = countAt(counted.n, -1);
   const addOne = current ? countAt(current.n, 1) : null;
-  return { slots, current, counted, finished, made, takeBack, addOne };
+  return { slots, current, counted, finished, made, takeBack, addOne, gate };
 }
 
 // A Shop Fab batch is one stock: the part's material, which names the Raw Stock item it is cut from

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { machineName } from "@/config/machines";
-import { useMoveToQa } from "@/components/bom/MoveToQa";
+import { QaGateChip, useMoveToQa } from "@/components/bom/MoveToQa";
 import { useBom } from "@/components/bom/BomContext";
 import { FabProcesses, fabSteps } from "@/components/bom/PartCard";
 import { StatusField, type SaveFn } from "@/components/bom/fields";
@@ -64,8 +64,8 @@ export function FabPartListRow({
   const open = usePartDetails(part, save);
   const { inventory } = useBom();
   const { count, prompt: qaPrompt } = useMoveToQa(part, save, "row");
-  const { machines, current, counted, finished, made, takeBack, addOne } = fabSteps(part, save, count);
-  const at = current ?? machines.at(-1);
+  const { machines, current, at: working, gate, counted, finished, made, takeBack, addOne } = fabSteps(part, save, count);
+  const at = working ?? machines.at(-1);
   const machine = at?.machine ? machineName(at.machine) : null;
   const linked = part.inventoryItemId ? inventory.find((i) => i.id === part.inventoryItemId) : undefined;
   const material = linked?.name ?? part.material;
@@ -89,6 +89,7 @@ export function FabPartListRow({
             {editStatus && work ? <StatusField part={part} save={save} size="sm" /> : <StatusPill status={computeStatus(part)} label={partStatusLabel(part)} />}
             {!post && <span className={pill} title="Material">{material ?? "No material"}</span>}
             {!post && <FabProcesses part={part} current={at} />}
+            {gate && <QaGateChip n={gate} />}
             {part.fabView?.changed && (
               <span
                 className="rounded-full bg-red-600 px-2 py-0.5 text-[0.625rem] font-bold tracking-wide text-white uppercase shadow-[0_0_8px_1px_rgba(220,38,38,0.45)]"

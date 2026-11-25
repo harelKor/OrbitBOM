@@ -1,9 +1,9 @@
 import type { Priority } from "@/config/priorities";
-import { STATUSES, type StatusName } from "@/config/statuses";
+import { IN_PROCESS_LATER, RELEASED_LATER, STATUSES, type StatusName } from "@/config/statuses";
 import { type CardPart } from "@/components/bom/types";
 import { FINISHED_STATUS, IN_PROCESS_STATUS, READY_STATUS, fabStage, isFabFinished, machinesOf } from "@/lib/fab";
-import { type PartChanges } from "@/lib/parts/changes";
-import { computeStatus, isDone } from "@/lib/status";
+import { planPartUpdate, type PartChanges } from "@/lib/parts/changes";
+import { computeStatus, isDone, processesOf } from "@/lib/status";
 import { statusTint, tint } from "@/components/ui/statusTint";
 
 // To Fab's rules, without React: batches, stages, colours and what a part takes from its batch.
@@ -93,9 +93,25 @@ export function fabState(p: CardPart): CardPart {
 }
 
 // The status a part dragged onto a batch takes: the batch's least advanced unfinished status
-// (none once every part is done).
+// (none once every part is done). A CNC batch's Released P2+ / In Process 2+ is sent as Released /
+// In Process 1 with `atProcess`, so each part takes it at its own process (audit 2026-11-25, FAB-2).
 export function batchStatus(members: CardPart[]): StatusName | null {
   const open = members.filter((p) => !isDone(p));
   if (!open.length) return null;
-  return computeStatus(open.reduce((a, p) => (rank(p) < rank(a) ? p : a), open[0])) as StatusName;
+  const s = computeStatus(open.reduce((a, p) => (rank(p) < rank(a) ? p : a), open[0])) as StatusName;
+  return s === RELEASED_LATER ? READY_STATUS : s === IN_PROCESS_LATER ? IN_PROCESS_STATUS : s;
 }
+
+// How many of these parts a status change would take counted pieces from (a drag back to Ready to
+// Fab, or a part half made dropped on Finished): To Fab asks first (audit 2026-11-25, FAB-2).
+export function countsCleared(parts: CardPart[], changes: PartChanges): number {
+  const made = (p: Parameters<typeof processesOf>[0]) => processesOf(p).reduce((n, x) => n + x.done, 0);
+  return parts.filter((p) => made({ ...p, ...planPartUpdate(p, changes, "ui").set }) < made(p)).length;
+}
+
+// A To Fab status change (batch menu, section drop): at the process each part is at.
+export const atProcess = (status: StatusName): PartChanges => ({ status, atProcess: true });
+
+// To Fab's Fab picks loose parts waiting under Released only (audit 2026-11-25, FAB-3): a finished,
+// in-process or not-released card would lose its place in the batch.
+export const canBatch = (p: CardPart) => partStage(p) === "ready";

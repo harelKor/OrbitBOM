@@ -10,7 +10,7 @@ import { COTS_PROCESS, MACHINES } from "@/config/machines";
 import { PRIORITIES } from "@/config/priorities";
 import { COTS_IN_STOCK, ORDER_STATUSES, isCotsStatusName } from "@/config/cots";
 import { DONE_STATUSES, isPickableStatus, processStatusOf } from "@/config/statuses";
-import { applyStatus, computeStatus, hasProgress, isCotsProcess, isMidQa, orderStatus, stageOf, type AddedProcess } from "@/lib/status";
+import { applyStatus, computeStatus, hasProgress, isCotsProcess, isMidQa, isUnreleased, orderStatus, processesOf, stageOf, statusAtProcess, type AddedProcess } from "@/lib/status";
 
 const machineIds = MACHINES.map((m) => m.id) as [string, ...string[]];
 const ORDERING: string[] = ORDER_STATUSES.filter((s) => s !== COTS_IN_STOCK);
@@ -102,6 +102,13 @@ export const partChangesSchema = z
     fromShelfPrompt: z.literal(true),
     // Set In Stock by the card's stock count: the shelf had them, so no QA. Not a part field.
     fromStock: z.literal(true),
+    // The status is for the process the part is at (To Fab's batch menu, drops and Fab): Released
+    // and In Process 1 become Released P{n} / In Process {n} past Process 1 (statusAtProcess).
+    // Not a part field.
+    atProcess: z.literal(true),
+    // Release's bar: only a part not released yet takes the status; the rest stay as they are
+    // (audit 2026-11-25, BOM-4). Not a part field.
+    ifUnreleased: z.literal(true),
   })
   .partial();
 
@@ -198,6 +205,8 @@ export function planPartUpdate(
   const { status, doneProcess1, addedDone, addedProcesses, appendProcess, process2, fabricators, qa, qaHeld, ...rest } = changes;
   delete rest.fromShelfPrompt; // a flag for applyEachPartChanges, not a part field
   delete rest.fromStock;
+  delete rest.atProcess;
+  delete rest.ifUnreleased;
   const next: Partial<PartRow> = { ...rest };
   if (base !== saved) Object.assign(next, { doneProcess1: base.doneProcess1, addedProcesses: base.addedProcesses, designState: base.designState });
   const part = { ...base, ...next } as PartRow;
@@ -220,27 +229,32 @@ export function planPartUpdate(
     else if (list[0].machine !== process2) next.addedProcesses = [{ ...list[0], machine: process2, done: 0 }, ...list.slice(1)];
   }
 
-  if (status !== undefined) {
-    const numbered = processStatusOf(status);
+  if (status !== undefined && !(input.ifUnreleased && !isUnreleased(saved))) {
+    const picked = input.atProcess ? statusAtProcess(after(), status) : status;
+    const numbered = processStatusOf(picked);
     // A numbered status the part has no process for (Released P3 with one added process) is skipped.
     if (!numbered || numbered.n - 1 <= after().addedProcesses.length) {
       const now = after();
       // Arrived from the Order List: QA first. Taken from the shelf: no QA (Harel, 2026-11-20).
-      const arrived = status === COTS_IN_STOCK && !input.fromShelfPrompt && !input.fromStock && ORDERING.includes(orderStatus(now));
+      const arrived = picked === COTS_IN_STOCK && !input.fromShelfPrompt && !input.fromStock && ORDERING.includes(orderStatus(now));
       if (arrived && now.classification !== "cots" && now.classification !== "external" && isCotsProcess(now)) {
         // Bought as its Process 1: In Stock on the Order List, Ready for QA in the BOM.
         Object.assign(next, { designState: null, doneProcess1: needed, addedProcesses: now.addedProcesses.map((p) => ({ ...p, done: 0, qaDone: false })), qaHeld: false, cotsQa: false });
       } else {
-        Object.assign(next, applyStatus(status, now), { cotsQa: arrived && now.classification === "cots" });
+        Object.assign(next, applyStatus(picked, now), { cotsQa: arrived && now.classification === "cots" });
       }
       // The post-processed count belongs to Post Processing and the done statuses after it.
-      if (rest.postDone === undefined && status !== "Post Processing" && !(DONE_STATUSES as string[]).includes(status)) next.postDone = 0;
+      if (rest.postDone === undefined && picked !== "Post Processing" && !(DONE_STATUSES as string[]).includes(picked)) next.postDone = 0;
     }
   }
   if (doneProcess1 !== undefined || addedDone !== undefined) {
     const now = after();
     if (doneProcess1 !== undefined) next.doneProcess1 = doneProcess1;
-    if (addedDone !== undefined) next.addedProcesses = now.addedProcesses.map((p, i) => (addedDone[i] === undefined ? p : { ...p, done: addedDone[i] }));
+    // Nothing is counted at a process still waiting for CAD's QA (audit 2026-11-25, BOM-1). A part
+    // set to a done status from a menu (no counts yet) still takes its "−" as before.
+    const procs = processesOf(now);
+    const shut = (i: number, n: number) => via !== "sync" && hasProgress(base) && procs[i + 1]?.qa && !procs[i + 1].qaDone && n > now.addedProcesses[i].done;
+    if (addedDone !== undefined) next.addedProcesses = now.addedProcesses.map((p, i) => (addedDone[i] === undefined || shut(i, addedDone[i]) ? p : { ...p, done: addedDone[i] }));
     // Moving a counter clears the stored design state, as FRCBOM does.
     const counts = [next.doneProcess1 ?? now.doneProcess1, ...(next.addedProcesses ?? now.addedProcesses).map((p) => p.done)];
     if (counts.some((n) => n > 0)) next.designState = null;

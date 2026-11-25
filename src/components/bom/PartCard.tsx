@@ -17,7 +17,7 @@ import { VersionTag } from "@/components/versions/VersionTag";
 import { useBom } from "./BomContext";
 import { PART_FILE_TYPES } from "@/config/fileTypes";
 import { MachineField, MaterialField, NameField, QuantityField, StatusField, TypeBadge, TypeField, currentSlotN, slotsOf, type SaveFn, type Slot } from "./fields";
-import { useMoveToQa } from "./MoveToQa";
+import { QaGateChip, useMoveToQa } from "./MoveToQa";
 import { Popover } from "./Popover";
 import { ownerPartId, partIds, partTitle, type CardPart } from "./types";
 import { downloadDrawing } from "@/lib/drawing/download";
@@ -99,7 +99,7 @@ function MadePartCard({
   const { canManage: edit, canWork: work, canClassify } = usePermissions();
   const { versions } = useBom();
   const { count, prompt: qaPrompt } = useMoveToQa(part, save);
-  const { machines, current, counted, finished, made, takeBack, addOne } = fabSteps(part, save, count);
+  const { machines, current, at: working, gate, counted, finished, made, takeBack, addOne } = fabSteps(part, save, count);
   const showCounter = !!current && part.classification !== "cots" && fabStage(part) !== null;
   const at = currentSlotN(part);
   const fabControls = fabCounter && work && part.classification !== "cots" && machines.length > 0;
@@ -271,7 +271,7 @@ function MadePartCard({
         )}
       </div>
       {fabCounter ? (
-        <FabFooter part={part} save={save} current={current ?? machines.at(-1)} made={made} editStatus={fabStatusEditable && work} />
+        <FabFooter part={part} save={save} current={working ?? machines.at(-1)} gate={gate} made={made} editStatus={fabStatusEditable && work} />
       ) : (
         <div className="flex min-w-0 flex-col gap-1.5 px-2.5 py-2">
           <div className="flex min-w-0 items-center gap-1">
@@ -314,12 +314,14 @@ export function fabSteps(part: CardPart, save: SaveFn, count: SaveFn = save) {
   const machines = all.filter((s) => s.machine);
   const takeBack = () => save(c.takeBack);
   const addOne = () => c.addOne && count(c.addOne);
-  return { machines, current: slot(c.current), counted: slot(c.counted), finished: c.finished, made: c.made, takeBack, addOne };
+  // While the next process waits for QA, the part is still at the one before (the one counted).
+  const at = c.current ?? (c.gate ? c.counted : undefined);
+  return { machines, current: slot(c.current), at: slot(at), gate: c.gate, counted: slot(c.counted), finished: c.finished, made: c.made, takeBack, addOne };
 }
 
 // To Fab's rows: the status (its own menu inside a batch, else read-only) and how many are made of
 // the amount, then the material and the machine it's at.
-function FabFooter({ part, save, current, made, editStatus }: { part: CardPart; save: SaveFn; current: Slot | undefined; made: number; editStatus: boolean }) {
+function FabFooter({ part, save, current, gate, made, editStatus }: { part: CardPart; save: SaveFn; current: Slot | undefined; gate: number | null; made: number; editStatus: boolean }) {
   const { inventory } = useBom();
   const linked = part.inventoryItemId ? inventory.find((i) => i.id === part.inventoryItemId) : undefined;
   const material = linked?.name ?? part.material;
@@ -332,6 +334,7 @@ function FabFooter({ part, save, current, made, editStatus }: { part: CardPart; 
       </div>
       <div className="flex min-w-0 items-center gap-1.5">
         {editStatus ? <StatusField part={part} save={save} size="sm" /> : <StatusPill status={computeStatus(part)} label={partStatusLabel(part)} />}
+        {gate && <QaGateChip n={gate} />}
         <span className="ml-auto font-mono text-xs font-semibold text-fg tabular-nums" title={machine ? `Made at ${machine} of the amount` : "Amount"}>
           {made}/{part.quantity}
         </span>
