@@ -905,8 +905,10 @@ export function ShopMap({
         </svg>
       </div>
 
-      {/* Walking through a zone door pushes forward and blurs the picture out, then the next one in. */}
-      <div className="absolute inset-0" style={walkFx ? { transform: `scale(${walkFx.scale})`, filter: walkFx.blur > 0.05 ? `blur(${walkFx.blur}px)` : undefined, opacity: walkFx.opacity } : undefined}>
+      {/* Walking through a zone door pushes forward and blurs the picture out, then the next one in.
+          It lets the pointer through, so the floor plan under it still gets hovers and taps; the
+          picture layers inside take it back. */}
+      <div className="pointer-events-none absolute inset-0" style={walkFx ? { transform: `scale(${walkFx.scale})`, filter: walkFx.blur > 0.05 ? `blur(${walkFx.blur}px)` : undefined, opacity: walkFx.opacity } : undefined}>
       {/* A 360° zone: you stand in it and look round (Harel, 2026-11-20); its drawers keep their
           places on the picture, drawn where they are in the view. */}
       {zone?.imageUrl && pic && cam.dive > 0 && (() => {
@@ -915,7 +917,7 @@ export function ShopMap({
         const litAt = lit && lit.parentId === zone.id && lit.spotX != null && lit.spotY != null ? project(view, pic, box, lit.spotX, lit.spotY) : null;
         const litRect = lit && litAt?.front ? projectRect(view, pic, box, spotRect(lit, zone)) : null;
         return (
-          <div className="absolute inset-0 overflow-hidden" style={{ opacity: smoothstep(0.6, 0.97, cam.dive) }}>
+          <div className="pointer-events-auto absolute inset-0 overflow-hidden" style={{ opacity: smoothstep(0.6, 0.97, cam.dive) }}>
             <PanoramaView src={zone.imageUrl} pic={pic} pano={view} box={box} />
             {litRect && (
               <div
@@ -936,7 +938,7 @@ export function ShopMap({
       {/* The zone's first-person picture, standing up from the floor as the dive goes on. */}
       {zone?.imageUrl && !pic && cam.dive > 0 && (
         <div
-          className="absolute inset-0 overflow-hidden"
+          className="pointer-events-auto absolute inset-0 overflow-hidden"
           style={{
             transform: inScene ? undefined : `scale(${lerp(1.04, 1, smoothstep(0.6, 1, cam.dive))})`,
             opacity: smoothstep(0.6, 0.97, cam.dive),
