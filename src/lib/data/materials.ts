@@ -1,10 +1,12 @@
 import "server-only";
-import { asc } from "drizzle-orm";
+import { asc, inArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { CATEGORY_GROUPS } from "@/config/inventory";
 import { categoryOf } from "@/lib/inventory/categories";
 import { formatStock } from "@/lib/inventory/stock";
-import { cached } from "./cache";
+import { cached, cachedRows } from "./cache";
+
+const itemXmin = sql<string>`"inventory_items"."xmin"::text`;
 import { listCategories } from "./categories";
 
 const { inventoryItems } = schema;
@@ -22,12 +24,20 @@ export async function listMaterialGroups(exec: Exec = db): Promise<MaterialGroup
 }
 
 async function loadMaterialGroups(exec: Exec): Promise<MaterialGroup[]> {
-  const [cats, items] = await Promise.all([
+  const cols = { id: inventoryItems.id, name: inventoryItems.name, category: inventoryItems.category, specs: inventoryItems.specs, inStock: inventoryItems.inStock };
+  const all = exec.select(cols).from(inventoryItems).orderBy(asc(inventoryItems.name));
+  const [cats, items]: [Awaited<ReturnType<typeof listCategories>>, Awaited<typeof all>] = await Promise.all([
     listCategories(exec),
-    exec
-      .select({ id: inventoryItems.id, name: inventoryItems.name, category: inventoryItems.category, specs: inventoryItems.specs, inStock: inventoryItems.inStock })
-      .from(inventoryItems)
-      .orderBy(asc(inventoryItems.name)),
+    // One stock tap re-reads only the item it changed (cachedRows), not the whole shelf.
+    exec === db
+      ? cachedRows("inventory_items", ["inventory_items"], {
+          all: db.select({ ...cols, xmin: itemXmin }).from(inventoryItems).orderBy(asc(inventoryItems.name)),
+          manifest: () => db.select({ id: inventoryItems.id, v: itemXmin }).from(inventoryItems).orderBy(asc(inventoryItems.name)),
+          some: (ids) => db.select({ ...cols, xmin: itemXmin }).from(inventoryItems).where(inArray(inventoryItems.id, ids)),
+          idOf: (r) => r.id,
+          vOf: (r) => r.xmin,
+        })
+      : all,
   ]);
   const byCat = new Map<string, typeof items>();
   for (const i of items) {

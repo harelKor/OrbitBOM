@@ -20,7 +20,7 @@ import { computeStatus, orderStatus } from "@/lib/status";
 import { versionLabel } from "@/lib/versions/label";
 import { fabChanged } from "@/lib/versions/release";
 import { imageUrl } from "@/lib/storage/r2";
-import { cachedQuery } from "./cache";
+import { cachedRows } from "./cache";
 import { robotNotOld } from "@/lib/robotFolders";
 
 const { parts, partVersions, systems, systemVersions, robots, members, partFiles, merges, mergeMembers, partDrawings, inventoryItems, partReviews } = schema;
@@ -76,19 +76,34 @@ export type FabLock = {
   at: string;
 };
 
+const partXmin = sql<string>`"parts"."xmin"::text`;
+const partColumns = { part: parts, xmin: partXmin, systemName: systems.name, lastModifiedByName: members.name, drawingOf: partDrawings.partId, drawingRev: partDrawings.rev, reviewOf: partReviews.partId, reviewRounded: sql<boolean>`coalesce(${partReviews.reason} like '%Rounded to nearest:%', false)` };
+
 async function load(where: ReturnType<typeof and>, { anySystem = false } = {}): Promise<BomPart[]> {
-  const base = db.select({ part: parts, systemName: systems.name, lastModifiedByName: members.name, drawingOf: partDrawings.partId, drawingRev: partDrawings.rev, reviewOf: partReviews.partId, reviewRounded: sql<boolean>`coalesce(${partReviews.reason} like '%Rounded to nearest:%', false)` }).from(parts);
-  // Kept in memory until one of these tables changes (cache.ts): a BOM page is opened far more
-  // often than its parts change.
-  const rows = await cachedQuery(
-    (anySystem ? base.leftJoin(systems, eq(systems.id, parts.systemId)) : base.innerJoin(systems, eq(systems.id, parts.systemId)))
+  const order = [asc(parts.partNumber), asc(parts.displayName), asc(parts.onshapeName)];
+  const full = (filter: ReturnType<typeof and>) => {
+    const base = db.select(partColumns).from(parts);
+    return (anySystem ? base.leftJoin(systems, eq(systems.id, parts.systemId)) : base.innerJoin(systems, eq(systems.id, parts.systemId)))
       .leftJoin(members, eq(members.id, parts.lastModifiedBy))
       .leftJoin(partDrawings, eq(partDrawings.partId, parts.id))
       .leftJoin(partReviews, eq(partReviews.partId, parts.id))
-      .where(where)
-      .orderBy(asc(parts.partNumber), asc(parts.displayName), asc(parts.onshapeName)),
-    ["parts", "systems", "members", "part_drawings", "part_reviews"],
-  );
+      .where(filter)
+      .orderBy(...order);
+  };
+  // Kept in memory until one of these tables changes (cache.ts); a write to parts alone re-reads
+  // only the rows it changed (cachedRows): a BOM page is opened far more often than its parts change.
+  const rows = await cachedRows("parts", ["parts", "systems", "members", "part_drawings", "part_reviews"], {
+    all: full(where),
+    manifest: () => {
+      const base = db.select({ id: parts.id, v: partXmin }).from(parts);
+      return (anySystem ? base.leftJoin(systems, eq(systems.id, parts.systemId)) : base.innerJoin(systems, eq(systems.id, parts.systemId)))
+        .where(where)
+        .orderBy(...order);
+    },
+    some: (ids) => full(and(where, inArray(parts.id, ids))),
+    idOf: (r) => r.part.id,
+    vOf: (r) => r.xmin,
+  });
   // Files, thumbnail links, groups and the shelf don't depend on each other: one round trip.
   const ids = rows.map((r) => r.part.id);
   const [files, thumbs, lockedThumbs, labels, groups, shelf, bomAt, rawStock] = await Promise.all([

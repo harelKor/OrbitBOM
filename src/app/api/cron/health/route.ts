@@ -4,6 +4,7 @@ import { cronAllowed } from "@/lib/cron";
 import { healthCheck } from "@/lib/health/check";
 import { statusChecks } from "@/lib/health/status";
 import { saveNightlyBackup } from "@/lib/storage/backup";
+import { meterReport } from "@/lib/data/meter";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -37,5 +38,5 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: status.ok, failing }, { status: code, headers });
   }
   const backup = request.nextUrl.searchParams.get("run") === "backup" ? await saveNightlyBackup() : undefined;
-  return NextResponse.json({ ...status, ...(backup && { backup }), report: await healthCheck() }, { status: code, headers });
+  return NextResponse.json({ ...status, ...(backup && { backup }), egress: meterReport(), report: await healthCheck() }, { status: code, headers });
 }

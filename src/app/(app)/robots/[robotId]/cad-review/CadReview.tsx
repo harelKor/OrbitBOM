@@ -315,7 +315,6 @@ function Fold({ title, count, thumb, onIsolate, initial = false, children }: { t
 // Create version on the whole robot (Harel, 2026-11-17): keeps every system's 3D model as it is now
 // as "R<n>", with a name and a note. No Onshape calls.
 function CreateRobotVersion({ robotId, next }: { robotId: string; next: number }) {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
@@ -338,7 +337,6 @@ function CreateRobotVersion({ robotId, next }: { robotId: string; next: number }
             setOpen(false);
             setName("");
             setNote("");
-            router.refresh();
           }}
         >
           <p className="text-sm text-muted">Keeps every system&rsquo;s 3D model and BOM version as they are now, so the whole robot can be viewed and compared as it was.</p>

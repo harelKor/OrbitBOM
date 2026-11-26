@@ -1,6 +1,7 @@
 import "server-only";
 import { and, desc, eq, gte, inArray, isNotNull, notExists, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { cachedQuery } from "./cache";
 import { listCategories } from "./categories";
 import { pageName, type RecentAction } from "./actions";
 
@@ -67,9 +68,10 @@ export async function listInventoryActions(memberId: string, limit = 9): Promise
   const [names, cats, locations, conditions, systemRows] = await Promise.all([
     memberIds.length ? db.select({ id: members.id, name: members.name }).from(members).where(inArray(members.id, memberIds)) : [],
     listCategories(),
-    db.select({ id: inventoryLocations.id, name: inventoryLocations.name }).from(inventoryLocations),
-    db.select({ id: inventoryConditions.id, label: inventoryConditions.label }).from(inventoryConditions),
-    db.select({ id: systems.id, name: systems.name }).from(systems),
+    // Names only, from the server's memory until they change (PERF-5).
+    cachedQuery(db.select({ id: inventoryLocations.id, name: inventoryLocations.name }).from(inventoryLocations), ["inventory_locations"]),
+    cachedQuery(db.select({ id: inventoryConditions.id, label: inventoryConditions.label }).from(inventoryConditions), ["inventory_conditions"]),
+    cachedQuery(db.select({ id: systems.id, name: systems.name }).from(systems), ["systems"]),
   ]);
   const memberName = new Map(names.map((m) => [m.id, m.name]));
   const systemName = new Map(systemRows.map((s) => [s.id, s.name]));

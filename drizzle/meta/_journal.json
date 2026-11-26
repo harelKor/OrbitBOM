@@ -785,6 +785,13 @@
       "when": 1795543770749,
       "tag": "0111_season_need_new",
       "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1795688129568,
+      "tag": "0112_watch_places",
+      "breakpoints": true
     }
   ]
 }

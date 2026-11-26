@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useRef, useState, useTransition } from "react";
 import { saveReviewSnip } from "@/app/(app)/review-comments-actions";
 import { Dialog } from "@/components/Dialog";
@@ -289,7 +288,6 @@ export function SnipEditor({
 // A comment's snip: its picture, a tap opens it to draw on (saved for everyone).
 export function CommentSnip({ c, small = false }: { c: ReviewComment; small?: boolean }) {
   const me = useContext(SnipMe);
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [saving, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -322,7 +320,6 @@ export function CommentSnip({ c, small = false }: { c: ReviewComment; small?: bo
               const r = await safeAction(() => saveReviewSnip(c.id, own, keep));
               if (r.error) return setError(r.error);
               setOpen(false);
-              router.refresh();
             })
           }
         />

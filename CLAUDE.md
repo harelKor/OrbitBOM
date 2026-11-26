@@ -38,7 +38,7 @@ last full audit and what's still open: `plan/audit-2026-11-14.md` §0.
   sheet one), not `DEFAULT_CATEGORIES`: a test needing a category creates it.
 - Schema: edit `src/db/schema.ts`, `npm run db:generate`, rename the file to a readable name
   (and its `tag` in `drizzle/meta/_journal.json`), add `ALTER TABLE "x" ENABLE ROW LEVEL SECURITY;`
-  for a new table, commit. Next migration: 0112. Migrations reach production before the code and
+  for a new table, commit. Next migration: 0113. Migrations reach production before the code and
   a rollback runs old code on the new schema, so expand → contract: add columns/tables in one
   push; drop or rename one only in a later push, once no deployed code reads it.
 - Local site: README "Local development" (local Supabase in Docker, "Dev sign-in" button; Onshape
@@ -292,6 +292,14 @@ Details and commands: `docs/runbook.md` → "The server"; files in `deploy/`.
   in the server's memory until a watched table's counter in `data_versions` moves (deferred
   triggers, migration 0083). A new table to watch = its triggers in a migration + `Watched`.
   Never cache inside a transaction (`exec === db` only) or anything with signed URLs.
+  Big lists of one table use `cachedRows` (same file): when only that table's counter moved it
+  reads an (id, xmin) manifest and fetches just the changed rows (part lists, the shell's status
+  scan, the shelf, materials; audit 2026-11-25 PERF-9). The built 3D model is kept in memory per
+  row save time (`memoBuilt` in `model/build.ts`).
+- Egress meter (`src/lib/data/meter.ts`, hooked in `src/db/index.ts`): Postgres result bytes per
+  query shape, in memory. Server log every 15 min and per UTC day (`journalctl -u orbitparts |
+  grep "egress db"`; `egress db label …` lines name each label's SQL); today's totals in the full
+  `/api/cron/health` report.
 - Supabase's transaction pooler (6543): node-postgres, no prepared statements, don't add pool
   startup options without testing them there.
 - Sign-in is checked with `getClaims()` (`src/lib/auth.ts`, `src/lib/supabase/proxy.ts`): the project

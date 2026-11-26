@@ -1,6 +1,7 @@
 import "server-only";
 import { desc, eq, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { cachedQuery } from "@/lib/data/cache";
 
 const { systems, systemVersions } = schema;
 
@@ -14,19 +15,27 @@ export type SystemSync = { outdated: "reverted" | "partial" | null; waiting: num
 export async function listSystemSync(systemRows?: { id: string; currentVersionId: string | null }[]): Promise<Map<string, SystemSync>> {
   const [rows, latest, drafts] = await Promise.all([
     systemRows ?? db.select({ id: systems.id, currentVersionId: systems.currentVersionId }).from(systems),
-    db
-      .selectDistinctOn([systemVersions.systemId], { systemId: systemVersions.systemId, id: systemVersions.id })
-      .from(systemVersions)
-      .where(eq(systemVersions.state, "committed"))
-      .orderBy(systemVersions.systemId, desc(systemVersions.seq)),
-    db
-      .select({
-        systemId: systemVersions.systemId,
-        partial: systemVersions.partialVersionId,
-        count: sql<number>`jsonb_array_length(${systemVersions.changes})::int`,
-      })
-      .from(systemVersions)
-      .where(eq(systemVersions.state, "draft")),
+    // The layout reads these on every render and save: kept until a version row changes
+    // (migration 0112; counting each draft's changes also detoasted them every time).
+    cachedQuery(
+      db
+        .selectDistinctOn([systemVersions.systemId], { systemId: systemVersions.systemId, id: systemVersions.id })
+        .from(systemVersions)
+        .where(eq(systemVersions.state, "committed"))
+        .orderBy(systemVersions.systemId, desc(systemVersions.seq)),
+      ["system_versions"],
+    ),
+    cachedQuery(
+      db
+        .select({
+          systemId: systemVersions.systemId,
+          partial: systemVersions.partialVersionId,
+          count: sql<number>`jsonb_array_length(${systemVersions.changes})::int`,
+        })
+        .from(systemVersions)
+        .where(eq(systemVersions.state, "draft")),
+      ["system_versions"],
+    ),
   ]);
   const latestOf = new Map(latest.map((l) => [l.systemId, l.id]));
   const draftOf = new Map(drafts.map((d) => [d.systemId, d]));

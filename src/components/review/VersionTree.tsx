@@ -172,7 +172,6 @@ function NodeHead({ node, list, owner, did, onshape, current, big = false, folde
 // ⋮ on a version (Harel, 2026-11-17).
 function VersionMenu({ item, pick, list, owner, did, onshape, current, bomVersionId, subIds = [] }: RowProps & { item: VersionItem; pick: VersionPick | null; bomVersionId: string | null; subIds?: string[] }) {
   const ctx = useContext(VersionContext);
-  const router = useRouter();
   const [bom, setBom] = useState<Draft | null>(null);
   if (!ctx || !owner) return null;
   const systemId = "systemId" in owner ? owner.systemId : null;
@@ -211,7 +210,6 @@ function VersionMenu({ item, pick, list, owner, did, onshape, current, bomVersio
         if (r.error) return toast(r.error, true);
         if (ctx.target && (ctx.target.a.key === item.key || ctx.target.b?.key === item.key)) ctx.show(null);
         toast(`${item.label} deleted`);
-        router.refresh();
       }
     : null;
   const link = onshapeUrlOf(item, did, onshape);

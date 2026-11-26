@@ -1,6 +1,6 @@
 import "server-only";
 import { cache as perRender } from "react";
-import { and, asc, count, desc, eq, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { thumbKey } from "@/lib/onshape/thumbnails";
 import { imageUrl } from "@/lib/storage/r2";
@@ -9,7 +9,22 @@ import { statusBreakdown } from "@/lib/stats";
 import { isRobotFolder, type RobotFolder } from "@/config/robotFolders";
 import { listSystemSync, type SystemSync } from "@/lib/versions/sync";
 import { countInventoryReviews } from "@/lib/review/inventory";
-import { cachedQuery } from "./cache";
+import { cachedQuery, cachedRows } from "./cache";
+
+const partXmin = sql<string>`"parts"."xmin"::text`;
+const shellStatusColumns = {
+  id: schema.parts.id,
+  xmin: partXmin,
+  systemId: schema.parts.systemId,
+  classification: schema.parts.classification,
+  quantity: schema.parts.quantity,
+  designState: schema.parts.designState,
+  process1: schema.parts.process1,
+  doneProcess1: schema.parts.doneProcess1,
+  addedProcesses: schema.parts.addedProcesses,
+  qaHeld: schema.parts.qaHeld,
+  cotsQa: schema.parts.cotsQa,
+};
 
 const { robots, systems, parts, partReviews } = schema;
 
@@ -44,23 +59,21 @@ async function loadShellRobots(): Promise<ShellRobot[]> {
   const [robotRows, systemRows, statusRows, partThumbs, reviewRows, sync, inventoryReviews] = await Promise.all([
     cachedQuery(db.select().from(robots).orderBy(desc(robots.year), asc(robots.name)), ["robots"]),
     systemsRead,
-    cachedQuery(
-      db
-        .select({
-          systemId: parts.systemId,
-        classification: parts.classification,
-        quantity: parts.quantity,
-        designState: parts.designState,
-        process1: parts.process1,
-        doneProcess1: parts.doneProcess1,
-          addedProcesses: parts.addedProcesses,
-          qaHeld: parts.qaHeld,
-          cotsQa: parts.cotsQa,
-        })
+    // Every live part's status columns; a part write re-reads only the parts it changed (cachedRows).
+    cachedRows("parts", ["parts"], {
+      all: db
+        .select(shellStatusColumns)
         .from(parts)
         .where(isNull(parts.removedFromCadAt)),
-      ["parts"],
-    ),
+      manifest: () => db.select({ id: parts.id, v: partXmin }).from(parts).where(isNull(parts.removedFromCadAt)),
+      some: (ids) =>
+        db
+          .select(shellStatusColumns)
+          .from(parts)
+          .where(and(isNull(parts.removedFromCadAt), inArray(parts.id, ids))),
+      idOf: (r) => r.id,
+      vOf: (r) => r.xmin,
+    }),
     cachedQuery(
       db
         .selectDistinctOn([parts.systemId], { systemId: parts.systemId, id: parts.id, rev: parts.thumbnailRev })

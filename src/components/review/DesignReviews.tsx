@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { finishReviewAction, setCommentReviewAction, startReviewAction } from "@/app/(app)/review-comments-actions";
 import { Popover } from "@/components/bom/Popover";
@@ -46,7 +45,6 @@ function StartWindow({ robotId, systems, onClose }: { robotId: string; systems: 
   const [state, setState] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const router = useRouter();
   const ready = !!state.trim() && (whole || chosen.size > 0);
   return (
     <Dialog open onClose={() => !pending && onClose()} title="Start a Design Review">
@@ -59,7 +57,6 @@ function StartWindow({ robotId, systems, onClose }: { robotId: string; systems: 
             const r = await safeAction(() => startReviewAction(robotId, { wholeRobot: whole, systemIds: whole ? [] : [...chosen], state }));
             if (r.error) return setError(r.error);
             toast("Design Review started");
-            router.refresh();
             onClose();
           });
         }}
@@ -129,7 +126,6 @@ function FinishWindow({ robotId, dr, nextVersion, onClose }: { robotId: string; 
   const [name, setName] = useState(`R${nextVersion}`);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const router = useRouter();
   return (
     <Dialog open onClose={() => !pending && onClose()} title={`Finish ${dr.name}`}>
       <form
@@ -141,7 +137,6 @@ function FinishWindow({ robotId, dr, nextVersion, onClose }: { robotId: string; 
             const r = await safeAction(() => finishReviewAction(robotId, make ? name : null));
             if (r.error) return setError(r.error);
             toast(`${dr.name} finished`);
-            router.refresh();
             onClose();
           });
         }}
@@ -290,7 +285,6 @@ export function ReviewFilterMenu({ list, value, onChange }: { list: DesignReview
 // ⋮ Add to DR…: the robot's DRs, open first; the comment's own is ticked.
 export function AddToReviewWindow({ c, list, onClose }: { c: ReviewComment; list: DesignReview[]; onClose: () => void }) {
   const [pending, start] = useTransition();
-  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const sorted = [...list].sort((a, b) => Number(b.open) - Number(a.open) || b.seq - a.seq);
   return (
@@ -307,7 +301,6 @@ export function AddToReviewWindow({ c, list, onClose }: { c: ReviewComment; list
                     const r = await safeAction(() => setCommentReviewAction(c.id, d.id));
                     if (r.error) return setError(r.error);
                     toast(`Added to ${d.name}`);
-                    router.refresh();
                     onClose();
                   })
                 }

@@ -4,7 +4,7 @@ import { db, schema } from "@/db";
 import { cotsStatusOf } from "@/config/cots";
 import { NOT_LAID_OUT } from "@/config/rawStock";
 import { categoryOf, getCategory, type InvCategory } from "@/lib/inventory/categories";
-import { cachedQuery } from "./cache";
+import { cachedQuery, cachedRows } from "./cache";
 import { categoryImageUrl, listCategories } from "./categories";
 import { listPlaces } from "./places";
 import type { Shelf, ShelfSuggestion } from "@/components/bom/types";
@@ -95,7 +95,9 @@ export async function usageOf(itemIds: string[], exec: Exec = db) {
   if (!itemIds.length) return { items: [], cats: await listCategories(), usage: new Map<string, ItemUsage>() };
   const conds = db.select({ id: inventoryConditions.id, label: inventoryConditions.label }).from(inventoryConditions);
   const [rows, used, cats, conditions] = await Promise.all([
-    exec.select().from(inventoryItems).where(inArray(inventoryItems.id, itemIds)),
+    // From the kept shelf (cachedRows) outside a transaction: every robot dashboard and system page
+    // read these items' every column from Supabase (audit 2026-11-25 PERF-6).
+    exec === db ? shelfRows().then((all) => { const want = new Set(itemIds); return all.filter((i) => want.has(i.id)); }) : exec.select().from(inventoryItems).where(inArray(inventoryItems.id, itemIds)),
     usageParts(exec, { itemIds }),
     listCategories(),
     exec === db ? cachedQuery(conds, ["inventory_conditions"]) : conds,
@@ -111,18 +113,26 @@ export async function usageOf(itemIds: string[], exec: Exec = db) {
 export const restockShort = (item: { inStock: number; seasonNeed: number | null; seasonNeedNew: number | null; variants: unknown[]; newStock: number }, robotsNeed: number) =>
   Math.max(shortOf(Math.max(item.seasonNeed ?? 0, robotsNeed), item.inStock), newMissing(item));
 
+const itemXmin = sql<string>`"inventory_items"."xmin"::text`;
+async function shelfRows(): Promise<(typeof inventoryItems.$inferSelect)[]> {
+  const rows = await cachedRows("inventory_items", ["inventory_items"], {
+    all: db.select({ item: inventoryItems, xmin: itemXmin }).from(inventoryItems).orderBy(asc(inventoryItems.name)),
+    manifest: () => db.select({ id: inventoryItems.id, v: itemXmin }).from(inventoryItems).orderBy(asc(inventoryItems.name)),
+    some: (ids) => db.select({ item: inventoryItems, xmin: itemXmin }).from(inventoryItems).where(inArray(inventoryItems.id, ids)),
+    idOf: (r) => r.item.id,
+    vOf: (r) => r.xmin,
+  });
+  return rows.map((r) => r.item);
+}
+
 // The shelf, or with `itemIds` only those items (an item's page or window reads just its own
 // usage, order and picture, not the whole shop's).
 export async function listInventory({ itemIds }: { itemIds?: string[] } = {}) {
   const [items, groups, conditions, locations, used, categories, orders] = await Promise.all([
-    cachedQuery(
-      db
-        .select()
-        .from(inventoryItems)
-        .where(itemIds ? inArray(inventoryItems.id, itemIds) : undefined)
-        .orderBy(asc(inventoryItems.name)),
-      ["inventory_items"],
-    ),
+    // The whole shelf, every column; one stock tap re-reads only the items it changed (cachedRows).
+    itemIds
+      ? cachedQuery(db.select().from(inventoryItems).where(inArray(inventoryItems.id, itemIds)).orderBy(asc(inventoryItems.name)), ["inventory_items"])
+      : shelfRows(),
     cachedQuery(db.select().from(inventoryGroups).orderBy(asc(inventoryGroups.name)), ["inventory_groups"]),
     cachedQuery(db.select().from(inventoryConditions).orderBy(asc(inventoryConditions.label)), ["inventory_conditions"]),
     listPlaces(),

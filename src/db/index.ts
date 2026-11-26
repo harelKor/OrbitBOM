@@ -1,6 +1,7 @@
 import "server-only";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
+import { recordConnection, recordQuery } from "@/lib/data/meter";
 import * as schema from "./schema";
 
 // Supabase's transaction pooler (port 6543) does not support prepared statements. Supabase's
@@ -42,7 +43,33 @@ function createPool() {
   // An idle connection the pooler drops (a restart, a network blip) is removed from the pool and
   // the next query opens a new one; without a listener the error would stop the server.
   pool.on("error", (err) => console.error("database: idle connection closed:", err.message));
+  pool.on("connect", meterClient);
   return pool;
+}
+
+// The egress meter (lib/data/meter.ts): each result's rows counted by their wire length, read
+// from the protocol messages node-postgres already parsed, so it costs no extra work per row.
+type Wire = { on(event: string, fn: (msg: { length?: number }) => void): void };
+type Metered = PoolClient & { connection?: Wire; _getActiveQuery?: () => { text?: string } | null };
+function meterClient(client: PoolClient) {
+  recordConnection();
+  const c = client as Metered;
+  if (!c.connection || typeof c._getActiveQuery !== "function") return;
+  let rows = 0;
+  let bytes = 0;
+  c.connection.on("rowDescription", (msg) => {
+    bytes += (msg.length ?? 0) + 1;
+  });
+  c.connection.on("dataRow", (msg) => {
+    rows++;
+    bytes += (msg.length ?? 0) + 1;
+  });
+  c.connection.on("commandComplete", () => {
+    const text = c._getActiveQuery?.()?.text;
+    if (text) recordQuery(text, rows, bytes);
+    rows = 0;
+    bytes = 0;
+  });
 }
 const client = globalForDb.pg ?? createPool();
 if (process.env.NODE_ENV !== "production") globalForDb.pg = client;

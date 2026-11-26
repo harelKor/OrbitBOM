@@ -75,27 +75,71 @@ export async function loadState(robotId: string, kind: BuildKind = "final"): Pro
 // Only the built model, for the viewer and the part windows: the draft and the group plans can
 // be far bigger and only the build steps need them (every 3D view sent the whole payload before,
 // 2026-11-14).
-async function loadBuilt(robotId: string, kind: BuildKind = "final"): Promise<Built | undefined> {
-  const [row] = await db
-    .select({ built: sql<Built | null>`${onshapeCache.payload} -> 'built'` })
+// Kept in the server's memory until its row is saved again (audit 2026-11-25 PERF-1/2: every
+// viewer mount, part window and pictures request read the whole placement list from Supabase).
+// Each use reads only the row's save time; every write goes through saveState, which sets it.
+// Callers must not change what they get: it's the kept copy.
+type BuiltPart = "all" | "sketches";
+const builtMemo = new Map<string, { stamp: string; built: Built }>();
+const BUILT_MEMO_MAX = 12;
+
+async function builtStamps(keys: string[]): Promise<Map<string, string>> {
+  const rows = await db
+    .select({ key: onshapeCache.key, stamp: sql<string>`${onshapeCache.fetchedAt}::text || coalesce(${onshapeCache.microversion}, '')` })
     .from(onshapeCache)
-    .where(eq(onshapeCache.key, cacheKey(robotId, kind)));
+    .where(inArray(onshapeCache.key, keys));
+  return new Map(rows.map((r) => [r.key, r.stamp]));
+}
+
+async function readBuilt(key: string, part: BuiltPart): Promise<Built | undefined> {
+  const built =
+    part === "all"
+      ? sql<Built | null>`${onshapeCache.payload} -> 'built'`
+      : sql<Built | null>`case when ${onshapeCache.payload} ? 'built' then jsonb_build_object('studios', ${onshapeCache.payload} -> 'built' -> 'studios', 'sketches', ${onshapeCache.payload} -> 'built' -> 'sketches') end`;
+  const [row] = await db.select({ built }).from(onshapeCache).where(eq(onshapeCache.key, key));
   return row?.built ?? undefined;
 }
 
-// The Final model's built state and, in the same read, the Basepart's sketches (its studios and
-// sketch placements, not its parts), since the Final model shows them too.
-async function loadFinalWithSketches(robotId: string): Promise<{ built?: Built; basepart?: Pick<Built, "studios" | "sketches"> }> {
-  const finalKey = cacheKey(robotId, "final");
-  const rows = await db
-    .select({
-      key: onshapeCache.key,
-      built: sql<Built | null>`case when ${onshapeCache.key} = ${finalKey} then ${onshapeCache.payload} -> 'built' else jsonb_build_object('studios', ${onshapeCache.payload} -> 'built' -> 'studios', 'sketches', ${onshapeCache.payload} -> 'built' -> 'sketches') end`,
-    })
-    .from(onshapeCache)
-    .where(inArray(onshapeCache.key, [finalKey, cacheKey(robotId, "basepart")]));
-  const of = (key: string) => rows.find((r) => r.key === key)?.built ?? undefined;
-  return { built: of(finalKey), basepart: of(cacheKey(robotId, "basepart")) };
+// The built states of several rows (one stamp read), from memory when they haven't been saved since.
+async function memoBuilt(wanted: { key: string; part: BuiltPart }[]): Promise<(Built | undefined)[]> {
+  const stamps = await builtStamps([...new Set(wanted.map((w) => w.key))]);
+  return Promise.all(
+    wanted.map(async ({ key, part }) => {
+      const id = `${key}#${part}`;
+      const stamp = stamps.get(key);
+      if (!stamp) {
+        builtMemo.delete(id);
+        return undefined;
+      }
+      const hit = builtMemo.get(id);
+      if (hit?.stamp === stamp) {
+        builtMemo.delete(id);
+        builtMemo.set(id, hit);
+        return hit.built;
+      }
+      const built = await readBuilt(key, part);
+      if (built) {
+        builtMemo.set(id, { stamp, built });
+        while (builtMemo.size > BUILT_MEMO_MAX) builtMemo.delete(builtMemo.keys().next().value!);
+      } else builtMemo.delete(id);
+      return built;
+    }),
+  );
+}
+
+async function loadBuilt(robotId: string, kind: BuildKind = "final"): Promise<Built | undefined> {
+  return (await memoBuilt([{ key: cacheKey(robotId, kind), part: "all" }]))[0];
+}
+
+// A model's built state and the Basepart's sketches (its studios and sketch placements, not its
+// parts), since the Final and BOM models show them too. The BOM model used to read the Final's
+// whole model only to keep its Basepart half (PERF-1).
+async function loadWithSketches(robotId: string, kind: "final" | "bom"): Promise<{ built?: Built; basepart?: Pick<Built, "studios" | "sketches"> }> {
+  const [built, basepart] = await memoBuilt([
+    { key: cacheKey(robotId, kind), part: "all" },
+    { key: cacheKey(robotId, "basepart"), part: "sketches" },
+  ]);
+  return { built, basepart };
 }
 
 async function saveState(robotId: string, state: State, kind: BuildKind = "final") {
@@ -143,9 +187,8 @@ export type RobotModel = { builtAt: string; studios: (string | null)[]; keys: st
 // `bom`: the BOM model, or the Final while the BOM model isn't built yet; it shows the Basepart's
 // sketches like the Final.
 export async function robotModel(robotId: string, systemId?: string, kind: BuildKind = "final"): Promise<RobotModel | null> {
-  const bom = kind === "bom" ? await loadBuilt(robotId, "bom") : undefined;
-  if (kind === "bom" && !bom) return robotModel(robotId, systemId, "final");
-  const { built, basepart } = kind === "final" ? await loadFinalWithSketches(robotId) : kind === "bom" ? { built: bom, basepart: (await loadFinalWithSketches(robotId)).basepart } : { built: await loadBuilt(robotId, kind), basepart: undefined };
+  const { built, basepart } = kind === "basepart" ? { built: await loadBuilt(robotId, kind), basepart: undefined } : await loadWithSketches(robotId, kind);
+  if (kind === "bom" && !built) return robotModel(robotId, systemId, "final");
   if (!built || !storageConfigured()) return null;
   const groups = built.groups ?? [];
   const own = (g: number | undefined) => !systemId || !groups.length || (g !== undefined && !!groups[g]?.systemIds.includes(systemId));

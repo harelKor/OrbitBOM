@@ -26,7 +26,10 @@ export type Watched =
   | "part_drawings"
   | "part_reviews"
   | "inventory_groups"
-  | "inventory_conditions";
+  | "inventory_conditions"
+  | "inventory_locations"
+  | "material_colors"
+  | "system_versions";
 
 // null when the counters can't be read (the migration hasn't run yet): every read goes to the
 // database as before.
@@ -111,6 +114,86 @@ export async function cached<T>(key: string, tables: Watched[], load: () => Prom
 export function cachedQuery<T>(query: PromiseLike<T> & { toSQL(): { sql: string; params: unknown[] } }, tables: Watched[]): Promise<T> {
   const { sql, params } = query.toSQL();
   return cached(`q:${sql}:${JSON.stringify(params)}`, tables, async () => await query);
+}
+
+// A cached list of rows of one table (with joins) that reloads only the rows that changed when
+// only that table's counter moved (audit 2026-11-25 PERF-9): one To Fab "+" used to re-read every
+// column of every part of the robot. Postgres gives each row version a new `xmin`, so a manifest
+// of (id, xmin) in the list's own order (~60 B a row) tells which rows to fetch again; rows that
+// left the list drop out, new ones come in. Any other watched table moving reloads it all.
+// `all` must return each row's id and xmin (`"parts"."xmin"::text`); `manifest` the same ids and
+// xmins under the same joins, filter and order; `some` the full rows of the given ids.
+type Versioned = { id: string; v: string };
+export async function cachedRows<R>(
+  table: Watched,
+  tables: Watched[],
+  q: {
+    all: PromiseLike<R[]> & { toSQL(): { sql: string; params: unknown[] } };
+    manifest: () => PromiseLike<Versioned[]>;
+    some: (ids: string[]) => PromiseLike<R[]>;
+    idOf: (row: R) => string;
+    vOf: (row: R) => string;
+  },
+): Promise<R[]> {
+  const { sql, params } = q.all.toSQL();
+  const key = `rows:${sql}:${JSON.stringify(params)}`;
+  const v = await versions();
+  if (!v || tables.some((t) => !v.has(t)) || !tables.includes(table)) return await q.all;
+  const stamp = tables.map((t) => v.get(t)).join(".");
+  const hit = store.get(key);
+  if (hit?.stamp === stamp) {
+    store.delete(key);
+    store.set(key, hit);
+    return structuredClone(hit.value) as R[];
+  }
+  const id = `${stamp}|${key}`;
+  let pending = loading.get(id) as Promise<R[]> | undefined;
+  if (!pending) {
+    const before = hit?.stamp.split(".");
+    const now = stamp.split(".");
+    const onlyOurs = !!before && before.length === now.length && tables.every((t, i) => t === table || before[i] === now[i]);
+    pending = (onlyOurs ? reloadChanged(hit!.value as R[], q) : Promise.resolve(q.all)).then((value) => {
+      keep(key, stamp, value);
+      return value;
+    });
+    loading.set(id, pending);
+    pending.then(
+      () => loading.delete(id),
+      () => loading.delete(id),
+    );
+  }
+  return structuredClone(await pending);
+}
+
+async function reloadChanged<R>(old: R[], q: Parameters<typeof cachedRows<R>>[2]): Promise<R[]> {
+  const manifest = await q.manifest();
+  const kept = new Map<string, R[]>();
+  for (const row of old) {
+    const k = q.idOf(row);
+    const list = kept.get(k);
+    if (list) list.push(row);
+    else kept.set(k, [row]);
+  }
+  const changed = new Set(manifest.filter((m) => !kept.has(m.id) || q.vOf(kept.get(m.id)![0]) !== m.v).map((m) => m.id));
+  // Most of the list changed (a bulk edit, a BOM update): one full read is cheaper.
+  if (changed.size > manifest.length / 3) return await q.all;
+  const fresh = new Map<string, R[]>();
+  if (changed.size) {
+    for (const row of await q.some([...changed])) {
+      const k = q.idOf(row);
+      const list = fresh.get(k);
+      if (list) list.push(row);
+      else fresh.set(k, [row]);
+    }
+  }
+  const out: R[] = [];
+  const seen = new Set<string>();
+  for (const m of manifest) {
+    if (seen.has(m.id)) continue;
+    seen.add(m.id);
+    out.push(...((changed.has(m.id) ? fresh.get(m.id) : kept.get(m.id)) ?? []));
+  }
+  return out;
 }
 
 // For tests.
