@@ -153,8 +153,10 @@ describe("added processes (Harel, 2026-11-20)", () => {
     expect(planPartUpdate(atQa, { status: "Released", atProcess: true }, "ui").set).toMatchObject({ designState: "Released", doneProcess1: 0 });
     // A single-process part resets as FRCBOM does.
     expect(planPartUpdate({ ...part, designState: null, doneProcess1: 1 }, { status: "Released", atProcess: true }, "ui").set).toMatchObject({ designState: "Released", doneProcess1: 0 });
-    // Without the flag (a status picked in the BOM) nothing changes from before.
-    expect(planPartUpdate(laserCnc, { status: "Released" }, "ui").set).toMatchObject({ designState: "Released", doneProcess1: 0 });
+    // Picked in the BOM, it stays at CNC too and keeps the laser's count (Harel, 2026-11-26).
+    const picked = planPartUpdate(laserCnc, { status: "Released" }, "ui").set;
+    expect(picked.designState).toBe("Released");
+    expect(picked.doneProcess1).toBeUndefined();
   });
   // Audit 2026-11-25, BOM-4.
   it("Release's bar releases only parts not released yet", () => {

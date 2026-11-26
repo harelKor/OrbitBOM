@@ -80,6 +80,24 @@ else
       }
     });
 
+    // Harel, 2026-11-26: a status picked at CNC keeps the laser's count and the QA.
+    it("keeps the laser's work when a status is picked at CNC", async () => {
+      await applyPartChanges([plate.id], { status: "Post Processing" }, { memberId: member.id, via: "ui" });
+      let p = await read(plate.id);
+      expect(partStatusLabel(p)).toBe("Post Processing");
+      expect(p.doneProcess1).toBe(2);
+      expect(p.addedProcesses[0].qaDone).toBe(true);
+      // The Finished drop (and the post-processing tick): the final QA, every process made.
+      await applyPartChanges([plate.id], { status: "Ready for QA", atProcess: true }, { memberId: member.id, via: "ui" });
+      p = await read(plate.id);
+      expect(computeStatus(p)).toBe("Ready for QA");
+      expect(p.doneProcess1).toBe(2);
+      expect(p.addedProcesses[0]).toMatchObject({ done: 2, qaDone: true });
+      // Reproduction still starts over from Process 1.
+      await applyPartChanges([plate.id], { status: "Reproduction", note: "Bent" }, { memberId: member.id, via: "ui" });
+      expect((await read(plate.id)).doneProcess1).toBe(0);
+    });
+
     it("refuses finished parts in a new batch", async () => {
       // FAB-3: a finished card can't start a batch (it used to go back to Released).
       const r = await createFabBatch(robot.id, [done.id], "laser");

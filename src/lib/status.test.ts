@@ -110,6 +110,39 @@ describe("status writes", () => {
       qaHeld: false,
     });
   });
+  // Harel, 2026-11-26: a shop part's status picked at a later process keeps the earlier ones.
+  describe("a shop part at Process 2 (laser → QA → CNC)", () => {
+    const atCnc: StatusInput = { ...base, process1: "laser", doneProcess1: 2, addedProcesses: [proc("cnc", { done: 1, qa: true, qaDone: true })] };
+    const after = (status: string, p = atCnc) => ({ ...p, ...applyStatus(status, p) }) as StatusInput;
+    it("Post Processing and Gcoded stay at CNC with the laser's count and the QA", () => {
+      for (const s of ["Post Processing", "Gcoded"]) {
+        const p = after(s);
+        expect(p).toMatchObject({ designState: s, doneProcess1: 2 });
+        expect(p.addedProcesses[0].qaDone).toBe(true);
+        expect(statusMachine(p)).toBe("cnc");
+        expect(computeStatus(p)).toBe(s);
+      }
+    });
+    it("Ready for QA at the last process is the final QA, every process made", () => {
+      const p = after("Ready for QA");
+      expect(p.doneProcess1).toBe(2);
+      expect(p.addedProcesses[0]).toMatchObject({ done: 2, qaDone: true });
+      expect(isMidQa(p)).toBe(false);
+      expect(qaNext(p)).toBe("In Stock");
+    });
+    it("Ready for QA at the laser goes to the QA before CNC, not the final one", () => {
+      const atLaser: StatusInput = { ...atCnc, doneProcess1: 1, addedProcesses: [proc("cnc", { qa: true })] };
+      expect(isMidQa(after("Ready for QA", atLaser))).toBe(true);
+    });
+    it("a pick while waiting for QA doesn't approve the QA", () => {
+      const waiting: StatusInput = { ...atCnc, addedProcesses: [proc("cnc", { qa: true })] };
+      expect(after("Post Processing", waiting)).toMatchObject({ designState: "Post Processing", doneProcess1: 0 });
+    });
+    it("Reproduction still starts over from Process 1; a part with only Process 1 resets", () => {
+      expect(applyStatus("Reproduction", atCnc)).toMatchObject({ designState: "Reproduction", doneProcess1: 0 });
+      expect(applyStatus("Post Processing", { ...one, doneProcess1: 1 })).toEqual({ designState: "Post Processing", doneProcess1: 0, qaHeld: false });
+    });
+  });
 });
 
 describe("partStatusLabel", () => {

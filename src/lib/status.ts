@@ -260,13 +260,26 @@ export function isDone(part: StatusInput): boolean {
 // The write side of the hybrid model: choosing a status from the menu stores it as the design
 // state and resets the counters, so the stored status shows again. A numbered status (Released
 // P3, In Process 3) counts the processes before it as done; a status the part's factory or printer
-// picks at a later process keeps the earlier processes (Harel, 2026-11-20).
+// picks at a later process keeps the earlier processes (Harel, 2026-11-20). A shop part with added
+// processes does the same: a status picked (or a To Fab drop) at Process 2 or later keeps the
+// earlier processes' counts and QA (Harel, 2026-11-26); only Reproduction, a remake, still starts
+// over from Process 1. A part with only Process 1 resets as FRCBOM does.
 export function applyStatus(status: string, part?: StatusInput) {
   if (!isPickableStatus(status) && !isCotsStatusName(status)) throw new Error(`Unknown status: ${status}`);
   const added = part?.addedProcesses ?? [];
   const needed = Math.max(part?.quantity ?? 1, 1);
   const later = processStatusOf(status);
-  const at = later ? later.n - 1 : part && part.classification !== "cots" && areaOf(part) && (PICKED_AT_PROCESS as string[]).includes(status) ? stageOf(part).index : 0;
+  const made = !!part && part.classification !== "cots";
+  const area = made && !!areaOf(part);
+  const shop = made && !area && added.length > 0;
+  const keeps = (PICKED_AT_PROCESS as string[]).includes(status) && (area || (shop && status !== "Reproduction"));
+  // The process a shop part is at: one waiting for QA before its next process is still at the one
+  // before, so a pick never approves that QA.
+  const here = (p: StatusInput) => {
+    const s = stageOf(p);
+    return shop && s.midQa ? s.index - 1 : s.index;
+  };
+  const at = later ? later.n - 1 : keeps ? here(part!) : 0;
   if (at > 0 && at <= added.length) {
     return {
       designState: status,
@@ -276,8 +289,9 @@ export function applyStatus(status: string, part?: StatusInput) {
     };
   }
   // The factory or printer finished its process and the part has more: it moves on from there.
-  if (part && part.classification !== "cots" && areaOf(part) && (status === READY_FOR_QA || status === COTS_IN_STOCK)) {
-    const index = stageOf(part).index;
+  // A shop part's Ready for QA too (Harel, 2026-11-26): its next process, or the QA before it.
+  if (part && (area || shop) && (status === READY_FOR_QA || (area && status === COTS_IN_STOCK))) {
+    const index = here(part);
     if (index < added.length) {
       return {
         designState: null,
@@ -286,6 +300,8 @@ export function applyStatus(status: string, part?: StatusInput) {
         qaHeld: false,
       };
     }
+    // A shop part at its last process: every process made, in the final Ready for QA.
+    if (shop && index > 0) return { designState: null, doneProcess1: needed, addedProcesses: added.map((p) => ({ ...p, done: needed, qaDone: true })), qaHeld: false };
   }
   return {
     designState: status,
